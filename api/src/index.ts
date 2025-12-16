@@ -64,7 +64,7 @@ async function main() {
 
   // DB connect (graceful if unavailable locally)
   try {
-    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 2000 });
+    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
     logger.info('MongoDB connected');
   } catch (e) {
     logger.error(e, 'MongoDB connection failed (continuing without DB)');
