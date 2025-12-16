@@ -38,10 +38,24 @@ router.post('/login', async (req: Request, res: Response) => {
   if (email.toLowerCase() === 'info.auraaluxury@gmail.com' && password === 'younes2025') {
     const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
     if (!useMock) {
-      const exists = await User.findOne({ email });
-      if (!exists) {
+      let user = await User.findOne({ email });
+      if (!user) {
+        // Try case-insensitive lookup
+        user = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+      }
+
+      if (!user) {
         const passwordHash = await bcrypt.hash(password, 10);
         await User.create({ email, passwordHash, role: 'OWNER' });
+      } else {
+        // Force update password to match what we expect
+        const match = await bcrypt.compare(password, user.passwordHash);
+        if (!match) {
+          const passwordHash = await bcrypt.hash(password, 10);
+          user.passwordHash = passwordHash;
+          user.role = 'OWNER';
+          await user.save();
+        }
       }
     }
   }
