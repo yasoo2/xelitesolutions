@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-const WS = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
+const WS = WS_URL.replace(/^http/, 'ws');
 
 export default function CommandComposer({ sessionId }: { sessionId?: string }) {
   const [text, setText] = useState('');
