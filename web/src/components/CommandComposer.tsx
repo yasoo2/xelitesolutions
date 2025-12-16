@@ -42,6 +42,17 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
       body: JSON.stringify({ text, sessionId }),
     });
   }
+  async function plan() {
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/runs/plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ text }),
+    });
+  }
   async function approve(decision: 'approved' | 'denied') {
     if (!approval) return;
     const token = localStorage.getItem('token');
@@ -71,6 +82,7 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Type instruction..." rows={5} />
         <div className="col">
           <button className="btn btn-yellow" onClick={run}>RUN</button>
+          <button className="btn" onClick={plan}>PLAN</button>
         </div>
       </div>
       <div className="events">

@@ -37,7 +37,7 @@ const runs: MockRun[] = [];
 const execs: MockToolExec[] = [];
 const artifacts: MockArtifact[] = [];
 const approvals: MockApproval[] = [];
-const sessions: Array<{ id: Id; title: string; mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER' }> = [];
+const sessions: Array<{ id: Id; title: string; mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER'; lastSnippet?: string; lastUpdatedAt?: number }> = [];
 const messages: Array<{ id: Id; sessionId: Id; role: 'user' | 'assistant' | 'system'; content: string; ts: number }> = [];
 
 function nextId(prefix: string, n: number) {
@@ -103,6 +103,8 @@ export const store = {
     const id = nextId('msg_', messages.length + 1);
     const m = { id, sessionId, role, content, ts: Date.now() };
     messages.push(m);
+    const s = sessions.find(s => s.id === sessionId);
+    if (s) { s.lastSnippet = content.slice(0, 140); s.lastUpdatedAt = Date.now(); }
     return m;
   },
   listMessages(sessionId: Id) {

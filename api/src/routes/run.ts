@@ -107,8 +107,11 @@ router.post('/start', async (req, res) => {
         store.addMessage(sessionId, 'assistant', result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || ''));
       } else {
         const { Message } = await import('../models/message');
-        await Message.create({ sessionId, role: 'user', content: String(text || '') });
-        await Message.create({ sessionId, role: 'assistant', content: result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || '') });
+        const userMsg = await Message.create({ sessionId, role: 'user', content: String(text || '') });
+        const asstContent = result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || '');
+        const asstMsg = await Message.create({ sessionId, role: 'assistant', content: asstContent });
+        const { Session } = await import('../models/session');
+        await Session.findByIdAndUpdate(sessionId, { $set: { lastSnippet: asstContent.slice(0, 140), lastUpdatedAt: new Date() } });
       }
     }
   } catch {}
@@ -123,6 +126,15 @@ router.get('/', async (_req, res) => {
     const runs = await Run.find().lean();
     res.json({ runs });
   }
+});
+
+router.post('/plan', async (req, res) => {
+  const { text } = req.body || {};
+  const ev = (e: LiveEvent) => broadcast(e);
+  ev({ type: 'step_started', data: { name: 'plan' } });
+  const plan = pickToolFromText(String(text || ''));
+  ev({ type: 'step_done', data: { name: 'plan', plan } });
+  res.json({ plan });
 });
 
 export default router;

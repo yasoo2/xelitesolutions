@@ -66,6 +66,7 @@ router.post('/:id/messages', authenticate, async (req, res) => {
     return res.status(201).json(m);
   }
   const m = await Message.create({ sessionId, role, content });
+  await Session.findByIdAndUpdate(sessionId, { $set: { lastSnippet: content.slice(0, 140), lastUpdatedAt: new Date() } });
   return res.status(201).json({ id: m._id.toString(), sessionId, role, content });
 });
 
