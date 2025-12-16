@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS'>('LIVE');
+  const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY'>('LIVE');
   const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
   async function loadSessions() {
