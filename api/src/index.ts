@@ -41,6 +41,7 @@ async function main() {
   app.use(morgan('dev'));
 
   app.get('/health', (_req, res) => res.json({ status: 'OK' }));
+  app.get('/', (_req, res) => res.send('Joe API is running'));
 
   // Auth
   app.use('/auth', authRoutes);
