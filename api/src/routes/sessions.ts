@@ -4,9 +4,26 @@ import { Session } from '../models/session';
 import { Message } from '../models/message';
 import { store } from '../mock/store';
 import { authenticate } from '../middleware/auth';
+import { Run } from '../models/run';
 
 const router = Router();
 
+router.post('/merge', authenticate, async (req, res) => {
+  const { sourceId, targetId } = req.body || {};
+  if (!sourceId || !targetId || sourceId === targetId) return res.status(400).json({ error: 'Invalid source/target' });
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    const result = store.mergeSessions(String(sourceId), String(targetId));
+    return res.json({ ok: true, ...result });
+  }
+  const source = await Session.findById(sourceId);
+  const target = await Session.findById(targetId);
+  if (!source || !target) return res.status(404).json({ error: 'Session not found' });
+  await Message.updateMany({ sessionId: sourceId }, { $set: { sessionId: targetId } });
+  await Run.updateMany({ sessionId: sourceId }, { $set: { sessionId: targetId } });
+  await Session.deleteOne({ _id: sourceId });
+  return res.json({ ok: true });
+});
 router.get('/', authenticate, async (_req, res) => {
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {

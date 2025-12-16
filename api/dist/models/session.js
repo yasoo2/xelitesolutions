@@ -44,4 +44,5 @@ const SessionSchema = new mongoose_1.Schema({
     lastSnippet: { type: String },
     lastUpdatedAt: { type: Date, default: Date.now },
 }, { timestamps: true });
+SessionSchema.index({ userId: 1, title: 1 }, { unique: true });
 exports.Session = mongoose_1.default.model('Session', SessionSchema);

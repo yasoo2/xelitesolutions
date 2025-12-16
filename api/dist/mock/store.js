@@ -60,6 +60,9 @@ exports.store = {
     listExecs(runId) { return execs.filter(e => !runId || e.runId === runId); },
     listArtifacts(runId) { return artifacts.filter(a => !runId || a.runId === runId); },
     createSession(title, mode = 'ADVISOR') {
+        const existing = sessions.find(s => s.title === title);
+        if (existing)
+            return existing;
         const id = nextId('sess_', sessions.length + 1);
         const s = { id, title, mode };
         sessions.push(s);
@@ -74,5 +77,23 @@ exports.store = {
     },
     listMessages(sessionId) {
         return messages.filter(m => m.sessionId === sessionId);
+    },
+    mergeSessions(sourceId, targetId) {
+        let movedMessages = 0;
+        messages.forEach(m => {
+            if (m.sessionId === sourceId) {
+                m.sessionId = targetId;
+                movedMessages++;
+            }
+        });
+        runs.forEach(r => {
+            if (r.sessionId === sourceId) {
+                r.sessionId = targetId;
+            }
+        });
+        const idx = sessions.findIndex(s => s.id === sourceId);
+        if (idx >= 0)
+            sessions.splice(idx, 1);
+        return { movedMessages };
     }
 };

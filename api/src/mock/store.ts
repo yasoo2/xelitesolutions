@@ -91,6 +91,8 @@ export const store = {
   listExecs(runId?: Id) { return execs.filter(e => !runId || e.runId === runId); },
   listArtifacts(runId?: Id) { return artifacts.filter(a => !runId || a.runId === runId); },
   createSession(title: string, mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER' = 'ADVISOR') {
+    const existing = sessions.find(s => s.title === title);
+    if (existing) return existing;
     const id = nextId('sess_', sessions.length + 1);
     const s = { id, title, mode };
     sessions.push(s);
@@ -105,5 +107,23 @@ export const store = {
   },
   listMessages(sessionId: Id) {
     return messages.filter(m => m.sessionId === sessionId);
+  }
+  ,
+  mergeSessions(sourceId: Id, targetId: Id) {
+    let movedMessages = 0;
+    messages.forEach(m => {
+      if (m.sessionId === sourceId) {
+        m.sessionId = targetId;
+        movedMessages++;
+      }
+    });
+    runs.forEach(r => {
+      if (r.sessionId === sourceId) {
+        r.sessionId = targetId;
+      }
+    });
+    const idx = sessions.findIndex(s => s.id === sourceId);
+    if (idx >= 0) sessions.splice(idx, 1);
+    return { movedMessages };
   }
 };

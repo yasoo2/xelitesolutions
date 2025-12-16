@@ -25,4 +25,6 @@ const SessionSchema = new Schema<ISession>(
   { timestamps: true }
 );
 
+SessionSchema.index({ userId: 1, title: 1 }, { unique: true });
+
 export const Session = mongoose.model<ISession>('Session', SessionSchema);

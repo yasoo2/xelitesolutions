@@ -580,3 +580,23 @@ out_path = Path("/mnt/data/JOE_Master_Spec_XEliteSolutions_v1.0.txt")
 out_path.write_text(content, encoding="utf-8")
 
 str(out_path)
+# XELITE Solutions — JOE System
+
+## Environment Variables
+- API: `api/.env.example` lists `PORT`, `MONGO_URI`, `JWT_SECRET`, `ALLOWED_ORIGINS`, `ARTIFACT_DIR`
+- Web: `web/.env.example` lists `VITE_API_URL`, `VITE_WS_URL`
+- Copy and rename to `.env` locally; never commit secrets.
+
+## Key Endpoints
+- `POST /runs/start` — plan+execute instruction, supports `sessionId`
+- `GET /run/:id` — run details with executions and artifacts
+- `POST /approvals/:id/decision` — approve/deny blocked runs (JWT required)
+- `GET /sessions` — list sessions (JWT required)
+- `POST /sessions` — create session (JWT required)
+- `POST /sessions/merge` — merge sessions and data (JWT required)
+
+## Development
+- API: `MOCK_DB=1 npm run dev`
+- Web: `npm run dev`
+
+ 
