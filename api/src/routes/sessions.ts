@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { Session } from '../models/session';
 import { Message } from '../models/message';
@@ -8,7 +8,7 @@ import { Run } from '../models/run';
 
 const router = Router();
 
-router.post('/merge', authenticate, async (req, res) => {
+router.post('/merge', authenticate, async (req: Request, res: Response) => {
   const { sourceId, targetId } = req.body || {};
   if (!sourceId || !targetId || sourceId === targetId) return res.status(400).json({ error: 'Invalid source/target' });
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
@@ -24,7 +24,7 @@ router.post('/merge', authenticate, async (req, res) => {
   await Session.deleteOne({ _id: sourceId });
   return res.json({ ok: true });
 });
-router.get('/', authenticate, async (_req, res) => {
+router.get('/', authenticate, async (_req: Request, res: Response) => {
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
     return res.json({ sessions: store.listSessions() });
@@ -33,7 +33,7 @@ router.get('/', authenticate, async (_req, res) => {
   return res.json({ sessions });
 });
 
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, async (req: Request, res: Response) => {
   const { title, mode } = req.body || {};
   if (!title) return res.status(400).json({ error: 'Missing title' });
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
@@ -53,7 +53,7 @@ router.post('/', authenticate, async (req, res) => {
   return res.status(201).json({ id: s._id.toString(), title: s.title, mode: s.mode });
 });
 
-router.get('/:id/messages', authenticate, async (req, res) => {
+router.get('/:id/messages', authenticate, async (req: Request, res: Response) => {
   const sessionId = String(req.params.id);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
@@ -63,7 +63,7 @@ router.get('/:id/messages', authenticate, async (req, res) => {
   return res.json({ messages });
 });
 
-router.post('/:id/messages', authenticate, async (req, res) => {
+router.post('/:id/messages', authenticate, async (req: Request, res: Response) => {
   const sessionId = String(req.params.id);
   const { role, content } = req.body || {};
   if (!role || !content) return res.status(400).json({ error: 'Missing role/content' });
@@ -77,7 +77,7 @@ router.post('/:id/messages', authenticate, async (req, res) => {
   return res.status(201).json({ id: m._id.toString(), sessionId, role, content });
 });
 
-router.get('/:id/summary', authenticate, async (req, res) => {
+router.get('/:id/summary', authenticate, async (req: Request, res: Response) => {
   const sessionId = String(req.params.id);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
@@ -89,7 +89,7 @@ router.get('/:id/summary', authenticate, async (req, res) => {
   return res.json({ summary: s ? { content: s.content, ts: (s as any).updatedAt } : null });
 });
 
-router.post('/:id/summarize', authenticate, async (req, res) => {
+router.post('/:id/summarize', authenticate, async (req: Request, res: Response) => {
   const sessionId = String(req.params.id);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   const content = String(req.body?.content || '').slice(0, 1000);
@@ -102,7 +102,7 @@ router.post('/:id/summarize', authenticate, async (req, res) => {
   return res.json({ summary: { content: s.content, ts: (s as any).updatedAt } });
 });
 
-router.post('/:id/summarize/auto', authenticate, async (req, res) => {
+router.post('/:id/summarize/auto', authenticate, async (req: Request, res: Response) => {
   const sessionId = String(req.params.id);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   let content = '';

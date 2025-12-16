@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { store } from '../mock/store';
 import { Run } from '../models/run';
@@ -7,7 +7,7 @@ import { Artifact } from '../models/artifact';
 
 const router = Router();
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req: Request, res: Response) => {
   const id = String(req.params.id);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {

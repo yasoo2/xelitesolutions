@@ -1,14 +1,14 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { executeTool, tools } from '../tools/registry';
 import { broadcast, LiveEvent } from '../ws';
 
 const router = Router();
 
-router.get('/', async (_req, res) => {
+router.get('/', async (_req: Request, res: Response) => {
   res.json({ count: tools.length, tools });
 });
 
-router.post('/run', async (req, res) => {
+router.post('/run', async (req: Request, res: Response) => {
   const steps: LiveEvent[] = [
     { type: 'step_started', data: { name: 'plan' } },
     { type: 'step_done', data: { name: 'plan' } },
@@ -20,7 +20,7 @@ router.post('/run', async (req, res) => {
   res.json(result);
 });
 
-router.post('/:name/execute', async (req, res) => {
+router.post('/:name/execute', async (req: Request, res: Response) => {
   const name = String(req.params.name);
   const result = await executeTool(name, req.body || {});
   res.json(result);

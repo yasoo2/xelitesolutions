@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { broadcast, LiveEvent } from '../ws';
 import { executeTool } from '../tools/registry';
@@ -27,7 +27,7 @@ function detectRisk(text: string) {
   return null;
 }
 
-router.post('/start', async (req, res) => {
+router.post('/start', async (req: Request, res: Response) => {
   const { text, sessionId } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
@@ -118,7 +118,7 @@ router.post('/start', async (req, res) => {
   res.json({ runId, result });
 });
 
-router.get('/', async (_req, res) => {
+router.get('/', async (_req: Request, res: Response) => {
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
     res.json({ runs: store.listRuns() });
@@ -128,7 +128,7 @@ router.get('/', async (_req, res) => {
   }
 });
 
-router.post('/plan', async (req, res) => {
+router.post('/plan', async (req: Request, res: Response) => {
   const { text } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   ev({ type: 'step_started', data: { name: 'plan' } });

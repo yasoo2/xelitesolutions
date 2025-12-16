@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/user';
@@ -8,7 +8,7 @@ import { mockDb } from '../mock/db';
 
 const router = Router();
 
-router.post('/register', async (req, res) => {
+router.post('/register', async (req: Request, res: Response) => {
   const { email, password, role } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Missing email/password' });
   const passwordHash = await bcrypt.hash(password, 10);
@@ -26,7 +26,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Missing email/password' });
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
