@@ -29,7 +29,7 @@ function detectRisk(text: string) {
 }
 
 router.post('/start', authenticate, async (req: Request, res: Response) => {
-  const { text, sessionId } = req.body || {};
+  let { text, sessionId } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
 
