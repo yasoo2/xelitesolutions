@@ -35,6 +35,10 @@ html[data-theme="light"] body {
 .joe-layout { display: grid; grid-template-columns: 260px 1fr 380px; gap: 12px; }
 .sidebar { border-right: 1px solid #333; padding-right: 12px; }
 .rightpanel { border-left: 1px solid #333; padding-left: 12px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.tab { padding: 6px 8px; border: 1px solid #666; background: transparent; color: inherit; cursor: pointer; }
+.tab.active { background: var(--yellow); color: #121212; border: none; }
+.panel { padding: 6px; border: 1px dashed #444; }
 .composer .row { display: grid; grid-template-columns: 1fr 160px; gap: 12px; }
 .composer textarea { width: 100%; }
 .eventlog { max-height: 300px; overflow: auto; background: rgba(0,0,0,0.2); padding: 8px; }
