@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 const WS = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
 
-export default function RightPanel({ active }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' }) {
+export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY', sessionId?: string }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
   const [browser, setBrowser] = useState<{ href: string; title?: string } | null>(null);
+  const [summary, setSummary] = useState<string>('');
 
   useEffect(() => {
     const ws = new WebSocket(WS);
@@ -23,6 +24,25 @@ export default function RightPanel({ active }: { active: 'LIVE' | 'BROWSER' | 'A
     };
     return () => ws.close();
   }, []);
+
+  async function refreshSummary() {
+    if (!sessionId) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API}/sessions/${sessionId}/summary`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const data = await res.json();
+    setSummary(data?.summary?.content || '');
+  }
+  async function summarize() {
+    if (!sessionId) return;
+    const token = localStorage.getItem('token');
+    const content = summary || 'No summary yet';
+    await fetch(`${API}/sessions/${sessionId}/summarize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ content }),
+    });
+    await refreshSummary();
+  }
 
   if (active === 'BROWSER') {
     const url = browser?.href ? (API + browser.href).replace(/([^:]\/)\/+/g, '$1') : null;
@@ -52,6 +72,18 @@ export default function RightPanel({ active }: { active: 'LIVE' | 'BROWSER' | 'A
             </div>
           );
         })}
+      </div>
+    );
+  }
+  if (active === 'MEMORY') {
+    return (
+      <div className="panel">
+        <h4>Memory</h4>
+        <div className="row">
+          <button className="btn" onClick={refreshSummary}>Load Summary</button>
+          <button className="btn" onClick={summarize}>Save Summary</button>
+        </div>
+        <textarea rows={8} value={summary} onChange={e=>setSummary(e.target.value)} placeholder="Summary..." style={{ width: '100%', marginTop: 8 }} />
       </div>
     );
   }

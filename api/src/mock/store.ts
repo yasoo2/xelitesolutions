@@ -38,6 +38,7 @@ const execs: MockToolExec[] = [];
 const artifacts: MockArtifact[] = [];
 const approvals: MockApproval[] = [];
 const sessions: Array<{ id: Id; title: string; mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER'; lastSnippet?: string; lastUpdatedAt?: number }> = [];
+const summaries: Array<{ sessionId: Id; content: string; ts: number }> = [];
 const messages: Array<{ id: Id; sessionId: Id; role: 'user' | 'assistant' | 'system'; content: string; ts: number }> = [];
 
 function nextId(prefix: string, n: number) {
@@ -109,6 +110,20 @@ export const store = {
   },
   listMessages(sessionId: Id) {
     return messages.filter(m => m.sessionId === sessionId);
+  },
+  getSummary(sessionId: Id) {
+    return summaries.find(x => x.sessionId === sessionId) || null;
+  },
+  upsertSummary(sessionId: Id, content: string) {
+    const existing = summaries.find(x => x.sessionId === sessionId);
+    if (existing) {
+      existing.content = content;
+      existing.ts = Date.now();
+      return existing;
+    }
+    const s = { sessionId, content, ts: Date.now() };
+    summaries.push(s);
+    return s;
   }
   ,
   mergeSessions(sourceId: Id, targetId: Id) {

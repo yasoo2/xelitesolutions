@@ -70,4 +70,29 @@ router.post('/:id/messages', authenticate, async (req, res) => {
   return res.status(201).json({ id: m._id.toString(), sessionId, role, content });
 });
 
+router.get('/:id/summary', authenticate, async (req, res) => {
+  const sessionId = String(req.params.id);
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    const s = store.getSummary(sessionId);
+    return res.json({ summary: s ? { content: s.content, ts: s.ts } : null });
+  }
+  const { Summary } = await import('../models/summary');
+  const s = await Summary.findOne({ sessionId }).lean();
+  return res.json({ summary: s ? { content: s.content, ts: (s as any).updatedAt } : null });
+});
+
+router.post('/:id/summarize', authenticate, async (req, res) => {
+  const sessionId = String(req.params.id);
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  const content = String(req.body?.content || '').slice(0, 1000);
+  if (useMock) {
+    const s = store.upsertSummary(sessionId, content);
+    return res.json({ summary: { content: s.content, ts: s.ts } });
+  }
+  const { Summary } = await import('../models/summary');
+  const s = await Summary.findOneAndUpdate({ sessionId }, { $set: { content } }, { upsert: true, new: true });
+  return res.json({ summary: { content: s.content, ts: (s as any).updatedAt } });
+});
+
 export default router;

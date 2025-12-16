@@ -59,7 +59,7 @@ export default function Joe() {
           <button className="tab">COSTS</button>
           <button className="tab">OBSERVABILITY</button>
         </div>
-        <RightPanel active={tab} />
+        <RightPanel active={tab} sessionId={selected || undefined} />
       </aside>
     </div>
   );
