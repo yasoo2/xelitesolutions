@@ -89,7 +89,13 @@ export default function Joe() {
         </div>
       </aside>
       <main className="center">
-        <CommandComposer sessionId={selected || undefined} />
+        <CommandComposer 
+          sessionId={selected || undefined} 
+          onSessionCreated={async (id) => {
+            await loadSessions();
+            setSelected(id);
+          }}
+        />
       </main>
       <aside className="rightpanel">
         <div className="tabs">

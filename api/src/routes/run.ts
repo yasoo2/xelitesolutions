@@ -147,7 +147,7 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
       }
     }
   } catch {}
-  res.json({ runId, result });
+  res.json({ runId, result, sessionId });
 });
 
 router.get('/', async (_req: Request, res: Response) => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_URL as API, WS_URL as WS } from '../config';
 
-export default function CommandComposer({ sessionId }: { sessionId?: string }) {
+export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
   const [text, setText] = useState('');
   const [events, setEvents] = useState<Array<{ type: string; data: any }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
@@ -73,7 +73,7 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
 
     const token = localStorage.getItem('token');
     try {
-      await fetch(`${API}/runs/start`, {
+      const res = await fetch(`${API}/runs/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -81,6 +81,10 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
         },
         body: JSON.stringify({ text: currentText, sessionId }),
       });
+      const data = await res.json();
+      if (data.sessionId && !sessionId && onSessionCreated) {
+        onSessionCreated(data.sessionId);
+      }
     } catch (e) {
       console.error(e);
       // Revert on failure? Or show error
