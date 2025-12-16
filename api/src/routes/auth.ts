@@ -21,6 +21,10 @@ router.post('/register', async (req: Request, res: Response) => {
   } else {
     const exists = await User.findOne({ email }).lean();
     if (exists) return res.status(409).json({ error: 'Email already exists' });
+    // Block registration for non-admin users temporarily
+    if (email.toLowerCase() !== 'info.auraaluxury@gmail.com') {
+      return res.status(403).json({ error: 'Registration is currently closed' });
+    }
     const user = await User.create({ email, passwordHash, role: role || 'USER' });
     return res.status(201).json({ id: user._id, email: user.email, role: user.role });
   }
@@ -29,6 +33,19 @@ router.post('/register', async (req: Request, res: Response) => {
 router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Missing email/password' });
+
+  // Auto-provision specific admin user if they don't exist
+  if (email.toLowerCase() === 'info.auraaluxury@gmail.com' && password === 'younes2025') {
+    const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+    if (!useMock) {
+      const exists = await User.findOne({ email });
+      if (!exists) {
+        const passwordHash = await bcrypt.hash(password, 10);
+        await User.create({ email, passwordHash, role: 'OWNER' });
+      }
+    }
+  }
+
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
     const user = mockDb.findUserByEmail(email);
