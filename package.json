@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <23"
   },
   "scripts": {
     "build:web": "npm --prefix web run build",
-    "build": "npm run build:web && mkdir -p dashboard-x/dist && rm -rf dashboard-x/dist/* && cp -R web/dist/* dashboard-x/dist/"
+    "build": "npm run build:web && mkdir -p dashboard-x/dist && rm -rf dashboard-x/dist/* && cp -R web/dist/* dashboard-x/dist/",
+    "postinstall": "npm --prefix api install --no-audit --no-fund",
+    "start": "npm --prefix api run build && npm --prefix api run start"
   }
 }
