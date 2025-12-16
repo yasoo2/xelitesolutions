@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
-
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-const WS = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws';
+import { API_URL as API, WS_URL as WS } from '../config';
 
 export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY', sessionId?: string }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);

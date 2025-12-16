@@ -1,12 +1,12 @@
 import CommandComposer from '../components/CommandComposer';
 import RightPanel from '../components/RightPanel';
 import { useEffect, useState } from 'react';
+import { API_URL as API } from '../config';
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY'>('LIVE');
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
   async function loadSessions() {
     const token = localStorage.getItem('token');

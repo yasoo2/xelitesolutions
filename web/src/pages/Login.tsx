@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+import { API_URL as API } from '../config';
 
 export default function Login() {
   const { t } = useTranslation();
