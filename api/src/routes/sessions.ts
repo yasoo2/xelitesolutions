@@ -42,7 +42,14 @@ router.post('/', authenticate, async (req, res) => {
     return res.status(201).json(s);
   }
   const userId = (req as any).auth?.sub;
-  const s = await Session.create({ title, mode: mode || 'ADVISOR', userId });
+  const { Tenant } = await import('../models/tenant');
+  const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
+  const tenantDoc = await Tenant.findOneAndUpdate(
+    { name: tenantName },
+    { $setOnInsert: { name: tenantName } },
+    { upsert: true, new: true }
+  );
+  const s = await Session.create({ title, mode: mode || 'ADVISOR', userId, tenantId: tenantDoc._id });
   return res.status(201).json({ id: s._id.toString(), title: s.title, mode: s.mode });
 });
 
