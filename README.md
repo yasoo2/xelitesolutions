@@ -599,4 +599,10 @@ str(out_path)
 - API: `MOCK_DB=1 npm run dev`
 - Web: `npm run dev`
 
+## Cloudflare Pages Deploy
+- Build command: `npm ci && npm run build`
+- Output directory: `dashboard-x/dist`
+- Functions (optional): add `/functions` for Pages Functions if needed
+- Environment: set `VITE_API_URL` and `VITE_WS_URL`
+
  

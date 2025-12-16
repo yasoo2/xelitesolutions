@@ -1,0 +1,12 @@
+{
+  "name": "xelitesolutions",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build:web": "npm --prefix web run build",
+    "build": "npm run build:web && mkdir -p dashboard-x/dist && rm -rf dashboard-x/dist/* && cp -R web/dist/* dashboard-x/dist/"
+  }
+}
