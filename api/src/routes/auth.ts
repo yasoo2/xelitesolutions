@@ -49,7 +49,10 @@ router.post('/login', async (req: Request, res: Response) => {
         await User.create({ email, passwordHash, role: 'OWNER' });
       } else {
         // Force update password to match what we expect
-        const match = await bcrypt.compare(password, user.passwordHash);
+        let match = false;
+        if (user.passwordHash) {
+          match = await bcrypt.compare(password, user.passwordHash);
+        }
         if (!match) {
           const passwordHash = await bcrypt.hash(password, 10);
           user.passwordHash = passwordHash;
