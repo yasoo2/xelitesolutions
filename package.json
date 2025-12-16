@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build:web": "npm --prefix web run build",
-    "build": "npm run build:web && mkdir -p dashboard-x/dist && rm -rf dashboard-x/dist/* && cp -R web/dist/* dashboard-x/dist/",
+    "build": "npm run build:web",
     "postinstall": "npm --prefix api install --no-audit --no-fund --include=dev && npm --prefix web install --no-audit --no-fund --include=dev",
     "start": "npm --prefix api run build && npm --prefix api run start"
   }
