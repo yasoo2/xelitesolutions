@@ -10,6 +10,7 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    console.log('Connecting to WS:', WS);
     const ws = new WebSocket(WS);
     wsRef.current = ws;
     ws.onmessage = (ev) => {

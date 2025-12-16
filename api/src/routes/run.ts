@@ -63,7 +63,7 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Session ID required or must be logged in to create one' });
       }
 
-      const s = await Session.create({ title: 'New Session', mode: 'ADVISOR', userId, tenantId: tenantDoc._id });
+      const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', userId, tenantId: tenantDoc._id });
       sessionId = s._id.toString();
     }
   }
