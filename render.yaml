@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: joe-api
+    env: node
+    plan: starter
+    buildCommand: cd api && npm install && npm run build
+    startCommand: cd api && npm run start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: JWT_SECRET
+        value: ""
+      - key: MONGO_URI
+        value: ""
+      - key: ALLOWED_ORIGINS
+        value: "https://joe-web.onrender.com,https://xelitesolutions.com,https://www.xelitesolutions.com"
+      - key: ARTIFACT_DIR
+        value: "/var/data/artifacts"
+  - type: web
+    name: joe-web
+    env: static
+    plan: starter
+    buildCommand: cd web && npm install && npm run build
+    staticPublishPath: web/dist
+    autoDeploy: true
+    envVars:
+      - key: VITE_API_URL
+        value: "https://joe-api.onrender.com"
+      - key: VITE_WS_URL
+        value: "wss://joe-api.onrender.com/ws"
