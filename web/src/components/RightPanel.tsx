@@ -43,6 +43,15 @@ export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BR
     });
     await refreshSummary();
   }
+  async function autoSummarize() {
+    if (!sessionId) return;
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/sessions/${sessionId}/summarize/auto`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    await refreshSummary();
+  }
 
   if (active === 'BROWSER') {
     const url = browser?.href ? (API + browser.href).replace(/([^:]\/)\/+/g, '$1') : null;
@@ -82,6 +91,7 @@ export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BR
         <div className="row">
           <button className="btn" onClick={refreshSummary}>Load Summary</button>
           <button className="btn" onClick={summarize}>Save Summary</button>
+          <button className="btn btn-yellow" onClick={autoSummarize}>Auto Summarize</button>
         </div>
         <textarea rows={8} value={summary} onChange={e=>setSummary(e.target.value)} placeholder="Summary..." style={{ width: '100%', marginTop: 8 }} />
       </div>

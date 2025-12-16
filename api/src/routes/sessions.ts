@@ -95,4 +95,22 @@ router.post('/:id/summarize', authenticate, async (req, res) => {
   return res.json({ summary: { content: s.content, ts: (s as any).updatedAt } });
 });
 
+router.post('/:id/summarize/auto', authenticate, async (req, res) => {
+  const sessionId = String(req.params.id);
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  let content = '';
+  if (useMock) {
+    const msgs = store.listMessages(sessionId).slice(-10);
+    content = msgs.map(m => `${m.role}: ${m.content.slice(0, 160)}`).join('\n');
+    const s = store.upsertSummary(sessionId, content);
+    return res.json({ summary: { content: s.content, ts: s.ts } });
+  }
+  const msgs = await Message.find({ sessionId }).sort({ createdAt: 1 }).lean();
+  const last = msgs.slice(-10);
+  content = last.map((m: any) => `${m.role}: ${String(m.content).slice(0, 160)}`).join('\n');
+  const { Summary } = await import('../models/summary');
+  const s = await Summary.findOneAndUpdate({ sessionId }, { $set: { content } }, { upsert: true, new: true });
+  return res.json({ summary: { content: s.content, ts: (s as any).updatedAt } });
+});
+
 export default router;
