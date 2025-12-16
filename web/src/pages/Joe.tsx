@@ -1,19 +1,30 @@
 import CommandComposer from '../components/CommandComposer';
 import RightPanel from '../components/RightPanel';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY'>('LIVE');
+  const nav = useNavigate();
 
   async function loadSessions() {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API}/sessions`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
-    const data = await res.json();
-    setSessions(data.sessions || []);
-    if (!selected && data.sessions?.[0]) setSelected(data.sessions[0].id);
+    try {
+      const res = await fetch(`${API}/sessions`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        nav('/login');
+        return;
+      }
+      const data = await res.json();
+      setSessions(data.sessions || []);
+      if (!selected && data.sessions?.[0]) setSelected(data.sessions[0].id);
+    } catch (e) {
+      console.error('Failed to load sessions', e);
+    }
   }
   async function createSession() {
     const token = localStorage.getItem('token');
