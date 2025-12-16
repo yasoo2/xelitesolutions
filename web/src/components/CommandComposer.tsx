@@ -68,39 +68,66 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
 
   return (
     <div className="composer">
-      {approval && (
-        <div className="approval">
-          <div>Approval Required — Risk: {approval.risk}</div>
-          <div>Action: {approval.action}</div>
-          <div className="row">
-            <button className="btn btn-yellow" onClick={() => approve('approved')}>Approve</button>
-            <button className="btn" onClick={() => approve('denied')}>Deny</button>
-          </div>
-        </div>
-      )}
-      <div className="row">
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Type instruction..." rows={5} />
-        <div className="col">
-          <button className="btn btn-yellow" onClick={run}>RUN</button>
-          <button className="btn" onClick={plan}>PLAN</button>
-        </div>
-      </div>
       <div className="events">
-        <h4>LIVE RUN</h4>
+        {events.length === 0 && <div style={{ opacity: 0.5, textAlign: 'center', marginTop: 40 }}>Ready to start. Type a command below.</div>}
         <div className="eventlog">
-          {events.slice(-50).map((e, i) => {
-            if (typeof e === 'string') return <pre key={i}>{e}</pre>;
+          {events.map((e, i) => {
+            if (typeof e === 'string') return <div key={i} className="event-item">{e}</div>;
             if (e.type === 'evidence_added' && e.data?.kind === 'artifact' && e.data?.href) {
               const href = e.data.href;
               const url = (API + href).replace(/([^:]\/)\/+/g, '$1');
               return (
-                <div key={i} className="artifact">
-                  <a href={url} target="_blank" rel="noreferrer">Artifact: {e.data.name}</a>
+                <div key={i} className="event-item" style={{ borderColor: 'var(--accent-secondary)' }}>
+                  <div className="artifact-link">
+                    <span>📦 Artifact Created:</span>
+                    <a href={url} target="_blank" rel="noreferrer">{e.data.name}</a>
+                  </div>
                 </div>
               );
             }
-            return <pre key={i}>{JSON.stringify(e, null, 2)}</pre>;
+            if (e.type === 'user_input') {
+              return <div key={i} className="event-item user">{e.data}</div>;
+            }
+            // Simplify other events
+            return <div key={i} className="event-item">
+              <span style={{ opacity: 0.5, marginRight: 8 }}>[{e.type}]</span>
+              {JSON.stringify(e.data || e)}
+            </div>;
           })}
+        </div>
+      </div>
+
+      {approval && (
+        <div className="approval card" style={{ borderColor: 'var(--accent-primary)', background: 'rgba(234, 179, 8, 0.1)' }}>
+          <div style={{ fontWeight: 'bold', color: 'var(--accent-primary)', marginBottom: 8 }}>⚠️ Approval Required</div>
+          <div style={{ marginBottom: 4 }}>Risk: {approval.risk}</div>
+          <div style={{ marginBottom: 12 }}>Action: {approval.action}</div>
+          <div className="row" style={{ gap: 12 }}>
+            <button className="btn btn-yellow" onClick={() => approve('approved')}>Approve</button>
+            <button className="btn" style={{ background: '#ef4444', border: 'none', color: 'white' }} onClick={() => approve('denied')}>Deny</button>
+          </div>
+        </div>
+      )}
+
+      <div className="input-area">
+        <textarea 
+          value={text} 
+          onChange={(e) => setText(e.target.value)} 
+          placeholder="Describe your task..." 
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              run();
+            }
+          }}
+        />
+        <div className="input-actions">
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="action-btn" onClick={plan}>Plan Only</button>
+          </div>
+          <button className="btn run-btn" onClick={run}>
+            RUN
+          </button>
         </div>
       </div>
     </div>

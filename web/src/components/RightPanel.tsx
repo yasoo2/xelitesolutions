@@ -56,28 +56,31 @@ export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BR
   if (active === 'BROWSER') {
     const url = browser?.href ? (API + browser.href).replace(/([^:]\/)\/+/g, '$1') : null;
     return (
-      <div className="panel">
-        <h4>Browser Live</h4>
-        {browser && (
-          <>
-            <div>Title: {browser.title || '—'}</div>
-            {url && <img src={url} alt="Latest snapshot" style={{ maxWidth: '100%', border: '1px solid #333' }} />}
-          </>
-        )}
-        {!browser && <div>No browser activity yet</div>}
+      <div className="panel-content">
+        <div className="card">
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>Browser View</div>
+          {browser && (
+            <>
+              <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>{browser.title || 'Untitled'}</div>
+              {url && <img src={url} alt="Latest snapshot" style={{ maxWidth: '100%', borderRadius: 4, border: '1px solid var(--border-color)' }} />}
+            </>
+          )}
+          {!browser && <div style={{ color: 'var(--text-muted)' }}>No active browser session</div>}
+        </div>
       </div>
     );
   }
   if (active === 'ARTIFACTS') {
     return (
-      <div className="panel">
-        <h4>Artifacts</h4>
-        {artifacts.length === 0 && <div>No artifacts yet</div>}
+      <div className="panel-content">
+        <div style={{ marginBottom: 16, fontWeight: 600 }}>Generated Artifacts</div>
+        {artifacts.length === 0 && <div style={{ color: 'var(--text-muted)' }}>No artifacts created yet</div>}
         {artifacts.map((a, i) => {
           const url = (API + a.href).replace(/([^:]\/)\/+/g, '$1');
           return (
-            <div key={i} className="artifact">
-              <a href={url} target="_blank" rel="noreferrer">{a.name}</a>
+            <div key={i} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 500 }}>{a.name}</span>
+              <a href={url} target="_blank" rel="noreferrer" className="btn" style={{ fontSize: 12 }}>Open ↗</a>
             </div>
           );
         })}
@@ -86,21 +89,35 @@ export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BR
   }
   if (active === 'MEMORY') {
     return (
-      <div className="panel">
-        <h4>Memory</h4>
-        <div className="row">
-          <button className="btn" onClick={refreshSummary}>Load Summary</button>
-          <button className="btn" onClick={summarize}>Save Summary</button>
-          <button className="btn btn-yellow" onClick={autoSummarize}>Auto Summarize</button>
+      <div className="panel-content">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontWeight: 600 }}>Session Memory</span>
+          <button className="btn btn-yellow" style={{ fontSize: 12 }} onClick={autoSummarize}>Auto Summarize</button>
         </div>
-        <textarea rows={8} value={summary} onChange={e=>setSummary(e.target.value)} placeholder="Summary..." style={{ width: '100%', marginTop: 8 }} />
+        
+        <div className="card">
+          <textarea 
+            rows={12} 
+            value={summary} 
+            onChange={e=>setSummary(e.target.value)} 
+            placeholder="No summary available..." 
+            style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', resize: 'vertical', outline: 'none' }} 
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={refreshSummary}>Reload</button>
+          <button className="btn" onClick={summarize}>Save Changes</button>
+        </div>
       </div>
     );
   }
   return (
-    <div className="panel">
-      <h4>Live Run</h4>
-      <div>Use the composer to start a run</div>
+    <div className="panel-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>⚡️</div>
+      <div style={{ fontWeight: 500 }}>Live Execution</div>
+      <p style={{ fontSize: 13, maxWidth: 200, textAlign: 'center', marginTop: 8 }}>
+        Events and logs will appear in the center panel. Use the tabs to switch views.
+      </p>
     </div>
   );
 }
