@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
+import { authenticate } from '../middleware/auth';
 import { broadcast, LiveEvent } from '../ws';
 import { executeTool } from '../tools/registry';
 import { store } from '../mock/store';
@@ -27,7 +28,7 @@ function detectRisk(text: string) {
   return null;
 }
 
-router.post('/start', async (req: Request, res: Response) => {
+router.post('/start', authenticate, async (req: Request, res: Response) => {
   const { text, sessionId } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
@@ -35,6 +36,37 @@ router.post('/start', async (req: Request, res: Response) => {
   ev({ type: 'step_started', data: { name: 'plan' } });
   const plan = pickToolFromText(String(text || ''));
   ev({ type: 'step_done', data: { name: 'plan', plan } });
+
+  if (!sessionId) {
+    if (useMock) {
+      const s = store.createSession('Untitled Session');
+      sessionId = s.id;
+    } else {
+      const { Session } = await import('../models/session');
+      const { Tenant } = await import('../models/tenant');
+      const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
+      const tenantDoc = await Tenant.findOneAndUpdate(
+        { name: tenantName },
+        { $setOnInsert: { name: tenantName } },
+        { upsert: true, new: true }
+      );
+      // Try to find a default user or use the one from auth if available
+      // Since this is a public/open endpoint in some contexts, we might need a fallback
+      // But ideally req.user should be there if authenticated.
+      // If not authenticated, we can't really create a session for a user easily.
+      // Assuming authenticated for now, or using a placeholder if needed.
+      const userId = (req as any).auth?.sub; 
+      
+      if (!userId) {
+        // If no user, we can't create a valid session per schema (userId required).
+        // Return error or handle gracefully.
+        return res.status(400).json({ error: 'Session ID required or must be logged in to create one' });
+      }
+
+      const s = await Session.create({ title: 'New Session', mode: 'ADVISOR', userId, tenantId: tenantDoc._id });
+      sessionId = s._id.toString();
+    }
+  }
 
   let runId: string;
   if (useMock) {
