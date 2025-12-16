@@ -11,13 +11,41 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    if (!sessionId) {
+      setEvents([]);
+      return;
+    }
+
+    // 1. Load history
+    const token = localStorage.getItem('token');
+    fetch(`${API}/sessions/${sessionId}/messages`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.messages) {
+          const history = data.messages.map((m: any) => {
+            if (m.role === 'user') return { type: 'user_input', data: m.content, id: m._id || m.id };
+            if (m.role === 'assistant') return { type: 'text', data: m.content, id: m._id || m.id };
+            return { type: 'info', data: m.content, id: m._id || m.id };
+          });
+          setEvents(history);
+        }
+      })
+      .catch(err => console.error('Failed to load history:', err));
+
+    // 2. Connect to WS
     console.log('Connecting to WS:', WS);
     const ws = new WebSocket(WS);
     wsRef.current = ws;
+    
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data.toString());
+        // Deduplicate based on content/timestamp if ID missing, or just append for now
+        // Ideally backend sends IDs. 
         setEvents((prev) => [...prev, msg]);
+        
         if (msg.type === 'approval_required') {
           setApproval({ id: msg.data.id, runId: msg.data.runId, risk: msg.data.risk, action: msg.data.action });
         }
@@ -28,21 +56,40 @@ export default function CommandComposer({ sessionId }: { sessionId?: string }) {
         setEvents((prev) => [...prev, { type: 'text', data: ev.data.toString() }]);
       }
     };
-    ws.onopen = () => setEvents((prev) => [...prev, { type: 'info', data: 'WS: open' }]);
-    ws.onclose = () => setEvents((prev) => [...prev, { type: 'info', data: 'WS: close' }]);
+    
+    ws.onopen = () => {
+        // Optional: Send "subscribe" message if backend supports it
+        // ws.send(JSON.stringify({ type: 'subscribe', sessionId }));
+    };
+    
     return () => ws.close();
-  }, []);
+  }, [sessionId]);
 
   async function run() {
+    if (!text.trim()) return;
+    
+    // Optimistic update
+    const tempId = Date.now().toString();
+    setEvents(prev => [...prev, { type: 'user_input', data: text, id: tempId }]);
+    const currentText = text;
+    setText(''); // Clear input immediately
+
     const token = localStorage.getItem('token');
-    await fetch(`${API}/runs/start`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ text, sessionId }),
-    });
+    try {
+      await fetch(`${API}/runs/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text: currentText, sessionId }),
+      });
+    } catch (e) {
+      console.error(e);
+      // Revert on failure? Or show error
+      setEvents(prev => [...prev, { type: 'error', data: 'Failed to send command' }]);
+      setText(currentText); // Restore text
+    }
   }
   async function plan() {
     const token = localStorage.getItem('token');

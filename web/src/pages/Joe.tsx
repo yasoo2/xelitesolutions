@@ -30,6 +30,26 @@ export default function Joe() {
 
   useEffect(() => { loadSessions(); }, []);
 
+  async function mergeSessions(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return;
+    if (!confirm('Are you sure you want to merge these sessions? This cannot be undone.')) return;
+    
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API}/sessions/merge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ sourceId, targetId }),
+    });
+    
+    if (res.ok) {
+      await loadSessions();
+      if (selected === sourceId) setSelected(targetId);
+    }
+  }
+
   return (
     <div className="joe-layout">
       <aside className="sidebar">
@@ -40,7 +60,26 @@ export default function Joe() {
         <div className="section-title" style={{ marginTop: 24 }}>Recent Sessions</div>
         <div className="session-list">
           {sessions.map(s => (
-            <div key={s.id} className="session-item">
+            <div 
+              key={s.id} 
+              className="session-item"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('sessionId', s.id);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(e) => {
+                e.preventDefault(); // Allow drop
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const sourceId = e.dataTransfer.getData('sessionId');
+                if (sourceId && sourceId !== s.id) {
+                   mergeSessions(sourceId, s.id);
+                }
+              }}
+            >
               <button className={selected===s.id?'active':''} onClick={()=>setSelected(s.id)}>
                 <div style={{ fontWeight: 500, marginBottom: 2 }}>{s.title}</div>
                 {s.lastSnippet && <div style={{ opacity: 0.6, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.lastSnippet}</div>}
