@@ -8,6 +8,7 @@ import { ToolExecution } from '../models/toolExecution';
 import { Artifact } from '../models/artifact';
 import { Approval } from '../models/approval';
 import { Run } from '../models/run';
+import { planNextStep } from '../llm';
 
 const router = Router();
 
@@ -34,7 +35,19 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
 
   ev({ type: 'step_started', data: { name: 'plan' } });
-  const plan = pickToolFromText(String(text || ''));
+  
+  let plan = null;
+  try {
+      // Try LLM planning
+      plan = await planNextStep([{ role: 'user', content: String(text || '') }]);
+  } catch (err) {
+      console.warn('LLM planning error:', err);
+  }
+
+  if (!plan) {
+    plan = pickToolFromText(String(text || ''));
+  }
+  
   ev({ type: 'step_done', data: { name: 'plan', plan } });
 
   if (!sessionId) {
