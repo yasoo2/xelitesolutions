@@ -10,18 +10,12 @@ export const API_URL = import.meta.env.VITE_API_URL || (isLocal ? 'http://localh
 const rawWsUrl = import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl;
 
-// Safety check: if the env var points to the API domain for WS, force it to the dedicated WS domain
-// because Cloudflare Workers on the API domain might block/interfere with WS upgrades.
-if (wsUrl && wsUrl.includes('api.xelitesolutions.com')) {
-  wsUrl = 'wss://ws.xelitesolutions.com/ws';
-}
-
 if (!wsUrl) {
   if (isLocal) {
     wsUrl = 'ws://localhost:8080/ws';
   } else {
-    // Production default: Use dedicated WebSocket subdomain
-    wsUrl = 'wss://ws.xelitesolutions.com/ws';
+    // Fallback to direct Render URL which is verified to work (bypassing Cloudflare DNS issues)
+    wsUrl = 'wss://infinity-x-platform.onrender.com/ws';
   }
 }
 
