@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { 
   Terminal, 
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
+  const { t } = useTranslation();
   const [text, setText] = useState('');
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
@@ -158,7 +160,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       }
     } catch (e) {
       console.error(e);
-      setEvents(prev => [...prev, { type: 'error', data: 'فشل إرسال الأمر' }]);
+      setEvents(prev => [...prev, { type: 'error', data: t('error') }]);
       setText(currentText);
     }
   }
@@ -215,8 +217,8 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       <div className="events">
         {events.length === 0 && (
           <div style={{ opacity: 0.5, textAlign: 'center', marginTop: 80, fontSize: 18, color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>👋</div>
-            مرحباً! أنا جو، مساعدك الذكي.<br/>كيف يمكنني مساعدتك اليوم؟
+            <div style={{ fontSize: 48, marginBottom: 16 }}>{t('welcomeTitle')}</div>
+            {t('welcomeMsg').split('\n').map((line, i) => <div key={i}>{line}</div>)}
           </div>
         )}
         
@@ -273,7 +275,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                   <div 
                     className="copy-icon" 
                     onClick={() => navigator.clipboard.writeText(String(content))}
-                    title="نسخ النص"
+                    title={t('copy')}
                   >
                     <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                   </div>
@@ -290,7 +292,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                   <span className="step-icon spin"><Loader2 size={14} /></span>
                   {getToolIcon(e.data.name)}
                   <strong>{e.data.name}</strong>
-                  <span style={{ opacity: 0.5, fontSize: 11, marginLeft: 'auto' }}>جاري العمل...</span>
+                  <span style={{ opacity: 0.5, fontSize: 11, marginLeft: 'auto' }}>{t('working')}</span>
                 </div>
               </div>
             );
@@ -300,21 +302,8 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
             const hasDetails = e.data.plan || e.data.result;
             const toolName = e.data.plan?.name || e.data.name?.replace('execute:', '') || e.data.name;
             
-            // Map tool names to Arabic
-            const toolLabels: Record<string, string> = {
-              'file_write': 'إنشاء ملف',
-              'file_read': 'قراءة ملف',
-              'ls': 'عرض الملفات',
-              'web_search': 'بحث في الويب',
-              'browser_snapshot': 'أخذ لقطة شاشة',
-              'shell_execute': 'تنفيذ أمر النظام',
-              'http_fetch': 'جلب رابط',
-              'file_edit': 'تعديل ملف',
-              'plan': 'تحليل وتخطيط',
-              'summarize': 'تلخيص النتائج'
-            };
-            
-            const label = toolLabels[toolName] || toolName;
+            // Map tool names
+            const label = t(`tools.${toolName}`, { defaultValue: toolName });
 
             return (
               <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
@@ -322,10 +311,10 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                   {e.data.plan && (
                     <div className="plan-card" style={{ marginBottom: 8, borderLeft: '3px solid #eab308', paddingLeft: 8 }}>
                       <div style={{ fontSize: 13, fontWeight: 'bold', color: '#eab308', marginBottom: 4 }}>
-                         📋 الخطة المقترحة
+                         {t('planProposed')}
                       </div>
                       <div style={{ fontSize: 14 }}>
-                        سأقوم بـ <strong>{label}</strong>
+                        {t('planAction')} <strong>{label}</strong>
                         {e.data.plan.input?.filename && <span className="mono-badge"> {e.data.plan.input.filename}</span>}
                         {e.data.plan.input?.url && <span className="mono-badge"> {e.data.plan.input.url}</span>}
                         {e.data.plan.input?.query && <span className="mono-badge"> "{e.data.plan.input.query}"</span>}
@@ -359,13 +348,13 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                     <div className="step-details">
                       {e.data.plan && (
                         <div className="detail-section">
-                          <div className="detail-label">المدخلات</div>
+                          <div className="detail-label">{t('inputs')}</div>
                           <pre>{JSON.stringify(e.data.plan.input, null, 2)}</pre>
                         </div>
                       )}
                       {e.data.result && (
                         <div className="detail-section">
-                          <div className="detail-label">المخرجات</div>
+                          <div className="detail-label">{t('outputs')}</div>
                           <pre>{typeof (e.data.result.output || e.data.result) === 'string' ? (e.data.result.output || e.data.result) : JSON.stringify(e.data.result.output || e.data.result, null, 2)}</pre>
                         </div>
                       )}
@@ -400,7 +389,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                     <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                         <ImageIcon size={16} className="artifact-icon" />
-                        <div className="artifact-title">صورة</div>
+                        <div className="artifact-title">{t('artifacts.image')}</div>
                       </div>
                       <img src={e.data.href} alt={e.data.name} style={{ display: 'block' }} />
                     </>
@@ -408,7 +397,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                     <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                         <VideoIcon size={16} className="artifact-icon" />
-                        <div className="artifact-title">فيديو</div>
+                        <div className="artifact-title">{t('artifacts.video')}</div>
                       </div>
                       <video controls src={e.data.href} style={{ width: '100%', borderRadius: 8 }} />
                     </>
@@ -417,7 +406,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <FileCode size={20} className="artifact-icon" />
                         <div className="artifact-info">
-                          <div className="artifact-title">ملف</div>
+                          <div className="artifact-title">{t('artifacts.file')}</div>
                           <div className="artifact-name">{e.data.name}</div>
                         </div>
                       </div>
@@ -426,7 +415,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                   
                   <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
                     <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
-                      <LinkIcon size={12} /> فتح في نافذة جديدة
+                      <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
                     </a>
                   </div>
                 </div>
@@ -464,12 +453,12 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       {approval && (
         <div className="approval-modal">
           <div className="approval-content">
-            <h3>موافقة مطلوبة</h3>
+            <h3>{t('approvalRequired')}</h3>
             <div className="risk-badge">{approval.risk}</div>
-            <p>الإجراء: {approval.action}</p>
+            <p>{t('action')}: {approval.action}</p>
             <div className="approval-actions">
-              <button onClick={() => approve('denied')} className="btn deny">رفض</button>
-              <button onClick={() => approve('approved')} className="btn approve">موافقة</button>
+              <button onClick={() => approve('denied')} className="btn deny">{t('deny')}</button>
+              <button onClick={() => approve('approved')} className="btn approve">{t('approve')}</button>
             </div>
           </div>
         </div>
@@ -479,7 +468,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
         <textarea 
           value={text} 
           onChange={(e) => setText(e.target.value)} 
-          placeholder="أدخل أمرك هنا..." 
+          placeholder={t('inputPlaceholder')}
           dir="auto"
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -496,13 +485,13 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                 backgroundColor: isConnected ? '#22c55e' : '#ef4444',
                 boxShadow: isConnected ? '0 0 6px #22c55e' : 'none',
                 transition: 'all 0.3s'
-            }} title={isConnected ? "متصل" : "غير متصل"} />
+            }} title={isConnected ? t('connected') : t('connecting')} />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              {isConnected ? 'متصل' : 'جاري الاتصال...'}
+              {isConnected ? t('connected') : t('connecting')}
             </span>
           </div>
           <button className="run-btn" onClick={run} disabled={!text.trim()}>
-            إرسال
+            {t('send')}
           </button>
         </div>
       </div>

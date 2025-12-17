@@ -1,5 +1,5 @@
 :root {
-  /* Color Palette - Modern Dark Theme */
+  /* Color Palette - Modern Dark Theme (Default) */
   --bg-dark: #000000;
   --bg-card: #121212;
   --bg-card-hover: #1e1e1e;
@@ -42,6 +42,36 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
 }
+
+[data-theme="light"] {
+  --bg-dark: #ffffff;
+  --bg-card: #f4f4f5;
+  --bg-card-hover: #e4e4e7;
+  --bg-input: #e4e4e7;
+  --surface-1: #fafafa;
+  --surface-2: #f4f4f5;
+  
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #a1a1aa;
+  
+  /* Keep Gold but adjust for light mode if needed */
+  --accent-primary: #dcb000; 
+  --accent-hover: #ca9e00;
+  --accent-glow: rgba(220, 176, 0, 0.15);
+  
+  --user-msg-bg: #e4e4e7;
+  --joe-msg-bg: #ffffff;
+  
+  --border-color: #e4e4e7;
+  --border-light: #d4d4d8;
+  --topbar-bg: rgba(255, 255, 255, 0.85);
+
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.15);
+}
+
 
 /* Reset & Base */
 * { box-sizing: border-box; }
@@ -192,11 +222,11 @@ body {
 .events {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 32px;
+  padding: 16px 24px;
   padding-bottom: 140px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   scroll-behavior: smooth;
 }
 
@@ -216,8 +246,8 @@ body {
 }
 
 .message-bubble {
-  max-width: 80%;
-  padding: 16px 20px;
+  max-width: 70%;
+  padding: 12px 16px;
   border-radius: var(--radius-lg);
   font-size: 15px;
   line-height: 1.6;

@@ -27,37 +27,62 @@ function pickToolFromText(text: string) {
   }
   // Currency pairs (Arabic) e.g., "سعر الدينار الكويتي مقابل الشيكل"
   const currencyMap: Record<string, string> = {
-    'الدولار': 'USD', 'دولار': 'USD', 'usd': 'USD',
+    'الدولار': 'USD', 'دولار': 'USD', 'usd': 'USD', 'امريكي': 'USD', 'أمريكي': 'USD',
     'اليورو': 'EUR', 'euro': 'EUR', 'eur': 'EUR',
     'الليرة التركية': 'TRY', 'الليره التركية': 'TRY', 'try': 'TRY', 'ليرة تركية': 'TRY',
+    'الليرة': 'TRY', 'الليره': 'TRY', 'ليرة': 'TRY', 'ليره': 'TRY',
     'الشيكل': 'ILS', 'شيكل': 'ILS', 'ils': 'ILS',
-    'الدينار الكويتي': 'KWD', 'دينار كويتي': 'KWD', 'kwd': 'KWD'
+    'الدينار الكويتي': 'KWD', 'دينار كويتي': 'KWD', 'kwd': 'KWD', 'دينار': 'KWD',
+    'الريال السعودي': 'SAR', 'ريال سعودي': 'SAR', 'sar': 'SAR', 'ريال': 'SAR',
+    'الدرهم الإماراتي': 'AED', 'درهم إماراتي': 'AED', 'aed': 'AED', 'درهم': 'AED',
+    'الجنيه المصري': 'EGP', 'جنيه مصري': 'EGP', 'egp': 'EGP', 'جنيه': 'EGP'
   };
-  const curMatch = tn.match(/(?:سعر|قيمة)\s+(.+?)\s+(?:مقابل|ضد)\s+(.+?)(?:\s|$)/i);
+  const curMatch = tn.match(/(?:سعر|قيمة|صرف|تحويل)\s+(.+?)\s+(?:مقابل|ضد|إلى|الى|ب)\s+(.+?)(?:\s|$)/i);
   if (curMatch) {
     const baseName = curMatch[1].trim().toLowerCase();
     const symName = curMatch[2].trim().toLowerCase();
-    const base = currencyMap[baseName] || baseName.toUpperCase();
-    const sym = currencyMap[symName] || symName.toUpperCase();
-    if (base && sym && base.length <= 4 && sym.length <= 4) {
-      return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}?sym=${encodeURIComponent(sym)}`, base, sym } };
+    
+    // Helper to find code from map keys partial match
+    const findCode = (name: string) => {
+      if (currencyMap[name]) return currencyMap[name];
+      for (const k in currencyMap) {
+        if (name.includes(k)) return currencyMap[k];
+      }
+      return name.length === 3 ? name.toUpperCase() : null;
+    };
+
+    const base = findCode(baseName);
+    const sym = findCode(symName);
+    
+    if (base && sym) {
+      return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
     }
   }
   const names: Array<[string, string]> = [
-    ['USD', '(الدولار|دولار|usd)'],
+    ['USD', '(الدولار|دولار|usd|امريكي|أمريكي)'],
     ['EUR', '(اليورو|euro|eur)'],
-    ['TRY', '(الليرة التركية|الليره التركية|ليرة تركية|try|turkish\\s+lira)'],
+    ['TRY', '(الليرة|الليره|ليرة|ليره|try|turkish\\s+lira)'],
     ['ILS', '(الشيكل|شيكل|ils)'],
-    ['KWD', '(الدينار الكويتي|دينار كويتي|kwd)'],
+    ['KWD', '(الدينار|دينار|kwd)'],
+    ['SAR', '(الريال|ريال|sar)'],
+    ['AED', '(الدرهم|درهم|aed)'],
+    ['EGP', '(الجنيه|جنيه|egp)'],
   ];
   const found: string[] = [];
+  // Use a set to avoid duplicates
+  const foundSet = new Set<string>();
+  
   for (const [code, pat] of names) {
-    if (new RegExp(pat, 'i').test(tn)) found.push(code);
+    if (new RegExp(pat, 'i').test(tn)) {
+       foundSet.add(code);
+    }
   }
-  if (found.length >= 2) {
-    const base = found[0];
-    const sym = found[1];
-    return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}?sym=${encodeURIComponent(sym)}`, base, sym } };
+  
+  if (foundSet.size >= 2) {
+    const arr = Array.from(foundSet);
+    const base = arr[0];
+    const sym = arr[1];
+    return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
   }
   if (/(ابحث|بحث|search|find|lookup)/.test(t) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\s/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
