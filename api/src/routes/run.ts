@@ -23,7 +23,7 @@ function pickToolFromText(text: string) {
     return { name: 'browser_snapshot', input: { url } };
   }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
-    return { name: 'http_fetch', input: { url: 'https://open.er-api.com/v6/latest/USD' } };
+    return { name: 'http_fetch', input: { url: 'https://open.er-api.com/v6/latest/USD?sym=TRY', base: 'USD', sym: 'TRY' } };
   }
   // Currency pairs (Arabic) e.g., "سعر الدينار الكويتي مقابل الشيكل"
   const currencyMap: Record<string, string> = {
@@ -40,7 +40,7 @@ function pickToolFromText(text: string) {
     const base = currencyMap[baseName] || baseName.toUpperCase();
     const sym = currencyMap[symName] || symName.toUpperCase();
     if (base && sym && base.length <= 4 && sym.length <= 4) {
-      return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}` } };
+      return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}?sym=${encodeURIComponent(sym)}`, base, sym } };
     }
   }
   const names: Array<[string, string]> = [
@@ -56,7 +56,8 @@ function pickToolFromText(text: string) {
   }
   if (found.length >= 2) {
     const base = found[0];
-    return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}` } };
+    const sym = found[1];
+    return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}?sym=${encodeURIComponent(sym)}`, base, sym } };
   }
   // Web search detection
   if (/(ابحث|بحث|search)/.test(t)) {
@@ -215,8 +216,18 @@ router.post('/start', async (req: Request, res: Response) => {
       try {
         const urlStr = String(plan.input?.url || '');
         const u = new URL(urlStr);
-        const base = (u.searchParams.get('base') || '').toUpperCase();
-        const sym = (u.searchParams.get('symbols') || '').toUpperCase();
+        let base = (u.searchParams.get('base') || '').toUpperCase();
+        let sym = (u.searchParams.get('symbols') || u.searchParams.get('sym') || '').toUpperCase();
+        if (!base) {
+          const m = u.pathname.match(/\/latest\/([A-Z]{3,4})/i);
+          if (m) base = m[1].toUpperCase();
+        }
+        if (!sym && typeof plan.input?.sym === 'string') {
+          sym = String(plan.input.sym).toUpperCase();
+        }
+        if (!base && typeof plan.input?.base === 'string') {
+          base = String(plan.input.base).toUpperCase();
+        }
         const rates = result.output?.json?.rates || {};
         let rate: number | null = null;
         if (sym && typeof rates[sym] === 'number') {
