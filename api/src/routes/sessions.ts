@@ -68,9 +68,9 @@ router.get('/:id/history', authenticate, async (req: Request, res: Response) => 
     
     for (const m of msgs) {
       if (m.role === 'user') {
-        events.push({ type: 'user_input', data: m.content, createdAt: m.createdAt });
+        events.push({ type: 'user_input', data: m.content, createdAt: new Date(m.ts).toISOString() });
       } else if (m.role === 'assistant') {
-        events.push({ type: 'text', data: m.content, createdAt: m.createdAt });
+        events.push({ type: 'text', data: m.content, createdAt: new Date(m.ts).toISOString() });
       }
     }
     
@@ -88,7 +88,7 @@ router.get('/:id/history', authenticate, async (req: Request, res: Response) => 
              ok: ex.ok
            }
          },
-         createdAt: ex.createdAt || new Date().toISOString()
+         createdAt: ex.createdAt ? new Date(ex.createdAt).toISOString() : new Date().toISOString()
        });
     }
     

@@ -16,6 +16,7 @@ export interface MockToolExec {
   output?: any;
   ok: boolean;
   logs: string[];
+  createdAt: number;
 }
 export interface MockArtifact {
   id: Id;
@@ -64,7 +65,7 @@ export const store = {
   },
   addExec(runId: Id, name: string, input: any, output: any, ok: boolean, logs: string[]) {
     const id = nextId('exec_', execs.length + 1);
-    const e: MockToolExec = { id, runId, name, input, output, ok, logs };
+    const e: MockToolExec = { id, runId, name, input, output, ok, logs, createdAt: Date.now() };
     execs.push(e);
     return e;
   },
@@ -88,7 +89,7 @@ export const store = {
   getApproval(id: Id) {
     return approvals.find(x => x.id === id) || null;
   },
-  listRuns() { return runs; },
+  listRuns(sessionId?: Id) { return runs.filter(r => !sessionId || r.sessionId === sessionId); },
   listExecs(runId?: Id) { return execs.filter(e => !runId || e.runId === runId); },
   listArtifacts(runId?: Id) { return artifacts.filter(a => !runId || a.runId === runId); },
   createSession(title: string, mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER' = 'ADVISOR') {
