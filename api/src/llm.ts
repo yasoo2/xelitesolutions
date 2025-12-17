@@ -193,7 +193,7 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
    }
 
   // 2. E-commerce / Store Builder Scenario
-  if (/(متجر|ecommerce|shop|store|site|website|موقع)/i.test(String(userMsg))) {
+  if (/(متجر|ecommerce|shop|store|site|website|موقع|page|landing)/i.test(String(userMsg))) {
     // Check history to see what we've done
     const toolsCalled = messages
       .filter(m => m.role === 'assistant' && m.tool_calls)
@@ -232,11 +232,18 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
 
     const allFilesWritten = [...filesWritten, ...textFilesWritten];
 
-    if (!allFilesWritten.includes('index.html')) {
+    // Determine target filename (default to index.html if not specified)
+    let targetFilename = 'index.html';
+    const filenameMatch = userMsg.match(/['"]([^'"]+\.html)['"]/i);
+    if (filenameMatch) {
+        targetFilename = filenameMatch[1];
+    }
+
+    if (!allFilesWritten.includes(targetFilename)) {
       return {
         name: 'file_write',
         input: {
-          filename: 'index.html',
+          filename: targetFilename,
           content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
