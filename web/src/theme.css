@@ -125,6 +125,7 @@ body {
   flex: 1;
   overflow: hidden;
   height: calc(100vh - var(--header-height));
+  position: relative;
 }
 
 /* Sidebar */
@@ -173,28 +174,211 @@ body {
   flex: 1;
 }
 
-.session-item button {
-  width: 100%;
-  text-align: left;
+/* Session Item Refactor */
+.session-item {
+  position: relative;
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+}
+.session-item:hover {
+  background-color: var(--bg-card-hover);
+}
+.session-item.active {
+  background: rgba(255, 215, 0, 0.08);
+  border-right: 3px solid var(--accent-primary); /* RTL border */
+}
+[data-theme="light"] .session-item.active {
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.session-btn {
+  flex: 1;
+  text-align: right;
   background: transparent;
   border: none;
   padding: 12px 16px;
-  border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--text-secondary);
-  transition: all 0.2s;
+  overflow: hidden;
+  font-family: inherit;
+}
+.session-item.active .session-btn {
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-title {
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.session-snippet {
+  font-size: 12px;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  direction: rtl;
 }
 
-.session-item button:hover {
-  background-color: var(--bg-card-hover);
+.menu-trigger {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+.session-item:hover .menu-trigger,
+.menu-trigger:focus {
+  opacity: 1;
+}
+.menu-trigger:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.05);
+}
+
+/* Context Menu */
+.session-menu {
+  position: absolute;
+  top: 36px;
+  right: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  min-width: 160px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.1s ease-out;
+}
+.session-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  text-align: right;
+  font-size: 13px;
+  font-family: inherit;
+}
+.session-menu button svg {
+  width: 14px;
+  height: 14px;
+}
+.session-menu button:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+.session-menu button.delete:hover {
+  background: rgba(255, 50, 50, 0.1);
+  color: #ff4444;
+}
+.session-menu .divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+/* Sidebar Extras */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-header .new-chat-btn {
+  flex: 1;
+}
+.close-sidebar-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.close-sidebar-btn:hover {
+  background: var(--bg-card-hover);
   color: var(--text-primary);
 }
 
-.session-item button.active {
-  background: rgba(255, 215, 0, 0.08);
+.open-sidebar-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 100;
+  transition: all 0.2s;
+}
+.open-sidebar-btn:hover {
   color: var(--accent-primary);
-  border-left: 3px solid var(--accent-primary);
+  border-color: var(--accent-primary);
+  transform: scale(1.05);
+}
+
+.sidebar-footer {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  margin-top: auto;
+}
+.delete-all-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  font-family: inherit;
+}
+.delete-all-btn:hover {
+  background: rgba(255, 50, 50, 0.05);
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .new-chat-btn {

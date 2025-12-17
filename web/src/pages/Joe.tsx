@@ -1,13 +1,16 @@
 import CommandComposer from '../components/CommandComposer';
 import RightPanel from '../components/RightPanel';
+import SessionItem from '../components/SessionItem';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
+import { PanelLeftClose, PanelLeftOpen, Trash2 } from 'lucide-react';
 
 export default function Joe() {
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string }>>([]);
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA'>('LIVE');
+  const [showSidebar, setShowSidebar] = useState(true);
   const nav = useNavigate();
 
   async function loadSessions() {
@@ -61,44 +64,102 @@ export default function Joe() {
     }
   }
 
+  async function deleteSession(id: string) {
+    if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/sessions/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    });
+    await loadSessions();
+    if (selected === id) setSelected(null);
+  }
+
+  async function deleteAllSessions() {
+    if (!confirm('هل أنت متأكد من حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/sessions`, {
+      method: 'DELETE',
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    });
+    await loadSessions();
+    setSelected(null);
+  }
+
+  async function togglePin(id: string, currentPinned: boolean) {
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/sessions/${id}/pin`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      body: JSON.stringify({ isPinned: !currentPinned }),
+    });
+    await loadSessions();
+  }
+
+  function shareSession(id: string) {
+    alert('تم نسخ رابط الجلسة');
+  }
+
   return (
-    <div className="joe-layout">
-      <aside className="sidebar">
-        <button className="new-chat-btn" onClick={createSession}>
-          <span>+</span> محادثة جديدة
+    <div className={`joe-layout ${showSidebar ? 'sidebar-open' : 'sidebar-closed'}`}>
+      {showSidebar && (
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <button className="new-chat-btn" onClick={createSession}>
+              <span>+</span> محادثة جديدة
+            </button>
+            <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
+              <PanelLeftClose size={20} />
+            </button>
+          </div>
+          
+          <div className="section-title" style={{ marginTop: 24 }}>الجلسات الأخيرة</div>
+          <div className="session-list">
+            {sessions.map(s => (
+              <div 
+                key={s.id} 
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('sessionId', s.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const sourceId = e.dataTransfer.getData('sessionId');
+                  if (sourceId && sourceId !== s.id) {
+                     mergeSessions(sourceId, s.id);
+                  }
+                }}
+              >
+                <SessionItem 
+                  session={s}
+                  isActive={selected === s.id}
+                  onSelect={() => setSelected(s.id)}
+                  onDelete={() => deleteSession(s.id)}
+                  onPin={() => togglePin(s.id, !!s.isPinned)}
+                  onShare={() => shareSession(s.id)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="sidebar-footer">
+            <button className="delete-all-btn" onClick={deleteAllSessions}>
+              <Trash2 size={16} /> حذف جميع الجلسات
+            </button>
+          </div>
+        </aside>
+      )}
+      {!showSidebar && (
+        <button className="open-sidebar-btn" onClick={() => setShowSidebar(true)}>
+          <PanelLeftOpen size={24} />
         </button>
-        
-        <div className="section-title" style={{ marginTop: 24 }}>الجلسات الأخيرة</div>
-        <div className="session-list">
-          {sessions.map(s => (
-            <div 
-              key={s.id} 
-              className="session-item"
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('sessionId', s.id);
-                e.dataTransfer.effectAllowed = 'move';
-              }}
-              onDragOver={(e) => {
-                e.preventDefault(); // Allow drop
-                e.dataTransfer.dropEffect = 'move';
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const sourceId = e.dataTransfer.getData('sessionId');
-                if (sourceId && sourceId !== s.id) {
-                   mergeSessions(sourceId, s.id);
-                }
-              }}
-            >
-              <button className={selected===s.id?'active':''} onClick={()=>setSelected(s.id)}>
-                <div style={{ fontWeight: 500, marginBottom: 2, textAlign: 'right' }}>{s.title}</div>
-                {s.lastSnippet && <div style={{ opacity: 0.6, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'right' }}>{s.lastSnippet}</div>}
-              </button>
-            </div>
-          ))}
-        </div>
-      </aside>
+      )}
+
       <main className="center">
         <CommandComposer 
           sessionId={selected || undefined} 
