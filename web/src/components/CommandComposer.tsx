@@ -318,6 +318,17 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             );
           }
           
+          // ERROR RESPONSE
+          if (e.type === 'error') {
+            return (
+              <div key={i} className="message-row joe">
+                <div className="message-bubble error" dir="auto" style={{ color: '#ef4444', border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)' }}>
+                  ⚠️ {e.data}
+                </div>
+              </div>
+            );
+          }
+
           // JOE TEXT RESPONSE
           if (e.type === 'text') {
             let content = e.data;

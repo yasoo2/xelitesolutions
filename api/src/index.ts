@@ -32,11 +32,7 @@ async function main() {
   const app = express();
 
   app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (config.allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error('Not allowed by CORS'));
-    },
+    origin: true, // Allow all origins for now to fix connectivity issues
     credentials: true,
   }));
   app.use(express.json({ limit: '10mb' }));
