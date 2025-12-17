@@ -20,6 +20,12 @@ export default function Joe() {
 
   const nav = useNavigate();
 
+  function createSession() {
+    setSelected(null);
+    setSearchQuery('');
+    setSearchResults([]);
+  }
+
   async function loadSessions() {
     const token = localStorage.getItem('token');
     try {

@@ -168,6 +168,40 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     }
   }
 
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files?.length) return;
+    const file = e.target.files[0];
+    setIsUploading(true);
+    
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', file);
+      if (sessionId) formData.append('sessionId', sessionId);
+
+      const res = await fetch(`${API}/files/upload`, {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setAttachedFiles(prev => [...prev, { id: data.file.id, name: data.file.originalName }]);
+      } else {
+        alert(t('uploadFailed') || 'Upload failed');
+      }
+    } catch (err) {
+      console.error(err);
+      alert(t('uploadError') || 'Upload error');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
   async function run() {
     if (!text.trim()) return;
     
@@ -175,7 +209,9 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     const tempId = Date.now().toString();
     setEvents(prev => [...prev, { type: 'user_input', data: text, id: tempId }]);
     const currentText = text;
+    const currentFiles = [...attachedFiles];
     setText(''); // Clear input immediately
+    setAttachedFiles([]); // Clear attached files
 
     const token = localStorage.getItem('token');
     try {
@@ -185,7 +221,11 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ text: currentText, sessionId }),
+        body: JSON.stringify({ 
+          text: currentText, 
+          sessionId,
+          fileIds: currentFiles.map(f => f.id)
+        }),
       });
       const data = await res.json();
       if (data.sessionId && !sessionId && onSessionCreated) {
@@ -536,6 +576,19 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               <button onClick={() => approve('approved')} className="btn approve">{t('approve')}</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {attachedFiles.length > 0 && (
+        <div className="attached-files">
+          {attachedFiles.map((file, i) => (
+            <div key={i} className="attached-file-chip">
+              <span className="file-name">{file.name}</span>
+              <button onClick={() => setAttachedFiles(prev => prev.filter((_, idx) => idx !== i))} className="remove-file-btn">
+                <X size={12} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
