@@ -6,6 +6,7 @@ export interface ISession extends Document {
   userId: Types.ObjectId;
   title: string;
   mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER';
+  isPinned?: boolean;
   lastSnippet?: string;
   lastUpdatedAt: Date;
   createdAt: Date;
@@ -19,6 +20,7 @@ const SessionSchema = new Schema<ISession>(
     userId: { type: Schema.Types.ObjectId, ref: 'User', index: true, required: true },
     title: { type: String, required: true },
     mode: { type: String, enum: ['ADVISOR', 'BUILDER', 'SAFE', 'OWNER'], default: 'ADVISOR' },
+    isPinned: { type: Boolean, default: false },
     lastSnippet: { type: String },
     lastUpdatedAt: { type: Date, default: Date.now },
   },

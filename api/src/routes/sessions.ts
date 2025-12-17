@@ -30,8 +30,44 @@ router.get('/', authenticate, async (_req: Request, res: Response) => {
   if (useMock) {
     return res.json({ sessions: store.listSessions() });
   }
-  const sessions = await Session.find().lean();
+  const sessions = await Session.find().sort({ isPinned: -1, updatedAt: -1 }).lean();
   return res.json({ sessions });
+});
+
+router.delete('/', authenticate, async (_req: Request, res: Response) => {
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    // store.clearAll();
+    return res.json({ ok: true });
+  }
+  await Session.deleteMany({});
+  await Message.deleteMany({});
+  await Run.deleteMany({});
+  return res.json({ ok: true });
+});
+
+router.delete('/:id', authenticate, async (req: Request, res: Response) => {
+  const id = req.params.id;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    // store.deleteSession(id);
+    return res.json({ ok: true });
+  }
+  await Session.findByIdAndDelete(id);
+  await Message.deleteMany({ sessionId: id });
+  await Run.deleteMany({ sessionId: id });
+  return res.json({ ok: true });
+});
+
+router.patch('/:id/pin', authenticate, async (req: Request, res: Response) => {
+  const id = req.params.id;
+  const { isPinned } = req.body;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    return res.json({ ok: true });
+  }
+  await Session.findByIdAndUpdate(id, { isPinned });
+  return res.json({ ok: true });
 });
 
 router.post('/', authenticate, async (req: Request, res: Response) => {
