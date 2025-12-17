@@ -7,7 +7,7 @@ import { API_URL as API } from '../config';
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY'>('LIVE');
+  const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA'>('LIVE');
   const nav = useNavigate();
 
   async function loadSessions() {
@@ -114,6 +114,7 @@ export default function Joe() {
           <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>Browser</button>
           <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>Artifacts</button>
           <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>Memory</button>
+          <button className={`tab ${tab==='QA'?'active':''}`} onClick={()=>setTab('QA')}>QA</button>
         </div>
         <div className="panel-content">
           <RightPanel active={tab} sessionId={selected || undefined} />

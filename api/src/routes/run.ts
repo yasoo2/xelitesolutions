@@ -307,4 +307,73 @@ router.post('/plan', async (req: Request, res: Response) => {
   res.json({ plan });
 });
 
+router.post('/qa', async (_req: Request, res: Response) => {
+  const prompts: string[] = [
+    'كم سعر الدولار اليوم بالنسبة لليرة التركية',
+    'سعر الدينار الكويتي مقابل الشيكل اليوم',
+    'أريد سعر اليورو مقابل الدولار الأمريكي',
+    'صمم صورة قطة لطيفة',
+    'صمم صورة شعار بسيط بألوان الأزرق والأبيض',
+    'تصميم صورة أيقونية لمتجر الكتروني',
+    'ابحث عن أفضل مكتبات React للأداء',
+    'بحث عن أحدث أخبار الذكاء الاصطناعي',
+    'search حول تاريخ العملة التركية',
+    'صمم صفحة هبوط بسيطة',
+    'أريد صفحة HTML تعرض بطاقات منتجات',
+    'landing page بالعربية',
+    'بناء موقع لمتجر الكتروني وعرضه أمامي',
+    'أريد متجر إلكتروني بسيط',
+    'ecommerce demo site',
+    'browser https://example.com',
+    'خذ لقطة شاشة لصفحة https://www.wikipedia.org',
+    'browser snapshot لهذه الصفحة https://news.ycombinator.com',
+    'write هذه ملاحظة مهمة',
+    'write سجل الملاحظات اليوم',
+    'write قائمة المهام',
+    'تصميم صفحة ثم عرضها',
+    'صمم صورة ثم أعرض الرابط',
+    'ابحث ثم لخص النتائج',
+    'قيمة الدولار مقابل الليرة التركية',
+    'سعر دينار كويتي ضد شيكل',
+    'قيمة اليورو مقابل دولار',
+    'تصميم صورة كلب مرح',
+    'تصميم صورة طائر ملون',
+    'صمم صورة خلفية بدرجات الأزرق',
+    'صفحة HTML تحتوي عنوان ومحتوى',
+    'landing عربية مع بطاقات',
+    'إنشاء صفحة منتجات',
+    'متجر بسيط يعرض 6 منتجات',
+    'shop demo',
+    'ecommerce Arabic',
+    'ابحث عن أطر CSS الحديثة',
+    'بحث عن أدوات اختبار الواجهة',
+    'search new js features',
+    'browser https://www.google.com',
+    'browser https://www.bbc.com',
+    'browser https://vercel.com',
+    'echo مرحباً جو',
+    'echo هذا اختبار موسع',
+    'echo النهاية',
+    'سعر الدولار مقابل الشيكل',
+    'ابحث عن سعر الذهب اليوم',
+    'landing page dark mode',
+    'متجر متعدد الصفحات بسيط',
+    'write مذكرة للفريق بالعربية',
+  ];
+  const results: Array<{ text: string; ok: boolean; reason?: string }> = [];
+  for (const text of prompts) {
+    try {
+      const plan = pickToolFromText(text);
+      const result = await executeTool(plan.name, plan.input);
+      const ok = !!result.ok;
+      results.push({ text, ok, reason: ok ? undefined : (result.error || 'error') });
+    } catch (e: any) {
+      results.push({ text, ok: false, reason: e?.message || 'error' });
+    }
+  }
+  const passed = results.filter(r => r.ok).length;
+  const failed = results.length - passed;
+  res.json({ passed, failed, results });
+});
+
 export default router;
