@@ -103,7 +103,10 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
 
   useEffect(() => {
     if (sessionId) {
+      setEvents([]); // Clear previous events immediately
       loadHistory(sessionId);
+    } else {
+      setEvents([]);
     }
   }, [sessionId]);
 
@@ -115,7 +118,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.events) && data.events.length > 0) {
+        if (Array.isArray(data.events)) {
           setEvents(data.events);
         } 
       }

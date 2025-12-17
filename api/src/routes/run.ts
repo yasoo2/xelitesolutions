@@ -8,6 +8,7 @@ import { Artifact } from '../models/artifact';
 import { Approval } from '../models/approval';
 import { Run } from '../models/run';
 import { planNextStep } from '../llm';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
