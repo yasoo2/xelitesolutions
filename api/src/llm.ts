@@ -33,7 +33,13 @@ export async function planNextStep(messages: { role: 'user' | 'assistant' | 'sys
   const msgs = [
     { 
       role: 'system', 
-      content: 'You are Joe, an advanced AI agent. You have access to tools. Use them to fulfill the user request. If you just want to reply with text, use the "echo" tool. If you need to fetch data, use http_fetch. If you need to write a file, use file_write.' 
+      content: `You are Joe, an advanced AI agent. You have access to tools. Use them to fulfill the user request.
+- If you just want to reply with text, use the "echo" tool.
+- If you need to search the web for real-time information (like prices, news, facts), use "web_search".
+- If you need to fetch data from a specific URL, use "http_fetch".
+- If you need to write a file, use "file_write".
+- If you need to take a screenshot, use "browser_snapshot".
+Always prefer "web_search" if the user asks for current information.` 
     },
     ...messages
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];

@@ -56,6 +56,18 @@ export const tools: ToolDefinition[] = [
     auditFields: ['url'],
     mockSupported: false,
   },
+  {
+    name: 'web_search',
+    version: '1.0.0',
+    tags: ['network', 'search'],
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    outputSchema: { type: 'object', properties: { results: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, url: { type: 'string' }, description: { type: 'string' } } } } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 20,
+    auditFields: ['query'],
+    mockSupported: false,
+  },
 ];
 
 for (let i = 1; i <= 197; i++) {
@@ -104,7 +116,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const filename = `snapshot-${Date.now()}.png`;
       const full = path.join(ARTIFACT_DIR, filename);
       const { default: puppeteer } = await import('puppeteer');
-      const browser = await puppeteer.launch({ headless: true });
+      const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
       const page = await browser.newPage();
       await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
       const title = await page.title();
@@ -114,6 +126,18 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       logs.push(`snapshot.saved=${full} title=${title}`);
       const href = `/artifacts/${encodeURIComponent(filename)}`;
       return { ok: true, output: { href, title }, logs, artifacts: [{ name: filename, href }] };
+    }
+    if (name === 'web_search') {
+      const query = String(input?.query ?? '');
+      const { search } = await import('duck-duck-scrape');
+      const results = await search(query, { safeSearch: 0 });
+      const simplified = results.results.slice(0, 5).map(r => ({
+        title: r.title,
+        url: r.url,
+        description: r.description
+      }));
+      logs.push(`search.query=${query} results=${simplified.length}`);
+      return { ok: true, output: { results: simplified }, logs };
     }
     if (name.startsWith('noop_')) {
       logs.push('noop.ok=true');
