@@ -277,9 +277,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     
     // Plan next step with history
     try {
-        plan = await planNextStep(history);
-    } catch (err) {
+        plan = await planNextStep(history, { provider, apiKey, baseUrl, model });
+    } catch (err: any) {
         console.warn('LLM planning error:', err);
+        if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
+             ev({ type: 'text', data: '⚠️ **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu.' });
+             forcedText = 'Authentication Failed';
+             break;
+        }
         plan = null;
     }
 
