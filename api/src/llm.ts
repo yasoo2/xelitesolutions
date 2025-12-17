@@ -88,6 +88,30 @@ Rules:
   }
 }
 
+export async function generateSessionTitle(messages: { role: string; content: string }[]) {
+  if (!messages || messages.length === 0) return 'New Session';
+  
+  const msgs = [
+    {
+      role: 'system',
+      content: 'You are a helpful assistant. Generate a short, concise title (max 6 words) for a chat session based on the following conversation start. The title should summarize the main topic. If the user speaks Arabic, the title MUST be in Arabic. Do not include quotes.'
+    },
+    ...messages.slice(0, 5).map(m => ({ role: 'user', content: String(m.content).slice(0, 500) }))
+  ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      messages: msgs,
+      max_tokens: 20,
+    });
+    return completion.choices[0]?.message?.content?.trim() || 'New Session';
+  } catch (e) {
+    console.error('Title generation failed', e);
+    return 'New Session';
+  }
+}
+
 function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 'tool', content: string | null, tool_calls?: any[], tool_call_id?: string }[]) {
   // Extract user intent
   const userMsg = messages.find(m => m.role === 'user')?.content || '';

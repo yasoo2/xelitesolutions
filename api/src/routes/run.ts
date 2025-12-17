@@ -7,8 +7,10 @@ import { ToolExecution } from '../models/toolExecution';
 import { Artifact } from '../models/artifact';
 import { Approval } from '../models/approval';
 import { Run } from '../models/run';
-import { planNextStep } from '../llm';
+import { planNextStep, generateSessionTitle } from '../llm';
 import { authenticate } from '../middleware/auth';
+import { Session } from '../models/session';
+import { Message } from '../models/message';
 
 const router = Router();
 
@@ -196,6 +198,27 @@ router.post('/start', async (req: Request, res: Response) => {
   } else {
     const run = await Run.create({ sessionId, status: 'running', steps: [{ name: 'plan', status: 'done' }] });
     runId = run._id.toString();
+
+    // Auto-Title Logic
+    (async () => {
+      try {
+        const session = await Session.findById(sessionId);
+        if (session && (session.title.startsWith('Session ') || session.title.startsWith('جلسة ') || session.title === 'New Session')) {
+          const messageCount = await Message.countDocuments({ sessionId });
+          // Only trigger if it's the first or second message
+          if (messageCount <= 2) {
+            // Get the user message and potential context
+            const messages = [{ role: 'user', content: String(text) }];
+            const newTitle = await generateSessionTitle(messages);
+            if (newTitle && newTitle !== 'New Session') {
+               await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Auto-title background task failed', e);
+      }
+    })();
   }
 
   const risk = detectRisk(String(text || ''));

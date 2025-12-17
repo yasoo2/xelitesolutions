@@ -34,6 +34,31 @@ router.get('/', authenticate, async (_req: Request, res: Response) => {
   return res.json({ sessions });
 });
 
+router.get('/search', authenticate, async (req: Request, res: Response) => {
+  const query = String(req.query.q || '').trim();
+  if (!query) return res.json({ results: [] });
+
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    return res.json({ results: [] });
+  }
+
+  // Simple regex search for now. For production, use Atlas Search or Text Index.
+  const messages = await Message.find({
+    content: { $regex: query, $options: 'i' }
+  }).sort({ createdAt: -1 }).limit(20).populate('sessionId', 'title');
+
+  const results = messages.map(m => ({
+    messageId: m._id,
+    sessionId: (m.sessionId as any)._id,
+    sessionTitle: (m.sessionId as any).title,
+    content: m.content,
+    createdAt: m.createdAt,
+  }));
+
+  return res.json({ results });
+});
+
 router.delete('/', authenticate, async (_req: Request, res: Response) => {
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {

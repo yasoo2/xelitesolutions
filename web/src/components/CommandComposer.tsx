@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Clock,
   Image as ImageIcon,
-  Video as VideoIcon
+  Video as VideoIcon,
+  Mic
 } from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
@@ -27,16 +28,49 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
   const stepStartTimes = useRef<Record<string, number>>({});
   const endRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Scroll to bottom on new events
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [events]);
+
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window) {
+      // @ts-ignore
+      const recognition = new window.webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'ar-SA'; // Default to Arabic
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setText(prev => prev + (prev ? ' ' : '') + transcript);
+      };
+      
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const toggleVoice = () => {
+    if (!recognitionRef.current) {
+      alert('التعرف الصوتي غير مدعوم في هذا المتصفح. يرجى استخدام Chrome.');
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      recognitionRef.current.start();
+    }
+  };
 
   useEffect(() => {
     connectWS();
@@ -473,6 +507,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           onChange={(e) => setText(e.target.value)} 
           placeholder={t('inputPlaceholder')}
           dir="auto"
+          disabled={!!approval}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -493,9 +528,19 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
               {isConnected ? t('connected') : t('connecting')}
             </span>
           </div>
-          <button className="run-btn" onClick={run} disabled={!text.trim()}>
-            {t('send')}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button 
+              className={`mic-button ${isListening ? 'listening' : ''}`}
+              onClick={toggleVoice}
+              title="تحدث الآن"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isListening ? '#ef4444' : 'inherit' }}
+            >
+              <Mic size={20} />
+            </button>
+            <button className="run-btn" onClick={run} disabled={!text.trim() || !!approval}>
+              {t('send')}
+            </button>
+          </div>
         </div>
       </div>
     </div>

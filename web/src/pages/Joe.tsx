@@ -4,13 +4,16 @@ import SessionItem from '../components/SessionItem';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2 } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search } from 'lucide-react';
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA'>('LIVE');
   const [showSidebar, setShowSidebar] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const nav = useNavigate();
 
   async function loadSessions() {
@@ -100,6 +103,28 @@ export default function Joe() {
     alert('تم نسخ رابط الجلسة');
   }
 
+  useEffect(() => {
+    if (!searchQuery) {
+      setIsSearching(false);
+      setSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      const token = localStorage.getItem('token');
+      try {
+        const res = await fetch(`${API}/sessions/search?q=${encodeURIComponent(searchQuery)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      } catch (e) {
+        console.error(e);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   return (
     <div className={`joe-layout ${showSidebar ? 'sidebar-open' : 'sidebar-closed'}`}>
       {showSidebar && (
@@ -113,7 +138,22 @@ export default function Joe() {
             </button>
           </div>
           
-          <div className="section-title" style={{ marginTop: 24 }}>الجلسات الأخيرة</div>
+          <div className="search-box-container" style={{ padding: '0 4px', marginBottom: 16 }}>
+            <div className="search-input-wrapper">
+               <Search size={14} className="search-icon" />
+               <input 
+                 type="text" 
+                 placeholder="بحث في المحادثات..." 
+                 value={searchQuery}
+                 onChange={(e) => setSearchQuery(e.target.value)}
+                 className="search-input"
+               />
+            </div>
+          </div>
+
+          {!searchQuery ? (
+          <>
+          <div className="section-title">الجلسات الأخيرة</div>
           <div className="session-list">
             {sessions.map(s => (
               <div 
@@ -146,6 +186,31 @@ export default function Joe() {
               </div>
             ))}
           </div>
+          </>
+          ) : (
+            <div className="session-list">
+               {searchResults.length === 0 ? (
+                 <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                   لا توجد نتائج
+                 </div>
+               ) : (
+                 searchResults.map(r => (
+                   <button 
+                     key={r.messageId} 
+                     className="search-result-item"
+                     onClick={() => {
+                       setSelected(r.sessionId);
+                       setSearchQuery(''); // Clear search on select
+                     }}
+                   >
+                     <div className="result-session-title">{r.sessionTitle}</div>
+                     <div className="result-content">{r.content}</div>
+                     <div className="result-date">{new Date(r.createdAt).toLocaleDateString()}</div>
+                   </button>
+                 ))
+               )}
+            </div>
+          )}
 
           <div className="sidebar-footer">
             <button className="delete-all-btn" onClick={deleteAllSessions}>
