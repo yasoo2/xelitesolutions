@@ -59,12 +59,12 @@ function pickToolFromText(text: string) {
     const sym = found[1];
     return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}?sym=${encodeURIComponent(sym)}`, base, sym } };
   }
-  if (/(ابحث|بحث|search)/.test(t)) {
+  if (/(ابحث|بحث|search|find|lookup)/.test(t) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\s/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
     const query = qMatch ? qMatch[1] : text;
     return { name: 'web_search', input: { query } };
   }
-  if (/(درجة\\s+الحرارة|طقس|weather|temperature)/i.test(tn) && /(اسطنبول|إسطنبول|istanbul)/i.test(tn)) {
+  if (/(طقس|حرار[هة]|درجة|weather|temperature)/i.test(t) && /(اسطنبول|إسطنبول|istanbul)/i.test(t)) {
     const city = 'Istanbul';
     const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
     return { name: 'http_fetch', input: { url, city } };
@@ -111,6 +111,11 @@ router.post('/start', async (req: Request, res: Response) => {
 
   if (!plan) {
     plan = pickToolFromText(String(text || ''));
+  } else {
+    const h = pickToolFromText(String(text || ''));
+    if (plan?.name === 'echo' && h?.name && h.name !== 'echo') {
+      plan = h;
+    }
   }
   
   ev({ type: 'step_done', data: { name: 'plan', plan } });
@@ -184,6 +189,7 @@ router.post('/start', async (req: Request, res: Response) => {
   ];
 
   let lastResult: any = null;
+  let forcedText: string | null = null;
 
   while (steps < MAX_STEPS) {
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
@@ -200,6 +206,11 @@ router.post('/start', async (req: Request, res: Response) => {
       // Fallback if LLM fails
       if (steps === 0) plan = pickToolFromText(String(text || ''));
       else break; // Stop if we can't plan anymore
+    } else if (steps === 0 && plan?.name === 'echo') {
+      const h0 = pickToolFromText(String(text || ''));
+      if (h0?.name && h0.name !== 'echo') {
+        plan = h0;
+      }
     }
 
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
@@ -246,6 +257,7 @@ router.post('/start', async (req: Request, res: Response) => {
             `- العملة المقابلة: ${sym}`,
             `- السعر اليوم: ${Number(rate).toFixed(4)} ${sym}`
           ].join('\n');
+          forcedText = md;
           ev({ type: 'text', data: md });
         } else if (base && sym) {
           const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
@@ -266,6 +278,7 @@ router.post('/start', async (req: Request, res: Response) => {
               `- العملة المقابلة: ${sym}`,
               `- السعر اليوم: ${Number(rate2).toFixed(4)} ${sym}`
             ].join('\n');
+            forcedText = md2;
             ev({ type: 'text', data: md2 });
           }
           if (useMock) {
@@ -288,7 +301,9 @@ router.post('/start', async (req: Request, res: Response) => {
             ];
             if (desc) parts.push(`- الحالة: ${desc}`);
             if (hum !== null && !Number.isNaN(hum)) parts.push(`- الرطوبة: ${hum}%`);
-            ev({ type: 'text', data: parts.join('\n') });
+            const mdw = parts.join('\n');
+            forcedText = mdw;
+            ev({ type: 'text', data: mdw });
           }
         }
       } catch {}
@@ -311,7 +326,9 @@ router.post('/start', async (req: Request, res: Response) => {
             mdParts.push(head);
             if (desc) mdParts.push(`   - ${desc.slice(0, 200)}`);
           }
-          ev({ type: 'text', data: mdParts.join('\n') });
+          const mds = mdParts.join('\n');
+          forcedText = mds;
+          ev({ type: 'text', data: mds });
         }
       } catch {}
     }
@@ -357,12 +374,12 @@ router.post('/start', async (req: Request, res: Response) => {
             const { summarizeToolOutput } = await import('../llm');
             ev({ type: 'step_started', data: { name: 'summarize' } });
             // Summarize based on original request and last result
-            finalResponse = await summarizeToolOutput(String(text || ''), plan?.name || 'unknown', lastResult.output);
+            finalResponse = forcedText || await summarizeToolOutput(String(text || ''), plan?.name || 'unknown', lastResult.output);
             ev({ type: 'text', data: finalResponse });
             ev({ type: 'step_done', data: { name: 'summarize', result: { output: finalResponse } } });
         } catch (err) {
             console.warn('Summarization failed:', err);
-            finalResponse = String(lastResult?.output ?? '').slice(0, 512);
+            finalResponse = forcedText || String(lastResult?.output ?? '').slice(0, 512);
         }
     }
   } else {
@@ -393,6 +410,14 @@ router.post('/start', async (req: Request, res: Response) => {
         const { Session } = await import('../models/session');
         await Session.findByIdAndUpdate(sessionId, { $set: { lastSnippet: String(asstContent || '').slice(0, 140), lastUpdatedAt: new Date() } });
       }
+    }
+  } catch {}
+  try {
+    if (lastResult && finalResponse && typeof lastResult === 'object') {
+      if (!lastResult.output || typeof lastResult.output !== 'object') {
+        lastResult.output = {};
+      }
+      (lastResult.output as any).text = finalResponse;
     }
   } catch {}
   res.json({ runId, result: lastResult, sessionId });
