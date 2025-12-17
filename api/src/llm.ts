@@ -211,35 +211,23 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
     
     const filesWritten = messages
       .filter(m => m.role === 'assistant' && m.tool_calls)
-      .flatMap(m => m.tool_calls?.filter(tc => tc.function.name === 'file_write').map(tc => JSON.parse(tc.function.arguments).filename) || []);
-
-    const textFilesWritten = messages
-      .filter(m => m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string')
-      .map(m => {
-        // Match pattern: ... with input: {"filename":"index.html",...}
-        if (m.content?.includes('file_write')) {
-          try {
-            const inputMatch = m.content.match(/input: (\{.*\})/);
-            if (inputMatch) {
-              const input = JSON.parse(inputMatch[1]);
-              return input.filename;
-            }
-          } catch {}
-        }
-        return null;
-      })
-      .filter(Boolean) as string[];
-
-    const allFilesWritten = [...filesWritten, ...textFilesWritten];
+      .flatMap(m => m.tool_calls?.map(tc => {
+         if (tc.function.name === 'file_write') {
+             try { return JSON.parse(tc.function.arguments).filename; } catch { return null; }
+         }
+         return null;
+      }) || [])
+      .filter(Boolean);
 
     // Determine target filename (default to index.html if not specified)
     let targetFilename = 'index.html';
-    const filenameMatch = userMsg.match(/['"]([^'"]+\.html)['"]/i);
+    // Match 'filename.html' or filename.html (without quotes)
+    const filenameMatch = userMsg.match(/(?:['"]([^'"]+\.html)['"]|(\b[\w-]+\.html\b))/i);
     if (filenameMatch) {
-        targetFilename = filenameMatch[1];
+        targetFilename = filenameMatch[1] || filenameMatch[2];
     }
 
-    if (!allFilesWritten.includes(targetFilename)) {
+    if (!allToolsCalled.includes('file_write') || !filesWritten.includes(targetFilename)) {
       return {
         name: 'file_write',
         input: {
@@ -247,254 +235,64 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
           content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>متجر النخبة الإلكتروني</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${targetFilename === 'xelite.html' ? 'Xelite Coffee' : 'موقع جديد'}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+    body { font-family: 'Cairo', sans-serif; }
+  </style>
 </head>
-<body>
-    <header>
-        <div class="container">
-            <h1>متجر النخبة</h1>
-            <nav>
-                <ul>
-                    <li><a href="#">الرئيسية</a></li>
-                    <li><a href="#">المنتجات</a></li>
-                    <li><a href="#">من نحن</a></li>
-                    <li><a href="#">اتصل بنا</a></li>
-                </ul>
-            </nav>
-            <div class="cart-icon">🛒 <span id="cart-count">0</span></div>
-        </div>
-    </header>
-
-    <section class="hero">
-        <div class="container">
-            <h2>أفضل المنتجات بأسعار لا تقبل المنافسة</h2>
-            <p>تسوق الآن واحصل على خصومات تصل إلى 50%</p>
-            <button class="btn">تسوق الآن</button>
-        </div>
-    </section>
-
-    <section class="products container">
-        <h3>منتجاتنا المميزة</h3>
-        <div class="product-grid">
-            <!-- Product 1 -->
-            <div class="product-card">
-                <div class="product-image" style="background-color: #eee; height: 200px; display: flex; align-items: center; justify-content: center;">📱</div>
-                <h4>هاتف ذكي حديث</h4>
-                <p class="price">999 $</p>
-                <button class="btn-add">أضف للسلة</button>
-            </div>
-            <!-- Product 2 -->
-            <div class="product-card">
-                <div class="product-image" style="background-color: #eee; height: 200px; display: flex; align-items: center; justify-content: center;">💻</div>
-                <h4>لابتوب احترافي</h4>
-                <p class="price">1200 $</p>
-                <button class="btn-add">أضف للسلة</button>
-            </div>
-            <!-- Product 3 -->
-            <div class="product-card">
-                <div class="product-image" style="background-color: #eee; height: 200px; display: flex; align-items: center; justify-content: center;">🎧</div>
-                <h4>سماعات بلوتوث</h4>
-                <p class="price">150 $</p>
-                <button class="btn-add">أضف للسلة</button>
-            </div>
-            <!-- Product 4 -->
-            <div class="product-card">
-                <div class="product-image" style="background-color: #eee; height: 200px; display: flex; align-items: center; justify-content: center;">⌚</div>
-                <h4>ساعة ذكية</h4>
-                <p class="price">250 $</p>
-                <button class="btn-add">أضف للسلة</button>
-            </div>
-        </div>
-    </section>
-
-    <footer>
-        <div class="container">
-            <p>© 2024 متجر النخبة الإلكتروني. جميع الحقوق محفوظة.</p>
-        </div>
-    </footer>
+<body class="bg-gray-900 text-white">
+  <header class="p-6 border-b border-gray-800 flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-yellow-500">${targetFilename === 'xelite.html' ? 'Xelite Coffee' : 'متجر إلكتروني'}</h1>
+    <nav>
+      <a href="#" class="mx-2 hover:text-yellow-400">الرئيسية</a>
+      <a href="#" class="mx-2 hover:text-yellow-400">المنتجات</a>
+      <a href="#" class="mx-2 hover:text-yellow-400">اتصل بنا</a>
+    </nav>
+  </header>
+  <main class="container mx-auto p-8 text-center">
+    <h2 class="text-4xl font-bold mb-4">أهلاً بك في المستقبل</h2>
+    <p class="text-gray-400 mb-8">نحن نبني الحلول الذكية.</p>
+    <button class="bg-yellow-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-400 transition">ابدأ الآن</button>
+  </main>
+  <footer class="p-6 text-center text-gray-600 mt-12 border-t border-gray-800">
+    &copy; 2025 XElite Solutions
+  </footer>
 </body>
 </html>`
         }
       };
     }
-
-    if (!allFilesWritten.includes('styles.css')) {
-      return {
-        name: 'file_write',
-        input: {
-          filename: 'styles.css',
-          content: `:root {
-    --primary-color: #FFD700;
-    --secondary-color: #1a1a1a;
-    --text-color: #333;
-    --bg-light: #f4f4f4;
-}
-
-body {
-    font-family: 'Tajawal', sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: var(--bg-light);
-    color: var(--text-color);
-}
-
-.container {
-    width: 90%;
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-header {
-    background-color: var(--secondary-color);
-    color: #fff;
-    padding: 1rem 0;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-header .container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-header h1 {
-    margin: 0;
-    color: var(--primary-color);
-}
-
-nav ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    gap: 20px;
-}
-
-nav a {
-    color: #fff;
-    text-decoration: none;
-    font-weight: bold;
-    transition: color 0.3s;
-}
-
-nav a:hover {
-    color: var(--primary-color);
-}
-
-.hero {
-    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://source.unsplash.com/random/1600x900/?shopping');
-    background-size: cover;
-    background-position: center;
-    color: #fff;
-    text-align: center;
-    padding: 100px 0;
-}
-
-.hero h2 {
-    font-size: 2.5rem;
-    margin-bottom: 10px;
-}
-
-.btn {
-    background-color: var(--primary-color);
-    color: #000;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-weight: bold;
-    font-size: 1rem;
-}
-
-.products {
-    padding: 50px 0;
-}
-
-.products h3 {
-    text-align: center;
-    margin-bottom: 30px;
-    color: var(--secondary-color);
-}
-
-.product-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 20px;
-}
-
-.product-card {
-    background: #fff;
-    padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    text-align: center;
-    transition: transform 0.3s;
-}
-
-.product-card:hover {
-    transform: translateY(-5px);
-}
-
-.product-image {
-    font-size: 50px;
-    margin-bottom: 15px;
-    border-radius: 8px;
-}
-
-.price {
-    color: #e67e22;
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-.btn-add {
-    background-color: var(--secondary-color);
-    color: #fff;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.btn-add:hover {
-    background-color: #333;
-}
-
-footer {
-    background-color: #111;
-    color: #888;
-    text-align: center;
-    padding: 20px 0;
-    margin-top: 50px;
-}`
-        }
-      };
-    }
-
-    if (!allToolsCalled.includes('browser_snapshot')) {
-      // Assume API is running on port 8080 by default or PORT env
-      const port = process.env.PORT || '8080';
-      return {
-        name: 'browser_snapshot',
-        input: { url: `http://localhost:${port}/artifacts/index.html`, title: 'معاينة المتجر' }
-      };
-    }
-    
-    // If all done
-    return {
-      name: 'echo',
-      input: { text: 'تم بناء المتجر الإلكتروني بنجاح! لقد قمت بإنشاء ملفات الموقع (index.html, styles.css) ويمكنك معاينتها الآن. هل ترغب في إضافة ميزات أخرى مثل بوابة الدفع؟' }
-    };
   }
 
-  // Default fallback for unknown intent
+  // 3. Fallback / General Conversation (The "Emergency Brain")
+  const lowerMsg = String(userMsg).toLowerCase();
+  
+  // Greetings
+  if (/^(hello|hi|hey|salam|مرحبا|هلا|السلام|ahlan)/i.test(lowerMsg)) {
+      return {
+          name: 'echo',
+          input: { text: "أهلاً بك! أنا جو، مهندس البرمجيات المستقل. كيف يمكنني مساعدتك اليوم؟\n(ملاحظة: أنا أعمل حالياً في وضع التعافي نظراً لعدم توفر الاتصال الكامل بالدماغ المركزي)" }
+      };
+  }
+
+  // Status/Health Check
+  if (/(status|health|state|كيف حالك|وضعك)/i.test(lowerMsg)) {
+      return {
+          name: 'echo',
+          input: { text: "الأنظمة تعمل. أنا جاهز لتنفيذ الأوامر المباشرة (قراءة ملفات، كتابة أكواد، بناء صفحات). الاتصال بالذكاء الاصطناعي المتقدم: غير متوفر حالياً." }
+      };
+  }
+
+  // Default Fallback
   return {
-    name: 'echo',
-    input: { text: 'عذراً، لم أتمكن من معالجة طلبك بدقة في الوقت الحالي. يرجى المحاولة مرة أخرى.' }
+      name: 'echo',
+      input: { 
+          text: "عذراً، لم أفهم هذا الطلب تماماً. بما أنني في وضع 'التعافي الذاتي'، يرجى إعطائي أوامر واضحة مثل:\n- 'ابن موقعاً باسم page.html'\n- 'اقرأ الملف data.txt'\n- 'شغل السكريبت test.js'" 
+      }
   };
 }
 
