@@ -5,6 +5,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   const [text, setText] = useState('');
   const [events, setEvents] = useState<Array<{ type: string; data: any }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -55,11 +56,24 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
     };
     
     ws.onopen = () => {
+        setIsConnected(true);
         // Optional: Send "subscribe" message if backend supports it
         // ws.send(JSON.stringify({ type: 'subscribe', sessionId }));
     };
+
+    ws.onclose = () => {
+        setIsConnected(false);
+    };
+
+    ws.onerror = (err) => {
+        console.error('WS Error:', err);
+        setIsConnected(false);
+    };
     
-    return () => ws.close();
+    return () => {
+        ws.close();
+        setIsConnected(false);
+    };
   }, [sessionId]);
 
   async function run() {
@@ -123,6 +137,21 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
         <div className="eventlog">
           {events.map((e, i) => {
             if (typeof e === 'string') return <div key={i} className="event-item">{e}</div>;
+            
+            // Handle text events specifically to parse JSON content and avoid ugly escaping
+            if (e.type === 'text') {
+                let content = e.data;
+                try {
+                    if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                        const parsed = JSON.parse(content);
+                        if (parsed.text) content = parsed.text;
+                        else if (parsed.output) content = JSON.stringify(parsed.output, null, 2);
+                        else content = JSON.stringify(parsed, null, 2);
+                    }
+                } catch {}
+                return <div key={i} className="event-item" style={{ whiteSpace: 'pre-wrap' }}>{String(content)}</div>;
+            }
+
             if (e.type === 'evidence_added' && e.data?.kind === 'artifact' && e.data?.href) {
               const href = e.data.href;
               const url = (API + href).replace(/([^:]\/)\/+/g, '$1');
@@ -172,10 +201,16 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           }}
         />
         <div className="input-actions">
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ 
+                width: 8, height: 8, 
+                borderRadius: '50%', 
+                backgroundColor: isConnected ? '#22c55e' : '#ef4444',
+                boxShadow: isConnected ? '0 0 4px #22c55e' : 'none'
+            }} title={isConnected ? "Connected to Live Updates" : "Disconnected"} />
             <button className="action-btn" onClick={plan}>Plan Only</button>
           </div>
-          <button className="btn run-btn" onClick={run}>
+          <button className="btn run-btn" onClick={run} disabled={!isConnected && !sessionId}>
             RUN
           </button>
         </div>

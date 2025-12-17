@@ -140,7 +140,19 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
       } else {
         const { Message } = await import('../models/message');
         const userMsg = await Message.create({ sessionId, role: 'user', content: String(text || '') });
-        const asstContent = result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || '');
+        
+        let asstContent = '';
+        if (result.output) {
+            // If output has a text field, use it directly for better readability
+            if (typeof result.output.text === 'string') {
+                asstContent = result.output.text;
+            } else {
+                asstContent = JSON.stringify(result.output).slice(0, 512);
+            }
+        } else {
+            asstContent = String(result.error || '');
+        }
+
         const asstMsg = await Message.create({ sessionId, role: 'assistant', content: asstContent });
         const { Session } = await import('../models/session');
         await Session.findByIdAndUpdate(sessionId, { $set: { lastSnippet: asstContent.slice(0, 140), lastUpdatedAt: new Date() } });
