@@ -59,8 +59,41 @@ router.get('/:id/history', authenticate, async (req: Request, res: Response) => 
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   
   if (useMock) {
-    // Mock implementation omitted for brevity, fallback to messages
-    return res.json({ events: [] }); 
+    // Mock implementation for history
+    const msgs = store.listMessages(sessionId);
+    const runs = store.listRuns(sessionId);
+    const execs = runs.flatMap(r => store.listExecs(r.id));
+    
+    const events: any[] = [];
+    
+    for (const m of msgs) {
+      if (m.role === 'user') {
+        events.push({ type: 'user_input', data: m.content, createdAt: m.createdAt });
+      } else if (m.role === 'assistant') {
+        events.push({ type: 'text', data: m.content, createdAt: m.createdAt });
+      }
+    }
+    
+    for (const ex of execs) {
+       const duration = 100; // Mock duration
+       events.push({
+         type: 'step_done',
+         duration,
+         data: {
+           name: `execute:${ex.name}`,
+           plan: { input: ex.input },
+           result: {
+             output: ex.output,
+             logs: ex.logs || [],
+             ok: ex.ok
+           }
+         },
+         createdAt: ex.createdAt || new Date().toISOString()
+       });
+    }
+    
+    events.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return res.json({ events });
   }
 
   try {
