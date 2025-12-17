@@ -29,7 +29,7 @@ const upload = multer({
 });
 
 // Upload endpoint
-router.post('/upload', authenticate as any, upload.single('file'), async (req: Request, res: Response) => {
+router.post('/upload', authenticate as any, upload.single('file') as any, async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
