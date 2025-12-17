@@ -106,9 +106,9 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.events) {
+        if (Array.isArray(data.events) && data.events.length > 0) {
           setEvents(data.events);
-        }
+        } 
       }
     } catch (e) {
       console.error('Failed to load history', e);
