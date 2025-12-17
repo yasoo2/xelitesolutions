@@ -253,7 +253,9 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
             .slice(0, 5);
             
           logs.push(`search.query=${query} results=${simplified.length}`);
-          return { ok: simplified.length > 0, output: { results: simplified }, logs };
+          if (simplified.length > 0) {
+            return { ok: true, output: { results: simplified }, logs };
+          }
         } catch (err: any) {
           lastError = err;
           retries++;
@@ -262,7 +264,21 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           }
         }
       }
-      return { ok: false, error: lastError?.message || 'Search failed', logs };
+      try {
+        const ddg = await import('duck-duck-scrape');
+        const res = await ddg.search(query);
+        const items = Array.isArray(res?.results) ? res.results : [];
+        const simplified2 = items.slice(0, 5).map((r: any) => ({
+          title: String(r?.title || '').slice(0, 120),
+          url: String(r?.url || ''),
+          description: String(r?.description || '')
+        })).filter((x: any) => x.url && x.title);
+        logs.push(`search.ddg_scrape=${simplified2.length}`);
+        return { ok: simplified2.length > 0, output: { results: simplified2 }, logs };
+      } catch (err: any) {
+        lastError = err;
+        return { ok: false, error: lastError?.message || 'Search failed', logs };
+      }
     }
     if (name === 'file_read') {
       const filename = path.basename(String(input?.filename ?? ''));

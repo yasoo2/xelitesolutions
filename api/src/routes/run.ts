@@ -66,6 +66,12 @@ function pickToolFromText(text: string) {
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
     return { name: 'http_fetch', input: { url } };
   }
+  // Weather detection (Istanbul)
+  if (/(درجة\\s+الحرارة|طقس|weather|temperature)/i.test(tn) && /(اسطنبول|إسطنبول|istanbul)/i.test(tn)) {
+    const city = 'Istanbul';
+    const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
+    return { name: 'http_fetch', input: { url, city } };
+  }
   // Page design / HTML generation
   if (/(صفحة|landing|html)/.test(t)) {
     const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/><title>صفحة مصممة</title><style>body{font-family:system-ui;background:#0b0b0d;color:#e5e7eb;margin:0}header{padding:24px;background:linear-gradient(90deg,rgba(234,179,8,.15),transparent);border-bottom:1px solid #2a2a30}h1{margin:0;color:#eab308}main{padding:24px;max-width:960px;margin:0 auto}section.card{background:rgba(24,24,27,.6);border:1px solid #2a2a30;border-radius:12px;padding:20px;margin-bottom:12px}</style></head><body><header><h1>صفحة تجريبية</h1></header><main><section class="card"><h2>وصف الطلب</h2><p>${text.replace(/</g,'&lt;')}</p></section><section class="card"><h2>محتوى</h2><p>تم إنشاء هذه الصفحة كأرتيفاكت يمكن فتحه من واجهة المستخدم.</p></section></main></body></html>`;
@@ -257,6 +263,14 @@ router.post('/start', async (req: Request, res: Response) => {
             store.addExec(runId, 'http_fetch', { url: fbUrl }, fbRes.output, fbRes.ok, fbRes.logs);
           } else {
             await ToolExecution.create({ runId, name: 'http_fetch', input: { url: fbUrl }, output: fbRes.output, ok: fbRes.ok, logs: fbRes.logs });
+          }
+        }
+        if (u.hostname.includes('wttr.in')) {
+          const city = String(plan.input?.city || 'Istanbul');
+          const cc = Array.isArray(result.output?.json?.current_condition) ? result.output.json.current_condition[0] : null;
+          const tempC = cc ? Number(cc.temp_C) : null;
+          if (tempC !== null && !Number.isNaN(tempC)) {
+            ev({ type: 'text', data: `درجة الحرارة في ${city} اليوم: ${tempC.toFixed(0)}°C` });
           }
         }
       } catch {}
