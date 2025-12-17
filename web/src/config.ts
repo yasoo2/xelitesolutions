@@ -1,21 +1,25 @@
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const apiEnv = import.meta.env.VITE_API_URL;
-// If local, prefer localhost:8080. If remote, use the window origin or env.
+
+// IMPORTANT: Set this to your actual Backend URL on Render
+// If your frontend is infinity-x-platform.onrender.com, your backend is likely DIFFERENT (e.g. joe-api.onrender.com)
+// UNLESS you are serving the frontend FROM the backend (monolith).
+// Assuming separate backend for now based on 'api.xelitesolutions.com' errors.
+
+// Fallback logic:
 export const API_URL = isLocal 
   ? 'http://localhost:8080' 
-  : (apiEnv || 'https://infinity-x-platform.onrender.com');
+  : (apiEnv || 'https://api.xelitesolutions.com'); // Defaulting to the custom domain if env not set
 
 // Determine WebSocket URL
 const rawWsUrl = import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl;
 
-// If we are on the specific Render domain, force the correct WS URL
-if (window.location.hostname === 'infinity-x-platform.onrender.com') {
-  wsUrl = 'wss://infinity-x-platform.onrender.com/ws';
-} else if (!wsUrl || isLocal) {
+if (!wsUrl) {
   if (isLocal) {
     wsUrl = 'ws://localhost:8080/ws';
   } else {
+    // Derive from API_URL
     wsUrl = API_URL.replace(/^http/, 'ws') + '/ws';
   }
 }
