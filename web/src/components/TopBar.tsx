@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { Sun, Moon } from 'lucide-react';
 
 export default function TopBar() {
   const { i18n, t } = useTranslation();
@@ -33,8 +34,13 @@ export default function TopBar() {
         <option value="ru">Русский</option>
         <option value="es">Español</option>
       </select>
-      <button className="btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-        {t('toggleTheme')}
+      <button
+        className="btn btn-icon"
+        aria-label={t('toggleTheme')}
+        title={t('toggleTheme')}
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
       </button>
     </div>
   );
