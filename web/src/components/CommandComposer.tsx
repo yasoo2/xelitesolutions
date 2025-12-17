@@ -6,7 +6,75 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   const [events, setEvents] = useState<Array<{ type: string; data: any }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const seenIdsRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
+
+  async function loadHistory(id: string) {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API}/sessions/${id}/messages`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const data = await res.json();
+    if (data.messages) {
+      const history = data.messages.map((m: any) => {
+        const mid = m._id || m.id;
+        seenIdsRef.current.add(mid);
+        if (m.role === 'user') return { type: 'user_input', data: m.content, id: mid };
+        if (m.role === 'assistant') return { type: 'text', data: m.content, id: mid };
+        return { type: 'info', data: m.content, id: mid };
+      });
+      setEvents(history);
+    }
+  }
+
+  function connectWS() {
+    if (!sessionId) return;
+    try {
+      console.log('Connecting to WS:', WS);
+      const ws = new WebSocket(WS);
+      wsRef.current = ws;
+  
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data.toString());
+          setEvents((prev) => [...prev, msg]);
+          if (msg.type === 'approval_required') {
+            setApproval({ id: msg.data.id, runId: msg.data.runId, risk: msg.data.risk, action: msg.data.action });
+          }
+          if (msg.type === 'approval_result') {
+            setApproval(null);
+          }
+        } catch {
+          setEvents((prev) => [...prev, { type: 'text', data: ev.data.toString() }]);
+        }
+      };
+  
+      ws.onopen = () => {
+        setIsConnected(true);
+      };
+  
+      ws.onclose = () => {
+        setIsConnected(false);
+        // Attempt reconnect after 2s
+        if (reconnectTimerRef.current) {
+          window.clearTimeout(reconnectTimerRef.current);
+        }
+        reconnectTimerRef.current = window.setTimeout(() => {
+          if (sessionId) connectWS();
+        }, 2000);
+      };
+  
+      ws.onerror = (err) => {
+        console.error('WS Error:', err);
+        setIsConnected(false);
+        try { ws.close(); } catch {}
+      };
+    } catch (e) {
+      console.error('WS connect failed:', e);
+      setIsConnected(false);
+    }
+  }
 
   useEffect(() => {
     if (!sessionId) {
@@ -14,65 +82,15 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       return;
     }
 
-    // 1. Load history
-    const token = localStorage.getItem('token');
-    fetch(`${API}/sessions/${sessionId}/messages`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.messages) {
-          const history = data.messages.map((m: any) => {
-            if (m.role === 'user') return { type: 'user_input', data: m.content, id: m._id || m.id };
-            if (m.role === 'assistant') return { type: 'text', data: m.content, id: m._id || m.id };
-            return { type: 'info', data: m.content, id: m._id || m.id };
-          });
-          setEvents(history);
-        }
-      })
-      .catch(err => console.error('Failed to load history:', err));
-
-    // 2. Connect to WS
-    console.log('Connecting to WS:', WS);
-    const ws = new WebSocket(WS);
-    wsRef.current = ws;
-    
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data.toString());
-        // Deduplicate based on content/timestamp if ID missing, or just append for now
-        // Ideally backend sends IDs. 
-        setEvents((prev) => [...prev, msg]);
-        
-        if (msg.type === 'approval_required') {
-          setApproval({ id: msg.data.id, runId: msg.data.runId, risk: msg.data.risk, action: msg.data.action });
-        }
-        if (msg.type === 'approval_result') {
-          setApproval(null);
-        }
-      } catch {
-        setEvents((prev) => [...prev, { type: 'text', data: ev.data.toString() }]);
-      }
-    };
-    
-    ws.onopen = () => {
-        setIsConnected(true);
-        // Optional: Send "subscribe" message if backend supports it
-        // ws.send(JSON.stringify({ type: 'subscribe', sessionId }));
-    };
-
-    ws.onclose = () => {
-        setIsConnected(false);
-    };
-
-    ws.onerror = (err) => {
-        console.error('WS Error:', err);
-        setIsConnected(false);
-    };
-    
+    loadHistory(sessionId).catch(err => console.error('Failed to load history:', err));
+    connectWS();
     return () => {
-        ws.close();
+        try { wsRef.current?.close(); } catch {}
         setIsConnected(false);
+        if (reconnectTimerRef.current) {
+          window.clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
     };
   }, [sessionId]);
 
@@ -98,6 +116,10 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       const data = await res.json();
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
+      }
+      // Fallback: reload messages to reflect assistant reply even if WS disconnected
+      if (sessionId || data.sessionId) {
+        await loadHistory(sessionId || data.sessionId);
       }
     } catch (e) {
       console.error(e);
