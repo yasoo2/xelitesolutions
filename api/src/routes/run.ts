@@ -64,6 +64,17 @@ function pickToolFromText(text: string) {
     const query = qMatch ? qMatch[1] : text;
     return { name: 'web_search', input: { query } };
   }
+  if (/(rss|feed)/i.test(t) && urlMatch) {
+    return { name: 'rss_fetch', input: { url: urlMatch[0] } };
+  }
+  if (/(استخرج|تحليل|html|محتوى)/i.test(t) && urlMatch) {
+    return { name: 'html_extract', input: { url: urlMatch[0] } };
+  }
+  if (/(لخص|خلاصة|summarize)/i.test(t)) {
+    const m = text.match(/(?:لخص|خلاصة|summarize)\s*[:：]\s*(.+)/i);
+    const tx = m ? m[1] : text;
+    return { name: 'text_summarize', input: { text: tx } };
+  }
   if (/(طقس|حرار[هة]|درجة|weather|temperature)/i.test(t) && /(اسطنبول|إسطنبول|istanbul)/i.test(t)) {
     const city = 'Istanbul';
     const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
@@ -329,6 +340,96 @@ router.post('/start', async (req: Request, res: Response) => {
           const mds = mdParts.join('\n');
           forcedText = mds;
           ev({ type: 'text', data: mds });
+        }
+      } catch {}
+    }
+    if (result.ok && plan.name === 'html_extract') {
+      try {
+        const o = result.output || {};
+        const title = String(o.title || '').trim();
+        const desc = String(o.metaDescription || '').trim();
+        const heads = Array.isArray(o.headings) ? o.headings.slice(0, 8) : [];
+        const links = Array.isArray(o.links) ? o.links.slice(0, 8) : [];
+        const parts: string[] = [];
+        parts.push(`### تحليل صفحة`);
+        if (title) parts.push(`- العنوان: ${title}`);
+        if (desc) parts.push(`- الوصف: ${desc}`);
+        if (heads.length) {
+          parts.push(`- العناوين:`);
+          for (const h of heads) parts.push(`  - ${h}`);
+        }
+        if (links.length) {
+          parts.push(`- روابط:`);
+          for (const l of links) parts.push(`  - [${String(l.text || '').slice(0, 80)}](${l.url})`);
+        }
+        const md = parts.join('\n');
+        forcedText = md;
+        ev({ type: 'text', data: md });
+      } catch {}
+    }
+    if (result.ok && plan.name === 'rss_fetch') {
+      try {
+        const items = Array.isArray(result.output?.items) ? result.output.items.slice(0, 8) : [];
+        if (items.length) {
+          const parts: string[] = [];
+          parts.push(`### خلاصة RSS`);
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            const t = String(it.title || '').trim();
+            const u = String(it.link || '').trim();
+            const d = String(it.pubDate || '').trim();
+            const num = `${i + 1}.`;
+            const head = u ? `${num} [${t}](${u})` : `${num} ${t}`;
+            parts.push(head);
+            if (d) parts.push(`   - ${d}`);
+            const desc = String(it.description || '').trim();
+            if (desc) parts.push(`   - ${desc.slice(0, 180)}`);
+          }
+          const md = parts.join('\n');
+          forcedText = md;
+          ev({ type: 'text', data: md });
+        }
+      } catch {}
+    }
+    if (result.ok && plan.name === 'json_query') {
+      try {
+        const v = result.output?.value;
+        const md = [
+          `### نتيجة الاستعلام`,
+          '```json',
+          String(JSON.stringify(v, null, 2)),
+          '```',
+        ].join('\n');
+        forcedText = md;
+        ev({ type: 'text', data: md });
+      } catch {}
+    }
+    if (result.ok && plan.name === 'csv_parse') {
+      try {
+        const headers = Array.isArray(result.output?.headers) ? result.output.headers : [];
+        const rows = Array.isArray(result.output?.rows) ? result.output.rows.slice(1, 6) : [];
+        if (headers.length) {
+          const parts: string[] = [];
+          parts.push(`### جدول البيانات`);
+          parts.push(`| ${headers.join(' | ')} |`);
+          parts.push(`| ${headers.map(() => '---').join(' | ')} |`);
+          for (const r of rows) {
+            const cells = (Array.isArray(r) ? r : []).map((v: any) => String(v));
+            parts.push(`| ${cells.join(' | ')} |`);
+          }
+          const md = parts.join('\n');
+          forcedText = md;
+          ev({ type: 'text', data: md });
+        }
+      } catch {}
+    }
+    if (result.ok && plan.name === 'text_summarize') {
+      try {
+        const s = String(result.output?.summary || '').trim();
+        if (s) {
+          const md = [`### خلاصة`, s].join('\n');
+          forcedText = md;
+          ev({ type: 'text', data: md });
         }
       } catch {}
     }

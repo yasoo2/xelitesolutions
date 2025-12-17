@@ -53,6 +53,66 @@ export const tools: ToolDefinition[] = [
     mockSupported: true,
   },
   {
+    name: 'html_extract',
+    version: '1.0.0',
+    tags: ['network', 'html', 'extract'],
+    inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+    outputSchema: { type: 'object', properties: { title: { type: 'string' }, metaDescription: { type: 'string' }, headings: { type: 'array', items: { type: 'string' } }, links: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, url: { type: 'string' } } } }, textSnippet: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: ['url'],
+    mockSupported: false,
+  },
+  {
+    name: 'rss_fetch',
+    version: '1.0.0',
+    tags: ['network', 'rss'],
+    inputSchema: { type: 'object', properties: { url: { type: 'string' }, limit: { type: 'number' } }, required: ['url'] },
+    outputSchema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, link: { type: 'string' }, pubDate: { type: 'string' }, description: { type: 'string' } } } } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 20,
+    auditFields: ['url'],
+    mockSupported: false,
+  },
+  {
+    name: 'json_query',
+    version: '1.0.0',
+    tags: ['data', 'json'],
+    inputSchema: { type: 'object', properties: { json: { type: 'object' }, path: { type: 'string' } }, required: ['json', 'path'] },
+    outputSchema: { type: 'object', properties: { value: { type: ['object', 'string', 'number', 'boolean', 'null'] } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 120,
+    auditFields: ['path'],
+    mockSupported: true,
+  },
+  {
+    name: 'csv_parse',
+    version: '1.0.0',
+    tags: ['data', 'csv'],
+    inputSchema: { type: 'object', properties: { csv: { type: 'string' }, delimiter: { type: 'string' } }, required: ['csv'] },
+    outputSchema: { type: 'object', properties: { headers: { type: 'array', items: { type: 'string' } }, rows: { type: 'array', items: { type: 'array', items: { type: 'string' } } } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 120,
+    auditFields: [],
+    mockSupported: true,
+  },
+  {
+    name: 'text_summarize',
+    version: '1.0.0',
+    tags: ['nlp', 'summarize'],
+    inputSchema: { type: 'object', properties: { text: { type: 'string' }, maxSentences: { type: 'number' } }, required: ['text'] },
+    outputSchema: { type: 'object', properties: { summary: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 120,
+    auditFields: [],
+    mockSupported: true,
+  },
+  {
     name: 'file_write',
     version: '1.0.0',
     tags: ['fs', 'artifact'],
@@ -165,15 +225,120 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'http_fetch') {
       const url = String(input?.url ?? '');
-      const resp = await fetch(url);
+      const method = String(input?.method ?? 'GET').toUpperCase();
+      const headers = (typeof input?.headers === 'object' && input?.headers) ? input.headers : {};
+      let reqBody: any = undefined;
+      if (typeof input?.body === 'string') reqBody = input.body;
+      else if (input?.json && typeof input.json === 'object') {
+        reqBody = JSON.stringify(input.json);
+        if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
+      }
+      const resp = await fetch(url, { method, headers, body: reqBody });
       const contentType = resp.headers.get('content-type') || '';
-      const body = await resp.text();
+      const respText = await resp.text();
       let json: any = null;
       if (contentType.includes('application/json')) {
-        try { json = JSON.parse(body); } catch {}
+        try { json = JSON.parse(respText); } catch {}
       }
       logs.push(`fetch.status=${resp.status}`);
-      return { ok: true, output: { status: resp.status, contentType, bodySnippet: body.slice(0, 1024), json }, logs };
+      const headObj: Record<string,string> = {};
+      resp.headers.forEach((v, k) => { headObj[k] = v; });
+      return { ok: true, output: { status: resp.status, contentType, bodySnippet: respText.slice(0, 2048), json, headers: headObj, url }, logs };
+    }
+    if (name === 'html_extract') {
+      const url = String(input?.url ?? '');
+      const resp = await fetch(url);
+      const html = await resp.text();
+      const tMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      const title = tMatch ? String(tMatch[1]).trim() : '';
+      const mMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i) || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["'][^>]*>/i);
+      const metaDescription = mMatch ? String(mMatch[1]).trim() : '';
+      const headings: string[] = [];
+      const hRegex = /<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi;
+      let hm;
+      while ((hm = hRegex.exec(html))) {
+        const txt = String(hm[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (txt) headings.push(txt);
+      }
+      const links: Array<{ text: string; url: string }> = [];
+      const aRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let am;
+      while ((am = aRegex.exec(html))) {
+        const href = String(am[1]).trim();
+        const txt = String(am[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (href && txt) links.push({ text: txt.slice(0, 160), url: href });
+      }
+      const textSnippet = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800);
+      return { ok: true, output: { title, metaDescription, headings: headings.slice(0, 12), links: links.slice(0, 12), textSnippet }, logs };
+    }
+    if (name === 'rss_fetch') {
+      const url = String(input?.url ?? '');
+      const limit = Math.max(1, Math.min(20, Number(input?.limit ?? 5)));
+      const resp = await fetch(url);
+      const xml = await resp.text();
+      const items: Array<{ title: string; link: string; pubDate: string; description: string }> = [];
+      const itemRegex = /<item[\s\S]*?<\/item>/gi;
+      let im;
+      while ((im = itemRegex.exec(xml))) {
+        const block = String(im[0]);
+        const t = (block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+        const l = (block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+        const p = (block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1] || '').trim();
+        const d = (block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1] || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        items.push({ title: t.slice(0, 200), link: l, pubDate: p, description: d.slice(0, 300) });
+        if (items.length >= limit) break;
+      }
+      return { ok: items.length > 0, output: { items }, logs };
+    }
+    if (name === 'json_query') {
+      const obj = input?.json ?? null;
+      const path = String(input?.path ?? '');
+      const norm = path.replace(/\[(\d+)\]/g, '.$1');
+      const parts = norm.split('.').filter(Boolean);
+      let cur: any = obj;
+      for (const p of parts) {
+        if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
+        else { cur = undefined; break; }
+      }
+      return { ok: typeof cur !== 'undefined', output: { value: cur }, logs };
+    }
+    if (name === 'csv_parse') {
+      const text = String(input?.csv ?? '');
+      const delim = String(input?.delimiter ?? ',');
+      const rows: string[][] = [];
+      let i = 0; 
+      let cell = ''; 
+      let row: string[] = []; 
+      let inQuotes = false;
+      while (i < text.length) {
+        const ch = text[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (text[i+1] === '"') { cell += '"'; i++; }
+            else { inQuotes = false; }
+          } else {
+            cell += ch;
+          }
+        } else {
+          if (ch === '"') { inQuotes = true; }
+          else if (ch === delim) { row.push(cell); cell = ''; }
+          else if (ch === '\n') { row.push(cell); cell = ''; rows.push(row); row = []; }
+          else if (ch === '\r') { }
+          else { cell += ch; }
+        }
+        i++;
+      }
+      row.push(cell);
+      rows.push(row);
+      const headers = rows[0] || [];
+      return { ok: rows.length > 0, output: { headers, rows }, logs };
+    }
+    if (name === 'text_summarize') {
+      const text = String(input?.text ?? '').trim();
+      const maxS = Math.max(1, Math.min(10, Number(input?.maxSentences ?? 3)));
+      const parts = text.split(/(?<=[\.!\?؟])\s+/).map(s => s.trim()).filter(s => s.length > 3);
+      const summary = parts.slice(0, maxS).join(' ');
+      return { ok: !!summary, output: { summary }, logs };
     }
     if (name === 'file_write') {
       const filename = path.basename(String(input?.filename ?? 'artifact.txt'));
