@@ -133,7 +133,7 @@ function detectRisk(text: string) {
   return null;
 }
 
-router.post('/start', authenticate, async (req: Request, res: Response) => {
+router.post('/start', authenticate as any, async (req: Request, res: Response) => {
   let { text, sessionId, fileIds } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const isAuthed = Boolean((req as any).auth);

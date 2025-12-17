@@ -29,7 +29,7 @@ const upload = multer({
 });
 
 // Upload endpoint
-router.post('/upload', authenticate as RequestHandler, upload.single('file'), async (req: Request, res: Response) => {
+router.post('/upload', authenticate as any, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -68,7 +68,7 @@ router.post('/upload', authenticate as RequestHandler, upload.single('file'), as
 });
 
 // Get file content/metadata
-router.get('/:id', authenticate, async (req: Request, res: Response) => {
+router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
     const file = await FileModel.findById(req.params.id);
     if (!file) return res.status(404).json({ error: 'File not found' });
@@ -79,7 +79,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
 });
 
 // Serve raw file
-router.get('/:id/raw', authenticate, async (req: Request, res: Response) => {
+router.get('/:id/raw', authenticate as any, async (req: Request, res: Response) => {
   try {
     const file = await FileModel.findById(req.params.id);
     if (!file) return res.status(404).json({ error: 'File not found' });

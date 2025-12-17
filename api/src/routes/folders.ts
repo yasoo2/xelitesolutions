@@ -6,7 +6,7 @@ import { authenticate } from '../middleware/auth';
 const router = Router();
 
 // List folders
-router.get('/', authenticate, async (req: Request, res: Response) => {
+router.get('/', authenticate as any, async (req: Request, res: Response) => {
   try {
     const folders = await Folder.find().sort({ createdAt: 1 });
     res.json(folders);
@@ -16,7 +16,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 });
 
 // Create folder
-router.post('/', authenticate, async (req: Request, res: Response) => {
+router.post('/', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
@@ -29,7 +29,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 });
 
 // Rename folder
-router.patch('/:id', authenticate, async (req: Request, res: Response) => {
+router.patch('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
     const folder = await Folder.findByIdAndUpdate(
@@ -44,7 +44,7 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
 });
 
 // Delete folder
-router.delete('/:id', authenticate, async (req: Request, res: Response) => {
+router.delete('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
     // Unset folderId from sessions in this folder
     await Session.updateMany({ folderId: req.params.id }, { $unset: { folderId: "" } });

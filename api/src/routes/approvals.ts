@@ -10,7 +10,7 @@ import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
-router.post('/:id/decision', authenticate, async (req, res) => {
+router.post('/:id/decision', authenticate as any, async (req, res) => {
   const id = String(req.params.id);
   const { decision } = req.body || {};
   if (!['approved', 'denied'].includes(String(decision))) return res.status(400).json({ error: 'Invalid decision' });
