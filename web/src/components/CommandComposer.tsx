@@ -159,6 +159,48 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           }
         }
       }
+      if (!isConnected && data?.runId) {
+        const runId = String(data.runId);
+        const deadline = Date.now() + 15000;
+        async function poll() {
+          if (Date.now() > deadline) return;
+          try {
+            const res2 = await fetch(`${API}/run/${runId}`);
+            if (res2.ok) {
+              const d = await res2.json();
+              const execs = Array.isArray(d.execs) ? d.execs : [];
+              const arts = Array.isArray(d.artifacts) ? d.artifacts : [];
+              for (const ex of execs) {
+                const key = `${ex.name}-${ex.createdAt || ''}-${ex.updatedAt || ''}`;
+                if (!seenIdsRef.current.has(key)) {
+                  seenIdsRef.current.add(key);
+                  const duration = ex.updatedAt ? (new Date(ex.updatedAt).getTime() - new Date(ex.createdAt).getTime()) : undefined;
+                  setEvents(prev => [...prev, {
+                    type: 'step_done',
+                    duration,
+                    data: {
+                      name: `execute:${ex.name}`,
+                      plan: { input: ex.input },
+                      result: { output: ex.output, logs: ex.logs, ok: ex.ok }
+                    }
+                  }]);
+                }
+              }
+              for (const a of arts) {
+                const akey = `art-${a.name}-${a.href}`;
+                if (!seenIdsRef.current.has(akey)) {
+                  seenIdsRef.current.add(akey);
+                  setEvents(prev => [...prev, { type: 'artifact_created', data: { name: a.name, href: a.href } }]);
+                }
+              }
+              const status = d.run?.status;
+              if (status === 'done' || status === 'failed') return;
+            }
+          } catch {}
+          setTimeout(poll, 1000);
+        }
+        poll();
+      }
     } catch (e) {
       console.error(e);
       setEvents(prev => [...prev, { type: 'error', data: 'فشل إرسال الأمر' }]);
