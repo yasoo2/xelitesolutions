@@ -36,8 +36,9 @@ export default function Joe() {
         return;
       }
       const data = await res.json();
-      setSessions(data.sessions || []);
-      if (!selected && data.sessions?.[0]) setSelected(data.sessions[0].id);
+      const mapped = (data.sessions || []).map((s: any) => ({ ...s, id: s.id || s._id }));
+      setSessions(mapped);
+      if (!selected && mapped[0]) setSelected(mapped[0].id);
     } catch (e) {
       console.error('Failed to load sessions', e);
     }

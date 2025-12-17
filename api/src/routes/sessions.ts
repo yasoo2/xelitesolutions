@@ -287,8 +287,8 @@ router.patch('/:id/move', authenticate as any, async (req: Request, res: Respons
       // For now, just update
     }
     
-    const session = await Session.findOneAndUpdate(
-      { id: req.params.id },
+    const session = await Session.findByIdAndUpdate(
+      req.params.id,
       { folderId: folderId || null }, // null to remove from folder
       { new: true }
     );
