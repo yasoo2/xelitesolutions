@@ -20,12 +20,16 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   Mic,
-  Play
+  Play,
+  Paperclip,
+  X
 } from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void }) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -36,6 +40,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   const stepStartTimes = useRef<Record<string, number>>({});
   const endRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom on new events
   useEffect(() => {
@@ -561,6 +567,21 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             </span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input 
+              type="file" 
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+            />
+            <button 
+              className="mic-button"
+              onClick={() => fileInputRef.current?.click()}
+              title={t('attachFile') || "Attach file"}
+              disabled={isUploading}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: isUploading ? 0.5 : 1 }}
+            >
+              {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
+            </button>
             <button 
               className={`mic-button ${isListening ? 'listening' : ''}`}
               onClick={toggleVoice}

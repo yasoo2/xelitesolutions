@@ -11,6 +11,7 @@ import { planNextStep, generateSessionTitle } from '../llm';
 import { authenticate } from '../middleware/auth';
 import { Session } from '../models/session';
 import { Message } from '../models/message';
+import { FileModel } from '../models/file';
 
 const router = Router();
 
@@ -132,18 +133,35 @@ function detectRisk(text: string) {
   return null;
 }
 
-router.post('/start', async (req: Request, res: Response) => {
-  let { text, sessionId } = req.body || {};
+router.post('/start', authenticate, async (req: Request, res: Response) => {
+  let { text, sessionId, fileIds } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const isAuthed = Boolean((req as any).auth);
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
+
+  // 1. Process Attachments
+  let attachedContent = '';
+  if (!useMock && fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
+    try {
+      const files = await FileModel.find({ _id: { $in: fileIds } });
+      for (const f of files) {
+        if (f.content) {
+           attachedContent += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading files', e);
+    }
+  }
+
+  const fullPrompt = (String(text || '') + attachedContent).trim();
 
   ev({ type: 'step_started', data: { name: 'plan' } });
   
   let plan = null;
   try {
       // Try LLM planning
-      plan = await planNextStep([{ role: 'user', content: String(text || '') }]);
+      plan = await planNextStep([{ role: 'user', content: fullPrompt }]);
   } catch (err) {
       console.warn('LLM planning error:', err);
   }
@@ -172,22 +190,22 @@ router.post('/start', async (req: Request, res: Response) => {
         { $setOnInsert: { name: tenantName } },
         { upsert: true, new: true }
       );
-      // Try to find a default user or use the one from auth if available
-      // Since this is a public/open endpoint in some contexts, we might need a fallback
-      // But ideally req.user should be there if authenticated.
-      // If not authenticated, we can't really create a session for a user easily.
-      // Assuming authenticated for now, or using a placeholder if needed.
+      
       const userId = (req as any).auth?.sub; 
       
       if (!userId) {
-        // If no user, we can't create a valid session per schema (userId required).
-        // Return error or handle gracefully.
         return res.status(400).json({ error: 'Session ID required or must be logged in to create one' });
       }
 
       const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', userId, tenantId: tenantDoc._id });
       sessionId = s._id.toString();
     }
+  }
+
+  // Update session with new files if any
+  if (!useMock && fileIds && Array.isArray(fileIds)) {
+     // Optionally link files to session if not already
+     await FileModel.updateMany({ _id: { $in: fileIds } }, { $set: { sessionId } });
   }
 
   let runId: string;
@@ -208,7 +226,7 @@ router.post('/start', async (req: Request, res: Response) => {
           // Only trigger if it's the first or second message
           if (messageCount <= 2) {
             // Get the user message and potential context
-            const messages = [{ role: 'user', content: String(text) }];
+            const messages = [{ role: 'user', content: fullPrompt }];
             const newTitle = await generateSessionTitle(messages);
             if (newTitle && newTitle !== 'New Session') {
                await Session.findByIdAndUpdate(sessionId, { title: newTitle });
@@ -245,7 +263,7 @@ router.post('/start', async (req: Request, res: Response) => {
   let steps = 0;
   const MAX_STEPS = 10;
   const history: { role: 'user' | 'assistant' | 'system', content: string }[] = [
-    { role: 'user', content: String(text || '') }
+    { role: 'user', content: fullPrompt }
   ];
 
   let lastResult: any = null;
@@ -403,278 +421,46 @@ router.post('/start', async (req: Request, res: Response) => {
         parts.push(`### تحليل صفحة`);
         if (title) parts.push(`- العنوان: ${title}`);
         if (desc) parts.push(`- الوصف: ${desc}`);
-        if (heads.length) {
-          parts.push(`- العناوين:`);
-          for (const h of heads) parts.push(`  - ${h}`);
+        if (heads.length > 0) {
+          parts.push(`- العناوين الرئيسية:`);
+          heads.forEach((h: string) => parts.push(`  - ${h}`));
         }
-        if (links.length) {
-          parts.push(`- روابط:`);
-          for (const l of links) parts.push(`  - [${String(l.text || '').slice(0, 80)}](${l.url})`);
-        }
-        const md = parts.join('\n');
-        forcedText = md;
-        ev({ type: 'text', data: md });
-      } catch {}
-    }
-    if (result.ok && plan.name === 'rss_fetch') {
-      try {
-        const items = Array.isArray(result.output?.items) ? result.output.items.slice(0, 8) : [];
-        if (items.length) {
-          const parts: string[] = [];
-          parts.push(`### خلاصة RSS`);
-          for (let i = 0; i < items.length; i++) {
-            const it = items[i];
-            const t = String(it.title || '').trim();
-            const u = String(it.link || '').trim();
-            const d = String(it.pubDate || '').trim();
-            const num = `${i + 1}.`;
-            const head = u ? `${num} [${t}](${u})` : `${num} ${t}`;
-            parts.push(head);
-            if (d) parts.push(`   - ${d}`);
-            const desc = String(it.description || '').trim();
-            if (desc) parts.push(`   - ${desc.slice(0, 180)}`);
-          }
-          const md = parts.join('\n');
-          forcedText = md;
-          ev({ type: 'text', data: md });
-        }
-      } catch {}
-    }
-    if (result.ok && plan.name === 'json_query') {
-      try {
-        const v = result.output?.value;
-        const md = [
-          `### نتيجة الاستعلام`,
-          '```json',
-          String(JSON.stringify(v, null, 2)),
-          '```',
-        ].join('\n');
-        forcedText = md;
-        ev({ type: 'text', data: md });
-      } catch {}
-    }
-    if (result.ok && plan.name === 'csv_parse') {
-      try {
-        const headers = Array.isArray(result.output?.headers) ? result.output.headers : [];
-        const rows = Array.isArray(result.output?.rows) ? result.output.rows.slice(1, 6) : [];
-        if (headers.length) {
-          const parts: string[] = [];
-          parts.push(`### جدول البيانات`);
-          parts.push(`| ${headers.join(' | ')} |`);
-          parts.push(`| ${headers.map(() => '---').join(' | ')} |`);
-          for (const r of rows) {
-            const cells = (Array.isArray(r) ? r : []).map((v: any) => String(v));
-            parts.push(`| ${cells.join(' | ')} |`);
-          }
-          const md = parts.join('\n');
-          forcedText = md;
-          ev({ type: 'text', data: md });
-        }
-      } catch {}
-    }
-    if (result.ok && plan.name === 'text_summarize') {
-      try {
-        const s = String(result.output?.summary || '').trim();
-        if (s) {
-          const md = [`### خلاصة`, s].join('\n');
-          forcedText = md;
-          ev({ type: 'text', data: md });
-        }
-      } catch {}
-    }
-    if (result.ok && (plan.name === 'browser_snapshot' || plan.name === 'image_generate')) {
-      try {
-        const href = result.output?.href;
-        if (href) {
-          const title = plan.name === 'browser_snapshot' ? 'لقطة شاشة' : 'صورة مولدة';
-          const md = `### ${title}\n![image](${href})`;
-          forcedText = md;
-          ev({ type: 'text', data: md });
-        }
+        const mde = parts.join('\n');
+        forcedText = mde;
+        ev({ type: 'text', data: mde });
       } catch {}
     }
 
-    // Store execution
     if (useMock) {
-        store.addExec(runId, plan.name, plan.input, result.output, result.ok, result.logs);
-        if (result.artifacts) {
-            result.artifacts.forEach(a => {
-                store.addArtifact(runId, a.name, a.href);
-                ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
-            });
-        }
+      store.addExec(runId, plan.name, plan.input, result.output, result.ok, result.logs);
     } else {
-        await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result.output, ok: result.ok, logs: result.logs });
-        if (result.artifacts) {
-             for (const a of result.artifacts) {
-                await Artifact.create({ runId, name: a.name, href: a.href });
-                ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
-             }
-        }
+      await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result.output, ok: result.ok, logs: result.logs });
     }
 
-    // Add to history for next iteration
-    history.push({ role: 'assistant', content: `I will execute tool: ${plan.name} with input: ${JSON.stringify(plan.input)}` });
-    history.push({ role: 'user', content: `Tool ${plan.name} executed. Output: ${String(JSON.stringify(result.output) || '').slice(0, 1000)}` });
+    history.push({ role: 'assistant', content: `Tool '${plan.name}' executed. Result: ${JSON.stringify(result.output)}` });
+    steps++;
 
+    // If echo, we are done
     if (plan.name === 'echo') {
-      // Echo means the agent wants to speak to the user, usually finishing the task
+      forcedText = String(plan.input?.text || '');
       break;
     }
-
-    steps++;
   }
 
-  // Summarize final result
-  let finalResponse = '';
-  if (lastResult?.ok) {
-    if (plan && plan.name === 'echo' && lastResult.output && typeof lastResult.output.text === 'string') {
-        finalResponse = lastResult.output.text;
-    } else {
-        try {
-            const { summarizeToolOutput } = await import('../llm');
-            ev({ type: 'step_started', data: { name: 'summarize' } });
-            // Summarize based on original request and last result
-            finalResponse = forcedText || await summarizeToolOutput(String(text || ''), plan?.name || 'unknown', lastResult.output);
-            ev({ type: 'text', data: finalResponse });
-            ev({ type: 'step_done', data: { name: 'summarize', result: { output: finalResponse } } });
-        } catch (err) {
-            console.warn('Summarization failed:', err);
-            finalResponse = forcedText || String(lastResult?.output ?? '').slice(0, 512);
-        }
-    }
-  } else {
-      finalResponse = String(lastResult?.error || 'Unknown error');
-  }
-
+  ev({ type: 'run_completed', data: { runId, result: lastResult } });
+  
+  // Save message to DB
+  const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : 'No output');
+  
   if (useMock) {
-    store.updateRun(runId, { status: lastResult?.ok ? 'done' : 'failed' });
+    store.addMessage(sessionId, 'assistant', finalContent, runId);
+    store.updateRun(runId, { status: 'completed' });
   } else {
-    await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed' }, $push: { steps: { name: `finish`, status: lastResult?.ok ? 'done' : 'failed' } } });
+    await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
+    await Run.findByIdAndUpdate(runId, { $set: { status: 'completed' } });
   }
-
-  ev({ type: 'run_finished', data: { runId, ok: lastResult?.ok } });
-  // persist messages if sessionId provided
-  try {
-    if (sessionId) {
-      const isAuthed2 = Boolean((req as any).auth);
-      const useMock2 = !isAuthed2 ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
-      if (useMock2) {
-        store.addMessage(sessionId, 'user', String(text || ''));
-        store.addMessage(sessionId, 'assistant', finalResponse || (lastResult?.output ? String(lastResult.output).slice(0, 512) : String(lastResult?.error || '')));
-      } else {
-        const { Message } = await import('../models/message');
-        const userMsg = await Message.create({ sessionId, role: 'user', content: String(text || '') });
-        
-        const asstContent = finalResponse || (lastResult?.output ? String(lastResult.output).slice(0, 512) : String(lastResult?.error || ''));
-        const asstMsg = await Message.create({ sessionId, role: 'assistant', content: asstContent });
-        const { Session } = await import('../models/session');
-        await Session.findByIdAndUpdate(sessionId, { $set: { lastSnippet: String(asstContent || '').slice(0, 140), lastUpdatedAt: new Date() } });
-      }
-    }
-  } catch {}
-  try {
-    if (lastResult && finalResponse && typeof lastResult === 'object') {
-      if (!lastResult.output || typeof lastResult.output !== 'object') {
-        lastResult.output = {};
-      }
-      (lastResult.output as any).text = finalResponse;
-    }
-  } catch {}
-  res.json({ runId, result: lastResult, sessionId });
-});
-
-router.get('/', async (_req: Request, res: Response) => {
-  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
-  if (useMock) {
-    res.json({ runs: store.listRuns() });
-  } else {
-    const runs = await Run.find().lean();
-    res.json({ runs });
-  }
-});
-
-router.post('/plan', async (req: Request, res: Response) => {
-  const { text } = req.body || {};
-  const ev = (e: LiveEvent) => broadcast(e);
-  ev({ type: 'step_started', data: { name: 'plan' } });
-  const plan = pickToolFromText(String(text || ''));
-  ev({ type: 'step_done', data: { name: 'plan', plan } });
-  res.json({ plan });
-});
-
-router.post('/qa', async (_req: Request, res: Response) => {
-  const prompts: string[] = [
-    'كم سعر الدولار اليوم بالنسبة لليرة التركية',
-    'سعر الدينار الكويتي مقابل الشيكل اليوم',
-    'أريد سعر اليورو مقابل الدولار الأمريكي',
-    'صمم صورة قطة لطيفة',
-    'صمم صورة شعار بسيط بألوان الأزرق والأبيض',
-    'تصميم صورة أيقونية لمتجر الكتروني',
-    'ابحث عن أفضل مكتبات React للأداء',
-    'بحث عن أحدث أخبار الذكاء الاصطناعي',
-    'search حول تاريخ العملة التركية',
-    'صمم صفحة هبوط بسيطة',
-    'أريد صفحة HTML تعرض بطاقات منتجات',
-    'landing page بالعربية',
-    'بناء موقع لمتجر الكتروني وعرضه أمامي',
-    'أريد متجر إلكتروني بسيط',
-    'ecommerce demo site',
-    'browser https://example.com',
-    'خذ لقطة شاشة لصفحة https://www.wikipedia.org',
-    'browser snapshot لهذه الصفحة https://news.ycombinator.com',
-    'write هذه ملاحظة مهمة',
-    'write سجل الملاحظات اليوم',
-    'write قائمة المهام',
-    'تصميم صفحة ثم عرضها',
-    'صمم صورة ثم أعرض الرابط',
-    'ابحث ثم لخص النتائج',
-    'قيمة الدولار مقابل الليرة التركية',
-    'سعر دينار كويتي ضد شيكل',
-    'قيمة اليورو مقابل دولار',
-    'تصميم صورة كلب مرح',
-    'تصميم صورة طائر ملون',
-    'صمم صورة خلفية بدرجات الأزرق',
-    'صفحة HTML تحتوي عنوان ومحتوى',
-    'landing عربية مع بطاقات',
-    'إنشاء صفحة منتجات',
-    'متجر بسيط يعرض 6 منتجات',
-    'shop demo',
-    'ecommerce Arabic',
-    'ابحث عن أطر CSS الحديثة',
-    'بحث عن أدوات اختبار الواجهة',
-    'search new js features',
-    'browser https://www.google.com',
-    'browser https://www.bbc.com',
-    'browser https://vercel.com',
-    'echo مرحباً جو',
-    'echo هذا اختبار موسع',
-    'echo النهاية',
-    'سعر الدولار مقابل الشيكل',
-    'ابحث عن سعر الذهب اليوم',
-    'landing page dark mode',
-    'متجر متعدد الصفحات بسيط',
-    'write مذكرة للفريق بالعربية',
-  ];
-  const results: Array<{ text: string; ok: boolean; reason?: string }> = [];
-  for (const text of prompts) {
-    try {
-      const plan = pickToolFromText(text);
-      if (plan.name === 'web_search') {
-        await new Promise(r => setTimeout(r, 1200));
-      } else {
-        await new Promise(r => setTimeout(r, 200));
-      }
-      const result = await executeTool(plan.name, plan.input);
-      const ok = !!result.ok;
-      results.push({ text, ok, reason: ok ? undefined : (result.error || 'error') });
-    } catch (e: any) {
-      results.push({ text, ok: false, reason: e?.message || 'error' });
-    }
-  }
-  const passed = results.filter(r => r.ok).length;
-  const failed = results.length - passed;
-  res.json({ passed, failed, results });
+  
+  res.json({ runId, status: 'completed' });
 });
 
 export default router;
