@@ -16,10 +16,47 @@ function pickToolFromText(text: string) {
   const urlMatch = text.match(/https?:\/\/\S+/);
   if (/(صورة|صوره|تصميم|صمم)/.test(t)) {
     if (/(قطة|قطه|قط|cat)/.test(t)) return { name: 'browser_snapshot', input: { url: 'https://cataas.com/cat' } };
-    return { name: 'image_generate', input: { prompt: text } };
+    // Fallback to snapshot of a generated placeholder image (does not require API keys)
+    const label = encodeURIComponent(text.slice(0, 24));
+    const url = `https://dummyimage.com/1024x1024/111/eeee.png&text=${label}`;
+    return { name: 'browser_snapshot', input: { url } };
   }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(t)) {
     return { name: 'http_fetch', input: { url: 'https://api.exchangerate.host/latest?base=USD&symbols=TRY' } };
+  }
+  // Currency pairs (Arabic) e.g., "سعر الدينار الكويتي مقابل الشيكل"
+  const currencyMap: Record<string, string> = {
+    'الدولار': 'USD', 'دولار': 'USD', 'usd': 'USD',
+    'اليورو': 'EUR', 'euro': 'EUR', 'eur': 'EUR',
+    'الليرة التركية': 'TRY', 'الليره التركية': 'TRY', 'try': 'TRY', 'ليرة تركية': 'TRY',
+    'الشيكل': 'ILS', 'شيكل': 'ILS', 'ils': 'ILS',
+    'الدينار الكويتي': 'KWD', 'دينار كويتي': 'KWD', 'kwd': 'KWD'
+  };
+  const curMatch = text.match(/(?:سعر|قيمة)\s+(.+?)\s+(?:مقابل|ضد)\s+(.+?)(?:\s|$)/i);
+  if (curMatch) {
+    const baseName = curMatch[1].trim().toLowerCase();
+    const symName = curMatch[2].trim().toLowerCase();
+    const base = currencyMap[baseName] || baseName.toUpperCase();
+    const sym = currencyMap[symName] || symName.toUpperCase();
+    if (base && sym && base.length <= 4 && sym.length <= 4) {
+      return { name: 'http_fetch', input: { url: `https://api.exchangerate.host/latest?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(sym)}` } };
+    }
+  }
+  // Web search detection
+  if (/(ابحث|بحث|search)/.test(t)) {
+    const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
+    const query = qMatch ? qMatch[1] : text;
+    return { name: 'web_search', input: { query } };
+  }
+  // Page design / HTML generation
+  if (/(صفحة|landing|html)/.test(t)) {
+    const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/><title>صفحة مصممة</title><style>body{font-family:system-ui;background:#0b0b0d;color:#e5e7eb;margin:0}header{padding:24px;background:linear-gradient(90deg,rgba(234,179,8,.15),transparent);border-bottom:1px solid #2a2a30}h1{margin:0;color:#eab308}main{padding:24px;max-width:960px;margin:0 auto}section.card{background:rgba(24,24,27,.6);border:1px solid #2a2a30;border-radius:12px;padding:20px;margin-bottom:12px}</style></head><body><header><h1>صفحة تجريبية</h1></header><main><section class="card"><h2>وصف الطلب</h2><p>${text.replace(/</g,'&lt;')}</p></section><section class="card"><h2>محتوى</h2><p>تم إنشاء هذه الصفحة كأرتيفاكت يمكن فتحه من واجهة المستخدم.</p></section></main></body></html>`;
+    return { name: 'file_write', input: { filename: 'page.html', content: html } };
+  }
+  // E-commerce site scaffold
+  if (/(متجر|ecommerce|shop)/.test(t)) {
+    const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/><title>متجر إلكتروني</title><style>body{font-family:system-ui;background:#0b0b0d;color:#e5e7eb;margin:0}header{padding:24px;background:linear-gradient(90deg,rgba(234,179,8,.15),transparent);border-bottom:1px solid #2a2a30}h1{margin:0;color:#eab308}main{padding:24px;max-width:1024px;margin:0 auto;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.product{background:rgba(24,24,27,.6);border:1px solid #2a2a30;border-radius:12px;padding:16px}.product h3{margin:0 0 8px}.price{color:#60a5fa;font-weight:700}</style></head><body><header><h1>متجر تجريبي</h1></header><main>${Array.from({length:6}).map((_,i)=>`<div class="product"><h3>منتج ${i+1}</h3><p>وصف قصير للمنتج.</p><div class="price">$${(10+i*5).toFixed(2)}</div></div>`).join('')}</main></body></html>`;
+    return { name: 'file_write', input: { filename: 'store.html', content: html } };
   }
   if (t.includes('fetch') && urlMatch) return { name: 'http_fetch', input: { url: urlMatch[0] } };
   if (t.includes('write')) return { name: 'file_write', input: { filename: 'note.txt', content: text } };
@@ -190,7 +227,7 @@ router.post('/start', async (req: Request, res: Response) => {
 
     // Add to history for next iteration
     history.push({ role: 'assistant', content: `I will execute tool: ${plan.name} with input: ${JSON.stringify(plan.input)}` });
-    history.push({ role: 'user', content: `Tool ${plan.name} executed. Output: ${JSON.stringify(result.output).slice(0, 1000)}` });
+    history.push({ role: 'user', content: `Tool ${plan.name} executed. Output: ${String(JSON.stringify(result.output) || '').slice(0, 1000)}` });
 
     if (plan.name === 'echo') {
       // Echo means the agent wants to speak to the user, usually finishing the task
@@ -215,7 +252,7 @@ router.post('/start', async (req: Request, res: Response) => {
             ev({ type: 'step_done', data: { name: 'summarize', result: { output: finalResponse } } });
         } catch (err) {
             console.warn('Summarization failed:', err);
-            finalResponse = JSON.stringify(lastResult.output).slice(0, 512);
+            finalResponse = String(lastResult?.output ?? '').slice(0, 512);
         }
     }
   } else {
@@ -232,19 +269,19 @@ router.post('/start', async (req: Request, res: Response) => {
   // persist messages if sessionId provided
   try {
     if (sessionId) {
-      const useMock2 = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+      const isAuthed2 = Boolean((req as any).auth);
+      const useMock2 = !isAuthed2 ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
       if (useMock2) {
         store.addMessage(sessionId, 'user', String(text || ''));
-        store.addMessage(sessionId, 'assistant', finalResponse || (lastResult.output ? JSON.stringify(lastResult.output).slice(0, 512) : String(lastResult.error || '')));
+        store.addMessage(sessionId, 'assistant', finalResponse || (lastResult?.output ? String(lastResult.output).slice(0, 512) : String(lastResult?.error || '')));
       } else {
         const { Message } = await import('../models/message');
         const userMsg = await Message.create({ sessionId, role: 'user', content: String(text || '') });
         
-        const asstContent = finalResponse || (lastResult?.output ? JSON.stringify(lastResult.output).slice(0, 512) : String(lastResult?.error || ''));
-
+        const asstContent = finalResponse || (lastResult?.output ? String(lastResult.output).slice(0, 512) : String(lastResult?.error || ''));
         const asstMsg = await Message.create({ sessionId, role: 'assistant', content: asstContent });
         const { Session } = await import('../models/session');
-        await Session.findByIdAndUpdate(sessionId, { $set: { lastSnippet: asstContent.slice(0, 140), lastUpdatedAt: new Date() } });
+        await Session.findByIdAndUpdate(sessionId, { $set: { lastSnippet: String(asstContent || '').slice(0, 140), lastUpdatedAt: new Date() } });
       }
     }
   } catch {}
