@@ -298,17 +298,49 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
 
           if (e.type === 'step_done') {
             const hasDetails = e.data.plan || e.data.result;
+            const toolName = e.data.plan?.name || e.data.name?.replace('execute:', '') || e.data.name;
+            
+            // Map tool names to Arabic
+            const toolLabels: Record<string, string> = {
+              'file_write': 'إنشاء ملف',
+              'file_read': 'قراءة ملف',
+              'ls': 'عرض الملفات',
+              'web_search': 'بحث في الويب',
+              'browser_snapshot': 'أخذ لقطة شاشة',
+              'shell_execute': 'تنفيذ أمر النظام',
+              'http_fetch': 'جلب رابط',
+              'file_edit': 'تعديل ملف',
+              'plan': 'تحليل وتخطيط',
+              'summarize': 'تلخيص النتائج'
+            };
+            
+            const label = toolLabels[toolName] || toolName;
+
             return (
               <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
                 <div className={`steps-container`}>
+                  {e.data.plan && (
+                    <div className="plan-card" style={{ marginBottom: 8, borderLeft: '3px solid #eab308', paddingLeft: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 'bold', color: '#eab308', marginBottom: 4 }}>
+                         📋 الخطة المقترحة
+                      </div>
+                      <div style={{ fontSize: 14 }}>
+                        سأقوم بـ <strong>{label}</strong>
+                        {e.data.plan.input?.filename && <span className="mono-badge"> {e.data.plan.input.filename}</span>}
+                        {e.data.plan.input?.url && <span className="mono-badge"> {e.data.plan.input.url}</span>}
+                        {e.data.plan.input?.query && <span className="mono-badge"> "{e.data.plan.input.query}"</span>}
+                      </div>
+                    </div>
+                  )}
+
                   <div 
                     className={`event-step done`} 
                     onClick={() => hasDetails && toggleExpand(i)}
                     style={{ cursor: hasDetails ? 'pointer' : 'default' }}
                   >
                     <span className="step-icon"><CheckCircle2 size={14} color="#22c55e" /></span>
-                    {getToolIcon(e.data.name)}
-                    <strong style={{ marginRight: 8 }}>{e.data.name}</strong>
+                    {getToolIcon(toolName)}
+                    <strong style={{ marginRight: 8 }}>{label}</strong>
                     
                     {e.duration && (
                       <span className="step-duration">
