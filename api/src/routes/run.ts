@@ -467,7 +467,20 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result.output, ok: result.ok, logs: result.logs });
     }
 
-    history.push({ role: 'assistant', content: `Tool '${plan.name}' executed. Result: ${JSON.stringify(result.output)}` });
+    if (!result.ok) {
+        const errorMsg = result.error || (result.logs ? result.logs.join('\n') : 'Unknown error');
+        
+        // Self-Healing Notification
+        ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan.name}'. Analyzing fix...` });
+        
+        history.push({ 
+            role: 'assistant', 
+            content: `Tool '${plan.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.` 
+        });
+    } else {
+        history.push({ role: 'assistant', content: `Tool '${plan.name}' executed. Result: ${JSON.stringify(result.output)}` });
+    }
+    
     steps++;
 
     // If echo, we are done

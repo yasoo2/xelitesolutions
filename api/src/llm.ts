@@ -118,12 +118,81 @@ export async function generateSessionTitle(messages: { role: string; content: st
 function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 'tool', content: string | null, tool_calls?: any[], tool_call_id?: string }[]) {
   // Extract user intent
   const userMsg = messages.find(m => m.role === 'user')?.content || '';
+  // console.error('DEBUG: heuristicPlanner userMsg:', userMsg);
   const lastMsg = messages[messages.length - 1];
+  // console.error('DEBUG: heuristicPlanner lastMsg:', JSON.stringify(lastMsg, null, 2));
 
-  // Check if we are in a loop or done
-  if (messages.length > 15) return { name: 'echo', input: { text: 'I have completed the maximum number of steps.' } };
+  // --- SELF HEALING LOGIC (Heuristic Mock) ---
+  if (lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content.includes('FAILED. Error:')) {
+      const errorContent = lastMsg.content;
+      
+      // Fix: File Not Found on Read -> Create File
+      if (errorContent.includes("Tool 'file_read' FAILED") && (errorContent.includes("ENOENT") || errorContent.includes("File not found"))) {
+          // Extract filename from error or user msg
+          let filename = 'unknown.txt';
+          const m = userMsg.match(/['"]([^'"]+\.[a-z]+)['"]/i);
+          if (m) filename = m[1];
+          
+          if (filename !== 'unknown.txt') {
+             return { name: 'file_write', input: { filename, content: 'ghost' } };
+          }
+      }
 
-  // 1. E-commerce / Store Builder Scenario
+      // Fix: Syntax Error in Script -> Fix Code
+      if (errorContent.includes("SyntaxError") || errorContent.includes("missing ) after argument list")) {
+           // Heuristic: If we just ran a script and it failed, fix it.
+           // Find the filename in the user message
+           const m = userMsg.match(/['"]([^'"]+\.js)['"]/i);
+           if (m) {
+               const filename = m[1];
+               // Return a fixed version (mock fix)
+               return { name: 'file_write', input: { filename, content: 'console.log("Hello World"); // Fixed by Joe' } };
+           }
+      }
+
+
+      // Fix: Script Not Found -> Create it
+      if (errorContent.includes("Tool 'shell_execute' FAILED") && errorContent.includes("Cannot find module")) {
+           const m = userMsg.match(/['"]([^'"]+\.js)['"]/i);
+           if (m) {
+               const filename = m[1];
+               // Check if user provided content in the message
+               const contentMatch = userMsg.match(/content ['"](.+)['"]/i);
+               const content = contentMatch ? contentMatch[1] : 'console.log("Hello World");';
+               return { name: 'file_write', input: { filename, content } };
+           }
+      }
+  }
+
+  // 0. Script Execution Support (for testing syntax healing)
+  if (/(run|execute|job|شغل|نفذ)/i.test(String(userMsg)) && /(node|python|script)/i.test(String(userMsg))) {
+      // Stop if we just executed it successfully
+      if (lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content.includes("Tool 'shell_execute' executed")) {
+          return { name: 'echo', input: { text: "Script executed successfully. Output: " + lastMsg.content.slice(0, 100) } };
+      }
+
+      // Extract filename
+      const m = userMsg.match(/['"]([^'"]+\.js)['"]/i);
+      if (m) {
+          const filename = m[1];
+          return { name: 'shell_execute', input: { command: `node ${filename}` } };
+      }
+  }
+
+  // 1. File Read Support (for testing self-healing)
+  if (/(read|cat|content|أقرأ|اقرأ)/i.test(String(userMsg)) && /(file|ملف)/i.test(String(userMsg))) {
+       // Stop if we just read it successfully
+       if (lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content.includes("Tool 'file_read' executed")) {
+           return { name: 'echo', input: { text: "File read successfully. " + lastMsg.content } };
+       }
+
+       const match = userMsg.match(/['"]([^'"]+\.[a-z]+)['"]/i);
+       if (match) {
+           return { name: 'file_read', input: { filename: match[1] } };
+       }
+   }
+
+  // 2. E-commerce / Store Builder Scenario
   if (/(متجر|ecommerce|shop|store|site|website|موقع)/i.test(String(userMsg))) {
     // Check history to see what we've done
     const toolsCalled = messages

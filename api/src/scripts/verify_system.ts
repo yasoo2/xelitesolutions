@@ -144,6 +144,19 @@ async function main() {
         console.error('   ❌ Analytics Failed: No metrics found.');
     }
 
+    // 5. Test Project Graph
+    console.log('\n5️⃣  Testing Project Graph...');
+    const graphRes = await fetch(`${API_URL}/project/graph?path=${process.cwd()}`, {
+        headers: authHeaders
+    });
+    const graphData = await graphRes.json();
+    
+    if (graphData.nodes && graphData.nodes.length > 0) {
+        console.log(`   ✅ Graph Verified: Found ${graphData.nodes.length} nodes and ${graphData.links.length} links.`);
+    } else {
+        console.error('   ❌ Graph Failed: No nodes returned.');
+    }
+
     console.log('\n✨ SYSTEM VERIFICATION COMPLETED SUCCESSFULLY ✨\n');
 
   } catch (err) {

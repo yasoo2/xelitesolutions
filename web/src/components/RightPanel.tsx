@@ -3,9 +3,9 @@ import { API_URL as API, WS_URL as WS } from '../config';
 import ArtifactPreview from './ArtifactPreview';
 import CodeEditor from './CodeEditor';
 
-import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare } from 'lucide-react';
+import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, GitBranch, Share2 } from 'lucide-react';
 
-export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; }) {
+export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
   const [browser, setBrowser] = useState<{ href: string; title?: string } | null>(null);
   const [summary, setSummary] = useState<string>('');
@@ -14,6 +14,8 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   const [previewMode, setPreviewMode] = useState<'PREVIEW' | 'CODE'>('PREVIEW');
   const [localContent, setLocalContent] = useState<string>('');
   const [analytics, setAnalytics] = useState<any>(null);
+  const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
+  const [isGraphLoading, setIsGraphLoading] = useState(false);
 
   // Initialize state from props
   useEffect(() => {
@@ -98,6 +100,22 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
       .then(res => res.json())
       .then(data => setAnalytics(data))
       .catch(err => console.error(err));
+    }
+    
+    if (active === 'GRAPH') {
+      setIsGraphLoading(true);
+      fetch(`${API}/project/graph`, {
+        headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        setGraphData(data);
+        setIsGraphLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setIsGraphLoading(false);
+      });
     }
   }, [active, sessionId]);
 
@@ -186,35 +204,70 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
     );
   }
 
-  if (active === 'TERMINAL') {
+  if (active === 'GRAPH') {
+    if (isGraphLoading) return <div className="panel-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><Loader2 className="spin" /></div>;
+    
+    // Simple SVG Graph Visualization
+    // We calculate a simple circular layout if no library, or use a simple force simulation effect if we had d3.
+    // For now, let's just do a random scatter or circular layout for simplicity in this turn.
+    // Ideally we'd use a library, but I'll write a tiny force simulator.
+    
+    const width = 600;
+    const height = 600;
+    
+    // Pre-calculate positions (circular for now to be safe and fast)
+    const nodes = graphData.nodes || [];
+    const links = graphData.links || [];
+    
+    // Simple layout: arrange in concentric circles based on folder depth?
+    // Or just random for now.
+    
     return (
-      <div className="panel-content" style={{ padding: 0, background: '#1e1e1e', color: '#d4d4d4', fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
-         <div style={{ padding: '8px 16px', background: '#252526', fontSize: 12, borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between' }}>
-            <span>TERMINAL</span>
-            <span>zsh</span>
+      <div className="panel-content" style={{ overflow: 'hidden', background: '#0d1117', color: '#c9d1d9', display: 'flex', flexDirection: 'column', height: '100%' }}>
+         <div style={{ padding: 16, borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}><GitBranch size={16}/> Project Graph</h3>
+            <span style={{ fontSize: 12, color: '#8b949e' }}>{nodes.length} files, {links.length} links</span>
          </div>
-         <div style={{ flex: 1, padding: 16, overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.4 }}>
-            {termOutput}
-            {currentCmd && (
-               <div>
-                  <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span> {currentCmd}
-                  <span className="cursor-blink">█</span>
-               </div>
-            )}
-            {!currentCmd && (
-               <div>
-                  <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span>
-                  <span className="cursor-blink" style={{ opacity: 0.5 }}>_</span>
-               </div>
+         <div style={{ flex: 1, position: 'relative', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {nodes.length === 0 ? (
+                <div style={{ color: '#8b949e' }}>No graph data available</div>
+            ) : (
+                <GraphVisualizer nodes={nodes} links={links} width={width} height={height} />
             )}
          </div>
-         <style>{`
-            .cursor-blink { animation: blink 1s step-end infinite; }
-            @keyframes blink { 50% { opacity: 0; } }
-         `}</style>
       </div>
     );
   }
+
+   if (active === 'TERMINAL') {
+     return (
+       <div className="panel-content" style={{ padding: 0, background: '#1e1e1e', color: '#d4d4d4', fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '8px 16px', background: '#252526', fontSize: 12, borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between' }}>
+             <span>TERMINAL</span>
+             <span>zsh</span>
+          </div>
+          <div style={{ flex: 1, padding: 16, overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.4 }}>
+             {termOutput}
+             {currentCmd && (
+                <div>
+                   <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span> {currentCmd}
+                   <span className="cursor-blink">█</span>
+                </div>
+             )}
+             {!currentCmd && (
+                <div>
+                   <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span>
+                   <span className="cursor-blink" style={{ opacity: 0.5 }}>_</span>
+                </div>
+             )}
+          </div>
+          <style>{`
+             .cursor-blink { animation: blink 1s step-end infinite; }
+             @keyframes blink { 50% { opacity: 0; } }
+          `}</style>
+       </div>
+     );
+   }
 
   if (active === 'BROWSER') {
     const url = browser?.href ? (API + browser.href).replace(/([^:]\/)\/+/g, '$1') : null;
@@ -472,4 +525,59 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   }
 
   return null;
+}
+
+function GraphVisualizer({ nodes, links, width, height }: { nodes: any[], links: any[], width: number, height: number }) {
+  // Simple force simulation logic (simplified)
+  // We'll just render them in a circle for now to guarantee they show up without complex physics logic in this turn
+  
+  const radius = Math.min(width, height) / 2 - 50;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  
+  const positionedNodes = nodes.map((node, i) => {
+    const angle = (i / nodes.length) * 2 * Math.PI;
+    return {
+      ...node,
+      x: centerX + radius * Math.cos(angle),
+      y: centerY + radius * Math.sin(angle)
+    };
+  });
+
+  return (
+    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ background: '#0d1117' }}>
+       {/* Links */}
+       {links.map((link, i) => {
+          const source = positionedNodes.find(n => n.id === link.source);
+          const target = positionedNodes.find(n => n.id === link.target);
+          if (!source || !target) return null;
+          return (
+             <line 
+                key={i} 
+                x1={source.x} y1={source.y} 
+                x2={target.x} y2={target.y} 
+                stroke="#30363d" 
+                strokeWidth={1} 
+                opacity={0.5}
+             />
+          );
+       })}
+       
+       {/* Nodes */}
+       {positionedNodes.map((node, i) => (
+          <g key={node.id} transform={`translate(${node.x},${node.y})`}>
+             <circle r={5} fill={node.type === 'directory' ? '#d29922' : '#58a6ff'} />
+             <text 
+                x={8} y={4} 
+                fill="#8b949e" 
+                fontSize={10} 
+                style={{ pointerEvents: 'none' }}
+             >
+                {node.name}
+             </text>
+             <title>{node.id}</title>
+          </g>
+       ))}
+    </svg>
+  );
 }

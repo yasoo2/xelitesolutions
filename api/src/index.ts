@@ -12,6 +12,7 @@ import sessionsRoutes from './routes/sessions';
 import foldersRoutes from './routes/folders';
 import filesRoutes from './routes/files';
 import approvalsRoutes from './routes/approvals';
+import projectRoutes from './routes/project';
 import { authenticate } from './middleware/auth';
 import http from 'http';
 import { attachWebSocket } from './ws';
@@ -50,6 +51,7 @@ async function main() {
   app.use('/folders', foldersRoutes);
   app.use('/files', filesRoutes);
   app.use('/approvals', approvalsRoutes);
+  app.use('/project', projectRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {

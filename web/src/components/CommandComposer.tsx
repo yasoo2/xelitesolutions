@@ -22,7 +22,8 @@ import {
   Mic,
   Play,
   Paperclip,
-  X
+  X,
+  Volume2
 } from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact, onStepsUpdate }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void; onStepsUpdate?: (steps: any[]) => void }) {
@@ -34,6 +35,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
@@ -48,6 +51,42 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
     if (onStepsUpdate) onStepsUpdate(events);
   }, [events, onStepsUpdate]);
+
+  const speak = (text: string) => {
+    if (!isVoiceMode) return;
+    
+    // Cancel current speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    // Detect language (simple check)
+    const isArabic = /[\u0600-\u06FF]/.test(text);
+    utterance.lang = isArabic ? 'ar-SA' : 'en-US';
+    
+    // Find a good voice if possible
+    const voices = window.speechSynthesis.getVoices();
+    if (isArabic) {
+        const arVoice = voices.find(v => v.lang.includes('ar'));
+        if (arVoice) utterance.voice = arVoice;
+    }
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    // Load voices eagerly
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+    };
+    return () => {
+        window.speechSynthesis.cancel();
+    };
+  }, []);
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window) {
@@ -128,6 +167,17 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               msg.duration = Date.now() - start;
               delete stepStartTimes.current[msg.data.name];
             }
+          }
+
+          if (msg.type === 'text') {
+             let content = msg.data;
+             try {
+               if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                  const p = JSON.parse(content);
+                  content = p.text || p.output || content;
+               }
+             } catch {}
+             speak(String(content));
           }
 
           if (['step_started', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'text', 'user_input'].includes(msg.type)) {
@@ -635,10 +685,33 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               className={`mic-button ${isListening ? 'listening' : ''}`}
               onClick={toggleVoice}
               title="تحدث الآن"
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isListening ? '#ef4444' : 'inherit' }}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isListening ? '#ef4444' : 'inherit', position: 'relative' }}
             >
               <Mic size={20} />
+              {isListening && (
+                 <span style={{ position: 'absolute', top: -4, right: -4, width: 8, height: 8, background: '#ef4444', borderRadius: '50%', animation: 'pulse 1s infinite' }} />
+              )}
             </button>
+            <button 
+              className={`voice-mode-btn ${isVoiceMode ? 'active' : ''}`}
+              onClick={() => setIsVoiceMode(!isVoiceMode)}
+              title={isVoiceMode ? 'إيقاف الصوت' : 'تفعيل الصوت'}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isVoiceMode ? '#22c55e' : 'var(--text-muted)' }}
+            >
+              {isSpeaking ? (
+                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <div className="bar" style={{ width: 2, height: 10, background: '#22c55e', animation: 'eq 0.5s infinite' }} />
+                    <div className="bar" style={{ width: 2, height: 14, background: '#22c55e', animation: 'eq 0.5s infinite 0.1s' }} />
+                    <div className="bar" style={{ width: 2, height: 8, background: '#22c55e', animation: 'eq 0.5s infinite 0.2s' }} />
+                 </div>
+              ) : (
+                 <Volume2 size={20} />
+              )}
+            </button>
+            <style>{`
+               @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.5); } 100% { opacity: 1; transform: scale(1); } }
+               @keyframes eq { 0% { height: 4px; } 50% { height: 100%; } 100% { height: 4px; } }
+            `}</style>
             <button className="run-btn" onClick={run} disabled={!text.trim() || !!approval}>
               {t('send')}
             </button>
