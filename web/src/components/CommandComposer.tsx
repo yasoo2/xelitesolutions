@@ -36,6 +36,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
     };
   }, []);
 
+
   function connectWS() {
     try {
       console.log('Connecting to WS:', WS);
@@ -98,20 +99,19 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   }, [sessionId]);
 
   async function loadHistory(id: string) {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${API}/sessions/${id}/messages`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    const data = await res.json();
-    if (data.messages) {
-      const history = data.messages.map((m: any) => {
-        const mid = m._id || m.id;
-        seenIdsRef.current.add(mid);
-        if (m.role === 'user') return { type: 'user_input', data: m.content, id: mid };
-        if (m.role === 'assistant') return { type: 'text', data: m.content, id: mid };
-        return { type: 'info', data: m.content, id: mid };
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API}/sessions/${id}/history`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      setEvents(history);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.events) {
+          setEvents(data.events);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load history', e);
     }
   }
 

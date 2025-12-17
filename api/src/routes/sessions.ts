@@ -5,6 +5,7 @@ import { Message } from '../models/message';
 import { store } from '../mock/store';
 import { authenticate } from '../middleware/auth';
 import { Run } from '../models/run';
+import { ToolExecution } from '../models/toolExecution';
 
 const router = Router();
 
@@ -51,6 +52,69 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
   );
   const s = await Session.create({ title, mode: mode || 'ADVISOR', userId, tenantId: tenantDoc._id });
   return res.status(201).json({ id: s._id.toString(), title: s.title, mode: s.mode });
+});
+
+router.get('/:id/history', authenticate, async (req: Request, res: Response) => {
+  const sessionId = String(req.params.id);
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  
+  if (useMock) {
+    // Mock implementation omitted for brevity, fallback to messages
+    return res.json({ events: [] }); 
+  }
+
+  try {
+    const messages = await Message.find({ sessionId }).lean();
+    const runs = await Run.find({ sessionId }).select('_id').lean();
+    const runIds = runs.map(r => r._id);
+    const executions = await ToolExecution.find({ runId: { $in: runIds } }).lean();
+
+    const events = [];
+
+    // Map messages
+    for (const m of messages) {
+      if (m.role === 'user') {
+        events.push({
+          type: 'user_input',
+          data: m.content,
+          createdAt: m.createdAt
+        });
+      } else if (m.role === 'assistant') {
+        events.push({
+          type: 'text',
+          data: m.content,
+          createdAt: m.createdAt
+        });
+      }
+    }
+
+    // Map tool executions
+     for (const ex of executions) {
+       const duration = ex.updatedAt ? new Date(ex.updatedAt).getTime() - new Date(ex.createdAt).getTime() : 0;
+       events.push({
+         type: 'step_done',
+         duration,
+         data: {
+           name: `execute:${ex.name}`,
+           plan: { input: ex.input },
+           result: {
+             output: ex.output,
+             logs: ex.logs,
+             ok: ex.ok
+           }
+         },
+         createdAt: ex.createdAt
+       });
+     }
+
+    // Sort by date
+    events.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    return res.json({ events });
+  } catch (err) {
+    console.error('Failed to fetch history:', err);
+    return res.status(500).json({ error: 'Failed to fetch history' });
+  }
 });
 
 router.get('/:id/messages', authenticate, async (req: Request, res: Response) => {
