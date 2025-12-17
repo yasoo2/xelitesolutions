@@ -23,7 +23,10 @@ import {
   Play,
   Paperclip,
   X,
-  Volume2
+  Volume2,
+  Settings,
+  Power,
+  Key
 } from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact, onStepsUpdate }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void; onStepsUpdate?: (steps: any[]) => void }) {
@@ -37,6 +40,54 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  
+  // AI Provider State
+  const [showProviders, setShowProviders] = useState(false);
+  const [providers, setProviders] = useState<{
+    [key: string]: { name: string; apiKey: string; isConnected: boolean; baseUrl?: string; model?: string; isCustom?: boolean }
+  }>({
+    llm: { name: 'Joe System (Default)', apiKey: '', isConnected: true },
+    openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
+    anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
+    gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
+    grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
+    custom: { name: 'Custom / Local LLM', apiKey: '', isConnected: false, baseUrl: 'http://localhost:11434/v1', model: 'llama3', isCustom: true },
+  });
+  const [activeProvider, setActiveProvider] = useState('llm');
+
+  // Load providers from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ai_providers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Merge with defaults to ensure structure
+        setProviders(prev => {
+          const next = { ...prev };
+          Object.keys(parsed).forEach(k => {
+            if (next[k]) {
+              next[k] = { ...next[k], ...parsed[k], isConnected: false }; // Reset connection state
+            }
+          });
+          return next;
+        });
+      }
+      const savedActive = localStorage.getItem('active_provider');
+      if (savedActive) setActiveProvider(savedActive);
+    } catch (e) {
+      console.error('Failed to load providers settings', e);
+    }
+  }, []);
+
+  // Save providers to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('ai_providers', JSON.stringify(providers));
+  }, [providers]);
+
+  useEffect(() => {
+    localStorage.setItem('active_provider', activeProvider);
+  }, [activeProvider]);
+
   const reconnectTimerRef = useRef<number | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
@@ -275,7 +326,11 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
         body: JSON.stringify({ 
           text: currentText, 
           sessionId,
-          fileIds: currentFiles.map(f => f.id)
+          fileIds: currentFiles.map(f => f.id),
+          provider: activeProvider === 'llm' ? undefined : activeProvider,
+          apiKey: activeProvider === 'llm' ? undefined : providers[activeProvider]?.apiKey,
+          baseUrl: activeProvider === 'llm' ? undefined : providers[activeProvider]?.baseUrl,
+          model: activeProvider === 'llm' ? undefined : providers[activeProvider]?.model
         }),
       });
       const data = await res.json();
@@ -666,6 +721,161 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             </span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+               <button
+                 className="mic-button"
+                 onClick={() => setShowProviders(!showProviders)}
+                 title="AI Providers"
+                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: showProviders ? 'var(--accent-primary)' : 'inherit' }}
+               >
+                 <Settings size={20} />
+               </button>
+               
+               {showProviders && (
+                 <div className="providers-popover" style={{
+                   position: 'absolute',
+                   bottom: '100%',
+                   right: 0,
+                   marginBottom: 12,
+                   width: 320,
+                   background: 'var(--bg-secondary)',
+                   border: '1px solid var(--border-color)',
+                   borderRadius: 12,
+                   padding: 16,
+                   boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                   zIndex: 100
+                 }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                     <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>AI Providers</h3>
+                     <button onClick={() => setShowProviders(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-primary)' }}>
+                       <X size={14} />
+                     </button>
+                   </div>
+                   
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '300px', overflowY: 'auto' }}>
+                     {Object.entries(providers).map(([key, p]) => (
+                       <div key={key} style={{ 
+                         background: 'var(--bg-primary)', 
+                         padding: 12, 
+                         borderRadius: 8, 
+                         border: `1px solid ${activeProvider === key ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                         opacity: (key !== 'llm' && activeProvider !== key && !p.isConnected) ? 0.9 : 1
+                       }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: key === 'llm' ? 0 : 8 }}>
+                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                             <div style={{ 
+                               width: 8, height: 8, borderRadius: '50%', 
+                               background: (key === 'llm' || p.isConnected) ? '#22c55e' : '#ef4444',
+                               boxShadow: (key === 'llm' || p.isConnected) ? '0 0 4px #22c55e' : 'none'
+                             }} />
+                             <span style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</span>
+                           </div>
+                           {key === 'llm' ? (
+                             <button 
+                               onClick={() => setActiveProvider('llm')}
+                               style={{ 
+                                 fontSize: 11, 
+                                 padding: '4px 8px', 
+                                 borderRadius: 4, 
+                                 border: 'none', 
+                                 background: activeProvider === 'llm' ? 'var(--accent-primary)' : 'var(--bg-secondary)',
+                                 color: activeProvider === 'llm' ? '#fff' : 'inherit',
+                                 cursor: 'pointer'
+                               }}
+                             >
+                               {activeProvider === 'llm' ? 'Active' : 'Activate'}
+                             </button>
+                           ) : (
+                             <button 
+                               onClick={() => {
+                                 if (p.apiKey) {
+                                   setProviders(prev => ({ ...prev, [key]: { ...prev[key], isConnected: true } }));
+                                   setActiveProvider(key);
+                                 }
+                               }}
+                               style={{ 
+                                 fontSize: 11, 
+                                 padding: '4px 8px', 
+                                 borderRadius: 4, 
+                                 border: 'none', 
+                                 background: activeProvider === key ? 'var(--accent-primary)' : (p.isConnected ? '#22c55e' : 'var(--bg-secondary)'),
+                                 color: '#fff',
+                                 cursor: 'pointer',
+                                 opacity: !p.apiKey ? 0.5 : 1
+                               }}
+                               disabled={!p.apiKey}
+                             >
+                               {activeProvider === key ? 'Active' : (p.isConnected ? 'Switch' : 'Connect')}
+                             </button>
+                           )}
+                         </div>
+                         
+                         {key !== 'llm' && (
+                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                             <div style={{ position: 'relative' }}>
+                               <input 
+                                 type="password" 
+                                 placeholder={p.isCustom ? "API Key (Optional for Local)" : "API Key"}
+                                 value={p.apiKey}
+                                 onChange={(e) => setProviders(prev => ({ ...prev, [key]: { ...prev[key], apiKey: e.target.value, isConnected: false } }))}
+                                 style={{ 
+                                   width: '100%', 
+                                   background: 'var(--bg-secondary)', 
+                                   border: '1px solid var(--border-color)', 
+                                   borderRadius: 4, 
+                                   padding: '6px 8px', 
+                                   fontSize: 12,
+                                   color: 'inherit',
+                                   outline: 'none'
+                                 }}
+                               />
+                               <Key size={12} style={{ position: 'absolute', right: 8, top: 8, opacity: 0.5 }} />
+                             </div>
+                             
+                             <div style={{ display: 'flex', gap: 8 }}>
+                               <input 
+                                 type="text" 
+                                 placeholder="Model ID (e.g. gpt-4o)"
+                                 value={p.model || ''}
+                                 onChange={(e) => setProviders(prev => ({ ...prev, [key]: { ...prev[key], model: e.target.value } }))}
+                                 style={{ 
+                                   flex: 1,
+                                   background: 'var(--bg-secondary)', 
+                                   border: '1px solid var(--border-color)', 
+                                   borderRadius: 4, 
+                                   padding: '6px 8px', 
+                                   fontSize: 12,
+                                   color: 'inherit',
+                                   outline: 'none'
+                                 }}
+                               />
+                               {p.isCustom && (
+                                 <input 
+                                   type="text" 
+                                   placeholder="Base URL"
+                                   value={p.baseUrl || ''}
+                                   onChange={(e) => setProviders(prev => ({ ...prev, [key]: { ...prev[key], baseUrl: e.target.value } }))}
+                                   style={{ 
+                                     flex: 1.5,
+                                     background: 'var(--bg-secondary)', 
+                                     border: '1px solid var(--border-color)', 
+                                     borderRadius: 4, 
+                                     padding: '6px 8px', 
+                                     fontSize: 12,
+                                     color: 'inherit',
+                                     outline: 'none'
+                                   }}
+                                 />
+                               )}
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               )}
+            </div>
             <input 
               type="file" 
               ref={fileInputRef}

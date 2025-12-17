@@ -134,7 +134,7 @@ function detectRisk(text: string) {
 }
 
 router.post('/start', authenticate as any, async (req: Request, res: Response) => {
-  let { text, sessionId, fileIds } = req.body || {};
+  let { text, sessionId, fileIds, provider, apiKey, baseUrl, model } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const isAuthed = Boolean((req as any).auth);
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
@@ -161,7 +161,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   let plan = null;
   try {
       // Try LLM planning
-      plan = await planNextStep([{ role: 'user', content: fullPrompt }]);
+      plan = await planNextStep(
+        [{ role: 'user', content: fullPrompt }],
+        { provider, apiKey, baseUrl, model }
+      );
   } catch (err) {
       console.warn('LLM planning error:', err);
   }

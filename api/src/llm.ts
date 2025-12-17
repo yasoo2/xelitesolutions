@@ -18,7 +18,26 @@ const openai = new OpenAI({
 // Filter out noop tools to save tokens and confusion
 const activeTools = tools.filter(t => !t.name.startsWith('noop_'));
 
-export async function planNextStep(messages: { role: 'user' | 'assistant' | 'system', content: string }[]) {
+export interface PlanOptions {
+  provider?: string;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+}
+
+export async function planNextStep(
+  messages: { role: 'user' | 'assistant' | 'system', content: string }[],
+  options?: PlanOptions
+) {
+  // Determine client to use
+  let client = openai;
+  if (options?.apiKey) {
+    client = new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseUrl || process.env.OPENAI_BASE_URL,
+    });
+  }
+
   // 1. Prepare tools for OpenAI
   const aiTools: OpenAI.Chat.Completions.ChatCompletionTool[] = activeTools.map(t => ({
     type: 'function',
@@ -61,8 +80,8 @@ Rules:
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o',
+    const completion = await client.chat.completions.create({
+      model: options?.model || process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
       tools: aiTools,
       tool_choice: 'auto', 
