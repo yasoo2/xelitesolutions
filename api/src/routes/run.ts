@@ -303,11 +303,19 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         ev({ type: 'evidence_added', data: { kind: 'log', text: line } });
       }
     }
+    
+    // Emit artifacts if any
+    if (result.artifacts && Array.isArray(result.artifacts)) {
+      for (const art of result.artifacts) {
+        ev({ type: 'artifact_created', data: art });
+      }
+    }
+
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
     if (result.ok && plan.name === 'image_generate') {
       const href = result.output?.href;
       if (href) {
-        forcedText = `Image generated: ${href}`;
+        forcedText = `![Generated Image](${href})`;
         break; 
       }
     }
