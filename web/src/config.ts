@@ -9,7 +9,10 @@ export const API_URL = isLocal
 const rawWsUrl = import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl;
 
-if (!wsUrl || isLocal) {
+// If we are on the specific Render domain, force the correct WS URL
+if (window.location.hostname === 'infinity-x-platform.onrender.com') {
+  wsUrl = 'wss://infinity-x-platform.onrender.com/ws';
+} else if (!wsUrl || isLocal) {
   if (isLocal) {
     wsUrl = 'ws://localhost:8080/ws';
   } else {

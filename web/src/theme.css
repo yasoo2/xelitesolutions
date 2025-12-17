@@ -222,17 +222,20 @@ body {
   flex-direction: column;
   position: relative;
   background-image: var(--composer-bg);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .events {
   flex: 1;
   overflow-y: auto;
   padding: 16px 24px;
-  padding-bottom: 140px;
+  padding-bottom: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   scroll-behavior: smooth;
+  min-height: 0;
 }
 
 /* Message Rows */
