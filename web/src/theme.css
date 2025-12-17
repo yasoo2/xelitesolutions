@@ -41,35 +41,40 @@
   --shadow-sm: 0 2px 8px rgba(0,0,0,0.2);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
+
+  --composer-bg: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 100%);
 }
 
 [data-theme="light"] {
-  --bg-dark: #ffffff;
-  --bg-card: #f4f4f5;
-  --bg-card-hover: #e4e4e7;
-  --bg-input: #e4e4e7;
-  --surface-1: #fafafa;
-  --surface-2: #f4f4f5;
+  /* Strict White & Blue Theme (No Greys) */
+  --bg-dark: #f0f7ff; /* Very light blue tint */
+  --bg-card: #ffffff;
+  --bg-card-hover: #e0f2fe; /* Light sky blue */
+  --bg-input: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #eff6ff; /* Blue-50 */
   
-  --text-primary: #18181b;
-  --text-secondary: #52525b;
-  --text-muted: #a1a1aa;
+  --text-primary: #0f172a; /* Navy Blue (Dark) */
+  --text-secondary: #334155; /* Blue-Grey (Medium) */
+  --text-muted: #64748b; /* Blue-Grey (Light) */
   
-  /* Keep Gold but adjust for light mode if needed */
-  --accent-primary: #dcb000; 
-  --accent-hover: #ca9e00;
-  --accent-glow: rgba(220, 176, 0, 0.15);
+  --accent-primary: #2563eb; /* Royal Blue */
+  --accent-hover: #1d4ed8; /* Darker Blue */
+  --accent-secondary: #60a5fa; /* Lighter Blue */
+  --accent-glow: rgba(37, 99, 235, 0.25);
   
-  --user-msg-bg: #e4e4e7;
+  --user-msg-bg: #2563eb;
   --joe-msg-bg: #ffffff;
   
-  --border-color: #e4e4e7;
-  --border-light: #d4d4d8;
-  --topbar-bg: rgba(255, 255, 255, 0.85);
+  --border-color: #bfdbfe; /* Blue-200 */
+  --border-light: #dbeafe; /* Blue-100 */
+  --topbar-bg: rgba(255, 255, 255, 0.9);
 
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.15);
+  --shadow-sm: 0 1px 3px rgba(37, 99, 235, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(37, 99, 235, 0.1), 0 2px 4px -1px rgba(37, 99, 235, 0.06);
+  --shadow-lg: 0 10px 25px -5px rgba(37, 99, 235, 0.15), 0 8px 10px -6px rgba(37, 99, 235, 0.1);
+  
+  --composer-bg: linear-gradient(180deg, #f0f7ff 0%, #e0f2fe 100%);
 }
 
 
@@ -216,7 +221,7 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  background-image: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 100%);
+  background-image: var(--composer-bg);
 }
 
 .events {
@@ -367,4 +372,138 @@ body {
   .sidebar { display: none; }
   .rightpanel { display: none; }
   .message-bubble { max-width: 90%; }
+}
+
+/* Input Area - Sophisticated & Clean */
+.input-area {
+  margin: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 12px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.input-area:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow), var(--shadow-lg);
+}
+
+.input-area textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 15px;
+  resize: none;
+  min-height: 24px;
+  max-height: 200px;
+  outline: none;
+  padding: 0 4px;
+}
+
+.input-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.run-btn {
+  background: var(--accent-primary);
+  color: #ffffff; /* Always white text on button */
+  border: none;
+  padding: 8px 20px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.run-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* User Bubble Overrides for Light Mode */
+[data-theme="light"] .message-row.user .message-bubble {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border: 1px solid var(--accent-hover);
+  box-shadow: var(--shadow-md);
+}
+
+/* Joe Bubble Overrides for Light Mode */
+[data-theme="light"] .message-row.joe .message-bubble {
+  background: #ffffff;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Typing Indicator Override for Light Mode */
+[data-theme="light"] .typing-indicator {
+  background: #ffffff;
+  border-color: var(--border-color);
+}
+
+/* Tabs (Right Panel) */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-card);
+}
+
+.tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 12px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+
+.tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  background: rgba(255, 215, 0, 0.05);
+}
+
+[data-theme="light"] .tab.active {
+    background: rgba(37, 99, 235, 0.05);
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--bg-card);
 }

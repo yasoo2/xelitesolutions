@@ -116,9 +116,7 @@ export default function Joe() {
           <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
           <button className={`tab ${tab==='QA'?'active':''}`} onClick={()=>setTab('QA')}>أسئلة</button>
         </div>
-        <div className="panel-content">
-          <RightPanel active={tab} sessionId={selected || undefined} />
-        </div>
+        <RightPanel active={tab} sessionId={selected || undefined} />
       </aside>
     </div>
   );
