@@ -16,7 +16,6 @@ export interface ISession extends Document {
 
 const SessionSchema = new Schema<ISession>(
   {
-    ذ 
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true, required: true },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', index: true, required: true },
