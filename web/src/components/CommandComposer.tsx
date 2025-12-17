@@ -25,7 +25,7 @@ import {
   X
 } from 'lucide-react';
 
-export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void }) {
+export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact, onStepsUpdate }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void; onStepsUpdate?: (steps: any[]) => void }) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
@@ -46,7 +46,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   // Scroll to bottom on new events
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [events]);
+    if (onStepsUpdate) onStepsUpdate(events);
+  }, [events, onStepsUpdate]);
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window) {
@@ -473,95 +474,18 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                );
             }
 
-            return (
-              <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
-                <div className="event-step running">
-                  <span className="step-icon spin"><Loader2 size={14} /></span>
-                  {getToolIcon(e.data.name)}
-                  <strong>{e.data.name}</strong>
-                  <span style={{ opacity: 0.5, fontSize: 11, marginLeft: 'auto' }}>{t('working')}</span>
-                </div>
-              </div>
-            );
+            // Hide other steps from main chat (moved to Right Panel)
+            return null;
           }
 
           if (e.type === 'step_done') {
-            const hasDetails = e.data.plan || e.data.result;
-            const toolName = e.data.plan?.name || e.data.name?.replace('execute:', '') || e.data.name;
-            
-            // Map tool names
-            const label = t(`tools.${toolName}`, { defaultValue: toolName });
-
-            return (
-              <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
-                <div className={`steps-container`}>
-                  {e.data.plan && (
-                    <div className="plan-card" style={{ marginBottom: 8, borderLeft: '3px solid #eab308', paddingLeft: 8 }}>
-                      <div style={{ fontSize: 13, fontWeight: 'bold', color: '#eab308', marginBottom: 4 }}>
-                         {t('planProposed')}
-                      </div>
-                      <div style={{ fontSize: 14 }}>
-                        {t('planAction')} <strong>{label}</strong>
-                        {e.data.plan.input?.filename && <span className="mono-badge"> {e.data.plan.input.filename}</span>}
-                        {e.data.plan.input?.url && <span className="mono-badge"> {e.data.plan.input.url}</span>}
-                        {e.data.plan.input?.query && <span className="mono-badge"> "{e.data.plan.input.query}"</span>}
-                      </div>
-                    </div>
-                  )}
-
-                  <div 
-                    className={`event-step done`} 
-                    onClick={() => hasDetails && toggleExpand(i)}
-                    style={{ cursor: hasDetails ? 'pointer' : 'default' }}
-                  >
-                    <span className="step-icon"><CheckCircle2 size={14} color="#22c55e" /></span>
-                    {getToolIcon(toolName)}
-                    <strong style={{ marginRight: 8 }}>{label}</strong>
-                    
-                    {e.duration && (
-                      <span className="step-duration">
-                        {formatDuration(e.duration)}
-                      </span>
-                    )}
-                    
-                    {hasDetails && (
-                      <div className="step-toggle" style={{ marginLeft: 'auto' }}>
-                        {e.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {e.expanded && hasDetails && (
-                    <div className="step-details">
-                      {e.data.plan && (
-                        <div className="detail-section">
-                          <div className="detail-label">{t('inputs')}</div>
-                          <pre>{JSON.stringify(e.data.plan.input, null, 2)}</pre>
-                        </div>
-                      )}
-                      {e.data.result && (
-                        <div className="detail-section">
-                          <div className="detail-label">{t('outputs')}</div>
-                          <pre>{typeof (e.data.result.output || e.data.result) === 'string' ? (e.data.result.output || e.data.result) : JSON.stringify(e.data.result.output || e.data.result, null, 2)}</pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
+            // Hide from main chat (moved to Right Panel)
+            return null;
           }
 
           if (e.type === 'step_failed') {
-            return (
-              <div key={i} className="message-row joe">
-                <div className="event-step failed">
-                  <span className="step-icon"><XCircle size={14} color="#ef4444" /></span>
-                  <strong>{e.data.name}</strong>
-                  <span style={{ marginLeft: 8 }}>: {e.data.reason}</span>
-                </div>
-              </div>
-            );
+            // Hide from main chat (moved to Right Panel)
+            return null;
           }
 
           // ARTIFACTS
