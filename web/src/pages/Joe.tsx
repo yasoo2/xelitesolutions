@@ -13,7 +13,7 @@ export default function Joe() {
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS'>('PREVIEW');
+  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL'>('PREVIEW');
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -398,6 +398,7 @@ export default function Joe() {
         <aside className="rightpanel">
           <div className="tabs">
             <button className={`tab ${tab==='STEPS'?'active':''}`} onClick={()=>setTab('STEPS')}>المعالج</button>
+            <button className={`tab ${tab==='TERMINAL'?'active':''}`} onClick={()=>setTab('TERMINAL')}>تيرمنال</button>
             <button className={`tab ${tab==='PREVIEW'?'active':''}`} onClick={()=>setTab('PREVIEW')}>معاينة</button>
             <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
             <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>ملفات</button>
@@ -406,7 +407,7 @@ export default function Joe() {
               <ChevronRight size={16} />
             </button>
           </div>
-          <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} steps={steps} />
+          <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} steps={steps} onTabChange={setTab} />
         </aside>
       )}
       {!showRightPanel && (

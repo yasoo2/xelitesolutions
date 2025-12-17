@@ -4,10 +4,42 @@ import ArtifactPreview from './ArtifactPreview';
 
 import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText } from 'lucide-react';
 
-export default function RightPanel({ active, sessionId, previewData, steps = [] }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[] }) {
+export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
   const [browser, setBrowser] = useState<{ href: string; title?: string } | null>(null);
   const [summary, setSummary] = useState<string>('');
+  const [termOutput, setTermOutput] = useState<string>('Welcome to Joe Terminal\n\n');
+  const [currentCmd, setCurrentCmd] = useState<string>('');
+
+  // Auto-switch tabs based on steps
+  useEffect(() => {
+    if (!steps || steps.length === 0) return;
+    const last = steps[steps.length - 1];
+    if (last.type === 'step_started') {
+       if (last.data.name === 'shell_execute' || last.data.name.includes('exec')) {
+          if (onTabChange && active !== 'TERMINAL') onTabChange('TERMINAL');
+          setCurrentCmd(last.data.plan?.input?.command || '');
+       }
+       else if (last.data.name === 'browser_snapshot' || last.data.name === 'web_search') {
+          if (onTabChange && active !== 'BROWSER') onTabChange('BROWSER');
+       }
+       else if (onTabChange && active !== 'STEPS' && !['TERMINAL', 'BROWSER'].includes(active)) {
+          // Default to STEPS for other tools (like planning, reading files)
+          onTabChange('STEPS');
+       }
+    }
+    else if (last.type === 'step_done') {
+      if (last.data.name === 'shell_execute' || last.data.name.includes('exec')) {
+         const out = last.data.result?.output;
+         const txt = `\nuser@joe:~/workspace $ ${currentCmd}\n` + 
+                     (out?.stdout ? out.stdout : '') + 
+                     (out?.stderr ? `\nError:\n${out.stderr}` : '') + 
+                     (out?.error ? `\nError: ${out.error}` : '');
+         setTermOutput(prev => prev + txt);
+         setCurrentCmd('');
+      }
+    }
+  }, [steps]);
 
   useEffect(() => {
     const ws = new WebSocket(WS);
@@ -54,19 +86,59 @@ export default function RightPanel({ active, sessionId, previewData, steps = [] 
     await refreshSummary();
   }
 
+  if (active === 'TERMINAL') {
+    return (
+      <div className="panel-content" style={{ padding: 0, background: '#1e1e1e', color: '#d4d4d4', fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
+         <div style={{ padding: '8px 16px', background: '#252526', fontSize: 12, borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between' }}>
+            <span>TERMINAL</span>
+            <span>zsh</span>
+         </div>
+         <div style={{ flex: 1, padding: 16, overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.4 }}>
+            {termOutput}
+            {currentCmd && (
+               <div>
+                  <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span> {currentCmd}
+                  <span className="cursor-blink">█</span>
+               </div>
+            )}
+            {!currentCmd && (
+               <div>
+                  <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span>
+                  <span className="cursor-blink" style={{ opacity: 0.5 }}>_</span>
+               </div>
+            )}
+         </div>
+         <style>{`
+            .cursor-blink { animation: blink 1s step-end infinite; }
+            @keyframes blink { 50% { opacity: 0; } }
+         `}</style>
+      </div>
+    );
+  }
+
   if (active === 'BROWSER') {
     const url = browser?.href ? (API + browser.href).replace(/([^:]\/)\/+/g, '$1') : null;
     return (
-      <div className="panel-content">
-        <div className="card">
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>Browser View</div>
-          {browser && (
-            <>
-              <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>{browser.title || 'Untitled'}</div>
-              {url && <img src={url} alt="Latest snapshot" style={{ maxWidth: '100%', borderRadius: 4, border: '1px solid var(--border-color)' }} />}
-            </>
+      <div className="panel-content" style={{ padding: 0, display: 'flex', flexDirection: 'column', background: '#f8f9fa' }}>
+        <div style={{ padding: 8, background: '#e9ecef', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', gap: 8 }}>
+           <div style={{ display: 'flex', gap: 4 }}>
+             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }} />
+             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }} />
+             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }} />
+           </div>
+           <div style={{ flex: 1, background: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 12, color: '#666', border: '1px solid #ced4da', textAlign: 'center' }}>
+             {browser?.title || 'about:blank'}
+           </div>
+        </div>
+        <div className="card" style={{ flex: 1, margin: 0, padding: 0, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+          {browser ? (
+            url ? <img src={url} alt="Latest snapshot" style={{ maxWidth: '100%', maxHeight: '100%' }} /> : <div style={{ color: 'var(--text-muted)' }}>Loading...</div>
+          ) : (
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
+               <Globe size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
+               <div>No active browser session</div>
+            </div>
           )}
-          {!browser && <div style={{ color: 'var(--text-muted)' }}>No active browser session</div>}
         </div>
       </div>
     );
