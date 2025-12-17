@@ -225,7 +225,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           if (e.type === 'user_input') {
             return (
               <div key={i} className="message-row user">
-                <div className="message-bubble">
+                <div className="message-bubble" dir="auto">
                   {e.data}
                 </div>
               </div>
@@ -244,7 +244,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
             
             return (
               <div key={i} className="message-row joe">
-                <div className="message-bubble markdown-content">
+                <div className="message-bubble markdown-content" dir="auto">
                   <ReactMarkdown
                     components={{
                       code(props) {
@@ -448,6 +448,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           value={text} 
           onChange={(e) => setText(e.target.value)} 
           placeholder="أدخل أمرك هنا..." 
+          dir="auto"
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
