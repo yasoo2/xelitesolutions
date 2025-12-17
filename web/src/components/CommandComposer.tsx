@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { 
   Terminal, 
@@ -10,17 +12,21 @@ import {
   XCircle, 
   Loader2, 
   FileCode,
-  Link as LinkIcon
+  Link as LinkIcon,
+  ChevronDown,
+  ChevronRight,
+  Clock
 } from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
   const [text, setText] = useState('');
-  const [events, setEvents] = useState<Array<{ type: string; data: any }>>([]);
+  const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
+  const stepStartTimes = useRef<Record<string, number>>({});
 
   useEffect(() => {
     connectWS();
@@ -31,7 +37,6 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   }, []);
 
   function connectWS() {
-    // if (!sessionId) return; // Allow connecting without session
     try {
       console.log('Connecting to WS:', WS);
       if (wsRef.current) {
@@ -59,6 +64,18 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           if (msg.type === 'approval_required') {
             const { id, runId, risk, action } = msg.data;
             setApproval({ id, runId, risk, action });
+          }
+
+          if (msg.type === 'step_started') {
+            stepStartTimes.current[msg.data.name] = Date.now();
+          }
+
+          if (msg.type === 'step_done' || msg.type === 'step_failed') {
+            const start = stepStartTimes.current[msg.data.name];
+            if (start) {
+              msg.duration = Date.now() - start;
+              delete stepStartTimes.current[msg.data.name];
+            }
           }
 
           if (['step_started', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'text', 'user_input'].includes(msg.type)) {
@@ -121,17 +138,16 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
       }
-      // Fallback: reload messages to reflect assistant reply even if WS disconnected
       if (sessionId || data.sessionId) {
         await loadHistory(sessionId || data.sessionId);
       }
     } catch (e) {
       console.error(e);
-      // Revert on failure? Or show error
       setEvents(prev => [...prev, { type: 'error', data: 'Failed to send command' }]);
-      setText(currentText); // Restore text
+      setText(currentText);
     }
   }
+
   async function plan() {
     const token = localStorage.getItem('token');
     await fetch(`${API}/runs/plan`, {
@@ -143,6 +159,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       body: JSON.stringify({ text }),
     });
   }
+
   async function approve(decision: 'approved' | 'denied') {
     if (!approval) return;
     const token = localStorage.getItem('token');
@@ -157,12 +174,21 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
     setApproval(null);
   }
 
+  const toggleExpand = (index: number) => {
+    setEvents(prev => prev.map((e, i) => i === index ? { ...e, expanded: !e.expanded } : e));
+  };
+
   const getToolIcon = (name: string) => {
     if (name.includes('shell') || name.includes('exec')) return <Terminal size={16} />;
     if (name.includes('web') || name.includes('search')) return <Globe size={16} />;
     if (name.includes('file')) return <FileText size={16} />;
     if (name.includes('plan') || name.includes('thinking')) return <Cpu size={16} />;
     return <Cpu size={16} />;
+  };
+
+  const formatDuration = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
   };
 
   return (
@@ -184,11 +210,43 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
               );
             }
             if (e.type === 'step_done') {
+              const hasDetails = e.data.plan || e.data.result;
               return (
-                <div key={i} className="event-step done">
-                  <span className="step-icon"><CheckCircle2 size={16} /></span>
-                  {getToolIcon(e.data.name)}
-                  <strong>{e.data.name}</strong>
+                <div key={i} className={`event-step-wrapper ${e.expanded ? 'expanded' : ''}`}>
+                  <div className="event-step done" onClick={() => hasDetails && toggleExpand(i)} style={{ cursor: hasDetails ? 'pointer' : 'default' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+                      <span className="step-icon"><CheckCircle2 size={16} /></span>
+                      {getToolIcon(e.data.name)}
+                      <strong>{e.data.name}</strong>
+                    </div>
+                    {e.duration && (
+                      <div className="step-duration">
+                        <Clock size={12} />
+                        {formatDuration(e.duration)}
+                      </div>
+                    )}
+                    {hasDetails && (
+                      <div className="step-toggle">
+                        {e.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                    )}
+                  </div>
+                  {e.expanded && hasDetails && (
+                    <div className="step-details">
+                      {e.data.plan && (
+                        <div className="detail-section">
+                          <div className="detail-label">Input</div>
+                          <pre>{JSON.stringify(e.data.plan.input, null, 2)}</pre>
+                        </div>
+                      )}
+                      {e.data.result && (
+                        <div className="detail-section">
+                          <div className="detail-label">Output</div>
+                          <pre>{JSON.stringify(e.data.result.output || e.data.result, null, 2)}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -222,7 +280,6 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
               );
             }
 
-            // Handle text events specifically to parse JSON content and avoid ugly escaping
             if (e.type === 'text') {
                 let content = e.data;
                 try {
@@ -235,7 +292,29 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                 } catch {}
                 return (
                     <div key={i} className="event-item markdown-content" style={{ position: 'relative' }}>
-                        <ReactMarkdown>{String(content)}</ReactMarkdown>
+                        <ReactMarkdown
+                          components={{
+                            code(props) {
+                              const {children, className, node, ref, ...rest} = props as any;
+                              const match = /language-(\w+)/.exec(className || '');
+                              return match ? (
+                                <SyntaxHighlighter
+                                  {...rest}
+                                  PreTag="div"
+                                  children={String(children).replace(/\n$/, '')}
+                                  language={match[1]}
+                                  style={vscDarkPlus}
+                                />
+                              ) : (
+                                <code {...rest} className={className}>
+                                  {children}
+                                </code>
+                              );
+                            }
+                          }}
+                        >
+                          {String(content)}
+                        </ReactMarkdown>
                         <div 
                           className="copy-icon" 
                           onClick={(e) => {
