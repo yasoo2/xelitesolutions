@@ -11,7 +11,8 @@ export interface LiveEvent {
     | 'artifact_created'
     | 'approval_required'
     | 'approval_result'
-    | 'run_finished';
+    | 'run_finished'
+    | 'text';
   data: any;
 }
 

@@ -68,3 +68,27 @@ export async function planNextStep(messages: { role: 'user' | 'assistant' | 'sys
     return null;
   }
 }
+
+export async function summarizeToolOutput(userQuery: string, toolName: string, toolOutput: any) {
+  try {
+    const msgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: 'You are Joe. The user asked a question, and you used a tool to get information. Now, summarize the tool output into a helpful, natural language response for the user. Be concise but complete. If the output is an error, explain it kindly.'
+      },
+      { role: 'user', content: userQuery },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: toolName, arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'call_1', content: JSON.stringify(toolOutput) }
+    ];
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      messages: msgs,
+    });
+
+    return completion.choices[0].message.content || "I couldn't generate a summary, but the tool executed successfully.";
+  } catch (error) {
+    console.error('LLM Summary Error:', error);
+    return "Tool executed, but I couldn't summarize the results due to an error.";
+  }
+}

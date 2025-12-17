@@ -120,6 +120,27 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
   }
   ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
 
+  let finalResponse = '';
+  if (result.ok) {
+    if (plan.name === 'echo' && result.output && typeof result.output.text === 'string') {
+        finalResponse = result.output.text;
+    } else {
+        // Try to summarize using LLM
+        try {
+            const { summarizeToolOutput } = await import('../llm');
+            ev({ type: 'step_started', data: { name: 'summarize' } });
+            finalResponse = await summarizeToolOutput(String(text || ''), plan.name, result.output);
+            ev({ type: 'text', data: finalResponse });
+            ev({ type: 'step_done', data: { name: 'summarize', result: { output: finalResponse } } });
+        } catch (err) {
+            console.warn('Summarization failed:', err);
+            finalResponse = JSON.stringify(result.output).slice(0, 512);
+        }
+    }
+  } else {
+      finalResponse = String(result.error || 'Unknown error');
+  }
+
   if (useMock) {
     store.addExec(runId, plan.name, plan.input, result.output, result.ok, result.logs);
     if (result.artifacts) {
@@ -149,22 +170,12 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
       const useMock2 = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
       if (useMock2) {
         store.addMessage(sessionId, 'user', String(text || ''));
-        store.addMessage(sessionId, 'assistant', result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || ''));
+        store.addMessage(sessionId, 'assistant', finalResponse || (result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || '')));
       } else {
         const { Message } = await import('../models/message');
         const userMsg = await Message.create({ sessionId, role: 'user', content: String(text || '') });
         
-        let asstContent = '';
-        if (result.output) {
-            // If output has a text field, use it directly for better readability
-            if (typeof result.output.text === 'string') {
-                asstContent = result.output.text;
-            } else {
-                asstContent = JSON.stringify(result.output).slice(0, 512);
-            }
-        } else {
-            asstContent = String(result.error || '');
-        }
+        const asstContent = finalResponse || (result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || ''));
 
         const asstMsg = await Message.create({ sessionId, role: 'assistant', content: asstContent });
         const { Session } = await import('../models/session');
