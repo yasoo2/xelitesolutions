@@ -130,51 +130,6 @@ export default function RightPanel({ active, sessionId, previewData }: { active:
       </div>
     );
   }
-  if ((active as any) === 'QA') {
-    const [qa, setQa] = useState<{ passed: number; failed: number; results: Array<{ text: string; ok: boolean; reason?: string }> } | null>(null);
-    async function runQa() {
-      const res = await fetch(`${API}/runs/qa`, { method: 'POST' });
-      const data = await res.json();
-      setQa(data);
-    }
-    return (
-      <div className="panel-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontWeight: 600 }}>QA Suite</span>
-          <button className="btn btn-yellow" style={{ fontSize: 12 }} onClick={runQa}>Run 50 Tests</button>
-        </div>
-        {qa && (
-          <div className="card">
-            <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-              <span>Passed: <strong style={{ color: '#22c55e' }}>{qa.passed}</strong></span>
-              <span>Failed: <strong style={{ color: '#ef4444' }}>{qa.failed}</strong></span>
-            </div>
-            {qa.failed > 0 && (
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>Failures</div>
-                <ul style={{ paddingLeft: 18 }}>
-                  {qa.results.filter(r=>!r.ok).map((r, i) => (
-                    <li key={i} style={{ marginBottom: 6 }}>
-                      <span style={{ color: 'var(--text-primary)' }}>{r.text}</span>
-                      <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{r.reason || 'error'}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-        {!qa && <div style={{ color: 'var(--text-muted)' }}>Press "Run 50 Tests" to execute QA suite.</div>}
-      </div>
-    );
-  }
-  return (
-    <div className="panel-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>⚡️</div>
-      <div style={{ fontWeight: 500 }}>التنفيذ المباشر</div>
-      <p style={{ fontSize: 13, maxWidth: 200, textAlign: 'center', marginTop: 8 }}>
-        ستظهر الأحداث والسجلات في اللوحة المركزية. استخدم التبويبات للتبديل بين طرق العرض.
-      </p>
-    </div>
-  );
+
+  return null;
 }

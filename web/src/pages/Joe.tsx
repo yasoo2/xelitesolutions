@@ -4,7 +4,7 @@ import SessionItem from '../components/SessionItem';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft } from 'lucide-react';
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string }>>([]);
@@ -12,7 +12,8 @@ export default function Joe() {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW'>('LIVE');
+  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY'>('PREVIEW');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<any>>([]);
@@ -382,17 +383,33 @@ export default function Joe() {
           onPreviewArtifact={handlePreviewArtifact}
         />
       </main>
-      <aside className="rightpanel">
-        <div className="tabs">
-          <button className={`tab ${tab==='LIVE'?'active':''}`} onClick={()=>setTab('LIVE')}>مباشر</button>
-          <button className={`tab ${tab==='PREVIEW'?'active':''}`} onClick={()=>setTab('PREVIEW')}>معاينة</button>
-          <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
-          <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>ملفات</button>
-          <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
-          <button className={`tab ${tab==='QA'?'active':''}`} onClick={()=>setTab('QA')}>أسئلة</button>
+      
+      {showRightPanel && (
+        <aside className="rightpanel">
+          <div className="tabs">
+            <button className={`tab ${tab==='PREVIEW'?'active':''}`} onClick={()=>setTab('PREVIEW')}>معاينة</button>
+            <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
+            <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>ملفات</button>
+            <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
+            <button className="tab-icon" onClick={() => setShowRightPanel(false)} title="إخفاء اللوحة">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+          <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} />
+        </aside>
+      )}
+      {!showRightPanel && (
+        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
+          <button 
+            className="btn-icon" 
+            onClick={() => setShowRightPanel(true)}
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: 8, borderRadius: 4, cursor: 'pointer' }}
+            title="إظهار اللوحة"
+          >
+            <ChevronLeft size={20} />
+          </button>
         </div>
-        <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} />
-      </aside>
+      )}
     </div>
   );
 }
