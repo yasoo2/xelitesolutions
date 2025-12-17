@@ -23,7 +23,7 @@ function pickToolFromText(text: string) {
     return { name: 'browser_snapshot', input: { url } };
   }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
-    return { name: 'http_fetch', input: { url: 'https://api.exchangerate.host/latest?base=USD&symbols=TRY' } };
+    return { name: 'http_fetch', input: { url: 'https://open.er-api.com/v6/latest/USD' } };
   }
   // Currency pairs (Arabic) e.g., "سعر الدينار الكويتي مقابل الشيكل"
   const currencyMap: Record<string, string> = {
@@ -40,7 +40,7 @@ function pickToolFromText(text: string) {
     const base = currencyMap[baseName] || baseName.toUpperCase();
     const sym = currencyMap[symName] || symName.toUpperCase();
     if (base && sym && base.length <= 4 && sym.length <= 4) {
-      return { name: 'http_fetch', input: { url: `https://api.exchangerate.host/latest?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(sym)}` } };
+      return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}` } };
     }
   }
   const names: Array<[string, string]> = [
@@ -56,8 +56,7 @@ function pickToolFromText(text: string) {
   }
   if (found.length >= 2) {
     const base = found[0];
-    const sym = found[1];
-    return { name: 'http_fetch', input: { url: `https://api.exchangerate.host/latest?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(sym)}` } };
+    return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}` } };
   }
   // Web search detection
   if (/(ابحث|بحث|search)/.test(t)) {

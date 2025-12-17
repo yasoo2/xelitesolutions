@@ -84,7 +84,7 @@ export const tools: ToolDefinition[] = [
     outputSchema: { type: 'object', properties: { results: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, url: { type: 'string' }, description: { type: 'string' } } } } } },
     permissions: ['read'],
     sideEffects: [],
-    rateLimitPerMinute: 20,
+    rateLimitPerMinute: 10,
     auditFields: ['query'],
     mockSupported: false,
   },
@@ -229,21 +229,40 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     if (name === 'web_search') {
       const query = String(input?.query ?? '').trim();
       const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-      const resp = await fetch(url);
-      const body = await resp.text();
-      let json: any = null;
-      try { json = JSON.parse(body); } catch {}
-      const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
-      const simplified = topics
-        .map((t: any) => {
-          const Text = t?.Text || '';
-          const FirstURL = t?.FirstURL || '';
-          return { title: String(Text).slice(0, 120), url: String(FirstURL), description: String(Text) };
-        })
-        .filter((x: any) => x.url && x.title)
-        .slice(0, 5);
-      logs.push(`search.query=${query} results=${simplified.length}`);
-      return { ok: simplified.length > 0, output: { results: simplified }, logs };
+      
+      let retries = 0;
+      const MAX_RETRIES = 2;
+      let lastError = null;
+
+      while (retries <= MAX_RETRIES) {
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const body = await resp.text();
+          let json: any = null;
+          try { json = JSON.parse(body); } catch {}
+          
+          const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
+          const simplified = topics
+            .map((t: any) => {
+              const Text = t?.Text || '';
+              const FirstURL = t?.FirstURL || '';
+              return { title: String(Text).slice(0, 120), url: String(FirstURL), description: String(Text) };
+            })
+            .filter((x: any) => x.url && x.title)
+            .slice(0, 5);
+            
+          logs.push(`search.query=${query} results=${simplified.length}`);
+          return { ok: simplified.length > 0, output: { results: simplified }, logs };
+        } catch (err: any) {
+          lastError = err;
+          retries++;
+          if (retries <= MAX_RETRIES) {
+            await new Promise(r => setTimeout(r, 1000 * retries));
+          }
+        }
+      }
+      return { ok: false, error: lastError?.message || 'Search failed', logs };
     }
     if (name === 'file_read') {
       const filename = path.basename(String(input?.filename ?? ''));
