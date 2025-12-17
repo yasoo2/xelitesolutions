@@ -393,92 +393,77 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'web_search') {
       const query = String(input?.query ?? '').trim();
-      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const logs: string[] = [];
+      const officialUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
       
-      let retries = 0;
-      const MAX_RETRIES = 2;
-      let lastError = null;
-
-      while (retries <= MAX_RETRIES) {
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      let results: any[] = [];
+      
+      // 1. Fast try on official API (often fails on servers, so short timeout)
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 1500);
+        const resp = await fetch(officialUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (resp.ok) {
           const body = await resp.text();
           let json: any = null;
           try { json = JSON.parse(body); } catch {}
-          
           const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
-          const simplified = topics
-            .map((t: any) => {
-              const Text = t?.Text || '';
-              const FirstURL = t?.FirstURL || '';
-              return { title: String(Text).slice(0, 120), url: String(FirstURL), description: String(Text) };
-            })
-            .filter((x: any) => x.url && x.title)
-            .slice(0, 5);
-            
-          logs.push(`search.query=${query} results=${simplified.length}`);
-          if (simplified.length > 0) {
-            return { ok: true, output: { results: simplified }, logs };
-          }
-        } catch (err: any) {
-          lastError = err;
-          retries++;
-          if (retries <= MAX_RETRIES) {
-            await new Promise(r => setTimeout(r, 1000 * retries));
-          }
+          const items = topics.map((t: any) => ({
+             title: String(t?.Text || '').slice(0, 120),
+             url: String(t?.FirstURL || ''),
+             description: String(t?.Text || '')
+           })).filter((x: any) => x.url && x.title).slice(0, 5);
+           results.push(...items);
         }
-      }
-      try {
-        let simplified2: any[] = [];
-        try {
-          const ddg = await import('duck-duck-scrape');
-          const res = await ddg.search(query);
-          const items = Array.isArray(res?.results) ? res.results : [];
-          simplified2 = items.slice(0, 5).map((r: any) => ({
-            title: String(r?.title || '').slice(0, 120),
-            url: String(r?.url || ''),
-            description: String(r?.description || '')
-          })).filter((x: any) => x.url && x.title);
-        } catch (err) {
-          logs.push(`ddg_scrape.error=${String(err)}`);
-        }
-        
-        let combined = simplified2.slice();
-        try {
-          const hasArabic = /[\u0600-\u06FF]/.test(query);
-          const wikiLang = hasArabic ? 'ar' : 'en';
-          const wikiUrl = `https://${wikiLang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
-          const wresp = await fetch(wikiUrl);
-          if (wresp.ok) {
-            const wjson = await wresp.json();
-            const sres = Array.isArray(wjson?.query?.search) ? wjson.query.search : [];
-            const witems = sres.map((it: any) => {
-              const title = String(it?.title || '').trim();
-              const page = title.replace(/\s+/g, '_');
-              const url = `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(page)}`;
-              const desc = String(it?.snippet || '').replace(/<[^>]+>/g, '');
-              return { title: title.slice(0, 120), url, description: desc };
-            }).filter((x: any) => x.url && x.title);
-            combined = [...combined, ...witems];
-          }
-        } catch {}
-        const dedup: Array<{ title: string; url: string; description: string }> = [];
-        const seen = new Set<string>();
-        for (const r of combined) {
-          const key = `${String(r.url || '')} ${String(r.title || '')}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            dedup.push({ title: String(r.title || ''), url: String(r.url || ''), description: String(r.description || '') });
-          }
-        }
-        const final = dedup.slice(0, 8);
-        logs.push(`search.ddg_scrape=${simplified2.length} wiki=${final.length - simplified2.length}`);
-        return { ok: final.length > 0, output: { results: final }, logs };
       } catch (err: any) {
-        lastError = err;
-        return { ok: false, error: lastError?.message || 'Search failed', logs };
+        logs.push(`ddg_api.error=${err.name === 'AbortError' ? 'timeout' : err.message}`);
       }
+
+      // 2. If few results, run Scraper + Wiki in parallel
+      if (results.length < 3) {
+        const [scrapeRes, wikiRes] = await Promise.allSettled([
+          (async () => {
+             const ddg = await import('duck-duck-scrape');
+             const res = await ddg.search(query);
+             return (res.results || []).map((r: any) => ({
+               title: String(r.title).slice(0, 120),
+               url: String(r.url),
+               description: String(r.description)
+             })).filter((x: any) => x.url && x.title);
+          })(),
+          (async () => {
+             const hasArabic = /[\u0600-\u06FF]/.test(query);
+             const lang = hasArabic ? 'ar' : 'en';
+             const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
+             const r = await fetch(wurl);
+             if (!r.ok) return [];
+             const j = await r.json();
+             return (j.query?.search || []).map((it: any) => ({
+               title: String(it.title).slice(0, 120),
+               url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
+               description: String(it.snippet).replace(/<[^>]+>/g, '')
+             })).filter((x: any) => x.url && x.title);
+          })()
+        ]);
+
+        if (scrapeRes.status === 'fulfilled') results.push(...scrapeRes.value);
+        else logs.push(`scrape.failed=${scrapeRes.reason}`);
+        
+        if (wikiRes.status === 'fulfilled') results.push(...wikiRes.value);
+        else logs.push(`wiki.failed=${wikiRes.reason}`);
+      }
+
+      // Dedup
+      const unique = new Map();
+      for (const r of results) {
+        const key = r.url;
+        if (!unique.has(key)) unique.set(key, r);
+      }
+      
+      const final = Array.from(unique.values()).slice(0, 10);
+      logs.push(`search.final_count=${final.length}`);
+      return { ok: final.length > 0, output: { results: final }, logs };
     }
     if (name === 'file_read') {
       const filename = path.basename(String(input?.filename ?? ''));

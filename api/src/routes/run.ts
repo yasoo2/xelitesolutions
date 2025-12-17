@@ -433,6 +433,17 @@ router.post('/start', async (req: Request, res: Response) => {
         }
       } catch {}
     }
+    if (result.ok && (plan.name === 'browser_snapshot' || plan.name === 'image_generate')) {
+      try {
+        const href = result.output?.href;
+        if (href) {
+          const title = plan.name === 'browser_snapshot' ? 'لقطة شاشة' : 'صورة مولدة';
+          const md = `### ${title}\n![image](${href})`;
+          forcedText = md;
+          ev({ type: 'text', data: md });
+        }
+      } catch {}
+    }
 
     // Store execution
     if (useMock) {
