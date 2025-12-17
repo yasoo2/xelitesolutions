@@ -92,6 +92,30 @@ export const tools: ToolDefinition[] = [
     auditFields: ['path'],
     mockSupported: false,
   },
+  {
+    name: 'shell_execute',
+    version: '1.0.0',
+    tags: ['system', 'shell'],
+    inputSchema: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+    outputSchema: { type: 'object', properties: { stdout: { type: 'string' }, stderr: { type: 'string' }, exitCode: { type: 'number' } } },
+    permissions: ['execute'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 30,
+    auditFields: ['command'],
+    mockSupported: false,
+  },
+  {
+    name: 'file_edit',
+    version: '1.0.0',
+    tags: ['fs', 'utility'],
+    inputSchema: { type: 'object', properties: { filename: { type: 'string' }, find: { type: 'string' }, replace: { type: 'string' } }, required: ['filename', 'find', 'replace'] },
+    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 60,
+    auditFields: ['filename'],
+    mockSupported: false,
+  },
 ];
 
 for (let i = 1; i <= 197; i++) {
@@ -181,6 +205,43 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const files = fs.readdirSync(dirPath);
       logs.push(`ls=${dirPath} count=${files.length}`);
       return { ok: true, output: { files }, logs };
+    }
+    if (name === 'shell_execute') {
+      const command = String(input?.command ?? '');
+      // Safety: simplistic check, ideally we use a sandbox
+      if (command.includes('rm -rf /') || command.includes('sudo')) {
+         return { ok: false, error: 'Command not allowed', logs };
+      }
+      
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execAsync = util.promisify(exec);
+      
+      try {
+        const { stdout, stderr } = await execAsync(command, { cwd: ARTIFACT_DIR, timeout: 30000 });
+        logs.push(`exec=${command} exit=0`);
+        return { ok: true, output: { stdout, stderr, exitCode: 0 }, logs };
+      } catch (err: any) {
+        logs.push(`exec=${command} err=${err.message}`);
+        return { ok: false, output: { stdout: err.stdout, stderr: err.stderr, exitCode: err.code }, logs };
+      }
+    }
+    if (name === 'file_edit') {
+      const filename = path.basename(String(input?.filename ?? ''));
+      const find = String(input?.find ?? '');
+      const replace = String(input?.replace ?? '');
+      const full = path.join(ARTIFACT_DIR, filename);
+      
+      if (!fs.existsSync(full)) return { ok: false, error: 'File not found', logs };
+      
+      let content = fs.readFileSync(full, 'utf-8');
+      if (!content.includes(find)) {
+          return { ok: false, error: 'Text to replace not found', logs };
+      }
+      content = content.replace(find, replace);
+      fs.writeFileSync(full, content);
+      logs.push(`edit=${filename}`);
+      return { ok: true, output: { success: true }, logs };
     }
     if (name.startsWith('noop_')) {
       logs.push('noop.ok=true');
