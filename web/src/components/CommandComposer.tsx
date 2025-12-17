@@ -167,6 +167,36 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           {events.map((e, i) => {
             if (typeof e === 'string') return <div key={i} className="event-item">{e}</div>;
             
+            // Handle step events
+            if (e.type === 'step_started') {
+              return (
+                <div key={i} className="event-step running">
+                  <span>Running:</span> <strong>{e.data.name}</strong>
+                </div>
+              );
+            }
+            if (e.type === 'step_done') {
+              return (
+                <div key={i} className="event-step done">
+                  <span>✓</span> <strong>{e.data.name}</strong>
+                </div>
+              );
+            }
+            if (e.type === 'step_failed') {
+              return (
+                <div key={i} className="event-step failed">
+                  <span>✗</span> <strong>{e.data.name}</strong>
+                  {e.data.reason && <span>: {e.data.reason}</span>}
+                </div>
+              );
+            }
+            if (e.type === 'evidence_added') {
+              if (e.data.kind === 'log') {
+                return <div key={i} className="event-log">{e.data.text}</div>;
+              }
+              return null;
+            }
+
             // Handle text events specifically to parse JSON content and avoid ugly escaping
             if (e.type === 'text') {
                 let content = e.data;
