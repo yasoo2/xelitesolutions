@@ -59,14 +59,11 @@ function pickToolFromText(text: string) {
     const sym = found[1];
     return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}?sym=${encodeURIComponent(sym)}`, base, sym } };
   }
-  // Web search detection
   if (/(ابحث|بحث|search)/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
     const query = qMatch ? qMatch[1] : text;
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-    return { name: 'http_fetch', input: { url } };
+    return { name: 'web_search', input: { query } };
   }
-  // Weather detection (Istanbul)
   if (/(درجة\\s+الحرارة|طقس|weather|temperature)/i.test(tn) && /(اسطنبول|إسطنبول|istanbul)/i.test(tn)) {
     const city = 'Istanbul';
     const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
@@ -272,6 +269,23 @@ router.post('/start', async (req: Request, res: Response) => {
           if (tempC !== null && !Number.isNaN(tempC)) {
             ev({ type: 'text', data: `درجة الحرارة في ${city} اليوم: ${tempC.toFixed(0)}°C` });
           }
+        }
+      } catch {}
+    }
+    if (result.ok && plan.name === 'web_search') {
+      try {
+        const results = Array.isArray(result.output?.results) ? result.output.results : [];
+        if (results.length > 0) {
+          const mdParts: string[] = [];
+          mdParts.push(`### نتائج البحث`);
+          for (const r of results) {
+            const title = String(r.title || '').trim();
+            const url = String(r.url || '').trim();
+            const desc = String(r.description || '').trim();
+            mdParts.push(`- [${title}](${url})`);
+            if (desc) mdParts.push(`  - ${desc}`);
+          }
+          ev({ type: 'text', data: mdParts.join('\n') });
         }
       } catch {}
     }
