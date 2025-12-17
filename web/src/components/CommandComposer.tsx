@@ -30,15 +30,21 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   }
 
   function connectWS() {
-    if (!sessionId) return;
+    // if (!sessionId) return; // Allow connecting without session
     try {
       console.log('Connecting to WS:', WS);
+      if (wsRef.current) {
+        if (wsRef.current.readyState === WebSocket.OPEN) return;
+        try { wsRef.current.close(); } catch {}
+      }
       const ws = new WebSocket(WS);
       wsRef.current = ws;
   
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data.toString());
+          // Only add event if it matches current session or is a system event
+          // For now, we accept all, but ideally backend should filter
           setEvents((prev) => [...prev, msg]);
           if (msg.type === 'approval_required') {
             setApproval({ id: msg.data.id, runId: msg.data.runId, risk: msg.data.risk, action: msg.data.action });
@@ -62,7 +68,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
           window.clearTimeout(reconnectTimerRef.current);
         }
         reconnectTimerRef.current = window.setTimeout(() => {
-          if (sessionId) connectWS();
+          connectWS();
         }, 2000);
       };
   
@@ -78,12 +84,12 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   }
 
   useEffect(() => {
-    if (!sessionId) {
+    if (sessionId) {
+      loadHistory(sessionId).catch(err => console.error('Failed to load history:', err));
+    } else {
       setEvents([]);
-      return;
     }
 
-    loadHistory(sessionId).catch(err => console.error('Failed to load history:', err));
     connectWS();
     return () => {
         try { wsRef.current?.close(); } catch {}

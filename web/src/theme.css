@@ -398,3 +398,9 @@ p { margin: 0; line-height: 1.5; }
 .markdown-content strong { color: var(--accent-primary); font-weight: 600; }
 .markdown-content a { color: var(--accent-secondary); text-decoration: none; }
 .markdown-content a:hover { text-decoration: underline; }
+
+button:disabled, .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(100%);
+}
