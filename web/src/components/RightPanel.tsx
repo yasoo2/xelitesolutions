@@ -1,15 +1,47 @@
 import { useEffect, useState } from 'react';
 import { API_URL as API, WS_URL as WS } from '../config';
 import ArtifactPreview from './ArtifactPreview';
+import CodeEditor from './CodeEditor';
 
-import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText } from 'lucide-react';
+import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare } from 'lucide-react';
 
-export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void }) {
+export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
   const [browser, setBrowser] = useState<{ href: string; title?: string } | null>(null);
   const [summary, setSummary] = useState<string>('');
   const [termOutput, setTermOutput] = useState<string>('Welcome to Joe Terminal\n\n');
   const [currentCmd, setCurrentCmd] = useState<string>('');
+  const [previewMode, setPreviewMode] = useState<'PREVIEW' | 'CODE'>('PREVIEW');
+  const [localContent, setLocalContent] = useState<string>('');
+  const [analytics, setAnalytics] = useState<any>(null);
+
+  // Initialize state from props
+  useEffect(() => {
+    if (initialTerminalState) setTermOutput(initialTerminalState);
+    if (initialBrowserState) setBrowser(initialBrowserState);
+  }, [sessionId, initialTerminalState, initialBrowserState]);
+
+  // Auto-save state
+  useEffect(() => {
+    if (!sessionId) return;
+    const timer = setTimeout(() => {
+      fetch(`${API}/sessions/${sessionId}/state`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' },
+        body: JSON.stringify({ terminalState: termOutput, browserState: browser })
+      }).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [termOutput, browser, sessionId]);
+
+  // Sync content when previewData changes
+  useEffect(() => {
+    if (previewData) {
+      setLocalContent(previewData.content);
+      const isPreviewable = ['html', 'javascript', 'js', 'react', 'jsx', 'tsx', 'css'].includes(previewData.language.toLowerCase());
+      setPreviewMode(isPreviewable ? 'PREVIEW' : 'CODE');
+    }
+  }, [previewData]);
 
   // Auto-switch tabs based on steps
   useEffect(() => {
@@ -58,6 +90,17 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
     return () => ws.close();
   }, []);
 
+  useEffect(() => {
+    if (active === 'ANALYTICS' && sessionId) {
+      fetch(`${API}/sessions/${sessionId}/analytics`, {
+        headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
+      })
+      .then(res => res.json())
+      .then(data => setAnalytics(data))
+      .catch(err => console.error(err));
+    }
+  }, [active, sessionId]);
+
   async function refreshSummary() {
     if (!sessionId) return;
     const token = localStorage.getItem('token');
@@ -84,6 +127,63 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
     await refreshSummary();
+  }
+
+  if (active === 'ANALYTICS') {
+    if (!analytics) return <div className="panel-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><Loader2 className="spin" /></div>;
+    
+    return (
+        <div className="panel-content" style={{ padding: 24, overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 24px', fontSize: 18, fontWeight: 600 }}>Session Analytics</h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
+                <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
+                        <Clock size={16} /> Duration
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 600 }}>{(analytics.duration / 1000 / 60).toFixed(1)}m</div>
+                </div>
+                 <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
+                        <Activity size={16} /> Success Rate
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 600, color: analytics.successRate > 80 ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                        {analytics.successRate.toFixed(1)}%
+                    </div>
+                </div>
+                <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
+                        <CheckCircle2 size={16} /> Total Steps
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 600 }}>{analytics.totalSteps}</div>
+                </div>
+                 <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
+                        <MessageSquare size={16} /> Messages
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 600 }}>{analytics.messageCount}</div>
+                </div>
+            </div>
+            
+            <h4 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Tool Usage</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {Object.entries(analytics.toolUsage || {}).map(([tool, count]: [string, any]) => (
+                    <div key={tool} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{tool}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ height: 4, width: 60, background: 'var(--border-color)', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${Math.min((count / analytics.totalToolCalls) * 100, 100)}%`, background: 'var(--accent-primary)' }} />
+                            </div>
+                            <span style={{ fontWeight: 600, minWidth: 20, textAlign: 'right' }}>{count}</span>
+                        </div>
+                    </div>
+                ))}
+                {Object.keys(analytics.toolUsage || {}).length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>No tools used yet</div>
+                )}
+            </div>
+        </div>
+    );
   }
 
   if (active === 'TERMINAL') {
@@ -156,9 +256,47 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
          </div>
        );
      }
+     
+     // Determine if language is previewable (HTML/React/JS)
+     const isPreviewable = ['html', 'javascript', 'js', 'react', 'jsx', 'tsx', 'css'].includes(previewData.language.toLowerCase());
+     
      return (
        <div className="panel-content" style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <ArtifactPreview content={previewData.content} language={previewData.language} />
+          {/* Toolbar */}
+          <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 16, alignItems: 'center', background: 'var(--bg-secondary)' }}>
+             <button 
+               className={`btn-icon-text ${previewMode === 'PREVIEW' ? 'active' : ''}`}
+               onClick={() => setPreviewMode('PREVIEW')}
+               disabled={!isPreviewable}
+               style={{ opacity: isPreviewable ? 1 : 0.5, fontWeight: previewMode === 'PREVIEW' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', color: previewMode === 'PREVIEW' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: isPreviewable ? 'pointer' : 'not-allowed' }}
+             >
+               <Eye size={16} /> Preview
+             </button>
+             <button 
+               className={`btn-icon-text ${previewMode === 'CODE' ? 'active' : ''}`}
+               onClick={() => setPreviewMode('CODE')}
+               style={{ fontWeight: previewMode === 'CODE' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', color: previewMode === 'CODE' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer' }}
+             >
+               <Code size={16} /> Code
+             </button>
+             
+             <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>
+               {previewData.language.toUpperCase()}
+             </div>
+          </div>
+          
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            {previewMode === 'PREVIEW' && isPreviewable ? (
+              <ArtifactPreview content={previewData.content} language={previewData.language} />
+            ) : (
+              <CodeEditor 
+                code={previewData.content} 
+                language={previewData.language} 
+                readOnly={true} // For now read-only, we can enable editing later if we wire it up to something
+                theme="vs-dark"
+              />
+            )}
+          </div>
        </div>
      );
   }

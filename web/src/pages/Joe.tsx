@@ -7,13 +7,13 @@ import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft } from 'lucide-react';
 
 export default function Joe() {
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string }>>([]);
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string; browserState?: any }>>([]);
   const [folders, setFolders] = useState<Array<{ _id: string; name: string }>>([]);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL'>('PREVIEW');
+  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS'>('PREVIEW');
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -403,6 +403,7 @@ export default function Joe() {
             <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
             <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>ملفات</button>
             <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
+            <button className={`tab ${tab==='ANALYTICS'?'active':''}`} onClick={()=>setTab('ANALYTICS')}>Analytics</button>
             <button className="tab-icon" onClick={() => setShowRightPanel(false)} title="إخفاء اللوحة">
               <ChevronRight size={16} />
             </button>

@@ -101,6 +101,13 @@ export const store = {
     return s;
   },
   listSessions() { return sessions; },
+  getSession(id: Id) {
+    return sessions.find(s => s.id === id);
+  },
+  deleteSession(id: Id) {
+    const idx = sessions.findIndex(s => s.id === id);
+    if (idx !== -1) sessions.splice(idx, 1);
+  },
   addMessage(sessionId: Id, role: 'user' | 'assistant' | 'system', content: string, runId?: Id) {
     const id = nextId('msg_', messages.length + 1);
     const m = { id, sessionId, role, content, runId, ts: Date.now() };

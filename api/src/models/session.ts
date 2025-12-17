@@ -12,6 +12,12 @@ export interface ISession extends Document {
   createdAt: Date;
   updatedAt: Date;
   folderId?: Types.ObjectId;
+  terminalState?: string;
+  browserState?: {
+    url: string;
+    title: string;
+    screenshot?: string;
+  };
 }
 
 const SessionSchema = new Schema<ISession>(
@@ -25,6 +31,12 @@ const SessionSchema = new Schema<ISession>(
     lastSnippet: { type: String },
     lastUpdatedAt: { type: Date, default: Date.now },
     folderId: { type: Schema.Types.ObjectId, ref: 'Folder' },
+    terminalState: { type: String },
+    browserState: {
+      url: { type: String },
+      title: { type: String },
+      screenshot: { type: String }
+    },
   },
   { timestamps: true }
 );
