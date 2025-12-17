@@ -150,9 +150,9 @@ export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BR
   return (
     <div className="panel-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>⚡️</div>
-      <div style={{ fontWeight: 500 }}>Live Execution</div>
+      <div style={{ fontWeight: 500 }}>التنفيذ المباشر</div>
       <p style={{ fontSize: 13, maxWidth: 200, textAlign: 'center', marginTop: 8 }}>
-        Events and logs will appear in the center panel. Use the tabs to switch views.
+        ستظهر الأحداث والسجلات في اللوحة المركزية. استخدم التبويبات للتبديل بين طرق العرض.
       </p>
     </div>
   );

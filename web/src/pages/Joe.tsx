@@ -65,10 +65,10 @@ export default function Joe() {
     <div className="joe-layout">
       <aside className="sidebar">
         <button className="new-chat-btn" onClick={createSession}>
-          <span>+</span> New Chat
+          <span>+</span> محادثة جديدة
         </button>
         
-        <div className="section-title" style={{ marginTop: 24 }}>Recent Sessions</div>
+        <div className="section-title" style={{ marginTop: 24 }}>الجلسات الأخيرة</div>
         <div className="session-list">
           {sessions.map(s => (
             <div 
@@ -92,8 +92,8 @@ export default function Joe() {
               }}
             >
               <button className={selected===s.id?'active':''} onClick={()=>setSelected(s.id)}>
-                <div style={{ fontWeight: 500, marginBottom: 2 }}>{s.title}</div>
-                {s.lastSnippet && <div style={{ opacity: 0.6, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.lastSnippet}</div>}
+                <div style={{ fontWeight: 500, marginBottom: 2, textAlign: 'right' }}>{s.title}</div>
+                {s.lastSnippet && <div style={{ opacity: 0.6, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'right' }}>{s.lastSnippet}</div>}
               </button>
             </div>
           ))}
@@ -110,11 +110,11 @@ export default function Joe() {
       </main>
       <aside className="rightpanel">
         <div className="tabs">
-          <button className={`tab ${tab==='LIVE'?'active':''}`} onClick={()=>setTab('LIVE')}>Live Run</button>
-          <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>Browser</button>
-          <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>Artifacts</button>
-          <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>Memory</button>
-          <button className={`tab ${tab==='QA'?'active':''}`} onClick={()=>setTab('QA')}>QA</button>
+          <button className={`tab ${tab==='LIVE'?'active':''}`} onClick={()=>setTab('LIVE')}>مباشر</button>
+          <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
+          <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>ملفات</button>
+          <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
+          <button className={`tab ${tab==='QA'?'active':''}`} onClick={()=>setTab('QA')}>أسئلة</button>
         </div>
         <div className="panel-content">
           <RightPanel active={tab} sessionId={selected || undefined} />

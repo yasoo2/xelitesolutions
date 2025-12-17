@@ -15,7 +15,9 @@ import {
   Link as LinkIcon,
   ChevronDown,
   ChevronRight,
-  Clock
+  Clock,
+  Image as ImageIcon,
+  Video as VideoIcon
 } from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
@@ -27,6 +29,12 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   const seenIdsRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
   const stepStartTimes = useRef<Record<string, number>>({});
+  const endRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom on new events
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [events]);
 
   useEffect(() => {
     connectWS();
@@ -39,7 +47,6 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
 
   function connectWS() {
     try {
-      console.log('Connecting to WS:', WS);
       if (wsRef.current) {
         if (wsRef.current.readyState === WebSocket.OPEN) return;
         try { wsRef.current.close(); } catch {}
@@ -141,65 +148,13 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       if (sessionId || data.sessionId) {
         await loadHistory(sessionId || data.sessionId);
       }
+      // Fallback for non-streaming response
       if (!isConnected && data?.result) {
-        const r = data.result;
-        if (r?.error) {
-          setEvents(prev => [...prev, { type: 'error', data: String(r.error) }]);
-        } else if (r?.output) {
-          let content: any = r.output;
-          if (typeof content === 'string') {
-            setEvents(prev => [...prev, { type: 'text', data: content }]);
-          } else {
-            try {
-              const txt = typeof content?.text === 'string' ? content.text : JSON.stringify(content, null, 2);
-              setEvents(prev => [...prev, { type: 'text', data: txt }]);
-            } catch {
-              setEvents(prev => [...prev, { type: 'text', data: String(content) }]);
-            }
-          }
-        }
-      }
-      if (!isConnected && data?.runId) {
-        const runId = String(data.runId);
-        const deadline = Date.now() + 15000;
-        async function poll() {
-          if (Date.now() > deadline) return;
-          try {
-            const res2 = await fetch(`${API}/run/${runId}`);
-            if (res2.ok) {
-              const d = await res2.json();
-              const execs = Array.isArray(d.execs) ? d.execs : [];
-              const arts = Array.isArray(d.artifacts) ? d.artifacts : [];
-              for (const ex of execs) {
-                const key = `${ex.name}-${ex.createdAt || ''}-${ex.updatedAt || ''}`;
-                if (!seenIdsRef.current.has(key)) {
-                  seenIdsRef.current.add(key);
-                  const duration = ex.updatedAt ? (new Date(ex.updatedAt).getTime() - new Date(ex.createdAt).getTime()) : undefined;
-                  setEvents(prev => [...prev, {
-                    type: 'step_done',
-                    duration,
-                    data: {
-                      name: `execute:${ex.name}`,
-                      plan: { input: ex.input },
-                      result: { output: ex.output, logs: ex.logs, ok: ex.ok }
-                    }
-                  }]);
-                }
-              }
-              for (const a of arts) {
-                const akey = `art-${a.name}-${a.href}`;
-                if (!seenIdsRef.current.has(akey)) {
-                  seenIdsRef.current.add(akey);
-                  setEvents(prev => [...prev, { type: 'artifact_created', data: { name: a.name, href: a.href } }]);
-                }
-              }
-              const status = d.run?.status;
-              if (status === 'done' || status === 'failed') return;
-            }
-          } catch {}
-          setTimeout(poll, 1000);
-        }
-        poll();
+         const r = data.result;
+         if (r?.output) {
+             const txt = typeof r.output === 'string' ? r.output : JSON.stringify(r.output);
+             setEvents(prev => [...prev, { type: 'text', data: txt }]);
+         }
       }
     } catch (e) {
       console.error(e);
@@ -239,11 +194,11 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   };
 
   const getToolIcon = (name: string) => {
-    if (name.includes('shell') || name.includes('exec')) return <Terminal size={16} />;
-    if (name.includes('web') || name.includes('search')) return <Globe size={16} />;
-    if (name.includes('file')) return <FileText size={16} />;
-    if (name.includes('plan') || name.includes('thinking')) return <Cpu size={16} />;
-    return <Cpu size={16} />;
+    if (name.includes('shell') || name.includes('exec')) return <Terminal size={14} />;
+    if (name.includes('web') || name.includes('search')) return <Globe size={14} />;
+    if (name.includes('file')) return <FileText size={14} />;
+    if (name.includes('plan') || name.includes('thinking')) return <Cpu size={14} />;
+    return <Cpu size={14} />;
   };
 
   const formatDuration = (ms: number) => {
@@ -251,184 +206,238 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
     return `${(ms / 1000).toFixed(1)}s`;
   };
 
+  const isThinking = isConnected && events.length > 0 && 
+    (events[events.length - 1].type === 'user_input' || 
+     events[events.length - 1].type === 'step_started');
+
   return (
     <div className="composer">
       <div className="events">
-        {events.length === 0 && <div style={{ opacity: 0.5, textAlign: 'center', marginTop: 40 }}>Ready to start. Type a command below.</div>}
-        <div className="eventlog">
-          {events.map((e, i) => {
-            if (typeof e === 'string') return <div key={i} className="event-item">{e}</div>;
+        {events.length === 0 && (
+          <div style={{ opacity: 0.5, textAlign: 'center', marginTop: 80, fontSize: 18, color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>👋</div>
+            مرحباً! أنا جو، مساعدك الذكي.<br/>كيف يمكنني مساعدتك اليوم؟
+          </div>
+        )}
+        
+        {events.map((e, i) => {
+          // USER INPUT
+          if (e.type === 'user_input') {
+            return (
+              <div key={i} className="message-row user">
+                <div className="message-bubble">
+                  {e.data}
+                </div>
+              </div>
+            );
+          }
+          
+          // JOE TEXT RESPONSE
+          if (e.type === 'text') {
+            let content = e.data;
+            try {
+              if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                 const p = JSON.parse(content);
+                 content = p.text || p.output || content;
+              }
+            } catch {}
             
-            // Handle step events
-            if (e.type === 'step_started') {
-              return (
-                <div key={i} className="event-step running">
-                  <span className="step-icon spin"><Loader2 size={16} /></span>
+            return (
+              <div key={i} className="message-row joe">
+                <div className="message-bubble markdown-content">
+                  <ReactMarkdown
+                    components={{
+                      code(props) {
+                        const {children, className, ...rest} = props as any;
+                        const match = /language-(\w+)/.exec(className || '');
+                        return match ? (
+                          <SyntaxHighlighter
+                            {...rest}
+                            PreTag="div"
+                            children={String(children).replace(/\n$/, '')}
+                            language={match[1]}
+                            style={vscDarkPlus}
+                          />
+                        ) : (
+                          <code {...rest} className={className}>
+                            {children}
+                          </code>
+                        );
+                      }
+                    }}
+                  >
+                    {String(content)}
+                  </ReactMarkdown>
+                  
+                  {/* Copy Button */}
+                  <div 
+                    className="copy-icon" 
+                    onClick={() => navigator.clipboard.writeText(String(content))}
+                    title="نسخ النص"
+                  >
+                    <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // STEPS (Thinking)
+          if (e.type === 'step_started') {
+            return (
+              <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
+                <div className="event-step running">
+                  <span className="step-icon spin"><Loader2 size={14} /></span>
                   {getToolIcon(e.data.name)}
                   <strong>{e.data.name}</strong>
+                  <span style={{ opacity: 0.5, fontSize: 11, marginLeft: 'auto' }}>جاري العمل...</span>
                 </div>
-              );
-            }
-            if (e.type === 'step_done') {
-              const hasDetails = e.data.plan || e.data.result;
-              return (
-                <div key={i} className={`event-step-wrapper ${e.expanded ? 'expanded' : ''}`}>
-                  <div className="event-step done" onClick={() => hasDetails && toggleExpand(i)} style={{ cursor: hasDetails ? 'pointer' : 'default' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
-                      <span className="step-icon"><CheckCircle2 size={16} /></span>
-                      {getToolIcon(e.data.name)}
-                      <strong>{e.data.name}</strong>
-                    </div>
+              </div>
+            );
+          }
+
+          if (e.type === 'step_done') {
+            const hasDetails = e.data.plan || e.data.result;
+            return (
+              <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
+                <div className={`steps-container`}>
+                  <div 
+                    className={`event-step done`} 
+                    onClick={() => hasDetails && toggleExpand(i)}
+                    style={{ cursor: hasDetails ? 'pointer' : 'default' }}
+                  >
+                    <span className="step-icon"><CheckCircle2 size={14} color="#22c55e" /></span>
+                    {getToolIcon(e.data.name)}
+                    <strong style={{ marginRight: 8 }}>{e.data.name}</strong>
+                    
                     {e.duration && (
-                      <div className="step-duration">
-                        <Clock size={12} />
+                      <span className="step-duration">
                         {formatDuration(e.duration)}
-                      </div>
+                      </span>
                     )}
+                    
                     {hasDetails && (
-                      <div className="step-toggle">
+                      <div className="step-toggle" style={{ marginLeft: 'auto' }}>
                         {e.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </div>
                     )}
                   </div>
+                  
                   {e.expanded && hasDetails && (
                     <div className="step-details">
                       {e.data.plan && (
                         <div className="detail-section">
-                          <div className="detail-label">
-                            {String(e.data.name).includes('thinking') ? 'التحليل' : (String(e.data.name).includes('plan') ? 'التخطيط' : 'التخطيط')}
-                          </div>
+                          <div className="detail-label">المدخلات</div>
                           <pre>{JSON.stringify(e.data.plan.input, null, 2)}</pre>
                         </div>
                       )}
                       {e.data.result && (
                         <div className="detail-section">
-                          <div className="detail-label">مخرجات التنفيذ</div>
-                          <pre>{JSON.stringify(e.data.result.output || e.data.result, null, 2)}</pre>
+                          <div className="detail-label">المخرجات</div>
+                          <pre>{typeof (e.data.result.output || e.data.result) === 'string' ? (e.data.result.output || e.data.result) : JSON.stringify(e.data.result.output || e.data.result, null, 2)}</pre>
                         </div>
                       )}
                     </div>
                   )}
                 </div>
-              );
-            }
-            if (e.type === 'step_failed') {
-              return (
-                <div key={i} className="event-step failed">
-                  <span className="step-icon"><XCircle size={16} /></span>
+              </div>
+            );
+          }
+
+          if (e.type === 'step_failed') {
+            return (
+              <div key={i} className="message-row joe">
+                <div className="event-step failed">
+                  <span className="step-icon"><XCircle size={14} color="#ef4444" /></span>
                   <strong>{e.data.name}</strong>
-                  {e.data.reason && <span>: {e.data.reason}</span>}
+                  <span style={{ marginLeft: 8 }}>: {e.data.reason}</span>
                 </div>
-              );
-            }
-            if (e.type === 'evidence_added') {
-              if (e.data.kind === 'log') {
-                return <div key={i} className="event-log">{e.data.text}</div>;
-              }
-              return null;
-            }
-            if (e.type === 'artifact_created') {
-              return (
-                <div key={i} className="event-artifact">
-                  {/\.(png|jpg|jpeg|webp)$/i.test(e.data.name || '') ? (
+              </div>
+            );
+          }
+
+          // ARTIFACTS
+          if (e.type === 'artifact_created') {
+            const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.href || '');
+            const isVideo = /\.(mp4|webm|mov)$/i.test(e.data.name || '') || /\.(mp4|webm|mov)$/i.test(e.data.href || '');
+            
+            return (
+              <div key={i} className="message-row joe">
+                <div className="event-artifact">
+                  {isImage ? (
                     <>
-                      <img src={e.data.href} alt={e.data.name} style={{ width: 160, height: 'auto', borderRadius: 8, border: '1px solid var(--border-color)' }} />
-                      <div className="artifact-info">
-                        <div className="artifact-title">صورة مُولَّدة</div>
-                        <div className="artifact-name">{e.data.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <ImageIcon size={16} className="artifact-icon" />
+                        <div className="artifact-title">صورة</div>
                       </div>
-                      <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
-                        <LinkIcon size={14} /> فتح
-                      </a>
+                      <img src={e.data.href} alt={e.data.name} style={{ display: 'block' }} />
+                    </>
+                  ) : isVideo ? (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <VideoIcon size={16} className="artifact-icon" />
+                        <div className="artifact-title">فيديو</div>
+                      </div>
+                      <video controls src={e.data.href} style={{ width: '100%', borderRadius: 8 }} />
                     </>
                   ) : (
                     <>
-                      <FileCode size={20} className="artifact-icon" />
-                      <div className="artifact-info">
-                        <div className="artifact-title">Created Artifact</div>
-                        <div className="artifact-name">{e.data.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <FileCode size={20} className="artifact-icon" />
+                        <div className="artifact-info">
+                          <div className="artifact-title">ملف</div>
+                          <div className="artifact-name">{e.data.name}</div>
+                        </div>
                       </div>
-                      <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
-                        <LinkIcon size={14} /> Open
-                      </a>
                     </>
                   )}
+                  
+                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                    <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
+                      <LinkIcon size={12} /> فتح في نافذة جديدة
+                    </a>
+                  </div>
                 </div>
-              );
-            }
+              </div>
+            );
+          }
 
-            if (e.type === 'text') {
-                let content = e.data;
-                try {
-                    if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                        const parsed = JSON.parse(content);
-                        if (parsed.text) content = parsed.text;
-                        else if (parsed.output) content = JSON.stringify(parsed.output, null, 2);
-                        else content = JSON.stringify(parsed, null, 2);
-                    }
-                } catch {}
-                return (
-                    <div key={i} className="event-item markdown-content" style={{ position: 'relative' }}>
-                        <ReactMarkdown
-                          components={{
-                            code(props) {
-                              const {children, className, node, ref, ...rest} = props as any;
-                              const match = /language-(\w+)/.exec(className || '');
-                              return match ? (
-                                <SyntaxHighlighter
-                                  {...rest}
-                                  PreTag="div"
-                                  children={String(children).replace(/\n$/, '')}
-                                  language={match[1]}
-                                  style={vscDarkPlus}
-                                />
-                              ) : (
-                                <code {...rest} className={className}>
-                                  {children}
-                                </code>
-                              );
-                            }
-                          }}
-                        >
-                          {String(content)}
-                        </ReactMarkdown>
-                        <div 
-                          className="copy-icon" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(String(content));
-                          }}
-                          title="Copy to clipboard"
-                        >
-                          <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                        </div>
-                    </div>
-                );
-            }
+          if (e.type === 'error') {
+            return (
+               <div key={i} className="message-row joe">
+                 <div className="message-bubble" style={{ border: '1px solid #ef4444', background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                   ⚠️ {e.data}
+                 </div>
+               </div>
+            );
+          }
 
-            if (e.type === 'user_input') {
-                return <div key={i} className="event-item user-input">{e.data}</div>;
-            }
-            
-            if (e.type === 'error') {
-                return <div key={i} className="event-item error">{e.data}</div>;
-            }
+          return null;
+        })}
 
-            return null;
-          })}
-        </div>
+        {/* Thinking Indicator */}
+        {isThinking && (
+          <div className="message-row joe">
+             <div className="typing-indicator">
+               <div className="typing-dot"></div>
+               <div className="typing-dot"></div>
+               <div className="typing-dot"></div>
+             </div>
+          </div>
+        )}
+        
+        <div ref={endRef} />
       </div>
       
       {approval && (
         <div className="approval-modal">
           <div className="approval-content">
-            <h3>Approval Required</h3>
-            <div className="risk-badge">{approval.risk || 'Unknown Risk'}</div>
-            <p>The agent wants to execute:</p>
-            <pre>{approval.action}</pre>
+            <h3>موافقة مطلوبة</h3>
+            <div className="risk-badge">{approval.risk}</div>
+            <p>الإجراء: {approval.action}</p>
             <div className="approval-actions">
-              <button onClick={() => approve('denied')} className="btn deny">Deny</button>
-              <button onClick={() => approve('approved')} className="btn approve">Approve</button>
+              <button onClick={() => approve('denied')} className="btn deny">رفض</button>
+              <button onClick={() => approve('approved')} className="btn approve">موافقة</button>
             </div>
           </div>
         </div>
@@ -438,7 +447,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
         <textarea 
           value={text} 
           onChange={(e) => setText(e.target.value)} 
-          placeholder="Describe your task..." 
+          placeholder="أدخل أمرك هنا..." 
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -452,12 +461,15 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                 width: 8, height: 8, 
                 borderRadius: '50%', 
                 backgroundColor: isConnected ? '#22c55e' : '#ef4444',
-                boxShadow: isConnected ? '0 0 4px #22c55e' : 'none'
-            }} title={isConnected ? "Connected to Live Updates" : "Disconnected"} />
-            <button className="action-btn" onClick={plan}>Plan Only</button>
+                boxShadow: isConnected ? '0 0 6px #22c55e' : 'none',
+                transition: 'all 0.3s'
+            }} title={isConnected ? "متصل" : "غير متصل"} />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {isConnected ? 'متصل' : 'جاري الاتصال...'}
+            </span>
           </div>
-          <button className="btn run-btn" onClick={run} disabled={!text.trim()}>
-            RUN
+          <button className="run-btn" onClick={run} disabled={!text.trim()}>
+            إرسال
           </button>
         </div>
       </div>
