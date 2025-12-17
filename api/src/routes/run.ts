@@ -13,6 +13,7 @@ const router = Router();
 
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
+  const tn = t.replace(/[\u064B-\u065F\u0670]/g, '').replace(/ـ/g, '');
   const urlMatch = text.match(/https?:\/\/\S+/);
   if (/(صورة|صوره|تصميم|صمم)/.test(t)) {
     if (/(قطة|قطه|قط|cat)/.test(t)) return { name: 'browser_snapshot', input: { url: 'https://cataas.com/cat' } };
@@ -21,7 +22,7 @@ function pickToolFromText(text: string) {
     const url = `https://dummyimage.com/1024x1024/111/eeee.png&text=${label}`;
     return { name: 'browser_snapshot', input: { url } };
   }
-  if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(t)) {
+  if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
     return { name: 'http_fetch', input: { url: 'https://api.exchangerate.host/latest?base=USD&symbols=TRY' } };
   }
   // Currency pairs (Arabic) e.g., "سعر الدينار الكويتي مقابل الشيكل"
@@ -32,7 +33,7 @@ function pickToolFromText(text: string) {
     'الشيكل': 'ILS', 'شيكل': 'ILS', 'ils': 'ILS',
     'الدينار الكويتي': 'KWD', 'دينار كويتي': 'KWD', 'kwd': 'KWD'
   };
-  const curMatch = text.match(/(?:سعر|قيمة)\s+(.+?)\s+(?:مقابل|ضد)\s+(.+?)(?:\s|$)/i);
+  const curMatch = tn.match(/(?:سعر|قيمة)\s+(.+?)\s+(?:مقابل|ضد)\s+(.+?)(?:\s|$)/i);
   if (curMatch) {
     const baseName = curMatch[1].trim().toLowerCase();
     const symName = curMatch[2].trim().toLowerCase();
@@ -42,11 +43,28 @@ function pickToolFromText(text: string) {
       return { name: 'http_fetch', input: { url: `https://api.exchangerate.host/latest?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(sym)}` } };
     }
   }
+  const names: Array<[string, string]> = [
+    ['USD', '(الدولار|دولار|usd)'],
+    ['EUR', '(اليورو|euro|eur)'],
+    ['TRY', '(الليرة التركية|الليره التركية|ليرة تركية|try|turkish\\s+lira)'],
+    ['ILS', '(الشيكل|شيكل|ils)'],
+    ['KWD', '(الدينار الكويتي|دينار كويتي|kwd)'],
+  ];
+  const found: string[] = [];
+  for (const [code, pat] of names) {
+    if (new RegExp(pat, 'i').test(tn)) found.push(code);
+  }
+  if (found.length >= 2) {
+    const base = found[0];
+    const sym = found[1];
+    return { name: 'http_fetch', input: { url: `https://api.exchangerate.host/latest?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(sym)}` } };
+  }
   // Web search detection
   if (/(ابحث|بحث|search)/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
     const query = qMatch ? qMatch[1] : text;
-    return { name: 'web_search', input: { query } };
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    return { name: 'http_fetch', input: { url } };
   }
   // Page design / HTML generation
   if (/(صفحة|landing|html)/.test(t)) {
@@ -195,15 +213,43 @@ router.post('/start', async (req: Request, res: Response) => {
     }
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
     if (result.ok && plan.name === 'http_fetch') {
-      const rate = (result.output?.json?.rates?.TRY) ?? null;
-      if (typeof rate === 'number') {
-        ev({ type: 'text', data: `سعر الدولار مقابل الليرة التركية اليوم: ${rate.toFixed(4)} TRY` });
-      } else if (typeof result.output?.bodySnippet === 'string') {
-        const m = result.output.bodySnippet.match(/"TRY"\s*:\s*([\d.]+)/);
-        if (m) {
-          ev({ type: 'text', data: `سعر الدولار مقابل الليرة التركية اليوم: ${Number(m[1]).toFixed(4)} TRY` });
+      try {
+        const urlStr = String(plan.input?.url || '');
+        const u = new URL(urlStr);
+        const base = (u.searchParams.get('base') || '').toUpperCase();
+        const sym = (u.searchParams.get('symbols') || '').toUpperCase();
+        const rates = result.output?.json?.rates || {};
+        let rate: number | null = null;
+        if (sym && typeof rates[sym] === 'number') {
+          rate = rates[sym];
+        } else if (typeof result.output?.bodySnippet === 'string') {
+          const m = result.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
+          if (m) rate = Number(m[1]);
         }
-      }
+        if (rate !== null && base && sym) {
+          ev({ type: 'text', data: `سعر ${base} مقابل ${sym} اليوم: ${Number(rate).toFixed(4)} ${sym}` });
+        } else if (base && sym) {
+          const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
+          ev({ type: 'step_started', data: { name: `execute:http_fetch(fallback)` } });
+          const fbRes = await executeTool('http_fetch', { url: fbUrl });
+          ev({ type: fbRes.ok ? 'step_done' : 'step_failed', data: { name: `execute:http_fetch(fallback)`, result: fbRes } });
+          let rate2: number | null = null;
+          if (typeof fbRes.output?.json?.rates?.[sym] === 'number') {
+            rate2 = fbRes.output.json.rates[sym];
+          } else if (typeof fbRes.output?.bodySnippet === 'string') {
+            const m2 = fbRes.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
+            if (m2) rate2 = Number(m2[1]);
+          }
+          if (rate2 !== null) {
+            ev({ type: 'text', data: `سعر ${base} مقابل ${sym} اليوم: ${Number(rate2).toFixed(4)} ${sym}` });
+          }
+          if (useMock) {
+            store.addExec(runId, 'http_fetch', { url: fbUrl }, fbRes.output, fbRes.ok, fbRes.logs);
+          } else {
+            await ToolExecution.create({ runId, name: 'http_fetch', input: { url: fbUrl }, output: fbRes.output, ok: fbRes.ok, logs: fbRes.logs });
+          }
+        }
+      } catch {}
     }
 
     // Store execution
@@ -364,6 +410,11 @@ router.post('/qa', async (_req: Request, res: Response) => {
   for (const text of prompts) {
     try {
       const plan = pickToolFromText(text);
+      if (plan.name === 'web_search') {
+        await new Promise(r => setTimeout(r, 1200));
+      } else {
+        await new Promise(r => setTimeout(r, 200));
+      }
       const result = await executeTool(plan.name, plan.input);
       const ok = !!result.ok;
       results.push({ text, ok, reason: ok ? undefined : (result.error || 'error') });

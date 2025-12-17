@@ -227,16 +227,23 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       return { ok: true, output: { href }, logs, artifacts: [{ name: filename, href }] };
     }
     if (name === 'web_search') {
-      const query = String(input?.query ?? '');
-      const { search } = await import('duck-duck-scrape');
-      const results = await search(query, { safeSearch: 0 });
-      const simplified = results.results.slice(0, 5).map(r => ({
-        title: r.title,
-        url: r.url,
-        description: r.description
-      }));
+      const query = String(input?.query ?? '').trim();
+      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const resp = await fetch(url);
+      const body = await resp.text();
+      let json: any = null;
+      try { json = JSON.parse(body); } catch {}
+      const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
+      const simplified = topics
+        .map((t: any) => {
+          const Text = t?.Text || '';
+          const FirstURL = t?.FirstURL || '';
+          return { title: String(Text).slice(0, 120), url: String(FirstURL), description: String(Text) };
+        })
+        .filter((x: any) => x.url && x.title)
+        .slice(0, 5);
       logs.push(`search.query=${query} results=${simplified.length}`);
-      return { ok: true, output: { results: simplified }, logs };
+      return { ok: simplified.length > 0, output: { results: simplified }, logs };
     }
     if (name === 'file_read') {
       const filename = path.basename(String(input?.filename ?? ''));
