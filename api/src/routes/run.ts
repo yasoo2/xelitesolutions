@@ -14,7 +14,10 @@ const router = Router();
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
   const urlMatch = text.match(/https?:\/\/\S+/);
-  if (/(صورة|صوره|تصميم|صمم).*(قطة|قطه|قط)/.test(t) || t.includes('cat')) return { name: 'browser_snapshot', input: { url: 'https://cataas.com/cat' } };
+  if (/(صورة|صوره|تصميم|صمم)/.test(t)) {
+    if (/(قطة|قطه|قط|cat)/.test(t)) return { name: 'browser_snapshot', input: { url: 'https://cataas.com/cat' } };
+    return { name: 'image_generate', input: { prompt: text } };
+  }
   if (t.includes('fetch') && urlMatch) return { name: 'http_fetch', input: { url: urlMatch[0] } };
   if (t.includes('write')) return { name: 'file_write', input: { filename: 'note.txt', content: text } };
   if (t.includes('browser') && urlMatch) return { name: 'browser_snapshot', input: { url: urlMatch[0] } };

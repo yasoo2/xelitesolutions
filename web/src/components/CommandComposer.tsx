@@ -270,14 +270,29 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
             if (e.type === 'artifact_created') {
               return (
                 <div key={i} className="event-artifact">
-                  <FileCode size={20} className="artifact-icon" />
-                  <div className="artifact-info">
-                    <div className="artifact-title">Created Artifact</div>
-                    <div className="artifact-name">{e.data.name}</div>
-                  </div>
-                  <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
-                    <LinkIcon size={14} /> Open
-                  </a>
+                  {/\.(png|jpg|jpeg|webp)$/i.test(e.data.name || '') ? (
+                    <>
+                      <img src={e.data.href} alt={e.data.name} style={{ width: 160, height: 'auto', borderRadius: 8, border: '1px solid var(--border-color)' }} />
+                      <div className="artifact-info">
+                        <div className="artifact-title">صورة مُولَّدة</div>
+                        <div className="artifact-name">{e.data.name}</div>
+                      </div>
+                      <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
+                        <LinkIcon size={14} /> فتح
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <FileCode size={20} className="artifact-icon" />
+                      <div className="artifact-info">
+                        <div className="artifact-title">Created Artifact</div>
+                        <div className="artifact-name">{e.data.name}</div>
+                      </div>
+                      <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
+                        <LinkIcon size={14} /> Open
+                      </a>
+                    </>
+                  )}
                 </div>
               );
             }

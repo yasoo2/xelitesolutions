@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ToolDefinition, ToolExecutionResult } from './types';
+import { Buffer } from 'buffer';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -19,6 +20,25 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 120,
     auditFields: ['text'],
     mockSupported: true,
+  },
+  {
+    name: 'image_generate',
+    version: '1.0.0',
+    tags: ['ai', 'image', 'artifact'],
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        prompt: { type: 'string' }, 
+        size: { type: 'string', enum: ['512x512', '768x768', '1024x1024'] } 
+      }, 
+      required: ['prompt'] 
+    },
+    outputSchema: { type: 'object', properties: { href: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 20,
+    auditFields: ['prompt'],
+    mockSupported: false,
   },
   {
     name: 'http_fetch',
@@ -174,6 +194,32 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       logs.push(`snapshot.saved=${full} title=${title}`);
       const href = `/artifacts/${encodeURIComponent(filename)}`;
       return { ok: true, output: { href, title }, logs, artifacts: [{ name: filename, href }] };
+    }
+    if (name === 'image_generate') {
+      const prompt = String(input?.prompt ?? '').trim();
+      const allowedSizes = ['auto','1024x1024','1536x1024','1024x1536','256x256','512x512','1792x1024','1024x1792'] as const;
+      const sizeInput = String(input?.size ?? '1024x1024');
+      const size = (allowedSizes as readonly string[]).includes(sizeInput) ? (sizeInput as (typeof allowedSizes)[number]) : '1024x1024';
+      if (!prompt) return { ok: false, error: 'prompt_required', logs };
+      const apiKey = process.env.OPENAI_API_KEY || '';
+      if (!apiKey) {
+        logs.push('openai.missing_api_key');
+        return { ok: false, error: 'OPENAI_API_KEY not set', logs };
+      }
+      const { default: OpenAI } = await import('openai');
+      const client = new OpenAI({ apiKey });
+      const resp = await client.images.generate({ model: 'gpt-image-1', prompt, size });
+      const b64 = resp.data?.[0]?.b64_json;
+      if (!b64) {
+        return { ok: false, error: 'image_generation_failed', logs };
+      }
+      const buf = Buffer.from(b64, 'base64');
+      const filename = `image-${Date.now()}.png`;
+      const full = path.join(ARTIFACT_DIR, filename);
+      fs.writeFileSync(full, buf);
+      logs.push(`image.saved=${full} bytes=${buf.length}`);
+      const href = `/artifacts/${encodeURIComponent(filename)}`;
+      return { ok: true, output: { href }, logs, artifacts: [{ name: filename, href }] };
     }
     if (name === 'web_search') {
       const query = String(input?.query ?? '');
