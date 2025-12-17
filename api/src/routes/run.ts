@@ -329,6 +329,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const href = result.output?.href;
       if (href) {
         forcedText = `![Generated Image](${href})`;
+        ev({ type: 'text', data: forcedText }); // Emit text event so UI shows it immediately
         break; 
       }
     }

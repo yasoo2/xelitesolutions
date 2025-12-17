@@ -391,6 +391,18 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                             {children}
                           </code>
                         );
+                      },
+                      img(props) {
+                        return (
+                           <img 
+                             {...props} 
+                             style={{ maxWidth: '100%', borderRadius: 8, marginTop: 8, border: '1px solid var(--border-color)' }} 
+                             onLoad={() => {
+                               // Ensure scroll to bottom when image loads
+                               endRef.current?.scrollIntoView({ behavior: 'smooth' });
+                             }}
+                           />
+                        );
                       }
                     }}
                   >
