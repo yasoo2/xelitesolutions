@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { API_URL as API, WS_URL as WS } from '../config';
+import { 
+  Terminal, 
+  FileText, 
+  Globe, 
+  Cpu, 
+  CheckCircle2, 
+  XCircle, 
+  Loader2, 
+  FileCode,
+  Link as LinkIcon
+} from 'lucide-react';
 
 export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
   const [text, setText] = useState('');
@@ -10,6 +21,64 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
   const reconnectTimerRef = useRef<number | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    connectWS();
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+    };
+  }, []);
+
+  function connectWS() {
+    // if (!sessionId) return; // Allow connecting without session
+    try {
+      console.log('Connecting to WS:', WS);
+      if (wsRef.current) {
+        if (wsRef.current.readyState === WebSocket.OPEN) return;
+        try { wsRef.current.close(); } catch {}
+      }
+      const ws = new WebSocket(WS);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setIsConnected(true);
+      };
+
+      ws.onclose = () => {
+        setIsConnected(false);
+        reconnectTimerRef.current = window.setTimeout(() => {
+          connectWS();
+        }, 2000);
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          
+          if (msg.type === 'approval_required') {
+            const { id, runId, risk, action } = msg.data;
+            setApproval({ id, runId, risk, action });
+          }
+
+          if (['step_started', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'text', 'user_input'].includes(msg.type)) {
+            setEvents(prev => [...prev, msg]);
+          }
+        } catch (e) {
+          console.error('WS parse error:', e);
+        }
+      };
+    } catch (e) {
+      console.error('WS connect failed:', e);
+      setIsConnected(false);
+    }
+  }
+
+  useEffect(() => {
+    if (sessionId) {
+      loadHistory(sessionId);
+    }
+  }, [sessionId]);
 
   async function loadHistory(id: string) {
     const token = localStorage.getItem('token');
@@ -28,78 +97,6 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       setEvents(history);
     }
   }
-
-  function connectWS() {
-    // if (!sessionId) return; // Allow connecting without session
-    try {
-      console.log('Connecting to WS:', WS);
-      if (wsRef.current) {
-        if (wsRef.current.readyState === WebSocket.OPEN) return;
-        try { wsRef.current.close(); } catch {}
-      }
-      const ws = new WebSocket(WS);
-      wsRef.current = ws;
-  
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data.toString());
-          // Only add event if it matches current session or is a system event
-          // For now, we accept all, but ideally backend should filter
-          setEvents((prev) => [...prev, msg]);
-          if (msg.type === 'approval_required') {
-            setApproval({ id: msg.data.id, runId: msg.data.runId, risk: msg.data.risk, action: msg.data.action });
-          }
-          if (msg.type === 'approval_result') {
-            setApproval(null);
-          }
-        } catch {
-          setEvents((prev) => [...prev, { type: 'text', data: ev.data.toString() }]);
-        }
-      };
-  
-      ws.onopen = () => {
-        setIsConnected(true);
-      };
-  
-      ws.onclose = () => {
-        setIsConnected(false);
-        // Attempt reconnect after 2s
-        if (reconnectTimerRef.current) {
-          window.clearTimeout(reconnectTimerRef.current);
-        }
-        reconnectTimerRef.current = window.setTimeout(() => {
-          connectWS();
-        }, 2000);
-      };
-  
-      ws.onerror = (err) => {
-        console.error('WS Error:', err);
-        setIsConnected(false);
-        try { ws.close(); } catch {}
-      };
-    } catch (e) {
-      console.error('WS connect failed:', e);
-      setIsConnected(false);
-    }
-  }
-
-  useEffect(() => {
-    if (sessionId) {
-      loadHistory(sessionId).catch(err => console.error('Failed to load history:', err));
-    } else {
-      setEvents([]);
-    }
-
-    connectWS();
-    return () => {
-        try { wsRef.current?.close(); } catch {}
-        setIsConnected(false);
-        if (reconnectTimerRef.current) {
-          window.clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
-    };
-  }, [sessionId]);
 
   async function run() {
     if (!text.trim()) return;
@@ -157,7 +154,16 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       },
       body: JSON.stringify({ decision }),
     });
+    setApproval(null);
   }
+
+  const getToolIcon = (name: string) => {
+    if (name.includes('shell') || name.includes('exec')) return <Terminal size={16} />;
+    if (name.includes('web') || name.includes('search')) return <Globe size={16} />;
+    if (name.includes('file')) return <FileText size={16} />;
+    if (name.includes('plan') || name.includes('thinking')) return <Cpu size={16} />;
+    return <Cpu size={16} />;
+  };
 
   return (
     <div className="composer">
@@ -171,21 +177,26 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
             if (e.type === 'step_started') {
               return (
                 <div key={i} className="event-step running">
-                  <span>Running:</span> <strong>{e.data.name}</strong>
+                  <span className="step-icon spin"><Loader2 size={16} /></span>
+                  {getToolIcon(e.data.name)}
+                  <strong>{e.data.name}</strong>
                 </div>
               );
             }
             if (e.type === 'step_done') {
               return (
                 <div key={i} className="event-step done">
-                  <span>✓</span> <strong>{e.data.name}</strong>
+                  <span className="step-icon"><CheckCircle2 size={16} /></span>
+                  {getToolIcon(e.data.name)}
+                  <strong>{e.data.name}</strong>
                 </div>
               );
             }
             if (e.type === 'step_failed') {
               return (
                 <div key={i} className="event-step failed">
-                  <span>✗</span> <strong>{e.data.name}</strong>
+                  <span className="step-icon"><XCircle size={16} /></span>
+                  <strong>{e.data.name}</strong>
                   {e.data.reason && <span>: {e.data.reason}</span>}
                 </div>
               );
@@ -195,6 +206,20 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                 return <div key={i} className="event-log">{e.data.text}</div>;
               }
               return null;
+            }
+            if (e.type === 'artifact_created') {
+              return (
+                <div key={i} className="event-artifact">
+                  <FileCode size={20} className="artifact-icon" />
+                  <div className="artifact-info">
+                    <div className="artifact-title">Created Artifact</div>
+                    <div className="artifact-name">{e.data.name}</div>
+                  </div>
+                  <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
+                    <LinkIcon size={14} /> Open
+                  </a>
+                </div>
+              );
             }
 
             // Handle text events specifically to parse JSON content and avoid ugly escaping
@@ -216,53 +241,39 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                           onClick={(e) => {
                             e.stopPropagation();
                             navigator.clipboard.writeText(String(content));
-                            const target = e.currentTarget;
-                            target.classList.add('copied');
-                            setTimeout(() => target.classList.remove('copied'), 1500);
                           }}
-                          title="Copy text"
+                          title="Copy to clipboard"
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                          </svg>
+                          <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                         </div>
                     </div>
                 );
             }
 
-            if (e.type === 'evidence_added' && e.data?.kind === 'artifact' && e.data?.href) {
-              const href = e.data.href;
-              const url = (API + href).replace(/([^:]\/)\/+/g, '$1');
-              return (
-                <div key={i} className="event-item" style={{ borderColor: 'var(--accent-secondary)' }}>
-                  <div className="artifact-link">
-                    <span>📦 Artifact Created:</span>
-                    <a href={url} target="_blank" rel="noreferrer">{e.data.name}</a>
-                  </div>
-                </div>
-              );
-            }
             if (e.type === 'user_input') {
-              return <div key={i} className="event-item user">{e.data}</div>;
+                return <div key={i} className="event-item user-input">{e.data}</div>;
             }
-            // Simplify other events
-            return <div key={i} className="event-item">
-              <span style={{ opacity: 0.5, marginRight: 8 }}>[{e.type}]</span>
-              {JSON.stringify(e.data || e)}
-            </div>;
+            
+            if (e.type === 'error') {
+                return <div key={i} className="event-item error">{e.data}</div>;
+            }
+
+            return null;
           })}
         </div>
       </div>
-
+      
       {approval && (
-        <div className="approval card" style={{ borderColor: 'var(--accent-primary)', background: 'rgba(234, 179, 8, 0.1)' }}>
-          <div style={{ fontWeight: 'bold', color: 'var(--accent-primary)', marginBottom: 8 }}>⚠️ Approval Required</div>
-          <div style={{ marginBottom: 4 }}>Risk: {approval.risk}</div>
-          <div style={{ marginBottom: 12 }}>Action: {approval.action}</div>
-          <div className="row" style={{ gap: 12 }}>
-            <button className="btn btn-yellow" onClick={() => approve('approved')}>Approve</button>
-            <button className="btn" style={{ background: '#ef4444', border: 'none', color: 'white' }} onClick={() => approve('denied')}>Deny</button>
+        <div className="approval-modal">
+          <div className="approval-content">
+            <h3>Approval Required</h3>
+            <div className="risk-badge">{approval.risk || 'Unknown Risk'}</div>
+            <p>The agent wants to execute:</p>
+            <pre>{approval.action}</pre>
+            <div className="approval-actions">
+              <button onClick={() => approve('denied')} className="btn deny">Deny</button>
+              <button onClick={() => approve('approved')} className="btn approve">Approve</button>
+            </div>
           </div>
         </div>
       )}
@@ -289,7 +300,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
             }} title={isConnected ? "Connected to Live Updates" : "Disconnected"} />
             <button className="action-btn" onClick={plan}>Plan Only</button>
           </div>
-          <button className="btn run-btn" onClick={run}>
+          <button className="btn run-btn" onClick={run} disabled={!text.trim()}>
             RUN
           </button>
         </div>

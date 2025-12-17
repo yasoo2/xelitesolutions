@@ -145,7 +145,7 @@ p { margin: 0; line-height: 1.5; }
   padding-bottom: 120px; /* Space for input */
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   max-width: 900px;
   margin: 0 auto;
   width: 100%;
@@ -188,7 +188,7 @@ p { margin: 0; line-height: 1.5; }
 
 /* Step & Log Styles */
 .event-step {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: var(--radius-md);
   background-color: rgba(24, 24, 27, 0.5);
   border: 1px solid var(--border-color);
@@ -197,14 +197,20 @@ p { margin: 0; line-height: 1.5; }
   font-family: 'JetBrains Mono', monospace;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-left: 0;
   max-width: 100%;
   width: fit-content;
+  transition: all 0.2s;
+}
+
+.event-step:hover {
+  background-color: var(--bg-card);
 }
 
 .event-step.running {
   border-left: 3px solid var(--accent-primary);
+  color: var(--text-primary);
 }
 
 .event-step.done {
@@ -216,17 +222,91 @@ p { margin: 0; line-height: 1.5; }
   border-left: 3px solid #ef4444;
 }
 
+.step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-icon.spin {
+  animation: spin 2s linear infinite;
+  color: var(--accent-primary);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .event-log {
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
   background-color: #000;
-  color: #a1a1aa;
+  color: #71717a;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  margin-left: 20px;
-  border-left: 2px solid var(--border-light);
+  font-size: 11px;
+  margin-left: 32px;
+  border-left: 1px solid var(--border-light);
   white-space: pre-wrap;
   overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  opacity: 0.9;
+}
+
+.event-artifact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background-color: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  margin-left: 0;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.artifact-icon {
+  color: var(--accent-secondary);
+}
+
+.artifact-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.artifact-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--accent-secondary);
+  font-weight: 700;
+}
+
+.artifact-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.artifact-link {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.artifact-link:hover {
+  background-color: var(--bg-card-hover);
+  border-color: var(--accent-secondary);
 }
 
 /* Input Area */
