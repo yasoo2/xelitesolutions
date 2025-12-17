@@ -1,8 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, RequestHandler } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import pdf from 'pdf-parse';
+const pdf = require('pdf-parse');
 import { FileModel } from '../models/file';
 import { authenticate } from '../middleware/auth';
 
@@ -29,7 +29,7 @@ const upload = multer({
 });
 
 // Upload endpoint
-router.post('/upload', authenticate, upload.single('file'), async (req: Request, res: Response) => {
+router.post('/upload', authenticate as RequestHandler, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });

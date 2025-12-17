@@ -12,6 +12,7 @@ export interface LiveEvent {
     | 'approval_required'
     | 'approval_result'
     | 'run_finished'
+    | 'run_completed'
     | 'text';
   data: any;
 }

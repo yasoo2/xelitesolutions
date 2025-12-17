@@ -101,9 +101,9 @@ export const store = {
     return s;
   },
   listSessions() { return sessions; },
-  addMessage(sessionId: Id, role: 'user' | 'assistant' | 'system', content: string) {
+  addMessage(sessionId: Id, role: 'user' | 'assistant' | 'system', content: string, runId?: Id) {
     const id = nextId('msg_', messages.length + 1);
-    const m = { id, sessionId, role, content, ts: Date.now() };
+    const m = { id, sessionId, role, content, runId, ts: Date.now() };
     messages.push(m);
     const s = sessions.find(s => s.id === sessionId);
     if (s) { s.lastSnippet = content.slice(0, 140); s.lastUpdatedAt = Date.now(); }

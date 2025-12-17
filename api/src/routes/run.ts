@@ -454,13 +454,13 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
   
   if (useMock) {
     store.addMessage(sessionId, 'assistant', finalContent, runId);
-    store.updateRun(runId, { status: 'completed' });
+    store.updateRun(runId, { status: 'done' });
   } else {
     await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
-    await Run.findByIdAndUpdate(runId, { $set: { status: 'completed' } });
+    await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
   }
   
-  res.json({ runId, status: 'completed' });
+  res.json({ runId, status: 'done' });
 });
 
 export default router;
