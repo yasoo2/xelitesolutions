@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { API_URL as API, WS_URL as WS } from '../config';
 
 export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
@@ -171,7 +172,11 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                         else content = JSON.stringify(parsed, null, 2);
                     }
                 } catch {}
-                return <div key={i} className="event-item" style={{ whiteSpace: 'pre-wrap' }}>{String(content)}</div>;
+                return (
+                    <div key={i} className="event-item markdown-content">
+                        <ReactMarkdown>{String(content)}</ReactMarkdown>
+                    </div>
+                );
             }
 
             if (e.type === 'evidence_added' && e.data?.kind === 'artifact' && e.data?.href) {
