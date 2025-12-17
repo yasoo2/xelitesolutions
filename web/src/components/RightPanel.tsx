@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { API_URL as API, WS_URL as WS } from '../config';
+import ArtifactPreview from './ArtifactPreview';
 
-export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA'; sessionId?: string }) {
+export default function RightPanel({ active, sessionId, previewData }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW'; sessionId?: string; previewData?: { content: string; language: string; } | null }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
   const [browser, setBrowser] = useState<{ href: string; title?: string } | null>(null);
   const [summary, setSummary] = useState<string>('');
@@ -68,6 +69,26 @@ export default function RightPanel({ active, sessionId }: { active: 'LIVE' | 'BR
       </div>
     );
   }
+
+  if (active === 'PREVIEW') {
+     if (!previewData) {
+       return (
+         <div className="panel-content">
+           <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 40 }}>
+             لا يوجد معاينة متاحة حالياً.
+             <br/>
+             اضغط على زر "معاينة" في كود البرمجة.
+           </div>
+         </div>
+       );
+     }
+     return (
+       <div className="panel-content" style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <ArtifactPreview content={previewData.content} language={previewData.language} />
+       </div>
+     );
+  }
+
   if (active === 'ARTIFACTS') {
     return (
       <div className="panel-content">

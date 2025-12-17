@@ -9,11 +9,13 @@ import { PanelLeftClose, PanelLeftOpen, Trash2, Search } from 'lucide-react';
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA'>('LIVE');
   const [showSidebar, setShowSidebar] = useState(true);
+  const [tab, setTab] = useState<'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW'>('LIVE');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<Array<any>>([]);
+  const [previewData, setPreviewData] = useState<{ content: string; language: string; } | null>(null);
+
   const nav = useNavigate();
 
   async function loadSessions() {
@@ -101,6 +103,11 @@ export default function Joe() {
 
   function shareSession(id: string) {
     alert('تم نسخ رابط الجلسة');
+  }
+
+  function handlePreviewArtifact(content: string, language: string) {
+    setPreviewData({ content, language });
+    setTab('PREVIEW');
   }
 
   useEffect(() => {
@@ -232,17 +239,19 @@ export default function Joe() {
             await loadSessions();
             setSelected(id);
           }}
+          onPreviewArtifact={handlePreviewArtifact}
         />
       </main>
       <aside className="rightpanel">
         <div className="tabs">
           <button className={`tab ${tab==='LIVE'?'active':''}`} onClick={()=>setTab('LIVE')}>مباشر</button>
+          <button className={`tab ${tab==='PREVIEW'?'active':''}`} onClick={()=>setTab('PREVIEW')}>معاينة</button>
           <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
           <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>ملفات</button>
           <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
           <button className={`tab ${tab==='QA'?'active':''}`} onClick={()=>setTab('QA')}>أسئلة</button>
         </div>
-        <RightPanel active={tab} sessionId={selected || undefined} />
+        <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} />
       </aside>
     </div>
   );

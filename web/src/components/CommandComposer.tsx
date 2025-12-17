@@ -19,10 +19,11 @@ import {
   Clock,
   Image as ImageIcon,
   Video as VideoIcon,
-  Mic
+  Mic,
+  Play
 } from 'lucide-react';
 
-export default function CommandComposer({ sessionId, onSessionCreated }: { sessionId?: string; onSessionCreated?: (id: string) => void }) {
+export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void }) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
@@ -289,14 +290,45 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                       code(props) {
                         const {children, className, ...rest} = props as any;
                         const match = /language-(\w+)/.exec(className || '');
+                        const lang = match ? match[1] : '';
+                        const isPreviewable = ['html', 'css', 'javascript', 'js', 'react', 'jsx', 'tsx'].includes(lang);
+
                         return match ? (
-                          <SyntaxHighlighter
-                            {...rest}
-                            PreTag="div"
-                            children={String(children).replace(/\n$/, '')}
-                            language={match[1]}
-                            style={vscDarkPlus}
-                          />
+                          <div style={{ position: 'relative' }}>
+                            {isPreviewable && onPreviewArtifact && (
+                               <button 
+                                 onClick={() => onPreviewArtifact(String(children).replace(/\n$/, ''), lang)}
+                                 style={{
+                                   position: 'absolute',
+                                   top: 8,
+                                   right: 8,
+                                   zIndex: 10,
+                                   display: 'flex',
+                                   alignItems: 'center',
+                                   gap: 4,
+                                   padding: '4px 8px',
+                                   borderRadius: 4,
+                                   border: 'none',
+                                   background: 'var(--accent-primary)',
+                                   color: '#fff',
+                                   cursor: 'pointer',
+                                   fontSize: 11,
+                                   fontWeight: 600,
+                                   opacity: 0.9
+                                 }}
+                                 title="معاينة الكود"
+                               >
+                                 <Play size={10} fill="currentColor" /> معاينة
+                               </button>
+                            )}
+                            <SyntaxHighlighter
+                              {...rest}
+                              PreTag="div"
+                              children={String(children).replace(/\n$/, '')}
+                              language={lang}
+                              style={vscDarkPlus}
+                            />
+                          </div>
                         ) : (
                           <code {...rest} className={className}>
                             {children}
