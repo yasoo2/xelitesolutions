@@ -38,7 +38,14 @@ export default function TopBar() {
         className="btn btn-icon"
         aria-label={t('toggleTheme')}
         title={t('toggleTheme')}
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        onClick={() => {
+          document.documentElement.classList.add('theme-switching');
+          const next = theme === 'dark' ? 'light' : 'dark';
+          setTheme(next);
+          window.setTimeout(() => {
+            document.documentElement.classList.remove('theme-switching');
+          }, 300);
+        }}
       >
         {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
       </button>
