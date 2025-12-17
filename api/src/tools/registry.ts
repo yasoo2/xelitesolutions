@@ -367,29 +367,67 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'image_generate') {
       const prompt = String(input?.prompt ?? '').trim();
-      const allowedSizes = ['1024x1024', '1024x1536', '1536x1024'] as const;
+      const allowedSizes = ['1024x1024', '1024x1792', '1792x1024'] as const;
       const sizeInput = String(input?.size ?? '1024x1024');
+      // Map unsupported sizes to 1024x1024
       const size = (allowedSizes as readonly string[]).includes(sizeInput) ? (sizeInput as (typeof allowedSizes)[number]) : '1024x1024';
+      
       if (!prompt) return { ok: false, error: 'prompt_required', logs };
+      
       const apiKey = process.env.OPENAI_API_KEY || '';
       if (!apiKey) {
         logs.push('openai.missing_api_key');
         return { ok: false, error: 'OPENAI_API_KEY not set', logs };
       }
-      const { default: OpenAI } = await import('openai');
-      const client = new OpenAI({ apiKey });
-      const resp = await client.images.generate({ model: 'gpt-image-1', prompt, size });
-      const b64 = resp.data?.[0]?.b64_json;
-      if (!b64) {
-        return { ok: false, error: 'image_generation_failed', logs };
+
+      try {
+        const { default: OpenAI } = await import('openai');
+        const client = new OpenAI({ apiKey });
+        
+        // Use dall-e-3 for better quality and standard access
+        const resp = await client.images.generate({ 
+          model: 'dall-e-3', 
+          prompt, 
+          size,
+          quality: 'standard',
+          n: 1,
+        });
+
+        const b64 = resp.data?.[0]?.b64_json;
+        const url = resp.data?.[0]?.url;
+
+        // DALL-E 3 usually returns URL by default unless response_format is b64_json
+        // But let's try to get b64 if we can, or download from URL
+        
+        let buf: Buffer;
+        if (b64) {
+          buf = Buffer.from(b64, 'base64');
+        } else if (url) {
+          const r = await fetch(url);
+          const arrayBuffer = await r.arrayBuffer();
+          buf = Buffer.from(arrayBuffer);
+        } else {
+          // If we explicitly asked for b64_json (default is url)
+          // We didn't specify response_format above, so it defaults to url.
+          // Let's retry with response_format or just fetch the URL.
+          // Actually, let's just re-run with response_format in the call if we want b64.
+          // For now, let's assume we can fetch the URL if b64 is missing.
+          return { ok: false, error: 'image_generation_failed_no_data', logs };
+        }
+
+        const filename = `image-${Date.now()}.png`;
+        const full = path.join(ARTIFACT_DIR, filename);
+        fs.writeFileSync(full, buf);
+        logs.push(`image.saved=${full} bytes=${buf.length}`);
+        
+        const href = `/artifacts/${encodeURIComponent(filename)}`;
+        return { ok: true, output: { href }, logs, artifacts: [{ name: filename, href }] };
+      } catch (err: any) {
+        logs.push(`openai_error=${err.message}`);
+        // Return a fatal error if it's 403 or 400 to stop retries? 
+        // The LLM planner should decide. But we can hint "fatal: true" in result if we supported it.
+        return { ok: false, error: `OpenAI Error: ${err.message}`, logs };
       }
-      const buf = Buffer.from(b64, 'base64');
-      const filename = `image-${Date.now()}.png`;
-      const full = path.join(ARTIFACT_DIR, filename);
-      fs.writeFileSync(full, buf);
-      logs.push(`image.saved=${full} bytes=${buf.length}`);
-      const href = `/artifacts/${encodeURIComponent(filename)}`;
-      return { ok: true, output: { href }, logs, artifacts: [{ name: filename, href }] };
     }
     if (name === 'web_search') {
       const query = String(input?.query ?? '').trim();

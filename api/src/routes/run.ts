@@ -312,6 +312,19 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
+    
+    // Stop on fatal errors (403, verification, etc.)
+    if (!result.ok && plan.name === 'image_generate') {
+       const errorMsg = String(result.error || '');
+       const logsStr = (result.logs || []).join('\n');
+       if (errorMsg.includes('403') || errorMsg.includes('verification') || logsStr.includes('error=403')) {
+           const msg = `❌ **Image Generation Failed**\n${errorMsg}\n\nPlease verify your OpenAI organization settings or try a different prompt.`;
+           forcedText = msg;
+           ev({ type: 'text', data: msg });
+           break;
+       }
+    }
+
     if (result.ok && plan.name === 'image_generate') {
       const href = result.output?.href;
       if (href) {

@@ -412,6 +412,55 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
 
           // STEPS (Thinking)
           if (e.type === 'step_started') {
+            const isImage = e.data.name && e.data.name.includes('image_generate');
+            // Check if this step is already done/failed by looking ahead
+            const isDone = events.slice(i + 1).some(next => 
+              (next.type === 'step_done' || next.type === 'step_failed') && 
+              (next.data.name === e.data.name || next.data.name === `execute:${e.data.name}`)
+            );
+
+            if (isImage && !isDone) {
+               return (
+                 <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
+                   <div className="image-loading-frame" style={{ 
+                       width: 300, 
+                       height: 300, 
+                       background: 'var(--bg-secondary)', 
+                       borderRadius: 8, 
+                       display: 'flex', 
+                       flexDirection: 'column',
+                       alignItems: 'center', 
+                       justifyContent: 'center',
+                       border: '2px dashed var(--border-color)',
+                       position: 'relative',
+                       overflow: 'hidden'
+                   }}>
+                     <Loader2 size={32} className="spin" style={{ marginBottom: 16, color: '#eab308' }} />
+                     <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Generating Image...</div>
+                     {/* Scan line effect */}
+                     <div style={{
+                       position: 'absolute',
+                       top: 0,
+                       left: 0,
+                       right: 0,
+                       height: '2px',
+                       background: 'rgba(234, 179, 8, 0.5)',
+                       boxShadow: '0 0 10px #eab308',
+                       animation: 'scan 2s linear infinite'
+                     }} />
+                     <style>{`
+                       @keyframes scan {
+                         0% { top: 0; opacity: 0; }
+                         10% { opacity: 1; }
+                         90% { opacity: 1; }
+                         100% { top: 100%; opacity: 0; }
+                       }
+                     `}</style>
+                   </div>
+                 </div>
+               );
+            }
+
             return (
               <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
                 <div className="event-step running">
