@@ -265,14 +265,20 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
         }
       }
       try {
-        const ddg = await import('duck-duck-scrape');
-        const res = await ddg.search(query);
-        const items = Array.isArray(res?.results) ? res.results : [];
-        const simplified2 = items.slice(0, 5).map((r: any) => ({
-          title: String(r?.title || '').slice(0, 120),
-          url: String(r?.url || ''),
-          description: String(r?.description || '')
-        })).filter((x: any) => x.url && x.title);
+        let simplified2: any[] = [];
+        try {
+          const ddg = await import('duck-duck-scrape');
+          const res = await ddg.search(query);
+          const items = Array.isArray(res?.results) ? res.results : [];
+          simplified2 = items.slice(0, 5).map((r: any) => ({
+            title: String(r?.title || '').slice(0, 120),
+            url: String(r?.url || ''),
+            description: String(r?.description || '')
+          })).filter((x: any) => x.url && x.title);
+        } catch (err) {
+          logs.push(`ddg_scrape.error=${String(err)}`);
+        }
+        
         let combined = simplified2.slice();
         try {
           const hasArabic = /[\u0600-\u06FF]/.test(query);
