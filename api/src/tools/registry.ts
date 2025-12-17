@@ -367,7 +367,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'image_generate') {
       const prompt = String(input?.prompt ?? '').trim();
-      const allowedSizes = ['auto','1024x1024','1536x1024','1024x1536','256x256','512x512','1792x1024','1024x1792'] as const;
+      const allowedSizes = ['1024x1024', '1024x1536', '1536x1024'] as const;
       const sizeInput = String(input?.size ?? '1024x1024');
       const size = (allowedSizes as readonly string[]).includes(sizeInput) ? (sizeInput as (typeof allowedSizes)[number]) : '1024x1024';
       if (!prompt) return { ok: false, error: 'prompt_required', logs };
