@@ -304,6 +304,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
+    if (result.ok && plan.name === 'image_generate') {
+      const href = result.output?.href;
+      if (href) {
+        forcedText = `Image generated: ${href}`;
+        break; 
+      }
+    }
+
     if (result.ok && plan.name === 'http_fetch') {
       try {
         const urlStr = String(plan.input?.url || '');
