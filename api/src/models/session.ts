@@ -11,6 +11,7 @@ export interface ISession extends Document {
   lastUpdatedAt: Date;
   createdAt: Date;
   updatedAt: Date;
+  folderId?: Types.ObjectId;
 }
 
 const SessionSchema = new Schema<ISession>(
@@ -23,6 +24,7 @@ const SessionSchema = new Schema<ISession>(
     isPinned: { type: Boolean, default: false },
     lastSnippet: { type: String },
     lastUpdatedAt: { type: Date, default: Date.now },
+    folderId: { type: Schema.Types.ObjectId, ref: 'Folder' },
   },
   { timestamps: true }
 );

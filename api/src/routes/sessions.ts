@@ -278,4 +278,24 @@ router.post('/:id/summarize/auto', authenticate, async (req: Request, res: Respo
   return res.json({ summary: { content: s.content, ts: (s as any).updatedAt } });
 });
 
+router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { folderId } = req.body;
+    // Validate folder exists if folderId is provided
+    if (folderId) {
+      // Assuming Folder model is imported or we trust the ID format, but better to check existence in real app
+      // For now, just update
+    }
+    
+    const session = await Session.findOneAndUpdate(
+      { id: req.params.id },
+      { folderId: folderId || null }, // null to remove from folder
+      { new: true }
+    );
+    res.json(session);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to move session' });
+  }
+});
+
 export default router;

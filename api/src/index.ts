@@ -9,6 +9,7 @@ import toolsRoutes from './routes/tools';
 import runRoutes from './routes/run';
 import runDetailsRoutes from './routes/runs';
 import sessionsRoutes from './routes/sessions';
+import foldersRoutes from './routes/folders';
 import approvalsRoutes from './routes/approvals';
 import { authenticate } from './middleware/auth';
 import http from 'http';
@@ -49,6 +50,7 @@ async function main() {
   app.use('/runs', runRoutes);
   app.use('/run', runDetailsRoutes);
   app.use('/sessions', sessionsRoutes);
+  app.use('/folders', foldersRoutes);
   app.use('/approvals', approvalsRoutes);
 
   // Example protected route
