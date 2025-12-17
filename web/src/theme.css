@@ -404,3 +404,31 @@ button:disabled, .btn:disabled {
   cursor: not-allowed;
   filter: grayscale(100%);
 }
+
+.copy-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: all 0.2s ease;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+.event-item:hover .copy-icon {
+  opacity: 1;
+}
+
+.copy-icon:hover {
+  background: var(--bg-card-hover);
+  color: var(--accent-primary);
+}
+
+.copy-icon.copied {
+  color: #22c55e;
+  border-color: #22c55e;
+}
