@@ -141,6 +141,24 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       if (sessionId || data.sessionId) {
         await loadHistory(sessionId || data.sessionId);
       }
+      if (!isConnected && data?.result) {
+        const r = data.result;
+        if (r?.error) {
+          setEvents(prev => [...prev, { type: 'error', data: String(r.error) }]);
+        } else if (r?.output) {
+          let content: any = r.output;
+          if (typeof content === 'string') {
+            setEvents(prev => [...prev, { type: 'text', data: content }]);
+          } else {
+            try {
+              const txt = typeof content?.text === 'string' ? content.text : JSON.stringify(content, null, 2);
+              setEvents(prev => [...prev, { type: 'text', data: txt }]);
+            } catch {
+              setEvents(prev => [...prev, { type: 'text', data: String(content) }]);
+            }
+          }
+        }
+      }
     } catch (e) {
       console.error(e);
       setEvents(prev => [...prev, { type: 'error', data: 'فشل إرسال الأمر' }]);
