@@ -240,7 +240,13 @@ router.post('/start', async (req: Request, res: Response) => {
           if (m) rate = Number(m[1]);
         }
         if (rate !== null && base && sym) {
-          ev({ type: 'text', data: `سعر ${base} مقابل ${sym} اليوم: ${Number(rate).toFixed(4)} ${sym}` });
+          const md = [
+            `### سعر العملة`,
+            `- العملة الأساسية: ${base}`,
+            `- العملة المقابلة: ${sym}`,
+            `- السعر اليوم: ${Number(rate).toFixed(4)} ${sym}`
+          ].join('\n');
+          ev({ type: 'text', data: md });
         } else if (base && sym) {
           const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
           ev({ type: 'step_started', data: { name: `execute:http_fetch(fallback)` } });
@@ -254,7 +260,13 @@ router.post('/start', async (req: Request, res: Response) => {
             if (m2) rate2 = Number(m2[1]);
           }
           if (rate2 !== null) {
-            ev({ type: 'text', data: `سعر ${base} مقابل ${sym} اليوم: ${Number(rate2).toFixed(4)} ${sym}` });
+            const md2 = [
+              `### سعر العملة`,
+              `- العملة الأساسية: ${base}`,
+              `- العملة المقابلة: ${sym}`,
+              `- السعر اليوم: ${Number(rate2).toFixed(4)} ${sym}`
+            ].join('\n');
+            ev({ type: 'text', data: md2 });
           }
           if (useMock) {
             store.addExec(runId, 'http_fetch', { url: fbUrl }, fbRes.output, fbRes.ok, fbRes.logs);
@@ -266,8 +278,17 @@ router.post('/start', async (req: Request, res: Response) => {
           const city = String(plan.input?.city || 'Istanbul');
           const cc = Array.isArray(result.output?.json?.current_condition) ? result.output.json.current_condition[0] : null;
           const tempC = cc ? Number(cc.temp_C) : null;
+          const desc = cc && Array.isArray(cc.weatherDesc) && cc.weatherDesc[0] ? String(cc.weatherDesc[0].value || '') : '';
+          const hum = cc && typeof cc.humidity !== 'undefined' ? Number(cc.humidity) : null;
           if (tempC !== null && !Number.isNaN(tempC)) {
-            ev({ type: 'text', data: `درجة الحرارة في ${city} اليوم: ${tempC.toFixed(0)}°C` });
+            const parts = [
+              `### الطقس`,
+              `- المدينة: ${city}`,
+              `- درجة الحرارة: ${tempC.toFixed(0)}°C`
+            ];
+            if (desc) parts.push(`- الحالة: ${desc}`);
+            if (hum !== null && !Number.isNaN(hum)) parts.push(`- الرطوبة: ${hum}%`);
+            ev({ type: 'text', data: parts.join('\n') });
           }
         }
       } catch {}
@@ -278,12 +299,17 @@ router.post('/start', async (req: Request, res: Response) => {
         if (results.length > 0) {
           const mdParts: string[] = [];
           mdParts.push(`### نتائج البحث`);
-          for (const r of results) {
+          for (let i = 0; i < results.length; i++) {
+            const r = results[i];
             const title = String(r.title || '').trim();
             const url = String(r.url || '').trim();
             const desc = String(r.description || '').trim();
-            mdParts.push(`- [${title}](${url})`);
-            if (desc) mdParts.push(`  - ${desc}`);
+            let domain = '';
+            try { domain = new URL(url).hostname; } catch {}
+            const num = `${i + 1}.`;
+            const head = domain ? `${num} [${title}](${url}) _(${domain})_` : `${num} [${title}](${url})`;
+            mdParts.push(head);
+            if (desc) mdParts.push(`   - ${desc.slice(0, 200)}`);
           }
           ev({ type: 'text', data: mdParts.join('\n') });
         }

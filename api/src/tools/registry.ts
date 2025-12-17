@@ -273,8 +273,37 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           url: String(r?.url || ''),
           description: String(r?.description || '')
         })).filter((x: any) => x.url && x.title);
-        logs.push(`search.ddg_scrape=${simplified2.length}`);
-        return { ok: simplified2.length > 0, output: { results: simplified2 }, logs };
+        let combined = simplified2.slice();
+        try {
+          const hasArabic = /[\u0600-\u06FF]/.test(query);
+          const wikiLang = hasArabic ? 'ar' : 'en';
+          const wikiUrl = `https://${wikiLang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
+          const wresp = await fetch(wikiUrl);
+          if (wresp.ok) {
+            const wjson = await wresp.json();
+            const sres = Array.isArray(wjson?.query?.search) ? wjson.query.search : [];
+            const witems = sres.map((it: any) => {
+              const title = String(it?.title || '').trim();
+              const page = title.replace(/\s+/g, '_');
+              const url = `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(page)}`;
+              const desc = String(it?.snippet || '').replace(/<[^>]+>/g, '');
+              return { title: title.slice(0, 120), url, description: desc };
+            }).filter((x: any) => x.url && x.title);
+            combined = [...combined, ...witems];
+          }
+        } catch {}
+        const dedup: Array<{ title: string; url: string; description: string }> = [];
+        const seen = new Set<string>();
+        for (const r of combined) {
+          const key = `${String(r.url || '')} ${String(r.title || '')}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            dedup.push({ title: String(r.title || ''), url: String(r.url || ''), description: String(r.description || '') });
+          }
+        }
+        const final = dedup.slice(0, 8);
+        logs.push(`search.ddg_scrape=${simplified2.length} wiki=${final.length - simplified2.length}`);
+        return { ok: final.length > 0, output: { results: final }, logs };
       } catch (err: any) {
         lastError = err;
         return { ok: false, error: lastError?.message || 'Search failed', logs };
