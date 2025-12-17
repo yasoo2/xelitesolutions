@@ -325,6 +325,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
        }
     }
 
+    if (result.ok && plan.name === 'echo') {
+      const text = result.output?.text;
+      if (text) {
+        forcedText = text;
+        ev({ type: 'text', data: text });
+      }
+    }
+
     if (result.ok && plan.name === 'image_generate') {
       const href = result.output?.href;
       if (href) {
