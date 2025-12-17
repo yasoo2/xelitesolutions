@@ -111,71 +111,118 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
     }
   }
 
-  ev({ type: 'step_started', data: { name: `execute:${plan.name}` } });
-  const result = await executeTool(plan.name, plan.input);
-  if (result.logs?.length) {
-    for (const line of result.logs) {
-      ev({ type: 'evidence_added', data: { kind: 'log', text: line } });
-    }
-  }
-  ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
+  // --- Agent Loop ---
+  let steps = 0;
+  const MAX_STEPS = 10;
+  const history: { role: 'user' | 'assistant' | 'system', content: string }[] = [
+    { role: 'user', content: String(text || '') }
+  ];
 
-  let finalResponse = '';
-  if (result.ok) {
-    if (plan.name === 'echo' && result.output && typeof result.output.text === 'string') {
-        finalResponse = result.output.text;
+  let lastResult: any = null;
+
+  while (steps < MAX_STEPS) {
+    ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
+    
+    // Plan next step with history
+    try {
+        plan = await planNextStep(history);
+    } catch (err) {
+        console.warn('LLM planning error:', err);
+        plan = null;
+    }
+
+    if (!plan) {
+      // Fallback if LLM fails
+      if (steps === 0) plan = pickToolFromText(String(text || ''));
+      else break; // Stop if we can't plan anymore
+    }
+
+    ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
+
+    // Execute tool
+    ev({ type: 'step_started', data: { name: `execute:${plan.name}` } });
+    const result = await executeTool(plan.name, plan.input);
+    lastResult = result;
+
+    if (result.logs?.length) {
+      for (const line of result.logs) {
+        ev({ type: 'evidence_added', data: { kind: 'log', text: line } });
+      }
+    }
+    ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
+
+    // Store execution
+    if (useMock) {
+        store.addExec(runId, plan.name, plan.input, result.output, result.ok, result.logs);
+        if (result.artifacts) {
+            result.artifacts.forEach(a => {
+                store.addArtifact(runId, a.name, a.href);
+                ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
+            });
+        }
     } else {
-        // Try to summarize using LLM
+        await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result.output, ok: result.ok, logs: result.logs });
+        if (result.artifacts) {
+             for (const a of result.artifacts) {
+                await Artifact.create({ runId, name: a.name, href: a.href });
+                ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
+             }
+        }
+    }
+
+    // Add to history for next iteration
+    history.push({ role: 'assistant', content: `I will execute tool: ${plan.name} with input: ${JSON.stringify(plan.input)}` });
+    history.push({ role: 'user', content: `Tool ${plan.name} executed. Output: ${JSON.stringify(result.output).slice(0, 1000)}` });
+
+    if (plan.name === 'echo') {
+      // Echo means the agent wants to speak to the user, usually finishing the task
+      break;
+    }
+
+    steps++;
+  }
+
+  // Summarize final result
+  let finalResponse = '';
+  if (lastResult?.ok) {
+    if (plan && plan.name === 'echo' && lastResult.output && typeof lastResult.output.text === 'string') {
+        finalResponse = lastResult.output.text;
+    } else {
         try {
             const { summarizeToolOutput } = await import('../llm');
             ev({ type: 'step_started', data: { name: 'summarize' } });
-            finalResponse = await summarizeToolOutput(String(text || ''), plan.name, result.output);
+            // Summarize based on original request and last result
+            finalResponse = await summarizeToolOutput(String(text || ''), plan?.name || 'unknown', lastResult.output);
             ev({ type: 'text', data: finalResponse });
             ev({ type: 'step_done', data: { name: 'summarize', result: { output: finalResponse } } });
         } catch (err) {
             console.warn('Summarization failed:', err);
-            finalResponse = JSON.stringify(result.output).slice(0, 512);
+            finalResponse = JSON.stringify(lastResult.output).slice(0, 512);
         }
     }
   } else {
-      finalResponse = String(result.error || 'Unknown error');
+      finalResponse = String(lastResult?.error || 'Unknown error');
   }
 
   if (useMock) {
-    store.addExec(runId, plan.name, plan.input, result.output, result.ok, result.logs);
-    if (result.artifacts) {
-      for (const a of result.artifacts) {
-        store.addArtifact(runId, a.name, a.href);
-        ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
-        ev({ type: 'evidence_added', data: { kind: 'artifact', name: a.name, href: a.href } });
-      }
-    }
-    store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+    store.updateRun(runId, { status: lastResult?.ok ? 'done' : 'failed' });
   } else {
-    await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result.output, ok: result.ok, logs: result.logs });
-    if (result.artifacts) {
-      for (const a of result.artifacts) {
-        await Artifact.create({ runId, name: a.name, href: a.href });
-        ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
-        ev({ type: 'evidence_added', data: { kind: 'artifact', name: a.name, href: a.href } });
-      }
-    }
-    await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' }, $push: { steps: { name: `execute:${plan.name}`, status: result.ok ? 'done' : 'failed' } } });
+    await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed' }, $push: { steps: { name: `finish`, status: lastResult?.ok ? 'done' : 'failed' } } });
   }
 
-  ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+  ev({ type: 'run_finished', data: { runId, ok: lastResult?.ok } });
   // persist messages if sessionId provided
   try {
     if (sessionId) {
       const useMock2 = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
       if (useMock2) {
         store.addMessage(sessionId, 'user', String(text || ''));
-        store.addMessage(sessionId, 'assistant', finalResponse || (result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || '')));
+        store.addMessage(sessionId, 'assistant', finalResponse || (lastResult.output ? JSON.stringify(lastResult.output).slice(0, 512) : String(lastResult.error || '')));
       } else {
         const { Message } = await import('../models/message');
         const userMsg = await Message.create({ sessionId, role: 'user', content: String(text || '') });
         
-        const asstContent = finalResponse || (result.output ? JSON.stringify(result.output).slice(0, 512) : String(result.error || ''));
+        const asstContent = finalResponse || (lastResult?.output ? JSON.stringify(lastResult.output).slice(0, 512) : String(lastResult?.error || ''));
 
         const asstMsg = await Message.create({ sessionId, role: 'assistant', content: asstContent });
         const { Session } = await import('../models/session');
@@ -183,7 +230,7 @@ router.post('/start', authenticate, async (req: Request, res: Response) => {
       }
     }
   } catch {}
-  res.json({ runId, result, sessionId });
+  res.json({ runId, result: lastResult, sessionId });
 });
 
 router.get('/', async (_req: Request, res: Response) => {

@@ -68,6 +68,30 @@ export const tools: ToolDefinition[] = [
     auditFields: ['query'],
     mockSupported: false,
   },
+  {
+    name: 'file_read',
+    version: '1.0.0',
+    tags: ['fs', 'utility'],
+    inputSchema: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] },
+    outputSchema: { type: 'object', properties: { content: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['filename'],
+    mockSupported: false,
+  },
+  {
+    name: 'ls',
+    version: '1.0.0',
+    tags: ['fs', 'utility'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: [] },
+    outputSchema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
 ];
 
 for (let i = 1; i <= 197; i++) {
@@ -138,6 +162,25 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       }));
       logs.push(`search.query=${query} results=${simplified.length}`);
       return { ok: true, output: { results: simplified }, logs };
+    }
+    if (name === 'file_read') {
+      const filename = path.basename(String(input?.filename ?? ''));
+      const full = path.join(ARTIFACT_DIR, filename);
+      if (!fs.existsSync(full)) {
+        return { ok: false, error: 'File not found', logs };
+      }
+      const content = fs.readFileSync(full, 'utf-8');
+      logs.push(`read=${full} bytes=${content.length}`);
+      return { ok: true, output: { content }, logs };
+    }
+    if (name === 'ls') {
+      const dirPath = input?.path ? path.join(ARTIFACT_DIR, path.basename(input.path)) : ARTIFACT_DIR;
+      if (!fs.existsSync(dirPath)) {
+          return { ok: false, error: 'Directory not found', logs };
+      }
+      const files = fs.readdirSync(dirPath);
+      logs.push(`ls=${dirPath} count=${files.length}`);
+      return { ok: true, output: { files }, logs };
     }
     if (name.startsWith('noop_')) {
       logs.push('noop.ok=true');
