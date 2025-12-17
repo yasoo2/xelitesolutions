@@ -18,6 +18,9 @@ function pickToolFromText(text: string) {
     if (/(قطة|قطه|قط|cat)/.test(t)) return { name: 'browser_snapshot', input: { url: 'https://cataas.com/cat' } };
     return { name: 'image_generate', input: { prompt: text } };
   }
+  if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(t)) {
+    return { name: 'http_fetch', input: { url: 'https://api.exchangerate.host/latest?base=USD&symbols=TRY' } };
+  }
   if (t.includes('fetch') && urlMatch) return { name: 'http_fetch', input: { url: urlMatch[0] } };
   if (t.includes('write')) return { name: 'file_write', input: { filename: 'note.txt', content: text } };
   if (t.includes('browser') && urlMatch) return { name: 'browser_snapshot', input: { url: urlMatch[0] } };
@@ -154,6 +157,17 @@ router.post('/start', async (req: Request, res: Response) => {
       }
     }
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
+    if (result.ok && plan.name === 'http_fetch') {
+      const rate = (result.output?.json?.rates?.TRY) ?? null;
+      if (typeof rate === 'number') {
+        ev({ type: 'text', data: `سعر الدولار مقابل الليرة التركية اليوم: ${rate.toFixed(4)} TRY` });
+      } else if (typeof result.output?.bodySnippet === 'string') {
+        const m = result.output.bodySnippet.match(/"TRY"\s*:\s*([\d.]+)/);
+        if (m) {
+          ev({ type: 'text', data: `سعر الدولار مقابل الليرة التركية اليوم: ${Number(m[1]).toFixed(4)} TRY` });
+        }
+      }
+    }
 
     // Store execution
     if (useMock) {

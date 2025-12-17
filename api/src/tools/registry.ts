@@ -166,9 +166,14 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     if (name === 'http_fetch') {
       const url = String(input?.url ?? '');
       const resp = await fetch(url);
+      const contentType = resp.headers.get('content-type') || '';
       const body = await resp.text();
+      let json: any = null;
+      if (contentType.includes('application/json')) {
+        try { json = JSON.parse(body); } catch {}
+      }
       logs.push(`fetch.status=${resp.status}`);
-      return { ok: true, output: { status: resp.status, bodySnippet: body.slice(0, 512) }, logs };
+      return { ok: true, output: { status: resp.status, contentType, bodySnippet: body.slice(0, 1024), json }, logs };
     }
     if (name === 'file_write') {
       const filename = path.basename(String(input?.filename ?? 'artifact.txt'));

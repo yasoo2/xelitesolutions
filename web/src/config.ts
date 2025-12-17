@@ -1,6 +1,6 @@
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-export const API_URL = import.meta.env.VITE_API_URL || (isLocal ? 'http://localhost:8080' : 'https://api.xelitesolutions.com');
+const apiEnv = import.meta.env.VITE_API_URL;
+export const API_URL = apiEnv || (isLocal ? 'http://localhost:8080' : 'https://infinity-x-platform.onrender.com');
 
 // Determine WebSocket URL
 // Priority:
@@ -14,8 +14,7 @@ if (!wsUrl) {
   if (isLocal) {
     wsUrl = 'ws://localhost:8080/ws';
   } else {
-    // Fallback to direct Render URL which is verified to work (bypassing Cloudflare DNS issues)
-    wsUrl = 'wss://infinity-x-platform.onrender.com/ws';
+    wsUrl = (API_URL.replace(/^http/, 'ws') + '/ws');
   }
 }
 
