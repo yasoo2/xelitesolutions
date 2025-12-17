@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { authenticate } from '../middleware/auth';
 import { broadcast, LiveEvent } from '../ws';
 import { executeTool } from '../tools/registry';
 import { store } from '../mock/store';
@@ -15,6 +14,7 @@ const router = Router();
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
   const urlMatch = text.match(/https?:\/\/\S+/);
+  if (/(صورة|صوره|تصميم|صمم).*(قطة|قطه|قط)/.test(t) || t.includes('cat')) return { name: 'browser_snapshot', input: { url: 'https://cataas.com/cat' } };
   if (t.includes('fetch') && urlMatch) return { name: 'http_fetch', input: { url: urlMatch[0] } };
   if (t.includes('write')) return { name: 'file_write', input: { filename: 'note.txt', content: text } };
   if (t.includes('browser') && urlMatch) return { name: 'browser_snapshot', input: { url: urlMatch[0] } };
@@ -29,10 +29,11 @@ function detectRisk(text: string) {
   return null;
 }
 
-router.post('/start', authenticate, async (req: Request, res: Response) => {
+router.post('/start', async (req: Request, res: Response) => {
   let { text, sessionId } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
-  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  const isAuthed = Boolean((req as any).auth);
+  const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
 
   ev({ type: 'step_started', data: { name: 'plan' } });
   

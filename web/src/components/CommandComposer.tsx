@@ -143,7 +143,7 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
       }
     } catch (e) {
       console.error(e);
-      setEvents(prev => [...prev, { type: 'error', data: 'Failed to send command' }]);
+      setEvents(prev => [...prev, { type: 'error', data: 'فشل إرسال الأمر' }]);
       setText(currentText);
     }
   }
@@ -235,13 +235,15 @@ export default function CommandComposer({ sessionId, onSessionCreated }: { sessi
                     <div className="step-details">
                       {e.data.plan && (
                         <div className="detail-section">
-                          <div className="detail-label">Input</div>
+                          <div className="detail-label">
+                            {String(e.data.name).includes('thinking') ? 'التحليل' : (String(e.data.name).includes('plan') ? 'التخطيط' : 'التخطيط')}
+                          </div>
                           <pre>{JSON.stringify(e.data.plan.input, null, 2)}</pre>
                         </div>
                       )}
                       {e.data.result && (
                         <div className="detail-section">
-                          <div className="detail-label">Output</div>
+                          <div className="detail-label">مخرجات التنفيذ</div>
                           <pre>{JSON.stringify(e.data.result.output || e.data.result, null, 2)}</pre>
                         </div>
                       )}
