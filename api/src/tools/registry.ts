@@ -133,7 +133,19 @@ export const tools: ToolDefinition[] = [
     permissions: ['read'],
     sideEffects: [],
     rateLimitPerMinute: 30,
-    auditFields: ['url'],
+    auditFields: ['filename'],
+    mockSupported: false,
+  },
+  {
+    name: 'deep_research',
+    version: '1.0.0',
+    tags: ['ai', 'research', 'agent'],
+    inputSchema: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] },
+    outputSchema: { type: 'object', properties: { report: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['read', 'internet'],
+    sideEffects: [],
+    rateLimitPerMinute: 5,
+    auditFields: ['topic'],
     mockSupported: false,
   },
   {
@@ -445,6 +457,85 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
         // Return a fatal error if it's 403 or 400 to stop retries? 
         // The LLM planner should decide. But we can hint "fatal: true" in result if we supported it.
         return { ok: false, error: `OpenAI Error: ${err.message}`, logs };
+      }
+    }
+    if (name === 'deep_research') {
+      const topic = String(input?.topic ?? '').trim();
+      const logs: string[] = [];
+      logs.push(`research.topic=${topic}`);
+
+      // 1. Search
+      const searchRes = await executeTool('web_search', { query: topic });
+      if (!searchRes.ok || !searchRes.output?.results?.length) {
+        return { ok: false, error: 'No search results found', logs };
+      }
+      
+      const results = (searchRes.output.results as any[]).slice(0, 3);
+      logs.push(`research.sources=${results.length}`);
+      
+      const contents: string[] = [];
+      
+      // 2. Extract Content
+      for (const res of results) {
+        try {
+          logs.push(`fetching=${res.url}`);
+          const ext = await executeTool('html_extract', { url: res.url });
+          if (ext.ok && ext.output?.textSnippet) {
+            contents.push(`Source: ${res.title} (${res.url})\nContent: ${ext.output.textSnippet}\n`);
+          }
+        } catch (e) {
+          logs.push(`fetch_error=${e}`);
+        }
+      }
+      
+      if (contents.length === 0) {
+        return { ok: false, error: 'Failed to extract content from sources', logs };
+      }
+
+      // 3. Synthesize
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        // Fallback: just return concatenated text if no LLM
+        return { 
+          ok: true, 
+          output: { 
+            report: `## Research Results for ${topic}\n\n${contents.join('\n\n')}`, 
+            sources: results.map(r => r.url) 
+          }, 
+          logs 
+        };
+      }
+
+      try {
+        const { default: OpenAI } = await import('openai');
+        const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+        
+        const completion = await client.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You are a Research Assistant. Summarize the provided sources into a comprehensive, well-structured report (Markdown). Cite sources where appropriate. If Arabic content, write in Arabic.' 
+            },
+            {
+              role: 'user',
+              content: `Topic: ${topic}\n\nSources:\n${contents.join('\n---\n')}`
+            }
+          ]
+        });
+
+        const report = completion.choices[0].message.content || 'No report generated.';
+        return {
+          ok: true,
+          output: {
+            report,
+            sources: results.map(r => r.url)
+          },
+          logs
+        };
+
+      } catch (err: any) {
+        return { ok: false, error: `Synthesis failed: ${err.message}`, logs };
       }
     }
     if (name === 'web_search') {
