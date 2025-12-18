@@ -1,4 +1,7 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
+import path from 'path';
+import fs from 'fs';
+import { glob } from 'glob';
 
 interface LogEntry {
     type: 'log' | 'error' | 'warn' | 'info';
@@ -32,14 +35,66 @@ class BrowserService {
     private logs: LogEntry[] = [];
     private network: NetworkEntry[] = [];
 
+    private async getExecutablePath(): Promise<string | undefined> {
+        // 1. Try Puppeteer's default resolution
+        try {
+            const defaultPath = puppeteer.executablePath();
+            if (fs.existsSync(defaultPath)) {
+                console.log('Using default Puppeteer executable:', defaultPath);
+                return defaultPath;
+            }
+        } catch (e) {
+            console.warn('Puppeteer executablePath() failed:', e);
+        }
+
+        // 2. Search in common cache locations
+        const searchPaths = [
+            path.join(process.cwd(), '.cache', 'puppeteer'),
+            path.join(process.cwd(), 'api', '.cache', 'puppeteer'),
+            path.join(__dirname, '../../.cache', 'puppeteer'),
+            path.join(__dirname, '../../../.cache', 'puppeteer'), // if running from dist/services
+        ];
+
+        console.log('Searching for Chrome in:', searchPaths);
+
+        for (const basePath of searchPaths) {
+            if (!fs.existsSync(basePath)) continue;
+            
+            // Find chrome binary (recursively)
+            // Look for "Google Chrome for Testing" (Mac) or "chrome" (Linux)
+            const pattern = '**/{Google Chrome for Testing,chrome,chrome.exe}';
+            const matches = await glob(pattern, { cwd: basePath, absolute: true });
+            
+            // Filter for actual executables (simple heuristic: not a directory unless it's .app on mac, but glob returns files inside .app usually? No wait)
+            // On Mac: .../Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+            // On Linux: .../chrome
+            
+            for (const match of matches) {
+                 // Skip directories unless it is the binary
+                 try {
+                     const stat = fs.statSync(match);
+                     if (stat.isFile() && (stat.mode & 0o111 || process.platform === 'win32')) {
+                         console.log('Found executable manually:', match);
+                         return match;
+                     }
+                 } catch (e) {}
+            }
+        }
+
+        return undefined;
+    }
+
     async launch() {
         if (this.browser) return;
         
         try {
-            console.log('Launching browser with executable path:', puppeteer.executablePath());
+            const executablePath = await this.getExecutablePath();
+            console.log('Launching browser with executable path:', executablePath || 'bundled');
+
             this.browser = await puppeteer.launch({
                 headless: true,
                 ignoreHTTPSErrors: true,
+                executablePath, // If undefined, puppeteer tries its best
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
