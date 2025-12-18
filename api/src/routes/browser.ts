@@ -25,7 +25,7 @@ router.post('/navigate', authenticate, async (req, res) => {
 
 router.post('/action', authenticate, async (req, res) => {
     try {
-        const { type, x, y, text, deltaY } = req.body;
+        const { type, x, y, text, deltaY, width, height, script } = req.body;
         
         switch (type) {
             case 'click':
@@ -46,6 +46,15 @@ router.post('/action', authenticate, async (req, res) => {
             case 'reload':
                 await browserService.reload();
                 break;
+            case 'viewport':
+                await browserService.setViewport(width, height);
+                break;
+            case 'evaluate':
+                const result = await browserService.evaluate(script);
+                return res.json({ success: true, result });
+            case 'inspect':
+                const info = await browserService.inspect(x, y);
+                return res.json({ success: true, info });
             default:
                 return res.status(400).json({ error: 'Invalid action type' });
         }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
     Globe, ArrowLeft, ArrowRight, RotateCw, Camera, FileText, 
-    Terminal, Activity, X, MousePointer, Search, AlertCircle, CheckCircle2 
+    Smartphone, Tablet, Monitor, Code, Eye, Play, MousePointer2 
 } from 'lucide-react';
 import { API_URL } from '../config';
 
@@ -24,10 +24,18 @@ export function Browser() {
     const [currentUrl, setCurrentUrl] = useState('');
     const [image, setImage] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'view' | 'console' | 'network'>('view');
+    const [activeTab, setActiveTab] = useState<'view' | 'console' | 'network' | 'script'>('view');
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [network, setNetwork] = useState<NetworkEntry[]>([]);
     const [isConnected, setIsConnected] = useState(false);
+    
+    // Advanced features state
+    const [viewport, setViewport] = useState({ w: 1280, h: 800, label: 'Desktop' });
+    const [inspectMode, setInspectMode] = useState(false);
+    const [inspectedElement, setInspectedElement] = useState<any>(null);
+    const [script, setScript] = useState('');
+    const [scriptResult, setScriptResult] = useState('');
+
     const imageRef = useRef<HTMLImageElement>(null);
 
     useEffect(() => {
@@ -107,7 +115,7 @@ export function Browser() {
     const handleAction = async (type: string, payload: any = {}) => {
         try {
             const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/browser/action`, {
+            const res = await fetch(`${API_URL}/browser/action`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -115,11 +123,25 @@ export function Browser() {
                 },
                 body: JSON.stringify({ type, ...payload })
             });
-            if (['back', 'forward', 'reload'].includes(type)) {
+            
+            if (['back', 'forward', 'reload', 'viewport'].includes(type)) {
                 setTimeout(refreshData, 1000);
             }
+            return await res.json();
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const handleViewportChange = async (w: number, h: number, label: string) => {
+        setViewport({ w, h, label });
+        await handleAction('viewport', { width: w, height: h });
+    };
+
+    const handleRunScript = async () => {
+        const data = await handleAction('evaluate', { script });
+        if (data?.result) {
+            setScriptResult(JSON.stringify(data.result, null, 2));
         }
     };
 
@@ -129,12 +151,22 @@ export function Browser() {
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        // Scale coordinates to actual 1280x800 viewport
-        const scaleX = 1280 / rect.width;
-        const scaleY = 800 / rect.height;
+        // Scale coordinates to actual viewport
+        const scaleX = viewport.w / rect.width;
+        const scaleY = viewport.h / rect.height;
+        
+        const finalX = x * scaleX;
+        const finalY = y * scaleY;
 
-        await handleAction('click', { x: x * scaleX, y: y * scaleY });
-        setTimeout(refreshData, 500);
+        if (inspectMode) {
+            const data = await handleAction('inspect', { x: finalX, y: finalY });
+            if (data?.info) {
+                setInspectedElement(data.info);
+            }
+        } else {
+            await handleAction('click', { x: finalX, y: finalY });
+            setTimeout(refreshData, 500);
+        }
     };
 
     const handleDownloadPdf = async () => {
@@ -192,6 +224,38 @@ export function Browser() {
 
                 <div className="flex items-center gap-1 border-l border-gray-700 pl-2">
                     <button 
+                         onClick={() => setInspectMode(!inspectMode)}
+                         disabled={!isConnected}
+                         className={`p-1.5 rounded hover:bg-gray-700 disabled:opacity-30 ${inspectMode ? 'bg-blue-900 text-blue-400' : 'text-gray-400 hover:text-white'}`}
+                         title="Inspect Element"
+                    >
+                        <MousePointer2 size={16} />
+                    </button>
+                    <div className="flex bg-gray-900 rounded border border-gray-600">
+                        <button 
+                            onClick={() => handleViewportChange(1920, 1080, 'Desktop')} 
+                            className={`p-1.5 ${viewport.label === 'Desktop' ? 'text-blue-400' : 'text-gray-400'}`}
+                            title="Desktop (1920x1080)"
+                        >
+                            <Monitor size={16} />
+                        </button>
+                        <button 
+                            onClick={() => handleViewportChange(768, 1024, 'Tablet')} 
+                            className={`p-1.5 ${viewport.label === 'Tablet' ? 'text-blue-400' : 'text-gray-400'}`}
+                            title="Tablet (768x1024)"
+                        >
+                            <Tablet size={16} />
+                        </button>
+                        <button 
+                            onClick={() => handleViewportChange(375, 812, 'Mobile')} 
+                            className={`p-1.5 ${viewport.label === 'Mobile' ? 'text-blue-400' : 'text-gray-400'}`}
+                            title="Mobile (375x812)"
+                        >
+                            <Smartphone size={16} />
+                        </button>
+                    </div>
+
+                    <button 
                         onClick={handleDownloadPdf}
                         disabled={!isConnected}
                         className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white disabled:opacity-30"
@@ -230,10 +294,17 @@ export function Browser() {
                 >
                     <Activity size={14} /> Network <span className="text-xs bg-gray-700 px-1.5 rounded-full">{network.length}</span>
                 </button>
+                <button 
+                    onClick={() => setActiveTab('script')}
+                    className={`px-4 py-2 text-sm font-medium flex items-center gap-2 ${activeTab === 'script' ? 'bg-gray-900 text-purple-400 border-t-2 border-purple-400' : 'text-gray-400 hover:text-gray-200'}`}
+                >
+                    <Code size={14} /> Script
+                </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-hidden relative bg-gray-950">
+            <div className="flex-1 overflow-hidden relative bg-gray-950 flex">
+                <div className={`flex-1 overflow-hidden relative ${inspectedElement ? 'w-2/3' : 'w-full'}`}>
                 {activeTab === 'view' && (
                     <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
                         {isConnected ? (
@@ -244,11 +315,16 @@ export function Browser() {
                                         src={image} 
                                         alt="Browser View" 
                                         onClick={handleImageClick}
-                                        className="max-w-none cursor-crosshair"
-                                        style={{ width: 1280, height: 800, transform: 'scale(0.8)', transformOrigin: 'top center' }}
+                                        className={`max-w-none ${inspectMode ? 'cursor-help' : 'cursor-crosshair'}`}
+                                        style={{ 
+                                            width: viewport.w, 
+                                            height: viewport.h, 
+                                            transform: `scale(${viewport.w > 1000 ? 0.6 : 0.8})`, 
+                                            transformOrigin: 'top center' 
+                                        }}
                                     />
                                     <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded backdrop-blur-sm pointer-events-none">
-                                        1280x800
+                                        {viewport.w}x{viewport.h}
                                     </div>
                                 </div>
                             ) : (
@@ -324,6 +400,87 @@ export function Browser() {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                )}
+
+                {activeTab === 'script' && (
+                    <div className="h-full flex flex-col p-4">
+                        <textarea 
+                            value={script}
+                            onChange={e => setScript(e.target.value)}
+                            placeholder="// Write JavaScript code to run on the page...
+// Example: return document.title;"
+                            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-4 font-mono text-sm text-gray-300 focus:border-blue-500 outline-none resize-none mb-4"
+                        />
+                        <div className="flex justify-between items-center mb-4">
+                            <button 
+                                onClick={handleRunScript}
+                                disabled={!script || !isConnected}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white flex items-center gap-2 disabled:opacity-50"
+                            >
+                                <Play size={16} /> Run Script
+                            </button>
+                        </div>
+                        {scriptResult && (
+                            <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 font-mono text-xs overflow-auto h-1/3">
+                                <div className="text-gray-500 mb-2 uppercase text-[10px] tracking-wider font-bold">Result</div>
+                                <pre className="text-green-400">{scriptResult}</pre>
+                            </div>
+                        )}
+                    </div>
+                )}
+                </div>
+
+                {/* Inspector Panel */}
+                {inspectedElement && (
+                    <div className="w-1/3 border-l border-gray-700 bg-gray-900 p-4 overflow-auto font-mono text-xs shadow-xl z-10">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-gray-200 flex items-center gap-2">
+                                <Eye className="text-blue-400" size={16} />
+                                Inspector
+                            </h3>
+                            <button onClick={() => setInspectedElement(null)} className="text-gray-500 hover:text-white">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <div className="text-gray-500 mb-1">Element</div>
+                                <div className="text-blue-300 break-all">
+                                    &lt;{inspectedElement.tagName}
+                                    {inspectedElement.id && <span className="text-yellow-300"> id="{inspectedElement.id}"</span>}
+                                    {inspectedElement.className && <span className="text-green-300"> class="{inspectedElement.className}"</span>}
+                                    &gt;
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-gray-500 mb-1">Dimensions</div>
+                                <div className="grid grid-cols-2 gap-2 text-gray-300">
+                                    <div>W: {Math.round(inspectedElement.rect.width)}px</div>
+                                    <div>H: {Math.round(inspectedElement.rect.height)}px</div>
+                                    <div>X: {Math.round(inspectedElement.rect.left)}px</div>
+                                    <div>Y: {Math.round(inspectedElement.rect.top)}px</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-gray-500 mb-1">Computed Styles</div>
+                                <div className="bg-gray-950 p-2 rounded border border-gray-800 space-y-1 text-gray-400">
+                                    {Object.entries(inspectedElement.styles).map(([k, v]) => (
+                                        v && <div key={k}><span className="text-purple-400">{k}:</span> <span className="text-gray-300">{v as string}</span></div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-gray-500 mb-1">Content</div>
+                                <div className="bg-gray-950 p-2 rounded border border-gray-800 text-gray-400 break-words whitespace-pre-wrap max-h-40 overflow-auto">
+                                    {inspectedElement.innerText || inspectedElement.innerHTML}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

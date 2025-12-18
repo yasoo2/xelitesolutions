@@ -78,6 +78,62 @@ class BrowserService {
         return await this.page.pdf({ format: 'A4' });
     }
 
+    async setViewport(width: number, height: number) {
+        if (!this.page) return;
+        await this.page.setViewport({ width, height });
+    }
+
+    async evaluate(script: string) {
+        if (!this.page) return null;
+        try {
+            const result = await this.page.evaluate((code) => {
+                try {
+                    // eslint-disable-next-line no-eval
+                    return eval(code);
+                } catch (e: any) {
+                    return e.toString();
+                }
+            }, script);
+            return result;
+        } catch (e: any) {
+            return e.message;
+        }
+    }
+
+    async inspect(x: number, y: number) {
+        if (!this.page) return null;
+        return await this.page.evaluate(({ x, y }) => {
+            const el = document.elementFromPoint(x, y);
+            if (!el) return null;
+            
+            const styles = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            
+            return {
+                tagName: el.tagName.toLowerCase(),
+                id: el.id,
+                className: el.className,
+                innerHTML: el.innerHTML.slice(0, 200) + (el.innerHTML.length > 200 ? '...' : ''),
+                innerText: (el as HTMLElement).innerText?.slice(0, 100),
+                rect: {
+                    width: rect.width,
+                    height: rect.height,
+                    top: rect.top,
+                    left: rect.left
+                },
+                styles: {
+                    color: styles.color,
+                    backgroundColor: styles.backgroundColor,
+                    fontFamily: styles.fontFamily,
+                    fontSize: styles.fontSize,
+                    display: styles.display,
+                    padding: styles.padding,
+                    margin: styles.margin
+                }
+            };
+        }, { x, y });
+    }
+
     async click(x: number, y: number) {
         if (!this.page) return;
         await this.page.mouse.click(x, y);
