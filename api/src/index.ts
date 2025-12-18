@@ -13,6 +13,7 @@ import foldersRoutes from './routes/folders';
 import filesRoutes from './routes/files';
 import approvalsRoutes from './routes/approvals';
 import projectRoutes from './routes/project';
+import audioRoutes from './routes/audio';
 import { authenticate } from './middleware/auth';
 import http from 'http';
 import { attachWebSocket } from './ws';
@@ -52,6 +53,7 @@ async function main() {
   app.use('/files', filesRoutes);
   app.use('/approvals', approvalsRoutes);
   app.use('/project', projectRoutes);
+  app.use('/audio', audioRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {

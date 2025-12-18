@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import CodeWithPreview from './CodeWithPreview';
+import VoiceVisualizer from './VoiceVisualizer';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { 
@@ -177,15 +178,48 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     if (onStepsUpdate) onStepsUpdate(events);
   }, [events, onStepsUpdate]);
 
-  const speak = (text: string) => {
+  const speak = async (text: string) => {
     if (!isVoiceMode) return;
-    window.speechSynthesis.cancel();
+    stopSpeaking();
+    
+    setIsSpeaking(true);
+
+    // 1. Try OpenAI TTS first
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+         const res = await fetch(`${API}/audio/speech`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ text, voice: 'onyx' }) // Onyx is a good male voice
+         });
+         
+         if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.onended = () => setIsSpeaking(false);
+            audio.onerror = () => setIsSpeaking(false);
+            audio.play();
+            (window as any).currentAudio = audio; // Keep ref to stop it
+            return;
+         }
+      }
+    } catch (e) {
+      console.warn('Backend TTS failed, falling back to browser', e);
+    }
+
+    // 2. Fallback to Browser Speech
     const utterance = new SpeechSynthesisUtterance(text);
     const isArabic = /[\u0600-\u06FF]/.test(text);
     utterance.lang = isArabic ? 'ar-SA' : 'en-US';
     const voices = window.speechSynthesis.getVoices();
     if (isArabic) {
-        const arVoice = voices.find(v => v.lang.includes('ar'));
+        // Try to find a good Arabic voice (Google or standard)
+        const arVoice = voices.find(v => v.lang.includes('ar') && v.name.includes('Google')) || voices.find(v => v.lang.includes('ar'));
         if (arVoice) utterance.voice = arVoice;
     }
     utterance.onstart = () => setIsSpeaking(true);
@@ -194,13 +228,22 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     window.speechSynthesis.speak(utterance);
   };
 
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    if ((window as any).currentAudio) {
+        (window as any).currentAudio.pause();
+        (window as any).currentAudio = null;
+    }
+    setIsSpeaking(false);
+  };
+
   useEffect(() => {
     window.speechSynthesis.getVoices();
     window.speechSynthesis.onvoiceschanged = () => {
         window.speechSynthesis.getVoices();
     };
     return () => {
-        window.speechSynthesis.cancel();
+        stopSpeaking();
     };
   }, []);
 
@@ -644,6 +687,9 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           </div>
         </div>
       )}
+
+      {/* Voice Visualizer */}
+      <VoiceVisualizer isSpeaking={isSpeaking} onStop={stopSpeaking} />
 
       {/* AI Providers Modal */}
       {showProviders && (
