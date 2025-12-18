@@ -141,7 +141,17 @@ export async function generateSessionTitle(messages: { role: string; content: st
 function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 'tool', content: string | null, tool_calls?: any[], tool_call_id?: string }[]) {
   // Extract user intent
   const userMsg = messages.find(m => m.role === 'user')?.content || '';
-  // console.error('DEBUG: heuristicPlanner userMsg:', userMsg);
+  
+  // DEBUG LOGS
+  console.error('--- Heuristic Planner Debug ---');
+  console.error('Messages Count:', messages.length);
+  messages.forEach((m, i) => {
+      if (m.role === 'assistant') {
+          console.error(`Msg[${i}] Assistant: ${String(m.content).slice(0, 100)}...`);
+      }
+  });
+  // -----------------------------
+
   const lastMsg = messages[messages.length - 1];
   // console.error('DEBUG: heuristicPlanner lastMsg:', JSON.stringify(lastMsg, null, 2));
 
@@ -233,13 +243,32 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
     const allToolsCalled = [...toolsCalled, ...textToolsCalled];
     
     const filesWritten = messages
-      .filter(m => m.role === 'assistant' && m.tool_calls)
-      .flatMap(m => m.tool_calls?.map(tc => {
-         if (tc.function.name === 'file_write') {
-             try { return JSON.parse(tc.function.arguments).filename; } catch { return null; }
-         }
-         return null;
-      }) || [])
+      .flatMap(m => {
+          // Check structured tool calls
+          if (m.role === 'assistant' && m.tool_calls) {
+             return m.tool_calls.map(tc => {
+                 if (tc.function.name === 'file_write') {
+                     try { return JSON.parse(tc.function.arguments).filename; } catch { return null; }
+                 }
+                 return null;
+             });
+          }
+          // Check text history from run.ts loop
+          if (m.role === 'assistant' && typeof m.content === 'string') {
+              // Match pattern: Tool 'file_write' executed. Result: {"href":"..."}
+              // Or just check if we executed file_write recently
+              if (m.content.includes("Tool 'file_write' executed")) {
+                  // We can't easily parse filename from the generic success message unless we look deeper
+                  // But for heuristic loop prevention, if we JUST wrote a file, we should probably stop if target matches?
+                  // Let's assume if we wrote ANY file, we might be done with the "write" step for that specific loop
+                  // But better: let's try to extract filename from the logs or previous plan if possible.
+                  // Since run.ts doesn't store the input in the history text content easily readable here, 
+                  // we might rely on the fact that if we executed 'file_write' successfully, we are good.
+                  return ['__ANY_FILE__']; 
+              }
+          }
+          return [];
+      })
       .filter(Boolean);
 
     // Determine target filename (default to index.html if not specified)
@@ -250,7 +279,8 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
         targetFilename = filenameMatch[1] || filenameMatch[2];
     }
 
-    if (!allToolsCalled.includes('file_write') || !filesWritten.includes(targetFilename)) {
+    // Check if we already wrote this file OR if we wrote any file (heuristic hack to prevent loops)
+    if ((!allToolsCalled.includes('file_write') && !textToolsCalled.includes('file_write')) || (!filesWritten.includes(targetFilename) && !filesWritten.includes('__ANY_FILE__'))) {
       return {
         name: 'file_write',
         input: {

@@ -309,6 +309,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     
     // Plan next step with history
     try {
+        // DEBUG HISTORY
+        console.log(`Step ${steps} History Last Item:`, JSON.stringify(history[history.length - 1]));
+        
         // If default provider and no API key, do not throw (allow heuristic fallback)
         // If custom provider or API key provided, throw on error to notify user
         const shouldThrow = Boolean(apiKey || (provider !== 'llm' && provider));

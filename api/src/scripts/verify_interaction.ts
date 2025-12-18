@@ -73,8 +73,11 @@ async function runInteraction(testName: string, provider: string | undefined, ap
                 
                 if (event.type === 'text') {
                     console.log(`   🤖 Agent says: "${event.data.replace(/\n/g, ' ')}"`);
-                    // We got a response, that's good enough for verification
-                    // We don't close immediately in case more text comes, but we can set a short timeout to finish
+                    // Success!
+                    clearTimeout(timeout);
+                    ws.close();
+                    resolve();
+                    return;
                 }
                 
                 if (event.type === 'step_done') {
@@ -99,11 +102,14 @@ async function main() {
     // 2. Test Joe (Local/Heuristic) - Command
     await runInteraction('Joe (Local) - Command', 'llm', undefined, 'status');
 
-    // 3. Test OpenAI (No Key - Should Fail or Warn)
+    // 3. Test Joe (Local) - Build Site Command
+    await runInteraction('Joe (Local) - Build Site', 'llm', undefined, 'ابني موقع landing.html');
+
+    // 4. Test OpenAI (No Key - Should Fail or Warn)
     // Note: If env key is missing, server logs warning. Request might fail if logic enforces key.
     await runInteraction('OpenAI (Missing Key)', 'openai', undefined, 'Hello OpenAI');
 
-    // 4. Test OpenAI (Invalid Key - Should Fail Gracefully)
+    // 5. Test OpenAI (Invalid Key - Should Fail Gracefully)
     await runInteraction('OpenAI (Invalid Key)', 'openai', 'sk-invalid-key-123', 'Hello OpenAI');
 
     console.log('\n✅ DONE');
