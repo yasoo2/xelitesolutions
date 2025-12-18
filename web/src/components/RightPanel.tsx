@@ -5,6 +5,7 @@ import CodeEditor from './CodeEditor';
 import GraphVisualizer from './GraphVisualizer';
 import PlanVisualizer from './PlanVisualizer';
 import Terminal from './Terminal';
+import FileExplorer from './FileExplorer';
 import { 
   Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, 
   Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, 
@@ -46,14 +47,6 @@ export default function RightPanel({
   const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
   const [isGraphLoading, setIsGraphLoading] = useState(false);
   
-  // File Explorer State
-  const [fileTree, setFileTree] = useState<any[]>([]);
-  const [selectedFile, setSelectedFile] = useState<{ path: string; name: string; content: string } | null>(null);
-  const [expandedDirs, setExpandedDirs] = useState<Record<string, boolean>>({});
-  const [isFileLoading, setIsFileLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [editorContent, setEditorContent] = useState('');
-
   // Initialize state from props
   useEffect(() => {
     if (initialTerminalState) setTermOutput(initialTerminalState);
@@ -95,8 +88,8 @@ export default function RightPanel({
   }, [active, sessionId]);
 
   // Fetch graph data when GRAPH tab is active
-  useEffect(() => {
-    if (active === 'GRAPH') {
+    useEffect(() => {
+      if (active === 'GRAPH') {
       setIsGraphLoading(true);
       fetch(`${API}/project/graph`, {
         headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
@@ -193,33 +186,7 @@ export default function RightPanel({
       .then(data => setAnalytics(data))
       .catch(err => console.error(err));
     }
-    
-    if (active === 'FILES') {
-      setIsFileLoading(true);
-      fetch(`${API}/project/tree?depth=4`, {
-        headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
-      })
-      .then(res => res.json())
-      .then(data => {
-         setFileTree(data.tree || []);
-         setIsFileLoading(false);
-      })
-      .catch(() => setIsFileLoading(false));
-    }
   }, [active, sessionId]);
-
-  const loadFileContent = async (path: string, name: string) => {
-      try {
-          const res = await fetch(`${API}/project/content?path=${encodeURIComponent(path)}`, {
-             headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
-          });
-          const data = await res.json();
-          setSelectedFile({ path, name, content: data.content });
-          setEditorContent(data.content);
-      } catch (e) {
-          console.error(e);
-      }
-  };
 
   // Auto-switch tabs based on steps (Smart Viewport)
   useEffect(() => {
@@ -252,94 +219,13 @@ export default function RightPanel({
          setCurrentCmd('');
       }
       else if (last.data.name === 'read_file') {
-         const path = last.data.plan?.input?.file_path || last.data.plan?.input?.path;
-         // Some tools return content in output object, some directly string
-         const output = last.data.result?.output;
-         const content = typeof output === 'string' ? output : output?.content;
-         
-         if (path && content) {
-            const name = path.split('/').pop() || path;
-            setSelectedFile({ path, name, content });
-            setEditorContent(content);
-            if (onTabChange && active !== 'FILES') onTabChange('FILES');
-         }
+         if (onTabChange && active !== 'FILES') onTabChange('FILES');
       }
       else if (last.data.name === 'edit_file') {
-         const path = last.data.plan?.input?.file_path || last.data.plan?.input?.path;
-         if (path) {
-            loadFileContent(path, path.split('/').pop() || path);
-            if (onTabChange && active !== 'FILES') onTabChange('FILES');
-         }
+         if (onTabChange && active !== 'FILES') onTabChange('FILES');
       }
     }
   }, [steps]);
-
-  const saveFile = async () => {
-      if (!selectedFile) return;
-      setIsSaving(true);
-      try {
-          await fetch(`${API}/project/content`, {
-              method: 'POST',
-              headers: { 
-                  'Content-Type': 'application/json',
-                  Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' 
-              },
-              body: JSON.stringify({ path: selectedFile.path, content: editorContent })
-          });
-          setSelectedFile(prev => prev ? { ...prev, content: editorContent } : null);
-          alert('File saved successfully!');
-      } catch (e) {
-          alert('Failed to save file');
-      } finally {
-          setIsSaving(false);
-      }
-  };
-
-  const renderTree = (nodes: any[], level = 0) => {
-      return nodes.map((node, i) => {
-          const isExpanded = expandedDirs[node.path];
-          const isSelected = selectedFile?.path === node.path;
-          
-          return (
-              <div key={node.path + i}>
-                  <div 
-                    className={`tree-item ${isSelected ? 'selected' : ''}`}
-                    style={{ 
-                        paddingLeft: level * 16 + 8, 
-                        paddingRight: 8,
-                        paddingTop: 4, 
-                        paddingBottom: 4,
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 6,
-                        cursor: 'pointer',
-                        background: isSelected ? 'var(--bg-active)' : 'transparent',
-                        color: isSelected ? 'var(--accent-primary)' : 'inherit',
-                        fontSize: 13
-                    }}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (node.type === 'directory') {
-                            setExpandedDirs(prev => ({ ...prev, [node.path]: !prev[node.path] }));
-                        } else {
-                            loadFileContent(node.path, node.name);
-                        }
-                    }}
-                  >
-                      {node.type === 'directory' ? (
-                          <span style={{ opacity: 0.7 }}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
-                      ) : <span style={{ width: 14 }} />}
-                      
-                      {node.type === 'directory' ? <Folder size={14} color="#fbbf24" /> : <FileText size={14} color="#60a5fa" />}
-                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.name}</span>
-                  </div>
-                  {node.type === 'directory' && isExpanded && node.children && (
-                      <div>{renderTree(node.children, level + 1)}</div>
-                  )}
-              </div>
-          );
-      });
-  };
 
   async function refreshSummary() {
     if (!sessionId) return;
@@ -424,71 +310,7 @@ export default function RightPanel({
     if (active === 'FILES') {
         return (
           <div className="panel-content" style={{ padding: 0, display: 'flex', height: '100%', overflow: 'hidden' }}>
-            <div style={{ width: 250, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)' }}>
-              <div style={{ padding: 12, borderBottom: '1px solid var(--border-color)', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Explorer</span>
-                <button 
-                  onClick={() => {
-                    setIsFileLoading(true);
-                    fetch(`${API}/project/tree?depth=4`, {
-                      headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                      setFileTree(data.tree || []);
-                      setIsFileLoading(false);
-                    });
-                  }}
-                  className="btn-icon"
-                  style={{ padding: 4 }}
-                >
-                  <Activity size={14} />
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-                {isFileLoading ? (
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: 16 }}><Loader2 className="spin" /></div>
-                ) : (
-                  renderTree(fileTree)
-                )}
-              </div>
-            </div>
-            
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
-              {selectedFile ? (
-                <>
-                  <div style={{ height: 40, borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', background: 'var(--bg-secondary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                      <FileText size={14} style={{ color: 'var(--accent-primary)' }} />
-                      <span style={{ fontWeight: 500 }}>{selectedFile.name}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', opacity: 0.7 }}>{selectedFile.path}</span>
-                    </div>
-                    <button 
-                      onClick={saveFile}
-                      disabled={isSaving}
-                      className="btn"
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', fontSize: 12 }}
-                    >
-                      {isSaving ? <Loader2 size={12} className="spin" /> : <CheckCircle2 size={12} />}
-                      Save
-                    </button>
-                  </div>
-                  <div style={{ flex: 1, position: 'relative' }}>
-                    <CodeEditor 
-                      code={editorContent}
-                      language={selectedFile.name.endsWith('ts') || selectedFile.name.endsWith('tsx') ? 'typescript' : 'javascript'}
-                      onChange={(val) => setEditorContent(val || '')}
-                      theme="vs-dark"
-                    />
-                  </div>
-                </>
-              ) : (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-                  <Folder size={48} style={{ marginBottom: 16, opacity: 0.2 }} />
-                  <p>Select a file to edit</p>
-                </div>
-              )}
-            </div>
+            <FileExplorer sessionId={sessionId} />
           </div>
         );
     }
