@@ -23,6 +23,7 @@ export interface PlanOptions {
   apiKey?: string;
   model?: string;
   baseUrl?: string;
+  throwOnError?: boolean;
 }
 
 export async function planNextStep(
@@ -105,6 +106,9 @@ Rules:
 
   } catch (error) {
     console.error('LLM Error:', error);
+    if (options?.throwOnError) {
+      throw error;
+    }
     // Fallback to heuristic planner if LLM fails
     return heuristicPlanner(messages);
   }

@@ -220,8 +220,11 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
   try {
     if (name === 'echo') {
       const text = String(input?.text ?? '');
-      logs.push(`echo.text.length=${text.length}`);
-      return { ok: true, output: { text }, logs };
+      // If input is an object (due to nested parsing), try to extract text property or stringify
+      const val = typeof input === 'object' && input !== null && input.text ? input.text : text;
+      const finalStr = typeof val === 'string' ? val : JSON.stringify(val);
+      logs.push(`echo.text.length=${finalStr.length}`);
+      return { ok: true, output: { text: finalStr }, logs };
     }
     if (name === 'http_fetch') {
       const url = String(input?.url ?? '');
@@ -341,13 +344,28 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       return { ok: !!summary, output: { summary }, logs };
     }
     if (name === 'file_write') {
-      const filename = path.basename(String(input?.filename ?? 'artifact.txt'));
+      const filename = String(input?.filename ?? 'artifact.txt');
       const content = String(input?.content ?? '');
-      const full = path.join(ARTIFACT_DIR, filename);
+      // Allow full path access for system engineering
+      const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+      
+      // Ensure directory exists
+      const dir = path.dirname(full);
+      if (!fs.existsSync(dir)) {
+        try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+      }
+
       fs.writeFileSync(full, content);
       logs.push(`wrote=${full} bytes=${content.length}`);
-      const href = `/artifacts/${encodeURIComponent(filename)}`;
-      return { ok: true, output: { href }, logs, artifacts: [{ name: filename, href }] };
+      
+      // Only generate href if inside ARTIFACT_DIR
+      let href = '';
+      const artifactDirAbs = path.resolve(ARTIFACT_DIR);
+      if (full.startsWith(artifactDirAbs)) {
+          href = `/artifacts/${encodeURIComponent(path.relative(artifactDirAbs, full))}`;
+      }
+      
+      return { ok: true, output: { href }, logs, artifacts: href ? [{ name: path.basename(full), href }] : [] };
     }
     if (name === 'browser_snapshot') {
       const url = String(input?.url ?? '');
@@ -504,8 +522,15 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       return { ok: final.length > 0, output: { results: final }, logs };
     }
     if (name === 'file_read') {
-      const filename = path.basename(String(input?.filename ?? ''));
-      const full = path.join(ARTIFACT_DIR, filename);
+      const filename = String(input?.filename ?? '');
+      // Allow full path access for system engineering
+      const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+      
+      // Check if it's a directory
+      if (fs.existsSync(full) && fs.lstatSync(full).isDirectory()) {
+          return { ok: false, error: 'EISDIR: illegal operation on a directory, read', logs };
+      }
+
       if (!fs.existsSync(full)) {
         return { ok: false, error: 'File not found', logs };
       }
@@ -514,7 +539,8 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       return { ok: true, output: { content }, logs };
     }
     if (name === 'ls') {
-      const dirPath = input?.path ? path.join(ARTIFACT_DIR, path.basename(input.path)) : ARTIFACT_DIR;
+      const p = String(input?.path || '.');
+      const dirPath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
       if (!fs.existsSync(dirPath)) {
           return { ok: false, error: 'Directory not found', logs };
       }
@@ -534,7 +560,8 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const execAsync = util.promisify(exec);
       
       try {
-        const { stdout, stderr } = await execAsync(command, { cwd: ARTIFACT_DIR, timeout: 30000 });
+        // Allow running in current directory
+        const { stdout, stderr } = await execAsync(command, { cwd: process.cwd(), timeout: 30000 });
         logs.push(`exec=${command} exit=0`);
         return { ok: true, output: { stdout, stderr, exitCode: 0 }, logs };
       } catch (err: any) {
@@ -543,10 +570,11 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       }
     }
     if (name === 'file_edit') {
-      const filename = path.basename(String(input?.filename ?? ''));
+      const filename = String(input?.filename ?? '');
       const find = String(input?.find ?? '');
       const replace = String(input?.replace ?? '');
-      const full = path.join(ARTIFACT_DIR, filename);
+      // Allow full path access for system engineering
+      const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
       
       if (!fs.existsSync(full)) return { ok: false, error: 'File not found', logs };
       

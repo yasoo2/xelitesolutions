@@ -15,6 +15,38 @@ import { FileModel } from '../models/file';
 
 const router = Router();
 
+// Connection verification endpoint
+router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
+  const { provider, apiKey, baseUrl, model } = req.body || {};
+  
+  if (provider === 'llm') {
+      // Default system check
+      if (process.env.OPENAI_API_KEY) {
+          return res.json({ status: 'ok', message: 'Joe System Ready' });
+      } else {
+          // If no key, it might still work via heuristics, but for "connection" status we warn
+          return res.json({ status: 'ok', message: 'Joe System (Heuristic Only)' });
+      }
+  }
+
+  try {
+    // Try a simple planning step
+    const result = await planNextStep(
+        [{ role: 'user', content: 'hello' }], 
+        { provider, apiKey, baseUrl, model, throwOnError: true }
+    );
+    
+    if (result) {
+        return res.json({ status: 'ok', message: 'Connected successfully', result });
+    } else {
+        return res.status(500).json({ error: 'No response from provider' });
+    }
+  } catch (err: any) {
+    console.error('Verify error:', err);
+    return res.status(401).json({ error: err.message || 'Connection failed' });
+  }
+});
+
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
   const tn = t.replace(/[\u064B-\u065F\u0670]/g, '').replace(/ـ/g, '');
@@ -277,7 +309,24 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     
     // Plan next step with history
     try {
-        plan = await planNextStep(history, { provider, apiKey, baseUrl, model });
+        // If default provider and no API key, do not throw (allow heuristic fallback)
+        // If custom provider or API key provided, throw on error to notify user
+        const shouldThrow = Boolean(apiKey || (provider !== 'llm' && provider));
+        
+        // If default provider has a system-wide key, we also want to know if it fails?
+        // Actually, if system key is present but fails (e.g. quota), we might want to know.
+        // But if system key is MISSING, we want fallback.
+        // Let's refine:
+        // - If apiKey is provided in request: throwOnError = true
+        // - If provider is NOT 'llm' (and not null): throwOnError = true
+        // - If provider IS 'llm' (or null):
+        //    - If process.env.OPENAI_API_KEY is set: throwOnError = true (system is configured but failing)
+        //    - If process.env.OPENAI_API_KEY is NOT set: throwOnError = false (system unconfigured, use heuristic)
+        
+        const isSystemConfigured = !!process.env.OPENAI_API_KEY;
+        const throwOnError = !!apiKey || (provider && provider !== 'llm') || isSystemConfigured;
+
+        plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError });
     } catch (err: any) {
         console.warn('LLM planning error:', err);
         if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {

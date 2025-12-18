@@ -26,8 +26,23 @@ import {
   Volume2,
   Settings,
   Power,
-  Key
+  Key,
+  Eye,
+  EyeOff,
+  Trash2,
+  Zap
 } from 'lucide-react';
+
+interface ProviderConfig {
+  name: string;
+  apiKey: string;
+  isConnected: boolean;
+  baseUrl?: string;
+  model?: string;
+  isCustom?: boolean;
+  isVerifying?: boolean;
+  lastError?: string;
+}
 
 export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact, onStepsUpdate }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void; onStepsUpdate?: (steps: any[]) => void }) {
   const { t } = useTranslation();
@@ -43,9 +58,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
-  const [providers, setProviders] = useState<{
-    [key: string]: { name: string; apiKey: string; isConnected: boolean; baseUrl?: string; model?: string; isCustom?: boolean }
-  }>({
+  const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>({
     llm: { name: 'Joe System (Default)', apiKey: '', isConnected: true },
     openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
     anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
@@ -54,6 +67,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     custom: { name: 'Custom / Local LLM', apiKey: '', isConnected: false, baseUrl: 'http://localhost:11434/v1', model: 'llama3', isCustom: true },
   });
   const [activeProvider, setActiveProvider] = useState('llm');
+  const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
 
   // Load providers from localStorage on mount
   useEffect(() => {
@@ -61,12 +75,14 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       const saved = localStorage.getItem('ai_providers');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Merge with defaults to ensure structure
         setProviders(prev => {
           const next = { ...prev };
           Object.keys(parsed).forEach(k => {
             if (next[k]) {
-              next[k] = { ...next[k], ...parsed[k], isConnected: false }; // Reset connection state
+              // Preserve structure but update values
+              next[k] = { ...next[k], ...parsed[k] };
+              // Don't trust 'isConnected' from storage fully, maybe reset or keep it?
+              // For now keep it but user might need to re-verify if token expired
             }
           });
           return next;
@@ -105,31 +121,22 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
 
   const speak = (text: string) => {
     if (!isVoiceMode) return;
-    
-    // Cancel current speech
     window.speechSynthesis.cancel();
-
     const utterance = new SpeechSynthesisUtterance(text);
-    // Detect language (simple check)
     const isArabic = /[\u0600-\u06FF]/.test(text);
     utterance.lang = isArabic ? 'ar-SA' : 'en-US';
-    
-    // Find a good voice if possible
     const voices = window.speechSynthesis.getVoices();
     if (isArabic) {
         const arVoice = voices.find(v => v.lang.includes('ar'));
         if (arVoice) utterance.voice = arVoice;
     }
-
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
-    
     window.speechSynthesis.speak(utterance);
   };
 
   useEffect(() => {
-    // Load voices eagerly
     window.speechSynthesis.getVoices();
     window.speechSynthesis.onvoiceschanged = () => {
         window.speechSynthesis.getVoices();
@@ -145,15 +152,13 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       const recognition = new window.webkitSpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = 'ar-SA'; // Default to Arabic
-
+      recognition.lang = 'ar-SA';
       recognition.onstart = () => setIsListening(true);
       recognition.onend = () => setIsListening(false);
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setText(prev => prev + (prev ? ' ' : '') + transcript);
       };
-      
       recognitionRef.current = recognition;
     }
   }, []);
@@ -246,7 +251,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
 
   useEffect(() => {
     if (sessionId) {
-      setEvents([]); // Clear previous events immediately
+      setEvents([]);
       loadHistory(sessionId);
     } else {
       setEvents([]);
@@ -312,8 +317,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     setEvents(prev => [...prev, { type: 'user_input', data: text, id: tempId }]);
     const currentText = text;
     const currentFiles = [...attachedFiles];
-    setText(''); // Clear input immediately
-    setAttachedFiles([]); // Clear attached files
+    setText(''); 
+    setAttachedFiles([]); 
 
     const token = localStorage.getItem('token');
     try {
@@ -340,7 +345,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       if (sessionId || data.sessionId) {
         await loadHistory(sessionId || data.sessionId);
       }
-      // Fallback for non-streaming response
       if (!isConnected && data?.result) {
          const r = data.result;
          if (r?.output) {
@@ -353,18 +357,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       setEvents(prev => [...prev, { type: 'error', data: t('error') }]);
       setText(currentText);
     }
-  }
-
-  async function plan() {
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/runs/plan`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ text }),
-    });
   }
 
   async function approve(decision: 'approved' | 'denied') {
@@ -381,21 +373,52 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     setApproval(null);
   }
 
-  const toggleExpand = (index: number) => {
-    setEvents(prev => prev.map((e, i) => i === index ? { ...e, expanded: !e.expanded } : e));
+  const checkConnection = async (key: string) => {
+    const p = providers[key];
+    setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, lastError: undefined } }));
+    
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`${API}/runs/verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+                provider: key === 'llm' ? 'llm' : key,
+                apiKey: p.apiKey,
+                baseUrl: p.baseUrl,
+                model: p.model
+            })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            setProviders(prev => ({ 
+                ...prev, 
+                [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined } 
+            }));
+            setActiveProvider(key);
+        } else {
+            throw new Error(data.error || 'Connection failed');
+        }
+    } catch (err: any) {
+        setProviders(prev => ({ 
+            ...prev, 
+            [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: err.message } 
+        }));
+    }
   };
 
-  const getToolIcon = (name: string) => {
-    if (name.includes('shell') || name.includes('exec')) return <Terminal size={14} />;
-    if (name.includes('web') || name.includes('search')) return <Globe size={14} />;
-    if (name.includes('file')) return <FileText size={14} />;
-    if (name.includes('plan') || name.includes('thinking')) return <Cpu size={14} />;
-    return <Cpu size={14} />;
-  };
-
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
+  const deleteProviderKey = (key: string) => {
+    if (confirm('Are you sure you want to remove the API key?')) {
+        setProviders(prev => ({ 
+            ...prev, 
+            [key]: { ...prev[key], apiKey: '', isConnected: false } 
+        }));
+    }
   };
 
   const isThinking = isConnected && events.length > 0 && 
@@ -413,7 +436,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
         )}
         
         {events.map((e, i) => {
-          // USER INPUT
           if (e.type === 'user_input') {
             return (
               <div key={i} className="message-row user">
@@ -423,8 +445,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               </div>
             );
           }
-          
-          // ERROR RESPONSE
           if (e.type === 'error') {
             return (
               <div key={i} className="message-row joe">
@@ -434,8 +454,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               </div>
             );
           }
-
-          // JOE TEXT RESPONSE
           if (e.type === 'text') {
             let content = e.data;
             try {
@@ -444,7 +462,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                  content = p.text || p.output || content;
               }
             } catch {}
-            
             return (
               <div key={i} className="message-row joe">
                 <div className="message-bubble markdown-content" dir="auto">
@@ -455,149 +472,55 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                         const match = /language-(\w+)/.exec(className || '');
                         const lang = match ? match[1] : '';
                         const isPreviewable = ['html', 'css', 'javascript', 'js', 'react', 'jsx', 'tsx'].includes(lang);
-
                         return match ? (
                           <div style={{ position: 'relative' }}>
                             {isPreviewable && onPreviewArtifact && (
                                <button 
                                  onClick={() => onPreviewArtifact(String(children).replace(/\n$/, ''), lang)}
-                                 style={{
-                                   position: 'absolute',
-                                   top: 8,
-                                   right: 8,
-                                   zIndex: 10,
-                                   display: 'flex',
-                                   alignItems: 'center',
-                                   gap: 4,
-                                   padding: '4px 8px',
-                                   borderRadius: 4,
-                                   border: 'none',
-                                   background: 'var(--accent-primary)',
-                                   color: '#fff',
-                                   cursor: 'pointer',
-                                   fontSize: 11,
-                                   fontWeight: 600,
-                                   opacity: 0.9
-                                 }}
+                                 style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 4, border: 'none', background: 'var(--accent-primary)', color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 600, opacity: 0.9 }}
                                  title="معاينة الكود"
                                >
                                  <Play size={10} fill="currentColor" /> معاينة
                                </button>
                             )}
-                            <SyntaxHighlighter
-                              {...rest}
-                              PreTag="div"
-                              children={String(children).replace(/\n$/, '')}
-                              language={lang}
-                              style={vscDarkPlus}
-                            />
+                            <SyntaxHighlighter {...rest} PreTag="div" children={String(children).replace(/\n$/, '')} language={lang} style={vscDarkPlus} />
                           </div>
                         ) : (
-                          <code {...rest} className={className}>
-                            {children}
-                          </code>
+                          <code {...rest} className={className}>{children}</code>
                         );
                       },
                       img(props) {
-                        return (
-                           <img 
-                             {...props} 
-                             style={{ maxWidth: '100%', borderRadius: 8, marginTop: 8, border: '1px solid var(--border-color)' }} 
-                             onLoad={() => {
-                               // Ensure scroll to bottom when image loads
-                               endRef.current?.scrollIntoView({ behavior: 'smooth' });
-                             }}
-                           />
-                        );
+                        return <img {...props} style={{ maxWidth: '100%', borderRadius: 8, marginTop: 8, border: '1px solid var(--border-color)' }} onLoad={() => endRef.current?.scrollIntoView({ behavior: 'smooth' })} />;
                       }
                     }}
                   >
                     {String(content)}
                   </ReactMarkdown>
-                  
-                  {/* Copy Button */}
-                  <div 
-                    className="copy-icon" 
-                    onClick={() => navigator.clipboard.writeText(String(content))}
-                    title={t('copy')}
-                  >
+                  <div className="copy-icon" onClick={() => navigator.clipboard.writeText(String(content))} title={t('copy')}>
                     <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                   </div>
                 </div>
               </div>
             );
           }
-
-          // STEPS (Thinking)
           if (e.type === 'step_started') {
             const isImage = e.data.name && e.data.name.includes('image_generate');
-            // Check if this step is already done/failed by looking ahead
-            const isDone = events.slice(i + 1).some(next => 
-              (next.type === 'step_done' || next.type === 'step_failed') && 
-              (next.data.name === e.data.name || next.data.name === `execute:${e.data.name}`)
-            );
-
+            const isDone = events.slice(i + 1).some(next => (next.type === 'step_done' || next.type === 'step_failed') && (next.data.name === e.data.name || next.data.name === `execute:${e.data.name}`));
             if (isImage && !isDone) {
                return (
                  <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
-                   <div className="image-loading-frame" style={{ 
-                       width: 300, 
-                       height: 300, 
-                       background: 'var(--bg-secondary)', 
-                       borderRadius: 8, 
-                       display: 'flex', 
-                       flexDirection: 'column',
-                       alignItems: 'center', 
-                       justifyContent: 'center',
-                       border: '2px dashed var(--border-color)',
-                       position: 'relative',
-                       overflow: 'hidden'
-                   }}>
+                   <div className="image-loading-frame" style={{ width: 300, height: 300, background: 'var(--bg-secondary)', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed var(--border-color)', position: 'relative', overflow: 'hidden' }}>
                      <Loader2 size={32} className="spin" style={{ marginBottom: 16, color: '#eab308' }} />
                      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Generating Image...</div>
-                     {/* Scan line effect */}
-                     <div style={{
-                       position: 'absolute',
-                       top: 0,
-                       left: 0,
-                       right: 0,
-                       height: '2px',
-                       background: 'rgba(234, 179, 8, 0.5)',
-                       boxShadow: '0 0 10px #eab308',
-                       animation: 'scan 2s linear infinite'
-                     }} />
-                     <style>{`
-                       @keyframes scan {
-                         0% { top: 0; opacity: 0; }
-                         10% { opacity: 1; }
-                         90% { opacity: 1; }
-                         100% { top: 100%; opacity: 0; }
-                       }
-                     `}</style>
                    </div>
                  </div>
                );
             }
-
-            // Hide other steps from main chat (moved to Right Panel)
             return null;
           }
-
-          if (e.type === 'step_done') {
-            // Hide from main chat (moved to Right Panel)
-            return null;
-          }
-
-          if (e.type === 'step_failed') {
-            // Hide from main chat (moved to Right Panel)
-            return null;
-          }
-
-          // ARTIFACTS
           if (e.type === 'artifact_created') {
             const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.href || '');
             const isVideo = /\.(mp4|webm|mov)$/i.test(e.data.name || '') || /\.(mp4|webm|mov)$/i.test(e.data.href || '');
-            
             return (
               <div key={i} className="message-row joe">
                 <div className="event-artifact">
@@ -628,7 +551,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                       </div>
                     </>
                   )}
-                  
                   <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
                     <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
                       <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
@@ -638,21 +560,9 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               </div>
             );
           }
-
-          if (e.type === 'error') {
-            return (
-               <div key={i} className="message-row joe">
-                 <div className="message-bubble" style={{ border: '1px solid #ef4444', background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                   ⚠️ {e.data}
-                 </div>
-               </div>
-            );
-          }
-
           return null;
         })}
 
-        {/* Thinking Indicator */}
         {isThinking && (
           <div className="message-row joe">
              <div className="typing-indicator">
@@ -662,7 +572,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
              </div>
           </div>
         )}
-        
         <div ref={endRef} />
       </div>
       
@@ -677,6 +586,189 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               <button onClick={() => approve('approved')} className="btn approve">{t('approve')}</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* AI Providers Modal */}
+      {showProviders && (
+        <div className="providers-modal-overlay" style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }} onClick={() => setShowProviders(false)}>
+            <div className="providers-modal" style={{
+                width: 700, height: 500, background: 'var(--bg-primary)',
+                borderRadius: 16, border: '1px solid var(--border-color)',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.3)', display: 'flex', overflow: 'hidden'
+            }} onClick={e => e.stopPropagation()}>
+                
+                {/* Left Sidebar */}
+                <div style={{ width: 220, background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', padding: 16 }}>
+                    <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Cpu size={18} /> Providers
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {Object.entries(providers).map(([key, p]) => (
+                            <button key={key} onClick={() => setActiveProvider(key)} style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '10px 12px', borderRadius: 8, border: 'none',
+                                background: activeProvider === key ? 'var(--bg-primary)' : 'transparent',
+                                color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
+                                cursor: 'pointer', textAlign: 'left',
+                                fontWeight: activeProvider === key ? 600 : 400,
+                                transition: 'all 0.2s'
+                            }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ 
+                                        width: 8, height: 8, borderRadius: '50%',
+                                        background: p.isConnected ? '#22c55e' : (p.apiKey ? '#eab308' : '#71717a'),
+                                        boxShadow: p.isConnected ? '0 0 8px #22c55e' : 'none'
+                                    }} />
+                                    {p.name.split(' ')[0]}
+                                </span>
+                                {activeProvider === key && <ChevronRight size={14} />}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Right Content */}
+                <div style={{ flex: 1, padding: 24, display: 'flex', flexDirection: 'column' }}>
+                    {providers[activeProvider] && (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: 20 }}>{providers[activeProvider].name}</h2>
+                                    <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <div style={{ 
+                                            padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                                            background: providers[activeProvider].isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                            color: providers[activeProvider].isConnected ? '#22c55e' : '#ef4444'
+                                        }}>
+                                            {providers[activeProvider].isConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                                        </div>
+                                        {providers[activeProvider].isVerifying && <Loader2 size={12} className="spin" />}
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowProviders(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div style={{ flex: 1 }}>
+                                {activeProvider !== 'llm' && (
+                                    <div style={{ marginBottom: 20 }}>
+                                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
+                                        <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
+                                            <div style={{ position: 'relative', flex: 1 }}>
+                                                <input 
+                                                    type={showKey[activeProvider] ? "text" : "password"} 
+                                                    value={providers[activeProvider].apiKey}
+                                                    onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: e.target.value, isConnected: false } }))}
+                                                    placeholder="sk-..."
+                                                    style={{ 
+                                                        width: '100%', padding: '10px 12px', borderRadius: 8, 
+                                                        border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                                                        color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                                                    }}
+                                                />
+                                                <button 
+                                                    onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
+                                                    style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5 }}
+                                                >
+                                                    {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                </button>
+                                            </div>
+                                            <button 
+                                                onClick={() => deleteProviderKey(activeProvider)}
+                                                title="Clear Key"
+                                                style={{ 
+                                                    padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)', 
+                                                    background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer' 
+                                                }}
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Model ID</label>
+                                        <input 
+                                            type="text" 
+                                            value={providers[activeProvider].model || ''}
+                                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
+                                            placeholder="gpt-4o"
+                                            style={{ 
+                                                width: '100%', padding: '10px 12px', borderRadius: 8, 
+                                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                                                color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                                            }}
+                                        />
+                                    </div>
+                                    {(providers[activeProvider].isCustom || activeProvider === 'grok') && (
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Base URL</label>
+                                            <input 
+                                                type="text" 
+                                                value={providers[activeProvider].baseUrl || ''}
+                                                onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
+                                                placeholder="https://api..."
+                                                style={{ 
+                                                    width: '100%', padding: '10px 12px', borderRadius: 8, 
+                                                    border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                                                    color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {providers[activeProvider].lastError && (
+                                    <div style={{ 
+                                        padding: 12, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', 
+                                        border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 13,
+                                        marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8
+                                    }}>
+                                        <XCircle size={16} />
+                                        {providers[activeProvider].lastError}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 12, paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
+                                <button 
+                                    onClick={() => checkConnection(activeProvider)}
+                                    disabled={providers[activeProvider].isVerifying}
+                                    style={{ 
+                                        flex: 1, padding: '12px', borderRadius: 8, border: 'none',
+                                        background: providers[activeProvider].isConnected ? '#22c55e' : 'var(--accent-primary)',
+                                        color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                        opacity: providers[activeProvider].isVerifying ? 0.7 : 1
+                                    }}
+                                >
+                                    {providers[activeProvider].isVerifying ? (
+                                        <>
+                                            <Loader2 size={18} className="spin" /> Verifying...
+                                        </>
+                                    ) : providers[activeProvider].isConnected ? (
+                                        <>
+                                            <CheckCircle2 size={18} /> Verified & Active
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Zap size={18} /> Connect & Activate
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
       )}
 
@@ -724,157 +816,12 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             <div style={{ position: 'relative' }}>
                <button
                  className="mic-button"
-                 onClick={() => setShowProviders(!showProviders)}
+                 onClick={() => setShowProviders(true)}
                  title="AI Providers"
                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: showProviders ? 'var(--accent-primary)' : 'inherit' }}
                >
                  <Settings size={20} />
                </button>
-               
-               {showProviders && (
-                 <div className="providers-popover" style={{
-                   position: 'absolute',
-                   bottom: '100%',
-                   right: 0,
-                   marginBottom: 12,
-                   width: 320,
-                   background: 'var(--bg-secondary)',
-                   border: '1px solid var(--border-color)',
-                   borderRadius: 12,
-                   padding: 16,
-                   boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                   zIndex: 100
-                 }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                     <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>AI Providers</h3>
-                     <button onClick={() => setShowProviders(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-primary)' }}>
-                       <X size={14} />
-                     </button>
-                   </div>
-                   
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '300px', overflowY: 'auto' }}>
-                     {Object.entries(providers).map(([key, p]) => (
-                       <div key={key} style={{ 
-                         background: 'var(--bg-primary)', 
-                         padding: 12, 
-                         borderRadius: 8, 
-                         border: `1px solid ${activeProvider === key ? 'var(--accent-primary)' : 'var(--border-color)'}`,
-                         opacity: (key !== 'llm' && activeProvider !== key && !p.isConnected) ? 0.9 : 1
-                       }}>
-                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: key === 'llm' ? 0 : 8 }}>
-                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                             <div style={{ 
-                               width: 8, height: 8, borderRadius: '50%', 
-                               background: (key === 'llm' || p.isConnected) ? '#22c55e' : '#ef4444',
-                               boxShadow: (key === 'llm' || p.isConnected) ? '0 0 4px #22c55e' : 'none'
-                             }} />
-                             <span style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</span>
-                           </div>
-                           {key === 'llm' ? (
-                             <button 
-                               onClick={() => setActiveProvider('llm')}
-                               style={{ 
-                                 fontSize: 11, 
-                                 padding: '4px 8px', 
-                                 borderRadius: 4, 
-                                 border: 'none', 
-                                 background: activeProvider === 'llm' ? 'var(--accent-primary)' : 'var(--bg-secondary)',
-                                 color: activeProvider === 'llm' ? '#fff' : 'inherit',
-                                 cursor: 'pointer'
-                               }}
-                             >
-                               {activeProvider === 'llm' ? 'Active' : 'Activate'}
-                             </button>
-                           ) : (
-                             <button 
-                               onClick={() => {
-                                 if (p.apiKey) {
-                                   setProviders(prev => ({ ...prev, [key]: { ...prev[key], isConnected: true } }));
-                                   setActiveProvider(key);
-                                 }
-                               }}
-                               style={{ 
-                                 fontSize: 11, 
-                                 padding: '4px 8px', 
-                                 borderRadius: 4, 
-                                 border: 'none', 
-                                 background: activeProvider === key ? 'var(--accent-primary)' : (p.isConnected ? '#22c55e' : 'var(--bg-secondary)'),
-                                 color: '#fff',
-                                 cursor: 'pointer',
-                                 opacity: !p.apiKey ? 0.5 : 1
-                               }}
-                               disabled={!p.apiKey}
-                             >
-                               {activeProvider === key ? 'Active' : (p.isConnected ? 'Switch' : 'Connect')}
-                             </button>
-                           )}
-                         </div>
-                         
-                         {key !== 'llm' && (
-                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                             <div style={{ position: 'relative' }}>
-                               <input 
-                                 type="password" 
-                                 placeholder={p.isCustom ? "API Key (Optional for Local)" : "API Key"}
-                                 value={p.apiKey}
-                                 onChange={(e) => setProviders(prev => ({ ...prev, [key]: { ...prev[key], apiKey: e.target.value, isConnected: false } }))}
-                                 style={{ 
-                                   width: '100%', 
-                                   background: 'var(--bg-secondary)', 
-                                   border: '1px solid var(--border-color)', 
-                                   borderRadius: 4, 
-                                   padding: '6px 8px', 
-                                   fontSize: 12,
-                                   color: 'inherit',
-                                   outline: 'none'
-                                 }}
-                               />
-                               <Key size={12} style={{ position: 'absolute', right: 8, top: 8, opacity: 0.5 }} />
-                             </div>
-                             
-                             <div style={{ display: 'flex', gap: 8 }}>
-                               <input 
-                                 type="text" 
-                                 placeholder="Model ID (e.g. gpt-4o)"
-                                 value={p.model || ''}
-                                 onChange={(e) => setProviders(prev => ({ ...prev, [key]: { ...prev[key], model: e.target.value } }))}
-                                 style={{ 
-                                   flex: 1,
-                                   background: 'var(--bg-secondary)', 
-                                   border: '1px solid var(--border-color)', 
-                                   borderRadius: 4, 
-                                   padding: '6px 8px', 
-                                   fontSize: 12,
-                                   color: 'inherit',
-                                   outline: 'none'
-                                 }}
-                               />
-                               {p.isCustom && (
-                                 <input 
-                                   type="text" 
-                                   placeholder="Base URL"
-                                   value={p.baseUrl || ''}
-                                   onChange={(e) => setProviders(prev => ({ ...prev, [key]: { ...prev[key], baseUrl: e.target.value } }))}
-                                   style={{ 
-                                     flex: 1.5,
-                                     background: 'var(--bg-secondary)', 
-                                     border: '1px solid var(--border-color)', 
-                                     borderRadius: 4, 
-                                     padding: '6px 8px', 
-                                     fontSize: 12,
-                                     color: 'inherit',
-                                     outline: 'none'
-                                   }}
-                                 />
-                               )}
-                             </div>
-                           </div>
-                         )}
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
             </div>
             <input 
               type="file" 
@@ -898,31 +845,12 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isListening ? '#ef4444' : 'inherit', position: 'relative' }}
             >
               <Mic size={20} />
-              {isListening && (
-                 <span style={{ position: 'absolute', top: -4, right: -4, width: 8, height: 8, background: '#ef4444', borderRadius: '50%', animation: 'pulse 1s infinite' }} />
-              )}
             </button>
             <button 
-              className={`voice-mode-btn ${isVoiceMode ? 'active' : ''}`}
-              onClick={() => setIsVoiceMode(!isVoiceMode)}
-              title={isVoiceMode ? 'إيقاف الصوت' : 'تفعيل الصوت'}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isVoiceMode ? '#22c55e' : 'var(--text-muted)' }}
+              className="send-button" 
+              onClick={run}
+              disabled={!text.trim() || !!approval}
             >
-              {isSpeaking ? (
-                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <div className="bar" style={{ width: 2, height: 10, background: '#22c55e', animation: 'eq 0.5s infinite' }} />
-                    <div className="bar" style={{ width: 2, height: 14, background: '#22c55e', animation: 'eq 0.5s infinite 0.1s' }} />
-                    <div className="bar" style={{ width: 2, height: 8, background: '#22c55e', animation: 'eq 0.5s infinite 0.2s' }} />
-                 </div>
-              ) : (
-                 <Volume2 size={20} />
-              )}
-            </button>
-            <style>{`
-               @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.5); } 100% { opacity: 1; transform: scale(1); } }
-               @keyframes eq { 0% { height: 4px; } 50% { height: 100%; } 100% { height: 4px; } }
-            `}</style>
-            <button className="run-btn" onClick={run} disabled={!text.trim() || !!approval}>
               {t('send')}
             </button>
           </div>
