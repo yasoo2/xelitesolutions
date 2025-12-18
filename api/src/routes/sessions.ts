@@ -60,6 +60,31 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
   return res.json({ results });
 });
 
+router.get('/:id/history', authenticate as any, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    const msgs = store.listMessages(id);
+    const events = msgs.map(m => ({
+      type: m.role === 'user' ? 'user_input' : 'text',
+      data: m.content,
+      ts: m.ts,
+    }));
+    return res.json({ events });
+  }
+  try {
+    const msgs = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).lean();
+    const events = msgs.map(m => ({
+      type: m.role === 'user' ? 'user_input' : 'text',
+      data: m.content,
+      ts: (m as any).createdAt ? new Date((m as any).createdAt).getTime() : Date.now(),
+    }));
+    return res.json({ events });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
 router.get('/:id/analytics', authenticate as any, async (req: Request, res: Response) => {
   const { id } = req.params;
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
