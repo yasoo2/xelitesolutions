@@ -345,10 +345,19 @@ export function Browser() {
                         </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center text-zinc-400 gap-4">
-                            <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center">
-                                <Globe size={40} className="text-zinc-300" />
-                            </div>
-                            <p className="text-zinc-500 font-medium">Enter a URL to start browsing</p>
+                            {isConnected ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+                                    <p className="text-zinc-500 font-medium">Loading video stream...</p>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center">
+                                        <Globe size={40} className="text-zinc-300" />
+                                    </div>
+                                    <p className="text-zinc-500 font-medium">Enter a URL to start browsing</p>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>
