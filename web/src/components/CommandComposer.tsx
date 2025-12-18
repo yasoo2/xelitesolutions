@@ -575,18 +575,22 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           if (e.type === 'artifact_created') {
             const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.href || '');
             const isVideo = /\.(mp4|webm|mov)$/i.test(e.data.name || '') || /\.(mp4|webm|mov)$/i.test(e.data.href || '');
+            
+            if (isImage) {
+               return (
+                 <div key={i} className="message-row joe">
+                   <div className="image-generation-frame">
+                     <div className="scanline-overlay"></div>
+                     <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
+                   </div>
+                 </div>
+               );
+            }
+
             return (
               <div key={i} className="message-row joe">
                 <div className="event-artifact">
-                  {isImage ? (
-                    <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <ImageIcon size={16} className="artifact-icon" />
-                        <div className="artifact-title">{t('artifacts.image')}</div>
-                      </div>
-                      <img src={e.data.href} alt={e.data.name} style={{ display: 'block' }} />
-                    </>
-                  ) : isVideo ? (
+                  {isVideo ? (
                     <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                         <VideoIcon size={16} className="artifact-icon" />

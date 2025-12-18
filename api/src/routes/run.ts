@@ -396,8 +396,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     if (result.ok && plan.name === 'image_generate') {
       const href = result.output?.href;
       if (href) {
-        forcedText = `![Generated Image](${href})`;
-        ev({ type: 'text', data: forcedText }); // Emit text event so UI shows it immediately
+        // Do not emit markdown image to avoid duplication. The UI handles artifact_created event.
+        forcedText = `🎨 Image generated successfully.`;
+        ev({ type: 'text', data: forcedText }); 
         break; 
       }
     }
