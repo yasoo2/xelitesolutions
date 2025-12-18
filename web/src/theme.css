@@ -42,6 +42,15 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
 
+  /* Custom Button Colors (Yellow/Blue LED) */
+  --btn-gradient-yellow: linear-gradient(135deg, #FFD700 0%, #FDB931 100%);
+  --btn-led-yellow: #FFD700;
+  --btn-text-yellow: #000;
+  
+  --btn-gradient-custom: var(--btn-gradient-yellow);
+  --btn-led-color: var(--btn-led-yellow);
+  --btn-text-custom: var(--btn-text-yellow);
+
   --composer-bg: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 100%);
 
   --neon-pink: #ff1ea8;

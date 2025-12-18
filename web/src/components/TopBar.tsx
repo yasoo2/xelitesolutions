@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Sun, Moon, LogIn, Globe, ChevronDown } from 'lucide-react';
+import { Sun, Moon, LogIn, LogOut, Globe, ChevronDown } from 'lucide-react';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -95,10 +95,21 @@ export default function TopBar() {
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
 
-        {/* Login Button */}
-        <button className="login-btn" onClick={() => nav('/login')} title={t('login')}>
-          <LogIn size={20} />
-        </button>
+        {/* Login/Logout Button */}
+        {localStorage.getItem('token') ? (
+            <button className="logout-btn" onClick={() => {
+                if(confirm(t('confirmLogout', 'Are you sure you want to logout?'))) {
+                    localStorage.removeItem('token');
+                    nav('/login');
+                }
+            }} title={t('logout', 'Logout')}>
+              <LogOut size={20} />
+            </button>
+        ) : (
+            <button className="login-btn" onClick={() => nav('/login')} title={t('login')}>
+              <LogIn size={20} />
+            </button>
+        )}
       </div>
     </div>
   );
