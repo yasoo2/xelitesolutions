@@ -12,6 +12,7 @@ import { authenticate } from '../middleware/auth';
 import { Session } from '../models/session';
 import { Message } from '../models/message';
 import { FileModel } from '../models/file';
+import { MemoryService } from '../services/memory';
 
 const router = Router();
 
@@ -169,6 +170,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   let { text, sessionId, fileIds, provider, apiKey, baseUrl, model } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const isAuthed = Boolean((req as any).auth);
+  const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
 
   // 1. Process Attachments
@@ -186,7 +188,24 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
   }
 
-  const fullPrompt = (String(text || '') + attachedContent).trim();
+  let fullPrompt = (String(text || '') + attachedContent).trim();
+
+  // Inject Memory
+  if (userId && !useMock) {
+      try {
+        const memories = await MemoryService.searchMemories(userId, String(text || ''));
+        if (memories.length > 0) {
+          console.log(`[Memory] Found ${memories.length} relevant memories`);
+          fullPrompt += `\n\n[System Note: Known facts about this user (Memory)]:\n${memories.join('\n')}\n`;
+        }
+      } catch (e) {
+        console.error('[Memory] Search failed', e);
+      }
+      
+      // Fire-and-forget memory extraction
+      MemoryService.extractAndSaveMemories(userId, String(text || ''), { provider, apiKey, baseUrl, model, sessionId })
+        .catch(err => console.error('[Memory] Extraction failed', err));
+  }
 
   ev({ type: 'step_started', data: { name: 'plan' } });
   
@@ -226,12 +245,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         { upsert: true, new: true }
       );
       
-      const userId = (req as any).auth?.sub; 
-      
-      if (!userId) {
-        return res.status(400).json({ error: 'Session ID required or must be logged in to create one' });
-      }
-
       const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', userId, tenantId: tenantDoc._id });
       sessionId = s._id.toString();
     }
