@@ -37,7 +37,7 @@ export default function RightPanel({
   messages = [], 
   onClose 
 }: { 
-  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE' | 'DATABASE' | 'SYSTEM' | 'NETWORK' | 'HEALING' | 'DOCS' | 'PLAYGROUND' | 'QUALITY' | 'APPS'; 
+  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE' | 'DATABASE' | 'SYSTEM' | 'NETWORK' | 'HEALING' | 'DOCS' | 'PLAYGROUND' | 'QUALITY' | 'APPS' | 'TEST'; 
   sessionId?: string; 
   previewData?: { content: string; language: string; } | null; 
   steps?: any[];  

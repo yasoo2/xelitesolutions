@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
     Globe, ArrowLeft, ArrowRight, RotateCw, Camera, FileText, 
-    Smartphone, Tablet, Monitor, Code, Eye, Play, MousePointer2 
+    Smartphone, Tablet, Monitor, Code, Eye, Play, MousePointer2,
+    X, Terminal, Activity, MousePointer, Bot
 } from 'lucide-react';
 import { API_URL } from '../config';
 
@@ -9,6 +10,7 @@ interface LogEntry {
     type: 'log' | 'error' | 'warn' | 'info';
     message: string;
     timestamp: number;
+    stackTrace?: string;
 }
 
 interface NetworkEntry {
@@ -17,6 +19,17 @@ interface NetworkEntry {
     status?: number;
     type: string;
     timestamp: number;
+    requestBody?: string;
+    responseBody?: string;
+}
+
+interface AuditReport {
+    score: number;
+    issues: {
+        severity: 'critical' | 'warning' | 'info';
+        message: string;
+        selector?: string;
+    }[];
 }
 
 export function Browser() {
@@ -24,7 +37,7 @@ export function Browser() {
     const [currentUrl, setCurrentUrl] = useState('');
     const [image, setImage] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'view' | 'console' | 'network' | 'script'>('view');
+    const [activeTab, setActiveTab] = useState<'view' | 'console' | 'network' | 'script' | 'ai'>('view');
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [network, setNetwork] = useState<NetworkEntry[]>([]);
     const [isConnected, setIsConnected] = useState(false);
@@ -35,8 +48,12 @@ export function Browser() {
     const [inspectedElement, setInspectedElement] = useState<any>(null);
     const [script, setScript] = useState('');
     const [scriptResult, setScriptResult] = useState('');
+    const [domAnalysis, setDomAnalysis] = useState('');
+    const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
+    const [selectedNetworkItem, setSelectedNetworkItem] = useState<NetworkEntry | null>(null);
 
     const imageRef = useRef<HTMLImageElement>(null);
+
 
     useEffect(() => {
         checkStatus();
@@ -48,7 +65,7 @@ export function Browser() {
         try {
             const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/browser/status`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
+                headers: (token ? { Authorization: `Bearer ${token}` } : {}) as Record<string, string>
             });
             const data = await res.json();
             if (data.active) {
@@ -65,7 +82,7 @@ export function Browser() {
     const refreshData = async () => {
         if (!isConnected) return;
         const token = localStorage.getItem('token');
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers = (token ? { Authorization: `Bearer ${token}` } : {}) as Record<string, string>;
 
         try {
             // Get Screenshot
@@ -96,8 +113,8 @@ export function Browser() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: token ? `Bearer ${token}` : ''
-                },
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                } as Record<string, string>,
                 body: JSON.stringify({ url })
             });
             const data = await res.json();
@@ -112,22 +129,31 @@ export function Browser() {
         }
     };
 
+    const handleAudit = async () => {
+        const data = await handleAction('audit');
+        if (data?.audit) {
+            setAuditReport(data.audit);
+        }
+    };
+
     const handleAction = async (type: string, payload: any = {}) => {
+        if (!isConnected) return;
         try {
             const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/browser/action`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: token ? `Bearer ${token}` : ''
-                },
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                } as Record<string, string>,
                 body: JSON.stringify({ type, ...payload })
             });
-            
-            if (['back', 'forward', 'reload', 'viewport'].includes(type)) {
-                setTimeout(refreshData, 1000);
+            const data = await res.json();
+            if (data.success) {
+                if (type === 'viewport') refreshData();
+                else setTimeout(refreshData, 500);
             }
-            return await res.json();
+            return data;
         } catch (e) {
             console.error(e);
         }
@@ -142,6 +168,13 @@ export function Browser() {
         const data = await handleAction('evaluate', { script });
         if (data?.result) {
             setScriptResult(JSON.stringify(data.result, null, 2));
+        }
+    };
+
+    const handleAnalyzeDOM = async () => {
+        const data = await handleAction('dom');
+        if (data?.dom) {
+            setDomAnalysis(JSON.stringify(data.dom, null, 2));
         }
     };
 
@@ -178,7 +211,7 @@ export function Browser() {
         const token = localStorage.getItem('token');
         await fetch(`${API_URL}/browser/close`, {
             method: 'POST',
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
+            headers: (token ? { Authorization: `Bearer ${token}` } : {}) as Record<string, string>
         });
         setIsConnected(false);
         setImage(null);
@@ -280,7 +313,7 @@ export function Browser() {
                     onClick={() => setActiveTab('view')}
                     className={`px-4 py-2 text-sm font-medium flex items-center gap-2 ${activeTab === 'view' ? 'bg-gray-900 text-blue-400 border-t-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                 >
-                    <MousePointer size={14} /> Interactive View
+                    <MousePointer2 size={14} /> Interactive View
                 </button>
                 <button 
                     onClick={() => setActiveTab('console')}
@@ -299,6 +332,12 @@ export function Browser() {
                     className={`px-4 py-2 text-sm font-medium flex items-center gap-2 ${activeTab === 'script' ? 'bg-gray-900 text-purple-400 border-t-2 border-purple-400' : 'text-gray-400 hover:text-gray-200'}`}
                 >
                     <Code size={14} /> Script
+                </button>
+                <button 
+                    onClick={() => setActiveTab('ai')}
+                    className={`px-4 py-2 text-sm font-medium flex items-center gap-2 ${activeTab === 'ai' ? 'bg-gray-900 text-pink-400 border-t-2 border-pink-400' : 'text-gray-400 hover:text-gray-200'}`}
+                >
+                    <Bot size={14} /> AI Tools
                 </button>
             </div>
 
@@ -344,62 +383,87 @@ export function Browser() {
                 )}
 
                 {activeTab === 'console' && (
-                    <div className="h-full overflow-auto p-4 font-mono text-xs">
-                        {logs.length === 0 ? (
-                            <div className="text-gray-500 italic">No console logs yet.</div>
-                        ) : (
-                            <div className="space-y-1">
-                                {logs.map((log, i) => (
-                                    <div key={i} className={`flex gap-2 py-1 border-b border-gray-800 ${
-                                        log.type === 'error' ? 'text-red-400' :
-                                        log.type === 'warn' ? 'text-yellow-400' :
-                                        'text-gray-300'
-                                    }`}>
-                                        <span className="opacity-50 w-20 shrink-0">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                                        <span className="uppercase font-bold w-16 shrink-0 text-[10px] tracking-wider opacity-70">{log.type}</span>
-                                        <span className="break-all">{log.message}</span>
-                                    </div>
-                                ))}
+                    <div className="w-full h-full overflow-auto bg-gray-950 p-2 font-mono text-xs">
+                        {logs.length === 0 && <div className="text-gray-500 text-center mt-10">No logs captured</div>}
+                        {logs.map((log, i) => (
+                            <div key={i} className={`mb-1 p-1 border-b border-gray-900 flex gap-2 ${log.type === 'error' ? 'text-red-400 bg-red-900/10' : log.type === 'warn' ? 'text-yellow-400' : 'text-gray-300'}`}>
+                                <span className="text-gray-600 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                                <span className={`uppercase font-bold w-12 shrink-0 ${log.type === 'error' ? 'text-red-500' : log.type === 'warn' ? 'text-yellow-500' : 'text-blue-500'}`}>{log.type}</span>
+                                <span className="break-all whitespace-pre-wrap flex-1">
+                                    {log.message}
+                                    {log.stackTrace && (
+                                        <div className="mt-1 text-gray-500 flex items-center gap-2">
+                                            <FileText size={10} />
+                                            <span className="underline cursor-pointer hover:text-blue-400">{log.stackTrace}</span>
+                                            {log.type === 'error' && (
+                                                <button className="bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded hover:bg-blue-800 text-[10px] flex items-center gap-1">
+                                                    <Bot size={10} /> Auto-Fix
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </span>
                             </div>
-                        )}
+                        ))}
                     </div>
                 )}
 
                 {activeTab === 'network' && (
-                    <div className="h-full overflow-auto p-0">
-                        <table className="w-full text-left text-xs border-collapse">
-                            <thead className="bg-gray-800 text-gray-400 sticky top-0">
-                                <tr>
-                                    <th className="p-2 border-b border-gray-700">Status</th>
-                                    <th className="p-2 border-b border-gray-700">Method</th>
-                                    <th className="p-2 border-b border-gray-700">Type</th>
-                                    <th className="p-2 border-b border-gray-700">Name</th>
-                                    <th className="p-2 border-b border-gray-700">Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {network.map((req, i) => (
-                                    <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2">
-                                            <span className={`px-1.5 py-0.5 rounded ${
-                                                !req.status ? 'bg-gray-700 text-gray-300' :
-                                                req.status < 300 ? 'bg-green-900/30 text-green-400' :
-                                                req.status < 400 ? 'bg-blue-900/30 text-blue-400' :
-                                                'bg-red-900/30 text-red-400'
-                                            }`}>
-                                                {req.status || '...'}
-                                            </span>
-                                        </td>
-                                        <td className="p-2 font-mono">{req.method}</td>
-                                        <td className="p-2 text-gray-400">{req.type}</td>
-                                        <td className="p-2 truncate max-w-xs" title={req.url}>
-                                            {req.url.split('/').pop() || req.url}
-                                        </td>
-                                        <td className="p-2 text-gray-500">{new Date(req.timestamp).toLocaleTimeString()}</td>
+                    <div className="flex w-full h-full">
+                        <div className={`${selectedNetworkItem ? 'w-1/2' : 'w-full'} h-full overflow-auto bg-gray-950 font-mono text-xs`}>
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                                    <tr>
+                                        <th className="p-2 border-b border-gray-800">Status</th>
+                                        <th className="p-2 border-b border-gray-800">Method</th>
+                                        <th className="p-2 border-b border-gray-800">Type</th>
+                                        <th className="p-2 border-b border-gray-800">Name</th>
+                                        <th className="p-2 border-b border-gray-800">Time</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {network.map((req, i) => (
+                                        <tr 
+                                            key={i} 
+                                            className={`border-b border-gray-900 hover:bg-gray-900 cursor-pointer ${selectedNetworkItem === req ? 'bg-gray-900' : ''}`}
+                                            onClick={() => setSelectedNetworkItem(req)}
+                                        >
+                                            <td className={`p-2 ${req.status && req.status >= 400 ? 'text-red-400' : 'text-green-400'}`}>{req.status || '---'}</td>
+                                            <td className="p-2 text-yellow-400">{req.method}</td>
+                                            <td className="p-2 text-gray-500">{req.type}</td>
+                                            <td className="p-2 text-gray-300 truncate max-w-xs" title={req.url}>{req.url.split('/').pop() || req.url}</td>
+                                            <td className="p-2 text-gray-600">{new Date(req.timestamp).toLocaleTimeString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        {selectedNetworkItem && (
+                            <div className="w-1/2 h-full bg-gray-900 border-l border-gray-800 flex flex-col font-mono text-xs">
+                                <div className="p-2 border-b border-gray-800 flex justify-between items-center bg-gray-950">
+                                    <span className="font-bold text-gray-300">Request Details</span>
+                                    <button onClick={() => setSelectedNetworkItem(null)} className="text-gray-500 hover:text-white"><X size={14} /></button>
+                                </div>
+                                <div className="flex-1 overflow-auto p-4 space-y-4">
+                                    <div>
+                                        <div className="text-gray-500 mb-1">General</div>
+                                        <div className="text-blue-300 break-all">{selectedNetworkItem.url}</div>
+                                    </div>
+                                    {selectedNetworkItem.requestBody && (
+                                        <div>
+                                            <div className="text-gray-500 mb-1">Request Payload</div>
+                                            <pre className="bg-gray-950 p-2 rounded text-gray-300 overflow-auto max-h-40">{selectedNetworkItem.requestBody}</pre>
+                                        </div>
+                                    )}
+                                    {selectedNetworkItem.responseBody && (
+                                        <div>
+                                            <div className="text-gray-500 mb-1">Response Body</div>
+                                            <pre className="bg-gray-950 p-2 rounded text-green-300 overflow-auto max-h-60 whitespace-pre-wrap">{selectedNetworkItem.responseBody}</pre>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -425,6 +489,89 @@ export function Browser() {
                             <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 font-mono text-xs overflow-auto h-1/3">
                                 <div className="text-gray-500 mb-2 uppercase text-[10px] tracking-wider font-bold">Result</div>
                                 <pre className="text-green-400">{scriptResult}</pre>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'ai' && (
+                    <div className="h-full flex flex-col p-4 overflow-auto">
+                        <div className="mb-6">
+                            <h3 className="text-pink-400 font-bold mb-2 flex items-center gap-2">
+                                <Bot size={18} /> AI Capabilities
+                            </h3>
+                            <p className="text-gray-400 text-sm mb-4">
+                                These tools allow the AI (Joe) to understand and interact with the page programmatically.
+                            </p>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 hover:border-pink-500 transition-colors cursor-pointer" onClick={handleAnalyzeDOM}>
+                                    <div className="flex items-center gap-2 mb-2 text-pink-300 font-bold">
+                                        <Code size={16} /> Smart DOM Reader
+                                    </div>
+                                    <p className="text-xs text-gray-500">Extracts a simplified structure of interactive elements for AI processing.</p>
+                                </div>
+                                
+                                <div className="bg-gray-950 rounded-lg border border-gray-800 p-6 hover:border-pink-500/50 transition-colors">
+                                    <div className="w-12 h-12 rounded-full bg-pink-900/30 flex items-center justify-center mb-4">
+                                        <Eye className="text-pink-400" size={24} />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-gray-200 mb-2">Visual Debugger</h3>
+                                    <p className="text-gray-400 text-sm mb-4">Captures screenshots and visual state for verifying UI elements.</p>
+                                    <div className="text-xs text-green-400 bg-green-900/20 py-1 px-2 rounded inline-block">Active</div>
+                                </div>
+
+                                <div className="bg-gray-950 rounded-lg border border-gray-800 p-6 hover:border-orange-500/50 transition-colors">
+                                    <div className="w-12 h-12 rounded-full bg-orange-900/30 flex items-center justify-center mb-4">
+                                        <Activity className="text-orange-400" size={24} />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-gray-200 mb-2">UI/UX Auditor</h3>
+                                    <p className="text-gray-400 text-sm mb-4">Scans for accessibility, tap targets, and structural issues.</p>
+                                    <button 
+                                        onClick={handleAudit}
+                                        className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white rounded text-sm font-medium"
+                                    >
+                                        Run Audit
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {auditReport && (
+                            <div className="mt-6 bg-gray-950 rounded-lg border border-gray-700 p-4 font-mono text-xs overflow-hidden flex flex-col">
+                                <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-gray-200 font-bold text-lg">Audit Score</div>
+                                        <div className={`text-2xl font-bold ${auditReport.score > 80 ? 'text-green-400' : auditReport.score > 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                            {auditReport.score}/100
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setAuditReport(null)} className="text-gray-500 hover:text-white"><X size={14} /></button>
+                                </div>
+                                <div className="space-y-2 max-h-60 overflow-auto">
+                                    {auditReport.issues.map((issue, i) => (
+                                        <div key={i} className="flex gap-3 p-2 bg-gray-900 rounded border border-gray-800">
+                                            <div className={`uppercase font-bold text-[10px] w-16 shrink-0 pt-0.5 ${issue.severity === 'critical' ? 'text-red-500' : issue.severity === 'warning' ? 'text-yellow-500' : 'text-blue-500'}`}>
+                                                {issue.severity}
+                                            </div>
+                                            <div>
+                                                <div className="text-gray-300">{issue.message}</div>
+                                                {issue.selector && <div className="text-gray-500 text-[10px] mt-1 font-mono">{issue.selector}</div>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {auditReport.issues.length === 0 && <div className="text-green-400 text-center py-4">No issues found! Great job.</div>}
+                                </div>
+                            </div>
+                        )}
+
+                        {domAnalysis && (
+                            <div className="mt-6 bg-gray-950 rounded-lg border border-gray-700 p-4 font-mono text-xs overflow-hidden flex flex-col">
+                                <div className="flex justify-between items-center mb-2">
+                                    <div className="text-gray-500 uppercase text-[10px] tracking-wider font-bold">DOM Analysis Result</div>
+                                    <button onClick={() => setDomAnalysis('')} className="text-gray-500 hover:text-white"><X size={14} /></button>
+                                </div>
+                                <pre className="text-green-400 overflow-auto flex-1 max-h-60">{domAnalysis}</pre>
                             </div>
                         )}
                     </div>

@@ -60,6 +60,13 @@ router.post('/login', async (req: Request, res: Response) => {
           await user.save();
         }
       }
+    } else {
+        // Provision in Mock DB
+        let user = mockDb.findUserByEmail(email);
+        if (!user) {
+            const passwordHash = await bcrypt.hash(password, 10);
+            mockDb.createUser(email, passwordHash, 'OWNER');
+        }
     }
   }
 

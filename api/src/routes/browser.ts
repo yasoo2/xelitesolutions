@@ -55,6 +55,18 @@ router.post('/action', authenticate, async (req, res) => {
             case 'inspect':
                 const info = await browserService.inspect(x, y);
                 return res.json({ success: true, info });
+            case 'click_selector':
+                await browserService.clickSelector(req.body.selector);
+                break;
+            case 'type_selector':
+                await browserService.typeSelector(req.body.selector, req.body.text);
+                break;
+            case 'dom':
+                const dom = await browserService.getSimplifiedDOM();
+                return res.json({ success: true, dom });
+            case 'audit':
+                const audit = await browserService.auditPage();
+                return res.json({ success: true, audit });
             default:
                 return res.status(400).json({ error: 'Invalid action type' });
         }
