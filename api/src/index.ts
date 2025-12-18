@@ -16,6 +16,7 @@ import projectRoutes from './routes/project';
 import audioRoutes from './routes/audio';
 import assetsRoutes from './routes/assets';
 import memoryRoutes from './routes/memory';
+import knowledgeRoutes from './routes/knowledge';
 import { authenticate } from './middleware/auth';
 import http from 'http';
 import { attachWebSocket } from './ws';
@@ -58,6 +59,7 @@ async function main() {
   app.use('/audio', audioRoutes);
   app.use('/assets', assetsRoutes);
   app.use('/memory', memoryRoutes);
+  app.use('/knowledge', knowledgeRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {

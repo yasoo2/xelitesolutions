@@ -6,6 +6,15 @@ import CodeWithPreview from './CodeWithPreview';
 import VoiceVisualizer from './VoiceVisualizer';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
+
+// Web Speech API types
+interface IWindow extends Window {
+  webkitSpeechRecognition: any;
+  SpeechRecognition: any;
+}
+
+const { webkitSpeechRecognition, SpeechRecognition } = window as unknown as IWindow;
+
 import { 
   Terminal, 
   FileText, 
@@ -39,10 +48,9 @@ import {
   RotateCcw,
   Search,
   User,
-  Sparkles
+  Sparkles,
+  MicOff
 } from 'lucide-react';
-
-// ... existing code ...
 
 function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
   const { t } = useTranslation();
@@ -127,6 +135,14 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   
+  const recognitionRef = useRef<any>(null);
+  const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number>();
+  const endRef = useRef<HTMLDivElement>(null);
+  const stepStartTimes = useRef<{[key: string]: number}>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>({
@@ -150,10 +166,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           const next = { ...prev };
           Object.keys(parsed).forEach(k => {
             if (next[k]) {
-              // Preserve structure but update values
               next[k] = { ...next[k], ...parsed[k] };
-              // Don't trust 'isConnected' from storage fully, maybe reset or keep it?
-              // For now keep it but user might need to re-verify if token expired
             }
           });
           return next;
@@ -175,19 +188,18 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     localStorage.setItem('active_provider', activeProvider);
   }, [activeProvider]);
 
-  const reconnectTimerRef = useRef<number | null>(null);
-  const seenIdsRef = useRef<Set<string>>(new Set());
-  const wsRef = useRef<WebSocket | null>(null);
-  const stepStartTimes = useRef<Record<string, number>>({});
-  const endRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   // Scroll to bottom on new events
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
     if (onStepsUpdate) onStepsUpdate(events);
+    
+    // Auto-speak new assistant messages if voice mode is on
+    if (isVoiceMode && events.length > 0) {
+        const last = events[events.length - 1];
+        if (last.type === 'text' && last.data.text) {
+            speak(last.data.text);
+        }
+    }
   }, [events, onStepsUpdate]);
 
   const speak = async (text: string) => {
@@ -206,7 +218,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ text, voice: 'onyx' }) // Onyx is a good male voice
+            body: JSON.stringify({ text, voice: 'onyx' })
          });
          
          if (res.ok) {
@@ -230,7 +242,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     utterance.lang = isArabic ? 'ar-SA' : 'en-US';
     const voices = window.speechSynthesis.getVoices();
     if (isArabic) {
-        // Try to find a good Arabic voice (Google or standard)
         const arVoice = voices.find(v => v.lang.includes('ar') && v.name.includes('Google')) || voices.find(v => v.lang.includes('ar'));
         if (arVoice) utterance.voice = arVoice;
     }
@@ -259,10 +270,11 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     };
   }, []);
 
+  // Voice Recognition Init
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window) {
-      // @ts-ignore
-      const recognition = new window.webkitSpeechRecognition();
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (Recognition) {
+      const recognition = new Recognition();
       recognition.continuous = false;
       recognition.interimResults = false;
       recognition.lang = 'ar-SA';
@@ -276,7 +288,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     }
   }, []);
 
-  const toggleVoice = () => {
+  const toggleListening = () => {
     if (!recognitionRef.current) {
       alert('التعرف الصوتي غير مدعوم في هذا المتصفح. يرجى استخدام Chrome.');
       return;
@@ -295,7 +307,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
     };
   }, []);
-
 
   function connectWS() {
     try {
@@ -472,8 +483,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
       }
-      // Removed loadHistory here to prevent overwriting optimistic updates and losing race conditions with WS events
-
+      
       if (!isConnected && data?.result) {
          const r = data.result;
          if (r?.output) {
@@ -607,7 +617,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                  content = p.text || p.output || content;
               }
             } catch {}
-            // Use ChatBubble for AI responses too, wrapping the content properly
             return <ChatBubble key={i} event={{ data: { text: content } }} isUser={false} />;
           }
           if (e.type === 'step_started') {
@@ -943,12 +952,12 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
             </button>
             <button 
-              className={`mic-button ${isListening ? 'listening' : ''}`}
-              onClick={toggleVoice}
-              title="تحدث الآن"
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isListening ? '#ef4444' : 'inherit', position: 'relative' }}
+              className={`mic-button ${isVoiceMode ? 'active' : ''}`}
+              onClick={() => setIsVoiceMode(!isVoiceMode)}
+              title="Voice Mode"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isVoiceMode ? 'var(--accent-primary)' : 'inherit', position: 'relative' }}
             >
-              <Mic size={20} />
+              {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
             </button>
             <button 
               className="send-button" 
@@ -960,6 +969,33 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             </button>
           </div>
         </div>
+
+        {isVoiceMode && (
+             <div style={{ padding: 10, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+                 <button 
+                     className={`voice-btn ${isListening ? 'listening' : ''}`}
+                     onClick={toggleListening}
+                     style={{ 
+                         width: 50, height: 50, borderRadius: '50%', border: 'none', 
+                         background: isListening ? '#ef4444' : 'var(--accent-primary)',
+                         color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                         boxShadow: isListening ? '0 0 15px rgba(239, 68, 68, 0.5)' : 'none',
+                         transition: 'all 0.3s'
+                     }}
+                 >
+                     {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
+                 </button>
+                 <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                     <span>{isListening ? 'Listening...' : 'Tap to Speak'}</span>
+                     <span style={{ fontSize: 10, opacity: 0.7 }}>Arabic (SA) / English (US)</span>
+                 </div>
+                 {isSpeaking && <VoiceVisualizer isSpeaking={true} />}
+                 
+                 <button className="icon-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
+                     <Volume2 size={18} />
+                 </button>
+             </div>
+        )}
       </div>
     </div>
   );

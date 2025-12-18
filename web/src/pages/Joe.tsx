@@ -13,7 +13,8 @@ export default function Joe() {
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES'>('PREVIEW');
+  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'>('PREVIEW');
+  const [messages, setMessages] = useState<any[]>([]);
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -384,12 +385,9 @@ export default function Joe() {
           onPreviewArtifact={handlePreviewArtifact}
           onStepsUpdate={(newSteps) => {
             setSteps(newSteps);
-            // Auto-switch to STEPS tab if a new step starts and panel is open
-            if (newSteps.length > 0 && newSteps[newSteps.length - 1].type === 'step_started' && showRightPanel && tab !== 'STEPS') {
-               // Optional: Auto-switch? Maybe not, might be annoying. Let's just update the state.
-               // User asked for "Transparency", so maybe auto-switch is good?
-               // Let's stick to updating state for now.
-            }
+          }}
+          onMessagesUpdate={(msgs) => {
+            setMessages(msgs);
           }}
         />
       </main>
@@ -398,8 +396,10 @@ export default function Joe() {
         <aside className="rightpanel">
           <div className="tabs">
             <button className={`tab ${tab==='STEPS'?'active':''}`} onClick={()=>setTab('STEPS')}>المعالج</button>
+            <button className={`tab ${tab==='PLAN'?'active':''}`} onClick={()=>setTab('PLAN')}>الخطة</button>
             <button className={`tab ${tab==='TERMINAL'?'active':''}`} onClick={()=>setTab('TERMINAL')}>تيرمنال</button>
             <button className={`tab ${tab==='FILES'?'active':''}`} onClick={()=>setTab('FILES')}>المشروع</button>
+            <button className={`tab ${tab==='KNOWLEDGE'?'active':''}`} onClick={()=>setTab('KNOWLEDGE')}>معرفة</button>
             <button className={`tab ${tab==='PREVIEW'?'active':''}`} onClick={()=>setTab('PREVIEW')}>معاينة</button>
             <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
             <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>مخرجات</button>
@@ -410,7 +410,7 @@ export default function Joe() {
               <ChevronRight size={16} />
             </button>
           </div>
-          <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} steps={steps} onTabChange={setTab} />
+          <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} steps={steps} onTabChange={setTab} messages={messages} />
         </aside>
       )}
       {!showRightPanel && (

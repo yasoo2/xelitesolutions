@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { API_URL as API, WS_URL as WS } from '../config';
 import ArtifactPreview from './ArtifactPreview';
 import CodeEditor from './CodeEditor';
 import GraphVisualizer from './GraphVisualizer';
+import PlanVisualizer from './PlanVisualizer';
 
 import Terminal from './Terminal';
-import { Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, GitBranch, Share2, Folder, Trash2, User, Database } from 'lucide-react';
+import { Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, GitBranch, Share2, Folder, Trash2, User, Database, Workflow, Mic, Upload, Search, Plus } from 'lucide-react';
 
-export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; }) {
+export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState, messages = [] }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; messages?: any[] }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
   const [browser, setBrowser] = useState<{ href: string; title?: string } | null>(null);
   const [summary, setSummary] = useState<string>('');
@@ -441,35 +442,29 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   }
 
   if (active === 'GRAPH') {
-    if (isGraphLoading) return <div className="panel-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><Loader2 className="spin" /></div>;
-    
-    // Simple SVG Graph Visualization
-    // We calculate a simple circular layout if no library, or use a simple force simulation effect if we had d3.
-    // For now, let's just do a random scatter or circular layout for simplicity in this turn.
-    // Ideally we'd use a library, but I'll write a tiny force simulator.
-    
-    // Pre-calculate positions (circular for now to be safe and fast)
-    const nodes = graphData.nodes || [];
-    const links = graphData.links || [];
-    
-    // Simple layout: arrange in concentric circles based on folder depth?
-    // Or just random for now.
-    
     return (
-      <div className="panel-content" style={{ overflow: 'hidden', background: '#0d1117', color: '#c9d1d9', display: 'flex', flexDirection: 'column', height: '100%' }}>
-         <div style={{ padding: 16, borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}><GitBranch size={16}/> Project Graph</h3>
-            <span style={{ fontSize: 12, color: '#8b949e' }}>{nodes.length} files, {links.length} links</span>
-         </div>
-         <div style={{ flex: 1, position: 'relative', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {nodes.length === 0 ? (
-                <div style={{ color: '#8b949e' }}>No graph data available</div>
-            ) : (
-                <GraphVisualizer nodes={nodes} links={links} />
-            )}
-         </div>
+      <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+        {isGraphLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                <Loader2 className="spin" /> Loading Graph...
+            </div>
+        ) : (
+            <GraphVisualizer data={graphData} />
+        )}
       </div>
     );
+  }
+
+  if (active === 'PLAN') {
+    return (
+      <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+        <PlanVisualizer messages={messages} />
+      </div>
+    );
+  }
+
+  if (active === 'KNOWLEDGE') {
+      return <KnowledgePanel sessionId={sessionId} />;
   }
 
    if (active === 'TERMINAL') {
@@ -967,6 +962,186 @@ function MemoryPanel({ sessionId }: { sessionId?: string }) {
                         </div>
                     )}
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function KnowledgePanel({ sessionId }: { sessionId?: string }) {
+    const [documents, setDocuments] = useState<any[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const loadDocuments = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API}/knowledge/list`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setDocuments(data);
+            }
+        } catch (e) {
+            console.error('Failed to load documents', e);
+        }
+    };
+
+    useEffect(() => {
+        loadDocuments();
+    }, []);
+
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || !e.target.files[0]) return;
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append('file', e.target.files[0]);
+
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API}/knowledge/upload`, {
+                method: 'POST',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                body: formData
+            });
+
+            if (res.ok) {
+                await loadDocuments();
+            } else {
+                alert('Upload failed');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Upload error');
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) {
+            setSearchResults([]);
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API}/knowledge/query`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}) 
+                },
+                body: JSON.stringify({ query: searchQuery })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setSearchResults(data.results);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full bg-[var(--bg-primary)] overflow-y-auto custom-scrollbar">
+            <div className="p-4 border-b border-[var(--border-color)]">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Database size={20} className="text-[var(--accent-primary)]" />
+                        Knowledge Base
+                    </h3>
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleUpload} 
+                        style={{ display: 'none' }} 
+                        accept=".txt,.md,.pdf"
+                    />
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-[var(--accent-primary)] text-white rounded hover:opacity-90 transition-opacity text-sm font-medium"
+                    >
+                        {isUploading ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
+                        Upload Doc
+                    </button>
+                </div>
+
+                <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    <input 
+                        type="text" 
+                        placeholder="Search knowledge base..." 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                        className="w-full pl-9 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded focus:outline-none focus:border-[var(--accent-primary)] text-sm"
+                    />
+                </div>
+            </div>
+
+            <div className="flex-1 p-4">
+                {searchResults.length > 0 ? (
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Search Results</h4>
+                        {searchResults.map((result, i) => (
+                            <div key={i} className="p-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded hover:border-[var(--accent-primary)] transition-colors cursor-pointer">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <FileText size={16} className="text-[var(--accent-primary)]" />
+                                    <span className="font-medium text-sm">{result.filename}</span>
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] line-clamp-3 leading-relaxed">
+                                    {result.snippet}
+                                </p>
+                            </div>
+                        ))}
+                         <button 
+                            onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                            className="w-full py-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        >
+                            Clear Search
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Documents ({documents.length})</h4>
+                        {documents.length === 0 ? (
+                             <div className="text-center py-12 text-[var(--text-muted)] border border-dashed border-[var(--border-color)] rounded">
+                                <Upload size={32} className="mx-auto mb-3 opacity-20" />
+                                <p className="text-sm">No documents uploaded yet.</p>
+                                <p className="text-xs opacity-70 mt-1">Upload PDF, TXT or MD files to enhance context.</p>
+                             </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-2">
+                                {documents.map((doc) => (
+                                    <div key={doc.id} className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded group">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded bg-[var(--bg-tertiary)] flex items-center justify-center text-[var(--text-muted)]">
+                                                <FileText size={16} />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-medium">{doc.filename}</div>
+                                                <div className="text-[10px] text-[var(--text-muted)]">ID: {doc.id} • {doc.size ? `${Math.round(doc.size/1024)} KB` : 'Unknown size'}</div>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => deleteDocument(doc.id)}
+                                            className="p-2 text-[var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                            title="Delete Document"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
