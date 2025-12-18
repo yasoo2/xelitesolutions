@@ -37,6 +37,7 @@ Your Goal:
 - If you need to read what you wrote, use "file_read".
 - If you need to check files, use "ls".
 - If you need to search, use "web_search".
+- If you need to search your knowledge base or uploaded documents, use "knowledge_search".
 - If you need to install packages or run commands, use "shell_execute".
 - If you need to fix a bug in a file, use "file_edit".
 - If you have completed the task, use "echo" to report the final result to the user.

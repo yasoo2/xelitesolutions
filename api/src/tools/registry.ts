@@ -220,6 +220,30 @@ export const tools: ToolDefinition[] = [
     auditFields: ['filename'],
     mockSupported: false,
   },
+  {
+    name: 'knowledge_search',
+    version: '1.0.0',
+    tags: ['knowledge', 'search'],
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    outputSchema: { type: 'object', properties: { results: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, filename: { type: 'string' }, snippet: { type: 'string' }, score: { type: 'number' } } } } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['query'],
+    mockSupported: false,
+  },
+  {
+    name: 'knowledge_add',
+    version: '1.0.0',
+    tags: ['knowledge', 'write'],
+    inputSchema: { type: 'object', properties: { filename: { type: 'string' }, content: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, required: ['filename', 'content'] },
+    outputSchema: { type: 'object', properties: { id: { type: 'string' } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 60,
+    auditFields: ['filename'],
+    mockSupported: false,
+  },
 ];
 
 for (let i = 1; i <= 197; i++) {
@@ -236,6 +260,8 @@ for (let i = 1; i <= 197; i++) {
     mockSupported: true,
   });
 }
+
+import { KnowledgeService } from '../services/knowledge';
 
 export async function executeTool(name: string, input: any): Promise<ToolExecutionResult> {
   const logs: string[] = [];
@@ -738,6 +764,26 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       fs.writeFileSync(full, content);
       logs.push(`edit=${filename}`);
       return { ok: true, output: { success: true }, logs };
+    }
+    if (name === 'knowledge_search') {
+      const query = String(input?.query ?? '');
+      const results = KnowledgeService.search(query);
+      logs.push(`knowledge.search=${query} count=${results.length}`);
+      const mapped = results.map(r => ({
+          id: r.document.id,
+          filename: r.document.filename,
+          snippet: r.snippet,
+          score: r.score
+      })).slice(0, 10);
+      return { ok: true, output: { results: mapped }, logs };
+    }
+    if (name === 'knowledge_add') {
+      const filename = String(input?.filename ?? 'unknown.txt');
+      const content = String(input?.content ?? '');
+      const tags = Array.isArray(input?.tags) ? input.tags : [];
+      const doc = KnowledgeService.add(filename, content, tags);
+      logs.push(`knowledge.add=${filename} id=${doc.id}`);
+      return { ok: true, output: { id: doc.id }, logs };
     }
     if (name.startsWith('noop_')) {
       logs.push('noop.ok=true');

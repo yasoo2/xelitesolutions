@@ -394,23 +394,15 @@ export default function Joe() {
       
       {showRightPanel && (
         <aside className="rightpanel">
-          <div className="tabs">
-            <button className={`tab ${tab==='STEPS'?'active':''}`} onClick={()=>setTab('STEPS')}>المعالج</button>
-            <button className={`tab ${tab==='PLAN'?'active':''}`} onClick={()=>setTab('PLAN')}>الخطة</button>
-            <button className={`tab ${tab==='TERMINAL'?'active':''}`} onClick={()=>setTab('TERMINAL')}>تيرمنال</button>
-            <button className={`tab ${tab==='FILES'?'active':''}`} onClick={()=>setTab('FILES')}>المشروع</button>
-            <button className={`tab ${tab==='KNOWLEDGE'?'active':''}`} onClick={()=>setTab('KNOWLEDGE')}>معرفة</button>
-            <button className={`tab ${tab==='PREVIEW'?'active':''}`} onClick={()=>setTab('PREVIEW')}>معاينة</button>
-            <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
-            <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>مخرجات</button>
-            <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
-            <button className={`tab ${tab==='ANALYTICS'?'active':''}`} onClick={()=>setTab('ANALYTICS')}>تحليل</button>
-            <button className={`tab ${tab==='GRAPH'?'active':''}`} onClick={()=>setTab('GRAPH')}>خريطة</button>
-            <button className="tab-icon" onClick={() => setShowRightPanel(false)} title="إخفاء اللوحة">
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <RightPanel active={tab} sessionId={selected || undefined} previewData={previewData} steps={steps} onTabChange={setTab} messages={messages} />
+          <RightPanel 
+            active={tab} 
+            sessionId={selected || undefined} 
+            previewData={previewData} 
+            steps={steps} 
+            onTabChange={setTab} 
+            messages={messages}
+            onClose={() => setShowRightPanel(false)}
+          />
         </aside>
       )}
       {!showRightPanel && (

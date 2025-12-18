@@ -2,21 +2,10 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import multer from 'multer';
 import fs from 'fs';
-import path from 'path';
-import pdf from 'pdf-parse';
+import { KnowledgeService } from '../services/knowledge';
 
 const router = Router();
 const upload = multer({ dest: '/tmp/joe-uploads' });
-
-// Simple In-Memory Vector Store Placeholder
-interface Document {
-    id: string;
-    filename: string;
-    content: string;
-    embedding?: number[]; // Placeholder
-}
-
-const knowledgeBase: Document[] = [];
 
 router.post('/upload', authenticate, upload.single('file'), async (req, res) => {
     try {
@@ -30,8 +19,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
 
         if (req.file.mimetype === 'application/pdf') {
              try {
-                 const data = await pdf(buffer);
-                 content = data.text;
+                 content = await KnowledgeService.parsePDF(buffer);
              } catch (err) {
                  console.error('PDF Parse error:', err);
                  return res.status(500).json({ error: 'Failed to parse PDF' });
@@ -43,13 +31,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
         // Cleanup temp file
         fs.unlinkSync(filePath);
 
-        const doc: Document = {
-            id: Math.random().toString(36).substring(7),
-            filename: req.file.originalname,
-            content: content
-        };
-
-        knowledgeBase.push(doc);
+        const doc = KnowledgeService.add(req.file.originalname, content);
 
         res.json({ success: true, document: doc });
     } catch (error: any) {
@@ -59,26 +41,22 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
 });
 
 router.get('/list', authenticate, (req, res) => {
-    res.json(knowledgeBase.map(d => ({ id: d.id, filename: d.filename, size: d.content.length })));
+    const docs = KnowledgeService.getAll();
+    res.json(docs.map(d => ({ id: d.id, filename: d.filename, size: d.content.length })));
 });
 
 router.post('/query', authenticate, async (req, res) => {
     const { query } = req.body;
     if (!query) return res.status(400).json({ error: 'Query required' });
 
-    // Simple keyword search for now (RAG placeholder)
-    const results = knowledgeBase.filter(d => d.content.toLowerCase().includes(query.toLowerCase()));
+    const results = KnowledgeService.search(query);
     
-    res.json({ results: results.map(d => ({ id: d.id, filename: d.filename, snippet: d.content.substring(0, 200) + '...' })) });
+    res.json({ results: results.map(r => ({ id: r.document.id, filename: r.document.filename, snippet: r.snippet, score: r.score })) });
 });
 
 router.delete('/:id', authenticate, (req, res) => {
     const { id } = req.params;
-    const index = knowledgeBase.findIndex(d => d.id === id);
-    if (index === -1) {
-        return res.status(404).json({ error: 'Document not found' });
-    }
-    knowledgeBase.splice(index, 1);
+    KnowledgeService.delete(id);
     res.json({ success: true });
 });
 
