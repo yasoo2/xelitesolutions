@@ -35,15 +35,37 @@ class BrowserService {
     async launch() {
         if (this.browser) return;
         
-        this.browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        
-        this.page = await this.browser.newPage();
-        await this.page.setViewport({ width: 1280, height: 800 });
+        try {
+            this.browser = await puppeteer.launch({
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-zygote',
+                    '--single-process', 
+                ]
+            });
+            
+            this.page = await this.browser.newPage();
+            await this.page.setViewport({ width: 1280, height: 800 });
 
-        // Setup listeners
+            // Setup listeners
+            this.setupListeners();
+        } catch (error) {
+            console.error('Failed to launch browser:', error);
+            // Log full error details for debugging
+            if (error instanceof Error) {
+                console.error('Error stack:', error.stack);
+            }
+            throw error;
+        }
+    }
+
+    private setupListeners() {
+        if (!this.page) return;
+
         this.page.on('console', msg => {
             const text = msg.text();
             let stackTrace = undefined;
