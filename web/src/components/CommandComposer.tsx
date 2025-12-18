@@ -32,10 +32,72 @@ import {
   Trash2,
   Zap,
   ArrowUp,
-  Send
+  Send,
+  Copy,
+  RotateCcw,
+  Search
 } from 'lucide-react';
 
-interface ProviderConfig {
+// ... existing code ...
+
+function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
+  const { t } = useTranslation();
+  
+  return (
+    <div className={`chat-bubble-wrapper ${isUser ? 'user' : 'ai'}`}>
+      <div className="chat-bubble">
+        <div className="chat-bubble-header">
+          <span className="chat-bubble-sender">{isUser ? t('you', 'You') : 'JOE AI'}</span>
+          {!isUser && (
+            <div className="chat-bubble-actions">
+              <button className="chat-action-btn" title={t('copy', 'Copy')}>
+                <Copy size={14} />
+              </button>
+              <button className="chat-action-btn" title={t('regenerate', 'Regenerate')}>
+                <RotateCcw size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="chat-bubble-content">
+          {isUser ? (
+            <div style={{ whiteSpace: 'pre-wrap' }}>{event.data.text || event.data}</div>
+          ) : (
+             <ReactMarkdown
+               components={{
+                 code({node, inline, className, children, ...props}: any) {
+                   const match = /language-(\w+)/.exec(className || '');
+                   return !inline && match ? (
+                     <SyntaxHighlighter
+                       style={vscDarkPlus}
+                       language={match[1]}
+                       PreTag="div"
+                       {...props}
+                     >
+                       {String(children).replace(/\n$/, '')}
+                     </SyntaxHighlighter>
+                   ) : (
+                     <code className={className} {...props}>
+                       {children}
+                     </code>
+                   );
+                 }
+               }}
+             >
+               {event.data.text || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
+             </ReactMarkdown>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Inside the main component, update the rendering logic for messages
+// This is a partial replacement, we need to find where messages are rendered.
+// Looking at lines 54, `events` state holds the messages.
+// We need to inject the new styles and component usage.
+
   name: string;
   apiKey: string;
   isConnected: boolean;
@@ -448,21 +510,37 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     <div className="composer">
       <div className="events">
         {events.length === 0 && (
-          <div style={{ opacity: 0.5, textAlign: 'center', marginTop: 80, fontSize: 18, color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>{t('welcomeTitle')}</div>
-            {t('welcomeMsg').split('\n').map((line, i) => <div key={i}>{line}</div>)}
+          <div className="empty-state">
+            <div className="empty-state-logo-ring">
+              <span className="empty-state-logo-text">J</span>
+            </div>
+            <h2 className="empty-state-title">
+              {t('welcomeTitle', 'How can I help you today?')}
+            </h2>
+            <div className="empty-state-suggestions">
+              <button className="suggestion-card" onClick={() => setText('Write a React component for a login form')}>
+                <div className="suggestion-icon"><FileCode size={20} /></div>
+                <div className="suggestion-text">Create a Login Form</div>
+              </button>
+              <button className="suggestion-card" onClick={() => setText('Explain how useEffect works')}>
+                <div className="suggestion-icon"><Zap size={20} /></div>
+                <div className="suggestion-text">Explain React Hooks</div>
+              </button>
+              <button className="suggestion-card" onClick={() => setText('Analyze this project structure')}>
+                <div className="suggestion-icon"><Search size={20} /></div>
+                <div className="suggestion-text">Analyze Project</div>
+              </button>
+              <button className="suggestion-card" onClick={() => setText('Write a Python script to scrape a website')}>
+                <div className="suggestion-icon"><Terminal size={20} /></div>
+                <div className="suggestion-text">Python Scripting</div>
+              </button>
+            </div>
           </div>
         )}
         
         {events.map((e, i) => {
           if (e.type === 'user_input') {
-            return (
-              <div key={i} className="message-row user">
-                <div className="message-bubble" dir="auto">
-                  {e.data}
-                </div>
-              </div>
-            );
+            return <ChatBubble key={i} event={e} isUser={true} />;
           }
           if (e.type === 'error') {
             return (
@@ -481,46 +559,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                  content = p.text || p.output || content;
               }
             } catch {}
-            return (
-              <div key={i} className="message-row joe">
-                <div className="message-bubble markdown-content" dir="auto">
-                  <ReactMarkdown
-                    components={{
-                      code(props) {
-                        const {children, className, ...rest} = props as any;
-                        const match = /language-(\w+)/.exec(className || '');
-                        const lang = match ? match[1] : '';
-                        const isPreviewable = ['html', 'css', 'javascript', 'js', 'react', 'jsx', 'tsx'].includes(lang);
-                        return match ? (
-                          <div style={{ position: 'relative' }}>
-                            {isPreviewable && onPreviewArtifact && (
-                               <button 
-                                 onClick={() => onPreviewArtifact(String(children).replace(/\n$/, ''), lang)}
-                                 style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 4, border: 'none', background: 'var(--accent-primary)', color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 600, opacity: 0.9 }}
-                                 title="معاينة الكود"
-                               >
-                                 <Play size={10} fill="currentColor" /> معاينة
-                               </button>
-                            )}
-                            <SyntaxHighlighter {...rest} PreTag="div" children={String(children).replace(/\n$/, '')} language={lang} style={vscDarkPlus} />
-                          </div>
-                        ) : (
-                          <code {...rest} className={className}>{children}</code>
-                        );
-                      },
-                      img(props) {
-                        return <img {...props} style={{ maxWidth: '100%', borderRadius: 8, marginTop: 8, border: '1px solid var(--border-color)' }} onLoad={() => endRef.current?.scrollIntoView({ behavior: 'smooth' })} />;
-                      }
-                    }}
-                  >
-                    {String(content)}
-                  </ReactMarkdown>
-                  <div className="copy-icon" onClick={() => navigator.clipboard.writeText(String(content))} title={t('copy')}>
-                    <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                  </div>
-                </div>
-              </div>
-            );
+            // Use ChatBubble for AI responses too, wrapping the content properly
+            return <ChatBubble key={i} event={{ data: { text: content } }} isUser={false} />;
           }
           if (e.type === 'step_started') {
             const isImage = e.data.name && e.data.name.includes('image_generate');
