@@ -314,6 +314,13 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     })();
   }
 
+  // Save User Message to DB
+  if (useMock) {
+    store.addMessage(sessionId, 'user', String(text || ''), runId);
+  } else {
+    await Message.create({ sessionId, role: 'user', content: String(text || ''), runId });
+  }
+
   const risk = detectRisk(String(text || ''));
   if (risk) {
     if (useMock) {

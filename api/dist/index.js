@@ -2991,6 +2991,11 @@ ${memories.join("\n")}
       }
     })();
   }
+  if (useMock) {
+    store.addMessage(sessionId, "user", String(text || ""), runId);
+  } else {
+    await Message.create({ sessionId, role: "user", content: String(text || ""), runId });
+  }
   const risk = detectRisk(String(text || ""));
   if (risk) {
     if (useMock) {
