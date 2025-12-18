@@ -49,6 +49,11 @@ export function Browser() {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [viewport, setViewport] = useState({ width: 1280, height: 800 });
     const [clickPos, setClickPos] = useState<{x: number, y: number} | null>(null);
+
+    // Ghost Cursor & Typing State
+    const [ghostCursor, setGhostCursor] = useState<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
+    const [typingText, setTypingText] = useState<string | null>(null);
+    const [typingIndex, setTypingIndex] = useState(0);
     
     // Data State
     const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -64,12 +69,33 @@ export function Browser() {
     const [selectedNetworkItem, setSelectedNetworkItem] = useState<NetworkEntry | null>(null);
 
     const imageRef = useRef<HTMLImageElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         checkStatus();
-        const interval = setInterval(refreshData, 1000);
+        const interval = setInterval(refreshData, 200); // Faster polling for live feel
         return () => clearInterval(interval);
     }, []);
+
+    // Typing Animation Effect
+    useEffect(() => {
+        if (typingText !== null) {
+            if (typingIndex < typingText.length) {
+                const timeout = setTimeout(() => {
+                    setUrl(typingText.slice(0, typingIndex + 1));
+                    setTypingIndex(prev => prev + 1);
+                }, 50); // Typing speed
+                return () => clearTimeout(timeout);
+            } else {
+                // Typing finished
+                const timeout = setTimeout(() => {
+                    setTypingText(null);
+                    setGhostCursor(prev => ({ ...prev, visible: false }));
+                }, 500);
+                return () => clearTimeout(timeout);
+            }
+        }
+    }, [typingText, typingIndex]);
 
     const checkStatus = async () => {
         try {
@@ -80,9 +106,28 @@ export function Browser() {
             const data = await res.json();
             if (data.active) {
                 setIsConnected(true);
+                // If the URL changed externally (by AI), animate the typing
+                if (data.url && data.url !== currentUrl && data.url !== 'about:blank') {
+                    if (data.url !== url) {
+                         // Start typing animation
+                         setTypingIndex(0);
+                         setTypingText(data.url);
+                         
+                         // Move ghost cursor to input
+                         if (inputRef.current) {
+                             const rect = inputRef.current.getBoundingClientRect();
+                             setGhostCursor({ 
+                                 x: rect.x + rect.width / 2, 
+                                 y: rect.y + rect.height / 2, 
+                                 visible: true 
+                             });
+                         }
+                    }
+                }
                 setCurrentUrl(data.url);
                 if (data.viewport) setViewport(data.viewport);
-                if (!url) setUrl(data.url);
+                // Only update URL directly if we are not animating
+                if (!url && !typingText) setUrl(data.url);
                 refreshData();
             }
         } catch (e) {
@@ -254,11 +299,12 @@ export function Browser() {
                     </div>
 
                     {/* Omnibox / Address Bar */}
-                    <form onSubmit={handleNavigate} className="flex-1 flex items-center bg-zinc-900 rounded-full px-3 py-1.5 border border-zinc-700 focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                    <form onSubmit={handleNavigate} className="flex-1 flex items-center bg-zinc-900 rounded-full px-3 py-1.5 border border-zinc-700 focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all relative">
                         <div className="mr-2">
                             {isConnected ? <ShieldCheck size={14} className="text-emerald-500" /> : <Search size={14} className="text-zinc-500" />}
                         </div>
                         <input 
+                            ref={inputRef}
                             type="text" 
                             value={url}
                             onChange={e => setUrl(e.target.value)}
@@ -314,6 +360,20 @@ export function Browser() {
 
             {/* Main Content Area */}
             <div className="flex-1 relative w-full overflow-hidden bg-zinc-200 flex flex-col">
+                {/* Ghost Cursor Overlay */}
+                {ghostCursor.visible && (
+                    <div 
+                        className="absolute w-4 h-4 pointer-events-none z-50 transition-all duration-300 ease-out"
+                        style={{ 
+                            left: ghostCursor.x, 
+                            top: ghostCursor.y,
+                            transform: 'translate(-50%, -50%)'
+                        }}
+                    >
+                        <MousePointer2 size={24} className="text-black drop-shadow-md fill-white" />
+                    </div>
+                )}
+
                 {/* Browser Viewport */}
                 <div className="flex-1 relative bg-white flex items-center justify-center overflow-hidden">
                     {isConnected && image ? (
