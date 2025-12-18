@@ -10,11 +10,15 @@ import DatabaseViewer from './DatabaseViewer';
 import ProcessManager from './ProcessManager';
 import NetworkInspector from './NetworkInspector';
 import HealingPanel from './HealingPanel';
+import { DocumentationViewer } from './DocumentationViewer';
+import { ApiPlayground } from './ApiPlayground';
+import { CodeQuality } from './CodeQuality';
 import { 
   Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, 
   Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, 
   GitBranch, Share2, Folder, Trash2, User, Database, Workflow, Mic, Upload, 
-  Search, Plus, List, Map, BookOpen, Package, Network, BarChart2, ShieldAlert, Server 
+  Search, Plus, List, Map, BookOpen, Package, Network, BarChart2, ShieldAlert, Server,
+  Book, Play, Zap
 } from 'lucide-react';
 
 import { LiveInteractionPanel } from './LiveInteractionPanel';
@@ -30,10 +34,10 @@ export default function RightPanel({
   messages = [], 
   onClose 
 }: { 
-  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE' | 'DATABASE' | 'SYSTEM' | 'NETWORK' | 'HEALING'; 
+  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE' | 'DATABASE' | 'SYSTEM' | 'NETWORK' | 'HEALING' | 'DOCS' | 'PLAYGROUND' | 'QUALITY'; 
   sessionId?: string; 
   previewData?: { content: string; language: string; } | null; 
-  steps?: any[]; 
+  steps?: any[];  
   onTabChange?: (tab: any) => void; 
   initialTerminalState?: string; 
   initialBrowserState?: any; 
@@ -255,6 +259,9 @@ export default function RightPanel({
      { id: 'SYSTEM', icon: Server, label: 'System' },
      { id: 'NETWORK', icon: Activity, label: 'Network' },
      { id: 'HEALING', icon: ShieldAlert, label: 'Healing' },
+     { id: 'DOCS', icon: Book, label: 'Docs' },
+     { id: 'PLAYGROUND', icon: Play, label: 'Playground' },
+     { id: 'QUALITY', icon: Zap, label: 'Quality' },
   ];
 
   const renderContent = () => {
@@ -380,6 +387,31 @@ export default function RightPanel({
           </div>
         );
     }
+
+    if (active === 'DOCS') {
+        return (
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <DocumentationViewer />
+          </div>
+        );
+    }
+
+    if (active === 'PLAYGROUND') {
+        return (
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <ApiPlayground />
+          </div>
+        );
+    }
+
+    if (active === 'QUALITY') {
+        return (
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <CodeQuality />
+          </div>
+        );
+    }
+
 
     if (active === 'TERMINAL') {
         return <Terminal agentLogs={termOutput} />;
