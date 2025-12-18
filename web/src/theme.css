@@ -1840,3 +1840,18 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* RTL Overrides for Chat Bubbles */
+[dir="rtl"] .chat-bubble-wrapper.user .chat-bubble {
+  border-bottom-right-radius: 20px;
+  border-bottom-left-radius: 4px;
+}
+
+[dir="rtl"] .chat-bubble-wrapper.ai .chat-bubble {
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 4px;
+}
+
+[dir="rtl"] .suggestion-card {
+  text-align: right;
+}
