@@ -43,7 +43,7 @@ export function Browser() {
     
     // UI State
     const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'console' | 'network' | 'script'>('console');
+    const [devToolsTab, setDevToolsTab] = useState<'console' | 'network' | 'script'>('console');
     const [showAiMenu, setShowAiMenu] = useState(false);
     const [viewport, setViewport] = useState({ w: 1280, h: 800, label: 'Desktop' });
 
