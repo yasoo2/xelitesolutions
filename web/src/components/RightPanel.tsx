@@ -135,7 +135,7 @@ export default function RightPanel({
           if (onTabChange && active !== 'TERMINAL') onTabChange('TERMINAL');
           setCurrentCmd(last.data.plan?.input?.command || '');
        }
-       else if (last.data.name === 'browser_snapshot' || last.data.name === 'web_search') {
+       else if (last.data.name === 'browser_snapshot' || last.data.name === 'web_search' || last.data.name === 'browser_open') {
           if (onTabChange && active !== 'BROWSER') onTabChange('BROWSER');
        }
     }
@@ -209,7 +209,7 @@ export default function RightPanel({
           if (onTabChange && active !== 'TERMINAL') onTabChange('TERMINAL');
           setCurrentCmd(last.data.plan?.input?.command || '');
        }
-       else if (last.data.name === 'browser_snapshot' || last.data.name === 'web_search') {
+       else if (last.data.name === 'browser_snapshot' || last.data.name === 'web_search' || last.data.name === 'browser_open') {
           if (onTabChange && active !== 'BROWSER') onTabChange('BROWSER');
        }
        else if (last.data.name === 'knowledge_search' || last.data.name === 'knowledge_add') {

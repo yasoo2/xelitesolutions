@@ -67,7 +67,7 @@ export function Browser() {
 
     useEffect(() => {
         checkStatus();
-        const interval = setInterval(refreshData, 2000);
+        const interval = setInterval(refreshData, 1000);
         return () => clearInterval(interval);
     }, []);
 
