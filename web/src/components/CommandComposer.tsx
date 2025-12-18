@@ -93,11 +93,7 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
   );
 }
 
-// Inside the main component, update the rendering logic for messages
-// This is a partial replacement, we need to find where messages are rendered.
-// Looking at lines 54, `events` state holds the messages.
-// We need to inject the new styles and component usage.
-
+interface ProviderConfig {
   name: string;
   apiKey: string;
   isConnected: boolean;
