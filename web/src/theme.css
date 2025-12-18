@@ -472,31 +472,83 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Custom Button Styles - Centralized for Consistency */
+.logout-btn,
+.send-button,
 .new-chat-btn {
+  border: none;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  background: var(--btn-gradient);
-  color: #000;
-  border: none;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 14px;
-  box-shadow: 0 4px 12px var(--accent-glow);
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  font-weight: 700;
+  z-index: 10;
 }
+
+/* Default Dark Mode: Yellow/Gold */
+.logout-btn,
+.send-button,
+.new-chat-btn {
+  background: linear-gradient(135deg, #FFD700 0%, #FDB931 100%) !important;
+  color: #000 !important;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5) !important;
+}
+
+.logout-btn:hover,
+.send-button:hover:not(:disabled),
 .new-chat-btn:hover {
-  background: var(--btn-gradient-hover);
-  box-shadow: 0 0 15px var(--accent-glow);
-  transform: translateY(-1px);
-  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 0 5px rgba(255, 255, 255, 0.8) !important;
 }
-.new-chat-btn:active { transform: scale(0.98); }
+
+/* Light Mode: Blue */
+[data-theme="light"] .logout-btn,
+[data-theme="light"] .send-button,
+[data-theme="light"] .new-chat-btn {
+  background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.5) !important;
+}
+
+[data-theme="light"] .logout-btn:hover,
+[data-theme="light"] .send-button:hover:not(:disabled),
+[data-theme="light"] .new-chat-btn:hover {
+  box-shadow: 0 0 20px rgba(37, 99, 235, 0.8), 0 0 5px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Specific Sizes */
+.logout-btn,
+.send-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+.new-chat-btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 18px; /* Capsule shape */
+  font-size: 13px;
+  width: auto; /* Let it grow with text */
+  gap: 8px;
+}
+
+.send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(100%);
+  box-shadow: none !important;
+  background: #333 !important;
+  color: #888 !important;
+}
+
+[data-theme="light"] .send-button:disabled {
+  background: #e2e8f0 !important;
+  color: #94a3b8 !important;
+}
 
 /* Chat Area & Messages */
 .composer {
