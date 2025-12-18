@@ -419,9 +419,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
       }
-      if (sessionId || data.sessionId) {
-        await loadHistory(sessionId || data.sessionId);
-      }
+      // Removed loadHistory here to prevent overwriting optimistic updates and losing race conditions with WS events
+
       if (!isConnected && data?.result) {
          const r = data.result;
          if (r?.output) {
