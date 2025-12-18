@@ -36,6 +36,7 @@ class BrowserService {
         if (this.browser) return;
         
         try {
+            console.log('Launching browser with executable path:', puppeteer.executablePath());
             this.browser = await puppeteer.launch({
                 headless: true,
                 ignoreHTTPSErrors: true,
