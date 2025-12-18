@@ -65,20 +65,27 @@ class BrowserService {
             const pattern = '**/{Google Chrome for Testing,chrome,chrome.exe}';
             const matches = await glob(pattern, { cwd: basePath, absolute: true });
             
-            // Filter for actual executables (simple heuristic: not a directory unless it's .app on mac, but glob returns files inside .app usually? No wait)
-            // On Mac: .../Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
-            // On Linux: .../chrome
-            
+            // Filter for actual executables
             for (const match of matches) {
-                 // Skip directories unless it is the binary
                  try {
                      const stat = fs.statSync(match);
-                     if (stat.isFile() && (stat.mode & 0o111 || process.platform === 'win32')) {
+                     // Relaxed check: just needs to be a file
+                     if (stat.isFile()) {
                          console.log('Found executable manually:', match);
                          return match;
                      }
                  } catch (e) {}
             }
+        }
+
+        // 3. Fallback: Check for standard Linux path structure explicitly if glob failed
+        const linuxPath = path.join(process.cwd(), 'api/.cache/puppeteer/chrome'); 
+        if (fs.existsSync(linuxPath)) {
+             // Try to find 'chrome' binary under it
+             try {
+                 const files = await glob('**/chrome', { cwd: linuxPath, absolute: true });
+                 if (files.length > 0) return files[0];
+             } catch(e) {}
         }
 
         return undefined;
