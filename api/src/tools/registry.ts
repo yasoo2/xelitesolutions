@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { ToolDefinition, ToolExecutionResult } from './types';
 import { Buffer } from 'buffer';
+import { browserService } from '../services/browser';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -563,17 +564,25 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const url = String(input?.url ?? '');
       const filename = `snapshot-${Date.now()}.png`;
       const full = path.join(ARTIFACT_DIR, filename);
-      const { default: puppeteer } = await import('puppeteer');
-      const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page = await browser.newPage();
-      await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
-      const title = await page.title();
-      await page.setViewport({ width: 1280, height: 800 });
-      await page.screenshot({ path: full });
-      await browser.close();
-      logs.push(`snapshot.saved=${full} title=${title}`);
-      const href = `/artifacts/${encodeURIComponent(filename)}`;
-      return { ok: true, output: { href, title }, logs, artifacts: [{ name: filename, href }] };
+      
+      try {
+          // Use persistent browser service
+          await browserService.launch();
+          const navResult = await browserService.navigate(url);
+          const b64 = await browserService.screenshot();
+          
+          if (b64) {
+              fs.writeFileSync(full, Buffer.from(b64, 'base64'));
+              logs.push(`snapshot.saved=${full} title=${navResult.title}`);
+              const href = `/artifacts/${encodeURIComponent(filename)}`;
+              return { ok: true, output: { href, title: navResult.title }, logs, artifacts: [{ name: filename, href }] };
+          } else {
+              return { ok: false, error: 'Failed to capture screenshot', logs };
+          }
+      } catch (err: any) {
+          logs.push(`browser.error=${err.message}`);
+          return { ok: false, error: err.message, logs };
+      }
     }
     if (name === 'image_generate') {
       const prompt = String(input?.prompt ?? '').trim();
