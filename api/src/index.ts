@@ -124,7 +124,7 @@ async function main() {
   const server = http.createServer(app);
   attachWebSocket(server);
 
-  server.listen(config.port, () => {
+  server.listen(config.port, '0.0.0.0', () => {
     logger.info({ port: config.port }, 'API listening');
   });
 
