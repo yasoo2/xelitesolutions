@@ -615,8 +615,8 @@ export function Browser() {
                             <div>
                                 <div className="text-gray-500 mb-1">Computed Styles</div>
                                 <div className="bg-gray-950 p-2 rounded border border-gray-800 space-y-1 text-gray-400">
-                                    {Object.entries(inspectedElement.styles).map(([k, v]) => (
-                                        v && <div key={k}><span className="text-purple-400">{k}:</span> <span className="text-gray-300">{v as string}</span></div>
+                                    {Object.entries((inspectedElement.styles || {}) as Record<string, any>).map(([k, v]) => (
+                                        v && <div key={k}><span className="text-purple-400">{k}:</span> <span className="text-gray-300">{String(v)}</span></div>
                                     ))}
                                 </div>
                             </div>
