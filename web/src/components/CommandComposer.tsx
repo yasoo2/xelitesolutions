@@ -190,7 +190,9 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
         if (wsRef.current.readyState === WebSocket.OPEN) return;
         try { wsRef.current.close(); } catch {}
       }
-      const ws = new WebSocket(WS);
+      const primaryUrl = WS;
+      const fallbackUrl = `${API.replace(/^http/, 'ws')}/ws`;
+      const ws = new WebSocket(primaryUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -199,9 +201,24 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
 
       ws.onclose = () => {
         setIsConnected(false);
-        reconnectTimerRef.current = window.setTimeout(() => {
-          connectWS();
-        }, 2000);
+        const triedFallback = (wsRef.current as any)?.__triedFallback === true;
+        if (!triedFallback && primaryUrl !== fallbackUrl) {
+          try {
+            const fws = new WebSocket(fallbackUrl);
+            (fws as any).__triedFallback = true;
+            wsRef.current = fws;
+            fws.onopen = () => setIsConnected(true);
+            fws.onclose = () => {
+              setIsConnected(false);
+              reconnectTimerRef.current = window.setTimeout(() => {
+                connectWS();
+              }, 2000);
+            };
+            fws.onmessage = ws.onmessage!;
+            return;
+          } catch {}
+        }
+        reconnectTimerRef.current = window.setTimeout(() => connectWS(), 2000);
       };
 
       ws.onmessage = (evt) => {

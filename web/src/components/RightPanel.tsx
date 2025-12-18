@@ -76,20 +76,39 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   }, [steps]);
 
   useEffect(() => {
-    const ws = new WebSocket(WS);
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data.toString());
-        if (msg.type === 'artifact_created' && msg.data?.href) {
-          setArtifacts(prev => [...prev, { name: msg.data.name, href: msg.data.href }]);
+    function connectWithFallback() {
+      const primaryUrl = WS;
+      const fallbackUrl = `${API.replace(/^http/, 'ws')}/ws`;
+      const ws = new WebSocket(primaryUrl);
+      const handler = (ev: MessageEvent) => {
+        try {
+          const msg = JSON.parse(ev.data.toString());
+          if (msg.type === 'artifact_created' && msg.data?.href) {
+            setArtifacts(prev => [...prev, { name: msg.data.name, href: msg.data.href }]);
+          }
+          if (msg.type === 'step_done' && String(msg.data?.name || '').startsWith('execute:browser_snapshot')) {
+            const out = msg.data?.result?.output;
+            if (out?.href) setBrowser({ href: out.href, title: out.title });
+          }
+        } catch {}
+      };
+      ws.onmessage = handler;
+      ws.onclose = () => {
+        if (primaryUrl !== fallbackUrl) {
+          try {
+            const fws = new WebSocket(fallbackUrl);
+            fws.onmessage = handler;
+            fws.onclose = () => {
+              // No further fallback; silent
+            };
+            return () => fws.close();
+          } catch {}
         }
-        if (msg.type === 'step_done' && String(msg.data?.name || '').startsWith('execute:browser_snapshot')) {
-          const out = msg.data?.result?.output;
-          if (out?.href) setBrowser({ href: out.href, title: out.title });
-        }
-      } catch {}
-    };
-    return () => ws.close();
+      };
+      return () => ws.close();
+    }
+    const cleanup = connectWithFallback();
+    return cleanup;
   }, []);
 
   useEffect(() => {
