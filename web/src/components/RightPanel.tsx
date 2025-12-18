@@ -6,11 +6,15 @@ import GraphVisualizer from './GraphVisualizer';
 import PlanVisualizer from './PlanVisualizer';
 import Terminal from './Terminal';
 import FileExplorer from './FileExplorer';
+import DatabaseViewer from './DatabaseViewer';
+import ProcessManager from './ProcessManager';
+import NetworkInspector from './NetworkInspector';
+import HealingPanel from './HealingPanel';
 import { 
   Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, 
   Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, 
   GitBranch, Share2, Folder, Trash2, User, Database, Workflow, Mic, Upload, 
-  Search, Plus, List, Map, BookOpen, Package, Network, BarChart2 
+  Search, Plus, List, Map, BookOpen, Package, Network, BarChart2, ShieldAlert, Server 
 } from 'lucide-react';
 
 import { LiveInteractionPanel } from './LiveInteractionPanel';
@@ -26,7 +30,7 @@ export default function RightPanel({
   messages = [], 
   onClose 
 }: { 
-  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'; 
+  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE' | 'DATABASE' | 'SYSTEM' | 'NETWORK' | 'HEALING'; 
   sessionId?: string; 
   previewData?: { content: string; language: string; } | null; 
   steps?: any[]; 
@@ -247,6 +251,10 @@ export default function RightPanel({
      { id: 'ANALYTICS', icon: BarChart2, label: 'Analytics' },
      { id: 'MEMORY', icon: Cpu, label: 'Memory' },
      { id: 'KNOWLEDGE', icon: BookOpen, label: 'Knowledge' },
+     { id: 'DATABASE', icon: Database, label: 'Database' },
+     { id: 'SYSTEM', icon: Server, label: 'System' },
+     { id: 'NETWORK', icon: Activity, label: 'Network' },
+     { id: 'HEALING', icon: ShieldAlert, label: 'Healing' },
   ];
 
   const renderContent = () => {
@@ -339,6 +347,38 @@ export default function RightPanel({
 
     if (active === 'KNOWLEDGE') {
         return <KnowledgePanel sessionId={sessionId} />;
+    }
+
+    if (active === 'DATABASE') {
+        return (
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <DatabaseViewer sessionId={sessionId} />
+          </div>
+        );
+    }
+
+    if (active === 'SYSTEM') {
+        return (
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <ProcessManager />
+          </div>
+        );
+    }
+
+    if (active === 'NETWORK') {
+        return (
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <NetworkInspector />
+          </div>
+        );
+    }
+
+    if (active === 'HEALING') {
+        return (
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <HealingPanel />
+          </div>
+        );
     }
 
     if (active === 'TERMINAL') {

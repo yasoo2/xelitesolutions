@@ -2,6 +2,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import { terminalManager } from './services/terminal';
 
+let wssRef: WebSocketServer | null = null;
+
 export interface LiveEvent {
   type:
     | 'step_started'
@@ -15,57 +17,43 @@ export interface LiveEvent {
     | 'run_finished'
     | 'run_completed'
     | 'text'
-    | 'terminal:data';
+    | 'terminal:data'
+    | 'network:request'
+    | 'healing:error';
   data: any;
   id?: string;
 }
 
-let wssRef: WebSocketServer | null = null;
-
 export function attachWebSocket(server: Server) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
-  wssRef = wss;
+  wssRef = new WebSocketServer({ server });
 
-  // Subscribe to terminal output and broadcast to relevant clients
-  // In a real app, we should map terminal ID to specific sockets.
-  // For now, we broadcast to all, or filtering by ID if client subscribes?
-  // Let's broadcast for simplicity as it's a single-user local app.
-  terminalManager.on('data', ({ id, data }) => {
-    broadcast({ type: 'terminal:data', id, data });
-  });
+  wssRef.on('connection', (ws) => {
+    console.log('Client connected to WebSocket');
 
-  wss.on('connection', (socket: WebSocket) => {
-    socket.send(JSON.stringify({ type: 'hello', data: { ts: Date.now() } }));
-    
-    socket.on('message', (msg) => {
+    ws.on('message', (message) => {
       try {
-        const payload = JSON.parse(msg.toString());
-        
-        if (payload.type === 'terminal:create') {
-            terminalManager.create(payload.id, payload.cwd);
-        } else if (payload.type === 'terminal:input') {
-            terminalManager.write(payload.id, payload.data);
-        } else if (payload.type === 'terminal:resize') {
-            terminalManager.resize(payload.id, payload.cols, payload.rows);
-        } else if (payload.type === 'terminal:kill') {
-            terminalManager.kill(payload.id);
-        } else {
-            // Echo back for now to verify streaming path
-            // socket.send(JSON.stringify({ type: 'step_progress', data: { echo: payload, ts: Date.now() } }));
+        const data = JSON.parse(message.toString());
+        // Handle terminal input
+        if (data.type === 'terminal:input' && data.data) {
+           terminalManager.write(data.id || 'default', data.data);
         }
-      } catch {
-        socket.send(JSON.stringify({ type: 'step_failed', data: { reason: 'invalid_json' } }));
+        // Handle terminal resize
+        if (data.type === 'terminal:resize' && data.cols && data.rows) {
+           terminalManager.resize(data.id || 'default', data.cols, data.rows);
+        }
+      } catch (e) {
+        console.error('Failed to parse WS message:', e);
       }
     });
-  });
 
-  return wss;
+    // Send initial terminal state or history if needed
+  });
 }
 
-export function broadcast(event: LiveEvent) {
+export function broadcast(event: LiveEvent | { type: string; data: any; id?: string }) {
   if (!wssRef) return;
   const payload = JSON.stringify(event);
-  wssRef.clients.forEach((client) => {
+  wssRef.clients.forEach((client: WebSocket) => {
     if (client.readyState === WebSocket.OPEN) {
         client.send(payload);
     }

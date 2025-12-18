@@ -61,6 +61,24 @@ Your Goal:
 - **Professionalism**: Be precise, professional, and act as a senior engineer.
 `;
 
+export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
+    const msgs = [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        ...context,
+        { role: 'user', content: prompt }
+    ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: process.env.OPENAI_MODEL || 'gpt-4o',
+            messages: msgs,
+        });
+        return completion.choices[0]?.message?.content || '';
+    } catch (e: any) {
+        throw new Error(`LLM call failed: ${e.message}`);
+    }
+}
+
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
