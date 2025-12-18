@@ -1383,6 +1383,10 @@ body {
   left: 16px;
 }
 
+[data-theme="light"] .login-close-btn {
+  color: #2563eb;
+}
+
 .login-close-btn:hover {
   color: #ff3b30;
   background: rgba(255, 59, 48, 0.1);
