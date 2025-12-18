@@ -123,7 +123,7 @@ interface ProviderConfig {
   lastError?: string;
 }
 
-export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact, onStepsUpdate }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void; onStepsUpdate?: (steps: any[]) => void }) {
+export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact, onStepsUpdate, onMessagesUpdate }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void; onStepsUpdate?: (steps: any[]) => void; onMessagesUpdate?: (msgs: any[]) => void }) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
@@ -192,6 +192,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
     if (onStepsUpdate) onStepsUpdate(events);
+    if (onMessagesUpdate) onMessagesUpdate(events);
     
     // Auto-speak new assistant messages if voice mode is on
     if (isVoiceMode && events.length > 0) {
@@ -992,7 +993,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                      <span>{isListening ? 'Listening...' : 'Tap to Speak'}</span>
                      <span style={{ fontSize: 10, opacity: 0.7 }}>Arabic (SA) / English (US)</span>
                  </div>
-                 {isSpeaking && <VoiceVisualizer isSpeaking={true} />}
+                 {isSpeaking && <VoiceVisualizer isSpeaking={true} onStop={stopSpeaking} />}
                  
                  <button className="icon-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
                      <Volume2 size={18} />

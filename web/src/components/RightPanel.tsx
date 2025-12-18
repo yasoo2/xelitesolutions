@@ -449,7 +449,7 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
                 <Loader2 className="spin" /> Loading Graph...
             </div>
         ) : (
-            <GraphVisualizer data={graphData} />
+            <GraphVisualizer nodes={graphData.nodes} links={graphData.links} />
         )}
       </div>
     );
@@ -1044,6 +1044,27 @@ function KnowledgePanel({ sessionId }: { sessionId?: string }) {
             }
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const deleteDocument = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this document?')) return;
+        
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API}/knowledge/documents/${id}`, {
+                method: 'DELETE',
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
+
+            if (res.ok) {
+                setDocuments(prev => prev.filter(d => d.id !== id));
+            } else {
+                alert('Failed to delete document');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Error deleting document');
         }
     };
 
