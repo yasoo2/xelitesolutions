@@ -49,9 +49,9 @@ export default function TopBar() {
       <div className="brand" onClick={() => nav('/')}>JOE</div>
       <div className="spacer" />
       
-      <div className="topbar-actions">
+      <div className="topbar-actions" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginInlineStart: 'auto' }}>
         {/* Language Dropdown */}
-        <div className="lang-dropdown" ref={langMenuRef}>
+        <div className="lang-dropdown" ref={langMenuRef} style={{ position: 'relative' }}>
           <button 
             className={`lang-btn ${isLangOpen ? 'active' : ''}`}
             onClick={() => setIsLangOpen(!isLangOpen)}
@@ -61,7 +61,7 @@ export default function TopBar() {
           </button>
           
           {isLangOpen && (
-            <div className="lang-menu">
+            <div className="lang-menu" style={{ position: 'absolute', top: '100%', right: '0', zIndex: 1000, marginTop: '8px' }}>
               {LANGUAGES.map((l) => (
                 <button
                   key={l.code}

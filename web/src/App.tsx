@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import TopBar from './components/TopBar';
+import './rtl-overrides.css';
 
 export default function App() {
   return (

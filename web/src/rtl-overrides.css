@@ -1,0 +1,11 @@
+.input-icon-start {
+  /* RTL specific overrides handled in component logic or global direction */
+}
+[dir="rtl"] .input-icon-start {
+  left: auto !important;
+  right: 16px !important;
+}
+[dir="rtl"] .input-icon-end {
+  right: auto !important;
+  left: 16px !important;
+}

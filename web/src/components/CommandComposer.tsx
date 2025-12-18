@@ -31,7 +31,8 @@ import {
   EyeOff,
   Trash2,
   Zap,
-  ArrowUp
+  ArrowUp,
+  Send
 } from 'lucide-react';
 
 interface ProviderConfig {
