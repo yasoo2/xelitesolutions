@@ -1306,11 +1306,21 @@ async function executeTool(name, input) {
         await browserService.launch();
         const navResult = await browserService.navigate(url);
         const b64 = await browserService.screenshot();
+        const textSummary = await browserService.evaluate(`document.body.innerText.slice(0, 2000)`);
         if (b64) {
           import_fs3.default.writeFileSync(full, import_buffer.Buffer.from(b64, "base64"));
           logs.push(`snapshot.saved=${full} title=${navResult.title}`);
           const href = `/artifacts/${encodeURIComponent(filename)}`;
-          return { ok: true, output: { href, title: navResult.title }, logs, artifacts: [{ name: filename, href }] };
+          return {
+            ok: true,
+            output: {
+              href,
+              title: navResult.title,
+              textPreview: typeof textSummary === "string" ? textSummary.replace(/\s+/g, " ").trim() : ""
+            },
+            logs,
+            artifacts: [{ name: filename, href }]
+          };
         } else {
           return { ok: false, error: "Failed to capture screenshot", logs };
         }

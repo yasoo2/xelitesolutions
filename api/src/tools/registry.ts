@@ -594,11 +594,23 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           const navResult = await browserService.navigate(url);
           const b64 = await browserService.screenshot();
           
+          // Also get a text summary of the page content
+          const textSummary = await browserService.evaluate(`document.body.innerText.slice(0, 2000)`);
+          
           if (b64) {
               fs.writeFileSync(full, Buffer.from(b64, 'base64'));
               logs.push(`snapshot.saved=${full} title=${navResult.title}`);
               const href = `/artifacts/${encodeURIComponent(filename)}`;
-              return { ok: true, output: { href, title: navResult.title }, logs, artifacts: [{ name: filename, href }] };
+              return { 
+                  ok: true, 
+                  output: { 
+                      href, 
+                      title: navResult.title,
+                      textPreview: typeof textSummary === 'string' ? textSummary.replace(/\s+/g, ' ').trim() : ''
+                  }, 
+                  logs, 
+                  artifacts: [{ name: filename, href }] 
+              };
           } else {
               return { ok: false, error: 'Failed to capture screenshot', logs };
           }
