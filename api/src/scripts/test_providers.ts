@@ -1,5 +1,4 @@
 
-import fetch from 'node-fetch';
 
 const API_URL = 'http://localhost:8080';
 
