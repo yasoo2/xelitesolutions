@@ -180,6 +180,54 @@ export const tools: ToolDefinition[] = [
     mockSupported: true,
   },
   {
+    name: 'check_syntax',
+    version: '1.0.0',
+    tags: ['dev', 'debug'],
+    inputSchema: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] },
+    outputSchema: { type: 'object', properties: { status: { type: 'string' }, errors: { type: 'string' } } },
+    permissions: ['read', 'execute'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['filename'],
+    mockSupported: true,
+  },
+  {
+    name: 'generate_tests',
+    version: '1.0.0',
+    tags: ['dev', 'test', 'ai'],
+    inputSchema: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] },
+    outputSchema: { type: 'object', properties: { testFile: { type: 'string' } } },
+    permissions: ['read', 'write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 20,
+    auditFields: ['filename'],
+    mockSupported: true,
+  },
+  {
+    name: 'db_inspect',
+    version: '1.0.0',
+    tags: ['db', 'inspect'],
+    inputSchema: { type: 'object', properties: { connectionString: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { collections: { type: 'object' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: [],
+    mockSupported: true,
+  },
+  {
+    name: 'generate_docs',
+    version: '1.0.0',
+    tags: ['dev', 'docs', 'ai'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { file: { type: 'string' } } },
+    permissions: ['read', 'write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 10,
+    auditFields: ['path'],
+    mockSupported: true,
+  },
+  {
     name: 'browser_snapshot',
     version: '1.0.0',
     tags: ['browser', 'artifact'],
@@ -779,12 +827,23 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'shell_execute') {
       const command = String(input?.command ?? '');
-      const cwdInput = String(input?.cwd ?? '');
+      let cwdInput = String(input?.cwd ?? '');
       const timeoutVal = Number(input?.timeout ?? 30000);
 
-      // Safety: simplistic check, ideally we use a sandbox
+      // Safety: simplistic check
       if (command.includes('rm -rf /') || command.includes('sudo')) {
          return { ok: false, error: 'Command not allowed', logs };
+      }
+      
+      // Persistent CWD logic
+      const stateFile = path.join(process.cwd(), '.joe', 'shell_state.json');
+      if (!cwdInput && fs.existsSync(stateFile)) {
+          try {
+              const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+              if (state.cwd && fs.existsSync(state.cwd)) {
+                  cwdInput = state.cwd;
+              }
+          } catch {}
       }
       
       const { exec } = await import('child_process');
@@ -793,14 +852,191 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       
       const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(process.cwd(), cwdInput)) : process.cwd();
 
+      // Ensure .joe dir exists
+      if (!fs.existsSync(path.join(process.cwd(), '.joe'))) {
+          try { fs.mkdirSync(path.join(process.cwd(), '.joe')); } catch {}
+      }
+
       try {
         const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal });
+        
+        // Update CWD if command was a cd
+        // Note: 'cd' in child_process doesn't affect parent, but we can try to guess where the user wanted to go
+        // Actually, since it's a separate process, 'cd' does nothing for the next command unless we chain it.
+        // But if the user runs "mkdir foo && cd foo", we can't easily know they want to stay in foo.
+        // However, if the command is JUST "cd path", we can simulate it.
+        if (command.trim().startsWith('cd ')) {
+            const target = command.trim().split(/\s+/)[1];
+            if (target) {
+                const newCwd = path.resolve(workDir, target);
+                if (fs.existsSync(newCwd)) {
+                    fs.writeFileSync(stateFile, JSON.stringify({ cwd: newCwd }));
+                    logs.push(`shell.cwd_updated=${newCwd}`);
+                }
+            }
+        }
+
         logs.push(`exec=${command} cwd=${workDir} exit=0`);
-        return { ok: true, output: { stdout, stderr, exitCode: 0 }, logs };
+        return { ok: true, output: { stdout, stderr, exitCode: 0, cwd: workDir }, logs };
       } catch (err: any) {
         logs.push(`exec=${command} err=${err.message}`);
         return { ok: false, output: { stdout: err.stdout, stderr: err.stderr, exitCode: err.code || 1 }, logs };
       }
+    }
+    if (name === 'check_syntax') {
+        const filename = String(input?.filename ?? '');
+        const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+        
+        if (!fs.existsSync(full)) return { ok: false, error: 'File not found', logs };
+        
+        const ext = path.extname(full).toLowerCase();
+        
+        if (ext === '.json') {
+            try {
+                JSON.parse(fs.readFileSync(full, 'utf-8'));
+                return { ok: true, output: { status: 'OK' }, logs };
+            } catch (e: any) {
+                return { ok: false, error: e.message, logs };
+            }
+        }
+        
+        if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+            // Use node -c
+            const { exec } = await import('child_process');
+            const util = await import('util');
+            const execAsync = util.promisify(exec);
+            try {
+                await execAsync(`node --check "${full}"`);
+                return { ok: true, output: { status: 'OK' }, logs };
+            } catch (e: any) {
+                 return { ok: false, error: e.stderr || e.message, logs };
+            }
+        }
+
+        if (ext === '.ts' || ext === '.tsx') {
+            // Try tsc if available, else skip
+            const { exec } = await import('child_process');
+            const util = await import('util');
+            const execAsync = util.promisify(exec);
+            try {
+                // Assuming tsc is in path or npx is available
+                // npx tsc --noEmit is slow, maybe try local?
+                // For now, let's try a simple compile check using npx if local tsc missing
+                await execAsync(`npx -y tsc --noEmit "${full}" --esModuleInterop --skipLibCheck --target es2020 --moduleResolution node`);
+                return { ok: true, output: { status: 'OK' }, logs };
+            } catch (e: any) {
+                // If it's just type errors, we return them as output, not tool failure
+                return { ok: true, output: { status: 'Errors', errors: e.stdout }, logs };
+            }
+        }
+        
+        return { ok: true, output: { status: 'Skipped (unsupported type)' }, logs };
+    }
+    if (name === 'generate_tests') {
+        const filename = String(input?.filename ?? '');
+        const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+        
+        if (!fs.existsSync(full)) return { ok: false, error: 'File not found', logs };
+        
+        const content = fs.readFileSync(full, 'utf-8');
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) return { ok: false, error: 'No API Key for generation', logs };
+        
+        try {
+            const { default: OpenAI } = await import('openai');
+            const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+            
+            const completion = await client.chat.completions.create({
+                model: process.env.OPENAI_MODEL || 'gpt-4o',
+                messages: [
+                    { role: 'system', content: 'You are a Senior QA Engineer. Generate a comprehensive test file for the provided code. Use Jest/Vitest syntax. Return ONLY the code, no markdown.' },
+                    { role: 'user', content: `File: ${path.basename(filename)}\n\n${content}` }
+                ]
+            });
+            
+            let testCode = completion.choices[0].message.content || '';
+            // Strip markdown code blocks if present
+            testCode = testCode.replace(/^```(typescript|ts|javascript|js)?\n/, '').replace(/\n```$/, '');
+            
+            const testDir = path.join(path.dirname(full), '__tests__');
+            if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+            
+            const testFile = path.join(testDir, `${path.basename(filename, path.extname(filename))}.test${path.extname(filename)}`);
+            fs.writeFileSync(testFile, testCode);
+            
+            logs.push(`tests.generated=${testFile}`);
+            return { ok: true, output: { testFile }, logs };
+            
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs };
+        }
+    }
+    if (name === 'db_inspect') {
+        const connStr = String(input?.connectionString || process.env.MONGO_URI || '');
+        if (!connStr) return { ok: false, error: 'No connection string provided', logs };
+        
+        if (connStr.startsWith('mongodb')) {
+             try {
+                 const mongoose = await import('mongoose');
+                 // Create a separate connection to avoid messing with main app
+                 const conn = await mongoose.createConnection(connStr).asPromise();
+                 
+                 const collections = await conn.db.listCollections().toArray();
+                 const schema: any = {};
+                 
+                 for (const col of collections) {
+                     const sample = await conn.db.collection(col.name).findOne({});
+                     schema[col.name] = sample ? Object.keys(sample) : [];
+                 }
+                 
+                 await conn.close();
+                 return { ok: true, output: { type: 'mongodb', collections: schema }, logs };
+             } catch (e: any) {
+                 return { ok: false, error: e.message, logs };
+             }
+        }
+        
+        return { ok: false, error: 'Unsupported DB type (only mongodb for now)', logs };
+    }
+    if (name === 'generate_docs') {
+        const p = String(input?.path || '.');
+        const root = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) return { ok: false, error: 'No API Key', logs };
+        
+        // Naive implementation: just do top-level files for now to save tokens
+        // A real one would use a recursive walker with context window management
+        const files = fs.readdirSync(root).filter(f => /\.(ts|js|py|go)$/.test(f)).slice(0, 5);
+        
+        const docs: any = {};
+        
+        try {
+            const { default: OpenAI } = await import('openai');
+            const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+            
+            for (const f of files) {
+                const content = fs.readFileSync(path.join(root, f), 'utf-8');
+                const completion = await client.chat.completions.create({
+                    model: 'gpt-4o',
+                    messages: [
+                        { role: 'system', content: 'Generate a professional JSDoc/docstring summary for this file. Return ONLY the documentation comment.' },
+                        { role: 'user', content }
+                    ]
+                });
+                docs[f] = completion.choices[0].message.content;
+            }
+            
+            // Write a README_API.md
+            let md = '# API Documentation\n\n';
+            for (const [f, doc] of Object.entries(docs)) {
+                md += `## ${f}\n\n${doc}\n\n`;
+            }
+            fs.writeFileSync(path.join(root, 'README_API.md'), md);
+            
+            return { ok: true, output: { file: 'README_API.md' }, logs };
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs };
+        }
     }
     if (name === 'file_edit') {
       const filename = String(input?.filename ?? '');
