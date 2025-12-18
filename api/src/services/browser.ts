@@ -38,6 +38,7 @@ class BrowserService {
         try {
             this.browser = await puppeteer.launch({
                 headless: true,
+                ignoreHTTPSErrors: true,
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -205,7 +206,19 @@ class BrowserService {
 
     async screenshot() {
         if (!this.page) return null;
-        return await this.page.screenshot({ encoding: 'base64' });
+        try {
+            return await this.page.screenshot({ encoding: 'base64' });
+        } catch (error) {
+            console.error('Screenshot failed:', error);
+            // If screenshot fails, browser might be dead. Try to restart.
+            try {
+                await this.close();
+                await this.launch();
+            } catch (restartError) {
+                console.error('Failed to restart browser after screenshot failure:', restartError);
+            }
+            return null;
+        }
     }
 
     async pdf() {
