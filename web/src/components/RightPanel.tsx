@@ -3,7 +3,7 @@ import { API_URL as API, WS_URL as WS } from '../config';
 import ArtifactPreview from './ArtifactPreview';
 import CodeEditor from './CodeEditor';
 
-import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, GitBranch, Share2 } from 'lucide-react';
+import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, GitBranch, Share2, Folder } from 'lucide-react';
 
 export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
@@ -35,6 +35,27 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
     }, 2000);
     return () => clearTimeout(timer);
   }, [termOutput, browser, sessionId]);
+
+  const [assets, setAssets] = useState<{ files: any[], artifacts: any[] }>({ files: [], artifacts: [] });
+
+  // Fetch assets when ARTIFACTS tab is active
+  useEffect(() => {
+    if (active === 'ARTIFACTS' && sessionId) {
+      fetch(`${API}/assets?sessionId=${sessionId}`, {
+        headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.files || data.artifacts) {
+          setAssets({
+            files: data.files || [],
+            artifacts: data.artifacts || []
+          });
+        }
+      })
+      .catch(err => console.error('Failed to load assets', err));
+    }
+  }, [active, sessionId]);
 
   // Sync content when previewData changes
   useEffect(() => {
@@ -374,19 +395,79 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   }
 
   if (active === 'ARTIFACTS') {
+    const allItems = [
+        ...assets.files.map(f => ({ ...f, _type: 'file' })),
+        ...assets.artifacts.map(a => ({ ...a, _type: 'artifact' }))
+    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     return (
-      <div className="panel-content">
-        <div style={{ marginBottom: 16, fontWeight: 600 }}>Generated Artifacts</div>
-        {artifacts.length === 0 && <div style={{ color: 'var(--text-muted)' }}>No artifacts created yet</div>}
-        {artifacts.map((a, i) => {
-          const url = (API + a.href).replace(/([^:]\/)\/+/g, '$1');
-          return (
-            <div key={i} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 500 }}>{a.name}</span>
-              <a href={url} target="_blank" rel="noreferrer" className="btn" style={{ fontSize: 12 }}>Open ↗</a>
+      <div className="panel-content" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        
+        {/* Summary Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent-primary)' }}>{assets.files.length}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Uploaded Files</div>
             </div>
-          );
-        })}
+            <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#22c55e' }}>{assets.artifacts.length}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Generated Artifacts</div>
+            </div>
+        </div>
+
+        <div>
+            <div style={{ marginBottom: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Folder size={16} /> All Project Assets
+            </div>
+            
+            {allItems.length === 0 && (
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: 8 }}>
+                    No assets found in this session.
+                </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {allItems.map((item, i) => {
+                    const isFile = item._type === 'file';
+                    const url = isFile ? `${API}/files/${item.id}/raw` : (API + item.url).replace(/([^:]\/)\/+/g, '$1');
+                    
+                    return (
+                        <div key={i} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12 }}>
+                            <div style={{ 
+                                width: 36, height: 36, borderRadius: 8, 
+                                background: isFile ? 'rgba(59, 130, 246, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
+                                color: isFile ? '#3b82f6' : '#22c55e',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                {isFile ? <FileText size={18} /> : <Code size={18} />}
+                            </div>
+                            
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 500, truncate: true, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {item.name}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 8 }}>
+                                    <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
+                                    <span>•</span>
+                                    <span>{isFile ? (item.size / 1024).toFixed(1) + ' KB' : 'Generated'}</span>
+                                </div>
+                            </div>
+
+                            <a 
+                                href={url} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="btn-icon" 
+                                title="Download / Open"
+                                style={{ color: 'var(--text-secondary)' }}
+                            >
+                                <Share2 size={16} />
+                            </a>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
       </div>
     );
   }

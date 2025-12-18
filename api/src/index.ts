@@ -14,6 +14,7 @@ import filesRoutes from './routes/files';
 import approvalsRoutes from './routes/approvals';
 import projectRoutes from './routes/project';
 import audioRoutes from './routes/audio';
+import assetsRoutes from './routes/assets';
 import { authenticate } from './middleware/auth';
 import http from 'http';
 import { attachWebSocket } from './ws';
@@ -54,6 +55,7 @@ async function main() {
   app.use('/approvals', approvalsRoutes);
   app.use('/project', projectRoutes);
   app.use('/audio', audioRoutes);
+  app.use('/assets', assetsRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
