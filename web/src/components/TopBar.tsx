@@ -96,20 +96,22 @@ export default function TopBar() {
         </button>
 
         {/* Login/Logout Button */}
-        {localStorage.getItem('token') ? (
-            <button className="logout-btn" onClick={() => {
+        <button 
+          className={localStorage.getItem('token') ? "logout-btn" : "login-btn"}
+          onClick={() => {
+            if (localStorage.getItem('token')) {
                 if(confirm(t('confirmLogout', 'Are you sure you want to logout?'))) {
                     localStorage.removeItem('token');
                     nav('/login');
                 }
-            }} title={t('logout', 'Logout')}>
-              <LogOut size={20} />
-            </button>
-        ) : (
-            <button className="login-btn" onClick={() => nav('/login')} title={t('login')}>
-              <LogIn size={20} />
-            </button>
-        )}
+            } else {
+                nav('/login');
+            }
+          }} 
+          title={localStorage.getItem('token') ? t('logout', 'Logout') : t('login')}
+        >
+          {localStorage.getItem('token') ? <LogOut size={20} /> : <LogIn size={20} />}
+        </button>
       </div>
     </div>
   );
