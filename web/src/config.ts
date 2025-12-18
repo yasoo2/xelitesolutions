@@ -1,5 +1,5 @@
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const apiEnv = import.meta.env.VITE_API_URL;
+const apiEnv = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
 // IMPORTANT: Set this to your actual Backend URL on Render
 // If your frontend is infinity-x-platform.onrender.com, your backend is likely DIFFERENT (e.g. joe-api.onrender.com)
@@ -19,8 +19,13 @@ if (!wsUrl) {
   if (isLocal) {
     wsUrl = 'ws://localhost:8080/ws';
   } else {
-    // Derive from API_URL
-    wsUrl = API_URL.replace(/^http/, 'ws') + '/ws';
+    // Check if API_URL is used and replace protocol
+    if (API_URL.includes('api.xelitesolutions.com')) {
+      wsUrl = 'wss://api.xelitesolutions.com/ws';
+    } else {
+       // Derive from API_URL
+       wsUrl = API_URL.replace(/^http/, 'ws') + '/ws';
+    }
   }
 }
 
