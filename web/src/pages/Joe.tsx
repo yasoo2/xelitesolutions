@@ -369,8 +369,8 @@ export default function Joe() {
         </aside>
       )}
       {!showSidebar && (
-        <button className="open-sidebar-btn" onClick={() => setShowSidebar(true)}>
-          <PanelLeftOpen size={24} />
+        <button className="sidebar-toggle-btn" style={{ position: 'absolute', left: 16, top: 16 }} onClick={() => setShowSidebar(true)}>
+          <PanelLeftOpen size={20} />
         </button>
       )}
 
@@ -412,11 +412,10 @@ export default function Joe() {
         </aside>
       )}
       {!showRightPanel && (
-        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
+        <div className="sidebar-toggle-end" style={{ zIndex: 10 }}>
           <button 
-            className="btn-icon" 
+            className="sidebar-toggle-btn" 
             onClick={() => setShowRightPanel(true)}
-            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: 8, borderRadius: 4, cursor: 'pointer' }}
             title="إظهار اللوحة"
           >
             <ChevronLeft size={20} />

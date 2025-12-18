@@ -55,10 +55,9 @@ export default function TopBar() {
           <button 
             className={`lang-btn ${isLangOpen ? 'active' : ''}`}
             onClick={() => setIsLangOpen(!isLangOpen)}
+            title={currentLangLabel}
           >
-            <Globe size={18} />
-            <span>{currentLangLabel}</span>
-            <ChevronDown size={16} style={{ transform: isLangOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            <Globe size={20} />
           </button>
           
           {isLangOpen && (
@@ -66,7 +65,7 @@ export default function TopBar() {
               {LANGUAGES.map((l) => (
                 <button
                   key={l.code}
-                  className={`lang-item ${lang === l.code ? 'active' : ''}`}
+                  className={`lang-option ${lang === l.code ? 'active' : ''}`}
                   onClick={() => {
                     setLang(l.code);
                     setIsLangOpen(false);
@@ -97,9 +96,8 @@ export default function TopBar() {
         </button>
 
         {/* Login Button */}
-        <button className="login-btn" onClick={() => nav('/login')}>
-          <LogIn size={18} />
-          <span>{t('login')}</span>
+        <button className="login-btn" onClick={() => nav('/login')} title={t('login')}>
+          <LogIn size={20} />
         </button>
       </div>
     </div>

@@ -30,7 +30,8 @@ import {
   Eye,
   EyeOff,
   Trash2,
-  Zap
+  Zap,
+  ArrowUp
 } from 'lucide-react';
 
 interface ProviderConfig {
@@ -823,12 +824,11 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={{ position: 'relative' }}>
                <button
-                 className="mic-button"
+                 className="provider-btn"
                  onClick={() => setShowProviders(true)}
                  title="AI Providers"
-                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: showProviders ? 'var(--accent-primary)' : 'inherit' }}
                >
-                 <Settings size={20} />
+                 <Cpu size={20} />
                </button>
             </div>
             <input 
@@ -858,8 +858,9 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
               className="send-button" 
               onClick={run}
               disabled={!text.trim() || !!approval}
+              title={t('send')}
             >
-              {t('send')}
+              <ArrowUp size={20} />
             </button>
           </div>
         </div>
