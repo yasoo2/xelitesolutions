@@ -402,6 +402,20 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
 
+    // Emit a user-visible confirmation when a file is created
+    if (result.ok && plan.name === 'file_write') {
+      const href = result.output?.href;
+      const fname = String(plan.input?.filename || '').trim();
+      const msgParts: string[] = [];
+      msgParts.push(`### تم إنشاء ملف`);
+      if (fname) msgParts.push(`- الاسم: ${fname}`);
+      if (href) msgParts.push(`- رابط المعاينة: ${href}`);
+      const msg = msgParts.join('\n');
+      forcedText = msg;
+      ev({ type: 'text', data: msg });
+      break;
+    }
+
     if (result.ok && plan.name === 'http_fetch') {
       try {
         const urlStr = String(plan.input?.url || '');

@@ -52,7 +52,7 @@ export default function Login() {
         {error && <div className="error">{error}</div>}
         <div className="row">
           <button className="btn btn-yellow" onClick={login}>{t('login')}</button>
-          {/* <button className="btn" onClick={register}>{t('register')}</button> */}
+          <button className="btn" onClick={register}>{t('register')}</button>
         </div>
       </div>
     </div>
