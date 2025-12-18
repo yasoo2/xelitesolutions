@@ -228,6 +228,45 @@ export const tools: ToolDefinition[] = [
     mockSupported: true,
   },
   {
+    name: 'git_ops',
+    version: '1.0.0',
+    tags: ['dev', 'git'],
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        operation: { type: 'string', enum: ['status', 'add', 'commit', 'push', 'checkout', 'log'] },
+        args: { type: 'array', items: { type: 'string' } }
+      },
+      required: ['operation']
+    },
+    outputSchema: { type: 'object', properties: { output: { type: 'string' } } },
+    permissions: ['read', 'write', 'execute'],
+    sideEffects: ['write', 'execute'],
+    rateLimitPerMinute: 60,
+    auditFields: ['operation'],
+    mockSupported: true,
+  },
+  {
+    name: 'npm_manager',
+    version: '1.0.0',
+    tags: ['dev', 'npm'],
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        command: { type: 'string', enum: ['install', 'uninstall', 'list', 'audit', 'run'] },
+        packages: { type: 'array', items: { type: 'string' } },
+        dev: { type: 'boolean' }
+      },
+      required: ['command']
+    },
+    outputSchema: { type: 'object', properties: { output: { type: 'string' } } },
+    permissions: ['read', 'write', 'execute'],
+    sideEffects: ['write', 'execute'],
+    rateLimitPerMinute: 20,
+    auditFields: ['command', 'packages'],
+    mockSupported: true,
+  },
+  {
     name: 'browser_snapshot',
     version: '1.0.0',
     tags: ['browser', 'artifact'],
@@ -981,6 +1020,11 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
                  // Create a separate connection to avoid messing with main app
                  const conn = await mongoose.createConnection(connStr).asPromise();
                  
+                 if (!conn.db) {
+                     await conn.close();
+                     return { ok: false, error: 'Failed to connect to DB', logs };
+                 }
+
                  const collections = await conn.db.listCollections().toArray();
                  const schema: any = {};
                  
@@ -1036,6 +1080,73 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
             return { ok: true, output: { file: 'README_API.md' }, logs };
         } catch (e: any) {
             return { ok: false, error: e.message, logs };
+        }
+    }
+    if (name === 'git_ops') {
+        const op = String(input?.operation);
+        const args = (input?.args as string[]) || [];
+        const { exec } = await import('child_process');
+        const util = await import('util');
+        const execAsync = util.promisify(exec);
+        
+        try {
+            let cmd = `git ${op} ${args.join(' ')}`;
+            // Safety: Ensure user identity exists before commit
+            if (op === 'commit') {
+                 try {
+                    await execAsync('git config user.name');
+                 } catch {
+                    await execAsync('git config user.name "Joe AI"');
+                    await execAsync('git config user.email "joe@xelitesolutions.com"');
+                 }
+            }
+            
+            const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd() });
+            logs.push(`git.op=${op} success`);
+            return { ok: true, output: { output: stdout || stderr }, logs };
+        } catch (e: any) {
+            return { ok: false, error: e.message || e.stderr, logs };
+        }
+    }
+    if (name === 'npm_manager') {
+        const cmd = String(input?.command);
+        const pkgs = (input?.packages as string[]) || [];
+        const isDev = !!input?.dev;
+        const { exec } = await import('child_process');
+        const util = await import('util');
+        const execAsync = util.promisify(exec);
+        
+        try {
+            let fullCmd = `npm ${cmd}`;
+            if (pkgs.length > 0) fullCmd += ` ${pkgs.join(' ')}`;
+            if (isDev && (cmd === 'install' || cmd === 'i')) fullCmd += ' -D';
+            
+            logs.push(`npm.cmd=${fullCmd} starting...`);
+            const { stdout, stderr } = await execAsync(fullCmd, { cwd: process.cwd() });
+            
+            // Auto-install types for TS projects
+            if ((cmd === 'install' || cmd === 'i') && pkgs.length > 0) {
+                 const tsConfig = path.join(process.cwd(), 'tsconfig.json');
+                 if (fs.existsSync(tsConfig)) {
+                     const typesToInstall = pkgs
+                         .filter(p => !p.startsWith('@types/'))
+                         .map(p => `@types/${p.split('@')[0]}`); // handle versioned pkg@1.0.0
+                     
+                     if (typesToInstall.length > 0) {
+                         try {
+                             logs.push(`npm.auto_types=${typesToInstall.join(' ')}`);
+                             await execAsync(`npm install -D ${typesToInstall.join(' ')}`, { cwd: process.cwd() });
+                         } catch (e) {
+                             // Ignore type install errors (maybe types don't exist)
+                             logs.push('npm.auto_types_failed (ignored)');
+                         }
+                     }
+                 }
+            }
+            
+            return { ok: true, output: { output: stdout }, logs };
+        } catch (e: any) {
+             return { ok: false, error: e.message || e.stderr, logs };
         }
     }
     if (name === 'file_edit') {
