@@ -27,7 +27,7 @@ export interface PlanOptions {
 }
 
 export async function planNextStep(
-  messages: { role: 'user' | 'assistant' | 'system', content: string }[],
+  messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
 ) {
   // Determine client to use

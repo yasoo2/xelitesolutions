@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import { broadcast, LiveEvent } from '../ws';
 import { executeTool } from '../tools/registry';
 import { store } from '../mock/store';
@@ -174,13 +176,30 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
 
   // 1. Process Attachments
-  let attachedContent = '';
+  let attachedText = '';
+  const contentParts: any[] = [];
+  
   if (!useMock && fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
     try {
       const files = await FileModel.find({ _id: { $in: fileIds } });
       for (const f of files) {
-        if (f.content) {
-           attachedContent += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
+        if (f.mimeType && f.mimeType.startsWith('image/')) {
+           try {
+              if (fs.existsSync(f.path)) {
+                  const imageBuffer = fs.readFileSync(f.path);
+                  const base64Image = imageBuffer.toString('base64');
+                  contentParts.push({
+                     type: 'image_url',
+                     image_url: {
+                        url: `data:${f.mimeType};base64,${base64Image}`
+                     }
+                  });
+              }
+           } catch (err) {
+              console.error('Failed to read image', err);
+           }
+        } else if (f.content) {
+           attachedText += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
         }
       }
     } catch (e) {
@@ -188,7 +207,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
   }
 
-  let fullPrompt = (String(text || '') + attachedContent).trim();
+  let fullPromptText = (String(text || '') + attachedText).trim();
 
   // Inject Memory
   if (userId && !useMock) {
@@ -196,7 +215,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const memories = await MemoryService.searchMemories(userId, String(text || ''));
         if (memories.length > 0) {
           console.log(`[Memory] Found ${memories.length} relevant memories`);
-          fullPrompt += `\n\n[System Note: Known facts about this user (Memory)]:\n${memories.join('\n')}\n`;
+          fullPromptText += `\n\n[System Note: Known facts about this user (Memory)]:\n${memories.join('\n')}\n`;
         }
       } catch (e) {
         console.error('[Memory] Search failed', e);
@@ -207,13 +226,21 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         .catch(err => console.error('[Memory] Extraction failed', err));
   }
 
+  let initialContent: string | any[] = fullPromptText;
+  if (contentParts.length > 0) {
+      initialContent = [
+          { type: 'text', text: fullPromptText },
+          ...contentParts
+      ];
+  }
+
   ev({ type: 'step_started', data: { name: 'plan' } });
   
   let plan = null;
   try {
       // Try LLM planning
       plan = await planNextStep(
-        [{ role: 'user', content: fullPrompt }],
+        [{ role: 'user', content: initialContent }],
         { provider, apiKey, baseUrl, model }
       );
   } catch (err) {
@@ -274,7 +301,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           // Only trigger if it's the first or second message
           if (messageCount <= 2) {
             // Get the user message and potential context
-            const messages = [{ role: 'user', content: fullPrompt }];
+            const messages = [{ role: 'user', content: fullPromptText }];
             const newTitle = await generateSessionTitle(messages);
             if (newTitle && newTitle !== 'New Session') {
                await Session.findByIdAndUpdate(sessionId, { title: newTitle });
@@ -310,8 +337,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   // --- Agent Loop ---
   let steps = 0;
   const MAX_STEPS = 10;
-  const history: { role: 'user' | 'assistant' | 'system', content: string }[] = [
-    { role: 'user', content: fullPrompt }
+  const history: { role: 'user' | 'assistant' | 'system', content: string | any[] }[] = [
+    { role: 'user', content: initialContent }
   ];
 
   let lastResult: any = null;
