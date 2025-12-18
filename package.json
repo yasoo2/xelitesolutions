@@ -10,7 +10,7 @@
     "build:web": "npm --prefix web run build",
     "build": "npm run build:api && npm run build:web",
     "postinstall": "npm --prefix api install --no-audit --no-fund --include=dev && npm --prefix web install --no-audit --no-fund --include=dev",
-    "start": "npm --prefix api run build && npm --prefix api run start"
+    "start": "npm --prefix api run start"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
