@@ -91,7 +91,10 @@ export function Browser() {
     };
 
     const refreshData = async () => {
-        if (!isConnected) return;
+        if (!isConnected) {
+            await checkStatus();
+            return;
+        }
         const token = localStorage.getItem('token');
         const headers = (token ? { Authorization: `Bearer ${token}` } : {}) as Record<string, string>;
 
