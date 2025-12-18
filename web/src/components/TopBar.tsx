@@ -1,12 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, LogIn, Globe, ChevronDown } from 'lucide-react';
+
+const LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'es', label: 'Español' }
+];
 
 export default function TopBar() {
   const { i18n, t } = useTranslation();
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('theme') as any) || 'dark');
   const [lang, setLang] = useState<string>(() => localStorage.getItem('lang') || 'en');
+  const [isLangOpen, setIsLangOpen] = useState(false);
+  const langMenuRef = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -21,34 +32,76 @@ export default function TopBar() {
     document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
   }, [lang, i18n]);
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (langMenuRef.current && !langMenuRef.current.contains(event.target as Node)) {
+        setIsLangOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const currentLangLabel = LANGUAGES.find(l => l.code === lang)?.label || 'English';
+
   return (
     <div className="topbar">
       <div className="brand" onClick={() => nav('/')}>JOE</div>
       <div className="spacer" />
-      <button className="btn btn-yellow" onClick={() => nav('/login')}>{t('login')}</button>
-      <select value={lang} onChange={(e) => setLang(e.target.value)} className="select">
-        <option value="en">English</option>
-        <option value="ar">العربية</option>
-        <option value="fr">Français</option>
-        <option value="de">Deutsch</option>
-        <option value="ru">Русский</option>
-        <option value="es">Español</option>
-      </select>
-      <button
-        className="btn btn-icon"
-        aria-label={t('toggleTheme')}
-        title={t('toggleTheme')}
-        onClick={() => {
-          document.documentElement.classList.add('theme-switching');
-          const next = theme === 'dark' ? 'light' : 'dark';
-          setTheme(next);
-          window.setTimeout(() => {
-            document.documentElement.classList.remove('theme-switching');
-          }, 300);
-        }}
-      >
-        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-      </button>
+      
+      <div className="topbar-actions">
+        {/* Language Dropdown */}
+        <div className="lang-dropdown" ref={langMenuRef}>
+          <button 
+            className={`lang-btn ${isLangOpen ? 'active' : ''}`}
+            onClick={() => setIsLangOpen(!isLangOpen)}
+          >
+            <Globe size={18} />
+            <span>{currentLangLabel}</span>
+            <ChevronDown size={16} style={{ transform: isLangOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          </button>
+          
+          {isLangOpen && (
+            <div className="lang-menu">
+              {LANGUAGES.map((l) => (
+                <button
+                  key={l.code}
+                  className={`lang-item ${lang === l.code ? 'active' : ''}`}
+                  onClick={() => {
+                    setLang(l.code);
+                    setIsLangOpen(false);
+                  }}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Theme Toggle */}
+        <button
+          className="action-btn"
+          aria-label={t('toggleTheme')}
+          title={t('toggleTheme')}
+          onClick={() => {
+            document.documentElement.classList.add('theme-switching');
+            const next = theme === 'dark' ? 'light' : 'dark';
+            setTheme(next);
+            window.setTimeout(() => {
+              document.documentElement.classList.remove('theme-switching');
+            }, 300);
+          }}
+        >
+          {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+
+        {/* Login Button */}
+        <button className="login-btn" onClick={() => nav('/login')}>
+          <LogIn size={18} />
+          <span>{t('login')}</span>
+        </button>
+      </div>
     </div>
   );
 }

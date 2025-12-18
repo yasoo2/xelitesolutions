@@ -608,19 +608,10 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
 
       {/* AI Providers Modal */}
       {showProviders && (
-        <div className="providers-modal-overlay" style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-            zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }} onClick={() => setShowProviders(false)}>
-            <div className="providers-modal" style={{
-                width: 700, height: 500, background: 'var(--bg-primary)',
-                borderRadius: 16, border: '1px solid var(--border-color)',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.3)', display: 'flex', overflow: 'hidden'
-            }} onClick={e => e.stopPropagation()}>
-                
+        <div className="providers-modal-overlay" onClick={() => setShowProviders(false)}>
+            <div className="providers-modal" onClick={e => e.stopPropagation()}>
                 {/* Left Sidebar */}
-                <div style={{ width: 220, background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', padding: 16 }}>
+                <div className="providers-left">
                     <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Cpu size={18} /> Providers
                     </h3>
@@ -629,7 +620,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                             <button key={key} onClick={() => setActiveProvider(key)} style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                 padding: '10px 12px', borderRadius: 8, border: 'none',
-                                background: activeProvider === key ? 'var(--bg-primary)' : 'transparent',
+                                background: activeProvider === key ? 'var(--bg-primary, var(--bg-card))' : 'transparent',
                                 color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
                                 cursor: 'pointer', textAlign: 'left',
                                 fontWeight: activeProvider === key ? 600 : 400,
@@ -650,7 +641,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                 </div>
 
                 {/* Right Content */}
-                <div style={{ flex: 1, padding: 24, display: 'flex', flexDirection: 'column' }}>
+                <div className="providers-right">
                     {providers[activeProvider] && (
                         <>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
