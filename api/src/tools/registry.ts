@@ -125,6 +125,61 @@ export const tools: ToolDefinition[] = [
     mockSupported: false,
   },
   {
+    name: 'grep_search',
+    version: '1.0.0',
+    tags: ['fs', 'search', 'grep'],
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        query: { type: 'string' }, 
+        path: { type: 'string' },
+        include: { type: 'string' },
+        exclude: { type: 'string' }
+      }, 
+      required: ['query'] 
+    },
+    outputSchema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['query'],
+    mockSupported: true,
+  },
+  {
+    name: 'scaffold_project',
+    version: '1.0.0',
+    tags: ['fs', 'scaffold', 'batch'],
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        structure: { 
+          type: 'object',
+          description: 'Key-value pairs where key is file path and value is content (string) or null (for directory)'
+        },
+        baseDir: { type: 'string' }
+      }, 
+      required: ['structure'] 
+    },
+    outputSchema: { type: 'object', properties: { created: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 10,
+    auditFields: [],
+    mockSupported: true,
+  },
+  {
+    name: 'analyze_codebase',
+    version: '1.0.0',
+    tags: ['analysis', 'system'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { summary: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: [],
+    mockSupported: true,
+  },
+  {
     name: 'browser_snapshot',
     version: '1.0.0',
     tags: ['browser', 'artifact'],
@@ -764,6 +819,134 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       fs.writeFileSync(full, content);
       logs.push(`edit=${filename}`);
       return { ok: true, output: { success: true }, logs };
+    }
+    if (name === 'grep_search') {
+      const query = String(input?.query ?? '');
+      const searchPath = String(input?.path ?? '.');
+      const include = String(input?.include ?? ''); // e.g., "*.ts"
+      const exclude = String(input?.exclude ?? ''); // e.g., "node_modules"
+
+      const workDir = path.isAbsolute(searchPath) ? searchPath : path.resolve(process.cwd(), searchPath);
+      
+      // Construct grep command
+      // -r: recursive
+      // -n: line number
+      // -I: ignore binary
+      let cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${workDir}"`;
+      
+      if (include) {
+         cmd += ` --include="${include}"`;
+      }
+      if (exclude) {
+         cmd += ` --exclude-dir="${exclude}"`;
+      } else {
+         cmd += ` --exclude-dir="node_modules" --exclude-dir=".git" --exclude-dir="dist" --exclude-dir="build"`;
+      }
+
+      logs.push(`grep.cmd=${cmd}`);
+      
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execAsync = util.promisify(exec);
+      
+      try {
+        const { stdout } = await execAsync(cmd, { maxBuffer: 1024 * 1024 * 5 }); // 5MB buffer
+        const lines = stdout.split('\n').filter(Boolean).slice(0, 100); // Limit to 100 matches
+        logs.push(`grep.matches=${lines.length}`);
+        return { ok: true, output: { matches: lines, count: lines.length, truncated: lines.length === 100 }, logs };
+      } catch (err: any) {
+        // grep returns 1 if no matches found, which is not an error for us
+        if (err.code === 1) {
+            return { ok: true, output: { matches: [], count: 0 }, logs };
+        }
+        logs.push(`grep.error=${err.message}`);
+        return { ok: false, error: err.message, logs };
+      }
+    }
+    if (name === 'scaffold_project') {
+      const structure = input?.structure || {};
+      const baseDir = String(input?.baseDir || '.');
+      const resolvedBase = path.isAbsolute(baseDir) ? baseDir : path.resolve(process.cwd(), baseDir);
+      
+      const created: string[] = [];
+      const errors: string[] = [];
+      
+      for (const [relativePath, content] of Object.entries(structure)) {
+          const fullPath = path.join(resolvedBase, relativePath);
+          
+          try {
+              if (content === null) {
+                  // Directory
+                  if (!fs.existsSync(fullPath)) {
+                      fs.mkdirSync(fullPath, { recursive: true });
+                      created.push(`${relativePath}/`);
+                  }
+              } else {
+                  // File
+                  const dir = path.dirname(fullPath);
+                  if (!fs.existsSync(dir)) {
+                      fs.mkdirSync(dir, { recursive: true });
+                  }
+                  fs.writeFileSync(fullPath, String(content));
+                  created.push(relativePath);
+              }
+          } catch (e: any) {
+              errors.push(`${relativePath}: ${e.message}`);
+          }
+      }
+      
+      logs.push(`scaffold.created=${created.length} errors=${errors.length}`);
+      return { 
+          ok: errors.length === 0, 
+          output: { created, errors }, 
+          logs 
+      };
+    }
+    if (name === 'analyze_codebase') {
+       const p = String(input?.path || '.');
+       const root = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+       
+       if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
+       
+       // Gather key info
+       const pkgJsonPath = path.join(root, 'package.json');
+       let pkgInfo = 'No package.json';
+       if (fs.existsSync(pkgJsonPath)) {
+           try {
+               const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+               pkgInfo = `Name: ${pkg.name}\nDependencies: ${Object.keys(pkg.dependencies || {}).join(', ')}`;
+           } catch {}
+       }
+       
+       // Check for context file
+       const contextPath = path.join(root, '.joe/context.json');
+       let contextInfo = 'No .joe/context.json found';
+       if (fs.existsSync(contextPath)) {
+           contextInfo = fs.readFileSync(contextPath, 'utf-8').slice(0, 500);
+       }
+       
+       // Check for architecture doc
+       const archPath = path.join(root, 'ARCHITECTURE.md');
+       let archInfo = 'No ARCHITECTURE.md found';
+       if (fs.existsSync(archPath)) {
+           archInfo = fs.readFileSync(archPath, 'utf-8').slice(0, 1000);
+       }
+       
+       const summary = `
+## Codebase Analysis for ${root}
+
+### Package Info
+${pkgInfo}
+
+### Project Context (.joe/context.json)
+${contextInfo}
+
+### Architecture (ARCHITECTURE.md)
+${archInfo}
+       `.trim();
+       
+       logs.push('analyze.ok');
+       return { ok: true, output: { summary }, logs };
     }
     if (name === 'knowledge_search') {
       const query = String(input?.query ?? '');
