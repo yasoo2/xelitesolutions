@@ -6,8 +6,135 @@ import { store } from '../mock/store';
 import { authenticate } from '../middleware/auth';
 import { Run } from '../models/run';
 import { ToolExecution } from '../models/toolExecution';
+import { Summary } from '../models/summary';
+import { MemoryService } from '../services/memory';
+import { generateSummary, SYSTEM_PROMPT } from '../llm';
+import { MemoryItem } from '../models/memoryItem';
 
 const router = Router();
+
+// Get Full Session Context
+router.get('/:id/context', authenticate as any, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = (req as any).auth?.sub;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+
+  try {
+    let summary = '';
+    let recentMessages: any[] = [];
+    let memories: any[] = [];
+
+    if (useMock) {
+        summary = store.getSummary(id)?.content || '';
+        recentMessages = store.listMessages(id).slice(-10);
+    } else {
+        const sumDoc = await Summary.findOne({ sessionId: id });
+        summary = sumDoc?.content || '';
+        
+        recentMessages = await Message.find({ sessionId: id })
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean();
+        // reverse to show in order
+        recentMessages.reverse();
+
+        if (userId) {
+            memories = await MemoryItem.find({ userId }).sort({ createdAt: -1 }).lean();
+        }
+    }
+
+    res.json({
+        systemPrompt: SYSTEM_PROMPT,
+        summary,
+        recentMessages,
+        memories
+    });
+  } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed to fetch context' });
+  }
+});
+
+// Get Session Summary
+router.get('/:id/summary', authenticate as any, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  
+  if (useMock) {
+    const s = store.getSummary(id);
+    return res.json({ summary: s });
+  }
+
+  try {
+    const summary = await Summary.findOne({ sessionId: id });
+    res.json({ summary });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch summary' });
+  }
+});
+
+// Manual Summarize
+router.post('/:id/summarize', authenticate as any, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { content } = req.body;
+  
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) {
+    store.upsertSummary(id, content);
+    return res.json({ ok: true });
+  }
+
+  try {
+    await Summary.findOneAndUpdate(
+      { sessionId: id },
+      { content },
+      { upsert: true, new: true }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update summary' });
+  }
+});
+
+// Auto Summarize
+router.post('/:id/summarize/auto', authenticate as any, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+
+  try {
+    // Check if we have messages
+    let messages: any[] = [];
+    if (useMock) {
+        messages = store.listMessages(id);
+    } else {
+        messages = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).limit(100);
+    }
+    
+    if (messages.length === 0) return res.json({ ok: true });
+
+    const msgsForLLM = messages.map(m => ({ 
+        role: m.role || 'user', 
+        content: String(m.content || '') 
+    }));
+    
+    const summaryContent = await generateSummary(msgsForLLM);
+    
+    if (useMock) {
+        store.upsertSummary(id, summaryContent);
+    } else {
+        await Summary.findOneAndUpdate(
+            { sessionId: id },
+            { content: summaryContent },
+            { upsert: true, new: true }
+        );
+    }
+
+    res.json({ ok: true, summary: summaryContent });
+  } catch (e) {
+    console.error('Auto summary error:', e);
+    res.status(500).json({ error: 'Auto summary failed' });
+  }
+});
 
 router.post('/merge', authenticate as any, async (req: Request, res: Response) => {
   const { sourceId, targetId } = req.body || {};

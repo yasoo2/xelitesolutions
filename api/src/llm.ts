@@ -26,6 +26,31 @@ export interface PlanOptions {
   throwOnError?: boolean;
 }
 
+export const SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
+You have access to a set of tools to interact with the file system, network, and browser.
+
+Your Goal:
+- Understand the user's high-level request (e.g., "Build a landing page").
+- Break it down into logical steps (Plan -> Create Files -> Verify).
+- Execute the steps autonomously using the available tools.
+- If you need to explore the project structure, use "read_file_tree" (preferred over ls).
+- If you need to read what you wrote, use "file_read".
+- If you need to check files, use "ls".
+- If you need to search, use "web_search".
+- If you need to install packages or run commands, use "shell_execute".
+- If you need to fix a bug in a file, use "file_edit".
+- If you have completed the task, use "echo" to report the final result to the user.
+
+Rules:
+- You are persistent. If a tool fails, try to fix the input or use a different approach.
+- If a tool fails due to missing API keys or configuration, DO NOT retry it. Report the error to the user immediately.
+- Do not repeat the same tool call if it was successful.
+- If you generated an artifact (image, file), use "echo" to confirm it.
+- You are professional and precise.
+- You can chain multiple thoughts and actions.
+- If the user asks in Arabic, you MUST reply in Arabic.
+`;
+
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
@@ -53,29 +78,7 @@ export async function planNextStep(
   const msgs = [
     { 
       role: 'system', 
-      content: `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
-You have access to a set of tools to interact with the file system, network, and browser.
-
-Your Goal:
-- Understand the user's high-level request (e.g., "Build a landing page").
-- Break it down into logical steps (Plan -> Create Files -> Verify).
-- Execute the steps autonomously using the available tools.
-- If you need to read what you wrote, use "file_read".
-- If you need to check files, use "ls".
-- If you need to search, use "web_search".
-- If you need to install packages or run commands, use "shell_execute".
-- If you need to fix a bug in a file, use "file_edit".
-- If you have completed the task, use "echo" to report the final result to the user.
-
-Rules:
-- You are persistent. If a tool fails, try to fix the input or use a different approach.
-- If a tool fails due to missing API keys or configuration, DO NOT retry it. Report the error to the user immediately.
-- Do not repeat the same tool call if it was successful.
-- If you generated an artifact (image, file), use "echo" to confirm it.
-- You are professional and precise.
-- You can chain multiple thoughts and actions.
-- If the user asks in Arabic, you MUST reply in Arabic.
-` 
+      content: SYSTEM_PROMPT 
     },
     ...messages
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
@@ -110,7 +113,7 @@ Rules:
       throw error;
     }
     // Fallback to heuristic planner if LLM fails
-    return heuristicPlanner(messages);
+    return heuristicPlanner(messages as any);
   }
 }
 
@@ -135,6 +138,32 @@ export async function generateSessionTitle(messages: { role: string; content: st
   } catch (e) {
     console.error('Title generation failed', e);
     return 'New Session';
+  }
+}
+
+export async function generateSummary(messages: { role: string; content: string }[]) {
+  if (!messages || messages.length === 0) return 'No content to summarize.';
+  
+  const msgs = [
+    {
+      role: 'system',
+      content: 'You are a helpful assistant. Summarize the following conversation in a concise paragraph. Focus on the main goal, what was achieved, and any pending items. If the conversation is in Arabic, the summary MUST be in Arabic.'
+    },
+    {
+      role: 'user',
+      content: messages.map(m => `${m.role}: ${String(m.content).slice(0, 1000)}`).join('\n\n')
+    }
+  ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      messages: msgs,
+    });
+    return completion.choices[0]?.message?.content?.trim() || 'Summary generation failed.';
+  } catch (e) {
+    console.error('Summary generation failed', e);
+    return 'Summary generation failed due to an error.';
   }
 }
 

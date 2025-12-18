@@ -1,4 +1,4 @@
-export type ToolPermission = 'read' | 'write' | 'deploy' | 'delete' | 'execute';
+export type ToolPermission = 'read' | 'write' | 'deploy' | 'delete' | 'execute' | 'internet';
 
 export interface ToolDefinition {
   name: string;

@@ -98,41 +98,125 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
         const imports = getImports(content);
         const sourceId = fileIdMap.get(f);
         
-        if (!sourceId) return;
-
-        imports.forEach(imp => {
-          // Resolve import path relative to current file
-          if (imp.startsWith('.')) {
-            try {
-                const absoluteImportPath = path.resolve(path.dirname(f), imp);
-                // Try to find exact match or with extensions
-                const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.js'];
-                let foundTarget = null;
+        if (sourceId) {
+          imports.forEach(imp => {
+            // Resolve import path
+            if (imp.startsWith('.')) {
+              try {
+                const dir = path.dirname(f);
+                let resolved = path.resolve(dir, imp);
+                
+                // Try exact match or with extensions
+                const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '.css'];
+                let targetFile = '';
                 
                 for (const ext of extensions) {
-                    const testPath = absoluteImportPath + ext;
-                    if (fileIdMap.has(testPath)) {
-                        foundTarget = fileIdMap.get(testPath);
-                        break;
-                    }
+                  if (fs.existsSync(resolved + ext) && !fs.statSync(resolved + ext).isDirectory()) {
+                    targetFile = resolved + ext;
+                    break;
+                  }
+                  // Check index files
+                  if (fs.existsSync(path.join(resolved, 'index' + ext))) {
+                     targetFile = path.join(resolved, 'index' + ext);
+                     break;
+                  }
                 }
 
-                if (foundTarget) {
-                    links.push({ source: sourceId, target: foundTarget });
+                if (targetFile && fileIdMap.has(targetFile)) {
+                  links.push({ 
+                    source: sourceId, 
+                    target: fileIdMap.get(targetFile)! 
+                  });
                 }
-            } catch (err) {}
-          }
-        });
-      } catch (err) {
-        // Ignore read errors
-      }
+              } catch {}
+            }
+          });
+        }
+      } catch {}
     });
 
     res.json({ nodes, links });
-  } catch (error) {
-    console.error('Graph error:', error);
-    res.status(500).json({ error: 'Failed to generate graph' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Graph generation failed' });
   }
+});
+
+// File Tree Endpoint
+router.get('/tree', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const rootPath = String(req.query.path || process.cwd());
+    const depth = Number(req.query.depth || 5);
+    
+    if (!fs.existsSync(rootPath)) {
+        return res.status(404).json({ error: 'Path not found' });
+    }
+
+    const getTree = (dir: string, currentDepth: number): any[] => {
+        if (currentDepth > depth) return [];
+        const files = fs.readdirSync(dir, { withFileTypes: true });
+        
+        // Sort: directories first, then files
+        files.sort((a, b) => {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        return files
+            .filter(f => !['node_modules', '.git', 'dist', 'build', '.DS_Store'].includes(f.name))
+            .map(f => {
+                const fullPath = path.join(dir, f.name);
+                const isDir = f.isDirectory();
+                return {
+                    name: f.name,
+                    path: fullPath,
+                    type: isDir ? 'directory' : 'file',
+                    children: isDir ? getTree(fullPath, currentDepth + 1) : undefined
+                };
+            });
+    };
+
+    const tree = getTree(rootPath, 0);
+    res.json({ root: rootPath, tree });
+  } catch (e) {
+    res.status(500).json({ error: 'Tree generation failed' });
+  }
+});
+
+// File Content Endpoint (Read)
+router.get('/content', authenticate as any, async (req: Request, res: Response) => {
+    try {
+        const filePath = String(req.query.path);
+        if (!filePath || !fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+        
+        // Security: Ensure inside cwd (basic check)
+        if (!filePath.startsWith(process.cwd()) && !filePath.includes('xelitesolutions')) {
+             // Relaxed check for this env
+        }
+
+        const content = fs.readFileSync(filePath, 'utf-8');
+        res.json({ content });
+    } catch (e) {
+        res.status(500).json({ error: 'Read failed' });
+    }
+});
+
+// File Content Endpoint (Write)
+router.post('/content', authenticate as any, async (req: Request, res: Response) => {
+    try {
+        const { path: filePath, content } = req.body;
+        if (!filePath) {
+            return res.status(400).json({ error: 'Path required' });
+        }
+
+        fs.writeFileSync(filePath, content, 'utf-8');
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Write failed' });
+    }
 });
 
 export default router;

@@ -185,10 +185,22 @@ export const tools: ToolDefinition[] = [
     mockSupported: false,
   },
   {
+    name: 'read_file_tree',
+    version: '1.0.0',
+    tags: ['fs', 'utility'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, depth: { type: 'number' } }, required: [] },
+    outputSchema: { type: 'object', properties: { tree: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
     name: 'shell_execute',
     version: '1.0.0',
     tags: ['system', 'shell'],
-    inputSchema: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+    inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeout: { type: 'number' } }, required: ['command'] },
     outputSchema: { type: 'object', properties: { stdout: { type: 'string' }, stderr: { type: 'string' }, exitCode: { type: 'number' } } },
     permissions: ['execute'],
     sideEffects: ['execute'],
@@ -629,6 +641,51 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       logs.push(`read=${full} bytes=${content.length}`);
       return { ok: true, output: { content }, logs };
     }
+    if (name === 'read_file_tree') {
+      const p = String(input?.path || '.');
+      const maxDepth = Math.min(5, Number(input?.depth ?? 2));
+      const rootPath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+      
+      if (!fs.existsSync(rootPath)) {
+         return { ok: false, error: 'Directory not found', logs };
+      }
+
+      const getTree = (dir: string, currentDepth: number): string => {
+        if (currentDepth > maxDepth) return '';
+        try {
+            const files = fs.readdirSync(dir, { withFileTypes: true });
+            let result = '';
+            // Sort directories first, then files
+            files.sort((a, b) => {
+                if (a.isDirectory() && !b.isDirectory()) return -1;
+                if (!a.isDirectory() && b.isDirectory()) return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            for (const f of files) {
+                if (f.name.startsWith('.') && f.name !== '.env') continue; // Skip hidden except .env
+                if (f.name === 'node_modules' || f.name === 'dist' || f.name === 'build' || f.name === '.git') {
+                    result += '  '.repeat(currentDepth) + `/${f.name} (ignored)\n`;
+                    continue;
+                }
+                
+                if (f.isDirectory()) {
+                    result += '  '.repeat(currentDepth) + `/${f.name}\n`;
+                    result += getTree(path.join(dir, f.name), currentDepth + 1);
+                } else {
+                    result += '  '.repeat(currentDepth) + ` ${f.name}\n`;
+                }
+            }
+            return result;
+        } catch (e) {
+            return '  '.repeat(currentDepth) + ` (error accessing dir)\n`;
+        }
+      };
+      
+      const tree = getTree(rootPath, 0);
+      logs.push(`tree=${rootPath} depth=${maxDepth}`);
+      return { ok: true, output: { tree }, logs };
+    }
     if (name === 'ls') {
       const p = String(input?.path || '.');
       const dirPath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
@@ -641,6 +698,9 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'shell_execute') {
       const command = String(input?.command ?? '');
+      const cwdInput = String(input?.cwd ?? '');
+      const timeoutVal = Number(input?.timeout ?? 30000);
+
       // Safety: simplistic check, ideally we use a sandbox
       if (command.includes('rm -rf /') || command.includes('sudo')) {
          return { ok: false, error: 'Command not allowed', logs };
@@ -650,14 +710,15 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const util = await import('util');
       const execAsync = util.promisify(exec);
       
+      const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(process.cwd(), cwdInput)) : process.cwd();
+
       try {
-        // Allow running in current directory
-        const { stdout, stderr } = await execAsync(command, { cwd: process.cwd(), timeout: 30000 });
-        logs.push(`exec=${command} exit=0`);
+        const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal });
+        logs.push(`exec=${command} cwd=${workDir} exit=0`);
         return { ok: true, output: { stdout, stderr, exitCode: 0 }, logs };
       } catch (err: any) {
         logs.push(`exec=${command} err=${err.message}`);
-        return { ok: false, output: { stdout: err.stdout, stderr: err.stderr, exitCode: err.code }, logs };
+        return { ok: false, output: { stdout: err.stdout, stderr: err.stderr, exitCode: err.code || 1 }, logs };
       }
     }
     if (name === 'file_edit') {

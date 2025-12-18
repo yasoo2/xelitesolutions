@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { API_URL as API, WS_URL as WS } from '../config';
 import ArtifactPreview from './ArtifactPreview';
 import CodeEditor from './CodeEditor';
+import GraphVisualizer from './GraphVisualizer';
 
-import { Terminal, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, GitBranch, Share2, Folder } from 'lucide-react';
+import Terminal from './Terminal';
+import { Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, GitBranch, Share2, Folder, Trash2, User, Database } from 'lucide-react';
 
-export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; }) {
+export default function RightPanel({ active, sessionId, previewData, steps = [], onTabChange, initialTerminalState, initialBrowserState }: { active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES'; sessionId?: string; previewData?: { content: string; language: string; } | null; steps?: any[]; onTabChange?: (tab: any) => void; initialTerminalState?: string; initialBrowserState?: any; }) {
   const [artifacts, setArtifacts] = useState<Array<{ name: string; href: string }>>([]);
   const [browser, setBrowser] = useState<{ href: string; title?: string } | null>(null);
   const [summary, setSummary] = useState<string>('');
@@ -16,6 +18,14 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   const [analytics, setAnalytics] = useState<any>(null);
   const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
   const [isGraphLoading, setIsGraphLoading] = useState(false);
+  
+  // File Explorer State
+  const [fileTree, setFileTree] = useState<any[]>([]);
+  const [selectedFile, setSelectedFile] = useState<{ path: string; name: string; content: string } | null>(null);
+  const [expandedDirs, setExpandedDirs] = useState<Record<string, boolean>>({});
+  const [isFileLoading, setIsFileLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editorContent, setEditorContent] = useState('');
 
   // Initialize state from props
   useEffect(() => {
@@ -56,6 +66,25 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
       .catch(err => console.error('Failed to load assets', err));
     }
   }, [active, sessionId]);
+
+  // Fetch graph data when GRAPH tab is active
+  useEffect(() => {
+    if (active === 'GRAPH') {
+      setIsGraphLoading(true);
+      fetch(`${API}/project/graph`, {
+        headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        setGraphData(data);
+        setIsGraphLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load graph', err);
+        setIsGraphLoading(false);
+      });
+    }
+  }, [active]);
 
   // Sync content when previewData changes
   useEffect(() => {
@@ -157,7 +186,102 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
         setIsGraphLoading(false);
       });
     }
+
+    if (active === 'FILES') {
+      setIsFileLoading(true);
+      fetch(`${API}/project/tree?depth=4`, {
+        headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
+      })
+      .then(res => res.json())
+      .then(data => {
+         setFileTree(data.tree || []);
+         setIsFileLoading(false);
+      })
+      .catch(() => setIsFileLoading(false));
+    }
   }, [active, sessionId]);
+
+  const loadFileContent = async (path: string, name: string) => {
+      try {
+          const res = await fetch(`${API}/project/content?path=${encodeURIComponent(path)}`, {
+             headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
+          });
+          const data = await res.json();
+          setSelectedFile({ path, name, content: data.content });
+          setEditorContent(data.content);
+      } catch (e) {
+          console.error(e);
+      }
+  };
+
+  const saveFile = async () => {
+      if (!selectedFile) return;
+      setIsSaving(true);
+      try {
+          await fetch(`${API}/project/content`, {
+              method: 'POST',
+              headers: { 
+                  'Content-Type': 'application/json',
+                  Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' 
+              },
+              body: JSON.stringify({ path: selectedFile.path, content: editorContent })
+          });
+          // Update local state
+          setSelectedFile(prev => prev ? { ...prev, content: editorContent } : null);
+          alert('File saved successfully!');
+      } catch (e) {
+          alert('Failed to save file');
+      } finally {
+          setIsSaving(false);
+      }
+  };
+
+  // Helper to render tree
+  const renderTree = (nodes: any[], level = 0) => {
+      return nodes.map((node, i) => {
+          const isExpanded = expandedDirs[node.path];
+          const isSelected = selectedFile?.path === node.path;
+          
+          return (
+              <div key={node.path + i}>
+                  <div 
+                    className={`tree-item ${isSelected ? 'selected' : ''}`}
+                    style={{ 
+                        paddingLeft: level * 16 + 8, 
+                        paddingRight: 8,
+                        paddingTop: 4, 
+                        paddingBottom: 4,
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 6,
+                        cursor: 'pointer',
+                        background: isSelected ? 'var(--bg-active)' : 'transparent',
+                        color: isSelected ? 'var(--accent-primary)' : 'inherit',
+                        fontSize: 13
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (node.type === 'directory') {
+                            setExpandedDirs(prev => ({ ...prev, [node.path]: !prev[node.path] }));
+                        } else {
+                            loadFileContent(node.path, node.name);
+                        }
+                    }}
+                  >
+                      {node.type === 'directory' ? (
+                          <span style={{ opacity: 0.7 }}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
+                      ) : <span style={{ width: 14 }} />}
+                      
+                      {node.type === 'directory' ? <Folder size={14} color="#fbbf24" /> : <FileText size={14} color="#60a5fa" />}
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.name}</span>
+                  </div>
+                  {node.type === 'directory' && isExpanded && node.children && (
+                      <div>{renderTree(node.children, level + 1)}</div>
+                  )}
+              </div>
+          );
+      });
+  };
 
   async function refreshSummary() {
     if (!sessionId) return;
@@ -244,6 +368,78 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
     );
   }
 
+  if (active === 'FILES') {
+    return (
+      <div className="panel-content" style={{ padding: 0, display: 'flex', height: '100%', overflow: 'hidden' }}>
+        <div style={{ width: 250, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)' }}>
+          <div style={{ padding: 12, borderBottom: '1px solid var(--border-color)', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Explorer</span>
+            <button 
+              onClick={() => {
+                setIsFileLoading(true);
+                fetch(`${API}/project/tree?depth=4`, {
+                  headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '' }
+                })
+                .then(res => res.json())
+                .then(data => {
+                  setFileTree(data.tree || []);
+                  setIsFileLoading(false);
+                });
+              }}
+              className="btn-icon"
+              style={{ padding: 4 }}
+            >
+              <Activity size={14} />
+            </button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+            {isFileLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 16 }}><Loader2 className="spin" /></div>
+            ) : (
+              renderTree(fileTree)
+            )}
+          </div>
+        </div>
+        
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
+          {selectedFile ? (
+            <>
+              <div style={{ height: 40, borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', background: 'var(--bg-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <FileText size={14} style={{ color: 'var(--accent-primary)' }} />
+                  <span style={{ fontWeight: 500 }}>{selectedFile.name}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', opacity: 0.7 }}>{selectedFile.path}</span>
+                </div>
+                <button 
+                  onClick={saveFile}
+                  disabled={isSaving}
+                  className="btn"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', fontSize: 12 }}
+                >
+                  {isSaving ? <Loader2 size={12} className="spin" /> : <CheckCircle2 size={12} />}
+                  Save
+                </button>
+              </div>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <CodeEditor 
+                  code={editorContent}
+                  language={selectedFile.name.endsWith('ts') || selectedFile.name.endsWith('tsx') ? 'typescript' : 'javascript'}
+                  onChange={(val) => setEditorContent(val || '')}
+                  theme="vs-dark"
+                />
+              </div>
+            </>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+              <Folder size={48} style={{ marginBottom: 16, opacity: 0.2 }} />
+              <p>Select a file to edit</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (active === 'GRAPH') {
     if (isGraphLoading) return <div className="panel-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><Loader2 className="spin" /></div>;
     
@@ -251,9 +447,6 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
     // We calculate a simple circular layout if no library, or use a simple force simulation effect if we had d3.
     // For now, let's just do a random scatter or circular layout for simplicity in this turn.
     // Ideally we'd use a library, but I'll write a tiny force simulator.
-    
-    const width = 600;
-    const height = 600;
     
     // Pre-calculate positions (circular for now to be safe and fast)
     const nodes = graphData.nodes || [];
@@ -272,7 +465,7 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
             {nodes.length === 0 ? (
                 <div style={{ color: '#8b949e' }}>No graph data available</div>
             ) : (
-                <GraphVisualizer nodes={nodes} links={links} width={width} height={height} />
+                <GraphVisualizer nodes={nodes} links={links} />
             )}
          </div>
       </div>
@@ -280,34 +473,8 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   }
 
    if (active === 'TERMINAL') {
-     return (
-       <div className="panel-content" style={{ padding: 0, background: '#1e1e1e', color: '#d4d4d4', fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '8px 16px', background: '#252526', fontSize: 12, borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between' }}>
-             <span>TERMINAL</span>
-             <span>zsh</span>
-          </div>
-          <div style={{ flex: 1, padding: 16, overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.4 }}>
-             {termOutput}
-             {currentCmd && (
-                <div>
-                   <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span> {currentCmd}
-                   <span className="cursor-blink">█</span>
-                </div>
-             )}
-             {!currentCmd && (
-                <div>
-                   <span style={{ color: '#22c55e' }}>user@joe:~/workspace $</span>
-                   <span className="cursor-blink" style={{ opacity: 0.5 }}>_</span>
-                </div>
-             )}
-          </div>
-          <style>{`
-             .cursor-blink { animation: blink 1s step-end infinite; }
-             @keyframes blink { 50% { opacity: 0; } }
-          `}</style>
-       </div>
-     );
-   }
+    return <Terminal agentLogs={termOutput} />;
+  }
 
   if (active === 'BROWSER') {
     const url = browser?.href ? (API + browser.href).replace(/([^:]\/)\/+/g, '$1') : null;
@@ -443,7 +610,7 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
                             </div>
                             
                             <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 500, truncate: true, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {item.name}
                                 </div>
                                 <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 8 }}>
@@ -473,7 +640,7 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
   }
   if (active === 'STEPS') {
     const getIcon = (name: string) => {
-      if (name.includes('shell') || name.includes('exec')) return <Terminal size={14} />;
+      if (name.includes('shell') || name.includes('exec')) return <TerminalIcon size={14} />;
       if (name.includes('web') || name.includes('search')) return <Globe size={14} />;
       if (name.includes('file')) return <FileText size={14} />;
       return <Cpu size={14} />;
@@ -599,85 +766,208 @@ export default function RightPanel({ active, sessionId, previewData, steps = [],
     );
   }
 
+  const [memories, setMemories] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (active === 'MEMORY') {
+      refreshSummary();
+      loadMemories();
+    }
+  }, [active, sessionId]);
+
+  async function loadMemories() {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API}/memory`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (res.ok) {
+        const data = await res.json();
+        setMemories(data.memories || []);
+    }
+  }
+
+  async function deleteMemory(id: string) {
+    if (!confirm('Are you sure you want to forget this fact?')) return;
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/memory/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    loadMemories();
+  }
+
   if (active === 'MEMORY') {
-    return (
-      <div className="panel-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontWeight: 600 }}>Session Memory</span>
-          <button className="btn btn-yellow" style={{ fontSize: 12 }} onClick={autoSummarize}>Auto Summarize</button>
-        </div>
-        
-        <div className="card">
-          <textarea 
-            rows={12} 
-            value={summary} 
-            onChange={e=>setSummary(e.target.value)} 
-            placeholder="No summary available..." 
-            style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', resize: 'vertical', outline: 'none' }} 
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" onClick={refreshSummary}>Reload</button>
-          <button className="btn" onClick={summarize}>Save Changes</button>
-        </div>
-      </div>
-    );
+    return <MemoryPanel sessionId={sessionId} />;
   }
 
   return null;
 }
 
-function GraphVisualizer({ nodes, links, width, height }: { nodes: any[], links: any[], width: number, height: number }) {
-  // Simple force simulation logic (simplified)
-  // We'll just render them in a circle for now to guarantee they show up without complex physics logic in this turn
-  
-  const radius = Math.min(width, height) / 2 - 50;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  
-  const positionedNodes = nodes.map((node, i) => {
-    const angle = (i / nodes.length) * 2 * Math.PI;
-    return {
-      ...node,
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle)
-    };
-  });
+function MemoryPanel({ sessionId }: { sessionId?: string }) {
+    const [data, setData] = useState<{
+        systemPrompt: string;
+        summary: string;
+        recentMessages: any[];
+        memories: any[];
+    } | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [summaryEdit, setSummaryEdit] = useState('');
+    const [isEditingSummary, setIsEditingSummary] = useState(false);
+    const [showSystemPrompt, setShowSystemPrompt] = useState(false);
 
-  return (
-    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ background: '#0d1117' }}>
-       {/* Links */}
-       {links.map((link, i) => {
-          const source = positionedNodes.find(n => n.id === link.source);
-          const target = positionedNodes.find(n => n.id === link.target);
-          if (!source || !target) return null;
-          return (
-             <line 
-                key={i} 
-                x1={source.x} y1={source.y} 
-                x2={target.x} y2={target.y} 
-                stroke="#30363d" 
-                strokeWidth={1} 
-                opacity={0.5}
-             />
-          );
-       })}
-       
-       {/* Nodes */}
-       {positionedNodes.map((node, i) => (
-          <g key={node.id} transform={`translate(${node.x},${node.y})`}>
-             <circle r={5} fill={node.type === 'directory' ? '#d29922' : '#58a6ff'} />
-             <text 
-                x={8} y={4} 
-                fill="#8b949e" 
-                fontSize={10} 
-                style={{ pointerEvents: 'none' }}
-             >
-                {node.name}
-             </text>
-             <title>{node.id}</title>
-          </g>
-       ))}
-    </svg>
-  );
+    const loadContext = async () => {
+        if (!sessionId) return;
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API}/sessions/${sessionId}/context`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
+            if (res.ok) {
+                const json = await res.json();
+                setData(json);
+                setSummaryEdit(json.summary || '');
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadContext();
+    }, [sessionId]);
+
+    const saveSummary = async () => {
+        if (!sessionId) return;
+        const token = localStorage.getItem('token');
+        await fetch(`${API}/sessions/${sessionId}/summarize`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+            body: JSON.stringify({ content: summaryEdit })
+        });
+        setIsEditingSummary(false);
+        loadContext();
+    };
+
+    const deleteMemory = async (id: string) => {
+        if (!confirm('Are you sure?')) return;
+        const token = localStorage.getItem('token');
+        await fetch(`${API}/memory/${id}`, {
+            method: 'DELETE',
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        loadContext();
+    };
+
+    if (loading && !data) return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>;
+    if (!data) return <div className="p-4 text-[var(--text-muted)]">No context loaded</div>;
+
+    return (
+        <div className="flex flex-col h-full bg-[var(--bg-primary)] overflow-y-auto custom-scrollbar">
+            {/* System Prompt Section */}
+            <div className="border-b border-[var(--border-color)]">
+                <button 
+                    onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-[var(--bg-secondary)] transition-colors"
+                >
+                    <div className="flex items-center gap-2 font-semibold">
+                        <Cpu size={16} className="text-[var(--accent-primary)]" />
+                        System Instructions
+                    </div>
+                    {showSystemPrompt ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {showSystemPrompt && (
+                    <div className="p-4 bg-[var(--bg-secondary)] border-t border-[var(--border-color)]">
+                        <pre className="text-xs whitespace-pre-wrap font-mono text-[var(--text-secondary)]">
+                            {data.systemPrompt}
+                        </pre>
+                    </div>
+                )}
+            </div>
+
+            {/* Session Summary */}
+            <div className="p-4 border-b border-[var(--border-color)]">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 font-semibold">
+                        <MessageSquare size={16} className="text-yellow-500" />
+                        Session Summary
+                    </div>
+                    <button 
+                        onClick={() => isEditingSummary ? saveSummary() : setIsEditingSummary(true)}
+                        className="text-xs px-2 py-1 rounded bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)] border border-[var(--border-color)]"
+                    >
+                        {isEditingSummary ? 'Save' : 'Edit'}
+                    </button>
+                </div>
+                {isEditingSummary ? (
+                    <textarea 
+                        value={summaryEdit}
+                        onChange={e => setSummaryEdit(e.target.value)}
+                        className="w-full h-32 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded p-2 text-sm focus:outline-none focus:border-[var(--accent-primary)]"
+                    />
+                ) : (
+                    <div className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                        {data.summary || <span className="italic opacity-50">No summary generated yet.</span>}
+                    </div>
+                )}
+            </div>
+
+            {/* Recent Context (Short Term) */}
+            <div className="p-4 border-b border-[var(--border-color)]">
+                <div className="flex items-center gap-2 font-semibold mb-3">
+                    <Activity size={16} className="text-green-500" />
+                    Short-term Context (Last 10)
+                </div>
+                <div className="space-y-3">
+                    {data.recentMessages.map((msg, i) => (
+                        <div key={i} className={`flex gap-3 ${msg.role === 'assistant' ? 'flex-row-reverse' : ''}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                                msg.role === 'user' ? 'bg-blue-600' : 'bg-purple-600'
+                            }`}>
+                                {msg.role === 'user' ? <User size={12} /> : <Cpu size={12} />}
+                            </div>
+                            <div className={`flex-1 text-xs p-2 rounded ${
+                                msg.role === 'user' ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-tertiary)]'
+                            }`}>
+                                <div className="font-semibold mb-1 opacity-70">{msg.role.toUpperCase()}</div>
+                                <div className="whitespace-pre-wrap line-clamp-4 hover:line-clamp-none transition-all cursor-pointer">
+                                    {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Long Term Facts */}
+            <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 font-semibold">
+                        <Database size={16} className="text-blue-500" />
+                        Learned Facts
+                    </div>
+                    <span className="text-xs text-[var(--text-muted)]">{data.memories.length} facts</span>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                    {data.memories.map(m => (
+                        <div key={m._id} className="p-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded group relative">
+                            <div className="text-xs font-bold text-[var(--accent-primary)] uppercase mb-1">{m.key}</div>
+                            <div className="text-sm text-[var(--text-secondary)]">{m.value}</div>
+                            <button 
+                                onClick={() => deleteMemory(m._id)}
+                                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 text-red-500 rounded transition-all"
+                            >
+                                <Trash2 size={12} />
+                            </button>
+                        </div>
+                    ))}
+                    {data.memories.length === 0 && (
+                        <div className="text-center py-8 text-[var(--text-muted)] italic text-sm border border-dashed border-[var(--border-color)] rounded">
+                            No facts learned yet.
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 }

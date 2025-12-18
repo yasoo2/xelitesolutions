@@ -13,7 +13,7 @@ export default function Joe() {
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH'>('PREVIEW');
+  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES'>('PREVIEW');
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -399,11 +399,13 @@ export default function Joe() {
           <div className="tabs">
             <button className={`tab ${tab==='STEPS'?'active':''}`} onClick={()=>setTab('STEPS')}>المعالج</button>
             <button className={`tab ${tab==='TERMINAL'?'active':''}`} onClick={()=>setTab('TERMINAL')}>تيرمنال</button>
+            <button className={`tab ${tab==='FILES'?'active':''}`} onClick={()=>setTab('FILES')}>المشروع</button>
             <button className={`tab ${tab==='PREVIEW'?'active':''}`} onClick={()=>setTab('PREVIEW')}>معاينة</button>
             <button className={`tab ${tab==='BROWSER'?'active':''}`} onClick={()=>setTab('BROWSER')}>متصفح</button>
-            <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>ملفات</button>
+            <button className={`tab ${tab==='ARTIFACTS'?'active':''}`} onClick={()=>setTab('ARTIFACTS')}>مخرجات</button>
             <button className={`tab ${tab==='MEMORY'?'active':''}`} onClick={()=>setTab('MEMORY')}>ذاكرة</button>
-            <button className={`tab ${tab==='ANALYTICS'?'active':''}`} onClick={()=>setTab('ANALYTICS')}>Analytics</button>
+            <button className={`tab ${tab==='ANALYTICS'?'active':''}`} onClick={()=>setTab('ANALYTICS')}>تحليل</button>
+            <button className={`tab ${tab==='GRAPH'?'active':''}`} onClick={()=>setTab('GRAPH')}>خريطة</button>
             <button className="tab-icon" onClick={() => setShowRightPanel(false)} title="إخفاء اللوحة">
               <ChevronRight size={16} />
             </button>

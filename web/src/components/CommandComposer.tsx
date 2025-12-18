@@ -37,7 +37,9 @@ import {
   Send,
   Copy,
   RotateCcw,
-  Search
+  Search,
+  User,
+  Sparkles
 } from 'lucide-react';
 
 // ... existing code ...
@@ -47,12 +49,17 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
   
   return (
     <div className={`chat-bubble-wrapper ${isUser ? 'user' : 'ai'}`}>
+      {!isUser && (
+        <div className="chat-avatar ai">
+          <Sparkles size={18} />
+        </div>
+      )}
       <div className="chat-bubble">
         <div className="chat-bubble-header">
           <span className="chat-bubble-sender">{isUser ? t('you', 'You') : 'JOE AI'}</span>
           {!isUser && (
             <div className="chat-bubble-actions">
-              <button className="chat-action-btn" title={t('copy', 'Copy')}>
+              <button className="chat-action-btn" title={t('copy', 'Copy')} onClick={() => navigator.clipboard.writeText(event.data.text || event.data)}>
                 <Copy size={14} />
               </button>
               <button className="chat-action-btn" title={t('regenerate', 'Regenerate')}>
@@ -76,7 +83,7 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
                        {...props}
                      />
                    ) : (
-                     <code className={className} {...props}>
+                     <code className={className} {...props} style={!inline ? { display: 'block', padding: '10px', background: '#1e1e1e', borderRadius: '4px', overflowX: 'auto' } : { background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '3px' }}>
                        {children}
                      </code>
                    );
@@ -88,6 +95,11 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
           )}
         </div>
       </div>
+      {isUser && (
+        <div className="chat-avatar user">
+          <User size={18} />
+        </div>
+      )}
     </div>
   );
 }
