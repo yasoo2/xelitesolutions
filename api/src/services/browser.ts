@@ -47,12 +47,14 @@ class BrowserService {
             console.warn('Puppeteer executablePath() failed:', e);
         }
 
-        // 2. Search in common cache locations
+        // 2. Search in common cache locations and local .chrome-bin
         const searchPaths = [
+            path.join(process.cwd(), '.chrome-bin'),           // Explicit local install
+            path.join(process.cwd(), 'api', '.chrome-bin'),    // If running from root
             path.join(process.cwd(), '.cache', 'puppeteer'),
             path.join(process.cwd(), 'api', '.cache', 'puppeteer'),
             path.join(__dirname, '../../.cache', 'puppeteer'),
-            path.join(__dirname, '../../../.cache', 'puppeteer'), // if running from dist/services
+            path.join(__dirname, '../../../.cache', 'puppeteer'),
         ];
 
         console.log('Searching for Chrome in:', searchPaths);
