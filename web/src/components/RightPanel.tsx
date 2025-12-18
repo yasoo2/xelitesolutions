@@ -1118,7 +1118,9 @@ function KnowledgePanel({ sessionId }: { sessionId?: string }) {
                              </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-2">
-                                {documents.map((doc) => (
+                                {documents.map((doc) => {
+                                    if (!doc) return null;
+                                    return (
                                     <div key={doc.id} className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded group">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded bg-[var(--bg-tertiary)] flex items-center justify-center text-[var(--text-muted)]">
@@ -1137,7 +1139,8 @@ function KnowledgePanel({ sessionId }: { sessionId?: string }) {
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

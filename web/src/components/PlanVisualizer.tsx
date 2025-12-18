@@ -38,7 +38,11 @@ const PlanVisualizer: React.FC<PlanVisualizerProps> = ({ messages }) => {
     });
     y += 100;
 
+    let lastNodeId = 'start';
+
     messages.forEach((msg, idx) => {
+        if (!msg) return; // Safeguard
+
         if (msg.role === 'user') {
             const id = `msg-${idx}`;
             newNodes.push({
@@ -47,7 +51,8 @@ const PlanVisualizer: React.FC<PlanVisualizerProps> = ({ messages }) => {
                 position: { x, y },
                 style: { background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', width: 200, fontSize: 12 }
             });
-            newEdges.push({ id: `e-${idx}`, source: idx === 0 ? 'start' : `msg-${idx-1}`, target: id, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed } });
+            newEdges.push({ id: `e-${idx}`, source: lastNodeId, target: id, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed } });
+            lastNodeId = id;
             y += 100;
         } else if (msg.role === 'assistant') {
             // Try to parse thoughts/tools
@@ -63,7 +68,8 @@ const PlanVisualizer: React.FC<PlanVisualizerProps> = ({ messages }) => {
                     position: { x, y },
                     style: { background: 'var(--bg-secondary)', border: '1px dashed var(--accent-secondary)', color: 'var(--text-secondary)', width: 200, fontSize: 12 }
                 });
-                newEdges.push({ id: `e-t-${idx}`, source: idx === 0 ? 'start' : `msg-${idx-1}`, target: id, type: 'smoothstep' });
+                newEdges.push({ id: `e-t-${idx}`, source: lastNodeId, target: id, type: 'smoothstep' });
+                lastNodeId = id;
                 y += 100;
             }
 
@@ -77,7 +83,13 @@ const PlanVisualizer: React.FC<PlanVisualizerProps> = ({ messages }) => {
                     style: { background: '#1e1e1e', border: '1px solid var(--accent-primary)', color: '#fff', width: 180, fontSize: 11, borderRadius: 6 }
                 });
                 // Connect from thought or previous
-                newEdges.push({ id: `e-tool-${idx}-${tIdx}`, source: `thought-${idx}`, target: tId, animated: true, type: 'smoothstep' });
+                newEdges.push({ id: `e-tool-${idx}-${tIdx}`, source: lastNodeId, target: tId, animated: true, type: 'smoothstep' });
+                // We don't necessarily update lastNodeId for parallel tools, or we do? 
+                // Let's keep lastNodeId as the thought if multiple tools, or the tool if linear. 
+                // For simplicity, let's just branch out and keep lastNodeId as the thought for subsequent nodes unless we want a chain.
+                // But usually tools are followed by another message. 
+                // Let's update lastNodeId to the last tool for now, assuming linear flow roughly.
+                lastNodeId = tId;
                 y += 80;
             });
         }

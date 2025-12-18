@@ -350,8 +350,11 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           const msg = JSON.parse(evt.data);
           
           if (msg.type === 'approval_required') {
-            const { id, runId, risk, action } = msg.data;
-            setApproval({ id, runId, risk, action });
+            const data = msg.data || {};
+            const { id, runId, risk, action } = data;
+            if (id) {
+                setApproval({ id, runId, risk, action });
+            }
           }
 
           if (msg.type === 'step_started') {
