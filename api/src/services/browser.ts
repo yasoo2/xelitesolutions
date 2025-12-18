@@ -47,7 +47,7 @@ class BrowserService {
                     '--no-zygote',
                     '--single-process', 
                 ]
-            });
+            } as any);
             
             this.page = await this.browser.newPage();
             await this.page.setViewport({ width: 1280, height: 800 });
@@ -399,10 +399,11 @@ class BrowserService {
     }
 
     getStatus() {
+        const viewport = this.page?.viewport();
         return {
             active: !!this.browser,
             url: this.page?.url() || '',
-            title: '' // async, skip for sync status
+            viewport: viewport || { width: 1280, height: 800 }
         };
     }
 }
