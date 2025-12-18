@@ -13,12 +13,13 @@ import HealingPanel from './HealingPanel';
 import { DocumentationViewer } from './DocumentationViewer';
 import { ApiPlayground } from './ApiPlayground';
 import { CodeQuality } from './CodeQuality';
+import { AppsDashboard } from './AppsDashboard';
 import { 
   Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, 
   Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, 
   GitBranch, Share2, Folder, Trash2, User, Database, Workflow, Mic, Upload, 
   Search, Plus, List, Map, BookOpen, Package, Network, BarChart2, ShieldAlert, Server,
-  Book, Play, Zap
+  Book, Play, Zap, LayoutGrid, ArrowLeft
 } from 'lucide-react';
 
 import { LiveInteractionPanel } from './LiveInteractionPanel';
@@ -34,7 +35,7 @@ export default function RightPanel({
   messages = [], 
   onClose 
 }: { 
-  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE' | 'DATABASE' | 'SYSTEM' | 'NETWORK' | 'HEALING' | 'DOCS' | 'PLAYGROUND' | 'QUALITY'; 
+  active: 'LIVE' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'QA' | 'PREVIEW' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE' | 'DATABASE' | 'SYSTEM' | 'NETWORK' | 'HEALING' | 'DOCS' | 'PLAYGROUND' | 'QUALITY' | 'APPS'; 
   sessionId?: string; 
   previewData?: { content: string; language: string; } | null; 
   steps?: any[];  
@@ -245,26 +246,18 @@ export default function RightPanel({
 
   // TABS Configuration
   const TABS = [
+     { id: 'APPS', icon: LayoutGrid, label: 'Apps' },
      { id: 'TERMINAL', icon: TerminalIcon, label: 'Terminal' },
      { id: 'BROWSER', icon: Globe, label: 'Browser' },
      { id: 'FILES', icon: Folder, label: 'Files' },
      { id: 'PREVIEW', icon: Eye, label: 'Preview' },
-     { id: 'ARTIFACTS', icon: Package, label: 'Artifacts' },
-     { id: 'PLAN', icon: Map, label: 'Plan' },
-     { id: 'GRAPH', icon: Network, label: 'Graph' },
-     { id: 'ANALYTICS', icon: BarChart2, label: 'Analytics' },
-     { id: 'MEMORY', icon: Cpu, label: 'Memory' },
-     { id: 'KNOWLEDGE', icon: BookOpen, label: 'Knowledge' },
-     { id: 'DATABASE', icon: Database, label: 'Database' },
-     { id: 'SYSTEM', icon: Server, label: 'System' },
-     { id: 'NETWORK', icon: Activity, label: 'Network' },
-     { id: 'HEALING', icon: ShieldAlert, label: 'Healing' },
-     { id: 'DOCS', icon: Book, label: 'Docs' },
-     { id: 'PLAYGROUND', icon: Play, label: 'Playground' },
-     { id: 'QUALITY', icon: Zap, label: 'Quality' },
   ];
 
   const renderContent = () => {
+    if (active === 'APPS') {
+        return <AppsDashboard onAppSelect={(id) => onTabChange && onTabChange(id)} />;
+    }
+    
     if (active === 'ANALYTICS') {
         if (!analytics) return <div className="panel-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><Loader2 className="spin" /></div>;
         
@@ -706,19 +699,32 @@ export default function RightPanel({
   const handleResume = () => { console.log('Resume requested'); alert('Resume functionality coming soon!'); };
   const handleStop = () => { console.log('Stop requested'); alert('Stop functionality coming soon!'); };
 
+  const isAppActive = active !== 'APPS' && active !== 'TERMINAL' && active !== 'BROWSER' && active !== 'FILES' && active !== 'PREVIEW';
+
   return (
     <div className="flex flex-col h-full bg-[var(--bg-primary)] border-l border-[var(--border-color)]">
        {/* Header */}
        <div className="flex items-center gap-1 p-2 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] overflow-x-auto no-scrollbar" style={{ whiteSpace: 'nowrap' }}>
+          {isAppActive && (
+              <button
+                  onClick={() => onTabChange && onTabChange('APPS')}
+                  className="p-2 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] mr-2 flex items-center gap-2"
+                  title="Back to Apps"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+              >
+                  <ArrowLeft size={18} />
+              </button>
+          )}
+
           {TABS.map(tab => (
             <button
                key={tab.id}
                onClick={() => onTabChange && onTabChange(tab.id)}
-               className={`p-2 rounded-md transition-colors ${active === tab.id ? 'bg-[var(--bg-active)] text-[var(--accent-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+               className={`p-2 rounded-md transition-colors ${active === tab.id || (tab.id === 'APPS' && isAppActive) ? 'bg-[var(--bg-active)] text-[var(--accent-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
                title={tab.label}
                style={{ 
-                 background: active === tab.id ? 'var(--bg-active)' : 'transparent',
-                 color: active === tab.id ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                 background: active === tab.id || (tab.id === 'APPS' && isAppActive) ? 'var(--bg-active)' : 'transparent',
+                 color: active === tab.id || (tab.id === 'APPS' && isAppActive) ? 'var(--accent-primary)' : 'var(--text-secondary)',
                  border: 'none',
                  cursor: 'pointer',
                  display: 'inline-flex',
