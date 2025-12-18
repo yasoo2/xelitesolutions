@@ -22,6 +22,7 @@ import systemRoutes from './routes/system';
 import healingRoutes, { logError } from './routes/healing';
 import docsRoutes from './routes/docs';
 import analyticsRoutes from './routes/analytics';
+import testRoutes from './routes/tests';
 import { authenticate } from './middleware/auth';
 import { broadcast } from './ws';
 import http from 'http';
@@ -96,6 +97,7 @@ async function main() {
   app.use('/healing', healingRoutes);
   app.use('/docs', docsRoutes);
   app.use('/analytics', analyticsRoutes);
+  app.use('/tests', testRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {

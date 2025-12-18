@@ -14,6 +14,7 @@ import { DocumentationViewer } from './DocumentationViewer';
 import { ApiPlayground } from './ApiPlayground';
 import { CodeQuality } from './CodeQuality';
 import { AppsDashboard } from './AppsDashboard';
+import { TestRunner } from './TestRunner';
 import { 
   Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, 
   Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, 
@@ -256,6 +257,10 @@ export default function RightPanel({
   const renderContent = () => {
     if (active === 'APPS') {
         return <AppsDashboard onAppSelect={(id) => onTabChange && onTabChange(id)} />;
+    }
+
+    if (active === 'TEST') {
+        return <TestRunner />;
     }
     
     if (active === 'ANALYTICS') {
