@@ -15,6 +15,7 @@ import { ApiPlayground } from './ApiPlayground';
 import { CodeQuality } from './CodeQuality';
 import { AppsDashboard } from './AppsDashboard';
 import { TestRunner } from './TestRunner';
+import { Browser } from './Browser';
 import { 
   Terminal as TerminalIcon, CheckCircle2, XCircle, Loader2, ChevronRight, ChevronDown, 
   Cpu, Globe, FileText, Eye, Code, BarChart, Activity, Clock, MessageSquare, 
@@ -416,29 +417,9 @@ export default function RightPanel({
     }
 
     if (active === 'BROWSER') {
-        const url = browser?.href ? (API + browser.href).replace(/([^:]\/)\/+/g, '$1') : null;
         return (
-          <div className="panel-content" style={{ padding: 0, display: 'flex', flexDirection: 'column', background: '#f8f9fa', height: '100%' }}>
-            <div style={{ padding: 8, background: '#e9ecef', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', gap: 8 }}>
-               <div style={{ display: 'flex', gap: 4 }}>
-                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }} />
-                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }} />
-                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }} />
-               </div>
-               <div style={{ flex: 1, background: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 12, color: '#666', border: '1px solid #ced4da', textAlign: 'center' }}>
-                 {browser?.title || 'about:blank'}
-               </div>
-            </div>
-            <div className="card" style={{ flex: 1, margin: 0, padding: 0, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
-              {browser ? (
-                url ? <img src={url} alt="Latest snapshot" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <div style={{ color: 'var(--text-muted)' }}>Loading...</div>
-              ) : (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-                   <Globe size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
-                   <div>No active browser session</div>
-                </div>
-              )}
-            </div>
+          <div className="panel-content" style={{ padding: 0, height: '100%', overflow: 'hidden' }}>
+            <Browser />
           </div>
         );
     }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Database, Server, Activity, ShieldAlert, Book, Play, Zap, 
-  Cpu, BookOpen, Map, Network, Package, BarChart2, LayoutGrid, Beaker,
+  Cpu, BookOpen, Map, Network, Package, BarChart2, LayoutGrid, Beaker, Globe,
   LucideIcon
 } from 'lucide-react';
 
@@ -34,6 +34,7 @@ const APPS: AppItem[] = [
   { id: 'QUALITY', label: 'Code Quality', icon: Zap, description: 'Complexity and health analytics', category: 'Dev', color: 'text-rose-400' },
   { id: 'ANALYTICS', label: 'Analytics', icon: BarChart2, description: 'Session stats and usage', category: 'Dev', color: 'text-sky-400' },
   { id: 'TEST', label: 'Test Runner', icon: Beaker, description: 'Run and manage tests', category: 'Dev', color: 'text-lime-400' },
+  { id: 'BROWSER', label: 'Cloud Browser', icon: Globe, description: 'Interactive browser with devtools', category: 'Dev', color: 'text-amber-400' },
 ];
 
 export function AppsDashboard({ onAppSelect }: { onAppSelect: (id: string) => void }) {
