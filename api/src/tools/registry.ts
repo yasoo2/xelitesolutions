@@ -280,6 +280,18 @@ export const tools: ToolDefinition[] = [
     mockSupported: false,
   },
   {
+    name: 'browser_open',
+    version: '1.0.0',
+    tags: ['browser', 'action'],
+    inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+    outputSchema: { type: 'object', properties: { message: { type: 'string' }, title: { type: 'string' } } },
+    permissions: ['read', 'internet'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 30,
+    auditFields: ['url'],
+    mockSupported: false,
+  },
+  {
     name: 'deep_research',
     version: '1.0.0',
     tags: ['ai', 'research', 'agent'],
@@ -559,6 +571,17 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       }
       
       return { ok: true, output: { href }, logs, artifacts: href ? [{ name: path.basename(full), href }] : [] };
+    }
+    if (name === 'browser_open') {
+      const url = String(input?.url ?? '');
+      try {
+          await browserService.launch();
+          const navResult = await browserService.navigate(url);
+          logs.push(`browser.opened=${url} title=${navResult.title}`);
+          return { ok: true, output: { message: `Browser opened to ${url}`, title: navResult.title }, logs };
+      } catch (err: any) {
+          return { ok: false, error: err.message, logs };
+      }
     }
     if (name === 'browser_snapshot') {
       const url = String(input?.url ?? '');
