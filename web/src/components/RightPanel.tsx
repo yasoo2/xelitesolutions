@@ -12,6 +12,8 @@ import {
   Search, Plus, List, Map, BookOpen, Package, Network, BarChart2 
 } from 'lucide-react';
 
+import { LiveInteractionPanel } from './LiveInteractionPanel';
+
 export default function RightPanel({ 
   active, 
   sessionId, 
@@ -132,9 +134,6 @@ export default function RightPanel({
        else if (last.data.name === 'browser_snapshot' || last.data.name === 'web_search') {
           if (onTabChange && active !== 'BROWSER') onTabChange('BROWSER');
        }
-       else if (onTabChange && active !== 'STEPS' && !['TERMINAL', 'BROWSER'].includes(active)) {
-          onTabChange('STEPS');
-       }
     }
     else if (last.type === 'step_done') {
       if (last.data.name === 'shell_execute' || last.data.name.includes('exec')) {
@@ -222,6 +221,59 @@ export default function RightPanel({
       }
   };
 
+  // Auto-switch tabs based on steps (Smart Viewport)
+  useEffect(() => {
+    if (!steps || steps.length === 0) return;
+    const last = steps[steps.length - 1];
+    
+    if (last.type === 'step_started') {
+       if (last.data.name === 'shell_execute' || last.data.name.includes('exec')) {
+          if (onTabChange && active !== 'TERMINAL') onTabChange('TERMINAL');
+          setCurrentCmd(last.data.plan?.input?.command || '');
+       }
+       else if (last.data.name === 'browser_snapshot' || last.data.name === 'web_search') {
+          if (onTabChange && active !== 'BROWSER') onTabChange('BROWSER');
+       }
+       else if (last.data.name === 'knowledge_search' || last.data.name === 'knowledge_add') {
+          if (onTabChange && active !== 'KNOWLEDGE') onTabChange('KNOWLEDGE');
+       }
+       else if (last.data.name === 'read_file' || last.data.name === 'edit_file') {
+          if (onTabChange && active !== 'FILES') onTabChange('FILES');
+       }
+    }
+    else if (last.type === 'step_done') {
+      if (last.data.name === 'shell_execute' || last.data.name.includes('exec')) {
+         const out = last.data.result?.output;
+         const txt = `\nuser@joe:~/workspace $ ${currentCmd}\n` + 
+                     (out?.stdout ? out.stdout : '') + 
+                     (out?.stderr ? `\nError:\n${out.stderr}` : '') + 
+                     (out?.error ? `\nError: ${out.error}` : '');
+         setTermOutput(prev => prev + txt);
+         setCurrentCmd('');
+      }
+      else if (last.data.name === 'read_file') {
+         const path = last.data.plan?.input?.file_path || last.data.plan?.input?.path;
+         // Some tools return content in output object, some directly string
+         const output = last.data.result?.output;
+         const content = typeof output === 'string' ? output : output?.content;
+         
+         if (path && content) {
+            const name = path.split('/').pop() || path;
+            setSelectedFile({ path, name, content });
+            setEditorContent(content);
+            if (onTabChange && active !== 'FILES') onTabChange('FILES');
+         }
+      }
+      else if (last.data.name === 'edit_file') {
+         const path = last.data.plan?.input?.file_path || last.data.plan?.input?.path;
+         if (path) {
+            loadFileContent(path, path.split('/').pop() || path);
+            if (onTabChange && active !== 'FILES') onTabChange('FILES');
+         }
+      }
+    }
+  }, [steps]);
+
   const saveFile = async () => {
       if (!selectedFile) return;
       setIsSaving(true);
@@ -299,7 +351,6 @@ export default function RightPanel({
 
   // TABS Configuration
   const TABS = [
-     { id: 'STEPS', icon: List, label: 'Steps' },
      { id: 'TERMINAL', icon: TerminalIcon, label: 'Terminal' },
      { id: 'BROWSER', icon: Globe, label: 'Browser' },
      { id: 'FILES', icon: Folder, label: 'Files' },
@@ -751,6 +802,16 @@ export default function RightPanel({
     return null;
   };
 
+  const currentStatus = steps.length > 0 
+      ? (steps[steps.length - 1].status === 'running' || steps[steps.length - 1].type === 'step_started' ? 'running' : 
+         steps[steps.length - 1].status === 'failed' ? 'error' : 'idle')
+      : 'idle';
+
+  // Live Panel Handlers (Placeholders for now)
+  const handlePause = () => { console.log('Pause requested'); alert('Pause functionality coming soon!'); };
+  const handleResume = () => { console.log('Resume requested'); alert('Resume functionality coming soon!'); };
+  const handleStop = () => { console.log('Stop requested'); alert('Stop functionality coming soon!'); };
+
   return (
     <div className="flex flex-col h-full bg-[var(--bg-primary)] border-l border-[var(--border-color)]">
        {/* Header */}
@@ -789,8 +850,23 @@ export default function RightPanel({
        </div>
 
        {/* Content */}
-       <div className="flex-1 overflow-hidden relative">
+       <div className="flex-1 overflow-hidden relative" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
          {renderContent()}
+       </div>
+
+       {/* Spacer removed as flex-grow on content handles it, but ensuring LivePanel is at bottom */}
+       
+       {/* Live Panel - Flex Item */}
+       <div style={{ marginTop: 'auto' }}>
+           <LiveInteractionPanel 
+              steps={steps}
+              logs={termOutput.split('\n')}
+              messages={messages || []}
+              status={currentStatus}
+              onPause={handlePause}
+              onResume={handleResume}
+              onStop={handleStop}
+           />
        </div>
     </div>
   );
