@@ -4,9 +4,9 @@ import {
     Monitor, Code, Eye, Play, MousePointer2,
     X, Terminal, Activity, Sparkles, ChevronUp, ChevronDown,
     ShieldCheck, AlertTriangle, Smartphone, Tablet, Maximize2, Minimize2,
-    Search, MoreVertical, Star, PanelBottom, PanelTop
+    Search, MoreVertical, Star, PanelBottom, PanelTop, Keyboard
 } from 'lucide-react';
-import { API_URL } from '../config';
+import { API_URL, WS_URL } from '../config';
 
 interface LogEntry {
     type: 'log' | 'error' | 'warn' | 'info';
@@ -46,14 +46,11 @@ export function Browser() {
     const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
     const [devToolsTab, setDevToolsTab] = useState<'console' | 'network' | 'script'>('console');
     const [showAiMenu, setShowAiMenu] = useState(false);
-    const [isFullscreen, setIsFullscreen] = useState(false);
     const [viewport, setViewport] = useState({ width: 1280, height: 800 });
     const [clickPos, setClickPos] = useState<{x: number, y: number} | null>(null);
 
-    // Ghost Cursor & Typing State
-    const [ghostCursor, setGhostCursor] = useState<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
-    const [typingText, setTypingText] = useState<string | null>(null);
-    const [typingIndex, setTypingIndex] = useState(0);
+    // Ghost Cursor & Typing State (Real-time from Backend)
+    const [ghostCursor, setGhostCursor] = useState<{ x: number, y: number, visible: boolean, type?: 'move' | 'click' | 'type', text?: string }>({ x: 0, y: 0, visible: false });
     
     // Data State
     const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -70,32 +67,69 @@ export function Browser() {
 
     const imageRef = useRef<HTMLImageElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const wsRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
         checkStatus();
-        const interval = setInterval(refreshData, 200); // Faster polling for live feel
-        return () => clearInterval(interval);
+        const interval = setInterval(refreshData, 200); // Poll for screenshot frames (MJPEG style fallback)
+        
+        // WebSocket Connection
+        connectWs();
+
+        return () => {
+            clearInterval(interval);
+            if (wsRef.current) wsRef.current.close();
+        };
     }, []);
 
-    // Typing Animation Effect
-    useEffect(() => {
-        if (typingText !== null) {
-            if (typingIndex < typingText.length) {
-                const timeout = setTimeout(() => {
-                    setUrl(typingText.slice(0, typingIndex + 1));
-                    setTypingIndex(prev => prev + 1);
-                }, 50); // Typing speed
-                return () => clearTimeout(timeout);
-            } else {
-                // Typing finished
-                const timeout = setTimeout(() => {
-                    setTypingText(null);
-                    setGhostCursor(prev => ({ ...prev, visible: false }));
-                }, 500);
-                return () => clearTimeout(timeout);
+    const connectWs = () => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+        const ws = new WebSocket(WS_URL);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+            console.log('Browser connected to WS');
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'browser:cursor') {
+                    // Update cursor position smoothly
+                    const { x, y, type, text } = msg.data;
+                    setGhostCursor(prev => ({
+                        ...prev,
+                        x: x !== undefined ? x : prev.x,
+                        y: y !== undefined ? y : prev.y,
+                        visible: true,
+                        type: type || 'move',
+                        text: text
+                    }));
+
+                    if (type === 'click') {
+                        setClickPos({ x, y });
+                        setTimeout(() => setClickPos(null), 500);
+                    }
+                } else if (msg.type === 'browser:nav') {
+                    // Update URL
+                    const { url, title } = msg.data;
+                    if (url) {
+                        setCurrentUrl(url);
+                        setUrl(url);
+                        setIsConnected(true);
+                    }
+                }
+            } catch (e) {
+                console.error('WS Error:', e);
             }
-        }
-    }, [typingText, typingIndex]);
+        };
+
+        ws.onclose = () => {
+            // Reconnect logic could go here
+            setTimeout(connectWs, 3000);
+        };
+    };
 
     const checkStatus = async () => {
         try {
@@ -106,29 +140,14 @@ export function Browser() {
             const data = await res.json();
             if (data.active) {
                 setIsConnected(true);
-                // If the URL changed externally (by AI), animate the typing
                 if (data.url && data.url !== currentUrl && data.url !== 'about:blank') {
-                    if (data.url !== url) {
-                         // Start typing animation
-                         setTypingIndex(0);
-                         setTypingText(data.url);
-                         
-                         // Move ghost cursor to input
-                         if (inputRef.current) {
-                             const rect = inputRef.current.getBoundingClientRect();
-                             setGhostCursor({ 
-                                 x: rect.x + rect.width / 2, 
-                                 y: rect.y + rect.height / 2, 
-                                 visible: true 
-                             });
-                         }
+                    setCurrentUrl(data.url);
+                    // Only update URL input if user isn't typing (not handled here, but simple check)
+                    if (document.activeElement !== inputRef.current) {
+                        setUrl(data.url);
                     }
                 }
-                setCurrentUrl(data.url);
                 if (data.viewport) setViewport(data.viewport);
-                // Only update URL directly if we are not animating
-                if (!url && !typingText) setUrl(data.url);
-                refreshData();
             }
         } catch (e) {
             console.error(e);
@@ -136,10 +155,8 @@ export function Browser() {
     };
 
     const refreshData = async () => {
-        if (!isConnected) {
-            await checkStatus();
-            return;
-        }
+        if (!isConnected) return;
+        
         const token = localStorage.getItem('token');
         const headers = (token ? { Authorization: `Bearer ${token}` } : {}) as Record<string, string>;
 
@@ -232,7 +249,6 @@ export function Browser() {
             const data = await handleAction('inspect', { x: finalX, y: finalY });
             if (data?.info) {
                 setInspectedElement(data.info);
-                // Modal will open automatically when inspectedElement is set
             }
         } else {
             await handleAction('click', { x: finalX, y: finalY });
@@ -360,30 +376,57 @@ export function Browser() {
 
             {/* Main Content Area */}
             <div className="flex-1 relative w-full overflow-hidden bg-zinc-200 flex flex-col">
-                {/* Ghost Cursor Overlay */}
+                {/* Live Ghost Cursor & Interaction Overlay */}
                 {ghostCursor.visible && (
                     <div 
-                        className="absolute w-4 h-4 pointer-events-none z-50 transition-all duration-300 ease-out"
+                        className="absolute z-50 pointer-events-none transition-all duration-100 ease-linear"
                         style={{ 
-                            left: ghostCursor.x, 
-                            top: ghostCursor.y,
+                            // Convert backend coordinates (viewport) to frontend % if imageRef is available
+                            // But for now we might need to map it. 
+                            // Assuming backend 1280x800 maps to 100% 100% of image container?
+                            // No, image is object-contain. We need to be careful.
+                            // Simplest is to assume image fills or use percentage if backend sends it.
+                            // Backend sends pixel coords. 
+                            // We need to scale them if the image is scaled.
+                            // Let's rely on simple scaling for now.
+                            left: (ghostCursor.x / viewport.width) * 100 + '%',
+                            top: (ghostCursor.y / viewport.height) * 100 + '%',
                             transform: 'translate(-50%, -50%)'
                         }}
                     >
                         <MousePointer2 size={24} className="text-black drop-shadow-md fill-white" />
+                        
+                        {/* Typing Bubble */}
+                        {ghostCursor.type === 'type' && ghostCursor.text && (
+                            <div className="absolute top-6 left-4 bg-blue-600 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap flex items-center gap-1 animate-in fade-in slide-in-from-left-2">
+                                <Keyboard size={10} />
+                                <span>Typing: {ghostCursor.text}</span>
+                            </div>
+                        )}
+                        
+                        {/* Action Label */}
+                        {ghostCursor.type === 'click' && (
+                             <div className="absolute top-6 left-4 bg-red-500 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap animate-pulse">
+                                Click
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {/* Browser Viewport */}
                 <div className="flex-1 relative bg-white flex items-center justify-center overflow-hidden">
                     {isConnected && image ? (
-                        <div className="w-full h-full relative group">
+                        <div className="w-full h-full relative group flex items-center justify-center bg-zinc-100">
+                            {/* We use contain to ensure aspect ratio is preserved, but this makes coordinate mapping tricky.
+                                Ideally we want the image to fill if possible or we need to calculate offsets.
+                                For a "Real Browser" feel, let's try to fill width.
+                            */}
                             <img 
                                 ref={imageRef}
                                 src={image} 
                                 alt="Browser Content"
                                 onClick={handleImageClick}
-                                className={`w-full h-full object-contain ${inspectMode ? 'cursor-crosshair' : 'cursor-default'}`}
+                                className={`max-w-full max-h-full shadow-lg ${inspectMode ? 'cursor-crosshair' : 'cursor-default'}`}
                             />
                             
                             {/* Inspect Indicator */}
@@ -395,11 +438,11 @@ export function Browser() {
                                 </div>
                             )}
 
-                            {/* Click Feedback */}
+                            {/* Click Feedback (Local User) */}
                             {clickPos && (
                                 <div 
                                     className="absolute w-4 h-4 rounded-full border-2 border-red-500 bg-red-500/30 animate-ping pointer-events-none"
-                                    style={{ left: clickPos.x - 8, top: clickPos.y - 8 }}
+                                    style={{ left: clickPos.x, top: clickPos.y }} // Local coords are relative to container
                                 />
                             )}
                         </div>
@@ -408,7 +451,7 @@ export function Browser() {
                             {isConnected ? (
                                 <>
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
-                                    <p className="text-zinc-500 font-medium">Loading video stream...</p>
+                                    <p className="text-zinc-500 font-medium">Connecting to browser session...</p>
                                 </>
                             ) : (
                                 <>
@@ -426,10 +469,10 @@ export function Browser() {
                 <div className="h-6 bg-zinc-900 border-t border-zinc-800 flex items-center px-3 text-[10px] text-zinc-500 gap-4 select-none shrink-0 z-20">
                     <div className="flex items-center gap-1.5">
                         <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-zinc-600'}`} />
-                        <span className="font-medium">{isConnected ? 'Remote Session Active' : 'Disconnected'}</span>
+                        <span className="font-medium">{isConnected ? 'Live Session' : 'Disconnected'}</span>
                     </div>
                     <div className="h-3 w-[1px] bg-zinc-700" />
-                    <div>Viewport: {viewport.width}x{viewport.height}</div>
+                    <div>{viewport.width}x{viewport.height}</div>
                     <div className="h-3 w-[1px] bg-zinc-700" />
                     <div className="flex-1 truncate text-zinc-600">
                         {currentUrl}
@@ -448,10 +491,9 @@ export function Browser() {
                     </button>
                 </div>
 
-                {/* DevTools Panel - Docked at Bottom */}
+                {/* DevTools Panel */}
                 {isDevToolsOpen && (
                     <div className="h-[350px] bg-zinc-900 border-t border-zinc-700 flex flex-col animate-in slide-in-from-bottom-10 duration-200 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] z-30 relative">
-                         {/* DevTools Header */}
                          <div className="flex items-center justify-between px-2 bg-zinc-800 border-b border-zinc-700 h-9">
                             <div className="flex items-center">
                                 {['console', 'network', 'script'].map((tab) => (
@@ -471,7 +513,6 @@ export function Browser() {
                             </button>
                         </div>
 
-                        {/* DevTools Content */}
                         <div className="flex-1 overflow-hidden bg-zinc-900 font-mono text-xs">
                             {/* Console Tab */}
                             {devToolsTab === 'console' && (

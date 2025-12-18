@@ -2,6 +2,7 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 import path from 'path';
 import fs from 'fs';
 import { glob } from 'glob';
+import { broadcast } from '../ws';
 
 interface LogEntry {
     type: 'log' | 'error' | 'warn' | 'info';
@@ -265,7 +266,13 @@ class BrowserService {
     async navigate(url: string) {
         if (!this.page) await this.launch();
         if (!url.startsWith('http')) url = 'https://' + url;
+        
+        broadcast({ type: 'browser:nav', data: { url } });
+        
         await this.page!.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        
+        broadcast({ type: 'browser:nav', data: { url: this.page!.url(), title: await this.page!.title() } });
+        
         return { title: await this.page!.title(), url: this.page!.url() };
     }
 
@@ -347,15 +354,46 @@ class BrowserService {
         }, { x, y });
     }
 
+    async moveMouse(x: number, y: number) {
+        if (!this.page) return;
+        
+        // Broadcast start of movement
+        broadcast({ type: 'browser:cursor', data: { x, y, type: 'move' } });
+        
+        // Use steps for smooth movement (Puppeteer already handles this nicely if we ask it to)
+        // But we want to broadcast intermediate steps for the frontend if possible?
+        // Puppeteer's mouse.move with steps blocks until done. 
+        // We can just trust the frontend to animate the transition between current and target.
+        await this.page.mouse.move(x, y, { steps: 25 });
+    }
+
     async click(x: number, y: number) {
         if (!this.page) return;
-        await this.page.mouse.click(x, y);
+        
+        // Move first
+        await this.moveMouse(x, y);
+        
+        broadcast({ type: 'browser:cursor', data: { x, y, type: 'click' } });
+        await this.page.mouse.down();
+        await new Promise(r => setTimeout(r, 100));
+        await this.page.mouse.up();
     }
 
     async clickSelector(selector: string) {
         if (!this.page) return;
         try {
             await this.page.waitForSelector(selector, { timeout: 5000 });
+            const el = await this.page.$(selector);
+            if (el) {
+                const box = await el.boundingBox();
+                if (box) {
+                    const x = box.x + box.width / 2;
+                    const y = box.y + box.height / 2;
+                    await this.click(x, y);
+                    return;
+                }
+            }
+            // Fallback if no box (shouldn't happen for visible elements)
             await this.page.click(selector);
         } catch (e: any) {
             throw new Error(`Failed to click selector "${selector}": ${e.message}`);
@@ -364,14 +402,36 @@ class BrowserService {
 
     async type(text: string) {
         if (!this.page) return;
-        await this.page.keyboard.type(text);
+        
+        broadcast({ type: 'browser:cursor', data: { type: 'type', text } });
+        
+        // Type slower to feel human
+        await this.page.keyboard.type(text, { delay: 50 });
     }
 
     async typeSelector(selector: string, text: string) {
         if (!this.page) return;
         try {
             await this.page.waitForSelector(selector, { timeout: 5000 });
-            await this.page.type(selector, text);
+            
+            // Click to focus first
+            const el = await this.page.$(selector);
+            if (el) {
+                const box = await el.boundingBox();
+                if (box) {
+                    await this.click(box.x + box.width / 2, box.y + box.height / 2);
+                } else {
+                    await this.page.click(selector);
+                }
+            }
+
+            // Clear existing text?
+            await this.page.evaluate((sel) => {
+                const e = document.querySelector(sel) as HTMLInputElement;
+                if (e) e.value = '';
+            }, selector);
+
+            await this.type(text);
         } catch (e: any) {
             throw new Error(`Failed to type in selector "${selector}": ${e.message}`);
         }

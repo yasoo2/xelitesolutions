@@ -280,6 +280,42 @@ export const tools: ToolDefinition[] = [
     mockSupported: false,
   },
   {
+    name: 'browser_click',
+    version: '1.0.0',
+    tags: ['browser', 'interaction'],
+    inputSchema: { type: 'object', properties: { selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } } },
+    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
+    permissions: ['read', 'internet'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 60,
+    auditFields: ['selector'],
+    mockSupported: false,
+  },
+  {
+    name: 'browser_type',
+    version: '1.0.0',
+    tags: ['browser', 'interaction'],
+    inputSchema: { type: 'object', properties: { selector: { type: 'string' }, text: { type: 'string' } }, required: ['text'] },
+    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
+    permissions: ['read', 'internet'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 60,
+    auditFields: ['text'],
+    mockSupported: false,
+  },
+  {
+    name: 'browser_scroll',
+    version: '1.0.0',
+    tags: ['browser', 'interaction'],
+    inputSchema: { type: 'object', properties: { deltaY: { type: 'number' } }, required: ['deltaY'] },
+    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
+    permissions: ['read', 'internet'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 60,
+    auditFields: [],
+    mockSupported: false,
+  },
+  {
     name: 'browser_open',
     version: '1.0.0',
     tags: ['browser', 'action'],
@@ -618,6 +654,36 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           logs.push(`browser.error=${err.message}`);
           return { ok: false, error: err.message, logs };
       }
+    }
+    if (name === 'browser_click') {
+        const selector = String(input?.selector || '');
+        const x = Number(input?.x);
+        const y = Number(input?.y);
+        try {
+            if (selector) await browserService.clickSelector(selector);
+            else if (!isNaN(x) && !isNaN(y)) await browserService.click(x, y);
+            else return { ok: false, error: 'Missing selector or coordinates', logs };
+            
+            return { ok: true, output: { success: true }, logs };
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs };
+        }
+    }
+    if (name === 'browser_type') {
+        const selector = String(input?.selector || '');
+        const text = String(input?.text || '');
+        try {
+            if (selector) await browserService.typeSelector(selector, text);
+            else await browserService.type(text);
+            return { ok: true, output: { success: true }, logs };
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs };
+        }
+    }
+    if (name === 'browser_scroll') {
+        const deltaY = Number(input?.deltaY || 100);
+        await browserService.scroll(deltaY);
+        return { ok: true, output: { success: true }, logs };
     }
     if (name === 'image_generate') {
       const prompt = String(input?.prompt ?? '').trim();
