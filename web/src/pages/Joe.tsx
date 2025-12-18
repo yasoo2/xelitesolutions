@@ -1,5 +1,5 @@
 import CommandComposer from '../components/CommandComposer';
-import RightPanel from '../components/RightPanel';
+import ManusPanel from '../components/ManusPanel';
 import SessionItem from '../components/SessionItem';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -393,17 +393,15 @@ export default function Joe() {
       </main>
       
       {showRightPanel && (
-        <aside className="rightpanel">
-          <RightPanel 
-            active={tab} 
-            sessionId={selected || undefined} 
-            previewData={previewData} 
-            steps={steps} 
-            onTabChange={setTab} 
-            messages={messages}
-            onClose={() => setShowRightPanel(false)}
-          />
-        </aside>
+        <ManusPanel 
+          activeTab={
+            tab === 'BROWSER' ? 'BROWSER' : 
+            tab === 'TERMINAL' ? 'TERMINAL' : 
+            'COMPUTER'
+          }
+          steps={steps}
+          onClose={() => setShowRightPanel(false)}
+        />
       )}
       {!showRightPanel && (
         <div className="sidebar-toggle-end" style={{ zIndex: 10 }}>
