@@ -110,6 +110,7 @@ type Action =
   | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string }
   | { type: 'locate', selector?: string, roleName?: string, role?: string }
   | { type: 'waitForRole', role: string, roleName: string, timeoutMs?: number }
+  | { type: 'waitForSelector', selector: string, timeoutMs?: number }
   | { type: 'scroll', deltaY: number }
   | { type: 'scrollTo', selector: string }
   | { type: 'wait', ms: number }
@@ -201,6 +202,11 @@ async function runActions(session: Session, actions: Action[]) {
           outputs.push({ type: 'waitForRole', role: a.role, roleName: a.roleName });
           break;
         }
+        case 'waitForSelector': {
+          await session.page.waitForSelector(a.selector, { state: 'visible', timeout: a.timeoutMs || 8000 });
+          outputs.push({ type: 'waitForSelector', selector: a.selector });
+          break;
+        }
         case 'scroll': {
           await session.page.evaluate((dy) => window.scrollBy(0, dy), a.deltaY);
           outputs.push({ type: 'scroll', deltaY: a.deltaY });
@@ -254,7 +260,19 @@ async function runActions(session: Session, actions: Action[]) {
                 const node = sel ? el.querySelector(sel) : el;
                 if (!node) { out[k] = null; continue; }
                 const attr = (v as any).attr;
-                out[k] = attr ? (node.getAttribute(attr) || null) : (node.textContent || '').trim();
+                let val: any = attr ? (node.getAttribute(attr) || null) : (node.textContent || '').trim();
+                if (attr === 'href' && typeof val === 'string') {
+                  try {
+                    const u = new URL(val, location.origin);
+                    if (u.hostname.includes('google') && u.pathname === '/url') {
+                      const q = u.searchParams.get('q') || u.searchParams.get('url');
+                      val = q || u.href;
+                    } else {
+                      val = u.href;
+                    }
+                  } catch {}
+                }
+                out[k] = val;
               }
               return out;
             }

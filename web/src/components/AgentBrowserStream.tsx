@@ -78,7 +78,8 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
             const isSearchRole = Boolean(locAct?.roleName && String(locAct.roleName).includes('بحث'));
             if (autoTypeAfterFocus && !typeText.trim() && (isGoogleSelector || isSearchRole)) {
               setTimeout(() => {
-                runActions([{ type: 'type', text: defaultSearchText, delay: 30 }]);
+                runActions([{ type: 'waitForSelector', selector: 'input[name="q"], textarea[name="q"]', timeoutMs: 8000 }]);
+                setTimeout(() => runActions([{ type: 'type', text: defaultSearchText, delay: 30 }]), 200);
                 setTimeout(() => runActions([{ type: 'press', key: 'Enter' }]), 300);
               }, 400);
             }
