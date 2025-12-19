@@ -857,12 +857,20 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
         const [scrapeRes, wikiRes] = await Promise.allSettled([
           (async () => {
              const ddg = await import('duck-duck-scrape');
-             const res = await ddg.search(query);
-             return (res.results || []).map((r: any) => ({
-               title: String(r.title).slice(0, 120),
-               url: String(r.url),
-               description: String(r.description)
-             })).filter((x: any) => x.url && x.title);
+             try {
+                // Timeout promise for DDG
+                const timeout = new Promise<any>((_, reject) => setTimeout(() => reject(new Error('DDG Timeout')), 5000));
+                const search = ddg.search(query);
+                const res = await Promise.race([search, timeout]);
+                
+                return (res.results || []).map((r: any) => ({
+                  title: String(r.title).slice(0, 120),
+                  url: String(r.url),
+                  description: String(r.description)
+                })).filter((x: any) => x.url && x.title);
+             } catch (e) {
+                return [];
+             }
           })(),
           (async () => {
              const hasArabic = /[\u0600-\u06FF]/.test(query);
@@ -872,23 +880,35 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
              let wikiQuery = query;
              if (hasArabic) {
                  // Remove common question words and prepositions
-                 const stopWords = ['اين', 'أين', 'تقع', 'يقع', 'ماهي', 'ما', 'هي', 'هو', 'معلومات', 'عن', 'مدينة', 'منطقة', 'حي', 'كيف', 'متى', 'لماذا', 'كم', 'هل', 'اسم', 'اقدم'];
-                 wikiQuery = query.split(' ')
+                 const stopWords = ['اين', 'أين', 'تقع', 'يقع', 'ماهي', 'ما', 'هي', 'هو', 'معلومات', 'عن', 'حي', 'كيف', 'متى', 'لماذا', 'كم', 'هل', 'اسم'];
+                 // Normalize prefixes like 'بال' -> 'في ال'
+                 const normalized = query.replace(/\bبال(\w+)/g, 'في ال$1');
+                 
+                 wikiQuery = normalized.split(' ')
                     .filter(w => !stopWords.includes(w.replace(/[أإآ]/g, 'ا').trim()))
                     .join(' ');
              }
 
              // Strategy: Try quoted phrase first for precision, then loose search
              const trySearch = async (q: string) => {
-                 const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=5`;
-                 const r = await fetch(wurl);
-                 if (!r.ok) return [];
-                 const j = await r.json();
-                 return (j.query?.search || []).map((it: any) => ({
-                   title: String(it.title).slice(0, 120),
-                   url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
-                   description: String(it.snippet).replace(/<[^>]+>/g, '')
-                 })).filter((x: any) => x.url && x.title);
+                 const controller = new AbortController();
+                 const id = setTimeout(() => controller.abort(), 5000);
+                 try {
+                    // Fetch more context from Wiki
+                    const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=7&srprop=snippet|titlesnippet|sectiontitle`;
+                    const r = await fetch(wurl, { signal: controller.signal });
+                    clearTimeout(id);
+                    if (!r.ok) return [];
+                    const j = await r.json();
+                    return (j.query?.search || []).map((it: any) => ({
+                      title: String(it.title).slice(0, 120),
+                      url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
+                      description: String(it.snippet).replace(/<[^>]+>/g, '')
+                    })).filter((x: any) => x.url && x.title);
+                 } catch (e) {
+                    clearTimeout(id);
+                    return [];
+                 }
              };
 
              // 1. Try quoted exact match if we have a cleaned query
