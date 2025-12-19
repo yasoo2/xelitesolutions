@@ -21,6 +21,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [role, setRole] = useState<string>('');
   const [roleName, setRoleName] = useState<string>('');
   const [autoLocate, setAutoLocate] = useState<boolean>(true);
+  const [autoFocus, setAutoFocus] = useState<boolean>(true);
   const lastMoveRef = useRef<number>(0);
 
   function getSessionId() {
@@ -53,7 +54,26 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
       }
       if (j?.ok && Array.isArray(j?.output?.outputs)) {
         const loc = j.output.outputs.find((o: any) => o.type === 'locate' && o.boundingBox);
-        if (loc?.boundingBox) setHighlight(loc.boundingBox);
+        if (loc?.boundingBox) {
+          setHighlight(loc.boundingBox);
+          const askedLocate = actions.some(a => a.type === 'locate');
+          if (askedLocate && autoFocus) {
+            const rev = [...actions].reverse();
+            const locAct = rev.find(a => a.type === 'locate') || null;
+            const seq: any[] = [];
+            if (locAct?.selector) seq.push({ type: 'click', selector: locAct.selector });
+            else if (locAct?.role && locAct?.roleName) seq.push({ type: 'click', role: locAct.role, roleName: locAct.roleName });
+            else {
+              const b = loc.boundingBox;
+              if (b) {
+                const cx = Math.round(b.x + b.width / 2);
+                const cy = Math.round(b.y + b.height / 2);
+                seq.push({ type: 'click', x: cx, y: cy });
+              }
+            }
+            if (seq.length) setTimeout(() => runActions(seq), 250);
+          }
+        }
       }
       const names = actions.map(a => a.type).join(', ');
       setOverlay(names);
@@ -351,6 +371,10 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
           <input type="checkbox" checked={autoLocate} onChange={e => setAutoLocate(e.target.checked)} />
           Auto Locate بعد التنقل
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+          <input type="checkbox" checked={autoFocus} onChange={e => setAutoFocus(e.target.checked)} />
+          Auto Click بعد locate
         </label>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
