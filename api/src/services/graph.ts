@@ -54,30 +54,53 @@ export class CodeGraphService {
                 node.val = Math.min(lines / 10, 20);
             }
 
-            const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
-            let match;
-            while ((match = importRegex.exec(content)) !== null) {
-                const importPath = match[1];
+            const importRegexes = [
+                /import\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g, // import ... from '...'
+                /export\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g, // export ... from '...'
+                /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,            // require('...')
+                /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,             // import('...')
+                /import\s+['"]([^'"]+)['"]/g                        // import '...'
+            ];
+
+            const foundImports = new Set<string>();
+
+            for (const regex of importRegexes) {
+                let match;
+                // Reset regex state just in case, though usually new RegExp per loop or no global flag sharing issues here
+                while ((match = regex.exec(content)) !== null) {
+                    foundImports.add(match[1]);
+                }
+            }
+
+            for (const importPath of foundImports) {
                 if (importPath.startsWith('.')) {
                     try {
                         const resolvedPath = path.resolve(path.dirname(file), importPath);
                         // Try extensions
                         const candidates = [
-                        resolvedPath,
-                        resolvedPath + '.ts',
-                        resolvedPath + '.tsx',
-                        resolvedPath + '.js',
-                        resolvedPath + '/index.ts'
+                            resolvedPath,
+                            resolvedPath + '.ts',
+                            resolvedPath + '.tsx',
+                            resolvedPath + '.js',
+                            resolvedPath + '.jsx',
+                            path.join(resolvedPath, 'index.ts'),
+                            path.join(resolvedPath, 'index.tsx'),
+                            path.join(resolvedPath, 'index.js'),
+                            path.join(resolvedPath, 'index.jsx')
                         ];
                         
                         for (const cand of candidates) {
-                        if (idMap.has(cand)) {
-                            // Avoid self-loops and duplicates
-                            if (idMap.get(cand)! !== nodeId) {
-                                links.push({ source: nodeId!, target: idMap.get(cand)! });
+                            if (idMap.has(cand)) {
+                                // Avoid self-loops and duplicates
+                                const targetId = idMap.get(cand)!;
+                                if (targetId !== nodeId) {
+                                    // Check if link already exists
+                                    if (!links.some(l => l.source === nodeId && l.target === targetId)) {
+                                        links.push({ source: nodeId!, target: targetId });
+                                    }
+                                }
+                                break;
                             }
-                            break;
-                        }
                         }
                     } catch (e) {}
                 }
