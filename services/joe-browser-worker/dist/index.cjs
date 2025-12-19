@@ -1,14 +1,38 @@
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
 // src/index.ts
-import express from "express";
-import { WebSocketServer } from "ws";
-import { chromium, devices } from "playwright";
-import dotenv from "dotenv";
-import pino from "pino";
-import path from "path";
-import fs from "fs";
-import { v4 as uuidv4 } from "uuid";
-dotenv.config();
-var logger = pino({
+var import_express = __toESM(require("express"), 1);
+var import_ws = require("ws");
+var import_playwright = require("playwright");
+var import_dotenv = __toESM(require("dotenv"), 1);
+var import_pino = __toESM(require("pino"), 1);
+var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
+var import_uuid = require("uuid");
+import_dotenv.default.config();
+var logger = (0, import_pino.default)({
   transport: { target: "pino-pretty", options: { translateTime: "SYS:standard", colorize: true } }
 });
 var SESSIONS = /* @__PURE__ */ new Map();
@@ -16,9 +40,9 @@ var TTL_MS = Number(process.env.SESSION_TTL_MS || 30 * 60 * 1e3);
 var API_KEY = process.env.WORKER_API_KEY || "change-me";
 var STORAGE_DIR = process.env.WORKER_STORAGE_DIR || "/tmp/joe-browser-worker";
 var PORT = Number(process.env.PORT || 7070);
-if (!fs.existsSync(STORAGE_DIR)) {
+if (!import_fs.default.existsSync(STORAGE_DIR)) {
   try {
-    fs.mkdirSync(STORAGE_DIR, { recursive: true });
+    import_fs.default.mkdirSync(STORAGE_DIR, { recursive: true });
   } catch {
   }
 }
@@ -29,7 +53,7 @@ function auth(req, res, next) {
 }
 async function launchChromium() {
   const args = ["--no-sandbox", "--disable-dev-shm-usage"];
-  const browser = await chromium.launch({ args, headless: true });
+  const browser = await import_playwright.chromium.launch({ args, headless: true });
   return browser;
 }
 async function createSession(opts) {
@@ -39,10 +63,10 @@ async function createSession(opts) {
     userAgent: opts.userAgent,
     locale: opts.locale || "en-US",
     acceptDownloads: true,
-    recordVideo: { dir: path.join(STORAGE_DIR, "videos") }
+    recordVideo: { dir: import_path.default.join(STORAGE_DIR, "videos") }
   });
   const page = await context.newPage();
-  const id = uuidv4();
+  const id = (0, import_uuid.v4)();
   const session = {
     id,
     browser,
@@ -58,13 +82,13 @@ async function createSession(opts) {
   page.on("download", async (dl) => {
     try {
       const safeName = dl.suggestedFilename();
-      const fileId = uuidv4();
-      const filePath = path.join(STORAGE_DIR, "downloads", `${fileId}-${safeName}`);
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const fileId = (0, import_uuid.v4)();
+      const filePath = import_path.default.join(STORAGE_DIR, "downloads", `${fileId}-${safeName}`);
+      const dir = import_path.default.dirname(filePath);
+      if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
       await dl.saveAs(filePath);
-      const size = fs.statSync(filePath).size;
-      const href = `/downloads/${path.basename(filePath)}`;
+      const size = import_fs.default.statSync(filePath).size;
+      const href = `/downloads/${import_path.default.basename(filePath)}`;
       session.downloads.push({ id: fileId, filename: safeName, href, size });
       logger.info({ fileId, safeName, size }, "download_saved");
     } catch (e) {
@@ -202,10 +226,10 @@ async function runActions(session, actions) {
         case "screenshot": {
           const buf = await session.page.screenshot({ type: "jpeg", quality: a.quality || 60, fullPage: a.fullPage || false });
           const name = `s-${Date.now()}.jpg`;
-          const p = path.join(STORAGE_DIR, "shots", name);
-          const dir = path.dirname(p);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(p, buf);
+          const p = import_path.default.join(STORAGE_DIR, "shots", name);
+          const dir = import_path.default.dirname(p);
+          if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+          import_fs.default.writeFileSync(p, buf);
           outputs.push({ type: "screenshot", href: `/shots/${name}` });
           break;
         }
@@ -281,11 +305,11 @@ async function runActions(session, actions) {
         case "uploadFile": {
           const res = await fetch(a.fileUrl);
           const arrayBuf = await res.arrayBuffer();
-          const ext = path.extname(new URL(a.fileUrl).pathname);
-          const tmpPath = path.join(STORAGE_DIR, "uploads", `u-${Date.now()}${ext}`);
-          const dir = path.dirname(tmpPath);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(tmpPath, Buffer.from(arrayBuf));
+          const ext = import_path.default.extname(new URL(a.fileUrl).pathname);
+          const tmpPath = import_path.default.join(STORAGE_DIR, "uploads", `u-${Date.now()}${ext}`);
+          const dir = import_path.default.dirname(tmpPath);
+          if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+          import_fs.default.writeFileSync(tmpPath, Buffer.from(arrayBuf));
           await session.page.setInputFiles(a.selector, tmpPath);
           outputs.push({ type: "uploadFile", selector: a.selector });
           break;
@@ -298,24 +322,24 @@ async function runActions(session, actions) {
   }
   return outputs;
 }
-var app = express();
-app.use(express.json({ limit: "10mb" }));
+var app = (0, import_express.default)();
+app.use(import_express.default.json({ limit: "10mb" }));
 app.get("/health", (_req, res) => res.json({ status: "OK" }));
-app.use("/downloads", express.static(path.join(STORAGE_DIR, "downloads")));
-app.use("/shots", express.static(path.join(STORAGE_DIR, "shots")));
+app.use("/downloads", import_express.default.static(import_path.default.join(STORAGE_DIR, "downloads")));
+app.use("/shots", import_express.default.static(import_path.default.join(STORAGE_DIR, "shots")));
 app.post("/session/create", auth, async (req, res) => {
   try {
     const { viewport, userAgent, locale, device } = req.body || {};
     const s = await createSession({ viewport, userAgent, locale });
-    if (device && devices[device]) {
+    if (device && import_playwright.devices[device]) {
       await s.context.close();
       const browser = await launchChromium();
-      const ctx = await browser.newContext({ ...devices[device], acceptDownloads: true, recordVideo: { dir: path.join(STORAGE_DIR, "videos") } });
+      const ctx = await browser.newContext({ ...import_playwright.devices[device], acceptDownloads: true, recordVideo: { dir: import_path.default.join(STORAGE_DIR, "videos") } });
       const page = await ctx.newPage();
       s.browser = browser;
       s.context = ctx;
       s.page = page;
-      const preset = devices[device];
+      const preset = import_playwright.devices[device];
       s.viewport = preset && preset.viewport ? preset.viewport : s.viewport;
     }
     res.json({ sessionId: s.id, wsUrl: `/ws/${s.id}` });
@@ -343,10 +367,10 @@ app.post("/session/:id/snapshot", auth, async (req, res) => {
     s.page.screenshot({ type: "jpeg", quality: 60 })
   ]);
   const name = `snap-${Date.now()}.jpg`;
-  const p = path.join(STORAGE_DIR, "shots", name);
-  const dir = path.dirname(p);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(p, buf);
+  const p = import_path.default.join(STORAGE_DIR, "shots", name);
+  const dir = import_path.default.dirname(p);
+  if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+  import_fs.default.writeFileSync(p, buf);
   res.json({ dom: html.slice(0, 1e5), a11y: a11ySnap, screenshot: `/shots/${name}` });
 });
 app.post("/session/:id/extract", auth, async (req, res) => {
@@ -368,7 +392,7 @@ setInterval(() => {
     }
   }
 }, 3e4);
-var wss = new WebSocketServer({ noServer: true });
+var wss = new import_ws.WebSocketServer({ noServer: true });
 var server = app.listen(PORT, () => {
   logger.info({ port: PORT }, "worker_listening");
 });

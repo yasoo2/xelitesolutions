@@ -835,6 +835,16 @@ async function executeTool(name, input) {
   const t0 = Date.now();
   logs.push(`[${(/* @__PURE__ */ new Date()).toISOString()}] start ${name}`);
   try {
+    const tDef = tools.find((t) => t.name === name);
+    if (tDef && typeof tDef.execute === "function") {
+      const res = await tDef.execute(input);
+      const ok = !!res?.ok;
+      const output = res?.output ?? null;
+      const artifacts2 = Array.isArray(res?.artifacts) ? res.artifacts : void 0;
+      const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
+      logs.push(...toolLogs);
+      return { ok, output, logs, artifacts: artifacts2 };
+    }
     if (name === "echo") {
       const text = String(input?.text ?? "");
       const val = typeof input === "object" && input !== null && input.text ? input.text : text;
@@ -2406,6 +2416,10 @@ function pickToolFromText(text) {
   const t = text.toLowerCase();
   const tn = t.replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "");
   const urlMatch = text.match(/https?:\/\/\S+/);
+  if (/(open|افتح|ابدأ|launch|browser)/i.test(tn)) {
+    const url = urlMatch ? urlMatch[0] : "https://www.google.com";
+    return { name: "browser_open", input: { url } };
+  }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
     return { name: "http_fetch", input: { url: "https://open.er-api.com/v6/latest/USD?sym=TRY", base: "USD", sym: "TRY" } };
   }
