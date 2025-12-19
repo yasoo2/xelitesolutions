@@ -47,8 +47,11 @@ export const tools: ToolDefinition[] = [
         ];
         return { ok: true, output: { sessionId, wsUrl }, logs, artifacts };
       } catch (e: any) {
-        logs.push(`error=${e.message}`);
-        return { ok: false, error: e.message, logs };
+        const msg = e.message || String(e);
+        const cause = e.cause ? ` cause=${String(e.cause)}` : '';
+        logs.push(`error=${msg}${cause}`);
+        console.error(`[browser_open] failed: ${msg}${cause}`);
+        return { ok: false, error: msg + cause, logs };
       }
     }
   },

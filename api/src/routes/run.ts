@@ -670,7 +670,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
   }
 
+  // Emit both events to ensure client compatibility
   ev({ type: 'run_completed', data: { runId, result: lastResult } });
+  ev({ type: 'run_finished', data: { runId, status: 'done' } });
   
   // Save message to DB
   const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : 'No output');

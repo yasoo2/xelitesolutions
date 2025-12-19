@@ -369,8 +369,11 @@ var tools = [
         ];
         return { ok: true, output: { sessionId, wsUrl }, logs, artifacts: artifacts2 };
       } catch (e) {
-        logs.push(`error=${e.message}`);
-        return { ok: false, error: e.message, logs };
+        const msg = e.message || String(e);
+        const cause = e.cause ? ` cause=${String(e.cause)}` : "";
+        logs.push(`error=${msg}${cause}`);
+        console.error(`[browser_open] failed: ${msg}${cause}`);
+        return { ok: false, error: msg + cause, logs };
       }
     }
   },
@@ -2985,6 +2988,7 @@ You must analyze this error and attempt to fix the issue in the next step. If it
     }
   }
   ev({ type: "run_completed", data: { runId, result: lastResult } });
+  ev({ type: "run_finished", data: { runId, status: "done" } });
   const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : "No output");
   if (useMock) {
     store.addMessage(sessionId, "assistant", finalContent, runId);
