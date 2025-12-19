@@ -1171,7 +1171,12 @@ ${contents.join("\n---\n")}`
           (async () => {
             const hasArabic = /[\u0600-\u06FF]/.test(query);
             const lang = hasArabic ? "ar" : "en";
-            const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
+            let wikiQuery = query;
+            if (hasArabic) {
+              const stopWords = ["\u0627\u064A\u0646", "\u0623\u064A\u0646", "\u062A\u0642\u0639", "\u064A\u0642\u0639", "\u0645\u0627\u0647\u064A", "\u0645\u0627", "\u0647\u064A", "\u0647\u0648", "\u0645\u0639\u0644\u0648\u0645\u0627\u062A", "\u0639\u0646", "\u0645\u062F\u064A\u0646\u0629", "\u0645\u0646\u0637\u0642\u0629", "\u062D\u064A", "\u0643\u064A\u0641", "\u0645\u062A\u0649", "\u0644\u0645\u0627\u0630\u0627", "\u0643\u0645", "\u0647\u0644"];
+              wikiQuery = query.split(" ").filter((w) => !stopWords.includes(w.replace(/[أإآ]/g, "\u0627").trim())).join(" ");
+            }
+            const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(wikiQuery)}&format=json&srlimit=5`;
             const r = await fetch(wurl);
             if (!r.ok) return [];
             const j = await r.json();

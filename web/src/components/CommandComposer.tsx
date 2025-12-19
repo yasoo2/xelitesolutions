@@ -88,10 +88,10 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
                     <a 
                       {...props} 
                       target="_blank" 
-                      rel="noopener noreferrer" 
-                      style={{ color: '#60a5fa', textDecoration: 'underline' }} 
-                    />
-                  ),
+                       rel="noopener noreferrer" 
+                       style={{ color: '#fcd34d', textDecoration: 'underline' }} 
+                     />
+                   ),
                   code({node, inline, className, children, ...props}: any) {
                    const match = /language-(\w+)/.exec(className || '');
                    return !inline && match ? (

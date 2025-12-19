@@ -867,7 +867,18 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           (async () => {
              const hasArabic = /[\u0600-\u06FF]/.test(query);
              const lang = hasArabic ? 'ar' : 'en';
-             const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
+             
+             // Smart query cleaning for Wikipedia
+             let wikiQuery = query;
+             if (hasArabic) {
+                 // Remove common question words and prepositions
+                 const stopWords = ['اين', 'أين', 'تقع', 'يقع', 'ماهي', 'ما', 'هي', 'هو', 'معلومات', 'عن', 'مدينة', 'منطقة', 'حي', 'كيف', 'متى', 'لماذا', 'كم', 'هل'];
+                 wikiQuery = query.split(' ')
+                    .filter(w => !stopWords.includes(w.replace(/[أإآ]/g, 'ا').trim()))
+                    .join(' ');
+             }
+
+             const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(wikiQuery)}&format=json&srlimit=5`;
              const r = await fetch(wurl);
              if (!r.ok) return [];
              const j = await r.json();
