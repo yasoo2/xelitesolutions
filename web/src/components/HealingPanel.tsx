@@ -169,6 +169,7 @@ export default function HealingPanel() {
                                                 {diagnosis.suggestedFix}
                                             </pre>
                                             <button 
+                                                type="button"
                                                 onClick={applyFix}
                                                 disabled={fixing}
                                                 className="mt-4 w-full py-2 bg-[var(--accent-success)] hover:brightness-110 text-white rounded font-medium text-sm flex justify-center items-center gap-2 transition-all"

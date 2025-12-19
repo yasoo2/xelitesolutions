@@ -109,7 +109,7 @@ const PlanVisualizer: React.FC<PlanVisualizerProps> = ({ messages }) => {
         fitView
         attributionPosition="bottom-right"
       >
-        <Background color="#444" gap={16} />
+        <Background color="var(--text-muted)" gap={16} />
         <Controls style={{ fill: 'var(--text-primary)' }} />
       </ReactFlow>
     </div>

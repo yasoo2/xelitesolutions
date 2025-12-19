@@ -356,26 +356,59 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-    body { font-family: 'Cairo', sans-serif; }
+    :root {
+      --bg-dark: #09090b;
+      --bg-card: #121214;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent-primary: #eab308; /* Yellow-500 for this specific landing */
+      --accent-hover: #ca8a04; /* Yellow-600 */
+      --text-on-accent: #000000;
+      --border-color: #1e293b;
+    }
+    [data-theme="light"] {
+      --bg-dark: #ffffff;
+      --bg-card: #f8fafc;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --accent-primary: #ca8a04;
+      --accent-hover: #a16207;
+      --text-on-accent: #ffffff;
+      --border-color: #e2e8f0;
+    }
+    body { 
+      font-family: 'Cairo', sans-serif; 
+      background-color: var(--bg-dark);
+      color: var(--text-primary);
+    }
   </style>
 </head>
-<body class="bg-gray-900 text-white">
-  <header class="p-6 border-b border-gray-800 flex justify-between items-center">
-    <h1 class="text-2xl font-bold text-yellow-500">${targetFilename === 'xelite.html' ? 'Xelite Coffee' : 'متجر إلكتروني'}</h1>
+<body class="transition-colors duration-300">
+  <header class="p-6 border-b border-[var(--border-color)] flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-[var(--accent-primary)]">${targetFilename === 'xelite.html' ? 'Xelite Coffee' : 'متجر إلكتروني'}</h1>
     <nav>
-      <a href="#" class="mx-2 hover:text-yellow-400">الرئيسية</a>
-      <a href="#" class="mx-2 hover:text-yellow-400">المنتجات</a>
-      <a href="#" class="mx-2 hover:text-yellow-400">اتصل بنا</a>
+      <a href="#" class="mx-2 hover:text-[var(--accent-primary)] transition-colors">الرئيسية</a>
+      <a href="#" class="mx-2 hover:text-[var(--accent-primary)] transition-colors">المنتجات</a>
+      <a href="#" class="mx-2 hover:text-[var(--accent-primary)] transition-colors">اتصل بنا</a>
     </nav>
   </header>
   <main class="container mx-auto p-8 text-center">
     <h2 class="text-4xl font-bold mb-4">أهلاً بك في المستقبل</h2>
-    <p class="text-gray-400 mb-8">نحن نبني الحلول الذكية.</p>
-    <button class="bg-yellow-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-400 transition">ابدأ الآن</button>
+    <p class="text-[var(--text-secondary)] mb-8">نحن نبني الحلول الذكية.</p>
+    <button class="bg-[var(--accent-primary)] text-[var(--text-on-accent)] px-6 py-2 rounded-lg font-bold hover:bg-[var(--accent-hover)] transition-all">ابدأ الآن</button>
   </main>
-  <footer class="p-6 text-center text-gray-600 mt-12 border-t border-gray-800">
+  <footer class="p-6 text-center text-[var(--text-secondary)] mt-12 border-t border-[var(--border-color)]">
     &copy; 2025 XElite Solutions
   </footer>
+  <script>
+    // Simple theme toggle logic if needed
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', event => {
+      document.documentElement.setAttribute('data-theme', event.matches ? 'light' : 'dark');
+    });
+  </script>
 </body>
 </html>`
         }

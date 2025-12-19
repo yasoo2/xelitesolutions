@@ -73,7 +73,7 @@ export default function SentinelStatus() {
                   >
                     {alert.severity}
                   </span>
-                  <span className="text-[10px] text-gray-500">{new Date(alert.timestamp).toLocaleTimeString()}</span>
+                  <span className="text-[10px] text-[var(--text-muted)]">{new Date(alert.timestamp).toLocaleTimeString()}</span>
                 </div>
                 <div className="text-sm font-medium text-[var(--text-primary)]">{alert.message}</div>
                 <div className="text-xs text-[var(--text-muted)] mt-1 font-mono">{alert.file}</div>

@@ -52,12 +52,13 @@ export class SentinelService {
                 }
             }
 
-            // 2. Check for Console Logs (Disabled for Dev Environment Noise Reduction)
-            /*
-            if (!file.includes('test') && !file.includes('script') && !file.includes('dev') && content.includes('console.log')) {
-                newAlerts.push(this.createAlert('quality', 'low', file, 'Console.log statement found in production code'));
+            // 2. Check for Console Logs (Enabled for production quality checks)
+            if (!file.includes('test') && !file.includes('script') && !file.includes('dev')) {
+                // Only flag console.log, allow info/warn/error
+                if (content.includes('console.log(')) {
+                     newAlerts.push(this.createAlert('quality', 'low', file, 'Console.log statement found (use console.info/warn/error or logger)'));
+                }
             }
-            */
 
             // 3. Check for Pending Tasks
             if (content.includes('TO' + 'DO') || content.includes('FIX' + 'ME')) {

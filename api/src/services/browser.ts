@@ -35,6 +35,16 @@ class BrowserService {
     private page: Page | null = null;
     private logs: LogEntry[] = [];
     private network: NetworkEntry[] = [];
+    private idleTimer: NodeJS.Timeout | null = null;
+    private readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+    private resetIdleTimer() {
+        if (this.idleTimer) clearTimeout(this.idleTimer);
+        this.idleTimer = setTimeout(() => {
+            // console.info('Browser: Idle timeout reached. Closing browser.');
+            this.close();
+        }, this.IDLE_TIMEOUT_MS);
+    }
 
     private async getExecutablePath(): Promise<string | undefined> {
         // 1. Try Puppeteer's default resolution
@@ -42,11 +52,11 @@ class BrowserService {
             const defaultPath = puppeteer.executablePath();
             try {
                 await fs.promises.access(defaultPath);
-                console.info('Using default Puppeteer executable:', defaultPath);
+                // console.info('Using default Puppeteer executable:', defaultPath);
                 return defaultPath;
             } catch {}
         } catch (e) {
-            console.warn('Puppeteer executablePath() failed:', e);
+            // console.warn('Puppeteer executablePath() failed:', e);
         }
 
         // 2. Search in common cache locations and local .chrome-bin
@@ -58,8 +68,6 @@ class BrowserService {
             path.join(__dirname, '../../.cache', 'puppeteer'),
             path.join(__dirname, '../../../.cache', 'puppeteer'),
         ];
-
-        console.log('Searching for Chrome in:', searchPaths);
 
         for (const basePath of searchPaths) {
             try {
@@ -77,9 +85,8 @@ class BrowserService {
                      const stat = await fs.promises.stat(match);
                      // Relaxed check: just needs to be a file
                      if (stat.isFile()) {
-                         // console.log('Found executable manually:', match);
-                         return match;
-                     }
+                        return match;
+                    }
                  } catch (e) {}
             }
         }
@@ -99,12 +106,12 @@ class BrowserService {
     }
 
     async launch() {
+        this.resetIdleTimer();
         if (this.browser) return;
         
         try {
             const executablePath = await this.getExecutablePath();
-            console.info('Launching browser with executable path:', executablePath || 'bundled');
-
+            
             this.browser = await puppeteer.launch({
                 headless: true,
                 ignoreHTTPSErrors: true,
@@ -372,7 +379,8 @@ class BrowserService {
     }
 
     async click(x: number, y: number) {
-        if (!this.page) return;
+        this.resetIdleTimer();
+        if (!this.page) return null;
         
         // Move first
         await this.moveMouse(x, y);
@@ -405,6 +413,7 @@ class BrowserService {
     }
 
     async type(text: string) {
+        this.resetIdleTimer();
         if (!this.page) return;
         
         broadcast({ type: 'browser:cursor', data: { type: 'type', text } });
@@ -491,6 +500,7 @@ class BrowserService {
     }
 
     async scroll(deltaY: number) {
+        this.resetIdleTimer();
         if (!this.page) return;
         await this.page.evaluate((dy: number) => {
             window.scrollBy(0, dy);
@@ -518,6 +528,7 @@ class BrowserService {
     }
 
     async close() {
+        if (this.idleTimer) clearTimeout(this.idleTimer);
         if (this.browser) {
             await this.browser.close();
             this.browser = null;

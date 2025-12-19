@@ -46,24 +46,24 @@ export default function Terminal({ agentLogs }: { agentLogs: string }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] text-[#d4d4d4] font-mono text-sm">
+    <div className="flex flex-col h-full bg-[var(--bg-dark)] text-[var(--text-primary)] font-mono text-sm">
       {/* Tabs */}
-      <div className="flex bg-[#252526] overflow-x-auto border-b border-[#333] no-scrollbar">
+      <div className="flex bg-[var(--bg-secondary)] overflow-x-auto border-b border-[var(--border-color)] no-scrollbar">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveId(tab.id)}
             className={`
-              flex items-center gap-2 px-3 py-2 min-w-[120px] max-w-[200px] border-r border-[#333] text-xs transition-colors
-              ${activeId === tab.id ? 'bg-[#1e1e1e] text-white' : 'bg-[#2d2d2d] text-[#999] hover:bg-[#2a2d2e]'}
+              flex items-center gap-2 px-3 py-2 min-w-[120px] max-w-[200px] border-r border-[var(--border-color)] text-xs transition-colors
+              ${activeId === tab.id ? 'bg-[var(--bg-dark)] text-[var(--accent-primary)] font-bold' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}
             `}
           >
-            <TerminalIcon size={12} className={activeId === tab.id ? 'text-blue-400' : 'text-gray-500'} />
+            <TerminalIcon size={12} className={activeId === tab.id ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'} />
             <span className="truncate flex-1 text-left">{tab.name}</span>
             {tab.id !== 'main' && (
               <span 
                 onClick={(e) => closeTab(e, tab.id)}
-                className="p-0.5 rounded-sm hover:bg-[#444] text-gray-500 hover:text-white cursor-pointer"
+                className="p-0.5 rounded-sm hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-danger)] cursor-pointer"
               >
                 <X size={10} />
               </span>
@@ -72,7 +72,7 @@ export default function Terminal({ agentLogs }: { agentLogs: string }) {
         ))}
         <button 
           onClick={addTab}
-          className="px-3 hover:bg-[#333] text-[#999] hover:text-white transition-colors"
+          className="px-3 hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
           title="New Terminal"
         >
           <Plus size={14} />
@@ -84,14 +84,14 @@ export default function Terminal({ agentLogs }: { agentLogs: string }) {
         {tabs.map(tab => (
             <div 
                 key={tab.id} 
-                className={`absolute inset-0 bg-[#1e1e1e] ${activeId === tab.id ? 'z-10' : 'z-0 invisible'}`}
+                className={`absolute inset-0 bg-[var(--bg-dark)] ${activeId === tab.id ? 'z-10' : 'z-0 invisible'}`}
             >
                 {tab.type === 'log' ? (
-                    <div ref={scrollRef} className="h-full overflow-y-auto p-4 whitespace-pre-wrap font-mono text-xs text-gray-300">
+                    <div ref={scrollRef} className="h-full overflow-y-auto p-4 whitespace-pre-wrap font-mono text-xs text-[var(--text-secondary)]">
                         {tab.output || 'No logs yet...'}
                     </div>
                 ) : (
-                    <div className="h-full w-full p-2">
+                    <div className="h-full w-full p-2 bg-[var(--bg-dark)]">
                         <XTermWrapper id={tab.id} isActive={activeId === tab.id} />
                     </div>
                 )}

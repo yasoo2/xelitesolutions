@@ -72,9 +72,10 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
         </div>
       )}
       <div className="chat-bubble backdrop-blur-md shadow-lg" style={{ 
-        background: isUser ? 'rgba(37, 99, 235, 0.9)' : 'rgba(18, 18, 18, 0.8)',
+        background: isUser ? 'var(--user-msg-bg)' : 'var(--joe-msg-bg)',
+        color: isUser ? '#ffffff' : 'var(--text-primary)',
         backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)'
+        border: '1px solid var(--border-color)'
       }}>
         <div className="chat-bubble-header">
           <span className="chat-bubble-sender">{isUser ? t('you', 'You') : 'JOE AI'}</span>
@@ -95,22 +96,16 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
           ) : (
              <ReactMarkdown
                components={{
-                  h1: ({node, ...props}: any) => <h1 style={{ color: '#eab308', fontSize: '1.8em', marginBottom: '0.5em', marginTop: '0.5em', borderBottom: '1px solid #333', paddingBottom: '0.3em' }} {...props} />,
-                  h2: ({node, ...props}: any) => <h2 style={{ color: '#60a5fa', fontSize: '1.5em', marginBottom: '0.5em', marginTop: '1em' }} {...props} />,
-                  h3: ({node, ...props}: any) => <h3 style={{ color: '#c084fc', fontSize: '1.2em', marginBottom: '0.5em', marginTop: '1em' }} {...props} />,
-                  ul: ({node, ...props}: any) => <ul style={{ paddingInlineStart: '1.5em', marginBottom: '1em' }} {...props} />,
-                  ol: ({node, ...props}: any) => <ol style={{ paddingInlineStart: '1.5em', marginBottom: '1em' }} {...props} />,
-                  li: ({node, ...props}: any) => <li style={{ marginBottom: '0.3em', lineHeight: '1.6' }} {...props} />,
-                  p: ({node, ...props}: any) => <p style={{ marginBottom: '1em', lineHeight: '1.7' }} {...props} />,
+                  h1: ({node, ...props}: any) => <h1 className="text-[var(--accent-secondary)] text-2xl mb-2 mt-2 border-b border-[var(--border-color)] pb-1" {...props} />,
+                  h2: ({node, ...props}: any) => <h2 className="text-[var(--accent-primary)] text-xl mb-2 mt-4" {...props} />,
+                  h3: ({node, ...props}: any) => <h3 className="text-[var(--neon-purple)] text-lg mb-2 mt-4" {...props} />,
+                  ul: ({node, ...props}: any) => <ul className="list-disc pl-6 mb-4" {...props} />,
+                  ol: ({node, ...props}: any) => <ol className="list-decimal pl-6 mb-4" {...props} />,
+                  li: ({node, ...props}: any) => <li className="mb-1 leading-relaxed" {...props} />,
+                  p: ({node, ...props}: any) => <p className="mb-4 leading-relaxed" {...props} />,
                   blockquote: ({node, ...props}: any) => (
                     <blockquote 
-                      style={{ 
-                        borderLeft: '4px solid #eab308', 
-                        background: 'rgba(234, 179, 8, 0.1)', 
-                        margin: '1em 0', 
-                        padding: '0.5em 1em', 
-                        borderRadius: '4px' 
-                      }} 
+                      className="border-l-4 border-[var(--accent-secondary)] bg-[var(--bg-secondary)] my-4 py-2 px-4 rounded"
                       {...props} 
                     />
                   ),
@@ -119,7 +114,7 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
                       {...props} 
                       target="_blank" 
                        rel="noopener noreferrer" 
-                       style={{ color: '#60a5fa', textDecoration: 'underline' }} 
+                       className="text-[var(--accent-primary)] underline"
                      />
                    ),
                   code({node, inline, className, children, ...props}: any) {

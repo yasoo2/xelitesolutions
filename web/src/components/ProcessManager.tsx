@@ -110,7 +110,7 @@ export default function ProcessManager() {
                                 <td className="p-2">
                                     <button 
                                         onClick={() => killProcess(p.pid)}
-                                        className="text-red-500 hover:text-red-400 p-1 rounded hover:bg-[var(--bg-active)]"
+                                        className="text-[var(--accent-danger)] hover:text-red-400 p-1 rounded hover:bg-[var(--bg-active)]"
                                         title="Kill Process"
                                     >
                                         <XOctagon size={14} />

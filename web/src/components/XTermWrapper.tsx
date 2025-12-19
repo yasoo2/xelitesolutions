@@ -10,6 +10,42 @@ interface XTermWrapperProps {
   onData?: (data: string) => void;
 }
 
+const getThemeColor = (varName: string, fallback: string) => {
+  if (typeof window === 'undefined') return fallback;
+  const style = getComputedStyle(document.documentElement);
+  const val = style.getPropertyValue(varName).trim();
+  return val || fallback;
+};
+
+const getTerminalTheme = () => {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  
+  return {
+    background: getThemeColor('--bg-dark', '#000000'),
+    foreground: getThemeColor('--text-primary', '#ffffff'),
+    cursor: getThemeColor('--text-primary', '#ffffff'),
+    selectionBackground: getThemeColor('--accent-glow', 'rgba(255, 255, 255, 0.3)'),
+    
+    black: isLight ? '#000000' : '#000000',
+    red: getThemeColor('--accent-danger', '#cd3131'),
+    green: getThemeColor('--accent-success', '#0dbc79'),
+    yellow: getThemeColor('--accent-warning', '#e5e510'),
+    blue: getThemeColor('--accent-primary', '#2472c8'),
+    magenta: '#bc3fbc', // No direct var
+    cyan: '#11a8cd', // No direct var
+    white: getThemeColor('--text-primary', '#e5e5e5'),
+    
+    brightBlack: '#666666',
+    brightRed: '#f14c4c',
+    brightGreen: '#23d18b',
+    brightYellow: '#f5f543',
+    brightBlue: '#3b8eea',
+    brightMagenta: '#d670d6',
+    brightCyan: '#29b8db',
+    brightWhite: '#ffffff',
+  };
+};
+
 export default function XTermWrapper({ id, isActive }: XTermWrapperProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -22,28 +58,7 @@ export default function XTermWrapper({ id, isActive }: XTermWrapperProps) {
 
     const term = new Terminal({
       cursorBlink: true,
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#ffffff',
-        selectionBackground: 'rgba(255, 255, 255, 0.3)',
-        black: '#000000',
-        red: '#cd3131',
-        green: '#0dbc79',
-        yellow: '#e5e510',
-        blue: '#2472c8',
-        magenta: '#bc3fbc',
-        cyan: '#11a8cd',
-        white: '#e5e5e5',
-        brightBlack: '#666666',
-        brightRed: '#f14c4c',
-        brightGreen: '#23d18b',
-        brightYellow: '#f5f543',
-        brightBlue: '#3b8eea',
-        brightMagenta: '#d670d6',
-        brightCyan: '#29b8db',
-        brightWhite: '#e5e5e5',
-      },
+      theme: getTerminalTheme(),
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 13,
       lineHeight: 1.2,
@@ -83,11 +98,24 @@ export default function XTermWrapper({ id, isActive }: XTermWrapperProps) {
           // SocketService.send({ type: 'terminal:resize', id, cols: term.cols, rows: term.rows });
       }
     };
+    
+    // Observer for theme changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+          term.options.theme = getTerminalTheme();
+        }
+      });
+    });
+    
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
     window.addEventListener('resize', handleResize);
 
     return () => {
       unsubscribe();
       window.removeEventListener('resize', handleResize);
+      observer.disconnect();
       SocketService.send({ type: 'terminal:kill', id });
       term.dispose();
       termRef.current = null;

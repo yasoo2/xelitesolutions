@@ -42,7 +42,7 @@ export default function NetworkInspector() {
             case 'POST': return 'text-green-500';
             case 'PUT': return 'text-yellow-500';
             case 'DELETE': return 'text-red-500';
-            default: return 'text-gray-500';
+            default: return 'text-[var(--text-muted)]';
         }
     };
 
@@ -50,7 +50,7 @@ export default function NetworkInspector() {
         if (status >= 500) return 'text-red-500';
         if (status >= 400) return 'text-yellow-500';
         if (status >= 200) return 'text-green-500';
-        return 'text-gray-500';
+        return 'text-[var(--text-muted)]';
     };
 
     const filteredRequests = requests.filter(r => 
@@ -59,7 +59,7 @@ export default function NetworkInspector() {
     );
 
     return (
-        <div className="flex h-full bg-[var(--bg-primary)]">
+        <div className="flex h-full bg-[var(--bg-dark)] text-[var(--text-primary)]">
             {/* List */}
             <div className={`${selectedId ? 'w-1/2' : 'w-full'} flex flex-col border-r border-[var(--border-color)] transition-all duration-300`}>
                 <div className="p-3 border-b border-[var(--border-color)] flex gap-2">
@@ -70,7 +70,7 @@ export default function NetworkInspector() {
                             placeholder="Filter requests..." 
                             value={filter}
                             onChange={e => setFilter(e.target.value)}
-                            className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded pl-8 pr-2 py-1 text-xs"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded pl-8 pr-2 py-1 text-xs text-[var(--text-primary)]"
                         />
                     </div>
                     <button 

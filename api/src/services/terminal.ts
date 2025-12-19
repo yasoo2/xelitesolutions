@@ -5,6 +5,17 @@ import { StringDecoder } from 'string_decoder';
 class TerminalManager extends EventEmitter {
   private sessions: Record<string, ChildProcess> = {};
 
+  constructor() {
+    super();
+    // Cleanup on exit to prevent zombie processes
+    const cleanup = () => {
+      Object.keys(this.sessions).forEach(id => this.kill(id));
+    };
+    process.on('exit', cleanup);
+    process.on('SIGINT', () => { cleanup(); process.exit(); });
+    process.on('SIGTERM', () => { cleanup(); process.exit(); });
+  }
+
   create(id: string, cwd: string = process.cwd()) {
     if (this.sessions[id]) return;
 

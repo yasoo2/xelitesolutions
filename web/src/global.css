@@ -124,6 +124,8 @@
   --accent-danger: #dc2626; /* Red-600 */
   --accent-warning: #d97706; /* Amber-600 */
   --accent-success: #16a34a; /* Green-600 */
+  
+  --text-on-accent: #ffffff; /* White text on Blue */
 
   /* Light Button Variables */
   --btn-icon-bg-light: rgba(37, 99, 235, 0.1);

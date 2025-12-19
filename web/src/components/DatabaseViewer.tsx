@@ -108,17 +108,17 @@ export default function DatabaseViewer({ sessionId }: DatabaseViewerProps) {
 
     if (error) {
         return (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4 text-center">
+            <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] p-4 text-center">
                 <Database size={48} className="mb-4 opacity-20" />
                 <p>{error}</p>
-                <button onClick={fetchCollections} className="mt-4 text-blue-400 hover:underline">Retry Connection</button>
+                <button onClick={fetchCollections} className="mt-4 text-[var(--accent-primary)] hover:underline">Retry Connection</button>
             </div>
         );
     }
 
     if (!selectedCollection) {
         return (
-            <div className="flex flex-col h-full bg-[var(--bg-primary)]">
+            <div className="flex flex-col h-full bg-[var(--bg-dark)] text-[var(--text-primary)]">
                 <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between">
                     <h2 className="text-sm font-semibold flex items-center gap-2">
                         <Database size={16} /> Collections
@@ -132,7 +132,7 @@ export default function DatabaseViewer({ sessionId }: DatabaseViewerProps) {
                         <div
                             key={c}
                             onClick={() => setSelectedCollection(c)}
-                            className="p-3 mb-1 rounded cursor-pointer hover:bg-[var(--bg-secondary)] flex items-center justify-between group transition-colors"
+                            className="p-3 mb-1 rounded cursor-pointer hover:bg-[var(--bg-hover)] flex items-center justify-between group transition-colors"
                         >
                             <span className="text-sm font-medium">{c}</span>
                             <ChevronRight size={14} className="opacity-0 group-hover:opacity-50" />
@@ -147,7 +147,7 @@ export default function DatabaseViewer({ sessionId }: DatabaseViewerProps) {
     }
 
     return (
-        <div className="flex flex-col h-full bg-[var(--bg-primary)]">
+        <div className="flex flex-col h-full bg-[var(--bg-dark)] text-[var(--text-primary)]">
             <div className="p-3 border-b border-[var(--border-color)] flex items-center justify-between bg-[var(--bg-secondary)]">
                 <div className="flex items-center gap-2">
                     <button onClick={() => setSelectedCollection(null)} className="hover:bg-[var(--bg-active)] p-1 rounded">
@@ -170,9 +170,9 @@ export default function DatabaseViewer({ sessionId }: DatabaseViewerProps) {
 
             <div className="flex-1 overflow-auto p-4">
                 {documents.map((doc) => (
-                    <div key={doc._id} className="mb-4 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-color)] overflow-hidden shadow-sm">
-                        <div className="px-3 py-2 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-active)] bg-opacity-30">
-                            <span className="text-xs font-mono text-blue-400">{doc._id}</span>
+                    <div key={doc._id} className="mb-4 bg-[var(--bg-card)] rounded-lg border border-[var(--border-color)] overflow-hidden shadow-sm">
+                        <div className="px-3 py-2 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-secondary)] bg-opacity-30">
+                            <span className="text-xs font-mono text-[var(--accent-primary)]">{doc._id}</span>
                             <div className="flex gap-2">
                                 {editingId === doc._id ? (
                                     <>
@@ -184,7 +184,7 @@ export default function DatabaseViewer({ sessionId }: DatabaseViewerProps) {
                                         <button onClick={() => {
                                             setEditingId(doc._id);
                                             setEditContent(JSON.stringify(doc, null, 2));
-                                        }} className="text-[var(--text-muted)] hover:text-blue-400"><Edit2 size={14} /></button>
+                                        }} className="text-[var(--text-muted)] hover:text-[var(--accent-primary)]"><Edit2 size={14} /></button>
                                         <button onClick={() => handleDelete(doc._id)} className="text-[var(--text-muted)] hover:text-red-400"><Trash2 size={14} /></button>
                                     </>
                                 )}
@@ -193,7 +193,7 @@ export default function DatabaseViewer({ sessionId }: DatabaseViewerProps) {
                         <div className="p-0">
                             {editingId === doc._id ? (
                                 <textarea
-                                    className="w-full h-48 bg-[var(--bg-primary)] text-[var(--text-primary)] p-3 font-mono text-xs focus:outline-none resize-none"
+                                    className="w-full h-48 bg-[var(--bg-input)] text-[var(--text-primary)] p-3 font-mono text-xs focus:outline-none resize-none"
                                     value={editContent}
                                     onChange={(e) => setEditContent(e.target.value)}
                                 />

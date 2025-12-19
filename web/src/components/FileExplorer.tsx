@@ -17,15 +17,15 @@ interface FileExplorerProps {
 
 const FileIcon = ({ name }: { name: string }) => {
     const ext = name.split('.').pop()?.toLowerCase();
-    if (['ts', 'tsx', 'js', 'jsx', 'json'].includes(ext || '')) return <Code size={14} className="text-blue-500" />;
+    if (['ts', 'tsx', 'js', 'jsx', 'json'].includes(ext || '')) return <Code size={14} className="text-[var(--accent-primary)]" />;
     if (['css', 'scss', 'less'].includes(ext || '')) return <FileText size={14} className="text-pink-500" />;
-    if (['md', 'txt'].includes(ext || '')) return <FileText size={14} className="text-gray-500" />;
+    if (['md', 'txt'].includes(ext || '')) return <FileText size={14} className="text-[var(--text-muted)]" />;
     if (['png', 'jpg', 'jpeg', 'svg', 'gif'].includes(ext || '')) return <Image size={14} className="text-purple-500" />;
     if (['mp3', 'wav'].includes(ext || '')) return <Music size={14} className="text-yellow-500" />;
     if (['mp4', 'mov'].includes(ext || '')) return <Video size={14} className="text-red-500" />;
     if (['db', 'sql'].includes(ext || '')) return <Database size={14} className="text-green-500" />;
     if (['zip', 'tar', 'gz'].includes(ext || '')) return <Package size={14} className="text-orange-500" />;
-    return <File size={14} className="text-gray-400" />;
+    return <File size={14} className="text-[var(--text-muted)]" />;
 };
 
 const FileTreeItem = ({ 
@@ -74,7 +74,7 @@ const FileTreeItem = ({
                     </span>
                 )}
                 {node.type === 'directory' ? (
-                    <Folder size={14} className="text-yellow-500" fill="currentColor" style={{ color: '#fbbf24' }} />
+                    <Folder size={14} className="text-yellow-500" fill="currentColor" />
                 ) : (
                     <FileIcon name={node.name} />
                 )}

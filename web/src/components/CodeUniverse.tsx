@@ -76,15 +76,15 @@ export default function CodeUniverse() {
         bottom: 20, 
         left: 20, 
         padding: '12px', 
-        background: 'rgba(0,0,0,0.6)', 
+        background: 'var(--bg-card)', 
         backdropFilter: 'blur(8px)',
         borderRadius: '8px',
-        border: '1px solid rgba(255,255,255,0.1)'
+        border: '1px solid var(--border-color)'
       }}>
-        <h3 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#aaa', textTransform: 'uppercase' }}>Legend</h3>
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Legend</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {Object.entries(GROUPS).map(([id, info]) => (
-            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: info.color }}></span>
               {info.label}
             </div>

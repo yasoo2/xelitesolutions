@@ -121,6 +121,34 @@ export class CodeGraphService {
             }
 
             for (const importPath of foundImports) {
+                // Handle Aliases (e.g. @/components)
+                if (importPath.startsWith('@/')) {
+                    const aliasPath = path.join(rootDir, 'web/src', importPath.slice(2));
+                    const candidates = [
+                        aliasPath,
+                        aliasPath + '.ts',
+                        aliasPath + '.tsx',
+                        aliasPath + '.js',
+                        aliasPath + '.jsx',
+                        path.join(aliasPath, 'index.ts'),
+                        path.join(aliasPath, 'index.tsx'),
+                        path.join(aliasPath, 'index.js'),
+                        path.join(aliasPath, 'index.jsx')
+                    ];
+                    
+                    for (const cand of candidates) {
+                        if (idMap.has(cand)) {
+                            const targetId = idMap.get(cand)!;
+                            if (targetId !== nodeId) {
+                                if (!links.some(l => l.source === nodeId && l.target === targetId)) {
+                                    links.push({ source: nodeId!, target: targetId });
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
                 if (importPath.startsWith('.')) {
                     try {
                         const resolvedPath = path.resolve(path.dirname(file), importPath);
@@ -157,20 +185,27 @@ export class CodeGraphService {
             // 2. API Calls (Frontend -> Backend Linking)
             if (routeNames.length > 0) {
                 // Match anything that looks like a path segment /segment
-                // This captures '/sessions' from `${API}/sessions` or '/auth' from '/auth/login'
                 const pathSegmentRegex = /\/([a-zA-Z0-9_-]+)/g; 
-                let match;
-                while ((match = pathSegmentRegex.exec(content)) !== null) {
-                    const potentialRoute = match[1];
+                // Match quoted strings that might be route names (e.g. 'healing', "auth")
+                const quotedStringRegex = /['"]([a-zA-Z0-9_-]+)['"]/g;
+
+                const checkMatch = (potentialRoute: string) => {
                     if (routeFiles.has(potentialRoute)) {
                         const targetId = routeFiles.get(potentialRoute);
                         if (targetId && targetId !== nodeId) {
-                             // Avoid duplicates
                              if (!links.some(l => l.source === nodeId && l.target === targetId)) {
                                  links.push({ source: nodeId!, target: targetId });
                              }
                         }
                     }
+                };
+
+                let match;
+                while ((match = pathSegmentRegex.exec(content)) !== null) {
+                    checkMatch(match[1]);
+                }
+                while ((match = quotedStringRegex.exec(content)) !== null) {
+                    checkMatch(match[1]);
                 }
             }
         } catch (e) {

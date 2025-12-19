@@ -8,9 +8,9 @@ interface Expert {
 }
 
 const EXPERTS: Expert[] = [
-  { role: 'Architect', name: 'Dr. Arch', focus: 'Scalability, Clean Architecture, Design Patterns', color: '#3b82f6' },
-  { role: 'Security', name: 'SecOps Sam', focus: 'Vulnerabilities, Auth, Data Protection', color: '#ef4444' },
-  { role: 'UX/UI', name: 'Designer Dani', focus: 'User Experience, Accessibility, Visuals', color: '#eab308' }
+  { role: 'Architect', name: 'Dr. Arch', focus: 'Scalability, Clean Architecture, Design Patterns', color: '#2563eb' }, // Blue-600
+  { role: 'Security', name: 'SecOps Sam', focus: 'Vulnerabilities, Auth, Data Protection', color: '#dc2626' }, // Red-600
+  { role: 'UX/UI', name: 'Designer Dani', focus: 'User Experience, Accessibility, Visuals', color: '#db2777' } // Pink-600
 ];
 
 export class CouncilService {
@@ -59,7 +59,7 @@ export class CouncilService {
       try {
         const conclusion = await callLLM(synthesisPrompt, []);
         discussion.push({
-          expert: { role: 'Lead', name: 'Joe', focus: 'Execution', color: '#ffffff' },
+          expert: { role: 'Lead', name: 'Joe', focus: 'Execution', color: '#4f46e5' }, // Indigo-600
           content: conclusion
         });
       } catch (e) {

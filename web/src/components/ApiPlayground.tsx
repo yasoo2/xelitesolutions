@@ -61,9 +61,9 @@ export function ApiPlayground() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-900 text-gray-100 p-4">
+    <div className="h-full flex flex-col bg-[var(--bg-dark)] text-[var(--text-primary)] p-4">
       <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-        <Play className="w-6 h-6 text-green-400" />
+        <Play className="w-6 h-6 text-[var(--accent-success)]" />
         Integrated API Playground
       </h2>
 
@@ -71,7 +71,7 @@ export function ApiPlayground() {
         <select 
           value={method} 
           onChange={(e) => setMethod(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono"
+          className="bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--text-primary)] font-mono"
         >
           <option value="GET">GET</option>
           <option value="POST">POST</option>
@@ -83,12 +83,12 @@ export function ApiPlayground() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="/path/to/endpoint"
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono"
+          className="flex-1 bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-4 py-2 text-[var(--text-primary)] font-mono"
         />
         <button 
           onClick={handleSend}
           disabled={loading}
-          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+          className="bg-[var(--accent-success)] hover:brightness-110 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-all disabled:opacity-50"
         >
           {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-4 h-4" />}
           Send
@@ -99,41 +99,45 @@ export function ApiPlayground() {
         {/* Left Column: Request Config */}
         <div className="flex flex-col gap-4 overflow-y-auto pr-2">
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 uppercase">Headers (JSON)</label>
+            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1 uppercase">Headers (JSON)</label>
             <textarea 
               value={headers}
               onChange={(e) => setHeaders(e.target.value)}
-              className="w-full h-32 bg-gray-800 border border-gray-700 rounded-lg p-3 font-mono text-xs text-blue-300 focus:outline-none focus:border-blue-500"
+              className="w-full h-32 bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg p-3 font-mono text-xs text-[var(--accent-primary)] focus:outline-none focus:border-blue-500"
             />
           </div>
           {['POST', 'PUT', 'PATCH'].includes(method) && (
             <div className="flex-1 flex flex-col">
-              <label className="block text-xs font-medium text-gray-400 mb-1 uppercase">Body (JSON)</label>
+              <label className="block text-xs font-medium text-[var(--text-muted)] mb-1 uppercase">Body (JSON)</label>
               <textarea 
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                className="flex-1 w-full bg-gray-800 border border-gray-700 rounded-lg p-3 font-mono text-xs text-green-300 focus:outline-none focus:border-green-500"
+                className="flex-1 w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg p-3 font-mono text-xs text-green-400 focus:outline-none focus:border-green-500"
                 placeholder="{}"
               />
             </div>
           )}
           
           <div className="mt-auto">
-             <label className="block text-xs font-medium text-gray-400 mb-2 uppercase flex items-center gap-2">
+             <label className="block text-xs font-medium text-[var(--text-muted)] mb-2 uppercase flex items-center gap-2">
                <Clock className="w-3 h-3" /> Recent Requests
              </label>
              <div className="space-y-2">
                {history.map((h, i) => (
                  <div key={i} 
                       onClick={() => { setMethod(h.method); setUrl(h.url); }}
-                      className="flex items-center gap-2 p-2 bg-gray-800/50 hover:bg-gray-800 rounded cursor-pointer text-xs font-mono transition-colors">
-                   <span className={`px-1.5 py-0.5 rounded ${
-                     h.method === 'GET' ? 'bg-blue-900 text-blue-300' :
-                     h.method === 'POST' ? 'bg-green-900 text-green-300' :
-                     'bg-red-900 text-red-300'
+                      className="flex items-center gap-2 p-2 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] rounded cursor-pointer text-xs font-mono transition-colors">
+                   <span className={`font-bold ${
+                     h.method === 'GET' ? 'text-blue-400' : 
+                     h.method === 'POST' ? 'text-green-400' : 
+                     h.method === 'DELETE' ? 'text-red-400' : 'text-yellow-400'
                    }`}>{h.method}</span>
-                   <span className="truncate flex-1 text-gray-400">{h.url}</span>
-                   <span className={`text-xs ${h.status && h.status >= 400 ? 'text-red-400' : 'text-green-400'}`}>{h.status}</span>
+                   <span className="truncate text-[var(--text-secondary)] flex-1">{h.url}</span>
+                   {h.status && (
+                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                       h.status >= 200 && h.status < 300 ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'
+                     }`}>{h.status}</span>
+                   )}
                  </div>
                ))}
              </div>
@@ -141,29 +145,31 @@ export function ApiPlayground() {
         </div>
 
         {/* Right Column: Response */}
-        <div className="flex flex-col bg-gray-950 rounded-xl border border-gray-800 overflow-hidden">
-          <div className="bg-gray-900 px-4 py-2 border-b border-gray-800 flex justify-between items-center">
-            <span className="text-xs font-bold text-gray-400 uppercase">Response</span>
+        <div className="flex flex-col h-full bg-[var(--bg-card)] rounded-xl border border-[var(--border-color)] overflow-hidden">
+          <div className="flex items-center justify-between p-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
+            <span className="text-xs font-bold text-[var(--text-secondary)] uppercase">Response</span>
             {response && (
-              <div className="flex items-center gap-3 text-xs">
-                <span className={`font-mono ${response.status >= 400 ? 'text-red-400' : 'text-green-400'}`}>
-                  {response.status} {response.statusText}
-                </span>
-                <span className="text-gray-600">|</span>
-                <span className="text-blue-400">{response.duration}ms</span>
+              <div className="flex items-center gap-3">
+                 <span className="text-xs text-[var(--text-muted)]">{response.duration}ms</span>
+                 <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                   response.status >= 200 && response.status < 300 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                 }`}>
+                   {response.status} {response.statusText}
+                 </span>
               </div>
             )}
           </div>
-          <div className="flex-1 overflow-auto p-4">
-            {response ? (
-              <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap">
-                {JSON.stringify(response.data, null, 2)}
-              </pre>
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-700 text-sm italic">
-                No response yet
-              </div>
-            )}
+          <div className="flex-1 overflow-auto p-4 bg-[var(--bg-code)]">
+             {response ? (
+               <pre className="text-xs font-mono text-[var(--accent-success)] whitespace-pre-wrap">
+                 {JSON.stringify(response.data, null, 2)}
+               </pre>
+             ) : (
+               <div className="h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
+                 <Play className="w-12 h-12 mb-2 opacity-20" />
+                 <p className="text-sm">Send a request to see the response</p>
+               </div>
+             )}
           </div>
         </div>
       </div>
