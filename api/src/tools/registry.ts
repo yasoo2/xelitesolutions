@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { ToolDefinition, ToolExecutionResult } from './types';
 import { Buffer } from 'buffer';
+import { config } from '../config';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -9,6 +10,124 @@ if (!fs.existsSync(ARTIFACT_DIR)) {
 }
 
 export const tools: ToolDefinition[] = [
+  {
+    name: 'browser_open',
+    version: '1.0.0',
+    tags: ['browser', 'agent', 'stream'],
+    inputSchema: { type: 'object', properties: { viewport: { type: 'object' }, url: { type: 'string' }, device: { type: 'string' } }, required: ['url'] },
+    outputSchema: { type: 'object', properties: { sessionId: { type: 'string' }, wsUrl: { type: 'string' } } },
+    permissions: ['internet'],
+    sideEffects: [],
+    rateLimitPerMinute: 20,
+    auditFields: ['url'],
+    mockSupported: false,
+    async execute(input) {
+      const logs: string[] = [];
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      try {
+        const resp = await fetch(`${base}/session/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+          body: JSON.stringify({ viewport: input?.viewport, device: input?.device })
+        });
+        if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+        const j = await resp.json();
+        const sessionId = j.sessionId;
+        const wsUrl = `${base.replace(/^http/, 'ws')}${j.wsUrl}?key=${encodeURIComponent(key)}`;
+        // Navigate
+        const nav = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/job/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+          body: JSON.stringify({ actions: [{ type: 'goto', url: String(input?.url || 'https://www.google.com'), waitUntil: 'domcontentloaded' }] })
+        });
+        if (!nav.ok) logs.push(`nav_error=${nav.status}`);
+        const artifacts = [
+          { name: 'Agent Browser Stream', href: wsUrl, kind: 'browser_stream' }
+        ];
+        return { ok: true, output: { sessionId, wsUrl }, logs, artifacts };
+      } catch (e: any) {
+        logs.push(`error=${e.message}`);
+        return { ok: false, error: e.message, logs };
+      }
+    }
+  },
+  {
+    name: 'browser_run',
+    version: '1.0.0',
+    tags: ['browser', 'agent'],
+    inputSchema: { type: 'object', properties: { sessionId: { type: 'string' }, actions: { type: 'array' } }, required: ['sessionId', 'actions'] },
+    outputSchema: { type: 'object', properties: { outputs: { type: 'array' } } },
+    permissions: ['internet'],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: ['sessionId'],
+    mockSupported: false,
+    async execute(input) {
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/job/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+        body: JSON.stringify({ actions: input?.actions || [] })
+      });
+      const logs: string[] = [];
+      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      const j = await resp.json();
+      const artifacts = (j.artifacts || []).map((a: any) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(path.basename(a.href))}` }));
+      return { ok: true, output: { outputs: j.outputs }, logs, artifacts };
+    }
+  },
+  {
+    name: 'browser_extract',
+    version: '1.0.0',
+    tags: ['browser', 'extract'],
+    inputSchema: { type: 'object', properties: { sessionId: { type: 'string' }, schema: { type: 'object' } }, required: ['sessionId', 'schema'] },
+    outputSchema: { type: 'object', properties: { json: { type: 'object' }, confidence: { type: 'number' } } },
+    permissions: ['internet'],
+    sideEffects: [],
+    rateLimitPerMinute: 20,
+    auditFields: ['sessionId'],
+    mockSupported: false,
+    async execute(input) {
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+        body: JSON.stringify({ schema: input?.schema })
+      });
+      const logs: string[] = [];
+      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      const j = await resp.json();
+      return { ok: true, output: { json: j.json, confidence: j.confidence }, logs };
+    }
+  },
+  {
+    name: 'browser_get_state',
+    version: '1.0.0',
+    tags: ['browser', 'snapshot'],
+    inputSchema: { type: 'object', properties: { sessionId: { type: 'string' } }, required: ['sessionId'] },
+    outputSchema: { type: 'object', properties: { dom: { type: 'string' }, a11y: { type: 'object' }, screenshot: { type: 'string' } } },
+    permissions: ['internet'],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: ['sessionId'],
+    mockSupported: false,
+    async execute(input) {
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-worker-key': key }
+      });
+      const logs: string[] = [];
+      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      const j = await resp.json();
+      const artifacts = [{ name: 'snapshot.jpg', href: `${base}/shots/${path.basename(j.screenshot)}` }];
+      return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs, artifacts };
+    }
+  },
   {
     name: 'echo',
     version: '1.0.0',

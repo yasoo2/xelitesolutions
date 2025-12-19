@@ -639,6 +639,17 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             return null;
           }
           if (e.type === 'artifact_created') {
+            const kind = e.data.kind;
+            if (kind === 'browser_stream' && e.data.href) {
+              const AgentBrowserStream = require('./AgentBrowserStream').default;
+              return (
+                <div key={i} className="message-row joe">
+                  <div className="event-artifact" style={{ padding: 0 }}>
+                    <AgentBrowserStream wsUrl={e.data.href} />
+                  </div>
+                </div>
+              );
+            }
             const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.href || '');
             const isVideo = /\.(mp4|webm|mov)$/i.test(e.data.name || '') || /\.(mp4|webm|mov)$/i.test(e.data.href || '');
             

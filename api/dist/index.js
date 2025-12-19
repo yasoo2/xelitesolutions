@@ -50,12 +50,7 @@ var init_session = __esm({
         lastSnippet: { type: String },
         lastUpdatedAt: { type: Date, default: Date.now },
         folderId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Folder" },
-        terminalState: { type: String },
-        browserState: {
-          url: { type: String },
-          title: { type: String },
-          screenshot: { type: String }
-        }
+        terminalState: { type: String }
       },
       { timestamps: true }
     );
@@ -110,7 +105,7 @@ var init_context = __esm({
 });
 
 // src/index.ts
-var import_express21 = __toESM(require("express"));
+var import_express20 = __toESM(require("express"));
 var import_cors = __toESM(require("cors"));
 var import_morgan = __toESM(require("morgan"));
 var import_mongoose19 = __toESM(require("mongoose"));
@@ -245,411 +240,34 @@ var auth_default = router;
 var import_express2 = require("express");
 
 // src/tools/registry.ts
-var import_fs3 = __toESM(require("fs"));
-var import_path3 = __toESM(require("path"));
-var import_buffer = require("buffer");
-
-// src/services/browser.ts
-var import_puppeteer = __toESM(require("puppeteer"));
-var import_path = __toESM(require("path"));
-var import_fs = __toESM(require("fs"));
-var import_glob = require("glob");
-var BrowserService = class {
-  constructor() {
-    this.browser = null;
-    this.page = null;
-    this.logs = [];
-    this.network = [];
-  }
-  async getExecutablePath() {
-    try {
-      const defaultPath = import_puppeteer.default.executablePath();
-      if (import_fs.default.existsSync(defaultPath)) {
-        console.log("Using default Puppeteer executable:", defaultPath);
-        return defaultPath;
-      }
-    } catch (e) {
-      console.warn("Puppeteer executablePath() failed:", e);
-    }
-    const searchPaths = [
-      import_path.default.join(process.cwd(), ".chrome-bin"),
-      // Explicit local install
-      import_path.default.join(process.cwd(), "api", ".chrome-bin"),
-      // If running from root
-      import_path.default.join(process.cwd(), ".cache", "puppeteer"),
-      import_path.default.join(process.cwd(), "api", ".cache", "puppeteer"),
-      import_path.default.join(__dirname, "../../.cache", "puppeteer"),
-      import_path.default.join(__dirname, "../../../.cache", "puppeteer")
-    ];
-    console.log("Searching for Chrome in:", searchPaths);
-    for (const basePath of searchPaths) {
-      if (!import_fs.default.existsSync(basePath)) continue;
-      const pattern = "**/{Google Chrome for Testing,chrome,chrome.exe}";
-      const matches = await (0, import_glob.glob)(pattern, { cwd: basePath, absolute: true });
-      for (const match of matches) {
-        try {
-          const stat = import_fs.default.statSync(match);
-          if (stat.isFile()) {
-            console.log("Found executable manually:", match);
-            return match;
-          }
-        } catch (e) {
-        }
-      }
-    }
-    const linuxPath = import_path.default.join(process.cwd(), "api/.cache/puppeteer/chrome");
-    if (import_fs.default.existsSync(linuxPath)) {
-      try {
-        const files = await (0, import_glob.glob)("**/chrome", { cwd: linuxPath, absolute: true });
-        if (files.length > 0) return files[0];
-      } catch (e) {
-      }
-    }
-    return void 0;
-  }
-  async launch() {
-    if (this.browser) return;
-    try {
-      const executablePath = await this.getExecutablePath();
-      console.log("Launching browser with executable path:", executablePath || "bundled");
-      this.browser = await import_puppeteer.default.launch({
-        headless: true,
-        ignoreHTTPSErrors: true,
-        executablePath,
-        // If undefined, puppeteer tries its best
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--no-zygote",
-          "--single-process"
-        ]
-      });
-      this.page = await this.browser.newPage();
-      await this.page.setViewport({ width: 1280, height: 800 });
-      this.setupListeners();
-    } catch (error) {
-      console.error("Failed to launch browser:", error);
-      if (error instanceof Error) {
-        console.error("Error stack:", error.stack);
-      }
-      throw error;
-    }
-  }
-  setupListeners() {
-    if (!this.page) return;
-    this.page.on("console", (msg) => {
-      const text = msg.text();
-      let stackTrace = void 0;
-      const match = text.match(/(?:at\s+|@)([\w/.-]+:\d+:\d+)/);
-      if (match) {
-        stackTrace = match[1];
-      }
-      this.logs.push({
-        type: msg.type(),
-        message: text,
-        timestamp: Date.now(),
-        stackTrace
-      });
-      if (this.logs.length > 1e3) this.logs.shift();
-    });
-    this.page.on("request", (req) => {
-    });
-    this.page.on("response", async (resp) => {
-      let responseBody = void 0;
-      let requestBody = resp.request().postData();
-      try {
-        const contentType = resp.headers()["content-type"] || "";
-        if (contentType.includes("application/json") || contentType.includes("text/")) {
-          const length = Number(resp.headers()["content-length"]);
-          if (!length || length < 1024 * 1024) {
-            responseBody = await resp.text();
-          } else {
-            responseBody = "[Body too large]";
-          }
-        }
-      } catch (e) {
-        responseBody = "[Failed to read body]";
-      }
-      this.network.push({
-        url: resp.url(),
-        method: resp.request().method(),
-        status: resp.status(),
-        type: resp.request().resourceType(),
-        timestamp: Date.now(),
-        requestBody,
-        responseBody
-      });
-      if (this.network.length > 1e3) this.network.shift();
-    });
-  }
-  async auditPage() {
-    if (!this.page) return null;
-    return await this.page.evaluate(() => {
-      const issues = [];
-      let score = 100;
-      const images = document.querySelectorAll("img");
-      images.forEach((img) => {
-        if (!img.alt) {
-          score -= 2;
-          issues.push({
-            severity: "warning",
-            message: "Image missing alt text",
-            selector: img.id ? `#${img.id}` : img.className ? `.${img.className.split(" ")[0]}` : "img"
-          });
-        }
-      });
-      const buttons = document.querySelectorAll("button, a");
-      buttons.forEach((btn) => {
-        const rect = btn.getBoundingClientRect();
-        if (rect.width > 0 && (rect.width < 44 || rect.height < 44)) {
-          score -= 1;
-          issues.push({
-            severity: "info",
-            message: "Touch target too small (<44px)",
-            selector: btn.textContent?.slice(0, 20) || "button"
-          });
-        }
-      });
-      const inputs = document.querySelectorAll("input");
-      inputs.forEach((input) => {
-        if (input.type === "hidden" || input.type === "submit") return;
-        const hasLabel = input.labels && input.labels.length > 0;
-        const hasAria = input.hasAttribute("aria-label") || input.hasAttribute("aria-labelledby");
-        if (!hasLabel && !hasAria) {
-          score -= 5;
-          issues.push({
-            severity: "critical",
-            message: "Input field missing label",
-            selector: input.name || input.id || "input"
-          });
-        }
-      });
-      const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6"));
-      let lastLevel = 0;
-      headings.forEach((h) => {
-        const level = parseInt(h.tagName[1]);
-        if (level > lastLevel + 1) {
-          score -= 3;
-          issues.push({
-            severity: "warning",
-            message: `Skipped heading level: H${lastLevel} to H${level}`,
-            selector: h.textContent?.slice(0, 20) || `H${level}`
-          });
-        }
-        lastLevel = level;
-      });
-      return {
-        score: Math.max(0, score),
-        issues
-      };
-    });
-  }
-  async navigate(url) {
-    if (!this.page) await this.launch();
-    if (!url.startsWith("http")) url = "https://" + url;
-    await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 3e4 });
-    return { title: await this.page.title(), url: this.page.url() };
-  }
-  async screenshot() {
-    if (!this.page) return null;
-    try {
-      return await this.page.screenshot({ encoding: "base64" });
-    } catch (error) {
-      console.error("Screenshot failed:", error);
-      try {
-        await this.close();
-        await this.launch();
-      } catch (restartError) {
-        console.error("Failed to restart browser after screenshot failure:", restartError);
-      }
-      return null;
-    }
-  }
-  async pdf() {
-    if (!this.page) return null;
-    return await this.page.pdf({ format: "A4" });
-  }
-  async setViewport(width, height) {
-    if (!this.page) return;
-    await this.page.setViewport({ width, height });
-  }
-  async evaluate(script) {
-    if (!this.page) return null;
-    try {
-      const result = await this.page.evaluate((code) => {
-        try {
-          return eval(code);
-        } catch (e) {
-          return e.toString();
-        }
-      }, script);
-      return result;
-    } catch (e) {
-      return e.message;
-    }
-  }
-  async inspect(x, y) {
-    if (!this.page) return null;
-    return await this.page.evaluate(({ x: x2, y: y2 }) => {
-      const el = document.elementFromPoint(x2, y2);
-      if (!el) return null;
-      const styles = window.getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      return {
-        tagName: el.tagName.toLowerCase(),
-        id: el.id,
-        className: el.className,
-        innerHTML: el.innerHTML.slice(0, 200) + (el.innerHTML.length > 200 ? "..." : ""),
-        innerText: el.innerText?.slice(0, 100),
-        rect: {
-          width: rect.width,
-          height: rect.height,
-          top: rect.top,
-          left: rect.left
-        },
-        styles: {
-          color: styles.color,
-          backgroundColor: styles.backgroundColor,
-          fontFamily: styles.fontFamily,
-          fontSize: styles.fontSize,
-          display: styles.display,
-          padding: styles.padding,
-          margin: styles.margin
-        }
-      };
-    }, { x, y });
-  }
-  async click(x, y) {
-    if (!this.page) return;
-    await this.page.mouse.click(x, y);
-  }
-  async clickSelector(selector) {
-    if (!this.page) return;
-    try {
-      await this.page.waitForSelector(selector, { timeout: 5e3 });
-      await this.page.click(selector);
-    } catch (e) {
-      throw new Error(`Failed to click selector "${selector}": ${e.message}`);
-    }
-  }
-  async type(text) {
-    if (!this.page) return;
-    await this.page.keyboard.type(text);
-  }
-  async typeSelector(selector, text) {
-    if (!this.page) return;
-    try {
-      await this.page.waitForSelector(selector, { timeout: 5e3 });
-      await this.page.type(selector, text);
-    } catch (e) {
-      throw new Error(`Failed to type in selector "${selector}": ${e.message}`);
-    }
-  }
-  async getSimplifiedDOM() {
-    if (!this.page) return null;
-    return await this.page.evaluate(() => {
-      const cleanup = (node) => {
-        const importantTags = ["a", "button", "input", "select", "textarea", "h1", "h2", "h3", "p", "div", "span", "img", "form"];
-        const tag = node.tagName.toLowerCase();
-        if (!importantTags.includes(tag)) return null;
-        const rect = node.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return null;
-        const attributes = {};
-        if (node.id) attributes.id = node.id;
-        if (node.name) attributes.name = node.name;
-        if (node.href) attributes.href = node.href;
-        if (node.placeholder) attributes.placeholder = node.placeholder;
-        if (node.type) attributes.type = node.type;
-        if (node.className) attributes.class = node.className;
-        let text = "";
-        if (["p", "span", "h1", "h2", "h3", "button", "a"].includes(tag)) {
-          text = node.innerText.slice(0, 200);
-        }
-        return {
-          tag,
-          ...attributes,
-          text: text || void 0
-          // rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) }
-        };
-      };
-      const traverse = (node) => {
-        const children = Array.from(node.children).map(traverse).flat().filter(Boolean);
-        const info = cleanup(node);
-        if (info) {
-          return [info, ...children];
-        }
-        return children;
-      };
-      return traverse(document.body);
-    });
-  }
-  async scroll(deltaY) {
-    if (!this.page) return;
-    await this.page.evaluate((dy) => {
-      window.scrollBy(0, dy);
-    }, deltaY);
-  }
-  async goBack() {
-    if (this.page) await this.page.goBack();
-  }
-  async goForward() {
-    if (this.page) await this.page.goForward();
-  }
-  async reload() {
-    if (this.page) await this.page.reload();
-  }
-  getLogs() {
-    return this.logs;
-  }
-  getNetwork() {
-    return this.network;
-  }
-  async close() {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-      this.page = null;
-      this.logs = [];
-      this.network = [];
-    }
-  }
-  getStatus() {
-    const viewport = this.page?.viewport();
-    return {
-      active: !!this.browser,
-      url: this.page?.url() || "",
-      viewport: viewport || { width: 1280, height: 800 }
-    };
-  }
-};
-var browserService = new BrowserService();
-
-// src/services/knowledge.ts
 var import_fs2 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
+var import_buffer = require("buffer");
+
+// src/services/knowledge.ts
+var import_fs = __toESM(require("fs"));
+var import_path = __toESM(require("path"));
 var import_uuid = require("uuid");
 var import_pdf_parse = __toESM(require("pdf-parse"));
-var DATA_DIR = process.env.DATA_DIR || import_path2.default.join(process.cwd(), "data");
-var KNOWLEDGE_FILE = import_path2.default.join(DATA_DIR, "knowledge.json");
-if (!import_fs2.default.existsSync(DATA_DIR)) {
+var DATA_DIR = process.env.DATA_DIR || import_path.default.join(process.cwd(), "data");
+var KNOWLEDGE_FILE = import_path.default.join(DATA_DIR, "knowledge.json");
+if (!import_fs.default.existsSync(DATA_DIR)) {
   try {
-    import_fs2.default.mkdirSync(DATA_DIR, { recursive: true });
+    import_fs.default.mkdirSync(DATA_DIR, { recursive: true });
   } catch {
   }
 }
 function loadKnowledge() {
-  if (!import_fs2.default.existsSync(KNOWLEDGE_FILE)) return [];
+  if (!import_fs.default.existsSync(KNOWLEDGE_FILE)) return [];
   try {
-    const data = import_fs2.default.readFileSync(KNOWLEDGE_FILE, "utf-8");
+    const data = import_fs.default.readFileSync(KNOWLEDGE_FILE, "utf-8");
     return JSON.parse(data);
   } catch {
     return [];
   }
 }
 function saveKnowledge(docs) {
-  import_fs2.default.writeFileSync(KNOWLEDGE_FILE, JSON.stringify(docs, null, 2));
+  import_fs.default.writeFileSync(KNOWLEDGE_FILE, JSON.stringify(docs, null, 2));
 }
 var KnowledgeService = {
   getAll: () => loadKnowledge(),
@@ -706,9 +324,9 @@ var KnowledgeService = {
 
 // src/tools/registry.ts
 var ARTIFACT_DIR = process.env.ARTIFACT_DIR || "/tmp/joe-artifacts";
-if (!import_fs3.default.existsSync(ARTIFACT_DIR)) {
+if (!import_fs2.default.existsSync(ARTIFACT_DIR)) {
   try {
-    import_fs3.default.mkdirSync(ARTIFACT_DIR, { recursive: true });
+    import_fs2.default.mkdirSync(ARTIFACT_DIR, { recursive: true });
   } catch {
   }
 }
@@ -971,30 +589,6 @@ var tools = [
     mockSupported: true
   },
   {
-    name: "browser_snapshot",
-    version: "1.0.0",
-    tags: ["browser", "artifact"],
-    inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
-    outputSchema: { type: "object", properties: { href: { type: "string" }, title: { type: "string" } } },
-    permissions: ["read"],
-    sideEffects: [],
-    rateLimitPerMinute: 30,
-    auditFields: ["filename"],
-    mockSupported: false
-  },
-  {
-    name: "browser_open",
-    version: "1.0.0",
-    tags: ["browser", "action"],
-    inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
-    outputSchema: { type: "object", properties: { message: { type: "string" }, title: { type: "string" } } },
-    permissions: ["read", "internet"],
-    sideEffects: ["execute"],
-    rateLimitPerMinute: 30,
-    auditFields: ["url"],
-    mockSupported: false
-  },
-  {
     name: "deep_research",
     version: "1.0.0",
     tags: ["ai", "research", "agent"],
@@ -1203,8 +797,8 @@ async function executeTool(name, input) {
     }
     if (name === "json_query") {
       const obj = input?.json ?? null;
-      const path10 = String(input?.path ?? "");
-      const norm = path10.replace(/\[(\d+)\]/g, ".$1");
+      const path9 = String(input?.path ?? "");
+      const norm = path9.replace(/\[(\d+)\]/g, ".$1");
       const parts = norm.split(".").filter(Boolean);
       let cur = obj;
       for (const p of parts) {
@@ -1270,64 +864,22 @@ async function executeTool(name, input) {
     if (name === "file_write") {
       const filename = String(input?.filename ?? "artifact.txt");
       const content = String(input?.content ?? "");
-      const full = import_path3.default.isAbsolute(filename) ? filename : import_path3.default.resolve(process.cwd(), filename);
-      const dir = import_path3.default.dirname(full);
-      if (!import_fs3.default.existsSync(dir)) {
+      const full = import_path2.default.isAbsolute(filename) ? filename : import_path2.default.resolve(process.cwd(), filename);
+      const dir = import_path2.default.dirname(full);
+      if (!import_fs2.default.existsSync(dir)) {
         try {
-          import_fs3.default.mkdirSync(dir, { recursive: true });
+          import_fs2.default.mkdirSync(dir, { recursive: true });
         } catch {
         }
       }
-      import_fs3.default.writeFileSync(full, content);
+      import_fs2.default.writeFileSync(full, content);
       logs.push(`wrote=${full} bytes=${content.length}`);
       let href = "";
-      const artifactDirAbs = import_path3.default.resolve(ARTIFACT_DIR);
+      const artifactDirAbs = import_path2.default.resolve(ARTIFACT_DIR);
       if (full.startsWith(artifactDirAbs)) {
-        href = `/artifacts/${encodeURIComponent(import_path3.default.relative(artifactDirAbs, full))}`;
+        href = `/artifacts/${encodeURIComponent(import_path2.default.relative(artifactDirAbs, full))}`;
       }
-      return { ok: true, output: { href }, logs, artifacts: href ? [{ name: import_path3.default.basename(full), href }] : [] };
-    }
-    if (name === "browser_open") {
-      const url = String(input?.url ?? "");
-      try {
-        await browserService.launch();
-        const navResult = await browserService.navigate(url);
-        logs.push(`browser.opened=${url} title=${navResult.title}`);
-        return { ok: true, output: { message: `Browser opened to ${url}`, title: navResult.title }, logs };
-      } catch (err) {
-        return { ok: false, error: err.message, logs };
-      }
-    }
-    if (name === "browser_snapshot") {
-      const url = String(input?.url ?? "");
-      const filename = `snapshot-${Date.now()}.png`;
-      const full = import_path3.default.join(ARTIFACT_DIR, filename);
-      try {
-        await browserService.launch();
-        const navResult = await browserService.navigate(url);
-        const b64 = await browserService.screenshot();
-        const textSummary = await browserService.evaluate(`document.body.innerText.slice(0, 2000)`);
-        if (b64) {
-          import_fs3.default.writeFileSync(full, import_buffer.Buffer.from(b64, "base64"));
-          logs.push(`snapshot.saved=${full} title=${navResult.title}`);
-          const href = `/artifacts/${encodeURIComponent(filename)}`;
-          return {
-            ok: true,
-            output: {
-              href,
-              title: navResult.title,
-              textPreview: typeof textSummary === "string" ? textSummary.replace(/\s+/g, " ").trim() : ""
-            },
-            logs,
-            artifacts: [{ name: filename, href }]
-          };
-        } else {
-          return { ok: false, error: "Failed to capture screenshot", logs };
-        }
-      } catch (err) {
-        logs.push(`browser.error=${err.message}`);
-        return { ok: false, error: err.message, logs };
-      }
+      return { ok: true, output: { href }, logs, artifacts: href ? [{ name: import_path2.default.basename(full), href }] : [] };
     }
     if (name === "image_generate") {
       const prompt = String(input?.prompt ?? "").trim();
@@ -1363,8 +915,8 @@ async function executeTool(name, input) {
           return { ok: false, error: "image_generation_failed_no_data", logs };
         }
         const filename = `image-${Date.now()}.png`;
-        const full = import_path3.default.join(ARTIFACT_DIR, filename);
-        import_fs3.default.writeFileSync(full, buf);
+        const full = import_path2.default.join(ARTIFACT_DIR, filename);
+        import_fs2.default.writeFileSync(full, buf);
         logs.push(`image.saved=${full} bytes=${buf.length}`);
         const href = `/artifacts/${encodeURIComponent(filename)}`;
         return { ok: true, output: { href }, logs, artifacts: [{ name: filename, href }] };
@@ -1514,29 +1066,29 @@ ${contents.join("\n---\n")}`
     }
     if (name === "file_read") {
       const filename = String(input?.filename ?? "");
-      const full = import_path3.default.isAbsolute(filename) ? filename : import_path3.default.resolve(process.cwd(), filename);
-      if (import_fs3.default.existsSync(full) && import_fs3.default.lstatSync(full).isDirectory()) {
+      const full = import_path2.default.isAbsolute(filename) ? filename : import_path2.default.resolve(process.cwd(), filename);
+      if (import_fs2.default.existsSync(full) && import_fs2.default.lstatSync(full).isDirectory()) {
         return { ok: false, error: "EISDIR: illegal operation on a directory, read", logs };
       }
-      if (!import_fs3.default.existsSync(full)) {
+      if (!import_fs2.default.existsSync(full)) {
         return { ok: false, error: "File not found", logs };
       }
-      const content = import_fs3.default.readFileSync(full, "utf-8");
+      const content = import_fs2.default.readFileSync(full, "utf-8");
       logs.push(`read=${full} bytes=${content.length}`);
       return { ok: true, output: { content }, logs };
     }
     if (name === "read_file_tree") {
       const p = String(input?.path || ".");
       const maxDepth = Math.min(5, Number(input?.depth ?? 2));
-      const rootPath = import_path3.default.isAbsolute(p) ? p : import_path3.default.resolve(process.cwd(), p);
-      if (!import_fs3.default.existsSync(rootPath)) {
+      const rootPath = import_path2.default.isAbsolute(p) ? p : import_path2.default.resolve(process.cwd(), p);
+      if (!import_fs2.default.existsSync(rootPath)) {
         return { ok: false, error: "Directory not found", logs };
       }
       const getTree = (dir, currentDepth) => {
         if (currentDepth > maxDepth) return "";
         try {
-          const files = import_fs3.default.readdirSync(dir, { withFileTypes: true });
-          let result2 = "";
+          const files = import_fs2.default.readdirSync(dir, { withFileTypes: true });
+          let result = "";
           files.sort((a, b) => {
             if (a.isDirectory() && !b.isDirectory()) return -1;
             if (!a.isDirectory() && b.isDirectory()) return 1;
@@ -1545,20 +1097,20 @@ ${contents.join("\n---\n")}`
           for (const f of files) {
             if (f.name.startsWith(".") && f.name !== ".env") continue;
             if (f.name === "node_modules" || f.name === "dist" || f.name === "build" || f.name === ".git") {
-              result2 += "  ".repeat(currentDepth) + `/${f.name} (ignored)
+              result += "  ".repeat(currentDepth) + `/${f.name} (ignored)
 `;
               continue;
             }
             if (f.isDirectory()) {
-              result2 += "  ".repeat(currentDepth) + `/${f.name}
+              result += "  ".repeat(currentDepth) + `/${f.name}
 `;
-              result2 += getTree(import_path3.default.join(dir, f.name), currentDepth + 1);
+              result += getTree(import_path2.default.join(dir, f.name), currentDepth + 1);
             } else {
-              result2 += "  ".repeat(currentDepth) + ` ${f.name}
+              result += "  ".repeat(currentDepth) + ` ${f.name}
 `;
             }
           }
-          return result2;
+          return result;
         } catch (e) {
           return "  ".repeat(currentDepth) + ` (error accessing dir)
 `;
@@ -1570,11 +1122,11 @@ ${contents.join("\n---\n")}`
     }
     if (name === "ls") {
       const p = String(input?.path || ".");
-      const dirPath = import_path3.default.isAbsolute(p) ? p : import_path3.default.resolve(process.cwd(), p);
-      if (!import_fs3.default.existsSync(dirPath)) {
+      const dirPath = import_path2.default.isAbsolute(p) ? p : import_path2.default.resolve(process.cwd(), p);
+      if (!import_fs2.default.existsSync(dirPath)) {
         return { ok: false, error: "Directory not found", logs };
       }
-      const files = import_fs3.default.readdirSync(dirPath);
+      const files = import_fs2.default.readdirSync(dirPath);
       logs.push(`ls=${dirPath} count=${files.length}`);
       return { ok: true, output: { files }, logs };
     }
@@ -1585,11 +1137,11 @@ ${contents.join("\n---\n")}`
       if (command.includes("rm -rf /") || command.includes("sudo")) {
         return { ok: false, error: "Command not allowed", logs };
       }
-      const stateFile = import_path3.default.join(process.cwd(), ".joe", "shell_state.json");
-      if (!cwdInput && import_fs3.default.existsSync(stateFile)) {
+      const stateFile = import_path2.default.join(process.cwd(), ".joe", "shell_state.json");
+      if (!cwdInput && import_fs2.default.existsSync(stateFile)) {
         try {
-          const state = JSON.parse(import_fs3.default.readFileSync(stateFile, "utf-8"));
-          if (state.cwd && import_fs3.default.existsSync(state.cwd)) {
+          const state = JSON.parse(import_fs2.default.readFileSync(stateFile, "utf-8"));
+          if (state.cwd && import_fs2.default.existsSync(state.cwd)) {
             cwdInput = state.cwd;
           }
         } catch {
@@ -1598,10 +1150,10 @@ ${contents.join("\n---\n")}`
       const { exec: exec2 } = await import("child_process");
       const util = await import("util");
       const execAsync = util.promisify(exec2);
-      const workDir = cwdInput ? import_path3.default.isAbsolute(cwdInput) ? cwdInput : import_path3.default.resolve(process.cwd(), cwdInput) : process.cwd();
-      if (!import_fs3.default.existsSync(import_path3.default.join(process.cwd(), ".joe"))) {
+      const workDir = cwdInput ? import_path2.default.isAbsolute(cwdInput) ? cwdInput : import_path2.default.resolve(process.cwd(), cwdInput) : process.cwd();
+      if (!import_fs2.default.existsSync(import_path2.default.join(process.cwd(), ".joe"))) {
         try {
-          import_fs3.default.mkdirSync(import_path3.default.join(process.cwd(), ".joe"));
+          import_fs2.default.mkdirSync(import_path2.default.join(process.cwd(), ".joe"));
         } catch {
         }
       }
@@ -1610,9 +1162,9 @@ ${contents.join("\n---\n")}`
         if (command.trim().startsWith("cd ")) {
           const target = command.trim().split(/\s+/)[1];
           if (target) {
-            const newCwd = import_path3.default.resolve(workDir, target);
-            if (import_fs3.default.existsSync(newCwd)) {
-              import_fs3.default.writeFileSync(stateFile, JSON.stringify({ cwd: newCwd }));
+            const newCwd = import_path2.default.resolve(workDir, target);
+            if (import_fs2.default.existsSync(newCwd)) {
+              import_fs2.default.writeFileSync(stateFile, JSON.stringify({ cwd: newCwd }));
               logs.push(`shell.cwd_updated=${newCwd}`);
             }
           }
@@ -1626,12 +1178,12 @@ ${contents.join("\n---\n")}`
     }
     if (name === "check_syntax") {
       const filename = String(input?.filename ?? "");
-      const full = import_path3.default.isAbsolute(filename) ? filename : import_path3.default.resolve(process.cwd(), filename);
-      if (!import_fs3.default.existsSync(full)) return { ok: false, error: "File not found", logs };
-      const ext = import_path3.default.extname(full).toLowerCase();
+      const full = import_path2.default.isAbsolute(filename) ? filename : import_path2.default.resolve(process.cwd(), filename);
+      if (!import_fs2.default.existsSync(full)) return { ok: false, error: "File not found", logs };
+      const ext = import_path2.default.extname(full).toLowerCase();
       if (ext === ".json") {
         try {
-          JSON.parse(import_fs3.default.readFileSync(full, "utf-8"));
+          JSON.parse(import_fs2.default.readFileSync(full, "utf-8"));
           return { ok: true, output: { status: "OK" }, logs };
         } catch (e) {
           return { ok: false, error: e.message, logs };
@@ -1663,9 +1215,9 @@ ${contents.join("\n---\n")}`
     }
     if (name === "generate_tests") {
       const filename = String(input?.filename ?? "");
-      const full = import_path3.default.isAbsolute(filename) ? filename : import_path3.default.resolve(process.cwd(), filename);
-      if (!import_fs3.default.existsSync(full)) return { ok: false, error: "File not found", logs };
-      const content = import_fs3.default.readFileSync(full, "utf-8");
+      const full = import_path2.default.isAbsolute(filename) ? filename : import_path2.default.resolve(process.cwd(), filename);
+      if (!import_fs2.default.existsSync(full)) return { ok: false, error: "File not found", logs };
+      const content = import_fs2.default.readFileSync(full, "utf-8");
       const apiKey2 = process.env.OPENAI_API_KEY;
       if (!apiKey2) return { ok: false, error: "No API Key for generation", logs };
       try {
@@ -1675,17 +1227,17 @@ ${contents.join("\n---\n")}`
           model: process.env.OPENAI_MODEL || "gpt-4o",
           messages: [
             { role: "system", content: "You are a Senior QA Engineer. Generate a comprehensive test file for the provided code. Use Jest/Vitest syntax. Return ONLY the code, no markdown." },
-            { role: "user", content: `File: ${import_path3.default.basename(filename)}
+            { role: "user", content: `File: ${import_path2.default.basename(filename)}
 
 ${content}` }
           ]
         });
         let testCode = completion.choices[0].message.content || "";
         testCode = testCode.replace(/^```(typescript|ts|javascript|js)?\n/, "").replace(/\n```$/, "");
-        const testDir = import_path3.default.join(import_path3.default.dirname(full), "__tests__");
-        if (!import_fs3.default.existsSync(testDir)) import_fs3.default.mkdirSync(testDir, { recursive: true });
-        const testFile = import_path3.default.join(testDir, `${import_path3.default.basename(filename, import_path3.default.extname(filename))}.test${import_path3.default.extname(filename)}`);
-        import_fs3.default.writeFileSync(testFile, testCode);
+        const testDir = import_path2.default.join(import_path2.default.dirname(full), "__tests__");
+        if (!import_fs2.default.existsSync(testDir)) import_fs2.default.mkdirSync(testDir, { recursive: true });
+        const testFile = import_path2.default.join(testDir, `${import_path2.default.basename(filename, import_path2.default.extname(filename))}.test${import_path2.default.extname(filename)}`);
+        import_fs2.default.writeFileSync(testFile, testCode);
         logs.push(`tests.generated=${testFile}`);
         return { ok: true, output: { testFile }, logs };
       } catch (e) {
@@ -1719,16 +1271,16 @@ ${content}` }
     }
     if (name === "generate_docs") {
       const p = String(input?.path || ".");
-      const root = import_path3.default.isAbsolute(p) ? p : import_path3.default.resolve(process.cwd(), p);
+      const root = import_path2.default.isAbsolute(p) ? p : import_path2.default.resolve(process.cwd(), p);
       const apiKey2 = process.env.OPENAI_API_KEY;
       if (!apiKey2) return { ok: false, error: "No API Key", logs };
-      const files = import_fs3.default.readdirSync(root).filter((f) => /\.(ts|js|py|go)$/.test(f)).slice(0, 5);
+      const files = import_fs2.default.readdirSync(root).filter((f) => /\.(ts|js|py|go)$/.test(f)).slice(0, 5);
       const docs = {};
       try {
         const { default: OpenAI4 } = await import("openai");
         const client = new OpenAI4({ apiKey: apiKey2, baseURL: process.env.OPENAI_BASE_URL });
         for (const f of files) {
-          const content = import_fs3.default.readFileSync(import_path3.default.join(root, f), "utf-8");
+          const content = import_fs2.default.readFileSync(import_path2.default.join(root, f), "utf-8");
           const completion = await client.chat.completions.create({
             model: "gpt-4o",
             messages: [
@@ -1746,7 +1298,7 @@ ${doc}
 
 `;
         }
-        import_fs3.default.writeFileSync(import_path3.default.join(root, "README_API.md"), md);
+        import_fs2.default.writeFileSync(import_path2.default.join(root, "README_API.md"), md);
         return { ok: true, output: { file: "README_API.md" }, logs };
       } catch (e) {
         return { ok: false, error: e.message, logs };
@@ -1789,8 +1341,8 @@ ${doc}
         logs.push(`npm.cmd=${fullCmd} starting...`);
         const { stdout, stderr } = await execAsync(fullCmd, { cwd: process.cwd() });
         if ((cmd === "install" || cmd === "i") && pkgs.length > 0) {
-          const tsConfig = import_path3.default.join(process.cwd(), "tsconfig.json");
-          if (import_fs3.default.existsSync(tsConfig)) {
+          const tsConfig = import_path2.default.join(process.cwd(), "tsconfig.json");
+          if (import_fs2.default.existsSync(tsConfig)) {
             const typesToInstall = pkgs.filter((p) => !p.startsWith("@types/")).map((p) => `@types/${p.split("@")[0]}`);
             if (typesToInstall.length > 0) {
               try {
@@ -1811,14 +1363,14 @@ ${doc}
       const filename = String(input?.filename ?? "");
       const find = String(input?.find ?? "");
       const replace = String(input?.replace ?? "");
-      const full = import_path3.default.isAbsolute(filename) ? filename : import_path3.default.resolve(process.cwd(), filename);
-      if (!import_fs3.default.existsSync(full)) return { ok: false, error: "File not found", logs };
-      let content = import_fs3.default.readFileSync(full, "utf-8");
+      const full = import_path2.default.isAbsolute(filename) ? filename : import_path2.default.resolve(process.cwd(), filename);
+      if (!import_fs2.default.existsSync(full)) return { ok: false, error: "File not found", logs };
+      let content = import_fs2.default.readFileSync(full, "utf-8");
       if (!content.includes(find)) {
         return { ok: false, error: "Text to replace not found", logs };
       }
       content = content.replace(find, replace);
-      import_fs3.default.writeFileSync(full, content);
+      import_fs2.default.writeFileSync(full, content);
       logs.push(`edit=${filename}`);
       return { ok: true, output: { success: true }, logs };
     }
@@ -1827,7 +1379,7 @@ ${doc}
       const searchPath = String(input?.path ?? ".");
       const include = String(input?.include ?? "");
       const exclude = String(input?.exclude ?? "");
-      const workDir = import_path3.default.isAbsolute(searchPath) ? searchPath : import_path3.default.resolve(process.cwd(), searchPath);
+      const workDir = import_path2.default.isAbsolute(searchPath) ? searchPath : import_path2.default.resolve(process.cwd(), searchPath);
       let cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${workDir}"`;
       if (include) {
         cmd += ` --include="${include}"`;
@@ -1857,23 +1409,23 @@ ${doc}
     if (name === "scaffold_project") {
       const structure = input?.structure || {};
       const baseDir = String(input?.baseDir || ".");
-      const resolvedBase = import_path3.default.isAbsolute(baseDir) ? baseDir : import_path3.default.resolve(process.cwd(), baseDir);
+      const resolvedBase = import_path2.default.isAbsolute(baseDir) ? baseDir : import_path2.default.resolve(process.cwd(), baseDir);
       const created = [];
       const errors = [];
       for (const [relativePath, content] of Object.entries(structure)) {
-        const fullPath = import_path3.default.join(resolvedBase, relativePath);
+        const fullPath = import_path2.default.join(resolvedBase, relativePath);
         try {
           if (content === null) {
-            if (!import_fs3.default.existsSync(fullPath)) {
-              import_fs3.default.mkdirSync(fullPath, { recursive: true });
+            if (!import_fs2.default.existsSync(fullPath)) {
+              import_fs2.default.mkdirSync(fullPath, { recursive: true });
               created.push(`${relativePath}/`);
             }
           } else {
-            const dir = import_path3.default.dirname(fullPath);
-            if (!import_fs3.default.existsSync(dir)) {
-              import_fs3.default.mkdirSync(dir, { recursive: true });
+            const dir = import_path2.default.dirname(fullPath);
+            if (!import_fs2.default.existsSync(dir)) {
+              import_fs2.default.mkdirSync(dir, { recursive: true });
             }
-            import_fs3.default.writeFileSync(fullPath, String(content));
+            import_fs2.default.writeFileSync(fullPath, String(content));
             created.push(relativePath);
           }
         } catch (e) {
@@ -1889,27 +1441,27 @@ ${doc}
     }
     if (name === "analyze_codebase") {
       const p = String(input?.path || ".");
-      const root = import_path3.default.isAbsolute(p) ? p : import_path3.default.resolve(process.cwd(), p);
-      if (!import_fs3.default.existsSync(root)) return { ok: false, error: "Path not found", logs };
-      const pkgJsonPath = import_path3.default.join(root, "package.json");
+      const root = import_path2.default.isAbsolute(p) ? p : import_path2.default.resolve(process.cwd(), p);
+      if (!import_fs2.default.existsSync(root)) return { ok: false, error: "Path not found", logs };
+      const pkgJsonPath = import_path2.default.join(root, "package.json");
       let pkgInfo = "No package.json";
-      if (import_fs3.default.existsSync(pkgJsonPath)) {
+      if (import_fs2.default.existsSync(pkgJsonPath)) {
         try {
-          const pkg = JSON.parse(import_fs3.default.readFileSync(pkgJsonPath, "utf-8"));
+          const pkg = JSON.parse(import_fs2.default.readFileSync(pkgJsonPath, "utf-8"));
           pkgInfo = `Name: ${pkg.name}
 Dependencies: ${Object.keys(pkg.dependencies || {}).join(", ")}`;
         } catch {
         }
       }
-      const contextPath = import_path3.default.join(root, ".joe/context.json");
+      const contextPath = import_path2.default.join(root, ".joe/context.json");
       let contextInfo = "No .joe/context.json found";
-      if (import_fs3.default.existsSync(contextPath)) {
-        contextInfo = import_fs3.default.readFileSync(contextPath, "utf-8").slice(0, 500);
+      if (import_fs2.default.existsSync(contextPath)) {
+        contextInfo = import_fs2.default.readFileSync(contextPath, "utf-8").slice(0, 500);
       }
-      const archPath = import_path3.default.join(root, "ARCHITECTURE.md");
+      const archPath = import_path2.default.join(root, "ARCHITECTURE.md");
       let archInfo = "No ARCHITECTURE.md found";
-      if (import_fs3.default.existsSync(archPath)) {
-        archInfo = import_fs3.default.readFileSync(archPath, "utf-8").slice(0, 1e3);
+      if (import_fs2.default.existsSync(archPath)) {
+        archInfo = import_fs2.default.readFileSync(archPath, "utf-8").slice(0, 1e3);
       }
       const summary = `
 ## Codebase Analysis for ${root}
@@ -1985,9 +1537,9 @@ var TerminalManager = class extends import_events.EventEmitter {
     p.stderr?.on("data", (data) => {
       this.emit("data", { id, data: data.toString() });
     });
-    p.on("exit", (code2) => {
+    p.on("exit", (code) => {
       this.emit("data", { id, data: `\r
-[Process exited with code ${code2}]\r
+[Process exited with code ${code}]\r
 ` });
       delete this.sessions[id];
     });
@@ -2056,21 +1608,21 @@ router2.post("/run", async (req, res) => {
     { type: "step_started", data: { name: "execute:echo" } }
   ];
   steps.forEach((ev) => broadcast(ev));
-  const result2 = await executeTool("echo", { text: String(req.body?.text ?? "hello") });
-  broadcast({ type: result2.ok ? "step_done" : "step_failed", data: { name: "execute:echo", result: result2 } });
-  res.json(result2);
+  const result = await executeTool("echo", { text: String(req.body?.text ?? "hello") });
+  broadcast({ type: result.ok ? "step_done" : "step_failed", data: { name: "execute:echo", result } });
+  res.json(result);
 });
 router2.post("/:name/execute", async (req, res) => {
   const name = String(req.params.name);
-  const result2 = await executeTool(name, req.body || {});
-  res.json(result2);
+  const result = await executeTool(name, req.body || {});
+  res.json(result);
 });
 var tools_default = router2;
 
 // src/routes/run.ts
 var import_express3 = require("express");
 var import_mongoose11 = __toESM(require("mongoose"));
-var import_fs4 = __toESM(require("fs"));
+var import_fs3 = __toESM(require("fs"));
 
 // src/mock/store.ts
 var runs = [];
@@ -2677,9 +2229,9 @@ Output: { "facts": [{ "key": "role", "value": "React Developer" }, { "key": "pre
       });
       const content = completion.choices[0].message.content;
       if (!content) return;
-      const result2 = JSON.parse(content);
-      if (result2.facts && Array.isArray(result2.facts)) {
-        for (const fact of result2.facts) {
+      const result = JSON.parse(content);
+      if (result.facts && Array.isArray(result.facts)) {
+        for (const fact of result.facts) {
           const exists = await MemoryItem.findOne({
             userId,
             scope: "user",
@@ -2717,12 +2269,12 @@ router3.post("/verify", authenticate, async (req, res) => {
     }
   }
   try {
-    const result2 = await planNextStep(
+    const result = await planNextStep(
       [{ role: "user", content: "hello" }],
       { provider, apiKey: apiKey2, baseUrl, model, throwOnError: true }
     );
-    if (result2) {
-      return res.json({ status: "ok", message: "Connected successfully", result: result2 });
+    if (result) {
+      return res.json({ status: "ok", message: "Connected successfully", result });
     } else {
       return res.status(500).json({ error: "No response from provider" });
     }
@@ -2735,12 +2287,6 @@ function pickToolFromText(text) {
   const t = text.toLowerCase();
   const tn = t.replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "");
   const urlMatch = text.match(/https?:\/\/\S+/);
-  if (/(صورة|صوره|تصميم|صمم)/.test(t)) {
-    if (/(قطة|قطه|قط|cat)/.test(t)) return { name: "browser_snapshot", input: { url: "https://cataas.com/cat" } };
-    const label = encodeURIComponent(text.slice(0, 24));
-    const url = `https://dummyimage.com/1024x1024/111/eeee.png&text=${label}`;
-    return { name: "browser_snapshot", input: { url } };
-  }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
     return { name: "http_fetch", input: { url: "https://open.er-api.com/v6/latest/USD?sym=TRY", base: "USD", sym: "TRY" } };
   }
@@ -2810,9 +2356,9 @@ function pickToolFromText(text) {
   ];
   const found = [];
   const foundSet = /* @__PURE__ */ new Set();
-  for (const [code2, pat] of names) {
+  for (const [code, pat] of names) {
     if (new RegExp(pat, "i").test(tn)) {
-      foundSet.add(code2);
+      foundSet.add(code);
     }
   }
   if (foundSet.size >= 2) {
@@ -2852,7 +2398,6 @@ function pickToolFromText(text) {
   }
   if (t.includes("fetch") && urlMatch) return { name: "http_fetch", input: { url: urlMatch[0] } };
   if (t.includes("write")) return { name: "file_write", input: { filename: "note.txt", content: text } };
-  if (t.includes("browser") && urlMatch) return { name: "browser_snapshot", input: { url: urlMatch[0] } };
   return { name: "echo", input: { text } };
 }
 function detectRisk(text) {
@@ -2876,8 +2421,8 @@ router3.post("/start", authenticate, async (req, res) => {
       for (const f of files) {
         if (f.mimeType && f.mimeType.startsWith("image/")) {
           try {
-            if (import_fs4.default.existsSync(f.path)) {
-              const imageBuffer = import_fs4.default.readFileSync(f.path);
+            if (import_fs3.default.existsSync(f.path)) {
+              const imageBuffer = import_fs3.default.readFileSync(f.path);
               const base64Image = imageBuffer.toString("base64");
               contentParts.push({
                 type: "image_url",
@@ -3049,22 +2594,22 @@ ${memories.join("\n")}
     }
     ev({ type: "step_done", data: { name: `thinking_step_${steps + 1}`, plan } });
     ev({ type: "step_started", data: { name: `execute:${plan.name}` } });
-    const result2 = await executeTool(plan.name, plan.input);
-    lastResult = result2;
-    if (result2.logs?.length) {
-      for (const line of result2.logs) {
+    const result = await executeTool(plan.name, plan.input);
+    lastResult = result;
+    if (result.logs?.length) {
+      for (const line of result.logs) {
         ev({ type: "evidence_added", data: { kind: "log", text: line } });
       }
     }
-    if (result2.artifacts && Array.isArray(result2.artifacts)) {
-      for (const art of result2.artifacts) {
+    if (result.artifacts && Array.isArray(result.artifacts)) {
+      for (const art of result.artifacts) {
         ev({ type: "artifact_created", data: art });
       }
     }
-    ev({ type: result2.ok ? "step_done" : "step_failed", data: { name: `execute:${plan.name}`, result: result2 } });
-    if (!result2.ok && plan.name === "image_generate") {
-      const errorMsg = String(result2.error || "");
-      const logsStr = (result2.logs || []).join("\n");
+    ev({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${plan.name}`, result } });
+    if (!result.ok && plan.name === "image_generate") {
+      const errorMsg = String(result.error || "");
+      const logsStr = (result.logs || []).join("\n");
       if (errorMsg.includes("403") || errorMsg.includes("verification") || logsStr.includes("error=403")) {
         const msg = `\u274C **Image Generation Failed**
 ${errorMsg}
@@ -3075,23 +2620,23 @@ Please verify your OpenAI organization settings or try a different prompt.`;
         break;
       }
     }
-    if (result2.ok && plan.name === "echo") {
-      const text2 = result2.output?.text;
+    if (result.ok && plan.name === "echo") {
+      const text2 = result.output?.text;
       if (text2) {
         forcedText = text2;
         ev({ type: "text", data: text2 });
       }
     }
-    if (result2.ok && plan.name === "image_generate") {
-      const href = result2.output?.href;
+    if (result.ok && plan.name === "image_generate") {
+      const href = result.output?.href;
       if (href) {
         forcedText = `\u{1F3A8} Image generated successfully.`;
         ev({ type: "text", data: forcedText });
         break;
       }
     }
-    if (result2.ok && plan.name === "file_write") {
-      const href = result2.output?.href;
+    if (result.ok && plan.name === "file_write") {
+      const href = result.output?.href;
       const fname = String(plan.input?.filename || "").trim();
       const msgParts = [];
       msgParts.push(`### \u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u0645\u0644\u0641`);
@@ -3102,7 +2647,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       ev({ type: "text", data: msg });
       break;
     }
-    if (result2.ok && plan.name === "http_fetch") {
+    if (result.ok && plan.name === "http_fetch") {
       try {
         const urlStr = String(plan.input?.url || "");
         const u = new URL(urlStr);
@@ -3118,12 +2663,12 @@ Please verify your OpenAI organization settings or try a different prompt.`;
         if (!base && typeof plan.input?.base === "string") {
           base = String(plan.input.base).toUpperCase();
         }
-        const rates = result2.output?.json?.rates || {};
+        const rates = result.output?.json?.rates || {};
         let rate = null;
         if (sym && typeof rates[sym] === "number") {
           rate = rates[sym];
-        } else if (typeof result2.output?.bodySnippet === "string") {
-          const m = result2.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
+        } else if (typeof result.output?.bodySnippet === "string") {
+          const m = result.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
           if (m) rate = Number(m[1]);
         }
         if (rate !== null && base && sym) {
@@ -3165,7 +2710,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
         }
         if (u.hostname.includes("wttr.in")) {
           const city = String(plan.input?.city || "Istanbul");
-          const cc = Array.isArray(result2.output?.json?.current_condition) ? result2.output.json.current_condition[0] : null;
+          const cc = Array.isArray(result.output?.json?.current_condition) ? result.output.json.current_condition[0] : null;
           const tempC = cc ? Number(cc.temp_C) : null;
           const desc = cc && Array.isArray(cc.weatherDesc) && cc.weatherDesc[0] ? String(cc.weatherDesc[0].value || "") : "";
           const hum = cc && typeof cc.humidity !== "undefined" ? Number(cc.humidity) : null;
@@ -3185,9 +2730,9 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       } catch {
       }
     }
-    if (result2.ok && plan.name === "web_search") {
+    if (result.ok && plan.name === "web_search") {
       try {
-        const results = Array.isArray(result2.output?.results) ? result2.output.results : [];
+        const results = Array.isArray(result.output?.results) ? result.output.results : [];
         if (results.length > 0) {
           const mdParts = [];
           mdParts.push(`### \u0646\u062A\u0627\u0626\u062C \u0627\u0644\u0628\u062D\u062B`);
@@ -3213,9 +2758,9 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       } catch {
       }
     }
-    if (result2.ok && plan.name === "html_extract") {
+    if (result.ok && plan.name === "html_extract") {
       try {
-        const o = result2.output || {};
+        const o = result.output || {};
         const title = String(o.title || "").trim();
         const desc = String(o.metaDescription || "").trim();
         const heads = Array.isArray(o.headings) ? o.headings.slice(0, 8) : [];
@@ -3235,12 +2780,12 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       }
     }
     if (useMock) {
-      store.addExec(runId, plan.name, plan.input, result2.output, result2.ok, result2.logs);
+      store.addExec(runId, plan.name, plan.input, result.output, result.ok, result.logs);
     } else {
-      await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result2.output, ok: result2.ok, logs: result2.logs });
+      await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result.output, ok: result.ok, logs: result.logs });
     }
-    if (!result2.ok) {
-      const errorMsg = result2.error || (result2.logs ? result2.logs.join("\n") : "Unknown error");
+    if (!result.ok) {
+      const errorMsg = result.error || (result.logs ? result.logs.join("\n") : "Unknown error");
       ev({ type: "text", data: `\u26A0\uFE0F **Self-Healing Activated**: Detected error in '${plan.name}'. Analyzing fix...` });
       history.push({
         role: "assistant",
@@ -3248,7 +2793,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
 You must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.`
       });
     } else {
-      history.push({ role: "assistant", content: `Tool '${plan.name}' executed. Result: ${JSON.stringify(result2.output)}` });
+      history.push({ role: "assistant", content: `Tool '${plan.name}' executed. Result: ${JSON.stringify(result.output)}` });
     }
     steps++;
     if (plan.name === "echo") {
@@ -3424,8 +2969,8 @@ router5.post("/merge", authenticate, async (req, res) => {
   if (!sourceId || !targetId || sourceId === targetId) return res.status(400).json({ error: "Invalid source/target" });
   const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
   if (useMock) {
-    const result2 = store.mergeSessions(String(sourceId), String(targetId));
-    return res.json({ ok: true, ...result2 });
+    const result = store.mergeSessions(String(sourceId), String(targetId));
+    return res.json({ ok: true, ...result });
   }
   const source = await Session.findById(sourceId);
   const target = await Session.findById(targetId);
@@ -3595,13 +3140,12 @@ router5.delete("/:id", authenticate, async (req, res) => {
 });
 router5.patch("/:id/state", authenticate, async (req, res) => {
   const { id } = req.params;
-  const { terminalState, browserState } = req.body;
+  const { terminalState } = req.body;
   const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
   if (useMock) return res.json({ ok: true });
   await Session.findByIdAndUpdate(id, {
     $set: {
       terminalState,
-      browserState,
       lastUpdatedAt: /* @__PURE__ */ new Date()
     }
   });
@@ -3668,15 +3212,15 @@ var folders_default = router6;
 // src/routes/files.ts
 var import_express7 = require("express");
 var import_multer = __toESM(require("multer"));
-var import_path4 = __toESM(require("path"));
-var import_fs5 = __toESM(require("fs"));
+var import_path3 = __toESM(require("path"));
+var import_fs4 = __toESM(require("fs"));
 var pdf2 = require("pdf-parse");
 var router7 = (0, import_express7.Router)();
 var storage = import_multer.default.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = import_path4.default.join(__dirname, "../../uploads");
-    if (!import_fs5.default.existsSync(uploadDir)) {
-      import_fs5.default.mkdirSync(uploadDir, { recursive: true });
+    const uploadDir = import_path3.default.join(__dirname, "../../uploads");
+    if (!import_fs4.default.existsSync(uploadDir)) {
+      import_fs4.default.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
@@ -3698,11 +3242,11 @@ router7.post("/upload", authenticate, upload.single("file"), async (req, res) =>
     const { sessionId } = req.body;
     let content = "";
     if (req.file.mimetype === "application/pdf") {
-      const dataBuffer = import_fs5.default.readFileSync(req.file.path);
+      const dataBuffer = import_fs4.default.readFileSync(req.file.path);
       const data = await pdf2(dataBuffer);
       content = data.text;
     } else if (req.file.mimetype.startsWith("text/") || req.file.mimetype === "application/json" || req.file.mimetype === "application/javascript" || req.file.mimetype.includes("code")) {
-      content = import_fs5.default.readFileSync(req.file.path, "utf8");
+      content = import_fs4.default.readFileSync(req.file.path, "utf8");
     }
     const fileDoc = await FileModel.create({
       originalName: req.file.originalname,
@@ -3757,18 +3301,18 @@ router8.post("/:id/decision", authenticate, async (req, res) => {
     broadcast({ type: "approval_result", data: { id, decision } });
     if (decision === "approved") {
       broadcast({ type: "step_started", data: { name: `execute:${ctx.name}` } });
-      const result2 = await executeTool(ctx.name, ctx.input);
-      broadcast({ type: result2.ok ? "step_done" : "step_failed", data: { name: `execute:${ctx.name}`, result: result2 } });
-      if (result2.artifacts) {
-        for (const a2 of result2.artifacts) {
+      const result = await executeTool(ctx.name, ctx.input);
+      broadcast({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${ctx.name}`, result } });
+      if (result.artifacts) {
+        for (const a2 of result.artifacts) {
           store.addArtifact(ctx.runId, a2.name, a2.href);
           broadcast({ type: "artifact_created", data: { name: a2.name, href: a2.href } });
         }
       }
-      store.updateRun(ctx.runId, { status: result2.ok ? "done" : "failed" });
-      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: result2.ok } });
+      store.updateRun(ctx.runId, { status: result.ok ? "done" : "failed" });
+      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: result.ok } });
       planContext.delete(id);
-      return res.json({ ok: true, result: result2 });
+      return res.json({ ok: true, result });
     } else {
       store.updateRun(ctx.runId, { status: "denied" });
       broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: false } });
@@ -3781,14 +3325,14 @@ router8.post("/:id/decision", authenticate, async (req, res) => {
     broadcast({ type: "approval_result", data: { id, decision } });
     if (decision === "approved") {
       broadcast({ type: "step_started", data: { name: `execute:${ctx.name}` } });
-      const result2 = await executeTool(ctx.name, ctx.input);
-      broadcast({ type: result2.ok ? "step_done" : "step_failed", data: { name: `execute:${ctx.name}`, result: result2 } });
-      if (result2.artifacts) {
+      const result = await executeTool(ctx.name, ctx.input);
+      broadcast({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${ctx.name}`, result } });
+      if (result.artifacts) {
       }
-      await Run.findByIdAndUpdate(ctx.runId, { $set: { status: result2.ok ? "done" : "failed" } });
-      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: result2.ok } });
+      await Run.findByIdAndUpdate(ctx.runId, { $set: { status: result.ok ? "done" : "failed" } });
+      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: result.ok } });
       planContext.delete(id);
-      return res.json({ ok: true, result: result2 });
+      return res.json({ ok: true, result });
     } else {
       await Run.findByIdAndUpdate(ctx.runId, { $set: { status: "denied" } });
       broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: false } });
@@ -3801,16 +3345,16 @@ var approvals_default = router8;
 
 // src/routes/project.ts
 var import_express9 = require("express");
-var import_fs6 = __toESM(require("fs"));
-var import_path5 = __toESM(require("path"));
+var import_fs5 = __toESM(require("fs"));
+var import_path4 = __toESM(require("path"));
 var router9 = (0, import_express9.Router)();
 function getAllFiles(dirPath, arrayOfFiles = [], ignore = ["node_modules", ".git", "dist", "build", ".DS_Store"]) {
-  if (!import_fs6.default.existsSync(dirPath)) return arrayOfFiles;
-  const files = import_fs6.default.readdirSync(dirPath);
+  if (!import_fs5.default.existsSync(dirPath)) return arrayOfFiles;
+  const files = import_fs5.default.readdirSync(dirPath);
   files.forEach((file) => {
     if (ignore.includes(file)) return;
-    const fullPath = import_path5.default.join(dirPath, file);
-    if (import_fs6.default.statSync(fullPath).isDirectory()) {
+    const fullPath = import_path4.default.join(dirPath, file);
+    if (import_fs5.default.statSync(fullPath).isDirectory()) {
       arrayOfFiles = getAllFiles(fullPath, arrayOfFiles, ignore);
     } else {
       arrayOfFiles.push(fullPath);
@@ -3834,7 +3378,7 @@ function getImports(content) {
 router9.get("/graph", authenticate, async (req, res) => {
   try {
     const cwd = String(req.query.path || process.cwd());
-    if (!import_fs6.default.existsSync(cwd)) {
+    if (!import_fs5.default.existsSync(cwd)) {
       return res.json({ nodes: [], links: [] });
     }
     const files = getAllFiles(cwd);
@@ -3842,39 +3386,39 @@ router9.get("/graph", authenticate, async (req, res) => {
     const links = [];
     const fileIdMap = /* @__PURE__ */ new Map();
     files.forEach((f) => {
-      const relPath = import_path5.default.relative(cwd, f);
+      const relPath = import_path4.default.relative(cwd, f);
       if (relPath.length > 200) return;
       const id = relPath;
       fileIdMap.set(f, id);
       nodes.push({
         id,
-        name: import_path5.default.basename(f),
+        name: import_path4.default.basename(f),
         type: "file",
-        size: import_fs6.default.statSync(f).size,
-        extension: import_path5.default.extname(f)
+        size: import_fs5.default.statSync(f).size,
+        extension: import_path4.default.extname(f)
       });
     });
     files.forEach((f) => {
-      if (![".ts", ".tsx", ".js", ".jsx", ".css", ".scss"].includes(import_path5.default.extname(f))) return;
+      if (![".ts", ".tsx", ".js", ".jsx", ".css", ".scss"].includes(import_path4.default.extname(f))) return;
       try {
-        const content = import_fs6.default.readFileSync(f, "utf-8");
+        const content = import_fs5.default.readFileSync(f, "utf-8");
         const imports = getImports(content);
         const sourceId = fileIdMap.get(f);
         if (sourceId) {
           imports.forEach((imp) => {
             if (imp.startsWith(".")) {
               try {
-                const dir = import_path5.default.dirname(f);
-                let resolved = import_path5.default.resolve(dir, imp);
+                const dir = import_path4.default.dirname(f);
+                let resolved = import_path4.default.resolve(dir, imp);
                 const extensions = ["", ".ts", ".tsx", ".js", ".jsx", ".css"];
                 let targetFile = "";
                 for (const ext of extensions) {
-                  if (import_fs6.default.existsSync(resolved + ext) && !import_fs6.default.statSync(resolved + ext).isDirectory()) {
+                  if (import_fs5.default.existsSync(resolved + ext) && !import_fs5.default.statSync(resolved + ext).isDirectory()) {
                     targetFile = resolved + ext;
                     break;
                   }
-                  if (import_fs6.default.existsSync(import_path5.default.join(resolved, "index" + ext))) {
-                    targetFile = import_path5.default.join(resolved, "index" + ext);
+                  if (import_fs5.default.existsSync(import_path4.default.join(resolved, "index" + ext))) {
+                    targetFile = import_path4.default.join(resolved, "index" + ext);
                     break;
                   }
                 }
@@ -3902,19 +3446,19 @@ router9.get("/tree", authenticate, async (req, res) => {
   try {
     const rootPath = String(req.query.path || process.cwd());
     const depth = Number(req.query.depth || 5);
-    if (!import_fs6.default.existsSync(rootPath)) {
+    if (!import_fs5.default.existsSync(rootPath)) {
       return res.status(404).json({ error: "Path not found" });
     }
     const getTree = (dir, currentDepth) => {
       if (currentDepth > depth) return [];
-      const files = import_fs6.default.readdirSync(dir, { withFileTypes: true });
+      const files = import_fs5.default.readdirSync(dir, { withFileTypes: true });
       files.sort((a, b) => {
         if (a.isDirectory() && !b.isDirectory()) return -1;
         if (!a.isDirectory() && b.isDirectory()) return 1;
         return a.name.localeCompare(b.name);
       });
       return files.filter((f) => !["node_modules", ".git", "dist", "build", ".DS_Store"].includes(f.name)).map((f) => {
-        const fullPath = import_path5.default.join(dir, f.name);
+        const fullPath = import_path4.default.join(dir, f.name);
         const isDir = f.isDirectory();
         return {
           name: f.name,
@@ -3933,12 +3477,12 @@ router9.get("/tree", authenticate, async (req, res) => {
 router9.get("/content", authenticate, async (req, res) => {
   try {
     const filePath = String(req.query.path);
-    if (!filePath || !import_fs6.default.existsSync(filePath)) {
+    if (!filePath || !import_fs5.default.existsSync(filePath)) {
       return res.status(404).json({ error: "File not found" });
     }
     if (!filePath.startsWith(process.cwd()) && !filePath.includes("xelitesolutions")) {
     }
-    const content = import_fs6.default.readFileSync(filePath, "utf-8");
+    const content = import_fs5.default.readFileSync(filePath, "utf-8");
     res.json({ content });
   } catch (e) {
     res.status(500).json({ error: "Read failed" });
@@ -3950,7 +3494,7 @@ router9.post("/content", authenticate, async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: "Path required" });
     }
-    import_fs6.default.writeFileSync(filePath, content, "utf-8");
+    import_fs5.default.writeFileSync(filePath, content, "utf-8");
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Write failed" });
@@ -4058,7 +3602,7 @@ var memory_default = router12;
 // src/routes/knowledge.ts
 var import_express13 = require("express");
 var import_multer2 = __toESM(require("multer"));
-var import_fs7 = __toESM(require("fs"));
+var import_fs6 = __toESM(require("fs"));
 var router13 = (0, import_express13.Router)();
 var upload2 = (0, import_multer2.default)({ dest: "/tmp/joe-uploads" });
 router13.post("/upload", authenticate, upload2.single("file"), async (req, res) => {
@@ -4067,7 +3611,7 @@ router13.post("/upload", authenticate, upload2.single("file"), async (req, res) 
       return res.status(400).json({ error: "No file uploaded" });
     }
     const filePath = req.file.path;
-    const buffer = import_fs7.default.readFileSync(filePath);
+    const buffer = import_fs6.default.readFileSync(filePath);
     let content = "";
     if (req.file.mimetype === "application/pdf") {
       try {
@@ -4079,7 +3623,7 @@ router13.post("/upload", authenticate, upload2.single("file"), async (req, res) 
     } else {
       content = buffer.toString("utf-8");
     }
-    import_fs7.default.unlinkSync(filePath);
+    import_fs6.default.unlinkSync(filePath);
     const doc = KnowledgeService.add(req.file.originalname, content);
     res.json({ success: true, document: doc });
   } catch (error) {
@@ -4151,11 +3695,11 @@ router14.put("/:collection/:id", authenticate, async (req, res) => {
     const update = req.body;
     delete update._id;
     const coll = import_mongoose18.default.connection.db.collection(collection);
-    const result2 = await coll.updateOne(
+    const result = await coll.updateOne(
       { _id: new import_mongoose18.default.Types.ObjectId(id) },
       { $set: update }
     );
-    res.json({ success: true, result: result2 });
+    res.json({ success: true, result });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -4164,8 +3708,8 @@ router14.delete("/:collection/:id", authenticate, async (req, res) => {
   try {
     const { collection, id } = req.params;
     const coll = import_mongoose18.default.connection.db.collection(collection);
-    const result2 = await coll.deleteOne({ _id: new import_mongoose18.default.Types.ObjectId(id) });
-    res.json({ success: true, result: result2 });
+    const result = await coll.deleteOne({ _id: new import_mongoose18.default.Types.ObjectId(id) });
+    res.json({ success: true, result });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -4232,8 +3776,8 @@ var system_default = router15;
 
 // src/routes/healing.ts
 var import_express16 = require("express");
-var import_fs8 = __toESM(require("fs"));
-var import_path6 = __toESM(require("path"));
+var import_fs7 = __toESM(require("fs"));
+var import_path5 = __toESM(require("path"));
 var router16 = (0, import_express16.Router)();
 var errorLog = [];
 var logError = (error, context) => {
@@ -4294,11 +3838,11 @@ router16.post("/apply", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Missing filePath or content" });
   }
   try {
-    const projectRoot = import_path6.default.resolve(__dirname, "../../..");
-    const resolvedPath = import_path6.default.resolve(projectRoot, filePath);
+    const projectRoot = import_path5.default.resolve(__dirname, "../../..");
+    const resolvedPath = import_path5.default.resolve(projectRoot, filePath);
     if (!resolvedPath.startsWith(projectRoot)) {
     }
-    import_fs8.default.writeFileSync(resolvedPath, content);
+    import_fs7.default.writeFileSync(resolvedPath, content);
     res.json({ success: true, message: "Fix applied successfully" });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -4308,9 +3852,9 @@ var healing_default = router16;
 
 // src/routes/docs.ts
 var import_express17 = require("express");
-var import_fs9 = __toESM(require("fs"));
-var import_path7 = __toESM(require("path"));
-var import_glob2 = require("glob");
+var import_fs8 = __toESM(require("fs"));
+var import_path6 = __toESM(require("path"));
+var import_glob = require("glob");
 var router17 = (0, import_express17.Router)();
 var docsCache = {};
 router17.get("/", authenticate, (req, res) => {
@@ -4318,8 +3862,8 @@ router17.get("/", authenticate, (req, res) => {
 });
 router17.post("/generate", authenticate, async (req, res) => {
   try {
-    const projectRoot = import_path7.default.resolve(__dirname, "../../..");
-    const files = await (0, import_glob2.glob)("**/*.{ts,tsx}", {
+    const projectRoot = import_path6.default.resolve(__dirname, "../../..");
+    const files = await (0, import_glob.glob)("**/*.{ts,tsx}", {
       cwd: projectRoot,
       ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/*.d.ts", "**/test/**"],
       absolute: true
@@ -4327,12 +3871,12 @@ router17.post("/generate", authenticate, async (req, res) => {
     const selectedFiles = files.slice(0, 10);
     const results = [];
     for (const file of selectedFiles) {
-      const relativePath = import_path7.default.relative(projectRoot, file);
+      const relativePath = import_path6.default.relative(projectRoot, file);
       if (docsCache[relativePath]) {
         results.push(docsCache[relativePath]);
         continue;
       }
-      const content = import_fs9.default.readFileSync(file, "utf-8");
+      const content = import_fs8.default.readFileSync(file, "utf-8");
       if (content.length < 50) continue;
       const prompt = `
             Analyze the following TypeScript code and generate documentation.
@@ -4372,14 +3916,14 @@ var docs_default = router17;
 
 // src/routes/analytics.ts
 var import_express18 = require("express");
-var import_fs10 = __toESM(require("fs"));
-var import_path8 = __toESM(require("path"));
-var import_glob3 = require("glob");
+var import_fs9 = __toESM(require("fs"));
+var import_path7 = __toESM(require("path"));
+var import_glob2 = require("glob");
 var router18 = (0, import_express18.Router)();
 router18.get("/quality", authenticate, async (req, res) => {
   try {
-    const projectRoot = import_path8.default.resolve(__dirname, "../../..");
-    const files = await (0, import_glob3.glob)("**/*.{ts,tsx,js,jsx,css,scss}", {
+    const projectRoot = import_path7.default.resolve(__dirname, "../../..");
+    const files = await (0, import_glob2.glob)("**/*.{ts,tsx,js,jsx,css,scss}", {
       cwd: projectRoot,
       ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/*.d.ts", "**/coverage/**"],
       absolute: true
@@ -4389,10 +3933,10 @@ router18.get("/quality", authenticate, async (req, res) => {
     let totalTodos = 0;
     const fileStats = [];
     for (const file of files) {
-      const content = import_fs10.default.readFileSync(file, "utf-8");
+      const content = import_fs9.default.readFileSync(file, "utf-8");
       const lines = content.split("\n");
       const loc = lines.filter((l) => l.trim().length > 0).length;
-      const size = import_fs10.default.statSync(file).size;
+      const size = import_fs9.default.statSync(file).size;
       const todos = (content.match(/TODO:/gi) || []).length;
       let complexity = 0;
       const keywords = ["if", "else", "for", "while", "switch", "case", "catch"];
@@ -4408,7 +3952,7 @@ router18.get("/quality", authenticate, async (req, res) => {
       totalFiles++;
       totalTodos += todos;
       fileStats.push({
-        path: import_path8.default.relative(projectRoot, file),
+        path: import_path7.default.relative(projectRoot, file),
         size,
         loc,
         todoCount: todos,
@@ -4441,22 +3985,22 @@ var analytics_default = router18;
 
 // src/routes/tests.ts
 var import_express19 = require("express");
-var import_glob4 = require("glob");
-var import_path9 = __toESM(require("path"));
-var import_fs11 = __toESM(require("fs"));
+var import_glob3 = require("glob");
+var import_path8 = __toESM(require("path"));
+var import_fs10 = __toESM(require("fs"));
 var import_child_process3 = require("child_process");
 var router19 = (0, import_express19.Router)();
 router19.get("/files", authenticate, async (req, res) => {
   try {
-    const projectRoot = import_path9.default.resolve(__dirname, "../../..");
-    const files = await (0, import_glob4.glob)("**/*.{test,spec}.{ts,tsx,js,jsx}", {
+    const projectRoot = import_path8.default.resolve(__dirname, "../../..");
+    const files = await (0, import_glob3.glob)("**/*.{test,spec}.{ts,tsx,js,jsx}", {
       cwd: projectRoot,
       ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
       absolute: true
     });
     const testFiles = files.map((f) => ({
-      path: import_path9.default.relative(projectRoot, f),
-      name: import_path9.default.basename(f)
+      path: import_path8.default.relative(projectRoot, f),
+      name: import_path8.default.basename(f)
     }));
     res.json(testFiles);
   } catch (e) {
@@ -4465,11 +4009,11 @@ router19.get("/files", authenticate, async (req, res) => {
 });
 router19.post("/run", authenticate, (req, res) => {
   const { testFile } = req.body;
-  const projectRoot = import_path9.default.resolve(__dirname, "../../..");
-  const cwd = import_path9.default.resolve(__dirname, "../..");
+  const projectRoot = import_path8.default.resolve(__dirname, "../../..");
+  const cwd = import_path8.default.resolve(__dirname, "../..");
   const args = ["jest", "--colors"];
   if (testFile) {
-    args.push(import_path9.default.resolve(projectRoot, testFile));
+    args.push(import_path8.default.resolve(projectRoot, testFile));
   }
   const child = (0, import_child_process3.spawn)("npx", args, { cwd });
   res.setHeader("Content-Type", "text/plain");
@@ -4479,21 +4023,21 @@ router19.post("/run", authenticate, (req, res) => {
   child.stderr.on("data", (data) => {
     res.write(data);
   });
-  child.on("close", (code2) => {
+  child.on("close", (code) => {
     res.write(`
-Test process exited with code ${code2}`);
+Test process exited with code ${code}`);
     res.end();
   });
 });
 router19.post("/generate", authenticate, async (req, res) => {
   const { filePath } = req.body;
-  const projectRoot = import_path9.default.resolve(__dirname, "../../..");
-  const fullPath = import_path9.default.resolve(projectRoot, filePath);
-  if (!import_fs11.default.existsSync(fullPath)) {
+  const projectRoot = import_path8.default.resolve(__dirname, "../../..");
+  const fullPath = import_path8.default.resolve(projectRoot, filePath);
+  if (!import_fs10.default.existsSync(fullPath)) {
     return res.status(404).json({ error: "File not found" });
   }
   try {
-    const content = import_fs11.default.readFileSync(fullPath, "utf-8");
+    const content = import_fs10.default.readFileSync(fullPath, "utf-8");
     const prompt = `
         You are a senior QA Engineer. Write a comprehensive unit test using Jest for the following TypeScript code.
         File: ${filePath}
@@ -4510,14 +4054,14 @@ router19.post("/generate", authenticate, async (req, res) => {
         `;
     let testCode = await callLLM(prompt);
     testCode = testCode.replace(/```typescript/g, "").replace(/```/g, "").trim();
-    const dir = import_path9.default.dirname(fullPath);
-    const ext = import_path9.default.extname(fullPath);
-    const name = import_path9.default.basename(fullPath, ext);
-    const testFilePath = import_path9.default.join(dir, `${name}.test${ext}`);
-    import_fs11.default.writeFileSync(testFilePath, testCode);
+    const dir = import_path8.default.dirname(fullPath);
+    const ext = import_path8.default.extname(fullPath);
+    const name = import_path8.default.basename(fullPath, ext);
+    const testFilePath = import_path8.default.join(dir, `${name}.test${ext}`);
+    import_fs10.default.writeFileSync(testFilePath, testCode);
     res.json({
       success: true,
-      testFilePath: import_path9.default.relative(projectRoot, testFilePath),
+      testFilePath: import_path8.default.relative(projectRoot, testFilePath),
       code: testCode
     });
   } catch (e) {
@@ -4526,115 +4070,9 @@ router19.post("/generate", authenticate, async (req, res) => {
 });
 var tests_default = router19;
 
-// src/routes/browser.ts
-var import_express20 = require("express");
-var router20 = (0, import_express20.Router)();
-router20.post("/launch", authenticate, async (req, res) => {
-  try {
-    await browserService.launch();
-    res.json({ success: true, status: browserService.getStatus() });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router20.post("/navigate", authenticate, async (req, res) => {
-  try {
-    const { url } = req.body;
-    const result2 = await browserService.navigate(url);
-    res.json({ success: true, ...result2 });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router20.post("/action", authenticate, async (req, res) => {
-  try {
-    const { type, x, y, text, deltaY, width, height, script: script2 } = req.body;
-    switch (type) {
-      case "click":
-        await browserService.click(x, y);
-        break;
-      case "type":
-        await browserService.type(text);
-        break;
-      case "scroll":
-        await browserService.scroll(deltaY);
-        break;
-      case "back":
-        await browserService.goBack();
-        break;
-      case "forward":
-        await browserService.goForward();
-        break;
-      case "reload":
-        await browserService.reload();
-        break;
-      case "viewport":
-        await browserService.setViewport(width, height);
-        break;
-      case "evaluate":
-        const result2 = await browserService.evaluate(script2);
-        return res.json({ success: true, result: result2 });
-      case "inspect":
-        const info = await browserService.inspect(x, y);
-        return res.json({ success: true, info });
-      case "click_selector":
-        await browserService.clickSelector(req.body.selector);
-        break;
-      case "type_selector":
-        await browserService.typeSelector(req.body.selector, req.body.text);
-        break;
-      case "dom":
-        const dom = await browserService.getSimplifiedDOM();
-        return res.json({ success: true, dom });
-      case "audit":
-        const audit = await browserService.auditPage();
-        return res.json({ success: true, audit });
-      default:
-        return res.status(400).json({ error: "Invalid action type" });
-    }
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router20.get("/screenshot", authenticate, async (req, res) => {
-  try {
-    const img = await browserService.screenshot();
-    if (!img) return res.status(404).json({ error: "Browser not active" });
-    res.json({ image: `data:image/png;base64,${img}` });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router20.get("/pdf", authenticate, async (req, res) => {
-  try {
-    const pdf3 = await browserService.pdf();
-    if (!pdf3) return res.status(404).json({ error: "Browser not active" });
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=page.pdf");
-    res.send(pdf3);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router20.get("/logs", authenticate, (req, res) => {
-  res.json(browserService.getLogs());
-});
-router20.get("/network", authenticate, (req, res) => {
-  res.json(browserService.getNetwork());
-});
-router20.post("/close", authenticate, async (req, res) => {
-  await browserService.close();
-  res.json({ success: true });
-});
-router20.get("/status", authenticate, (req, res) => {
-  res.json(browserService.getStatus());
-});
-var browser_default = router20;
-
 // src/index.ts
 var import_http = __toESM(require("http"));
-var import_fs12 = __toESM(require("fs"));
+var import_fs11 = __toESM(require("fs"));
 var logger = process.env.NODE_ENV === "production" ? (0, import_pino.default)() : (0, import_pino.default)({
   transport: {
     target: "pino-pretty",
@@ -4642,13 +4080,13 @@ var logger = process.env.NODE_ENV === "production" ? (0, import_pino.default)() 
   }
 });
 async function main() {
-  const app = (0, import_express21.default)();
+  const app = (0, import_express20.default)();
   app.use((0, import_cors.default)({
     origin: true,
     // Allow all origins for now to fix connectivity issues
     credentials: true
   }));
-  app.use(import_express21.default.json({ limit: "10mb" }));
+  app.use(import_express20.default.json({ limit: "10mb" }));
   app.use((req, res, next) => {
     const start = Date.now();
     const requestId = Math.random().toString(36).substring(7);
@@ -4690,19 +4128,18 @@ async function main() {
   app.use("/docs", docs_default);
   app.use("/analytics", analytics_default);
   app.use("/tests", tests_default);
-  app.use("/browser", browser_default);
   app.get("/me", authenticate, async (req, res) => {
     const auth = req.auth;
     res.json({ userId: auth.sub, role: auth.role });
   });
   const ARTIFACT_DIR2 = process.env.ARTIFACT_DIR || "/tmp/joe-artifacts";
-  if (!import_fs12.default.existsSync(ARTIFACT_DIR2)) {
+  if (!import_fs11.default.existsSync(ARTIFACT_DIR2)) {
     try {
-      import_fs12.default.mkdirSync(ARTIFACT_DIR2, { recursive: true });
+      import_fs11.default.mkdirSync(ARTIFACT_DIR2, { recursive: true });
     } catch {
     }
   }
-  app.use("/artifacts", import_express21.default.static(ARTIFACT_DIR2));
+  app.use("/artifacts", import_express20.default.static(ARTIFACT_DIR2));
   try {
     await import_mongoose19.default.connect(config.mongoUri, { serverSelectionTimeoutMS: 5e3 });
     logger.info("MongoDB connected");

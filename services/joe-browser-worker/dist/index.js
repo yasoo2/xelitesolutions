@@ -1,0 +1,387 @@
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// src/index.ts
+var import_express = __toESM(require("express"), 1);
+var import_ws = require("ws");
+var import_playwright = require("playwright");
+var import_dotenv = __toESM(require("dotenv"), 1);
+var import_pino = __toESM(require("pino"), 1);
+var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
+var import_uuid = require("uuid");
+import_dotenv.default.config();
+var logger = (0, import_pino.default)({
+  transport: { target: "pino-pretty", options: { translateTime: "SYS:standard", colorize: true } }
+});
+var SESSIONS = /* @__PURE__ */ new Map();
+var TTL_MS = Number(process.env.SESSION_TTL_MS || 30 * 60 * 1e3);
+var API_KEY = process.env.WORKER_API_KEY || "change-me";
+var STORAGE_DIR = process.env.WORKER_STORAGE_DIR || "/tmp/joe-browser-worker";
+var PORT = Number(process.env.PORT || 7070);
+if (!import_fs.default.existsSync(STORAGE_DIR)) {
+  try {
+    import_fs.default.mkdirSync(STORAGE_DIR, { recursive: true });
+  } catch {
+  }
+}
+function auth(req, res, next) {
+  const key = req.headers["x-worker-key"] || req.query.key;
+  if (String(key) !== API_KEY) return res.status(401).json({ error: "unauthorized" });
+  next();
+}
+async function launchChromium() {
+  const args = ["--no-sandbox", "--disable-dev-shm-usage"];
+  const browser = await import_playwright.chromium.launch({ args, headless: true });
+  return browser;
+}
+async function createSession(opts) {
+  const browser = await launchChromium();
+  const context = await browser.newContext({
+    viewport: opts.viewport || { width: 1280, height: 800 },
+    userAgent: opts.userAgent,
+    locale: opts.locale || "en-US",
+    acceptDownloads: true,
+    recordVideo: { dir: import_path.default.join(STORAGE_DIR, "videos") }
+  });
+  const page = await context.newPage();
+  const id = (0, import_uuid.v4)();
+  const session = {
+    id,
+    browser,
+    context,
+    page,
+    viewport: context.viewportSize() || { width: 1280, height: 800 },
+    userAgent: opts.userAgent,
+    locale: opts.locale,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+    downloads: []
+  };
+  page.on("download", async (dl) => {
+    try {
+      const safeName = dl.suggestedFilename();
+      const fileId = (0, import_uuid.v4)();
+      const filePath = import_path.default.join(STORAGE_DIR, "downloads", `${fileId}-${safeName}`);
+      const dir = import_path.default.dirname(filePath);
+      if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+      await dl.saveAs(filePath);
+      const size = import_fs.default.statSync(filePath).size;
+      const href = `/downloads/${import_path.default.basename(filePath)}`;
+      session.downloads.push({ id: fileId, filename: safeName, href, size });
+      logger.info({ fileId, safeName, size }, "download_saved");
+    } catch (e) {
+      logger.error(e, "download_failed");
+    }
+  });
+  SESSIONS.set(id, session);
+  return session;
+}
+async function closeSession(id) {
+  const s = SESSIONS.get(id);
+  if (!s) return;
+  try {
+    await s.page.close();
+  } catch {
+  }
+  try {
+    await s.context.close();
+  } catch {
+  }
+  try {
+    await s.browser.close();
+  } catch {
+  }
+  SESSIONS.delete(id);
+}
+async function runActions(session, actions) {
+  const outputs = [];
+  for (const a of actions) {
+    session.lastActiveAt = Date.now();
+    try {
+      switch (a.type) {
+        case "goto": {
+          const allowlist = (process.env.WORKER_ALLOWLIST || "").split(",").map((s) => s.trim()).filter(Boolean);
+          try {
+            const u = new URL(a.url);
+            if (allowlist.length && !allowlist.includes(u.hostname)) {
+              outputs.push({ type: "goto_blocked", url: a.url, reason: "domain_not_allowed" });
+              break;
+            }
+          } catch {
+          }
+          await session.page.goto(a.url, { waitUntil: a.waitUntil || "load" });
+          outputs.push({ type: "goto", url: a.url });
+          break;
+        }
+        case "goBack": {
+          await session.page.goBack();
+          outputs.push({ type: "goBack" });
+          break;
+        }
+        case "goForward": {
+          await session.page.goForward();
+          outputs.push({ type: "goForward" });
+          break;
+        }
+        case "reload": {
+          await session.page.reload();
+          outputs.push({ type: "reload" });
+          break;
+        }
+        case "type": {
+          await session.page.keyboard.type(a.text, { delay: a.delay || 20 });
+          outputs.push({ type: "type", text: a.text.length });
+          break;
+        }
+        case "press": {
+          await session.page.keyboard.press(a.key);
+          outputs.push({ type: "press", key: a.key });
+          break;
+        }
+        case "mouseMove": {
+          await session.page.mouse.move(a.x, a.y, { steps: a.steps || 1 });
+          outputs.push({ type: "mouseMove", x: a.x, y: a.y });
+          break;
+        }
+        case "click": {
+          if (a.selector) {
+            await session.page.click(a.selector);
+          } else if (a.roleName && a.role) {
+            await session.page.getByRole(a.role, { name: a.roleName }).click();
+          } else if (typeof a.x === "number" && typeof a.y === "number") {
+            await session.page.mouse.click(a.x, a.y, { button: a.button || "left" });
+          }
+          outputs.push({ type: "click" });
+          break;
+        }
+        case "scroll": {
+          await session.page.evaluate((dy) => window.scrollBy(0, dy), a.deltaY);
+          outputs.push({ type: "scroll", deltaY: a.deltaY });
+          break;
+        }
+        case "scrollTo": {
+          await session.page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, a.selector);
+          outputs.push({ type: "scrollTo", selector: a.selector });
+          break;
+        }
+        case "wait": {
+          await new Promise((r) => setTimeout(r, a.ms));
+          outputs.push({ type: "wait", ms: a.ms });
+          break;
+        }
+        case "waitForLoad": {
+          await session.page.waitForLoadState(a.state);
+          outputs.push({ type: "waitForLoad", state: a.state });
+          break;
+        }
+        case "screenshot": {
+          const buf = await session.page.screenshot({ type: "jpeg", quality: a.quality || 60, fullPage: a.fullPage || false });
+          const name = `s-${Date.now()}.jpg`;
+          const p = import_path.default.join(STORAGE_DIR, "shots", name);
+          const dir = import_path.default.dirname(p);
+          if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+          import_fs.default.writeFileSync(p, buf);
+          outputs.push({ type: "screenshot", href: `/shots/${name}` });
+          break;
+        }
+        case "snapshot.dom": {
+          const html = await session.page.content();
+          outputs.push({ type: "snapshot.dom", length: html.length });
+          break;
+        }
+        case "snapshot.a11y": {
+          const snap = await session.page.accessibility.snapshot();
+          outputs.push({ type: "snapshot.a11y", nodes: (snap?.children || []).length });
+          break;
+        }
+        case "extract": {
+          const result = await session.page.evaluate((schema) => {
+            function pick(el, s) {
+              const out = {};
+              for (const [k, v] of Object.entries(s.fields || {})) {
+                const node = el.querySelector(v.selector);
+                if (!node) {
+                  out[k] = null;
+                  continue;
+                }
+                const attr = v.attr;
+                out[k] = attr ? node.getAttribute(attr) || null : (node.textContent || "").trim();
+              }
+              return out;
+            }
+            if (schema.list) {
+              const elements = Array.from(document.querySelectorAll(schema.list.selector));
+              return elements.map((el) => pick(el, schema.list));
+            }
+            if (schema.single) {
+              const base = document.querySelector(schema.single.selector);
+              return base ? pick(base, schema.single) : null;
+            }
+            return null;
+          }, a.schema);
+          outputs.push({ type: "extract", json: result, confidence: 0.7 });
+          break;
+        }
+        case "fillForm": {
+          for (const f of a.fields) {
+            if (f.selector) {
+              if (f.kind === "file") {
+              } else {
+                await session.page.fill(f.selector, String(f.value ?? ""));
+              }
+            } else if (f.label) {
+              const locator = session.page.getByLabel(f.label);
+              if (f.kind === "checkbox") await locator.check();
+              else if (f.kind === "radio") await locator.check();
+              else await locator.fill(String(f.value ?? ""));
+            }
+          }
+          outputs.push({ type: "fillForm", count: a.fields.length });
+          break;
+        }
+        case "uploadFile": {
+          const res = await fetch(a.fileUrl);
+          const arrayBuf = await res.arrayBuffer();
+          const ext = import_path.default.extname(new URL(a.fileUrl).pathname);
+          const tmpPath = import_path.default.join(STORAGE_DIR, "uploads", `u-${Date.now()}${ext}`);
+          const dir = import_path.default.dirname(tmpPath);
+          if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+          import_fs.default.writeFileSync(tmpPath, Buffer.from(arrayBuf));
+          await session.page.setInputFiles(a.selector, tmpPath);
+          outputs.push({ type: "uploadFile", selector: a.selector });
+          break;
+        }
+      }
+    } catch (err) {
+      logger.warn({ action: a, error: err.message }, "action_failed");
+      outputs.push({ type: "error", action: a.type, message: err.message });
+    }
+  }
+  return outputs;
+}
+var app = (0, import_express.default)();
+app.use(import_express.default.json({ limit: "10mb" }));
+app.get("/health", (_req, res) => res.json({ status: "OK" }));
+app.use("/downloads", import_express.default.static(import_path.default.join(STORAGE_DIR, "downloads")));
+app.use("/shots", import_express.default.static(import_path.default.join(STORAGE_DIR, "shots")));
+app.post("/session/create", auth, async (req, res) => {
+  try {
+    const { viewport, userAgent, locale, device } = req.body || {};
+    const s = await createSession({ viewport, userAgent, locale });
+    if (device && import_playwright.devices[device]) {
+      await s.context.close();
+      const browser = await launchChromium();
+      const ctx = await browser.newContext({ ...import_playwright.devices[device], acceptDownloads: true, recordVideo: { dir: import_path.default.join(STORAGE_DIR, "videos") } });
+      const page = await ctx.newPage();
+      s.browser = browser;
+      s.context = ctx;
+      s.page = page;
+      s.viewport = ctx.viewportSize() || s.viewport;
+    }
+    res.json({ sessionId: s.id, wsUrl: `/ws/${s.id}` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post("/session/:id/close", auth, async (req, res) => {
+  await closeSession(req.params.id);
+  res.json({ ok: true });
+});
+app.post("/session/:id/job/run", auth, async (req, res) => {
+  const s = SESSIONS.get(req.params.id);
+  if (!s) return res.status(404).json({ error: "session_not_found" });
+  const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
+  const outputs = await runActions(s, actions);
+  res.json({ ok: true, outputs, artifacts: s.downloads });
+});
+app.post("/session/:id/snapshot", auth, async (req, res) => {
+  const s = SESSIONS.get(req.params.id);
+  if (!s) return res.status(404).json({ error: "session_not_found" });
+  const [html, a11ySnap, buf] = await Promise.all([
+    s.page.content(),
+    s.page.accessibility.snapshot(),
+    s.page.screenshot({ type: "jpeg", quality: 60 })
+  ]);
+  const name = `snap-${Date.now()}.jpg`;
+  const p = import_path.default.join(STORAGE_DIR, "shots", name);
+  const dir = import_path.default.dirname(p);
+  if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+  import_fs.default.writeFileSync(p, buf);
+  res.json({ dom: html.slice(0, 1e5), a11y: a11ySnap, screenshot: `/shots/${name}` });
+});
+app.post("/session/:id/extract", auth, async (req, res) => {
+  const s = SESSIONS.get(req.params.id);
+  if (!s) return res.status(404).json({ error: "session_not_found" });
+  const schema = req.body?.schema;
+  if (!schema) return res.status(400).json({ error: "schema_required" });
+  const outputs = await runActions(s, [{ type: "extract", schema }]);
+  const out = outputs.find((o) => o.type === "extract");
+  res.json({ json: out?.json, confidence: out?.confidence ?? 0.7 });
+});
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, s] of SESSIONS.entries()) {
+    if (now - s.lastActiveAt > TTL_MS) {
+      logger.info({ id }, "session_ttl_close");
+      closeSession(id).catch(() => {
+      });
+    }
+  }
+}, 3e4);
+var wss = new import_ws.WebSocketServer({ noServer: true });
+var server = app.listen(PORT, () => {
+  logger.info({ port: PORT }, "worker_listening");
+});
+server.on("upgrade", async (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (!url.pathname.startsWith("/ws/")) return socket.destroy();
+  const sessionId = url.pathname.split("/").pop();
+  const key = url.searchParams.get("key");
+  if (key !== API_KEY) return socket.destroy();
+  const s = SESSIONS.get(String(sessionId));
+  if (!s) return socket.destroy();
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    ws.send(JSON.stringify({ type: "stream_start", w: s.viewport.width, h: s.viewport.height }));
+    let running = true;
+    ws.on("close", () => {
+      running = false;
+    });
+    const loop = async () => {
+      while (running) {
+        try {
+          const buf = await s.page.screenshot({ type: "jpeg", quality: 50 });
+          ws.send(JSON.stringify({ type: "frame", jpegBase64: buf.toString("base64"), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
+          await new Promise((r) => setTimeout(r, 200));
+        } catch (e) {
+          break;
+        }
+      }
+    };
+    loop();
+  });
+});
