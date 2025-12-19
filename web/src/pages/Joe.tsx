@@ -1,5 +1,4 @@
 import CommandComposer from '../components/CommandComposer';
-import ManusPanel from '../components/ManusPanel';
 import SessionItem from '../components/SessionItem';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -7,13 +6,13 @@ import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft } from 'lucide-react';
 
 export default function Joe() {
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string; browserState?: any }>>([]);
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string }>>([]);
   const [folders, setFolders] = useState<Array<{ _id: string; name: string }>>([]);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [tab, setTab] = useState<'PREVIEW' | 'BROWSER' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'>('PREVIEW');
+  const [tab, setTab] = useState<'PREVIEW' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'>('PREVIEW');
   const [messages, setMessages] = useState<any[]>([]);
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -391,29 +390,6 @@ export default function Joe() {
           }}
         />
       </main>
-      
-      {showRightPanel && (
-        <ManusPanel 
-          activeTab={
-            tab === 'BROWSER' ? 'BROWSER' : 
-            tab === 'TERMINAL' ? 'TERMINAL' : 
-            'COMPUTER'
-          }
-          steps={steps}
-          onClose={() => setShowRightPanel(false)}
-        />
-      )}
-      {!showRightPanel && (
-        <div className="sidebar-toggle-end" style={{ zIndex: 10 }}>
-          <button 
-            className="sidebar-toggle-btn" 
-            onClick={() => setShowRightPanel(true)}
-            title="إظهار اللوحة"
-          >
-            <ChevronLeft size={20} />
-          </button>
-        </div>
-      )}
     </div>
   );
 }

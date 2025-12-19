@@ -54,13 +54,6 @@ function pickToolFromText(text: string) {
   const t = text.toLowerCase();
   const tn = t.replace(/[\u064B-\u065F\u0670]/g, '').replace(/ـ/g, '');
   const urlMatch = text.match(/https?:\/\/\S+/);
-  if (/(صورة|صوره|تصميم|صمم)/.test(t)) {
-    if (/(قطة|قطه|قط|cat)/.test(t)) return { name: 'browser_snapshot', input: { url: 'https://cataas.com/cat' } };
-    // Fallback to snapshot of a generated placeholder image (does not require API keys)
-    const label = encodeURIComponent(text.slice(0, 24));
-    const url = `https://dummyimage.com/1024x1024/111/eeee.png&text=${label}`;
-    return { name: 'browser_snapshot', input: { url } };
-  }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
     return { name: 'http_fetch', input: { url: 'https://open.er-api.com/v6/latest/USD?sym=TRY', base: 'USD', sym: 'TRY' } };
   }
@@ -156,7 +149,6 @@ function pickToolFromText(text: string) {
   }
   if (t.includes('fetch') && urlMatch) return { name: 'http_fetch', input: { url: urlMatch[0] } };
   if (t.includes('write')) return { name: 'file_write', input: { filename: 'note.txt', content: text } };
-  if (t.includes('browser') && urlMatch) return { name: 'browser_snapshot', input: { url: urlMatch[0] } };
   return { name: 'echo', input: { text } };
 }
 

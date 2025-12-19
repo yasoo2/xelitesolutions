@@ -60,10 +60,6 @@ async function main() {
     'بناء موقع لمتجر الكتروني وعرضه أمامي',
     'أريد متجر إلكتروني بسيط',
     'ecommerce demo site',
-    // Browser snapshot
-    'browser https://example.com',
-    'خذ لقطة شاشة لصفحة https://www.wikipedia.org',
-    'browser snapshot لهذه الصفحة https://news.ycombinator.com',
     // File write/edit
     'write هذه ملاحظة مهمة',
     'write سجل الملاحظات اليوم',

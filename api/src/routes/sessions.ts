@@ -343,7 +343,7 @@ router.delete('/:id', authenticate as any, async (req: Request, res: Response) =
 
 router.patch('/:id/state', authenticate as any, async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { terminalState, browserState } = req.body;
+    const { terminalState } = req.body;
     
     const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
     if (useMock) return res.json({ ok: true });
@@ -351,7 +351,6 @@ router.patch('/:id/state', authenticate as any, async (req: Request, res: Respon
     await Session.findByIdAndUpdate(id, {
         $set: {
             terminalState,
-            browserState,
             lastUpdatedAt: new Date()
         }
     });

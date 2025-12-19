@@ -1,1 +1,2 @@
 .chrome-bin/
+.cache/puppeteer/

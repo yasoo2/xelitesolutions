@@ -2,7 +2,6 @@
 import path from 'path';
 import fs from 'fs';
 import { glob } from 'glob';
-import puppeteer from 'puppeteer';
 
 async function debug() {
     console.log('CWD:', process.cwd());
@@ -31,11 +30,7 @@ async function debug() {
         matches.forEach(m => console.log(' - ' + m));
     }
     
-    try {
-        console.log('Puppeteer default executable path:', puppeteer.executablePath());
-    } catch (e: any) {
-        console.log('Puppeteer executablePath error:', e.message);
-    }
+    console.log('Puppeteer is not used in this system.');
 }
 
 debug();

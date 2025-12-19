@@ -44,8 +44,7 @@ async function main() {
     // 2. Test Deep Persistence (Save State)
     console.log('\n2️⃣  Testing Deep Persistence...');
     const testState = {
-        terminalState: { history: ['echo "persistence test"'], cwd: '/tmp/test' },
-        browserState: { url: 'https://test.local', title: 'Persistence Test' }
+        terminalState: { history: ['echo "persistence test"'], cwd: '/tmp/test' }
     };
     
     await fetch(`${API_URL}/sessions/${sessionId}/state`, {
@@ -68,7 +67,7 @@ async function main() {
     // If it fails, I might need to fix mock store first. But let's try.
     
     if (updatedSession.terminalState?.cwd === '/tmp/test') {
-        console.log('   ✅ Persistence Verified: Terminal/Browser state saved & retrieved.');
+        console.log('   ✅ Persistence Verified: Terminal state saved & retrieved.');
     } else {
         console.warn('   ⚠️  Persistence Warning: State might not be persisted in Mock Store (Expected for Mock DB if not updated).');
         // This is acceptable if using Mock DB and I didn't update the mock store type/logic for this field.

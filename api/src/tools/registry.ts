@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { ToolDefinition, ToolExecutionResult } from './types';
 import { Buffer } from 'buffer';
-import { browserService } from '../services/browser';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -266,66 +265,6 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 20,
     auditFields: ['command', 'packages'],
     mockSupported: true,
-  },
-  {
-    name: 'browser_snapshot',
-    version: '1.0.0',
-    tags: ['browser', 'artifact'],
-    inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
-    outputSchema: { type: 'object', properties: { href: { type: 'string' }, title: { type: 'string' } } },
-    permissions: ['read'],
-    sideEffects: [],
-    rateLimitPerMinute: 30,
-    auditFields: ['filename'],
-    mockSupported: false,
-  },
-  {
-    name: 'browser_click',
-    version: '1.0.0',
-    tags: ['browser', 'interaction'],
-    inputSchema: { type: 'object', properties: { selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } } },
-    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
-    permissions: ['read', 'internet'],
-    sideEffects: ['execute'],
-    rateLimitPerMinute: 60,
-    auditFields: ['selector'],
-    mockSupported: false,
-  },
-  {
-    name: 'browser_type',
-    version: '1.0.0',
-    tags: ['browser', 'interaction'],
-    inputSchema: { type: 'object', properties: { selector: { type: 'string' }, text: { type: 'string' } }, required: ['text'] },
-    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
-    permissions: ['read', 'internet'],
-    sideEffects: ['execute'],
-    rateLimitPerMinute: 60,
-    auditFields: ['text'],
-    mockSupported: false,
-  },
-  {
-    name: 'browser_scroll',
-    version: '1.0.0',
-    tags: ['browser', 'interaction'],
-    inputSchema: { type: 'object', properties: { deltaY: { type: 'number' } }, required: ['deltaY'] },
-    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
-    permissions: ['read', 'internet'],
-    sideEffects: ['execute'],
-    rateLimitPerMinute: 60,
-    auditFields: [],
-    mockSupported: false,
-  },
-  {
-    name: 'browser_open',
-    version: '1.0.0',
-    tags: ['browser', 'action'],
-    inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
-    outputSchema: { type: 'object', properties: { message: { type: 'string' }, title: { type: 'string' } } },
-    permissions: ['read', 'internet'],
-    sideEffects: ['execute'],
-    rateLimitPerMinute: 30,
-    auditFields: ['url'],
-    mockSupported: false,
   },
   {
     name: 'deep_research',
@@ -608,83 +547,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       
       return { ok: true, output: { href }, logs, artifacts: href ? [{ name: path.basename(full), href }] : [] };
     }
-    if (name === 'browser_open') {
-      const url = String(input?.url ?? '');
-      try {
-          await browserService.launch();
-          const navResult = await browserService.navigate(url);
-          logs.push(`browser.opened=${url} title=${navResult.title}`);
-          return { ok: true, output: { message: `Browser opened to ${url}`, title: navResult.title }, logs };
-      } catch (err: any) {
-          return { ok: false, error: err.message, logs };
-      }
-    }
-    if (name === 'browser_snapshot') {
-      const url = String(input?.url ?? '');
-      const filename = `snapshot-${Date.now()}.png`;
-      const full = path.join(ARTIFACT_DIR, filename);
-      
-      try {
-          // Use persistent browser service
-          await browserService.launch();
-          const navResult = await browserService.navigate(url);
-          const b64 = await browserService.screenshot();
-          
-          // Also get a text summary of the page content
-          const textSummary = await browserService.evaluate(`document.body.innerText.slice(0, 2000)`);
-          
-          if (b64) {
-              fs.writeFileSync(full, Buffer.from(b64, 'base64'));
-              logs.push(`snapshot.saved=${full} title=${navResult.title}`);
-              const href = `/artifacts/${encodeURIComponent(filename)}`;
-              return { 
-                  ok: true, 
-                  output: { 
-                      href, 
-                      title: navResult.title,
-                      textPreview: typeof textSummary === 'string' ? textSummary.replace(/\s+/g, ' ').trim() : ''
-                  }, 
-                  logs, 
-                  artifacts: [{ name: filename, href }] 
-              };
-          } else {
-              return { ok: false, error: 'Failed to capture screenshot', logs };
-          }
-      } catch (err: any) {
-          logs.push(`browser.error=${err.message}`);
-          return { ok: false, error: err.message, logs };
-      }
-    }
-    if (name === 'browser_click') {
-        const selector = String(input?.selector || '');
-        const x = Number(input?.x);
-        const y = Number(input?.y);
-        try {
-            if (selector) await browserService.clickSelector(selector);
-            else if (!isNaN(x) && !isNaN(y)) await browserService.click(x, y);
-            else return { ok: false, error: 'Missing selector or coordinates', logs };
-            
-            return { ok: true, output: { success: true }, logs };
-        } catch (e: any) {
-            return { ok: false, error: e.message, logs };
-        }
-    }
-    if (name === 'browser_type') {
-        const selector = String(input?.selector || '');
-        const text = String(input?.text || '');
-        try {
-            if (selector) await browserService.typeSelector(selector, text);
-            else await browserService.type(text);
-            return { ok: true, output: { success: true }, logs };
-        } catch (e: any) {
-            return { ok: false, error: e.message, logs };
-        }
-    }
-    if (name === 'browser_scroll') {
-        const deltaY = Number(input?.deltaY || 100);
-        await browserService.scroll(deltaY);
-        return { ok: true, output: { success: true }, logs };
-    }
+
     if (name === 'image_generate') {
       const prompt = String(input?.prompt ?? '').trim();
       const allowedSizes = ['1024x1024', '1024x1792', '1792x1024'] as const;
