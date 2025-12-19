@@ -20,7 +20,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [highlight, setHighlight] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [role, setRole] = useState<string>('');
   const [roleName, setRoleName] = useState<string>('');
-  const [autoLocate, setAutoLocate] = useState<boolean>(false);
+  const [autoLocate, setAutoLocate] = useState<boolean>(true);
   const lastMoveRef = useRef<number>(0);
 
   function getSessionId() {
@@ -62,8 +62,19 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         setHighlight(null);
         if (autoLocate) {
           const extra: any[] = [];
-          if (selector) extra.push({ type: 'locate', selector });
-          else if (role && roleName) extra.push({ type: 'locate', role, roleName });
+          if (selector) {
+            extra.push({ type: 'locate', selector });
+          } else if (role && roleName) {
+            extra.push({ type: 'locate', role, roleName });
+          } else {
+            const g = actions.find(a => a.type === 'goto');
+            try {
+              const host = g?.url ? new URL(g.url).hostname : '';
+              if (host && /(^|\.)(google)\./i.test(host)) {
+                extra.push({ type: 'locate', selector: 'input[name="q"]' });
+              }
+            } catch {}
+          }
           if (extra.length) {
             setTimeout(() => runActions(extra), 1000);
           }
