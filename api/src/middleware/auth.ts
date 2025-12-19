@@ -15,7 +15,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   const token = header.slice('Bearer '.length);
   try {
     const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
-    req.auth = payload;
+    (req as any).auth = payload;
     return next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

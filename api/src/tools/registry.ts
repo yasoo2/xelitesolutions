@@ -60,7 +60,17 @@ export const tools: ToolDefinition[] = [
     name: 'browser_run',
     version: '1.0.0',
     tags: ['browser', 'agent'],
-    inputSchema: { type: 'object', properties: { sessionId: { type: 'string' }, actions: { type: 'array' } }, required: ['sessionId', 'actions'] },
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        sessionId: { type: 'string' }, 
+        actions: { 
+          type: 'array',
+          items: { type: 'object' }
+        } 
+      }, 
+      required: ['sessionId', 'actions'] 
+    },
     outputSchema: { type: 'object', properties: { outputs: { type: 'array' } } },
     permissions: ['internet'],
     sideEffects: [],

@@ -29,7 +29,7 @@ export default function CodeUniverse() {
   }, []);
 
   return (
-    <div style={{ width: '100%', height: '100%', background: '#000' }}>
+    <div style={{ width: '100%', height: '100%', background: 'var(--bg-dark)' }}>
       <ForceGraph3D
         ref={fgRef}
         graphData={data}
@@ -58,8 +58,8 @@ export default function CodeUniverse() {
           );
         }}
       />
-      <div style={{ position: 'absolute', top: 20, left: 20, color: '#fff', pointerEvents: 'none' }}>
-        <h2 style={{ margin: 0, textShadow: '0 0 10px #00f' }}>CODE UNIVERSE</h2>
+      <div style={{ position: 'absolute', top: 20, left: 20, color: 'var(--text-primary)', pointerEvents: 'none' }}>
+        <h2 style={{ margin: 0, textShadow: '0 0 10px var(--accent-glow)' }}>CODE UNIVERSE</h2>
         <p style={{ margin: 0, opacity: 0.7 }}>{data.nodes.length} Files • {data.links.length} Dependencies</p>
       </div>
     </div>

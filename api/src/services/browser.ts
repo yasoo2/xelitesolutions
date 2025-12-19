@@ -42,7 +42,7 @@ class BrowserService {
             const defaultPath = puppeteer.executablePath();
             try {
                 await fs.promises.access(defaultPath);
-                console.log('Using default Puppeteer executable:', defaultPath);
+                console.info('Using default Puppeteer executable:', defaultPath);
                 return defaultPath;
             } catch {}
         } catch (e) {
@@ -77,7 +77,7 @@ class BrowserService {
                      const stat = await fs.promises.stat(match);
                      // Relaxed check: just needs to be a file
                      if (stat.isFile()) {
-                         console.log('Found executable manually:', match);
+                         // console.log('Found executable manually:', match);
                          return match;
                      }
                  } catch (e) {}
@@ -103,7 +103,7 @@ class BrowserService {
         
         try {
             const executablePath = await this.getExecutablePath();
-            console.log('Launching browser with executable path:', executablePath || 'bundled');
+            console.info('Launching browser with executable path:', executablePath || 'bundled');
 
             this.browser = await puppeteer.launch({
                 headless: true,

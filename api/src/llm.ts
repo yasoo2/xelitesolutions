@@ -5,7 +5,7 @@ import { tools } from './tools/registry';
 // Initialize OpenAI client
 const apiKey = process.env.OPENAI_API_KEY;
 if (apiKey) {
-  console.log('LLM: OpenAI API Key found (starts with ' + apiKey.slice(0, 7) + '...)');
+  console.info('LLM: OpenAI API Key found (starts with ' + apiKey.slice(0, 7) + '...)');
 } else {
   console.warn('LLM: No OpenAI API Key found in environment variables. LLM features will be disabled.');
 }

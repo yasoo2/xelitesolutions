@@ -11,9 +11,10 @@ export const LiveBackground = () => {
       height: '100vh',
       zIndex: -1,
       overflow: 'hidden',
-      background: '#0a0a0a',
+      background: 'var(--bg-dark)',
+      transition: 'background 0.3s ease'
     }}>
-      {/* Animated Gradient Orb 1 (Blue-ish) */}
+      {/* Dynamic Grid Background */}
       <motion.div
         style={{
           position: 'absolute',

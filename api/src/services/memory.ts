@@ -92,7 +92,7 @@ Output: { "facts": [{ "key": "role", "value": "React Developer" }, { "key": "pre
               value: fact.value,
               sessionId: options?.sessionId // Optional link to origin session
             });
-            console.log(`[Memory] Saved fact: ${fact.key} = ${fact.value}`);
+            // console.info(`[Memory] Saved fact: ${fact.key} = ${fact.value}`);
           }
         }
       }

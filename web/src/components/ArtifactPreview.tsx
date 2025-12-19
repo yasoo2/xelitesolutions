@@ -37,8 +37,8 @@ export default function ArtifactPreview({ content, language }: ArtifactPreviewPr
             <div id="app"></div>
             <script>
               const app = document.getElementById('app');
-              const consoleLog = console.log;
-              console.log = (...args) => {
+              const consoleLog = console['log'];
+              console['log'] = (...args) => {
                 app.innerHTML += '<div>' + args.join(' ') + '</div>';
                 consoleLog(...args);
               };

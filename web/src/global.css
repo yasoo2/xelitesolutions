@@ -8,6 +8,7 @@
   --bg-dark: #000000;
   --bg-card: #121212;
   --bg-card-hover: #1e1e1e;
+  --bg-hover: #1e1e1e;
   --bg-input: #1e1e1e;
   --surface-1: #0a0a0a;
   --surface-2: #141414;
@@ -64,40 +65,71 @@
   --neon-gold: #ffd700;
   --btn-gradient: linear-gradient(135deg, var(--neon-pink) 0%, var(--neon-purple) 50%, var(--neon-cyan) 100%);
   --btn-gradient-hover: linear-gradient(135deg, #ff64c3 0%, #a78bfa 50%, #4deaff 100%);
+
+  /* Glassmorphism Variables (Default Dark) */
+  --glass-bg: rgba(10, 10, 10, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  
+  /* Brand Gradient (Default Gold) */
+  --brand-gradient: linear-gradient(to right, #FFD700, #FDB931);
+
+  /* Status Colors (Dark) */
+  --accent-danger: #ef4444; /* Red-500 */
+  --accent-warning: #f59e0b; /* Amber-500 */
+  --accent-success: #22c55e; /* Green-500 */
 }
 
 [data-theme="light"] {
-  /* Strict White & Blue Theme (No Greys) */
-  --bg-dark: #f0f7ff; /* Very light blue tint */
+  /* Strict White & Beautiful Blue Theme */
+  --bg-dark: #f0f9ff; /* Very light AliceBlue/Sky */
   --bg-card: #ffffff;
   --bg-card-hover: #e0f2fe; /* Light sky blue */
+  --bg-hover: #e0f2fe;
   --bg-input: #ffffff;
   --surface-1: #ffffff;
-  --surface-2: #eff6ff; /* Blue-50 */
+  --surface-2: #eff6ff;
   
-  --text-primary: #0f172a; /* Navy Blue (Dark) */
-  --text-secondary: #334155; /* Blue-Grey (Medium) */
-  --text-muted: #64748b; /* Blue-Grey (Light) */
+  --text-primary: #0f172a; /* Slate-900 */
+  --text-secondary: #334155; /* Slate-700 */
+  --text-muted: #64748b; /* Slate-500 */
   
-  --accent-primary: #2563eb; /* Royal Blue */
-  --accent-hover: #1d4ed8; /* Darker Blue */
-  --accent-secondary: #60a5fa; /* Lighter Blue */
-  --accent-glow: rgba(37, 99, 235, 0.25);
+  --accent-primary: #3b82f6; /* Blue-500 (Vibrant) */
+  --accent-hover: #2563eb; /* Blue-600 */
+  --accent-secondary: #60a5fa; /* Blue-400 */
+  --accent-glow: rgba(59, 130, 246, 0.4);
   
-  --user-msg-bg: #2563eb;
+  --user-msg-bg: #3b82f6;
   --joe-msg-bg: #ffffff;
   
   --border-color: #bfdbfe; /* Blue-200 */
   --border-light: #dbeafe; /* Blue-100 */
-  --topbar-bg: rgba(255, 255, 255, 0.9);
+  --topbar-bg: rgba(255, 255, 255, 0.85);
 
-  --shadow-sm: 0 1px 3px rgba(37, 99, 235, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(37, 99, 235, 0.1), 0 2px 4px -1px rgba(37, 99, 235, 0.06);
-  --shadow-lg: 0 10px 25px -5px rgba(37, 99, 235, 0.15), 0 8px 10px -6px rgba(37, 99, 235, 0.1);
+  --shadow-sm: 0 1px 3px rgba(59, 130, 246, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06);
+  --shadow-lg: 0 10px 25px -5px rgba(59, 130, 246, 0.15), 0 8px 10px -6px rgba(59, 130, 246, 0.1);
   
-  --composer-bg: linear-gradient(180deg, #f0f7ff 0%, #e0f2fe 100%);
+  --composer-bg: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
 
   --current-btn-color: var(--btn-icon-color-light);
+  
+  /* Light Glass Overrides */
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(59, 130, 246, 0.2);
+  
+  /* Light Brand Gradient */
+  --brand-gradient: linear-gradient(to right, #2563eb, #3b82f6);
+
+  /* Status Colors (Light) */
+  --accent-danger: #dc2626; /* Red-600 */
+  --accent-warning: #d97706; /* Amber-600 */
+  --accent-success: #16a34a; /* Green-600 */
+
+  /* Light Button Variables */
+  --btn-icon-bg-light: rgba(37, 99, 235, 0.1);
+  --btn-icon-color-light: #2563eb;
+  --btn-icon-glow-light: rgba(37, 99, 235, 0.3);
+
   --current-btn-bg: var(--btn-icon-bg-light);
   --current-btn-glow: var(--btn-icon-glow-light);
 
@@ -147,7 +179,7 @@ body {
   color: var(--accent-primary);
   letter-spacing: -0.5px;
   text-transform: uppercase;
-  background: linear-gradient(to right, #FFD700, #FDB931);
+  background: var(--brand-gradient);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -528,17 +560,17 @@ body {
 
 /* Glassmorphism Overrides */
 .glass-panel {
-  background: rgba(18, 18, 18, 0.6) !important;
+  background: var(--glass-bg) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border);
 }
 
 .sidebar {
-  background: rgba(10, 10, 10, 0.6) !important;
+  background: var(--glass-bg) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-right: 1px solid var(--glass-border) !important;
 }
 
 .center {
@@ -546,10 +578,10 @@ body {
 }
 
 .rightpanel {
-  background: rgba(10, 10, 10, 0.6) !important;
+  background: var(--glass-bg) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-left: 1px solid var(--glass-border) !important;
 }
 
 .composer {

@@ -28,7 +28,7 @@ export function attachWebSocket(server: Server) {
   wssRef = new WebSocketServer({ server });
 
   wssRef.on('connection', (ws) => {
-    console.log('Client connected to WebSocket');
+    // console.info('Client connected to WebSocket');
 
     ws.on('message', (message) => {
       try {
