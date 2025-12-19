@@ -84,12 +84,31 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
           ) : (
              <ReactMarkdown
                components={{
+                  h1: ({node, ...props}: any) => <h1 style={{ color: '#eab308', fontSize: '1.8em', marginBottom: '0.5em', marginTop: '0.5em', borderBottom: '1px solid #333', paddingBottom: '0.3em' }} {...props} />,
+                  h2: ({node, ...props}: any) => <h2 style={{ color: '#60a5fa', fontSize: '1.5em', marginBottom: '0.5em', marginTop: '1em' }} {...props} />,
+                  h3: ({node, ...props}: any) => <h3 style={{ color: '#c084fc', fontSize: '1.2em', marginBottom: '0.5em', marginTop: '1em' }} {...props} />,
+                  ul: ({node, ...props}: any) => <ul style={{ paddingInlineStart: '1.5em', marginBottom: '1em' }} {...props} />,
+                  ol: ({node, ...props}: any) => <ol style={{ paddingInlineStart: '1.5em', marginBottom: '1em' }} {...props} />,
+                  li: ({node, ...props}: any) => <li style={{ marginBottom: '0.3em', lineHeight: '1.6' }} {...props} />,
+                  p: ({node, ...props}: any) => <p style={{ marginBottom: '1em', lineHeight: '1.7' }} {...props} />,
+                  blockquote: ({node, ...props}: any) => (
+                    <blockquote 
+                      style={{ 
+                        borderLeft: '4px solid #eab308', 
+                        background: 'rgba(234, 179, 8, 0.1)', 
+                        margin: '1em 0', 
+                        padding: '0.5em 1em', 
+                        borderRadius: '4px' 
+                      }} 
+                      {...props} 
+                    />
+                  ),
                   a: ({node, ...props}: any) => (
                     <a 
                       {...props} 
                       target="_blank" 
                        rel="noopener noreferrer" 
-                       style={{ color: '#fcd34d', textDecoration: 'underline' }} 
+                       style={{ color: '#60a5fa', textDecoration: 'underline' }} 
                      />
                    ),
                   code({node, inline, className, children, ...props}: any) {

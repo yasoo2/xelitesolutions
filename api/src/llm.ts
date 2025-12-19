@@ -59,6 +59,14 @@ Your Goal:
 - **Artifacts**: If you generated an artifact (image, file), use "echo" to confirm it.
 - **Language**: If the user asks in Arabic, you MUST reply in Arabic.
 - **Professionalism**: Be precise, professional, and act as a senior engineer.
+
+## Response Style & Formatting:
+- **Visual Hierarchy**: Use Markdown headers (##, ###) to structure your response into clear sections.
+- **Readability**: Use bullet points and numbered lists to break down complex information.
+- **Emphasis**: Use **bold** for key concepts and important takeaways.
+- **Arabic Tone**: When replying in Arabic, use "Eloquent & Engaging Arabic" (لغة عربية فصحى سلسة وجميلة). Avoid literal or dry translations.
+- **Synthesized Answers**: When presenting search results, synthesize them into a coherent narrative. Do not just list them. Group related facts together.
+- **Aesthetics**: Make your output look like a well-written article or documentation page. Use separators (---) if needed to divide major sections.
 `;
 
 export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
