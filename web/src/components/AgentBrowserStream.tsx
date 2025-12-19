@@ -110,6 +110,11 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           }
         }
       }
+      if (autoExtract && actions.some(a => a.type === 'press' && a.key === 'Enter')) {
+        setTimeout(() => {
+          doExtract();
+        }, 2000);
+      }
       if (autoExtract && actions.some(a => a.type === 'goto' || a.type === 'reload')) {
         setTimeout(() => {
           doExtract();
