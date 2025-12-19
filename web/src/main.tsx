@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Joe from './pages/Joe';
 import './theme.css';
+import './global.css';
 import './i18n';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {

@@ -1,4 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Tajawal:wght@300;400;500;700;800&display=swap');
+
 :root {
+  /* Typography */
+  --font-primary: 'Tajawal', 'Inter', system-ui, -apple-system, sans-serif;
+  
   /* Color Palette - Modern Dark Theme (Default) */
   --bg-dark: #000000;
   --bg-card: #121212;

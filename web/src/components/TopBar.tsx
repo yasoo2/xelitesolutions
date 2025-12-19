@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Sun, Moon, LogIn, LogOut, Globe, ChevronDown } from 'lucide-react';
+import SentinelStatus from './SentinelStatus';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -50,6 +51,9 @@ export default function TopBar() {
       <div className="spacer" />
       
       <div className="topbar-actions" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginInlineStart: 'auto' }}>
+        {/* Sentinel Status */}
+        <SentinelStatus />
+
         {/* Language Dropdown */}
         <div className="lang-dropdown" ref={langMenuRef} style={{ position: 'relative' }}>
           <button 

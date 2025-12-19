@@ -375,20 +375,24 @@ export default function Joe() {
       )}
 
       <main className="center">
-        <CommandComposer 
-          sessionId={selected || undefined} 
-          onSessionCreated={async (id) => {
-            await loadSessions();
-            setSelected(id);
-          }}
-          onPreviewArtifact={handlePreviewArtifact}
-          onStepsUpdate={(newSteps) => {
-            setSteps(newSteps);
-          }}
-          onMessagesUpdate={(msgs) => {
-            setMessages(msgs);
-          }}
-        />
+        {mode === 'chat' && (
+          <CommandComposer 
+            sessionId={selected || undefined} 
+            onSessionCreated={async (id) => {
+              await loadSessions();
+              setSelected(id);
+            }}
+            onPreviewArtifact={handlePreviewArtifact}
+            onStepsUpdate={(newSteps) => {
+              setSteps(newSteps);
+            }}
+            onMessagesUpdate={(msgs) => {
+              setMessages(msgs);
+            }}
+          />
+        )}
+        {mode === 'council' && <CouncilPanel />}
+        {mode === 'universe' && <CodeUniverse />}
       </main>
     </div>
   );

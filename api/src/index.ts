@@ -94,8 +94,22 @@ async function main() {
   app.use('/knowledge', knowledgeRoutes);
   app.use('/database', databaseRoutes);
   app.use('/system', systemRoutes);
+import advancedRoutes from './routes/advanced';
+import { SentinelService } from './services/sentinel';
+
+// ... (existing imports)
+
+// Start Sentinel
+SentinelService.start(path.resolve(__dirname, '../..'));
+
+async function main() {
+  // ... (existing code)
+  
   app.use('/healing', healingRoutes);
+  app.use('/advanced', advancedRoutes); // New Route
   app.use('/docs', docsRoutes);
+  
+  // ... (rest of code)
   app.use('/analytics', analyticsRoutes);
   app.use('/tests', testRoutes);
 
