@@ -133,6 +133,32 @@ async function runActions(session, actions) {
           }
           await session.page.goto(a.url, { waitUntil: a.waitUntil || "load" });
           outputs.push({ type: "goto", url: a.url });
+          try {
+            const u = new URL(a.url);
+            if (/(^|\\.)google\\./i.test(u.hostname)) {
+              const selectors = [
+                "#L2AGLb",
+                'button[aria-label*="Agree"]',
+                "text=I agree",
+                "text=Agree",
+                "text=Accept all",
+                "text=Accept",
+                "text=\u0623\u0648\u0627\u0641\u0642",
+                "text=\u0642\u0628\u0648\u0644 \u0627\u0644\u0643\u0644",
+                "text=\u0645\u0648\u0627\u0641\u0642"
+              ];
+              for (const sel of selectors) {
+                const loc = session.page.locator(sel);
+                const c = await loc.count().catch(() => 0);
+                if (c > 0) {
+                  await loc.first().click({ timeout: 1e3 });
+                  outputs.push({ type: "cookie_consent_click", selector: sel });
+                  break;
+                }
+              }
+            }
+          } catch {
+          }
           break;
         }
         case "goBack": {

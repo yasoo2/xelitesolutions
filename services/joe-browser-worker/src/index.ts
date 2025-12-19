@@ -140,6 +140,31 @@ async function runActions(session: Session, actions: Action[]) {
           } catch {}
           await session.page.goto(a.url, { waitUntil: a.waitUntil || 'load' });
           outputs.push({ type: 'goto', url: a.url });
+          try {
+            const u = new URL(a.url);
+            if (/(^|\\.)google\\./i.test(u.hostname)) {
+              const selectors = [
+                '#L2AGLb',
+                'button[aria-label*="Agree"]',
+                'text=I agree',
+                'text=Agree',
+                'text=Accept all',
+                'text=Accept',
+                'text=أوافق',
+                'text=قبول الكل',
+                'text=موافق'
+              ];
+              for (const sel of selectors) {
+                const loc = session.page.locator(sel);
+                const c = await loc.count().catch(() => 0);
+                if (c > 0) {
+                  await loc.first().click({ timeout: 1000 });
+                  outputs.push({ type: 'cookie_consent_click', selector: sel });
+                  break;
+                }
+              }
+            }
+          } catch {}
           break;
         }
         case 'goBack': {
