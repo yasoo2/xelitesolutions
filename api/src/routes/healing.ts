@@ -98,7 +98,7 @@ router.post('/apply', authenticate, async (req, res) => {
              // For now allow it as we are in a sandbox env
         }
 
-        fs.writeFileSync(resolvedPath, content);
+        await fs.promises.writeFile(resolvedPath, content);
         res.json({ success: true, message: 'Fix applied successfully' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });

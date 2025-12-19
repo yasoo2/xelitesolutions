@@ -76,9 +76,13 @@ async function createSession(opts: { viewport?: { width: number; height: number 
       const fileId = uuidv4();
       const filePath = path.join(STORAGE_DIR, 'downloads', `${fileId}-${safeName}`);
       const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      try {
+        await fs.promises.mkdir(dir, { recursive: true });
+      } catch {}
+      
       await dl.saveAs(filePath);
-      const size = fs.statSync(filePath).size;
+      const stat = await fs.promises.stat(filePath);
+      const size = stat.size;
       const href = `/downloads/${path.basename(filePath)}`;
       session.downloads.push({ id: fileId, filename: safeName, href, size });
       logger.info({ fileId, safeName, size }, 'download_saved');

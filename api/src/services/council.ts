@@ -15,10 +15,10 @@ const EXPERTS: Expert[] = [
 
 export class CouncilService {
   static async consult(topic: string): Promise<any[]> {
-    const discussion = [];
+    const discussion: any[] = [];
     
-    // Round 1: Each expert gives their initial take
-    for (const expert of EXPERTS) {
+    // Round 1: Parallel Expert Consultation
+    const expertPromises = EXPERTS.map(async (expert) => {
       const prompt = `
         You are ${expert.name}, a world-class ${expert.role} expert.
         Focus ONLY on: ${expert.focus}.
@@ -31,31 +31,50 @@ export class CouncilService {
       
       try {
         const response = await callLLM(prompt, []);
-        discussion.push({
+        return {
           expert: expert,
           content: response
-        });
+        };
       } catch (e) {
         console.error(`Expert ${expert.name} failed to respond`, e);
+        return null;
       }
-    }
+    });
+
+    const results = await Promise.all(expertPromises);
+    results.forEach(r => {
+      if (r) discussion.push(r);
+    });
 
     // Round 2: Synthesis (The Lead Engineer - Joe)
-    const synthesisPrompt = `
-      You are the Lead Engineer. Review the feedback from your team:
+    if (discussion.length > 0) {
+      const synthesisPrompt = `
+        You are the Lead Engineer. Review the feedback from your team:
+        
+        ${discussion.map(d => `${d.expert.role}: ${d.content}`).join('\n\n')}
+        
+        Synthesize a final execution plan that balances all these concerns.
+      `;
       
-      ${discussion.map(d => `${d.expert.role}: ${d.content}`).join('\n\n')}
-      
-      Synthesize a final execution plan that balances all these concerns.
-    `;
-    
-    try {
-      const conclusion = await callLLM(synthesisPrompt, []);
-      discussion.push({
-        expert: { role: 'Lead', name: 'Joe', focus: 'Execution', color: '#ffffff' },
-        content: conclusion
-      });
-    } catch (e) {}
+      try {
+        const conclusion = await callLLM(synthesisPrompt, []);
+        discussion.push({
+          expert: { role: 'Lead', name: 'Joe', focus: 'Execution', color: '#ffffff' },
+          content: conclusion
+        });
+      } catch (e) {
+        console.error('Synthesis failed', e);
+        discussion.push({
+            expert: { role: 'System', name: 'Error', focus: 'Recovery', color: '#ff0000' },
+            content: 'Failed to synthesize a conclusion due to an internal error.'
+        });
+      }
+    } else {
+        discussion.push({
+            expert: { role: 'System', name: 'Error', focus: 'Availability', color: '#ff0000' },
+            content: 'The council is currently unavailable.'
+        });
+    }
 
     return discussion;
   }

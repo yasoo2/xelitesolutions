@@ -6,6 +6,7 @@ import pdf from 'pdf-parse';
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const KNOWLEDGE_FILE = path.join(DATA_DIR, 'knowledge.json');
 
+// Ensure directory exists (sync is fine at startup, or make it async if called later)
 if (!fs.existsSync(DATA_DIR)) {
     try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
 }
@@ -20,10 +21,10 @@ export interface Document {
 }
 
 // Load knowledge base
-function loadKnowledge(): Document[] {
-    if (!fs.existsSync(KNOWLEDGE_FILE)) return [];
+async function loadKnowledge(): Promise<Document[]> {
     try {
-        const data = fs.readFileSync(KNOWLEDGE_FILE, 'utf-8');
+        await fs.promises.access(KNOWLEDGE_FILE);
+        const data = await fs.promises.readFile(KNOWLEDGE_FILE, 'utf-8');
         return JSON.parse(data);
     } catch {
         return [];
@@ -31,15 +32,15 @@ function loadKnowledge(): Document[] {
 }
 
 // Save knowledge base
-function saveKnowledge(docs: Document[]) {
-    fs.writeFileSync(KNOWLEDGE_FILE, JSON.stringify(docs, null, 2));
+async function saveKnowledge(docs: Document[]) {
+    await fs.promises.writeFile(KNOWLEDGE_FILE, JSON.stringify(docs, null, 2));
 }
 
 export const KnowledgeService = {
-    getAll: () => loadKnowledge(),
+    getAll: async () => await loadKnowledge(),
 
-    add: (filename: string, content: string, tags: string[] = []) => {
-        const docs = loadKnowledge();
+    add: async (filename: string, content: string, tags: string[] = []) => {
+        const docs = await loadKnowledge();
         const newDoc: Document = {
             id: uuidv4(),
             filename,
@@ -48,18 +49,18 @@ export const KnowledgeService = {
             createdAt: Date.now()
         };
         docs.push(newDoc);
-        saveKnowledge(docs);
+        await saveKnowledge(docs);
         return newDoc;
     },
 
-    delete: (id: string) => {
-        const docs = loadKnowledge();
+    delete: async (id: string) => {
+        const docs = await loadKnowledge();
         const filtered = docs.filter(d => d.id !== id);
-        saveKnowledge(filtered);
+        await saveKnowledge(filtered);
     },
 
-    search: (query: string): { document: Document, score: number, snippet: string }[] => {
-        const docs = loadKnowledge();
+    search: async (query: string): Promise<{ document: Document, score: number, snippet: string }[]> => {
+        const docs = await loadKnowledge();
         const q = query.toLowerCase();
         
         // Simple keyword scoring

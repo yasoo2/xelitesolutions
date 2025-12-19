@@ -20,7 +20,7 @@ router.post('/council/consult', async (req, res) => {
 router.get('/graph', async (req, res) => {
   try {
     const rootDir = path.resolve(__dirname, '../../..'); // Project Root
-    const graph = CodeGraphService.generateGraph(rootDir);
+    const graph = await CodeGraphService.generateGraph(rootDir);
     res.json(graph);
   } catch (e: any) {
     res.status(500).json({ error: e.message });

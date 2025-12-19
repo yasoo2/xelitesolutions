@@ -14,12 +14,12 @@ interface Link {
 }
 
 export class CodeGraphService {
-  static generateGraph(rootDir: string): { nodes: Node[], links: Link[] } {
+  static async generateGraph(rootDir: string): Promise<{ nodes: Node[], links: Link[] }> {
     const nodes: Node[] = [];
     const links: Link[] = [];
     const idMap = new Map<string, string>();
 
-    const files = this.getFiles(rootDir);
+    const files = await this.getFiles(rootDir);
 
     // Pass 1: Create Nodes
     files.forEach(file => {
@@ -32,69 +32,85 @@ export class CodeGraphService {
       else if (relPath.includes('services/')) group = 2;
       else if (relPath.includes('components/')) group = 3;
 
-      const content = fs.readFileSync(file, 'utf-8');
-      const lines = content.split('\n').length;
-
+      // Use a simple line count approximation without reading entire file if possible, or just read async
+      // For simplicity in this graph generation, we'll skip accurate line count or do it in Pass 2
+      
       nodes.push({
         id,
         name: path.basename(file),
         group,
-        val: Math.min(lines / 10, 20) // Cap size
+        val: 1 // Default size
       });
     });
 
-    // Pass 2: Create Links (Imports)
-    files.forEach(file => {
-      const content = fs.readFileSync(file, 'utf-8');
-      const sourceId = idMap.get(file);
-      if (!sourceId) return;
-
-      const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
-      let match;
-      while ((match = importRegex.exec(content)) !== null) {
-        const importPath = match[1];
-        if (importPath.startsWith('.')) {
-          try {
-            const resolvedPath = path.resolve(path.dirname(file), importPath);
-            // Try extensions
-            const candidates = [
-              resolvedPath,
-              resolvedPath + '.ts',
-              resolvedPath + '.tsx',
-              resolvedPath + '.js',
-              resolvedPath + '/index.ts'
-            ];
-            
-            for (const cand of candidates) {
-              if (idMap.has(cand)) {
-                links.push({ source: sourceId, target: idMap.get(cand)! });
-                break;
-              }
+    // Pass 2: Create Links (Imports) & Update Node Sizes
+    await Promise.all(files.map(async (file) => {
+        try {
+            const content = await fs.promises.readFile(file, 'utf-8');
+            const lines = content.split('\n').length;
+            const nodeId = idMap.get(file);
+            const node = nodes.find(n => n.id === nodeId);
+            if (node) {
+                node.val = Math.min(lines / 10, 20);
             }
-          } catch (e) {}
+
+            const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
+            let match;
+            while ((match = importRegex.exec(content)) !== null) {
+                const importPath = match[1];
+                if (importPath.startsWith('.')) {
+                    try {
+                        const resolvedPath = path.resolve(path.dirname(file), importPath);
+                        // Try extensions
+                        const candidates = [
+                        resolvedPath,
+                        resolvedPath + '.ts',
+                        resolvedPath + '.tsx',
+                        resolvedPath + '.js',
+                        resolvedPath + '/index.ts'
+                        ];
+                        
+                        for (const cand of candidates) {
+                        if (idMap.has(cand)) {
+                            // Avoid self-loops and duplicates
+                            if (idMap.get(cand)! !== nodeId) {
+                                links.push({ source: nodeId!, target: idMap.get(cand)! });
+                            }
+                            break;
+                        }
+                        }
+                    } catch (e) {}
+                }
+            }
+        } catch (e) {
+            // Ignore read errors
         }
-      }
-    });
+    }));
 
     return { nodes, links };
   }
 
-  private static getFiles(dir: string): string[] {
+  private static async getFiles(dir: string): Promise<string[]> {
     let results: string[] = [];
-    const list = fs.readdirSync(dir);
-    list.forEach(file => {
-      const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-      if (stat && stat.isDirectory()) {
-        if (!file.startsWith('.') && file !== 'node_modules' && file !== 'dist') {
-          results = results.concat(this.getFiles(filePath));
+    try {
+        const list = await fs.promises.readdir(dir);
+        for (const file of list) {
+            const filePath = path.join(dir, file);
+            try {
+                const stat = await fs.promises.stat(filePath);
+                if (stat && stat.isDirectory()) {
+                    if (!file.startsWith('.') && file !== 'node_modules' && file !== 'dist' && file !== 'build') {
+                        const subResults = await this.getFiles(filePath);
+                        results = results.concat(subResults);
+                    }
+                } else {
+                    if (/\.(ts|tsx|js|jsx)$/.test(file)) {
+                        results.push(filePath);
+                    }
+                }
+            } catch (e) {}
         }
-      } else {
-        if (/\.(ts|tsx|js|jsx)$/.test(file)) {
-          results.push(filePath);
-        }
-      }
-    });
+    } catch (e) {}
     return results;
   }
 }

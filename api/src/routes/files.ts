@@ -12,10 +12,10 @@ const router = Router();
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../../uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
+    fs.mkdir(uploadDir, { recursive: true }, (err) => {
+        if (err) return cb(err, uploadDir); // Should we return uploadDir on error? Multer expects destination
+        cb(null, uploadDir);
+    });
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -40,14 +40,14 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
 
     // Extract content based on type
     if (req.file.mimetype === 'application/pdf') {
-      const dataBuffer = fs.readFileSync(req.file.path);
+      const dataBuffer = await fs.promises.readFile(req.file.path);
       const data = await pdf(dataBuffer);
       content = data.text;
     } else if (req.file.mimetype.startsWith('text/') || 
                req.file.mimetype === 'application/json' || 
                req.file.mimetype === 'application/javascript' ||
                req.file.mimetype.includes('code')) {
-      content = fs.readFileSync(req.file.path, 'utf8');
+      content = await fs.promises.readFile(req.file.path, 'utf8');
     }
 
     const fileDoc = await FileModel.create({

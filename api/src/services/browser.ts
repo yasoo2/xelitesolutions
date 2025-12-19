@@ -40,10 +40,11 @@ class BrowserService {
         // 1. Try Puppeteer's default resolution
         try {
             const defaultPath = puppeteer.executablePath();
-            if (fs.existsSync(defaultPath)) {
+            try {
+                await fs.promises.access(defaultPath);
                 console.log('Using default Puppeteer executable:', defaultPath);
                 return defaultPath;
-            }
+            } catch {}
         } catch (e) {
             console.warn('Puppeteer executablePath() failed:', e);
         }
@@ -61,7 +62,9 @@ class BrowserService {
         console.log('Searching for Chrome in:', searchPaths);
 
         for (const basePath of searchPaths) {
-            if (!fs.existsSync(basePath)) continue;
+            try {
+                await fs.promises.access(basePath);
+            } catch { continue; }
             
             // Find chrome binary (recursively)
             // Look for "Google Chrome for Testing" (Mac) or "chrome" (Linux)
@@ -71,7 +74,7 @@ class BrowserService {
             // Filter for actual executables
             for (const match of matches) {
                  try {
-                     const stat = fs.statSync(match);
+                     const stat = await fs.promises.stat(match);
                      // Relaxed check: just needs to be a file
                      if (stat.isFile()) {
                          console.log('Found executable manually:', match);
@@ -83,13 +86,14 @@ class BrowserService {
 
         // 3. Fallback: Check for standard Linux path structure explicitly if glob failed
         const linuxPath = path.join(process.cwd(), 'api/.cache/puppeteer/chrome'); 
-        if (fs.existsSync(linuxPath)) {
+        try {
+            await fs.promises.access(linuxPath);
              // Try to find 'chrome' binary under it
              try {
                  const files = await glob('**/chrome', { cwd: linuxPath, absolute: true });
                  if (files.length > 0) return files[0];
              } catch(e) {}
-        }
+        } catch {}
 
         return undefined;
     }

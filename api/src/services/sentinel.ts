@@ -29,30 +29,39 @@ export class SentinelService {
 
   static async scan(dir: string) {
     try {
-      const files = this.getFiles(dir);
+      const files = await this.getFiles(dir);
       const newAlerts: SentinelAlert[] = [];
 
-      for (const file of files) {
-        const content = fs.readFileSync(file, 'utf-8');
-        
-        // 1. Check for Secrets
-        if (content.match(/['"][a-zA-Z0-9]{20,}['"]/)) {
-             // Heuristic for potential keys, ignoring common false positives involves more complex regex
-             if (content.includes('sk-') || content.includes('Bearer ')) {
-                 newAlerts.push(this.createAlert('security', 'high', file, 'Potential API Key or Secret detected'));
-             }
-        }
+      await Promise.all(files.map(async (file) => {
+        try {
+            const content = await fs.promises.readFile(file, 'utf-8');
+            
+            // 1. Check for Secrets
+            // Heuristic for potential keys, ignoring common false positives involves more complex regex
+            if (content.match(/['"][a-zA-Z0-9]{32,}['"]/) || 
+                content.includes('sk-') || 
+                content.includes('Bearer ') ||
+                content.includes('aws_access_key_id') ||
+                content.includes('ghp_')) {
+                    // Refine to avoid false positives (like imports or hashes)
+                    if (!content.includes('import ') && !content.includes('sha256')) {
+                         newAlerts.push(this.createAlert('security', 'high', file, 'Potential API Key or Secret detected'));
+                    }
+            }
 
-        // 2. Check for Console Logs in production code (not scripts/tests)
-        if (!file.includes('test') && !file.includes('script') && content.includes('console.log')) {
-            newAlerts.push(this.createAlert('quality', 'low', file, 'Console.log statement found in production code'));
-        }
+            // 2. Check for Console Logs in production code (not scripts/tests)
+            if (!file.includes('test') && !file.includes('script') && !file.includes('dev') && content.includes('console.log')) {
+                newAlerts.push(this.createAlert('quality', 'low', file, 'Console.log statement found in production code'));
+            }
 
-        // 3. Check for TODOs
-        if (content.includes('TODO') || content.includes('FIXME')) {
-            newAlerts.push(this.createAlert('maintenance', 'medium', file, 'Pending TODO/FIXME detected'));
+            // 3. Check for TODOs
+            if (content.includes('TODO') || content.includes('FIXME')) {
+                newAlerts.push(this.createAlert('maintenance', 'medium', file, 'Pending TODO/FIXME detected'));
+            }
+        } catch (e) {
+            // Ignore file read errors (permissions, etc)
         }
-      }
+      }));
 
       // Broadcast only new alerts
       if (newAlerts.length > 0) {
@@ -76,22 +85,31 @@ export class SentinelService {
     };
   }
 
-  private static getFiles(dir: string): string[] {
+  private static async getFiles(dir: string): Promise<string[]> {
     let results: string[] = [];
-    const list = fs.readdirSync(dir);
-    list.forEach(file => {
-      const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-      if (stat && stat.isDirectory()) {
-        if (!file.startsWith('.') && file !== 'node_modules' && file !== 'dist') {
-          results = results.concat(this.getFiles(filePath));
+    try {
+        const list = await fs.promises.readdir(dir);
+        for (const file of list) {
+            const filePath = path.join(dir, file);
+            try {
+                const stat = await fs.promises.stat(filePath);
+                if (stat && stat.isDirectory()) {
+                    if (!file.startsWith('.') && file !== 'node_modules' && file !== 'dist' && file !== 'build') {
+                        const subResults = await this.getFiles(filePath);
+                        results = results.concat(subResults);
+                    }
+                } else {
+                    if (/\.(ts|tsx|js|jsx)$/.test(file)) {
+                        results.push(filePath);
+                    }
+                }
+            } catch (e) {
+                // Ignore stat errors
+            }
         }
-      } else {
-        if (/\.(ts|tsx|js|jsx)$/.test(file)) {
-          results.push(filePath);
-        }
-      }
-    });
+    } catch (e) {
+        // Ignore readdir errors
+    }
     return results;
   }
 }

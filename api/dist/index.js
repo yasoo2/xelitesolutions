@@ -105,7 +105,7 @@ var init_context = __esm({
 });
 
 // src/index.ts
-var import_express20 = __toESM(require("express"));
+var import_express21 = __toESM(require("express"));
 var import_cors = __toESM(require("cors"));
 var import_morgan = __toESM(require("morgan"));
 var import_mongoose19 = __toESM(require("mongoose"));
@@ -259,22 +259,22 @@ if (!import_fs.default.existsSync(DATA_DIR)) {
   } catch {
   }
 }
-function loadKnowledge() {
-  if (!import_fs.default.existsSync(KNOWLEDGE_FILE)) return [];
+async function loadKnowledge() {
   try {
-    const data = import_fs.default.readFileSync(KNOWLEDGE_FILE, "utf-8");
+    await import_fs.default.promises.access(KNOWLEDGE_FILE);
+    const data = await import_fs.default.promises.readFile(KNOWLEDGE_FILE, "utf-8");
     return JSON.parse(data);
   } catch {
     return [];
   }
 }
-function saveKnowledge(docs) {
-  import_fs.default.writeFileSync(KNOWLEDGE_FILE, JSON.stringify(docs, null, 2));
+async function saveKnowledge(docs) {
+  await import_fs.default.promises.writeFile(KNOWLEDGE_FILE, JSON.stringify(docs, null, 2));
 }
 var KnowledgeService = {
-  getAll: () => loadKnowledge(),
-  add: (filename, content, tags = []) => {
-    const docs = loadKnowledge();
+  getAll: async () => await loadKnowledge(),
+  add: async (filename, content, tags = []) => {
+    const docs = await loadKnowledge();
     const newDoc = {
       id: (0, import_uuid.v4)(),
       filename,
@@ -283,16 +283,16 @@ var KnowledgeService = {
       createdAt: Date.now()
     };
     docs.push(newDoc);
-    saveKnowledge(docs);
+    await saveKnowledge(docs);
     return newDoc;
   },
-  delete: (id) => {
-    const docs = loadKnowledge();
+  delete: async (id) => {
+    const docs = await loadKnowledge();
     const filtered = docs.filter((d) => d.id !== id);
-    saveKnowledge(filtered);
+    await saveKnowledge(filtered);
   },
-  search: (query) => {
-    const docs = loadKnowledge();
+  search: async (query) => {
+    const docs = await loadKnowledge();
     const q = query.toLowerCase();
     const results = docs.map((doc) => {
       const text = doc.content.toLowerCase();
@@ -335,6 +335,7 @@ if (!import_fs2.default.existsSync(ARTIFACT_DIR)) {
 var tools = [
   {
     name: "browser_open",
+    description: "Opens a real browser session to a URL. Use this to view live websites, search Google/Bing, or debug UI. Returns a sessionId and a WebSocket URL for live streaming.",
     version: "1.0.0",
     tags: ["browser", "agent", "stream"],
     inputSchema: { type: "object", properties: { viewport: { type: "object" }, url: { type: "string" }, device: { type: "string" } }, required: ["url"] },
@@ -430,6 +431,7 @@ var tools = [
   },
   {
     name: "browser_get_state",
+    description: 'Captures the current state of the browser (DOM, Accessibility Tree, Screenshot). Use this to "see" the page content after navigation.',
     version: "1.0.0",
     tags: ["browser", "snapshot"],
     inputSchema: { type: "object", properties: { sessionId: { type: "string" } }, required: ["sessionId"] },
@@ -846,7 +848,7 @@ async function executeTool(name, input) {
       const artifacts2 = Array.isArray(res?.artifacts) ? res.artifacts : void 0;
       const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
       logs.push(...toolLogs);
-      return { ok, output, logs, artifacts: artifacts2 };
+      return { ok, output, logs, artifacts: artifacts2, error: res?.error };
     }
     if (name === "echo") {
       const text = String(input?.text ?? "");
@@ -929,8 +931,8 @@ async function executeTool(name, input) {
     }
     if (name === "json_query") {
       const obj = input?.json ?? null;
-      const path9 = String(input?.path ?? "");
-      const norm = path9.replace(/\[(\d+)\]/g, ".$1");
+      const path13 = String(input?.path ?? "");
+      const norm = path13.replace(/\[(\d+)\]/g, ".$1");
       const parts = norm.split(".").filter(Boolean);
       let cur = obj;
       for (const p of parts) {
@@ -1161,30 +1163,53 @@ ${contents.join("\n---\n")}`
         const [scrapeRes, wikiRes] = await Promise.allSettled([
           (async () => {
             const ddg = await import("duck-duck-scrape");
-            const res = await ddg.search(query);
-            return (res.results || []).map((r) => ({
-              title: String(r.title).slice(0, 120),
-              url: String(r.url),
-              description: String(r.description)
-            })).filter((x) => x.url && x.title);
+            try {
+              const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("DDG Timeout")), 5e3));
+              const search = ddg.search(query);
+              const res = await Promise.race([search, timeout]);
+              return (res.results || []).map((r) => ({
+                title: String(r.title).slice(0, 120),
+                url: String(r.url),
+                description: String(r.description)
+              })).filter((x) => x.url && x.title);
+            } catch (e) {
+              return [];
+            }
           })(),
           (async () => {
             const hasArabic = /[\u0600-\u06FF]/.test(query);
             const lang = hasArabic ? "ar" : "en";
             let wikiQuery = query;
             if (hasArabic) {
-              const stopWords = ["\u0627\u064A\u0646", "\u0623\u064A\u0646", "\u062A\u0642\u0639", "\u064A\u0642\u0639", "\u0645\u0627\u0647\u064A", "\u0645\u0627", "\u0647\u064A", "\u0647\u0648", "\u0645\u0639\u0644\u0648\u0645\u0627\u062A", "\u0639\u0646", "\u0645\u062F\u064A\u0646\u0629", "\u0645\u0646\u0637\u0642\u0629", "\u062D\u064A", "\u0643\u064A\u0641", "\u0645\u062A\u0649", "\u0644\u0645\u0627\u0630\u0627", "\u0643\u0645", "\u0647\u0644"];
-              wikiQuery = query.split(" ").filter((w) => !stopWords.includes(w.replace(/[أإآ]/g, "\u0627").trim())).join(" ");
+              const stopWords = ["\u0627\u064A\u0646", "\u0623\u064A\u0646", "\u062A\u0642\u0639", "\u064A\u0642\u0639", "\u0645\u0627\u0647\u064A", "\u0645\u0627", "\u0647\u064A", "\u0647\u0648", "\u0645\u0639\u0644\u0648\u0645\u0627\u062A", "\u0639\u0646", "\u062D\u064A", "\u0643\u064A\u0641", "\u0645\u062A\u0649", "\u0644\u0645\u0627\u0630\u0627", "\u0643\u0645", "\u0647\u0644", "\u0627\u0633\u0645"];
+              const normalized = query.replace(/\bبال(\w+)/g, "\u0641\u064A \u0627\u0644$1");
+              wikiQuery = normalized.split(" ").filter((w) => !stopWords.includes(w.replace(/[أإآ]/g, "\u0627").trim())).join(" ");
             }
-            const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(wikiQuery)}&format=json&srlimit=5`;
-            const r = await fetch(wurl);
-            if (!r.ok) return [];
-            const j = await r.json();
-            return (j.query?.search || []).map((it) => ({
-              title: String(it.title).slice(0, 120),
-              url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, "_"))}`,
-              description: String(it.snippet).replace(/<[^>]+>/g, "")
-            })).filter((x) => x.url && x.title);
+            const trySearch = async (q) => {
+              const controller = new AbortController();
+              const id = setTimeout(() => controller.abort(), 5e3);
+              try {
+                const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=7&srprop=snippet|titlesnippet|sectiontitle`;
+                const r = await fetch(wurl, { signal: controller.signal });
+                clearTimeout(id);
+                if (!r.ok) return [];
+                const j = await r.json();
+                return (j.query?.search || []).map((it) => ({
+                  title: String(it.title).slice(0, 120),
+                  url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, "_"))}`,
+                  description: String(it.snippet).replace(/<[^>]+>/g, "")
+                })).filter((x) => x.url && x.title);
+              } catch (e) {
+                clearTimeout(id);
+                return [];
+              }
+            };
+            if (wikiQuery.trim()) {
+              const quoted = `"${wikiQuery.trim()}"`;
+              const exactRes = await trySearch(quoted);
+              if (exactRes.length > 0) return exactRes;
+            }
+            return await trySearch(wikiQuery);
           })()
         ]);
         if (scrapeRes.status === "fulfilled") results.push(...scrapeRes.value);
@@ -1617,7 +1642,7 @@ ${archInfo}
     }
     if (name === "knowledge_search") {
       const query = String(input?.query ?? "");
-      const results = KnowledgeService.search(query);
+      const results = await KnowledgeService.search(query);
       logs.push(`knowledge.search=${query} count=${results.length}`);
       const mapped = results.map((r) => ({
         id: r.document.id,
@@ -1631,7 +1656,7 @@ ${archInfo}
       const filename = String(input?.filename ?? "unknown.txt");
       const content = String(input?.content ?? "");
       const tags = Array.isArray(input?.tags) ? input.tags : [];
-      const doc = KnowledgeService.add(filename, content, tags);
+      const doc = await KnowledgeService.add(filename, content, tags);
       logs.push(`knowledge.add=${filename} id=${doc.id}`);
       return { ok: true, output: { id: doc.id }, logs };
     }
@@ -1654,6 +1679,7 @@ var import_ws = require("ws");
 // src/services/terminal.ts
 var import_child_process = require("child_process");
 var import_events = require("events");
+var import_string_decoder = require("string_decoder");
 var TerminalManager = class extends import_events.EventEmitter {
   constructor() {
     super(...arguments);
@@ -1668,11 +1694,13 @@ var TerminalManager = class extends import_events.EventEmitter {
       stdio: ["pipe", "pipe", "pipe"]
     });
     this.sessions[id] = p;
+    const decoderOut = new import_string_decoder.StringDecoder("utf8");
+    const decoderErr = new import_string_decoder.StringDecoder("utf8");
     p.stdout?.on("data", (data) => {
-      this.emit("data", { id, data: data.toString() });
+      this.emit("data", { id, data: decoderOut.write(data) });
     });
     p.stderr?.on("data", (data) => {
-      this.emit("data", { id, data: data.toString() });
+      this.emit("data", { id, data: decoderErr.write(data) });
     });
     p.on("exit", (code) => {
       this.emit("data", { id, data: `\r
@@ -1950,38 +1978,43 @@ var openai = new import_openai.default({
 });
 var activeTools = tools.filter((t) => !t.name.startsWith("noop_"));
 var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
-You have access to a set of tools to interact with the file system, network, and browser.
 
-Your Goal:
-- Understand the user's high-level request (e.g., "Build a landing page").
-- Break it down into logical steps (Plan -> Create Files -> Verify).
-- Execute the steps autonomously using the available tools.
+## CORE INSTRUCTIONS:
+1. **Think Before Acting**: You are a "Reasoning Engine". Before every action, verify if you have enough information. If not, use a tool to get it.
+2. **Tool First**: Do not guess. If asked about a library, file, or real-world fact, use the appropriate tool (grep_search, browser_open, search) immediately.
+3. **Browser Usage**: The "browser_open" tool is your window to the world. Use it for:
+   - Verifying documentation.
+   - Checking live website status.
+   - Searching for up-to-date information when internal knowledge is stale.
+   - **Visual Verification**: Use it to see what you built.
+4. **Language Protocol**: 
+   - **Input**: Understand any language.
+   - **Thinking**: You can reason in English or the user's language.
+   - **Output**: **STRICTLY FOLLOW THE USER'S LANGUAGE**. If the user asks in Arabic, you MUST reply in "Eloquent & Engaging Arabic" (\u0644\u063A\u0629 \u0639\u0631\u0628\u064A\u0629 \u0641\u0635\u062D\u0649 \u0633\u0644\u0633\u0629 \u0648\u062C\u0645\u064A\u0644\u0629).
+   - **Translation**: Never give a "machine translation" vibe. Use natural, professional phrasing.
 
-## Standard Workflow:
-1. **Explore**: Use "read_file_tree" or "analyze_codebase" to understand the environment.
-2. **Plan**: For complex tasks, create/update an "ARCHITECTURE.md" file to document the plan.
-3. **Task Management**: Maintain a "TODO.md" file for multi-step projects to track progress.
-4. **Execute**: Use "scaffold_project" for bulk creation, "file_write" for single files.
-5. **Verify**: Check your work using "grep_search" or "ls".
+## STANDARD WORKFLOW:
+1. **Analyze**: Read the user's request. identifying key intent (Fix, Build, Explain, Explore).
+2. **Explore**: Use "read_file_tree" or "analyze_codebase" to ground yourself in the repo.
+3. **Plan**: For complex tasks, create/update an "ARCHITECTURE.md" or "TODO.md".
+4. **Execute**: Use "scaffold_project", "file_write", "shell_execute".
+5. **Verify**: ALWAYS verify your work.
+   - Did you write a file? Read it back to check syntax.
+   - Did you fix a bug? Run the test or script.
+   - Did you build a UI? Open it in the browser if possible.
 
-## Tool Usage Guide:
-- **Project Setup**: Use "scaffold_project" to create directory structures and multiple files at once.
-- **Code Search**: Use "grep_search" to find code patterns across the entire codebase instantly.
-- **Deep Analysis**: Use "analyze_codebase" to get a high-level summary of the project.
-- **Exploration**: Use "read_file_tree" (preferred over ls) to see directory structures.
-- **Reading**: Use "file_read" to inspect file contents.
-- **Modifying**: Use "file_edit" to fix bugs or update code.
-- **System**: Use "shell_execute" for commands (npm install, git, etc).
-- **Knowledge**: Use "knowledge_search" to query your memory.
+## RESPONSE FORMATTING:
+- **Visual Hierarchy**: Use Markdown headers (##, ###) to structure your response.
+- **Lists**: Use bullet points for readability.
+- **Code**: Use code blocks with language tags (e.g., \`\`\`typescript).
+- **Tone**: Professional, confident, yet helpful.
+- **Synthesized Answers**: When reporting search/browser results, synthesize them into a coherent narrative. Do not just dump data.
 
-## Rules:
+## CRITICAL RULES:
 - **Persistent Context**: Always check for ".joe/context.json" to understand project history.
-- **Persistence**: If a tool fails, try to fix the input or use a different approach.
-- **Error Handling**: If a tool fails due to missing API keys, Report the error immediately.
-- **Efficiency**: Do not repeat the same tool call if it was successful. Use bulk tools when possible.
+- **Error Handling**: If a tool fails, analyze the error, fix the input, and RETRY. Do not give up easily.
+- **Efficiency**: Do not repeat the same tool call if it was successful.
 - **Artifacts**: If you generated an artifact (image, file), use "echo" to confirm it.
-- **Language**: If the user asks in Arabic, you MUST reply in Arabic.
-- **Professionalism**: Be precise, professional, and act as a senior engineer.
 `;
 async function callLLM(prompt, context = []) {
   const msgs = [
@@ -2011,7 +2044,7 @@ async function planNextStep(messages2, options) {
     type: "function",
     function: {
       name: t.name,
-      description: `Tool: ${t.name}. Tags: ${t.tags.join(", ")}`,
+      description: t.description || `Tool: ${t.name}. Tags: ${t.tags.join(", ")}`,
       parameters: t.inputSchema
     }
   }));
@@ -3414,10 +3447,10 @@ var router7 = (0, import_express7.Router)();
 var storage = import_multer.default.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = import_path3.default.join(__dirname, "../../uploads");
-    if (!import_fs4.default.existsSync(uploadDir)) {
-      import_fs4.default.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
+    import_fs4.default.mkdir(uploadDir, { recursive: true }, (err) => {
+      if (err) return cb(err, uploadDir);
+      cb(null, uploadDir);
+    });
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -3437,11 +3470,11 @@ router7.post("/upload", authenticate, upload.single("file"), async (req, res) =>
     const { sessionId } = req.body;
     let content = "";
     if (req.file.mimetype === "application/pdf") {
-      const dataBuffer = import_fs4.default.readFileSync(req.file.path);
+      const dataBuffer = await import_fs4.default.promises.readFile(req.file.path);
       const data = await pdf2(dataBuffer);
       content = data.text;
     } else if (req.file.mimetype.startsWith("text/") || req.file.mimetype === "application/json" || req.file.mimetype === "application/javascript" || req.file.mimetype.includes("code")) {
-      content = import_fs4.default.readFileSync(req.file.path, "utf8");
+      content = await import_fs4.default.promises.readFile(req.file.path, "utf8");
     }
     const fileDoc = await FileModel.create({
       originalName: req.file.originalname,
@@ -3543,18 +3576,26 @@ var import_express9 = require("express");
 var import_fs5 = __toESM(require("fs"));
 var import_path4 = __toESM(require("path"));
 var router9 = (0, import_express9.Router)();
-function getAllFiles(dirPath, arrayOfFiles = [], ignore = ["node_modules", ".git", "dist", "build", ".DS_Store"]) {
-  if (!import_fs5.default.existsSync(dirPath)) return arrayOfFiles;
-  const files = import_fs5.default.readdirSync(dirPath);
-  files.forEach((file) => {
-    if (ignore.includes(file)) return;
+async function getAllFiles(dirPath, arrayOfFiles = [], ignore = ["node_modules", ".git", "dist", "build", ".DS_Store"]) {
+  try {
+    await import_fs5.default.promises.access(dirPath);
+  } catch {
+    return arrayOfFiles;
+  }
+  const files = await import_fs5.default.promises.readdir(dirPath);
+  for (const file of files) {
+    if (ignore.includes(file)) continue;
     const fullPath = import_path4.default.join(dirPath, file);
-    if (import_fs5.default.statSync(fullPath).isDirectory()) {
-      arrayOfFiles = getAllFiles(fullPath, arrayOfFiles, ignore);
-    } else {
-      arrayOfFiles.push(fullPath);
+    try {
+      const stat = await import_fs5.default.promises.stat(fullPath);
+      if (stat.isDirectory()) {
+        arrayOfFiles = await getAllFiles(fullPath, arrayOfFiles, ignore);
+      } else {
+        arrayOfFiles.push(fullPath);
+      }
+    } catch {
     }
-  });
+  }
   return arrayOfFiles;
 }
 function getImports(content) {
@@ -3573,64 +3614,66 @@ function getImports(content) {
 router9.get("/graph", authenticate, async (req, res) => {
   try {
     const cwd = String(req.query.path || process.cwd());
-    if (!import_fs5.default.existsSync(cwd)) {
+    try {
+      await import_fs5.default.promises.access(cwd);
+    } catch {
       return res.json({ nodes: [], links: [] });
     }
-    const files = getAllFiles(cwd);
+    const files = await getAllFiles(cwd);
     const nodes = [];
     const links = [];
     const fileIdMap = /* @__PURE__ */ new Map();
-    files.forEach((f) => {
+    for (const f of files) {
       const relPath = import_path4.default.relative(cwd, f);
-      if (relPath.length > 200) return;
+      if (relPath.length > 200) continue;
       const id = relPath;
       fileIdMap.set(f, id);
+      let size = 0;
+      try {
+        const stat = await import_fs5.default.promises.stat(f);
+        size = stat.size;
+      } catch {
+      }
       nodes.push({
         id,
         name: import_path4.default.basename(f),
         type: "file",
-        size: import_fs5.default.statSync(f).size,
+        size,
         extension: import_path4.default.extname(f)
       });
-    });
-    files.forEach((f) => {
-      if (![".ts", ".tsx", ".js", ".jsx", ".css", ".scss"].includes(import_path4.default.extname(f))) return;
-      try {
-        const content = import_fs5.default.readFileSync(f, "utf-8");
-        const imports = getImports(content);
-        const sourceId = fileIdMap.get(f);
-        if (sourceId) {
+    }
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (f) => {
+        if (![".ts", ".tsx", ".js", ".jsx", ".css", ".scss"].includes(import_path4.default.extname(f))) return;
+        try {
+          const content = await import_fs5.default.promises.readFile(f, "utf-8");
+          const imports = getImports(content);
+          const sourceId = fileIdMap.get(f);
+          if (!sourceId) return;
           imports.forEach((imp) => {
+            let targetFile = imp;
             if (imp.startsWith(".")) {
-              try {
-                const dir = import_path4.default.dirname(f);
-                let resolved = import_path4.default.resolve(dir, imp);
-                const extensions = ["", ".ts", ".tsx", ".js", ".jsx", ".css"];
-                let targetFile = "";
-                for (const ext of extensions) {
-                  if (import_fs5.default.existsSync(resolved + ext) && !import_fs5.default.statSync(resolved + ext).isDirectory()) {
-                    targetFile = resolved + ext;
-                    break;
-                  }
-                  if (import_fs5.default.existsSync(import_path4.default.join(resolved, "index" + ext))) {
-                    targetFile = import_path4.default.join(resolved, "index" + ext);
-                    break;
-                  }
-                }
-                if (targetFile && fileIdMap.has(targetFile)) {
-                  links.push({
-                    source: sourceId,
-                    target: fileIdMap.get(targetFile)
-                  });
-                }
-              } catch {
+              targetFile = import_path4.default.resolve(import_path4.default.dirname(f), imp);
+            }
+            const extensions = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.js"];
+            let foundTargetId = null;
+            for (const ext of extensions) {
+              const tryPath = targetFile + ext;
+              if (fileIdMap.has(tryPath)) {
+                foundTargetId = fileIdMap.get(tryPath);
+                break;
               }
             }
+            if (foundTargetId) {
+              links.push({ source: sourceId, target: foundTargetId });
+            }
           });
+        } catch (e) {
         }
-      } catch {
-      }
-    });
+      }));
+    }
     res.json({ nodes, links });
   } catch (e) {
     console.error(e);
@@ -3641,29 +3684,34 @@ router9.get("/tree", authenticate, async (req, res) => {
   try {
     const rootPath = String(req.query.path || process.cwd());
     const depth = Number(req.query.depth || 5);
-    if (!import_fs5.default.existsSync(rootPath)) {
+    try {
+      await import_fs5.default.promises.access(rootPath);
+    } catch {
       return res.status(404).json({ error: "Path not found" });
     }
-    const getTree = (dir, currentDepth) => {
+    const getTree = async (dir, currentDepth) => {
       if (currentDepth > depth) return [];
-      const files = import_fs5.default.readdirSync(dir, { withFileTypes: true });
+      const files = await import_fs5.default.promises.readdir(dir, { withFileTypes: true });
       files.sort((a, b) => {
         if (a.isDirectory() && !b.isDirectory()) return -1;
         if (!a.isDirectory() && b.isDirectory()) return 1;
         return a.name.localeCompare(b.name);
       });
-      return files.filter((f) => !["node_modules", ".git", "dist", "build", ".DS_Store"].includes(f.name)).map((f) => {
+      const result = [];
+      for (const f of files) {
+        if (["node_modules", ".git", "dist", "build", ".DS_Store"].includes(f.name)) continue;
         const fullPath = import_path4.default.join(dir, f.name);
         const isDir = f.isDirectory();
-        return {
+        result.push({
           name: f.name,
           path: fullPath,
           type: isDir ? "directory" : "file",
-          children: isDir ? getTree(fullPath, currentDepth + 1) : void 0
-        };
-      });
+          children: isDir ? await getTree(fullPath, currentDepth + 1) : void 0
+        });
+      }
+      return result;
     };
-    const tree = getTree(rootPath, 0);
+    const tree = await getTree(rootPath, 0);
     res.json({ root: rootPath, tree });
   } catch (e) {
     res.status(500).json({ error: "Tree generation failed" });
@@ -3672,12 +3720,17 @@ router9.get("/tree", authenticate, async (req, res) => {
 router9.get("/content", authenticate, async (req, res) => {
   try {
     const filePath = String(req.query.path);
-    if (!filePath || !import_fs5.default.existsSync(filePath)) {
+    if (!filePath) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    try {
+      await import_fs5.default.promises.access(filePath);
+    } catch {
       return res.status(404).json({ error: "File not found" });
     }
     if (!filePath.startsWith(process.cwd()) && !filePath.includes("xelitesolutions")) {
     }
-    const content = import_fs5.default.readFileSync(filePath, "utf-8");
+    const content = await import_fs5.default.promises.readFile(filePath, "utf-8");
     res.json({ content });
   } catch (e) {
     res.status(500).json({ error: "Read failed" });
@@ -3689,7 +3742,7 @@ router9.post("/content", authenticate, async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: "Path required" });
     }
-    import_fs5.default.writeFileSync(filePath, content, "utf-8");
+    await import_fs5.default.promises.writeFile(filePath, content, "utf-8");
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Write failed" });
@@ -3806,7 +3859,7 @@ router13.post("/upload", authenticate, upload2.single("file"), async (req, res) 
       return res.status(400).json({ error: "No file uploaded" });
     }
     const filePath = req.file.path;
-    const buffer = import_fs6.default.readFileSync(filePath);
+    const buffer = await import_fs6.default.promises.readFile(filePath);
     let content = "";
     if (req.file.mimetype === "application/pdf") {
       try {
@@ -3818,27 +3871,27 @@ router13.post("/upload", authenticate, upload2.single("file"), async (req, res) 
     } else {
       content = buffer.toString("utf-8");
     }
-    import_fs6.default.unlinkSync(filePath);
-    const doc = KnowledgeService.add(req.file.originalname, content);
+    await import_fs6.default.promises.unlink(filePath);
+    const doc = await KnowledgeService.add(req.file.originalname, content);
     res.json({ success: true, document: doc });
   } catch (error) {
     console.error("Upload error:", error);
     res.status(500).json({ error: error.message });
   }
 });
-router13.get("/list", authenticate, (req, res) => {
-  const docs = KnowledgeService.getAll();
+router13.get("/list", authenticate, async (req, res) => {
+  const docs = await KnowledgeService.getAll();
   res.json(docs.map((d) => ({ id: d.id, filename: d.filename, size: d.content.length })));
 });
 router13.post("/query", authenticate, async (req, res) => {
   const { query } = req.body;
   if (!query) return res.status(400).json({ error: "Query required" });
-  const results = KnowledgeService.search(query);
+  const results = await KnowledgeService.search(query);
   res.json({ results: results.map((r) => ({ id: r.document.id, filename: r.document.filename, snippet: r.snippet, score: r.score })) });
 });
-router13.delete("/:id", authenticate, (req, res) => {
+router13.delete("/:id", authenticate, async (req, res) => {
   const { id } = req.params;
-  KnowledgeService.delete(id);
+  await KnowledgeService.delete(id);
   res.json({ success: true });
 });
 var knowledge_default = router13;
@@ -4037,7 +4090,7 @@ router16.post("/apply", authenticate, async (req, res) => {
     const resolvedPath = import_path5.default.resolve(projectRoot, filePath);
     if (!resolvedPath.startsWith(projectRoot)) {
     }
-    import_fs7.default.writeFileSync(resolvedPath, content);
+    await import_fs7.default.promises.writeFile(resolvedPath, content);
     res.json({ success: true, message: "Fix applied successfully" });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -4265,23 +4318,291 @@ router19.post("/generate", authenticate, async (req, res) => {
 });
 var tests_default = router19;
 
+// src/routes/advanced.ts
+var import_express20 = require("express");
+
+// src/services/council.ts
+var EXPERTS = [
+  { role: "Architect", name: "Dr. Arch", focus: "Scalability, Clean Architecture, Design Patterns", color: "#3b82f6" },
+  { role: "Security", name: "SecOps Sam", focus: "Vulnerabilities, Auth, Data Protection", color: "#ef4444" },
+  { role: "UX/UI", name: "Designer Dani", focus: "User Experience, Accessibility, Visuals", color: "#eab308" }
+];
+var CouncilService = class {
+  static async consult(topic) {
+    const discussion = [];
+    const expertPromises = EXPERTS.map(async (expert) => {
+      const prompt = `
+        You are ${expert.name}, a world-class ${expert.role} expert.
+        Focus ONLY on: ${expert.focus}.
+        
+        Topic: "${topic}"
+        
+        Provide your expert analysis and recommendations. Be concise (max 3 sentences).
+        Do not be polite, be direct and technical.
+      `;
+      try {
+        const response = await callLLM(prompt, []);
+        return {
+          expert,
+          content: response
+        };
+      } catch (e) {
+        console.error(`Expert ${expert.name} failed to respond`, e);
+        return null;
+      }
+    });
+    const results = await Promise.all(expertPromises);
+    results.forEach((r) => {
+      if (r) discussion.push(r);
+    });
+    if (discussion.length > 0) {
+      const synthesisPrompt = `
+        You are the Lead Engineer. Review the feedback from your team:
+        
+        ${discussion.map((d) => `${d.expert.role}: ${d.content}`).join("\n\n")}
+        
+        Synthesize a final execution plan that balances all these concerns.
+      `;
+      try {
+        const conclusion = await callLLM(synthesisPrompt, []);
+        discussion.push({
+          expert: { role: "Lead", name: "Joe", focus: "Execution", color: "#ffffff" },
+          content: conclusion
+        });
+      } catch (e) {
+        console.error("Synthesis failed", e);
+        discussion.push({
+          expert: { role: "System", name: "Error", focus: "Recovery", color: "#ff0000" },
+          content: "Failed to synthesize a conclusion due to an internal error."
+        });
+      }
+    } else {
+      discussion.push({
+        expert: { role: "System", name: "Error", focus: "Availability", color: "#ff0000" },
+        content: "The council is currently unavailable."
+      });
+    }
+    return discussion;
+  }
+};
+
+// src/services/graph.ts
+var import_fs11 = __toESM(require("fs"));
+var import_path9 = __toESM(require("path"));
+var CodeGraphService = class {
+  static async generateGraph(rootDir) {
+    const nodes = [];
+    const links = [];
+    const idMap = /* @__PURE__ */ new Map();
+    const files = await this.getFiles(rootDir);
+    files.forEach((file) => {
+      const relPath = import_path9.default.relative(rootDir, file);
+      const id = relPath;
+      idMap.set(file, id);
+      let group = 4;
+      if (relPath.includes("api/") || relPath.includes("routes/")) group = 1;
+      else if (relPath.includes("services/")) group = 2;
+      else if (relPath.includes("components/")) group = 3;
+      nodes.push({
+        id,
+        name: import_path9.default.basename(file),
+        group,
+        val: 1
+        // Default size
+      });
+    });
+    await Promise.all(files.map(async (file) => {
+      try {
+        const content = await import_fs11.default.promises.readFile(file, "utf-8");
+        const lines = content.split("\n").length;
+        const nodeId = idMap.get(file);
+        const node = nodes.find((n) => n.id === nodeId);
+        if (node) {
+          node.val = Math.min(lines / 10, 20);
+        }
+        const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
+        let match;
+        while ((match = importRegex.exec(content)) !== null) {
+          const importPath = match[1];
+          if (importPath.startsWith(".")) {
+            try {
+              const resolvedPath = import_path9.default.resolve(import_path9.default.dirname(file), importPath);
+              const candidates = [
+                resolvedPath,
+                resolvedPath + ".ts",
+                resolvedPath + ".tsx",
+                resolvedPath + ".js",
+                resolvedPath + "/index.ts"
+              ];
+              for (const cand of candidates) {
+                if (idMap.has(cand)) {
+                  if (idMap.get(cand) !== nodeId) {
+                    links.push({ source: nodeId, target: idMap.get(cand) });
+                  }
+                  break;
+                }
+              }
+            } catch (e) {
+            }
+          }
+        }
+      } catch (e) {
+      }
+    }));
+    return { nodes, links };
+  }
+  static async getFiles(dir) {
+    let results = [];
+    try {
+      const list = await import_fs11.default.promises.readdir(dir);
+      for (const file of list) {
+        const filePath = import_path9.default.join(dir, file);
+        try {
+          const stat = await import_fs11.default.promises.stat(filePath);
+          if (stat && stat.isDirectory()) {
+            if (!file.startsWith(".") && file !== "node_modules" && file !== "dist" && file !== "build") {
+              const subResults = await this.getFiles(filePath);
+              results = results.concat(subResults);
+            }
+          } else {
+            if (/\.(ts|tsx|js|jsx)$/.test(file)) {
+              results.push(filePath);
+            }
+          }
+        } catch (e) {
+        }
+      }
+    } catch (e) {
+    }
+    return results;
+  }
+};
+
+// src/routes/advanced.ts
+var import_path10 = __toESM(require("path"));
+var router20 = (0, import_express20.Router)();
+router20.post("/council/consult", async (req, res) => {
+  const { topic } = req.body;
+  try {
+    const result = await CouncilService.consult(topic);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+router20.get("/graph", async (req, res) => {
+  try {
+    const rootDir = import_path10.default.resolve(__dirname, "../../..");
+    const graph = await CodeGraphService.generateGraph(rootDir);
+    res.json(graph);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+var advanced_default = router20;
+
+// src/services/sentinel.ts
+var import_fs12 = __toESM(require("fs"));
+var import_path11 = __toESM(require("path"));
+var SentinelService = class {
+  static {
+    this.isRunning = false;
+  }
+  static {
+    this.alerts = [];
+  }
+  static start(rootPath) {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    console.log("\u{1F6E1}\uFE0F Sentinel Active: Monitoring codebase...");
+    this.scan(rootPath);
+    setInterval(() => this.scan(rootPath), 5 * 60 * 1e3);
+  }
+  static async scan(dir) {
+    try {
+      const files = await this.getFiles(dir);
+      const newAlerts = [];
+      await Promise.all(files.map(async (file) => {
+        try {
+          const content = await import_fs12.default.promises.readFile(file, "utf-8");
+          if (content.match(/['"][a-zA-Z0-9]{32,}['"]/) || content.includes("sk-") || content.includes("Bearer ") || content.includes("aws_access_key_id") || content.includes("ghp_")) {
+            if (!content.includes("import ") && !content.includes("sha256")) {
+              newAlerts.push(this.createAlert("security", "high", file, "Potential API Key or Secret detected"));
+            }
+          }
+          if (!file.includes("test") && !file.includes("script") && !file.includes("dev") && content.includes("console.log")) {
+            newAlerts.push(this.createAlert("quality", "low", file, "Console.log statement found in production code"));
+          }
+          if (content.includes("TODO") || content.includes("FIXME")) {
+            newAlerts.push(this.createAlert("maintenance", "medium", file, "Pending TODO/FIXME detected"));
+          }
+        } catch (e) {
+        }
+      }));
+      if (newAlerts.length > 0) {
+        this.alerts = [...newAlerts, ...this.alerts].slice(0, 50);
+        broadcast({ type: "sentinel:alert", data: newAlerts });
+      }
+    } catch (e) {
+      console.error("Sentinel Scan Error:", e);
+    }
+  }
+  static createAlert(type, severity, file, message) {
+    return {
+      id: Math.random().toString(36).substring(7),
+      type,
+      severity,
+      file: import_path11.default.basename(file),
+      message,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+  static async getFiles(dir) {
+    let results = [];
+    try {
+      const list = await import_fs12.default.promises.readdir(dir);
+      for (const file of list) {
+        const filePath = import_path11.default.join(dir, file);
+        try {
+          const stat = await import_fs12.default.promises.stat(filePath);
+          if (stat && stat.isDirectory()) {
+            if (!file.startsWith(".") && file !== "node_modules" && file !== "dist" && file !== "build") {
+              const subResults = await this.getFiles(filePath);
+              results = results.concat(subResults);
+            }
+          } else {
+            if (/\.(ts|tsx|js|jsx)$/.test(file)) {
+              results.push(filePath);
+            }
+          }
+        } catch (e) {
+        }
+      }
+    } catch (e) {
+    }
+    return results;
+  }
+};
+
 // src/index.ts
 var import_http = __toESM(require("http"));
-var import_fs11 = __toESM(require("fs"));
+var import_path12 = __toESM(require("path"));
+var import_fs13 = __toESM(require("fs"));
 var logger = process.env.NODE_ENV === "production" ? (0, import_pino.default)() : (0, import_pino.default)({
   transport: {
     target: "pino-pretty",
     options: { translateTime: "SYS:standard", colorize: true }
   }
 });
+SentinelService.start(import_path12.default.resolve(__dirname, "../.."));
 async function main() {
-  const app = (0, import_express20.default)();
+  const app = (0, import_express21.default)();
   app.use((0, import_cors.default)({
     origin: true,
     // Allow all origins for now to fix connectivity issues
     credentials: true
   }));
-  app.use(import_express20.default.json({ limit: "10mb" }));
+  app.use(import_express21.default.json({ limit: "10mb" }));
   app.use((req, res, next) => {
     const start = Date.now();
     const requestId = Math.random().toString(36).substring(7);
@@ -4320,6 +4641,7 @@ async function main() {
   app.use("/database", database_default);
   app.use("/system", system_default);
   app.use("/healing", healing_default);
+  app.use("/advanced", advanced_default);
   app.use("/docs", docs_default);
   app.use("/analytics", analytics_default);
   app.use("/tests", tests_default);
@@ -4328,13 +4650,13 @@ async function main() {
     res.json({ userId: auth.sub, role: auth.role });
   });
   const ARTIFACT_DIR2 = process.env.ARTIFACT_DIR || "/tmp/joe-artifacts";
-  if (!import_fs11.default.existsSync(ARTIFACT_DIR2)) {
+  if (!import_fs13.default.existsSync(ARTIFACT_DIR2)) {
     try {
-      import_fs11.default.mkdirSync(ARTIFACT_DIR2, { recursive: true });
+      import_fs13.default.mkdirSync(ARTIFACT_DIR2, { recursive: true });
     } catch {
     }
   }
-  app.use("/artifacts", import_express20.default.static(ARTIFACT_DIR2));
+  app.use("/artifacts", import_express21.default.static(ARTIFACT_DIR2));
   try {
     await import_mongoose19.default.connect(config.mongoUri, { serverSelectionTimeoutMS: 5e3 });
     logger.info("MongoDB connected");

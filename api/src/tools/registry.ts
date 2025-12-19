@@ -1448,7 +1448,7 @@ ${archInfo}
     }
     if (name === 'knowledge_search') {
       const query = String(input?.query ?? '');
-      const results = KnowledgeService.search(query);
+      const results = await KnowledgeService.search(query);
       logs.push(`knowledge.search=${query} count=${results.length}`);
       const mapped = results.map(r => ({
           id: r.document.id,
@@ -1462,7 +1462,7 @@ ${archInfo}
       const filename = String(input?.filename ?? 'unknown.txt');
       const content = String(input?.content ?? '');
       const tags = Array.isArray(input?.tags) ? input.tags : [];
-      const doc = KnowledgeService.add(filename, content, tags);
+      const doc = await KnowledgeService.add(filename, content, tags);
       logs.push(`knowledge.add=${filename} id=${doc.id}`);
       return { ok: true, output: { id: doc.id }, logs };
     }

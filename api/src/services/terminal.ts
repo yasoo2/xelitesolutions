@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { StringDecoder } from 'string_decoder';
 
 class TerminalManager extends EventEmitter {
   private sessions: Record<string, ChildProcess> = {};
@@ -21,12 +22,15 @@ class TerminalManager extends EventEmitter {
 
     this.sessions[id] = p;
 
+    const decoderOut = new StringDecoder('utf8');
+    const decoderErr = new StringDecoder('utf8');
+
     p.stdout?.on('data', (data) => {
-      this.emit('data', { id, data: data.toString() });
+      this.emit('data', { id, data: decoderOut.write(data) });
     });
 
     p.stderr?.on('data', (data) => {
-      this.emit('data', { id, data: data.toString() });
+      this.emit('data', { id, data: decoderErr.write(data) });
     });
 
     p.on('exit', (code) => {

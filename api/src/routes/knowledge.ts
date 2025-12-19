@@ -14,7 +14,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
         }
 
         const filePath = req.file.path;
-        const buffer = fs.readFileSync(filePath);
+        const buffer = await fs.promises.readFile(filePath);
         let content = '';
 
         if (req.file.mimetype === 'application/pdf') {
@@ -29,9 +29,9 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
         }
 
         // Cleanup temp file
-        fs.unlinkSync(filePath);
+        await fs.promises.unlink(filePath);
 
-        const doc = KnowledgeService.add(req.file.originalname, content);
+        const doc = await KnowledgeService.add(req.file.originalname, content);
 
         res.json({ success: true, document: doc });
     } catch (error: any) {
@@ -40,8 +40,8 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
     }
 });
 
-router.get('/list', authenticate, (req, res) => {
-    const docs = KnowledgeService.getAll();
+router.get('/list', authenticate, async (req, res) => {
+    const docs = await KnowledgeService.getAll();
     res.json(docs.map(d => ({ id: d.id, filename: d.filename, size: d.content.length })));
 });
 
@@ -49,14 +49,14 @@ router.post('/query', authenticate, async (req, res) => {
     const { query } = req.body;
     if (!query) return res.status(400).json({ error: 'Query required' });
 
-    const results = KnowledgeService.search(query);
+    const results = await KnowledgeService.search(query);
     
     res.json({ results: results.map(r => ({ id: r.document.id, filename: r.document.filename, snippet: r.snippet, score: r.score })) });
 });
 
-router.delete('/:id', authenticate, (req, res) => {
+router.delete('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
-    KnowledgeService.delete(id);
+    await KnowledgeService.delete(id);
     res.json({ success: true });
 });
 

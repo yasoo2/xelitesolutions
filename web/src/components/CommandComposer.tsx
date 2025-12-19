@@ -640,17 +640,23 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           </div>
         )}
         
+        <AnimatePresence mode="popLayout">
         {events.map((e, i) => {
           if (e.type === 'user_input') {
             return <ChatBubble key={i} event={e} isUser={true} />;
           }
           if (e.type === 'error') {
             return (
-              <div key={i} className="message-row joe">
+              <motion.div 
+                key={i} 
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
                 <div className="message-bubble error" dir="auto" style={{ color: '#ef4444', border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)' }}>
                   ⚠️ {e.data}
                 </div>
-              </div>
+              </motion.div>
             );
           }
           if (e.type === 'text') {
@@ -668,12 +674,19 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             const isDone = events.slice(i + 1).some(next => (next.type === 'step_done' || next.type === 'step_failed') && (next.data.name === e.data.name || next.data.name === `execute:${e.data.name}`));
             if (isImage && !isDone) {
                return (
-                 <div key={i} className="message-row joe" style={{ marginBottom: 4 }}>
-                   <div className="image-loading-frame" style={{ width: 300, height: 300, background: 'var(--bg-secondary)', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed var(--border-color)', position: 'relative', overflow: 'hidden' }}>
+                 <motion.div 
+                   key={i} 
+                   initial={{ opacity: 0, scale: 0.9 }}
+                   animate={{ opacity: 1, scale: 1 }}
+                   exit={{ opacity: 0, scale: 0.9 }}
+                   className="message-row joe" 
+                   style={{ marginBottom: 4 }}
+                 >
+                   <div className="image-loading-frame" style={{ width: 300, height: 300, background: 'rgba(30, 30, 30, 0.4)', backdropFilter: 'blur(10px)', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed var(--border-color)', position: 'relative', overflow: 'hidden' }}>
                      <Loader2 size={32} className="spin" style={{ marginBottom: 16, color: '#eab308' }} />
                      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Generating Image...</div>
                    </div>
-                 </div>
+                 </motion.div>
                );
             }
             return null;
@@ -682,13 +695,18 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             const kind = e.data.kind;
             if (kind === 'browser_stream' && e.data.href) {
               return (
-                <div key={i} className="message-row joe">
+                <motion.div 
+                  key={i} 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="message-row joe"
+                >
                   <div className="event-artifact" style={{ padding: 0 }}>
                     <Suspense fallback={<div style={{ padding: 12, fontSize: 12, opacity: 0.7 }}>Loading Stream...</div>}>
                       <AgentBrowserStreamLazy wsUrl={e.data.href} />
                     </Suspense>
                   </div>
-                </div>
+                </motion.div>
               );
             }
             const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.href || '');
@@ -696,17 +714,27 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             
             if (isImage) {
                return (
-                 <div key={i} className="message-row joe">
+                 <motion.div 
+                   key={i} 
+                   initial={{ opacity: 0, scale: 0.9 }}
+                   animate={{ opacity: 1, scale: 1 }}
+                   className="message-row joe"
+                 >
                    <div className="image-generation-frame">
                      <div className="scanline-overlay"></div>
                      <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
                    </div>
-                 </div>
+                 </motion.div>
                );
             }
 
             return (
-              <div key={i} className="message-row joe">
+              <motion.div 
+                key={i} 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
                 <div className="event-artifact">
                   {isVideo ? (
                     <>
@@ -733,16 +761,22 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                     </a>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           }
           return null;
         })}
+        </AnimatePresence>
 
         {isThinking && (
-          <div className="message-row joe">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="message-row joe"
+          >
              <ThinkingIndicator />
-          </div>
+          </motion.div>
         )}
         <div ref={endRef} />
       </div>
