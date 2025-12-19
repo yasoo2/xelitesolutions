@@ -9,7 +9,7 @@
     "build:api": "npm --prefix api run build",
     "build:web": "npm --prefix web run build",
     "build": "npm run build:api && npm run build:web",
-    "postinstall": "npm --prefix api install --no-audit --no-fund --include=dev && npm --prefix web install --no-audit --no-fund --include=dev",
+    "postinstall": "npm --prefix api install --no-audit --no-fund --include=dev && npm --prefix web install --no-audit --no-fund --include=dev && npm --prefix services/joe-browser-worker install --no-audit --no-fund",
     "start": "npm --prefix api run start"
   },
   "dependencies": {

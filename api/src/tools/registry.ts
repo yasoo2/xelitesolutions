@@ -528,7 +528,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
       const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
       logs.push(...toolLogs);
-      return { ok, output, logs, artifacts };
+      return { ok, output, logs, artifacts, error: res?.error };
     }
     if (name === 'echo') {
       const text = String(input?.text ?? '');

@@ -365,7 +365,7 @@ app.post("/session/:id/snapshot", auth, async (req, res) => {
   if (!s) return res.status(404).json({ error: "session_not_found" });
   const [html, a11ySnap, buf] = await Promise.all([
     s.page.content(),
-    s.page.accessibility.snapshot(),
+    s.page.accessibility ? s.page.accessibility.snapshot().catch(() => null) : Promise.resolve(null),
     s.page.screenshot({ type: "jpeg", quality: 60 })
   ]);
   const name = `snap-${Date.now()}.jpg`;
