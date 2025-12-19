@@ -17,6 +17,14 @@ interface GraphData {
   links: any[];
 }
 
+const GROUPS = {
+  1: { label: 'API & Routes', color: '#3b82f6' }, // Blue
+  2: { label: 'Services', color: '#10b981' }, // Emerald/Green
+  3: { label: 'Components', color: '#f59e0b' }, // Amber/Orange
+  4: { label: 'Files & Utils', color: '#64748b' }, // Slate/Gray
+  5: { label: 'Directories', color: '#8b5cf6' }  // Violet/Purple
+};
+
 export default function CodeUniverse() {
   const [data, setData] = useState<GraphData>({ nodes: [], links: [] });
   const fgRef = useRef<any>();
@@ -29,12 +37,12 @@ export default function CodeUniverse() {
   }, []);
 
   return (
-    <div style={{ width: '100%', height: '100%', background: 'var(--bg-dark)' }}>
+    <div style={{ width: '100%', height: '100%', background: 'var(--bg-dark)', position: 'relative' }}>
       <ForceGraph3D
         ref={fgRef}
         graphData={data}
         nodeLabel="name"
-        nodeAutoColorBy="group"
+        nodeColor={(node: any) => GROUPS[node.group as keyof typeof GROUPS]?.color || '#999'}
         nodeRelSize={6}
         linkOpacity={0.2}
         linkWidth={1}
@@ -61,6 +69,27 @@ export default function CodeUniverse() {
       <div style={{ position: 'absolute', top: 20, left: 20, color: 'var(--text-primary)', pointerEvents: 'none' }}>
         <h2 style={{ margin: 0, textShadow: '0 0 10px var(--accent-glow)' }}>CODE UNIVERSE</h2>
         <p style={{ margin: 0, opacity: 0.7 }}>{data.nodes.length} Files • {data.links.length} Dependencies</p>
+      </div>
+
+      <div style={{ 
+        position: 'absolute', 
+        bottom: 20, 
+        left: 20, 
+        padding: '12px', 
+        background: 'rgba(0,0,0,0.6)', 
+        backdropFilter: 'blur(8px)',
+        borderRadius: '8px',
+        border: '1px solid rgba(255,255,255,0.1)'
+      }}>
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#aaa', textTransform: 'uppercase' }}>Legend</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {Object.entries(GROUPS).map(([id, info]) => (
+            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: info.color }}></span>
+              {info.label}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
