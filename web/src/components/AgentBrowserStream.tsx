@@ -22,6 +22,8 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [roleName, setRoleName] = useState<string>('');
   const [autoLocate, setAutoLocate] = useState<boolean>(true);
   const [autoFocus, setAutoFocus] = useState<boolean>(true);
+  const [autoTypeAfterFocus, setAutoTypeAfterFocus] = useState<boolean>(true);
+  const [defaultSearchText, setDefaultSearchText] = useState<string>('أضرار التدخين');
   const lastMoveRef = useRef<number>(0);
 
   function getSessionId() {
@@ -72,6 +74,14 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
               }
             }
             if (seq.length) setTimeout(() => runActions(seq), 250);
+            const isGoogleSelector = Boolean(locAct?.selector && /input\[name=["']q["']\]/i.test(String(locAct.selector)));
+            const isSearchRole = Boolean(locAct?.roleName && String(locAct.roleName).includes('بحث'));
+            if (autoTypeAfterFocus && !typeText.trim() && (isGoogleSelector || isSearchRole)) {
+              setTimeout(() => {
+                runActions([{ type: 'type', text: defaultSearchText, delay: 30 }]);
+                setTimeout(() => runActions([{ type: 'press', key: 'Enter' }]), 300);
+              }, 400);
+            }
           }
         }
       }
@@ -376,6 +386,17 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           <input type="checkbox" checked={autoFocus} onChange={e => setAutoFocus(e.target.checked)} />
           Auto Click بعد locate
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+          <input type="checkbox" checked={autoTypeAfterFocus} onChange={e => setAutoTypeAfterFocus(e.target.checked)} />
+          Auto Type بعد التركيز
+        </label>
+        <input
+          type="text"
+          value={defaultSearchText}
+          onChange={e => setDefaultSearchText(e.target.value)}
+          placeholder="نص البحث الافتراضي"
+          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+        />
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <textarea 
