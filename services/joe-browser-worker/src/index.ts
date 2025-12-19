@@ -109,6 +109,7 @@ type Action =
   | { type: 'mouseMove', x: number, y: number, steps?: number }
   | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string }
   | { type: 'locate', selector?: string, roleName?: string, role?: string }
+  | { type: 'waitForRole', role: string, roleName: string, timeoutMs?: number }
   | { type: 'scroll', deltaY: number }
   | { type: 'scrollTo', selector: string }
   | { type: 'wait', ms: number }
@@ -192,6 +193,12 @@ async function runActions(session: Session, actions: Action[]) {
             if (el) box = await el.boundingBox();
           }
           outputs.push({ type: 'locate', boundingBox: box });
+          break;
+        }
+        case 'waitForRole': {
+          const locator = session.page.getByRole(a.role as any, { name: a.roleName });
+          await locator.waitFor({ state: 'visible', timeout: a.timeoutMs || 8000 });
+          outputs.push({ type: 'waitForRole', role: a.role, roleName: a.roleName });
           break;
         }
         case 'scroll': {

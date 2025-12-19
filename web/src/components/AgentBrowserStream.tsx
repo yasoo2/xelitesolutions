@@ -20,6 +20,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [highlight, setHighlight] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [role, setRole] = useState<string>('');
   const [roleName, setRoleName] = useState<string>('');
+  const [autoLocate, setAutoLocate] = useState<boolean>(false);
   const lastMoveRef = useRef<number>(0);
 
   function getSessionId() {
@@ -59,6 +60,14 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
       setTimeout(() => setOverlay(''), 1200);
       if (actions.some(a => a.type === 'goto' || a.type === 'reload')) {
         setHighlight(null);
+        if (autoLocate) {
+          const extra: any[] = [];
+          if (selector) extra.push({ type: 'locate', selector });
+          else if (role && roleName) extra.push({ type: 'locate', role, roleName });
+          if (extra.length) {
+            setTimeout(() => runActions(extra), 1000);
+          }
+        }
       }
       if (autoExtract && actions.some(a => a.type === 'goto' || a.type === 'reload')) {
         setTimeout(() => {
@@ -291,6 +300,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         />
         <button onClick={() => selector && runActions([{ type: 'locate', selector }])} className="btn">Locate</button>
         <button onClick={() => selector && runActions([{ type: 'click', selector }])} className="btn">اضغط المحدد</button>
+        <button onClick={() => selector && runActions([{ type: 'scrollTo', selector }])} className="btn">Scroll إلى المحدد</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input
@@ -319,6 +329,18 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         >
           اضغط (role/name)
         </button>
+        <button 
+          onClick={() => role && roleName && runActions([{ type: 'waitForRole', role, roleName }])} 
+          className="btn"
+        >
+          انتظر (role/name)
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+          <input type="checkbox" checked={autoLocate} onChange={e => setAutoLocate(e.target.checked)} />
+          Auto Locate بعد التنقل
+        </label>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <textarea 
