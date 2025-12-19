@@ -2,10 +2,11 @@ import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
 import CouncilPanel from '../components/CouncilPanel';
 import CodeUniverse from '../components/CodeUniverse';
+import { AppsDashboard } from '../components/AppsDashboard';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft, MessageSquare, Users, Globe } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft, MessageSquare, Users, Globe, LayoutGrid } from 'lucide-react';
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string }>>([]);
@@ -15,7 +16,7 @@ export default function Joe() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [tab, setTab] = useState<'PREVIEW' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'>('PREVIEW');
-  const [mode, setMode] = useState<'chat' | 'council' | 'universe'>('chat');
+  const [mode, setMode] = useState<'chat' | 'council' | 'universe' | 'apps'>('chat');
   const [messages, setMessages] = useState<any[]>([]);
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -436,6 +437,22 @@ export default function Joe() {
            >
              <Globe size={16} /> Universe
            </button>
+           <button 
+             onClick={() => setMode('apps')}
+             style={{ 
+               background: 'none', 
+               border: 'none', 
+               color: mode === 'apps' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+               fontWeight: mode === 'apps' ? 600 : 400,
+               cursor: 'pointer',
+               display: 'flex', alignItems: 'center', gap: 6,
+               padding: '6px 12px',
+               borderRadius: 6,
+               backgroundColor: mode === 'apps' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
+             }}
+           >
+             <LayoutGrid size={16} /> Apps
+           </button>
         </div>
         
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
@@ -457,6 +474,16 @@ export default function Joe() {
         )}
         {mode === 'council' && <CouncilPanel />}
         {mode === 'universe' && <CodeUniverse />}
+        {mode === 'apps' && (
+          <AppsDashboard 
+            onAppSelect={(appId) => {
+              // Handle app selection - for now just log or maybe switch tabs if applicable
+              console.log('Selected app:', appId);
+              if (appId === 'GRAPH') setMode('universe');
+              // Other mappings can be added later
+            }} 
+          />
+        )}
         </div>
       </main>
     </div>

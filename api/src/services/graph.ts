@@ -21,27 +21,65 @@ export class CodeGraphService {
 
     const files = await this.getFiles(rootDir);
 
-    // Pass 1: Create Nodes
-    files.forEach(file => {
-      const relPath = path.relative(rootDir, file);
-      const id = relPath;
-      idMap.set(file, id);
-
-      let group = 4;
-      if (relPath.includes('api/') || relPath.includes('routes/')) group = 1;
-      else if (relPath.includes('services/')) group = 2;
-      else if (relPath.includes('components/')) group = 3;
-
-      // Use a simple line count approximation without reading entire file if possible, or just read async
-      // For simplicity in this graph generation, we'll skip accurate line count or do it in Pass 2
+    // Pass 1: Create Nodes (Files) & Collect Directories
+      const directories = new Set<string>();
       
-      nodes.push({
-        id,
-        name: path.basename(file),
-        group,
-        val: 1 // Default size
+      files.forEach(file => {
+        const relPath = path.relative(rootDir, file);
+        const dirName = path.dirname(relPath);
+        
+        // Add all parent directories
+        let currentDir = dirName;
+        while (currentDir !== '.' && currentDir !== '') {
+            directories.add(currentDir);
+            currentDir = path.dirname(currentDir);
+        }
+        if (dirName === '.') directories.add('.'); // Root dir
+
+        const id = relPath;
+        idMap.set(file, id);
+
+        let group = 4;
+        if (relPath.includes('api/') || relPath.includes('routes/')) group = 1;
+        else if (relPath.includes('services/')) group = 2;
+        else if (relPath.includes('components/')) group = 3;
+
+        nodes.push({
+          id,
+          name: path.basename(file),
+          group,
+          val: 1 // Default size
+        });
       });
-    });
+
+      // Pass 1.5: Create Directory Nodes
+      directories.forEach(dir => {
+          nodes.push({
+              id: dir,
+              name: dir === '.' ? 'ROOT' : path.basename(dir) + '/',
+              group: 5, // 5 for Directories
+              val: dir === '.' ? 10 : 3 // Root is big, dirs are medium
+          });
+      });
+
+      // Pass 1.6: Link Files to Directories & Directories to Parents
+      files.forEach(file => {
+          const relPath = path.relative(rootDir, file);
+          const dir = path.dirname(relPath);
+          // Link file to its directory (or root)
+          const targetDir = (dir === '' || dir === '.') ? '.' : dir;
+          links.push({ source: relPath, target: targetDir });
+      });
+
+      directories.forEach(dir => {
+          if (dir === '.') return;
+          const parent = path.dirname(dir);
+          const targetParent = (parent === '' || parent === '.') ? '.' : parent;
+          // Avoid self-loop if something weird happens, though path.dirname('.') is '.'
+          if (dir !== targetParent) {
+              links.push({ source: dir, target: targetParent });
+          }
+      });
 
     // Pass 2: Create Links (Imports) & Update Node Sizes
     await Promise.all(files.map(async (file) => {
