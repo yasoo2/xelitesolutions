@@ -6,6 +6,8 @@ import CodeWithPreview from './CodeWithPreview';
 import VoiceVisualizer from './VoiceVisualizer';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ThinkingIndicator } from './ThinkingIndicator';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -58,13 +60,22 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
   const { t } = useTranslation();
   
   return (
-    <div className={`chat-bubble-wrapper ${isUser ? 'user' : 'ai'}`}>
+    <motion.div 
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className={`chat-bubble-wrapper ${isUser ? 'user' : 'ai'}`}
+    >
       {!isUser && (
         <div className="chat-avatar ai">
           <Sparkles size={18} />
         </div>
       )}
-      <div className="chat-bubble">
+      <div className="chat-bubble backdrop-blur-md shadow-lg" style={{ 
+        background: isUser ? 'rgba(37, 99, 235, 0.9)' : 'rgba(18, 18, 18, 0.8)',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255, 255, 255, 0.1)'
+      }}>
         <div className="chat-bubble-header">
           <span className="chat-bubble-sender">{isUser ? t('you', 'You') : 'JOE AI'}</span>
           {!isUser && (
@@ -137,7 +148,7 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
           <User size={18} />
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -730,11 +741,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
 
         {isThinking && (
           <div className="message-row joe">
-             <div className="typing-indicator">
-               <div className="typing-dot"></div>
-               <div className="typing-dot"></div>
-               <div className="typing-dot"></div>
-             </div>
+             <ThinkingIndicator />
           </div>
         )}
         <div ref={endRef} />

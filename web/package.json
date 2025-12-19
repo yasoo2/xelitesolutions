@@ -13,6 +13,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "classnames": "^2.5.1",
+    "framer-motion": "^12.23.26",
     "i18next": "^24.0.0",
     "lucide-react": "^0.561.0",
     "react": "^18.3.1",
