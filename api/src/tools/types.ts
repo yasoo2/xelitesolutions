@@ -11,6 +11,7 @@ export interface ToolDefinition {
   rateLimitPerMinute: number;
   auditFields: string[];
   mockSupported: boolean;
+  execute?: (input: any) => Promise<ToolExecutionResult>;
 }
 
 export interface ToolExecutionInput {

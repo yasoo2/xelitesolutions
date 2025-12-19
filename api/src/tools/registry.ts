@@ -872,21 +872,34 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
              let wikiQuery = query;
              if (hasArabic) {
                  // Remove common question words and prepositions
-                 const stopWords = ['اين', 'أين', 'تقع', 'يقع', 'ماهي', 'ما', 'هي', 'هو', 'معلومات', 'عن', 'مدينة', 'منطقة', 'حي', 'كيف', 'متى', 'لماذا', 'كم', 'هل'];
+                 const stopWords = ['اين', 'أين', 'تقع', 'يقع', 'ماهي', 'ما', 'هي', 'هو', 'معلومات', 'عن', 'مدينة', 'منطقة', 'حي', 'كيف', 'متى', 'لماذا', 'كم', 'هل', 'اسم', 'اقدم'];
                  wikiQuery = query.split(' ')
                     .filter(w => !stopWords.includes(w.replace(/[أإآ]/g, 'ا').trim()))
                     .join(' ');
              }
 
-             const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(wikiQuery)}&format=json&srlimit=5`;
-             const r = await fetch(wurl);
-             if (!r.ok) return [];
-             const j = await r.json();
-             return (j.query?.search || []).map((it: any) => ({
-               title: String(it.title).slice(0, 120),
-               url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
-               description: String(it.snippet).replace(/<[^>]+>/g, '')
-             })).filter((x: any) => x.url && x.title);
+             // Strategy: Try quoted phrase first for precision, then loose search
+             const trySearch = async (q: string) => {
+                 const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=5`;
+                 const r = await fetch(wurl);
+                 if (!r.ok) return [];
+                 const j = await r.json();
+                 return (j.query?.search || []).map((it: any) => ({
+                   title: String(it.title).slice(0, 120),
+                   url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
+                   description: String(it.snippet).replace(/<[^>]+>/g, '')
+                 })).filter((x: any) => x.url && x.title);
+             };
+
+             // 1. Try quoted exact match if we have a cleaned query
+             if (wikiQuery.trim()) {
+                 const quoted = `"${wikiQuery.trim()}"`;
+                 const exactRes = await trySearch(quoted);
+                 if (exactRes.length > 0) return exactRes;
+             }
+
+             // 2. Fallback to loose search
+             return await trySearch(wikiQuery);
           })()
         ]);
 
