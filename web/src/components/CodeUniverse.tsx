@@ -2,8 +2,23 @@ import React, { useEffect, useRef, useState } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
 import { API_URL } from '../config';
 
+interface Node {
+  id: string;
+  name: string;
+  group: number;
+  x?: number;
+  y?: number;
+  z?: number;
+  [key: string]: any;
+}
+
+interface GraphData {
+  nodes: Node[];
+  links: any[];
+}
+
 export default function CodeUniverse() {
-  const [data, setData] = useState({ nodes: [], links: [] });
+  const [data, setData] = useState<GraphData>({ nodes: [], links: [] });
   const fgRef = useRef<any>();
 
   useEffect(() => {
@@ -28,13 +43,16 @@ export default function CodeUniverse() {
             // For now, default spheres are fine, maybe glowing
             return false; 
         }}
-        onNodeClick={node => {
+        onNodeClick={(node: any) => {
           // Fly to node
+          const n = node as Node;
+          if (n.x === undefined || n.y === undefined || n.z === undefined) return;
+          
           const distance = 40;
-          const distRatio = 1 + distance/Math.hypot(node.x, node.y, node.z);
+          const distRatio = 1 + distance/Math.hypot(n.x, n.y, n.z);
 
           fgRef.current.cameraPosition(
-            { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new position
+            { x: n.x * distRatio, y: n.y * distRatio, z: n.z * distRatio }, // new position
             node, // lookAt ({ x, y, z })
             3000  // ms transition duration
           );

@@ -1,9 +1,11 @@
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
+import CouncilPanel from '../components/CouncilPanel';
+import CodeUniverse from '../components/CodeUniverse';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft, MessageSquare, Users, Globe } from 'lucide-react';
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string }>>([]);
@@ -13,6 +15,7 @@ export default function Joe() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [tab, setTab] = useState<'PREVIEW' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'>('PREVIEW');
+  const [mode, setMode] = useState<'chat' | 'council' | 'universe'>('chat');
   const [messages, setMessages] = useState<any[]>([]);
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -374,7 +377,68 @@ export default function Joe() {
         </button>
       )}
 
-      <main className="center">
+      <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        <div style={{ 
+          height: 48, 
+          borderBottom: '1px solid var(--border-color)', 
+          display: 'flex', 
+          alignItems: 'center', 
+          padding: '0 16px',
+          gap: 8,
+          background: 'var(--bg-secondary)',
+          flexShrink: 0
+        }}>
+           <button 
+             onClick={() => setMode('chat')}
+             style={{ 
+               background: 'none', 
+               border: 'none', 
+               color: mode === 'chat' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+               fontWeight: mode === 'chat' ? 600 : 400,
+               cursor: 'pointer',
+               display: 'flex', alignItems: 'center', gap: 6,
+               padding: '6px 12px',
+               borderRadius: 6,
+               backgroundColor: mode === 'chat' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
+             }}
+           >
+             <MessageSquare size={16} /> Chat
+           </button>
+           <button 
+             onClick={() => setMode('council')}
+             style={{ 
+               background: 'none', 
+               border: 'none', 
+               color: mode === 'council' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+               fontWeight: mode === 'council' ? 600 : 400,
+               cursor: 'pointer',
+               display: 'flex', alignItems: 'center', gap: 6,
+               padding: '6px 12px',
+               borderRadius: 6,
+               backgroundColor: mode === 'council' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
+             }}
+           >
+             <Users size={16} /> Council
+           </button>
+           <button 
+             onClick={() => setMode('universe')}
+             style={{ 
+               background: 'none', 
+               border: 'none', 
+               color: mode === 'universe' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+               fontWeight: mode === 'universe' ? 600 : 400,
+               cursor: 'pointer',
+               display: 'flex', alignItems: 'center', gap: 6,
+               padding: '6px 12px',
+               borderRadius: 6,
+               backgroundColor: mode === 'universe' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
+             }}
+           >
+             <Globe size={16} /> Universe
+           </button>
+        </div>
+        
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {mode === 'chat' && (
           <CommandComposer 
             sessionId={selected || undefined} 
@@ -393,6 +457,7 @@ export default function Joe() {
         )}
         {mode === 'council' && <CouncilPanel />}
         {mode === 'universe' && <CodeUniverse />}
+        </div>
       </main>
     </div>
   );
