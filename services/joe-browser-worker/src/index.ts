@@ -108,6 +108,7 @@ type Action =
   | { type: 'press', key: string }
   | { type: 'mouseMove', x: number, y: number, steps?: number }
   | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string }
+  | { type: 'locate', selector?: string, roleName?: string, role?: string }
   | { type: 'scroll', deltaY: number }
   | { type: 'scrollTo', selector: string }
   | { type: 'wait', ms: number }
@@ -178,6 +179,19 @@ async function runActions(session: Session, actions: Action[]) {
             await session.page.mouse.click(a.x, a.y, { button: a.button || 'left' });
           }
           outputs.push({ type: 'click' });
+          break;
+        }
+        case 'locate': {
+          let box: any = null;
+          if (a.selector) {
+            const el = await session.page.$(a.selector);
+            if (el) box = await el.boundingBox();
+          } else if (a.roleName && a.role) {
+            const locator = session.page.getByRole(a.role as any, { name: a.roleName });
+            const el = await locator.elementHandle();
+            if (el) box = await el.boundingBox();
+          }
+          outputs.push({ type: 'locate', boundingBox: box });
           break;
         }
         case 'scroll': {

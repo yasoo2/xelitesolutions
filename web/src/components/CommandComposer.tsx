@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -51,6 +51,8 @@ import {
   Sparkles,
   MicOff
 } from 'lucide-react';
+
+const AgentBrowserStreamLazy = lazy(() => import('./AgentBrowserStream'));
 
 function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
   const { t } = useTranslation();
@@ -641,11 +643,12 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           if (e.type === 'artifact_created') {
             const kind = e.data.kind;
             if (kind === 'browser_stream' && e.data.href) {
-              const AgentBrowserStream = require('./AgentBrowserStream').default;
               return (
                 <div key={i} className="message-row joe">
                   <div className="event-artifact" style={{ padding: 0 }}>
-                    <AgentBrowserStream wsUrl={e.data.href} />
+                    <Suspense fallback={<div style={{ padding: 12, fontSize: 12, opacity: 0.7 }}>Loading Stream...</div>}>
+                      <AgentBrowserStreamLazy wsUrl={e.data.href} />
+                    </Suspense>
                   </div>
                 </div>
               );

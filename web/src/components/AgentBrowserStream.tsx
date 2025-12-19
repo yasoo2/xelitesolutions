@@ -16,6 +16,10 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [autoExtract, setAutoExtract] = useState<boolean>(true);
   const [typeText, setTypeText] = useState<string>('');
+  const [selector, setSelector] = useState<string>('');
+  const [highlight, setHighlight] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [role, setRole] = useState<string>('');
+  const [roleName, setRoleName] = useState<string>('');
   const lastMoveRef = useRef<number>(0);
 
   function getSessionId() {
@@ -46,9 +50,16 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         const items = j.artifacts.map((a: any) => ({ name: a.name || a.filename || 'download', href: a.href }));
         setDownloads(prev => [...items, ...prev].slice(0, 5));
       }
+      if (j?.ok && Array.isArray(j?.output?.outputs)) {
+        const loc = j.output.outputs.find((o: any) => o.type === 'locate' && o.boundingBox);
+        if (loc?.boundingBox) setHighlight(loc.boundingBox);
+      }
       const names = actions.map(a => a.type).join(', ');
       setOverlay(names);
       setTimeout(() => setOverlay(''), 1200);
+      if (actions.some(a => a.type === 'goto' || a.type === 'reload')) {
+        setHighlight(null);
+      }
       if (autoExtract && actions.some(a => a.type === 'goto' || a.type === 'reload')) {
         setTimeout(() => {
           doExtract();
@@ -205,6 +216,21 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           onMouseMove={handleCanvasMove}
           style={{ width: '100%', height: 'auto', display: 'block', background: 'black', cursor: 'crosshair' }} 
         />
+        {highlight && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${(highlight.x / size.w) * 100}%`,
+              top: `${(highlight.y / size.h) * 100}%`,
+              width: `${(highlight.width / size.w) * 100}%`,
+              height: `${(highlight.height / size.h) * 100}%`,
+              border: '2px solid rgba(59,130,246,0.9)',
+              boxShadow: '0 0 12px rgba(59,130,246,0.6)',
+              pointerEvents: 'none'
+            }}
+            title="Highlight"
+          />
+        )}
         {cursor && (
           <div
             style={{
@@ -254,6 +280,45 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         />
         <button onClick={doType} className="btn">Type</button>
         <button onClick={() => runActions([{ type: 'press', key: 'Enter' }])} className="btn">Enter</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder="CSS selector (مثال: input[name=q])"
+          value={selector}
+          onChange={e => setSelector(e.target.value)}
+          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+        />
+        <button onClick={() => selector && runActions([{ type: 'locate', selector }])} className="btn">Locate</button>
+        <button onClick={() => selector && runActions([{ type: 'click', selector }])} className="btn">اضغط المحدد</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder="role (مثال: button)"
+          value={role}
+          onChange={e => setRole(e.target.value)}
+          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+        />
+        <input
+          type="text"
+          placeholder="name (مثال: بحث)"
+          value={roleName}
+          onChange={e => setRoleName(e.target.value)}
+          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+        />
+        <button 
+          onClick={() => role && roleName && runActions([{ type: 'locate', role, roleName }])} 
+          className="btn"
+        >
+          Locate (role/name)
+        </button>
+        <button 
+          onClick={() => role && roleName && runActions([{ type: 'click', role, roleName }])} 
+          className="btn"
+        >
+          اضغط (role/name)
+        </button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <textarea 
