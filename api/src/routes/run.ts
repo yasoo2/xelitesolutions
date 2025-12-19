@@ -602,17 +602,21 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         if (results.length > 0) {
           const mdParts: string[] = [];
           mdParts.push(`### نتائج البحث`);
-          for (let i = 0; i < results.length; i++) {
-            const r = results[i];
+          const limit = 5;
+          const displayResults = results.slice(0, limit);
+          
+          for (let i = 0; i < displayResults.length; i++) {
+            const r = displayResults[i];
             const title = String(r.title || '').trim();
             const url = String(r.url || '').trim();
             const desc = String(r.description || '').trim();
             let domain = '';
             try { domain = new URL(url).hostname; } catch {}
             const num = `${i + 1}.`;
-            const head = domain ? `${num} [${title}](${url}) _(${domain})_` : `${num} [${title}](${url})`;
+            const head = domain ? `${num} **[${title}](${url})** _(${domain})_` : `${num} **[${title}](${url})**`;
             mdParts.push(head);
-            if (desc) mdParts.push(`   - ${desc.slice(0, 200)}`);
+            if (desc) mdParts.push(`   > ${desc.slice(0, 150)}...`);
+            mdParts.push('');
           }
           const mds = mdParts.join('\n');
           forcedText = mds;
