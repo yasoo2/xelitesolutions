@@ -9,11 +9,14 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [address, setAddress] = useState<string>('');
   const [downloads, setDownloads] = useState<Array<{ name: string; href: string }>>([]);
   const [overlay, setOverlay] = useState<string>('');
-  const [extractSchema, setExtractSchema] = useState<string>('{"list":{"selector":"a","fields":{"text":{"selector":"","attr":""}}}}');
+  const [extractSchema, setExtractSchema] = useState<string>('{"list":{"selector":"a[href^=\\"https\\"]:not([href*=\\"google.com\\"])","fields":{"text":{"selector":"","attr":""},"url":{"selector":"","attr":"href"}}}}');
   const [extracted, setExtracted] = useState<any>(null);
   const [uploadSelector, setUploadSelector] = useState<string>('');
   const fileRef = useRef<HTMLInputElement>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [autoExtract, setAutoExtract] = useState<boolean>(true);
+  const [typeText, setTypeText] = useState<string>('');
+  const lastMoveRef = useRef<number>(0);
 
   function getSessionId() {
     try {
@@ -46,6 +49,11 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
       const names = actions.map(a => a.type).join(', ');
       setOverlay(names);
       setTimeout(() => setOverlay(''), 1200);
+      if (autoExtract && actions.some(a => a.type === 'goto' || a.type === 'reload')) {
+        setTimeout(() => {
+          doExtract();
+        }, 1500);
+      }
     } catch (e) {
     }
   }
@@ -146,6 +154,23 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     const dy = Math.round(e.deltaY);
     runActions([{ type: 'scroll', deltaY: dy }]);
   }
+  function handleCanvasMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    const now = Date.now();
+    if (now - (lastMoveRef.current || 0) < 60) return;
+    lastMoveRef.current = now;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left) * (size.w / rect.width));
+    const y = Math.round((e.clientY - rect.top) * (size.h / rect.height));
+    setCursor({ x, y });
+    runActions([{ type: 'mouseMove', x, y, steps: 2 }]);
+  }
+  function doType() {
+    if (!typeText.trim()) return;
+    runActions([{ type: 'type', text: typeText, delay: 30 }]);
+    setTypeText('');
+  }
 
   return (
     <div className="agent-browser-stream" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -162,6 +187,10 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
         />
         <button onClick={() => address && runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }])} className="btn" title="Go">Go</button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+          <input type="checkbox" checked={autoExtract} onChange={e => setAutoExtract(e.target.checked)} />
+          Auto Extract
+        </label>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#22c55e' : '#f59e0b' }}></div>
@@ -173,6 +202,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           ref={canvasRef} 
           onClick={handleCanvasClick} 
           onWheel={handleCanvasWheel} 
+          onMouseMove={handleCanvasMove}
           style={{ width: '100%', height: 'auto', display: 'block', background: 'black', cursor: 'crosshair' }} 
         />
         {cursor && (
@@ -212,6 +242,18 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         />
         <input type="file" ref={fileRef} />
         <button onClick={doUpload} className="btn">Upload</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input 
+          type="text" 
+          value={typeText} 
+          onChange={e => setTypeText(e.target.value)} 
+          placeholder="Type into focused element..."
+          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+          onKeyDown={e => { if (e.key === 'Enter') doType(); }}
+        />
+        <button onClick={doType} className="btn">Type</button>
+        <button onClick={() => runActions([{ type: 'press', key: 'Enter' }])} className="btn">Enter</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <textarea 
