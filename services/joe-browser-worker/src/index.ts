@@ -1,6 +1,7 @@
 import express from 'express';
 import { WebSocketServer } from 'ws';
-import { chromium, Browser, BrowserContext, Page, devices } from 'playwright';
+import { chromium, devices } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
 import dotenv from 'dotenv';
 import pino from 'pino';
 import path from 'path';
@@ -121,6 +122,7 @@ type Action =
   | { type: 'extract', schema: any, mode?: 'dom'|'a11y'|'hybrid' }
   | { type: 'fillForm', fields: Array<{ label?: string, selector?: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date'|'file' }> }
   | { type: 'uploadFile', selector: string, fileUrl: string }
+  | { type: 'evaluate', script: string }
   ;
 
 async function runActions(session: Session, actions: Action[]) {
@@ -344,6 +346,14 @@ async function runActions(session: Session, actions: Action[]) {
           outputs.push({ type: 'uploadFile', selector: a.selector });
           break;
         }
+        case 'evaluate': {
+          const result = await session.page.evaluate((code) => {
+            // eslint-disable-next-line no-eval
+            return eval(code);
+          }, a.script);
+          outputs.push({ type: 'evaluate', result });
+          break;
+        }
       }
     } catch (err: any) {
       logger.warn({ action: a, error: err.message }, 'action_failed');
@@ -364,7 +374,10 @@ app.post('/session/create', auth, async (req, res) => {
     const { viewport, userAgent, locale, device } = req.body || {};
     const s = await createSession({ viewport, userAgent, locale });
     if (device && devices[device]) {
+      // Close the default context and browser created in createSession
       await s.context.close();
+      await s.browser.close();
+      
       const browser = await launchChromium();
       const ctx = await browser.newContext({ ...devices[device], acceptDownloads: true, recordVideo: { dir: path.join(STORAGE_DIR, 'videos') } });
       const page = await ctx.newPage();

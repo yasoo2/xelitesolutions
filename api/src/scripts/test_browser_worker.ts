@@ -5,10 +5,16 @@ const API = process.env.API_URL || 'http://localhost:8080';
 
 async function main() {
   console.log('Testing Browser Worker via Core Tool...');
+  
+  const token = jwt.sign({ sub: 'tester', role: 'OWNER' }, config.jwtSecret);
+  
   // Open session and navigate
   const res1 = await fetch(`${API}/runs/start`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
     body: JSON.stringify({ text: 'open https://xelitesolutions.com' })
   });
   const j1 = await res1.json();

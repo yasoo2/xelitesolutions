@@ -23,6 +23,8 @@ import healingRoutes, { logError } from './routes/healing';
 import docsRoutes from './routes/docs';
 import analyticsRoutes from './routes/analytics';
 import testRoutes from './routes/tests';
+import advancedRoutes from './routes/advanced';
+import { SentinelService } from './services/sentinel';
 import { authenticate } from './middleware/auth';
 import { broadcast } from './ws';
 import http from 'http';
@@ -39,6 +41,9 @@ const logger =
           options: { translateTime: 'SYS:standard', colorize: true },
         },
       });
+
+// Start Sentinel
+SentinelService.start(path.resolve(__dirname, '../..'));
 
 async function main() {
   const app = express();
@@ -94,25 +99,11 @@ async function main() {
   app.use('/knowledge', knowledgeRoutes);
   app.use('/database', databaseRoutes);
   app.use('/system', systemRoutes);
-import advancedRoutes from './routes/advanced';
-import { SentinelService } from './services/sentinel';
-
-// ... (existing imports)
-
-// Start Sentinel
-SentinelService.start(path.resolve(__dirname, '../..'));
-
-async function main() {
-  // ... (existing code)
-  
   app.use('/healing', healingRoutes);
-  app.use('/advanced', advancedRoutes); // New Route
+  app.use('/advanced', advancedRoutes);
   app.use('/docs', docsRoutes);
-  
-  // ... (rest of code)
   app.use('/analytics', analyticsRoutes);
   app.use('/tests', testRoutes);
-
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
