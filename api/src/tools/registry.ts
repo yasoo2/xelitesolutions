@@ -12,6 +12,7 @@ if (!fs.existsSync(ARTIFACT_DIR)) {
 export const tools: ToolDefinition[] = [
   {
     name: 'browser_open',
+    description: 'Opens a real browser session to a URL. Use this to view live websites, search Google/Bing, or debug UI. Returns a sessionId and a WebSocket URL for live streaming.',
     version: '1.0.0',
     tags: ['browser', 'agent', 'stream'],
     inputSchema: { type: 'object', properties: { viewport: { type: 'object' }, url: { type: 'string' }, device: { type: 'string' } }, required: ['url'] },
@@ -108,6 +109,7 @@ export const tools: ToolDefinition[] = [
   },
   {
     name: 'browser_get_state',
+    description: 'Captures the current state of the browser (DOM, Accessibility Tree, Screenshot). Use this to "see" the page content after navigation.',
     version: '1.0.0',
     tags: ['browser', 'snapshot'],
     inputSchema: { type: 'object', properties: { sessionId: { type: 'string' } }, required: ['sessionId'] },

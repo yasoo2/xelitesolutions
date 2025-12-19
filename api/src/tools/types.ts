@@ -2,6 +2,7 @@ export type ToolPermission = 'read' | 'write' | 'deploy' | 'delete' | 'execute' 
 
 export interface ToolDefinition {
   name: string;
+  description?: string;
   version: string;
   tags: string[];
   inputSchema: Record<string, any>;
