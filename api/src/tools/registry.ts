@@ -517,6 +517,16 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
   const t0 = Date.now();
   logs.push(`[${new Date().toISOString()}] start ${name}`);
   try {
+    const tDef = tools.find(t => t.name === name);
+    if (tDef && typeof (tDef as any).execute === 'function') {
+      const res = await (tDef as any).execute(input);
+      const ok = !!res?.ok;
+      const output = res?.output ?? null;
+      const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
+      const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
+      logs.push(...toolLogs);
+      return { ok, output, logs, artifacts };
+    }
     if (name === 'echo') {
       const text = String(input?.text ?? '');
       // If input is an object (due to nested parsing), try to extract text property or stringify

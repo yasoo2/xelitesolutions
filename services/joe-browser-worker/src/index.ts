@@ -61,7 +61,7 @@ async function createSession(opts: { viewport?: { width: number; height: number 
   const id = uuidv4();
   const session: Session = {
     id, browser, context, page,
-    viewport: context.viewportSize() || { width: 1280, height: 800 },
+    viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
     locale: opts.locale,
     createdAt: Date.now(),
@@ -250,7 +250,8 @@ async function runActions(session: Session, actions: Action[]) {
             function pick(el: Element, s: any) {
               const out: any = {};
               for (const [k, v] of Object.entries(s.fields || {})) {
-                const node = el.querySelector((v as any).selector);
+                const sel = (v as any).selector || '';
+                const node = sel ? el.querySelector(sel) : el;
                 if (!node) { out[k] = null; continue; }
                 const attr = (v as any).attr;
                 out[k] = attr ? (node.getAttribute(attr) || null) : (node.textContent || '').trim();
@@ -327,7 +328,8 @@ app.post('/session/create', auth, async (req, res) => {
       s.browser = browser;
       s.context = ctx;
       s.page = page;
-      s.viewport = ctx.viewportSize() || s.viewport;
+      const preset = devices[device] as any;
+      s.viewport = (preset && preset.viewport) ? preset.viewport : s.viewport;
     }
     res.json({ sessionId: s.id, wsUrl: `/ws/${s.id}` });
   } catch (e: any) {

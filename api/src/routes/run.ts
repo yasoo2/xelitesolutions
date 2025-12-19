@@ -54,6 +54,11 @@ function pickToolFromText(text: string) {
   const t = text.toLowerCase();
   const tn = t.replace(/[\u064B-\u065F\u0670]/g, '').replace(/ـ/g, '');
   const urlMatch = text.match(/https?:\/\/\S+/);
+  // Browser open heuristics (Arabic/English)
+  if (/(open|افتح|ابدأ|launch|browser)/i.test(tn)) {
+    const url = urlMatch ? urlMatch[0] : 'https://www.google.com';
+    return { name: 'browser_open', input: { url } };
+  }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
     return { name: 'http_fetch', input: { url: 'https://open.er-api.com/v6/latest/USD?sym=TRY', base: 'USD', sym: 'TRY' } };
   }

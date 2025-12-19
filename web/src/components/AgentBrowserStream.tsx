@@ -74,7 +74,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
               }
             }
             if (seq.length) setTimeout(() => runActions(seq), 250);
-            const isGoogleSelector = Boolean(locAct?.selector && /input\[name=["']q["']\]/i.test(String(locAct.selector)));
+            const isGoogleSelector = Boolean(locAct?.selector && /(input|textarea)\[name=["']q["']\]/i.test(String(locAct.selector)));
             const isSearchRole = Boolean(locAct?.roleName && String(locAct.roleName).includes('بحث'));
             if (autoTypeAfterFocus && !typeText.trim() && (isGoogleSelector || isSearchRole)) {
               setTimeout(() => {
@@ -101,7 +101,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
             try {
               const host = g?.url ? new URL(g.url).hostname : '';
               if (host && /(^|\.)(google)\./i.test(host)) {
-                extra.push({ type: 'locate', selector: 'input[name="q"]' });
+                extra.push({ type: 'locate', selector: 'input[name="q"], textarea[name="q"]' });
               }
             } catch {}
           }
