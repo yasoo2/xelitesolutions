@@ -392,6 +392,46 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
 
+    if (plan.name === 'browser_run') {
+      const acts = Array.isArray((plan as any).input?.actions) ? (plan as any).input.actions : [];
+      let sensitive = false;
+      let actionText = 'browser_run';
+      for (const a of acts) {
+        const t = String(a?.type || '').toLowerCase();
+        if (t === 'uploadfile') sensitive = true;
+        if (t === 'fillform') {
+          const fields = Array.isArray(a?.fields) ? a.fields : [];
+          for (const f of fields) {
+            const s = (String(f?.label || '') + ' ' + String(f?.selector || '')).toLowerCase();
+            if (/(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(s)) { sensitive = true; break; }
+          }
+        }
+        if (t === 'click') {
+          const s = (String(a?.roleName || '') + ' ' + String(a?.selector || '')).toLowerCase();
+          if (/(delete|pay|submit|login|حذف|دفع|ارسال|تسجيل دخول)/.test(s)) sensitive = true;
+        }
+        if (sensitive) break;
+      }
+      if (sensitive) {
+        const risk = 'high';
+        if (useMock) {
+          const ap = store.createApproval(runId, actionText, risk, plan.name, plan.input);
+          ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: actionText } });
+          store.updateRun(runId, { status: 'blocked' });
+          const { planContext } = await import('../approvals/context');
+          planContext.set(ap.id, { runId, name: plan.name, input: plan.input });
+          return res.json({ runId, blocked: true, approvalId: ap.id });
+        } else {
+          const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
+          ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: actionText } });
+          await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
+          const { planContext } = await import('../approvals/context');
+          planContext.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
+          return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
+        }
+      }
+    }
+
     // Execute tool
     ev({ type: 'step_started', data: { name: `execute:${plan.name}` } });
     const result = await executeTool(plan.name, plan.input);

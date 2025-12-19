@@ -125,7 +125,9 @@ var config = {
   port: Number(process.env.PORT) || 8080,
   mongoUri: process.env.MONGO_URI || "mongodb://localhost:27017/joe",
   jwtSecret: process.env.JWT_SECRET || "change-me",
-  allowedOrigins: process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()) || allowedOriginsDefault
+  allowedOrigins: process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()) || allowedOriginsDefault,
+  browserWorkerUrl: process.env.BROWSER_WORKER_URL || "http://localhost:7070",
+  browserWorkerKey: process.env.BROWSER_WORKER_KEY || "change-me"
 };
 
 // src/routes/auth.ts
@@ -331,6 +333,123 @@ if (!import_fs2.default.existsSync(ARTIFACT_DIR)) {
   }
 }
 var tools = [
+  {
+    name: "browser_open",
+    version: "1.0.0",
+    tags: ["browser", "agent", "stream"],
+    inputSchema: { type: "object", properties: { viewport: { type: "object" }, url: { type: "string" }, device: { type: "string" } }, required: ["url"] },
+    outputSchema: { type: "object", properties: { sessionId: { type: "string" }, wsUrl: { type: "string" } } },
+    permissions: ["internet"],
+    sideEffects: [],
+    rateLimitPerMinute: 20,
+    auditFields: ["url"],
+    mockSupported: false,
+    async execute(input) {
+      const logs = [];
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      try {
+        const resp = await fetch(`${base}/session/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-worker-key": key },
+          body: JSON.stringify({ viewport: input?.viewport, device: input?.device })
+        });
+        if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+        const j = await resp.json();
+        const sessionId = j.sessionId;
+        const wsUrl = `${base.replace(/^http/, "ws")}${j.wsUrl}?key=${encodeURIComponent(key)}`;
+        const nav = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/job/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-worker-key": key },
+          body: JSON.stringify({ actions: [{ type: "goto", url: String(input?.url || "https://www.google.com"), waitUntil: "domcontentloaded" }] })
+        });
+        if (!nav.ok) logs.push(`nav_error=${nav.status}`);
+        const artifacts2 = [
+          { name: "Agent Browser Stream", href: wsUrl, kind: "browser_stream" }
+        ];
+        return { ok: true, output: { sessionId, wsUrl }, logs, artifacts: artifacts2 };
+      } catch (e) {
+        logs.push(`error=${e.message}`);
+        return { ok: false, error: e.message, logs };
+      }
+    }
+  },
+  {
+    name: "browser_run",
+    version: "1.0.0",
+    tags: ["browser", "agent"],
+    inputSchema: { type: "object", properties: { sessionId: { type: "string" }, actions: { type: "array" } }, required: ["sessionId", "actions"] },
+    outputSchema: { type: "object", properties: { outputs: { type: "array" } } },
+    permissions: ["internet"],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: ["sessionId"],
+    mockSupported: false,
+    async execute(input) {
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/job/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-worker-key": key },
+        body: JSON.stringify({ actions: input?.actions || [] })
+      });
+      const logs = [];
+      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      const j = await resp.json();
+      const artifacts2 = (j.artifacts || []).map((a) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(import_path2.default.basename(a.href))}` }));
+      return { ok: true, output: { outputs: j.outputs }, logs, artifacts: artifacts2 };
+    }
+  },
+  {
+    name: "browser_extract",
+    version: "1.0.0",
+    tags: ["browser", "extract"],
+    inputSchema: { type: "object", properties: { sessionId: { type: "string" }, schema: { type: "object" } }, required: ["sessionId", "schema"] },
+    outputSchema: { type: "object", properties: { json: { type: "object" }, confidence: { type: "number" } } },
+    permissions: ["internet"],
+    sideEffects: [],
+    rateLimitPerMinute: 20,
+    auditFields: ["sessionId"],
+    mockSupported: false,
+    async execute(input) {
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/extract`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-worker-key": key },
+        body: JSON.stringify({ schema: input?.schema })
+      });
+      const logs = [];
+      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      const j = await resp.json();
+      return { ok: true, output: { json: j.json, confidence: j.confidence }, logs };
+    }
+  },
+  {
+    name: "browser_get_state",
+    version: "1.0.0",
+    tags: ["browser", "snapshot"],
+    inputSchema: { type: "object", properties: { sessionId: { type: "string" } }, required: ["sessionId"] },
+    outputSchema: { type: "object", properties: { dom: { type: "string" }, a11y: { type: "object" }, screenshot: { type: "string" } } },
+    permissions: ["internet"],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: ["sessionId"],
+    mockSupported: false,
+    async execute(input) {
+      const key = config.browserWorkerKey;
+      const base = config.browserWorkerUrl;
+      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-worker-key": key }
+      });
+      const logs = [];
+      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      const j = await resp.json();
+      const artifacts2 = [{ name: "snapshot.jpg", href: `${base}/shots/${import_path2.default.basename(j.screenshot)}` }];
+      return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs, artifacts: artifacts2 };
+    }
+  },
   {
     name: "echo",
     version: "1.0.0",
@@ -2593,6 +2712,48 @@ ${memories.join("\n")}
       }
     }
     ev({ type: "step_done", data: { name: `thinking_step_${steps + 1}`, plan } });
+    if (plan.name === "browser_run") {
+      const acts = Array.isArray(plan.input?.actions) ? plan.input.actions : [];
+      let sensitive = false;
+      let actionText = "browser_run";
+      for (const a of acts) {
+        const t = String(a?.type || "").toLowerCase();
+        if (t === "uploadfile") sensitive = true;
+        if (t === "fillform") {
+          const fields = Array.isArray(a?.fields) ? a.fields : [];
+          for (const f of fields) {
+            const s = (String(f?.label || "") + " " + String(f?.selector || "")).toLowerCase();
+            if (/(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(s)) {
+              sensitive = true;
+              break;
+            }
+          }
+        }
+        if (t === "click") {
+          const s = (String(a?.roleName || "") + " " + String(a?.selector || "")).toLowerCase();
+          if (/(delete|pay|submit|login|حذف|دفع|ارسال|تسجيل دخول)/.test(s)) sensitive = true;
+        }
+        if (sensitive) break;
+      }
+      if (sensitive) {
+        const risk2 = "high";
+        if (useMock) {
+          const ap = store.createApproval(runId, actionText, risk2, plan.name, plan.input);
+          ev({ type: "approval_required", data: { id: ap.id, runId, risk: risk2, action: actionText } });
+          store.updateRun(runId, { status: "blocked" });
+          const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
+          planContext2.set(ap.id, { runId, name: plan.name, input: plan.input });
+          return res.json({ runId, blocked: true, approvalId: ap.id });
+        } else {
+          const ap = await Approval.create({ runId, action: actionText, risk: risk2, status: "pending" });
+          ev({ type: "approval_required", data: { id: ap._id.toString(), runId, risk: risk2, action: actionText } });
+          await Run.findByIdAndUpdate(runId, { $set: { status: "blocked" } });
+          const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
+          planContext2.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
+          return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
+        }
+      }
+    }
     ev({ type: "step_started", data: { name: `execute:${plan.name}` } });
     const result = await executeTool(plan.name, plan.input);
     lastResult = result;

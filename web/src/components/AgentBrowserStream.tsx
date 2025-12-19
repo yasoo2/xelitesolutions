@@ -13,6 +13,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [extracted, setExtracted] = useState<any>(null);
   const [uploadSelector, setUploadSelector] = useState<string>('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
   function getSessionId() {
     try {
@@ -137,6 +138,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     const x = Math.round((e.clientX - rect.left) * (size.w / rect.width));
     const y = Math.round((e.clientY - rect.top) * (size.h / rect.height));
     runActions([{ type: 'click', x, y }]);
+    setCursor({ x, y });
   }
 
   function handleCanvasWheel(e: React.WheelEvent<HTMLCanvasElement>) {
@@ -166,13 +168,30 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         <span style={{ fontSize: 12, opacity: 0.6 }}>{status}</span>
         {!!overlay && <span style={{ fontSize: 12, opacity: 0.8 }}>Joe: {overlay}</span>}
       </div>
-      <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
         <canvas 
           ref={canvasRef} 
           onClick={handleCanvasClick} 
           onWheel={handleCanvasWheel} 
           style={{ width: '100%', height: 'auto', display: 'block', background: 'black', cursor: 'crosshair' }} 
         />
+        {cursor && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${(cursor.x / size.w) * 100}%`,
+              top: `${(cursor.y / size.h) * 100}%`,
+              transform: 'translate(-50%, -50%)',
+              width: 16,
+              height: 16,
+              borderRadius: '50%',
+              background: 'rgba(34,197,94,0.8)',
+              boxShadow: '0 0 12px rgba(34,197,94,0.8)',
+              pointerEvents: 'none'
+            }}
+            title="Cursor"
+          />
+        )}
       </div>
       {downloads.length > 0 && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
