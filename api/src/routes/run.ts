@@ -52,11 +52,24 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
 
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
-  const tn = t.replace(/[\u064B-\u065F\u0670]/g, '').replace(/ـ/g, '');
+  const tn = t
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/ـ/g, '')
+    .replace(/[أإآ]/g, 'ا'); // Normalize Alefs to bare Alef
+
   const urlMatch = text.match(/https?:\/\/\S+/);
   // Browser open heuristics (Arabic/English)
-  if (/(open|افتح|ابدأ|launch|browser)/i.test(tn)) {
-    const url = urlMatch ? urlMatch[0] : 'https://www.google.com';
+  // Normalized: "افتح", "ابدا", "ادخل", "اذهب"
+  if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
+    let url = urlMatch ? urlMatch[0] : 'https://www.google.com';
+    // Fallback for known sites if no URL
+    if (!urlMatch) {
+        if (/(google|جوجل)/i.test(tn)) url = 'https://www.google.com';
+        else if (/(youtube|يوتيوب)/i.test(tn)) url = 'https://www.youtube.com';
+        else if (/(twitter|تويتر)/i.test(tn)) url = 'https://www.twitter.com';
+        else if (/(linkedin|لينكد)/i.test(tn)) url = 'https://www.linkedin.com';
+        else if (/(github|جيت)/i.test(tn)) url = 'https://www.github.com';
+    }
     return { name: 'browser_open', input: { url } };
   }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
@@ -96,7 +109,7 @@ function pickToolFromText(text: string) {
     }
   }
   const names: Array<[string, string]> = [
-    ['USD', '(الدولار|دولار|usd|امريكي|أمريكي)'],
+    ['USD', '(الدولار|دولار|usd|امريكي|امريكي)'], // Normalized 'أمريكي' -> 'امريكي'
     ['EUR', '(اليورو|euro|eur)'],
     ['TRY', '(الليرة|الليره|ليرة|ليره|try|turkish\\s+lira)'],
     ['ILS', '(الشيكل|شيكل|ils)'],

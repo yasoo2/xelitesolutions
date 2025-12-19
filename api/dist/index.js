@@ -2414,10 +2414,17 @@ router3.post("/verify", authenticate, async (req, res) => {
 });
 function pickToolFromText(text) {
   const t = text.toLowerCase();
-  const tn = t.replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "");
+  const tn = t.replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "").replace(/[أإآ]/g, "\u0627");
   const urlMatch = text.match(/https?:\/\/\S+/);
-  if (/(open|افتح|ابدأ|launch|browser)/i.test(tn)) {
-    const url = urlMatch ? urlMatch[0] : "https://www.google.com";
+  if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
+    let url = urlMatch ? urlMatch[0] : "https://www.google.com";
+    if (!urlMatch) {
+      if (/(google|جوجل)/i.test(tn)) url = "https://www.google.com";
+      else if (/(youtube|يوتيوب)/i.test(tn)) url = "https://www.youtube.com";
+      else if (/(twitter|تويتر)/i.test(tn)) url = "https://www.twitter.com";
+      else if (/(linkedin|لينكد)/i.test(tn)) url = "https://www.linkedin.com";
+      else if (/(github|جيت)/i.test(tn)) url = "https://www.github.com";
+    }
     return { name: "browser_open", input: { url } };
   }
   if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
@@ -2478,7 +2485,8 @@ function pickToolFromText(text) {
     }
   }
   const names = [
-    ["USD", "(\u0627\u0644\u062F\u0648\u0644\u0627\u0631|\u062F\u0648\u0644\u0627\u0631|usd|\u0627\u0645\u0631\u064A\u0643\u064A|\u0623\u0645\u0631\u064A\u0643\u064A)"],
+    ["USD", "(\u0627\u0644\u062F\u0648\u0644\u0627\u0631|\u062F\u0648\u0644\u0627\u0631|usd|\u0627\u0645\u0631\u064A\u0643\u064A|\u0627\u0645\u0631\u064A\u0643\u064A)"],
+    // Normalized 'أمريكي' -> 'امريكي'
     ["EUR", "(\u0627\u0644\u064A\u0648\u0631\u0648|euro|eur)"],
     ["TRY", "(\u0627\u0644\u0644\u064A\u0631\u0629|\u0627\u0644\u0644\u064A\u0631\u0647|\u0644\u064A\u0631\u0629|\u0644\u064A\u0631\u0647|try|turkish\\s+lira)"],
     ["ILS", "(\u0627\u0644\u0634\u064A\u0643\u0644|\u0634\u064A\u0643\u0644|ils)"],
