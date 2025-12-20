@@ -129,7 +129,7 @@ async function main() {
   attachWebSocket(server);
 
   server.listen(config.port, '0.0.0.0', () => {
-    logger.info({ port: config.port }, 'API listening');
+    logger.info({ port: config.port, browserWorkerUrl: config.browserWorkerUrl }, 'API listening');
   });
 
   // Global Error Handler for Healing

@@ -15,6 +15,7 @@ export const config = {
   mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/joe',
   jwtSecret: process.env.JWT_SECRET || 'change-me',
   allowedOrigins: (process.env.ALLOWED_ORIGINS?.split(',').map(s => s.trim()) || allowedOriginsDefault),
-  browserWorkerUrl: process.env.BROWSER_WORKER_URL || 'http://localhost:7070',
+  // Force localhost to avoid IPv4/IPv6 resolution issues with 127.0.0.1 on some systems
+  browserWorkerUrl: 'http://localhost:7070', // process.env.BROWSER_WORKER_URL || 'http://localhost:7070',
   browserWorkerKey: process.env.BROWSER_WORKER_KEY || 'change-me',
 };
