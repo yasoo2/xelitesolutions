@@ -236,7 +236,14 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
             setTimeout(() => clickEl.remove(), 500);
           }
           if (msg.type === 'action_start') {
-             setOverlay(msg.action.type);
+             const a = msg.action;
+             let text = a.type;
+             if (a.type === 'goto') text = `Opening ${new URL(a.url).hostname}...`;
+             if (a.type === 'type') text = `Typing...`;
+             if (a.type === 'click') text = `Clicking...`;
+             if (a.type === 'scroll') text = `Scrolling...`;
+             if (a.type === 'screenshot') text = `Capturing View...`;
+             setOverlay(text);
           }
           if (msg.type === 'action_done') {
              setTimeout(() => setOverlay(''), 500);
@@ -294,39 +301,69 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     setTypeText('');
   }
 
+  const [showControls, setShowControls] = useState(false);
+
   return (
-    <div className="agent-browser-stream" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={() => runActions([{ type: 'goBack' }])} className="btn" title="Back">⟵</button>
-        <button onClick={() => runActions([{ type: 'goForward' }])} className="btn" title="Forward">⟶</button>
-        <button onClick={() => runActions([{ type: 'reload' }])} className="btn" title="Reload">⟳</button>
-        <input 
-          type="text" 
-          value={address} 
-          onChange={e => setAddress(e.target.value)} 
-          onKeyDown={e => { if (e.key === 'Enter' && address) runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }]); }} 
-          placeholder="https://example.com"
-          style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-        />
-        <button onClick={() => address && runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }])} className="btn" title="Go">Go</button>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-          <input type="checkbox" checked={autoExtract} onChange={e => setAutoExtract(e.target.checked)} />
-          Auto Extract
-        </label>
+    <div className="agent-browser-stream" style={{ display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+      
+      {/* Minimal Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+           <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#22c55e' : '#ef4444', boxShadow: status === 'connected' ? '0 0 8px #22c55e' : 'none' }}></div>
+           <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
+             {status === 'connected' ? 'Agent Connected' : status}
+           </span>
+        </div>
+        
+        {overlay && (
+           <div style={{ 
+              padding: '4px 12px', 
+              background: 'rgba(59, 130, 246, 0.15)', 
+              border: '1px solid rgba(59, 130, 246, 0.3)', 
+              borderRadius: 16, 
+              color: '#60a5fa', 
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+           }}>
+              <span className="animate-pulse">●</span>
+              {overlay}
+           </div>
+        )}
+
+        <button 
+          onClick={() => setShowControls(!showControls)} 
+          style={{ 
+            background: 'transparent', 
+            border: 'none', 
+            color: 'var(--text-secondary)', 
+            cursor: 'pointer',
+            fontSize: 12 
+          }}
+        >
+          {showControls ? 'Hide Controls' : 'Show Controls'}
+        </button>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#22c55e' : '#f59e0b' }}></div>
-        <span style={{ fontSize: 12, opacity: 0.6 }}>{status}</span>
-        {!!overlay && <span style={{ fontSize: 12, opacity: 0.8 }}>Joe: {overlay}</span>}
-      </div>
-      <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
+
+      {/* Main Browser View */}
+      <div style={{ 
+         border: '1px solid var(--border-color)', 
+         borderRadius: 12, 
+         overflow: 'hidden', 
+         position: 'relative',
+         background: '#000',
+         boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+      }}>
         <canvas 
           ref={canvasRef} 
           onClick={handleCanvasClick} 
           onWheel={handleCanvasWheel} 
           onMouseMove={handleCanvasMove}
-          style={{ width: '100%', height: 'auto', display: 'block', background: 'black', cursor: 'crosshair' }} 
+          style={{ width: '100%', height: 'auto', display: 'block', cursor: 'default' }} 
         />
+        
+        {/* Agent Overlay Elements */}
         {highlight && (
           <div
             style={{
@@ -335,13 +372,15 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
               top: `${(highlight.y / size.h) * 100}%`,
               width: `${(highlight.width / size.w) * 100}%`,
               height: `${(highlight.height / size.h) * 100}%`,
-              border: '2px solid rgba(59,130,246,0.9)',
-              boxShadow: '0 0 12px rgba(59,130,246,0.6)',
-              pointerEvents: 'none'
+              border: '2px solid #eab308',
+              boxShadow: '0 0 15px rgba(234, 179, 8, 0.4)',
+              pointerEvents: 'none',
+              borderRadius: 4,
+              transition: 'all 0.2s ease'
             }}
-            title="Highlight"
           />
         )}
+        
         {cursor && (
           <div
             style={{
@@ -349,129 +388,75 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
               left: `${(cursor.x / size.w) * 100}%`,
               top: `${(cursor.y / size.h) * 100}%`,
               transform: 'translate(-50%, -50%)',
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              background: 'rgba(34,197,94,0.8)',
-              boxShadow: '0 0 12px rgba(34,197,94,0.8)',
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              zIndex: 50,
+              transition: 'all 0.1s linear'
             }}
-            title="Cursor"
-          />
+          >
+             <div style={{
+               width: 12, height: 12, borderRadius: '50%', background: '#eab308', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+             }} />
+          </div>
         )}
       </div>
+
+      {/* Downloads (Automatic) */}
       {downloads.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, padding: 8, background: 'var(--bg-secondary)', borderRadius: 8 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Downloads:</span>
           {downloads.map((d, i) => (
-            <a key={i} href={d.href} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--text-primary)', textDecoration: 'underline' }}>
+            <a key={i} href={d.href} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#3b82f6' }}>
               {d.name}
             </a>
           ))}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input 
-          type="text" 
-          placeholder="CSS selector for file input (e.g. input[type=file])" 
-          value={uploadSelector}
-          onChange={e => setUploadSelector(e.target.value)}
-          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-        />
-        <input type="file" ref={fileRef} />
-        <button onClick={doUpload} className="btn">Upload</button>
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input 
-          type="text" 
-          value={typeText} 
-          onChange={e => setTypeText(e.target.value)} 
-          placeholder="Type into focused element..."
-          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-          onKeyDown={e => { if (e.key === 'Enter') doType(); }}
-        />
-        <button onClick={doType} className="btn">Type</button>
-        <button onClick={() => runActions([{ type: 'press', key: 'Enter' }])} className="btn">Enter</button>
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input
-          type="text"
-          placeholder="CSS selector (مثال: input[name=q])"
-          value={selector}
-          onChange={e => setSelector(e.target.value)}
-          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-        />
-        <button onClick={() => selector && runActions([{ type: 'locate', selector }])} className="btn">Locate</button>
-        <button onClick={() => selector && runActions([{ type: 'click', selector }])} className="btn">اضغط المحدد</button>
-        <button onClick={() => selector && runActions([{ type: 'scrollTo', selector }])} className="btn">Scroll إلى المحدد</button>
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input
-          type="text"
-          placeholder="role (مثال: button)"
-          value={role}
-          onChange={e => setRole(e.target.value)}
-          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-        />
-        <input
-          type="text"
-          placeholder="name (مثال: بحث)"
-          value={roleName}
-          onChange={e => setRoleName(e.target.value)}
-          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-        />
-        <button 
-          onClick={() => role && roleName && runActions([{ type: 'locate', role, roleName }])} 
-          className="btn"
-        >
-          Locate (role/name)
-        </button>
-        <button 
-          onClick={() => role && roleName && runActions([{ type: 'click', role, roleName }])} 
-          className="btn"
-        >
-          اضغط (role/name)
-        </button>
-        <button 
-          onClick={() => role && roleName && runActions([{ type: 'waitForRole', role, roleName }])} 
-          className="btn"
-        >
-          انتظر (role/name)
-        </button>
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-          <input type="checkbox" checked={autoLocate} onChange={e => setAutoLocate(e.target.checked)} />
-          Auto Locate بعد التنقل
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-          <input type="checkbox" checked={autoFocus} onChange={e => setAutoFocus(e.target.checked)} />
-          Auto Click بعد locate
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-          <input type="checkbox" checked={autoTypeAfterFocus} onChange={e => setAutoTypeAfterFocus(e.target.checked)} />
-          Auto Type بعد التركيز
-        </label>
-        <input
-          type="text"
-          value={defaultSearchText}
-          onChange={e => setDefaultSearchText(e.target.value)}
-          placeholder="نص البحث الافتراضي"
-          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-        />
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <textarea 
-          value={extractSchema} 
-          onChange={e => setExtractSchema(e.target.value)} 
-          placeholder='{"list":{"selector":"table tr","fields":{"col1":{"selector":"td:nth-child(1)"}}}}' 
-          style={{ flex: 1, minHeight: 80, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-        />
-        <button onClick={doExtract} className="btn">Extract</button>
-      </div>
-      {extracted && (
-        <pre style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', maxHeight: 200, overflow: 'auto' }}>
-          {JSON.stringify(extracted, null, 2)}
-        </pre>
+
+      {/* Advanced Manual Controls (Hidden by Default) */}
+      {showControls && (
+        <div style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={() => runActions([{ type: 'goBack' }])} className="btn" title="Back">⟵</button>
+                <button onClick={() => runActions([{ type: 'goForward' }])} className="btn" title="Forward">⟶</button>
+                <button onClick={() => runActions([{ type: 'reload' }])} className="btn" title="Reload">⟳</button>
+                <input 
+                  type="text" 
+                  value={address} 
+                  onChange={e => setAddress(e.target.value)} 
+                  onKeyDown={e => { if (e.key === 'Enter' && address) runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }]); }} 
+                  placeholder="https://example.com"
+                  style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                />
+                <button onClick={() => address && runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }])} className="btn">Go</button>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+                 {/* Upload */}
+                 <div style={{ display: 'flex', gap: 4 }}>
+                    <input type="text" placeholder="Upload Selector" value={uploadSelector} onChange={e => setUploadSelector(e.target.value)} style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
+                    <input type="file" ref={fileRef} style={{ width: 80 }} />
+                    <button onClick={doUpload} className="btn">Up</button>
+                 </div>
+                 
+                 {/* Type */}
+                 <div style={{ display: 'flex', gap: 4 }}>
+                    <input type="text" value={typeText} onChange={e => setTypeText(e.target.value)} placeholder="Type text..." style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
+                    <button onClick={doType} className="btn">Type</button>
+                    <button onClick={() => runActions([{ type: 'press', key: 'Enter' }])} className="btn">Ent</button>
+                 </div>
+
+                 {/* Locate */}
+                 <div style={{ display: 'flex', gap: 4 }}>
+                    <input type="text" value={selector} onChange={e => setSelector(e.target.value)} placeholder="CSS Selector" style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
+                    <button onClick={() => selector && runActions([{ type: 'locate', selector }])} className="btn">Loc</button>
+                    <button onClick={() => selector && runActions([{ type: 'click', selector }])} className="btn">Clk</button>
+                 </div>
+            </div>
+            
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                DevTools: <label><input type="checkbox" checked={autoExtract} onChange={e => setAutoExtract(e.target.checked)} /> Auto Extract</label>
+            </div>
+        </div>
       )}
     </div>
   );
