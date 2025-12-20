@@ -8,7 +8,7 @@ const apiEnv = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
 
 // Fallback logic:
 export const API_URL = isLocal 
-  ? 'http://localhost:8080' 
+  ? 'http://localhost:3000' 
   : (apiEnv || 'https://api.xelitesolutions.com'); // Defaulting to the custom domain if env not set
 
 // Determine WebSocket URL
@@ -17,7 +17,7 @@ let wsUrl = rawWsUrl;
 
 if (!wsUrl) {
   if (isLocal) {
-    wsUrl = 'ws://localhost:8080/ws';
+    wsUrl = 'ws://localhost:3000/ws';
   } else {
     // Check if API_URL is used and replace protocol
     if (API_URL.includes('api.xelitesolutions.com')) {

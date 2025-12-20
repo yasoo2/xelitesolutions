@@ -1050,9 +1050,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
         </div>
       )}
 
-      {/* Sentinel Status Bar */}
-      <SentinelStatus />
-
       {attachedFiles.length > 0 && (
         <div className="attached-files">
           {attachedFiles.map((file, i) => (
