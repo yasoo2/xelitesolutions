@@ -231,7 +231,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
     gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
     grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
-    custom: { name: 'Custom / Local LLM', apiKey: '', isConnected: false, baseUrl: 'http://localhost:11434/v1', model: 'llama3', isCustom: true },
   });
   const [activeProvider, setActiveProvider] = useState('llm');
   const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
@@ -253,7 +252,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
         });
       }
       const savedActive = localStorage.getItem('active_provider');
-      if (savedActive) setActiveProvider(savedActive);
+      if (savedActive && providers[savedActive]) setActiveProvider(savedActive);
     } catch (e) {
       console.error('Failed to load providers settings', e);
     }
@@ -990,7 +989,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                                             }}
                                         />
                                     </div>
-                                    {(providers[activeProvider].isCustom || activeProvider === 'grok') && (
+                                    {activeProvider === 'grok' && (
                                         <div>
                                             <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Base URL</label>
                                             <input 
