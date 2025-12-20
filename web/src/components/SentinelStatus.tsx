@@ -31,23 +31,35 @@ export default function SentinelStatus() {
   return (
     <div className="w-full px-4 mb-2">
        {/* Collapsed View (Always visible bar) */}
-       <div className="flex items-center justify-between bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-xs transition-colors hover:border-[var(--accent-primary)]">
-           <div className="flex items-center gap-2 overflow-hidden flex-1">
+       <div className="flex items-center gap-0 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-full pl-4 pr-1.5 py-1.5 text-xs shadow-sm transition-all hover:border-[var(--accent-primary)] hover:shadow-md group">
+           <div className="flex items-center gap-3 overflow-hidden flex-1">
                {latest.severity === 'high' ? (
-                   <ShieldAlert size={14} className="text-red-500 flex-shrink-0" />
+                   <div className="relative flex h-2 w-2">
+                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                     <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                   </div>
                ) : latest.severity === 'medium' ? (
-                   <AlertTriangle size={14} className="text-yellow-500 flex-shrink-0" />
+                   <div className="relative flex h-2 w-2">
+                     <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                   </div>
                ) : (
-                   <Info size={14} className="text-blue-500 flex-shrink-0" />
+                   <div className="relative flex h-2 w-2">
+                     <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                   </div>
                )}
-               <span className="truncate font-mono opacity-90 flex-1">
-                   <span className="opacity-50 mr-2">[{new Date(latest.timestamp).toLocaleTimeString()}]</span>
-                   {latest.message}
+               
+               <span className="truncate font-mono text-[var(--text-primary)] flex-1 flex items-center gap-2">
+                   <span className="opacity-40 text-[10px] font-bold tracking-wider">[{new Date(latest.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}]</span>
+                   <span className="opacity-90 group-hover:opacity-100 transition-opacity">{latest.message}</span>
                </span>
            </div>
+
+           {/* Vertical Separator */}
+           <div className="w-[1px] h-4 bg-[var(--border-color)] mx-3" />
+
            <button 
              onClick={() => setExpanded(!expanded)}
-             className="p-1 hover:bg-[var(--bg-hover)] rounded ml-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+             className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--accent-primary)] hover:text-white transition-all active:scale-95"
              title={expanded ? "Collapse Logs" : "Expand Logs"}
            >
              {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
