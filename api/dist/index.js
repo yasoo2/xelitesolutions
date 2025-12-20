@@ -246,6 +246,7 @@ var import_express2 = require("express");
 var import_fs2 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
 var import_buffer = require("buffer");
+var import_child_process = require("child_process");
 
 // src/services/knowledge.ts
 var import_fs = __toESM(require("fs"));
@@ -333,6 +334,55 @@ if (!import_fs2.default.existsSync(ARTIFACT_DIR)) {
   } catch {
   }
 }
+var browserWorkerBoot = null;
+function repoRoot() {
+  const cwd = process.cwd();
+  if (import_path2.default.basename(cwd) === "api") return import_path2.default.resolve(cwd, "..");
+  return cwd;
+}
+function isLocalWorkerUrl(base) {
+  try {
+    const u = new URL(base);
+    return u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+async function waitForWorkerHealth(base, timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const r = await fetch(`${base}/health`, { method: "GET" });
+      if (r.ok) return true;
+    } catch {
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+}
+async function ensureBrowserWorker(base, key, logs) {
+  const auto = process.env.AUTO_START_BROWSER_WORKER === "1" || process.env.AUTO_START_BROWSER_WORKER === "true" || process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true";
+  if (!auto || process.env.NODE_ENV === "production" || !isLocalWorkerUrl(base)) return;
+  const healthy = await waitForWorkerHealth(base, 250);
+  if (healthy) return;
+  if (!browserWorkerBoot) {
+    browserWorkerBoot = (async () => {
+      const root = repoRoot();
+      const workerDir = import_path2.default.join(root, "services", "joe-browser-worker");
+      const workerEnv = { ...process.env, PORT: String(new URL(base).port || 7070), WORKER_API_KEY: key };
+      const child = (0, import_child_process.spawn)("npm", ["--prefix", workerDir, "run", "dev"], {
+        cwd: root,
+        env: workerEnv,
+        stdio: "ignore",
+        detached: true
+      });
+      child.unref();
+      await waitForWorkerHealth(base, 15e3);
+    })().catch(() => {
+    });
+  }
+  await browserWorkerBoot;
+}
 var tools = [
   {
     name: "browser_open",
@@ -351,12 +401,16 @@ var tools = [
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
       try {
+        await ensureBrowserWorker(base, key, logs);
         const resp = await fetch(`${base}/session/create`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-worker-key": key },
           body: JSON.stringify({ viewport: input?.viewport, device: input?.device })
         });
-        if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => "");
+          return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+        }
         const j = await resp.json();
         const sessionId = j.sessionId;
         const wsUrl = `${base.replace(/^http/, "ws")}${j.wsUrl}?key=${encodeURIComponent(key)}`;
@@ -414,13 +468,20 @@ var tools = [
     async execute(input) {
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
+      const logs = [];
+      try {
+        await ensureBrowserWorker(base, key, logs);
+      } catch {
+      }
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/job/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-worker-key": key },
         body: JSON.stringify({ actions: input?.actions || [] })
       });
-      const logs = [];
-      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+      }
       const j = await resp.json();
       const artifacts2 = (j.artifacts || []).map((a) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(import_path2.default.basename(a.href))}` }));
       return { ok: true, output: { outputs: j.outputs }, logs, artifacts: artifacts2 };
@@ -440,13 +501,20 @@ var tools = [
     async execute(input) {
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
+      const logs = [];
+      try {
+        await ensureBrowserWorker(base, key, logs);
+      } catch {
+      }
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/extract`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-worker-key": key },
         body: JSON.stringify({ schema: input?.schema })
       });
-      const logs = [];
-      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+      }
       const j = await resp.json();
       return { ok: true, output: { json: j.json, confidence: j.confidence }, logs };
     }
@@ -466,12 +534,19 @@ var tools = [
     async execute(input) {
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
+      const logs = [];
+      try {
+        await ensureBrowserWorker(base, key, logs);
+      } catch {
+      }
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-worker-key": key }
       });
-      const logs = [];
-      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+      }
       const j = await resp.json();
       const artifacts2 = [{ name: "snapshot.jpg", href: `${base}/shots/${import_path2.default.basename(j.screenshot)}` }];
       return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs, artifacts: artifacts2 };
@@ -1699,7 +1774,7 @@ ${archInfo}
 var import_ws = require("ws");
 
 // src/services/terminal.ts
-var import_child_process = require("child_process");
+var import_child_process2 = require("child_process");
 var import_events = require("events");
 var import_string_decoder = require("string_decoder");
 var TerminalManager = class extends import_events.EventEmitter {
@@ -1722,7 +1797,7 @@ var TerminalManager = class extends import_events.EventEmitter {
   create(id, cwd = process.cwd()) {
     if (this.sessions[id]) return;
     const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
-    const p = (0, import_child_process.spawn)(shell, ["-i"], {
+    const p = (0, import_child_process2.spawn)(shell, ["-i"], {
       cwd,
       env: { ...process.env, TERM: "xterm-256color" },
       stdio: ["pipe", "pipe", "pipe"]
@@ -3854,7 +3929,7 @@ var database_default = router14;
 
 // src/routes/system.ts
 var import_express15 = require("express");
-var import_child_process2 = require("child_process");
+var import_child_process3 = require("child_process");
 var import_os = __toESM(require("os"));
 var router15 = (0, import_express15.Router)();
 router15.get("/stats", authenticate, async (req, res) => {
@@ -3880,7 +3955,7 @@ router15.get("/stats", authenticate, async (req, res) => {
 });
 router15.get("/processes", authenticate, async (req, res) => {
   const cmd = "ps aux | grep -E 'node|ts-node' | grep -v grep | head -n 20";
-  (0, import_child_process2.exec)(cmd, (err, stdout, stderr) => {
+  (0, import_child_process3.exec)(cmd, (err, stdout, stderr) => {
     if (err) {
       return res.status(500).json({ error: "Failed to list processes" });
     }
@@ -3901,7 +3976,7 @@ router15.get("/processes", authenticate, async (req, res) => {
 router15.delete("/processes/:pid", authenticate, async (req, res) => {
   const { pid } = req.params;
   if (pid === "1") return res.status(403).json({ error: "Cannot kill init process" });
-  (0, import_child_process2.exec)(`kill -9 ${pid}`, (err) => {
+  (0, import_child_process3.exec)(`kill -9 ${pid}`, (err) => {
     if (err) {
       return res.status(500).json({ error: `Failed to kill process ${pid}` });
     }
@@ -4124,7 +4199,7 @@ var import_express19 = require("express");
 var import_glob3 = require("glob");
 var import_path8 = __toESM(require("path"));
 var import_fs10 = __toESM(require("fs"));
-var import_child_process3 = require("child_process");
+var import_child_process4 = require("child_process");
 var router19 = (0, import_express19.Router)();
 router19.get("/files", authenticate, async (req, res) => {
   try {
@@ -4151,7 +4226,7 @@ router19.post("/run", authenticate, (req, res) => {
   if (testFile) {
     args.push(import_path8.default.resolve(projectRoot, testFile));
   }
-  const child = (0, import_child_process3.spawn)("npx", args, { cwd });
+  const child = (0, import_child_process4.spawn)("npx", args, { cwd });
   res.setHeader("Content-Type", "text/plain");
   child.stdout.on("data", (data) => {
     res.write(data);

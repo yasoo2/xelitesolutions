@@ -3,10 +3,70 @@ import path from 'path';
 import { ToolDefinition, ToolExecutionResult } from './types';
 import { Buffer } from 'buffer';
 import { config } from '../config';
+import { spawn } from 'child_process';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
   try { fs.mkdirSync(ARTIFACT_DIR, { recursive: true }); } catch {}
+}
+
+let browserWorkerBoot: Promise<void> | null = null;
+
+function repoRoot() {
+  const cwd = process.cwd();
+  if (path.basename(cwd) === 'api') return path.resolve(cwd, '..');
+  return cwd;
+}
+
+function isLocalWorkerUrl(base: string) {
+  try {
+    const u = new URL(base);
+    return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+async function waitForWorkerHealth(base: string, timeoutMs: number) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const r = await fetch(`${base}/health`, { method: 'GET' });
+      if (r.ok) return true;
+    } catch {}
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return false;
+}
+
+async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
+  const auto =
+    process.env.AUTO_START_BROWSER_WORKER === '1' ||
+    process.env.AUTO_START_BROWSER_WORKER === 'true' ||
+    process.env.MOCK_DB === '1' ||
+    process.env.MOCK_DB === 'true';
+
+  if (!auto || process.env.NODE_ENV === 'production' || !isLocalWorkerUrl(base)) return;
+  const healthy = await waitForWorkerHealth(base, 250);
+  if (healthy) return;
+
+  if (!browserWorkerBoot) {
+    browserWorkerBoot = (async () => {
+      const root = repoRoot();
+      const workerDir = path.join(root, 'services', 'joe-browser-worker');
+      const workerEnv = { ...process.env, PORT: String(new URL(base).port || 7070), WORKER_API_KEY: key };
+      const child = spawn('npm', ['--prefix', workerDir, 'run', 'dev'], {
+        cwd: root,
+        env: workerEnv,
+        stdio: 'ignore',
+        detached: true,
+      });
+      child.unref();
+      await waitForWorkerHealth(base, 15000);
+    })().catch(() => {});
+  }
+
+  await browserWorkerBoot;
 }
 
 export const tools: ToolDefinition[] = [
@@ -27,12 +87,16 @@ export const tools: ToolDefinition[] = [
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
       try {
+        await ensureBrowserWorker(base, key, logs);
         const resp = await fetch(`${base}/session/create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
           body: JSON.stringify({ viewport: input?.viewport, device: input?.device })
         });
-        if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+        }
         const j = await resp.json();
         const sessionId = j.sessionId;
         const wsUrl = `${base.replace(/^http/, 'ws')}${j.wsUrl}?key=${encodeURIComponent(key)}`;
@@ -91,13 +155,19 @@ export const tools: ToolDefinition[] = [
     async execute(input) {
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
+      const logs: string[] = [];
+      try {
+        await ensureBrowserWorker(base, key, logs);
+      } catch {}
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/job/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
         body: JSON.stringify({ actions: input?.actions || [] })
       });
-      const logs: string[] = [];
-      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+      }
       const j = await resp.json();
       const artifacts = (j.artifacts || []).map((a: any) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(path.basename(a.href))}` }));
       return { ok: true, output: { outputs: j.outputs }, logs, artifacts };
@@ -117,13 +187,19 @@ export const tools: ToolDefinition[] = [
     async execute(input) {
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
+      const logs: string[] = [];
+      try {
+        await ensureBrowserWorker(base, key, logs);
+      } catch {}
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
         body: JSON.stringify({ schema: input?.schema })
       });
-      const logs: string[] = [];
-      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+      }
       const j = await resp.json();
       return { ok: true, output: { json: j.json, confidence: j.confidence }, logs };
     }
@@ -143,12 +219,18 @@ export const tools: ToolDefinition[] = [
     async execute(input) {
       const key = config.browserWorkerKey;
       const base = config.browserWorkerUrl;
+      const logs: string[] = [];
+      try {
+        await ensureBrowserWorker(base, key, logs);
+      } catch {}
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-worker-key': key }
       });
-      const logs: string[] = [];
-      if (!resp.ok) return { ok: false, error: `worker_error=${resp.status}`, logs };
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+      }
       const j = await resp.json();
       const artifacts = [{ name: 'snapshot.jpg', href: `${base}/shots/${path.basename(j.screenshot)}` }];
       return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs, artifacts };

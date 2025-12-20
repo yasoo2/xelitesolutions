@@ -1,7 +1,6 @@
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
 import CouncilPanel from '../components/CouncilPanel';
-import CodeUniverse from '../components/CodeUniverse';
 import { AppsDashboard } from '../components/AppsDashboard';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,6 +8,7 @@ import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft, MessageSquare, Users, Globe, LayoutGrid } from 'lucide-react';
 
 const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
+const CodeUniverseLazy = lazy(() => import('../components/CodeUniverse'));
 
 function BrowserApp() {
   const [url, setUrl] = useState('https://www.google.com');
@@ -568,7 +568,11 @@ export default function Joe() {
           />
         )}
         {mode === 'council' && <CouncilPanel />}
-        {mode === 'universe' && <CodeUniverse />}
+        {mode === 'universe' && (
+          <Suspense fallback={<div style={{ padding: 12, color: 'var(--text-secondary)' }}>Loading...</div>}>
+            <CodeUniverseLazy />
+          </Suspense>
+        )}
         {mode === 'apps' && (
           !activeApp ? (
             <AppsDashboard 

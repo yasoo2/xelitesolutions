@@ -1,4 +1,10 @@
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const hostname = window.location.hostname;
+const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+const isPrivateNetHost =
+  /^10\./.test(hostname) ||
+  /^192\.168\./.test(hostname) ||
+  /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+const isLocal = isLocalHost || isPrivateNetHost;
 const apiEnv = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
 // IMPORTANT: Set this to your actual Backend URL on Render
@@ -8,7 +14,7 @@ const apiEnv = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
 
 // Fallback logic:
 export const API_URL = isLocal 
-  ? 'http://localhost:3000' 
+  ? `${window.location.protocol}//${hostname}:3000`
   : (apiEnv || 'https://api.xelitesolutions.com'); // Defaulting to the custom domain if env not set
 
 // Determine WebSocket URL
@@ -17,7 +23,8 @@ let wsUrl = rawWsUrl;
 
 if (!wsUrl) {
   if (isLocal) {
-    wsUrl = 'ws://localhost:3000/ws';
+    const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    wsUrl = `${wsProto}://${hostname}:3000/ws`;
   } else {
     // Check if API_URL is used and replace protocol
     if (API_URL.includes('api.xelitesolutions.com')) {
