@@ -52,7 +52,9 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
 
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
+  // Normalize: Remove diacritics, normalize Alefs, remove "Joe" prefix
   const tn = t
+    .replace(/^(يا\s+)?(جو|joe)\s*[:،,-]?\s*/i, '') // Remove "Joe" prefix
     .replace(/[\u064B-\u065F\u0670]/g, '')
     .replace(/ـ/g, '')
     .replace(/[أإآ]/g, 'ا'); // Normalize Alefs to bare Alef
@@ -69,6 +71,9 @@ function pickToolFromText(text: string) {
         else if (/(twitter|تويتر)/i.test(tn)) url = 'https://www.twitter.com';
         else if (/(linkedin|لينكد)/i.test(tn)) url = 'https://www.linkedin.com';
         else if (/(github|جيت)/i.test(tn)) url = 'https://www.github.com';
+        else if (/(facebook|فيسبوك)/i.test(tn)) url = 'https://www.facebook.com';
+        else if (/(instagram|انستقرام)/i.test(tn)) url = 'https://www.instagram.com';
+        else if (/(x\.com|twitter)/i.test(tn)) url = 'https://x.com';
     }
     return { name: 'browser_open', input: { url } };
   }
@@ -410,6 +415,23 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       // Fallback if LLM fails
       if (steps === 0) plan = pickToolFromText(String(text || ''));
       else break; // Stop if we can't plan anymore
+      
+      // Inject System Warning if no API Key
+      if (plan.name === 'echo' && !process.env.OPENAI_API_KEY && !apiKey && provider === 'llm') {
+          const originalText = plan.input?.text;
+          const warning = `
+### ⚠️ **System Alert: No Brain Detected**
+I am currently running in **Heuristic Mode** because no OpenAI API Key was found.
+I can only understand simple commands like:
+- "Open Google"
+- "Search for [Topic]"
+- "Check weather in Istanbul"
+- "Convert 100 USD to TRY"
+
+**To enable full AI intelligence, please add your OpenAI API Key in the settings.**
+`.trim();
+          plan.input.text = warning + "\n\n---\n" + originalText;
+      }
     }
     
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
