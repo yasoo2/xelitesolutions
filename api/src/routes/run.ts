@@ -44,141 +44,6 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
   }
 });
 
-function pickToolFromText(text: string) {
-  const t = text.toLowerCase();
-  // Normalize: Remove diacritics, normalize Alefs, remove "Joe" prefix
-  const tn = t
-    .replace(/^(يا\s+)?(جو|joe)\s*[:،,-]?\s*/i, '') // Remove "Joe" prefix
-    .replace(/[\u064B-\u065F\u0670]/g, '')
-    .replace(/ـ/g, '')
-    .replace(/[أإآ]/g, 'ا'); // Normalize Alefs to bare Alef
-
-  // Enhanced URL matching
-  let urlMatch = text.match(/https?:\/\/[^\s]+/);
-  if (!urlMatch) {
-      // Try to find domain-like strings (e.g. google.com, www.yahoo.com)
-      const domainMatch = text.match(/(?:www\.)?[\w-]+\.[a-z]{2,}(?:\/[^\s]*)?/i);
-      if (domainMatch && !text.includes('@')) { // Exclude emails
-          urlMatch = [`https://${domainMatch[0]}`];
-      }
-  }
-
-  // Browser open heuristics (Arabic/English)
-  // Normalized: "افتح", "ابدا", "ادخل", "اذهب"
-  if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
-    let url = urlMatch ? urlMatch[0] : 'https://www.google.com';
-    // Fallback for known sites if no URL
-    if (!urlMatch) {
-        if (/(google|جوجل)/i.test(tn)) url = 'https://www.google.com';
-        else if (/(youtube|يوتيوب)/i.test(tn)) url = 'https://www.youtube.com';
-        else if (/(twitter|تويتر)/i.test(tn)) url = 'https://www.twitter.com';
-        else if (/(linkedin|لينكد)/i.test(tn)) url = 'https://www.linkedin.com';
-        else if (/(github|جيت)/i.test(tn)) url = 'https://www.github.com';
-        else if (/(facebook|فيسبوك)/i.test(tn)) url = 'https://www.facebook.com';
-        else if (/(instagram|انستقرام)/i.test(tn)) url = 'https://www.instagram.com';
-        else if (/(x\.com|twitter)/i.test(tn)) url = 'https://x.com';
-    }
-    return { name: 'browser_open', input: { url } };
-  }
-  if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
-    return { name: 'http_fetch', input: { url: 'https://open.er-api.com/v6/latest/USD?sym=TRY', base: 'USD', sym: 'TRY' } };
-  }
-  // Currency pairs (Arabic) e.g., "سعر الدينار الكويتي مقابل الشيكل"
-  const currencyMap: Record<string, string> = {
-    'الدولار': 'USD', 'دولار': 'USD', 'usd': 'USD', 'امريكي': 'USD', 'أمريكي': 'USD',
-    'اليورو': 'EUR', 'euro': 'EUR', 'eur': 'EUR',
-    'الليرة التركية': 'TRY', 'الليره التركية': 'TRY', 'try': 'TRY', 'ليرة تركية': 'TRY',
-    'الليرة': 'TRY', 'الليره': 'TRY', 'ليرة': 'TRY', 'ليره': 'TRY',
-    'الشيكل': 'ILS', 'شيكل': 'ILS', 'ils': 'ILS',
-    'الدينار الكويتي': 'KWD', 'دينار كويتي': 'KWD', 'kwd': 'KWD', 'دينار': 'KWD',
-    'الريال السعودي': 'SAR', 'ريال سعودي': 'SAR', 'sar': 'SAR', 'ريال': 'SAR',
-    'الدرهم الإماراتي': 'AED', 'درهم إماراتي': 'AED', 'aed': 'AED', 'درهم': 'AED',
-    'الجنيه المصري': 'EGP', 'جنيه مصري': 'EGP', 'egp': 'EGP', 'جنيه': 'EGP'
-  };
-  const curMatch = tn.match(/(?:سعر|قيمة|صرف|تحويل)\s+(.+?)\s+(?:مقابل|ضد|إلى|الى|ب)\s+(.+?)(?:\s|$)/i);
-  if (curMatch) {
-    const baseName = curMatch[1].trim().toLowerCase();
-    const symName = curMatch[2].trim().toLowerCase();
-    
-    // Helper to find code from map keys partial match
-    const findCode = (name: string) => {
-      if (currencyMap[name]) return currencyMap[name];
-      for (const k in currencyMap) {
-        if (name.includes(k)) return currencyMap[k];
-      }
-      return name.length === 3 ? name.toUpperCase() : null;
-    };
-
-    const base = findCode(baseName);
-    const sym = findCode(symName);
-    
-    if (base && sym) {
-      return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
-    }
-  }
-  const names: Array<[string, string]> = [
-    ['USD', '(الدولار|دولار|usd|امريكي|امريكي)'], // Normalized 'أمريكي' -> 'امريكي'
-    ['EUR', '(اليورو|euro|eur)'],
-    ['TRY', '(الليرة|الليره|ليرة|ليره|try|turkish\\s+lira)'],
-    ['ILS', '(الشيكل|شيكل|ils)'],
-    ['KWD', '(الدينار|دينار|kwd)'],
-    ['SAR', '(الريال|ريال|sar)'],
-    ['AED', '(الدرهم|درهم|aed)'],
-    ['EGP', '(الجنيه|جنيه|egp)'],
-  ];
-  const found: string[] = [];
-  // Use a set to avoid duplicates
-  const foundSet = new Set<string>();
-  
-  for (const [code, pat] of names) {
-    if (new RegExp(pat, 'i').test(tn)) {
-       foundSet.add(code);
-    }
-  }
-  
-  if (foundSet.size >= 2) {
-    const arr = Array.from(foundSet);
-    const base = arr[0];
-    const sym = arr[1];
-    return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
-  }
-
-  if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t)) {
-    const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
-    const query = qMatch ? qMatch[1] : text;
-    return { name: 'web_search', input: { query } };
-  }
-  if (/(rss|feed)/i.test(t) && urlMatch) {
-    return { name: 'rss_fetch', input: { url: urlMatch[0] } };
-  }
-  if (/(استخرج|تحليل|html|محتوى)/i.test(t) && urlMatch) {
-    return { name: 'html_extract', input: { url: urlMatch[0] } };
-  }
-  if (/(لخص|خلاصة|summarize)/i.test(t)) {
-    const m = text.match(/(?:لخص|خلاصة|summarize)\s*[:：]\s*(.+)/i);
-    const tx = m ? m[1] : text;
-    return { name: 'text_summarize', input: { text: tx } };
-  }
-  if (/(طقس|حرار[هة]|درجة|weather|temperature)/i.test(t) && /(اسطنبول|إسطنبول|istanbul)/i.test(t)) {
-    const city = 'Istanbul';
-    const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
-    return { name: 'http_fetch', input: { url, city } };
-  }
-  // Page design / HTML generation
-  if (/(صفحة|landing|html)/.test(t)) {
-    const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/><title>صفحة مصممة</title><style>body{font-family:system-ui;background:#0b0b0d;color:#e5e7eb;margin:0}header{padding:24px;background:linear-gradient(90deg,rgba(234,179,8,.15),transparent);border-bottom:1px solid #2a2a30}h1{margin:0;color:#eab308}main{padding:24px;max-width:960px;margin:0 auto}section.card{background:rgba(24,24,27,.6);border:1px solid #2a2a30;border-radius:12px;padding:20px;margin-bottom:12px}</style></head><body><header><h1>صفحة تجريبية</h1></header><main><section class="card"><h2>وصف الطلب</h2><p>${text.replace(/</g,'&lt;')}</p></section><section class="card"><h2>محتوى</h2><p>تم إنشاء هذه الصفحة كأرتيفاكت يمكن فتحه من واجهة المستخدم.</p></section></main></body></html>`;
-    return { name: 'file_write', input: { filename: 'page.html', content: html } };
-  }
-  // E-commerce site scaffold
-  if (/(متجر|ecommerce|shop)/.test(t)) {
-    const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/><title>متجر إلكتروني</title><style>body{font-family:system-ui;background:#0b0b0d;color:#e5e7eb;margin:0}header{padding:24px;background:linear-gradient(90deg,rgba(234,179,8,.15),transparent);border-bottom:1px solid #2a2a30}h1{margin:0;color:#eab308}main{padding:24px;max-width:1024px;margin:0 auto;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.product{background:rgba(24,24,27,.6);border:1px solid #2a2a30;border-radius:12px;padding:16px}.product h3{margin:0 0 8px}.price{color:#60a5fa;font-weight:700}</style></head><body><header><h1>متجر تجريبي</h1></header><main>${Array.from({length:6}).map((_,i)=>`<div class="product"><h3>منتج ${i+1}</h3><p>وصف قصير للمنتج.</p><div class="price">$${(10+i*5).toFixed(2)}</div></div>`).join('')}</main></body></html>`;
-    return { name: 'file_write', input: { filename: 'store.html', content: html } };
-  }
-  if (t.includes('fetch') && urlMatch) return { name: 'http_fetch', input: { url: urlMatch[0] } };
-  if (t.includes('write')) return { name: 'file_write', input: { filename: 'note.txt', content: text } };
-  return null;
-}
-
 function detectRisk(text: string) {
   const risky = /(rm\s+-rf|delete|drop\s+table|shutdown|kill\s+process)/i;
   if (risky.test(text)) {
@@ -338,7 +203,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   }
 
   const risk = detectRisk(String(text || ''));
-  if (risk) {
+  if (risk && plan) {
     if (useMock) {
       const ap = store.createApproval(runId, String(text || ''), risk, plan.name, plan.input);
       ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: text } });
@@ -346,21 +211,43 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       // store plan context for continuation
       const { planContext } = await import('../approvals/context');
       planContext.set(ap.id, { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, blocked: true, approvalId: ap.id });
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap.id });
     } else {
       const ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
       ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
       await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString() });
     }
   }
 
   // --- Agent Loop ---
   let steps = 0;
   const MAX_STEPS = 10;
+  
+  // Load Conversation History
+  let previousMessages: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
+  if (sessionId) {
+       if (useMock) {
+           const hist = store.listMessages(sessionId);
+           // Exclude the current message we just added (if any logic added it already? Line 335 adds it)
+           // Store adds it to memory. We want all *previous* interactions.
+           // Store.listMessages returns all. 
+           // We filter out current run messages to avoid duplication with 'initialContent' which is added to history array manually.
+           // And we take the last 20.
+           previousMessages = hist.filter(m => m.runId !== runId).slice(-20).map(m => ({ role: m.role as any, content: m.content }));
+       } else {
+           const docs = await Message.find({ sessionId, runId: { $ne: runId } })
+               .sort({ createdAt: -1 }) // Get newest first
+               .limit(20); // Last 20 messages
+           // Reverse to chronological order (Old -> New)
+           previousMessages = docs.reverse().map(d => ({ role: d.role as any, content: d.content }));
+       }
+   }
+
   const history: { role: 'user' | 'assistant' | 'system', content: string | any[] }[] = [
+    ...previousMessages,
     { role: 'user', content: initialContent }
   ];
 
@@ -372,9 +259,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     
     // Plan next step with history
     try {
-        // DEBUG HISTORY
-        console.debug(`Step ${steps} History Last Item:`, JSON.stringify(history[history.length - 1]));
-        
         // If default provider and no API key, do not throw (allow heuristic fallback)
         // If custom provider or API key provided, throw on error to notify user
         const shouldThrow = Boolean(apiKey || (provider !== 'llm' && provider));
@@ -405,7 +289,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
     if (!plan) {
       // Fallback if LLM fails
-      if (steps === 0) plan = pickToolFromText(String(text || ''));
+      if (steps === 0) {
+        // No heuristics allowed. If LLM fails, we stop.
+        // plan = pickToolFromText(String(text || '')); 
+        plan = null;
+      }
       else break; // Stop if we can't plan anymore
       
       if (!plan) {
@@ -702,7 +590,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
   }
   
-  res.json({ runId, status: 'done' });
+  return res.json({ runId, sessionId, status: 'done' });
 });
 
 export default router;

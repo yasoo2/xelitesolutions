@@ -40,7 +40,7 @@ const artifacts: MockArtifact[] = [];
 const approvals: MockApproval[] = [];
 const sessions: Array<{ id: Id; title: string; mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER'; lastSnippet?: string; lastUpdatedAt?: number }> = [];
 const summaries: Array<{ sessionId: Id; content: string; ts: number }> = [];
-const messages: Array<{ id: Id; sessionId: Id; role: 'user' | 'assistant' | 'system'; content: string; ts: number }> = [];
+const messages: Array<{ id: Id; sessionId: Id; role: 'user' | 'assistant' | 'system'; content: string; ts: number; runId?: Id }> = [];
 
 function nextId(prefix: string, n: number) {
   return `${prefix}${n}`;

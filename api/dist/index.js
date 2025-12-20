@@ -2341,144 +2341,6 @@ router3.post("/verify", authenticate, async (req, res) => {
     return res.status(401).json({ error: err.message || "Connection failed" });
   }
 });
-function pickToolFromText(text) {
-  const t = text.toLowerCase();
-  const tn = t.replace(/^(يا\s+)?(جو|joe)\s*[:،,-]?\s*/i, "").replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "").replace(/[أإآ]/g, "\u0627");
-  let urlMatch = text.match(/https?:\/\/[^\s]+/);
-  if (!urlMatch) {
-    const domainMatch = text.match(/(?:www\.)?[\w-]+\.[a-z]{2,}(?:\/[^\s]*)?/i);
-    if (domainMatch && !text.includes("@")) {
-      urlMatch = [`https://${domainMatch[0]}`];
-    }
-  }
-  if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
-    let url = urlMatch ? urlMatch[0] : "https://www.google.com";
-    if (!urlMatch) {
-      if (/(google|جوجل)/i.test(tn)) url = "https://www.google.com";
-      else if (/(youtube|يوتيوب)/i.test(tn)) url = "https://www.youtube.com";
-      else if (/(twitter|تويتر)/i.test(tn)) url = "https://www.twitter.com";
-      else if (/(linkedin|لينكد)/i.test(tn)) url = "https://www.linkedin.com";
-      else if (/(github|جيت)/i.test(tn)) url = "https://www.github.com";
-      else if (/(facebook|فيسبوك)/i.test(tn)) url = "https://www.facebook.com";
-      else if (/(instagram|انستقرام)/i.test(tn)) url = "https://www.instagram.com";
-      else if (/(x\.com|twitter)/i.test(tn)) url = "https://x.com";
-    }
-    return { name: "browser_open", input: { url } };
-  }
-  if (/(سعر|قيمة).*(الدولار|usd).*(الليرة|الليره|try)/i.test(tn)) {
-    return { name: "http_fetch", input: { url: "https://open.er-api.com/v6/latest/USD?sym=TRY", base: "USD", sym: "TRY" } };
-  }
-  const currencyMap = {
-    "\u0627\u0644\u062F\u0648\u0644\u0627\u0631": "USD",
-    "\u062F\u0648\u0644\u0627\u0631": "USD",
-    "usd": "USD",
-    "\u0627\u0645\u0631\u064A\u0643\u064A": "USD",
-    "\u0623\u0645\u0631\u064A\u0643\u064A": "USD",
-    "\u0627\u0644\u064A\u0648\u0631\u0648": "EUR",
-    "euro": "EUR",
-    "eur": "EUR",
-    "\u0627\u0644\u0644\u064A\u0631\u0629 \u0627\u0644\u062A\u0631\u0643\u064A\u0629": "TRY",
-    "\u0627\u0644\u0644\u064A\u0631\u0647 \u0627\u0644\u062A\u0631\u0643\u064A\u0629": "TRY",
-    "try": "TRY",
-    "\u0644\u064A\u0631\u0629 \u062A\u0631\u0643\u064A\u0629": "TRY",
-    "\u0627\u0644\u0644\u064A\u0631\u0629": "TRY",
-    "\u0627\u0644\u0644\u064A\u0631\u0647": "TRY",
-    "\u0644\u064A\u0631\u0629": "TRY",
-    "\u0644\u064A\u0631\u0647": "TRY",
-    "\u0627\u0644\u0634\u064A\u0643\u0644": "ILS",
-    "\u0634\u064A\u0643\u0644": "ILS",
-    "ils": "ILS",
-    "\u0627\u0644\u062F\u064A\u0646\u0627\u0631 \u0627\u0644\u0643\u0648\u064A\u062A\u064A": "KWD",
-    "\u062F\u064A\u0646\u0627\u0631 \u0643\u0648\u064A\u062A\u064A": "KWD",
-    "kwd": "KWD",
-    "\u062F\u064A\u0646\u0627\u0631": "KWD",
-    "\u0627\u0644\u0631\u064A\u0627\u0644 \u0627\u0644\u0633\u0639\u0648\u062F\u064A": "SAR",
-    "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A": "SAR",
-    "sar": "SAR",
-    "\u0631\u064A\u0627\u0644": "SAR",
-    "\u0627\u0644\u062F\u0631\u0647\u0645 \u0627\u0644\u0625\u0645\u0627\u0631\u0627\u062A\u064A": "AED",
-    "\u062F\u0631\u0647\u0645 \u0625\u0645\u0627\u0631\u0627\u062A\u064A": "AED",
-    "aed": "AED",
-    "\u062F\u0631\u0647\u0645": "AED",
-    "\u0627\u0644\u062C\u0646\u064A\u0647 \u0627\u0644\u0645\u0635\u0631\u064A": "EGP",
-    "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A": "EGP",
-    "egp": "EGP",
-    "\u062C\u0646\u064A\u0647": "EGP"
-  };
-  const curMatch = tn.match(/(?:سعر|قيمة|صرف|تحويل)\s+(.+?)\s+(?:مقابل|ضد|إلى|الى|ب)\s+(.+?)(?:\s|$)/i);
-  if (curMatch) {
-    const baseName = curMatch[1].trim().toLowerCase();
-    const symName = curMatch[2].trim().toLowerCase();
-    const findCode = (name) => {
-      if (currencyMap[name]) return currencyMap[name];
-      for (const k in currencyMap) {
-        if (name.includes(k)) return currencyMap[k];
-      }
-      return name.length === 3 ? name.toUpperCase() : null;
-    };
-    const base = findCode(baseName);
-    const sym = findCode(symName);
-    if (base && sym) {
-      return { name: "http_fetch", input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
-    }
-  }
-  const names = [
-    ["USD", "(\u0627\u0644\u062F\u0648\u0644\u0627\u0631|\u062F\u0648\u0644\u0627\u0631|usd|\u0627\u0645\u0631\u064A\u0643\u064A|\u0627\u0645\u0631\u064A\u0643\u064A)"],
-    // Normalized 'أمريكي' -> 'امريكي'
-    ["EUR", "(\u0627\u0644\u064A\u0648\u0631\u0648|euro|eur)"],
-    ["TRY", "(\u0627\u0644\u0644\u064A\u0631\u0629|\u0627\u0644\u0644\u064A\u0631\u0647|\u0644\u064A\u0631\u0629|\u0644\u064A\u0631\u0647|try|turkish\\s+lira)"],
-    ["ILS", "(\u0627\u0644\u0634\u064A\u0643\u0644|\u0634\u064A\u0643\u0644|ils)"],
-    ["KWD", "(\u0627\u0644\u062F\u064A\u0646\u0627\u0631|\u062F\u064A\u0646\u0627\u0631|kwd)"],
-    ["SAR", "(\u0627\u0644\u0631\u064A\u0627\u0644|\u0631\u064A\u0627\u0644|sar)"],
-    ["AED", "(\u0627\u0644\u062F\u0631\u0647\u0645|\u062F\u0631\u0647\u0645|aed)"],
-    ["EGP", "(\u0627\u0644\u062C\u0646\u064A\u0647|\u062C\u0646\u064A\u0647|egp)"]
-  ];
-  const found = [];
-  const foundSet = /* @__PURE__ */ new Set();
-  for (const [code, pat] of names) {
-    if (new RegExp(pat, "i").test(tn)) {
-      foundSet.add(code);
-    }
-  }
-  if (foundSet.size >= 2) {
-    const arr = Array.from(foundSet);
-    const base = arr[0];
-    const sym = arr[1];
-    return { name: "http_fetch", input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
-  }
-  if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t)) {
-    const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
-    const query = qMatch ? qMatch[1] : text;
-    return { name: "web_search", input: { query } };
-  }
-  if (/(rss|feed)/i.test(t) && urlMatch) {
-    return { name: "rss_fetch", input: { url: urlMatch[0] } };
-  }
-  if (/(استخرج|تحليل|html|محتوى)/i.test(t) && urlMatch) {
-    return { name: "html_extract", input: { url: urlMatch[0] } };
-  }
-  if (/(لخص|خلاصة|summarize)/i.test(t)) {
-    const m = text.match(/(?:لخص|خلاصة|summarize)\s*[:：]\s*(.+)/i);
-    const tx = m ? m[1] : text;
-    return { name: "text_summarize", input: { text: tx } };
-  }
-  if (/(طقس|حرار[هة]|درجة|weather|temperature)/i.test(t) && /(اسطنبول|إسطنبول|istanbul)/i.test(t)) {
-    const city = "Istanbul";
-    const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
-    return { name: "http_fetch", input: { url, city } };
-  }
-  if (/(صفحة|landing|html)/.test(t)) {
-    const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/><title>\u0635\u0641\u062D\u0629 \u0645\u0635\u0645\u0645\u0629</title><style>body{font-family:system-ui;background:#0b0b0d;color:#e5e7eb;margin:0}header{padding:24px;background:linear-gradient(90deg,rgba(234,179,8,.15),transparent);border-bottom:1px solid #2a2a30}h1{margin:0;color:#eab308}main{padding:24px;max-width:960px;margin:0 auto}section.card{background:rgba(24,24,27,.6);border:1px solid #2a2a30;border-radius:12px;padding:20px;margin-bottom:12px}</style></head><body><header><h1>\u0635\u0641\u062D\u0629 \u062A\u062C\u0631\u064A\u0628\u064A\u0629</h1></header><main><section class="card"><h2>\u0648\u0635\u0641 \u0627\u0644\u0637\u0644\u0628</h2><p>${text.replace(/</g, "&lt;")}</p></section><section class="card"><h2>\u0645\u062D\u062A\u0648\u0649</h2><p>\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062D\u0629 \u0643\u0623\u0631\u062A\u064A\u0641\u0627\u0643\u062A \u064A\u0645\u0643\u0646 \u0641\u062A\u062D\u0647 \u0645\u0646 \u0648\u0627\u062C\u0647\u0629 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645.</p></section></main></body></html>`;
-    return { name: "file_write", input: { filename: "page.html", content: html } };
-  }
-  if (/(متجر|ecommerce|shop)/.test(t)) {
-    const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/><title>\u0645\u062A\u062C\u0631 \u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A</title><style>body{font-family:system-ui;background:#0b0b0d;color:#e5e7eb;margin:0}header{padding:24px;background:linear-gradient(90deg,rgba(234,179,8,.15),transparent);border-bottom:1px solid #2a2a30}h1{margin:0;color:#eab308}main{padding:24px;max-width:1024px;margin:0 auto;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.product{background:rgba(24,24,27,.6);border:1px solid #2a2a30;border-radius:12px;padding:16px}.product h3{margin:0 0 8px}.price{color:#60a5fa;font-weight:700}</style></head><body><header><h1>\u0645\u062A\u062C\u0631 \u062A\u062C\u0631\u064A\u0628\u064A</h1></header><main>${Array.from({ length: 6 }).map((_, i) => `<div class="product"><h3>\u0645\u0646\u062A\u062C ${i + 1}</h3><p>\u0648\u0635\u0641 \u0642\u0635\u064A\u0631 \u0644\u0644\u0645\u0646\u062A\u062C.</p><div class="price">$${(10 + i * 5).toFixed(2)}</div></div>`).join("")}</main></body></html>`;
-    return { name: "file_write", input: { filename: "store.html", content: html } };
-  }
-  if (t.includes("fetch") && urlMatch) return { name: "http_fetch", input: { url: urlMatch[0] } };
-  if (t.includes("write")) return { name: "file_write", input: { filename: "note.txt", content: text } };
-  return null;
-}
 function detectRisk(text) {
   const risky = /(rm\s+-rf|delete|drop\s+table|shutdown|kill\s+process)/i;
   if (risky.test(text)) {
@@ -2635,7 +2497,18 @@ ${memories.join("\n")}
   }
   let steps = 0;
   const MAX_STEPS = 10;
+  let previousMessages = [];
+  if (sessionId) {
+    if (useMock) {
+      const hist = store.listMessages(sessionId);
+      previousMessages = hist.filter((m) => m.runId !== runId).slice(-20).map((m) => ({ role: m.role, content: m.content }));
+    } else {
+      const docs = await Message.find({ sessionId, runId: { $ne: runId } }).sort({ createdAt: -1 }).limit(20);
+      previousMessages = docs.reverse().map((d) => ({ role: d.role, content: d.content }));
+    }
+  }
   const history = [
+    ...previousMessages,
     { role: "user", content: initialContent }
   ];
   let lastResult = null;
