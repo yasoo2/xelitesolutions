@@ -149,14 +149,6 @@ function pickToolFromText(text: string) {
     return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
   }
 
-  // Conversational Heuristics (Fallback for no-LLM)
-  if (/^(مرحبا|اهلين|هلا|كيف\s+الحال|كيفك|شلونك|السلام|عليكم)/i.test(tn)) {
-      return { name: 'echo', input: { text: 'أهلاً بك! أنا بخير، شكراً لسؤالك. كيف يمكنني مساعدتك اليوم؟ (تنويه: الذكاء الاصطناعي غير متصل، هذا رد تلقائي)' } };
-  }
-  if (/^(hello|hi|hey|how\s+are\s+you|how\s+is\s+it\s+going|hola)/i.test(tn)) {
-      return { name: 'echo', input: { text: 'I am doing well, thank you! How can I help you today? (System: LLM unavailable, using fallback)' } };
-  }
-
   if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
     const query = qMatch ? qMatch[1] : text;
@@ -190,7 +182,7 @@ function pickToolFromText(text: string) {
   }
   if (t.includes('fetch') && urlMatch) return { name: 'http_fetch', input: { url: urlMatch[0] } };
   if (t.includes('write')) return { name: 'file_write', input: { filename: 'note.txt', content: text } };
-  return { name: 'echo', input: { text } };
+  return null;
 }
 
 function detectRisk(text: string) {
@@ -425,21 +417,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (steps === 0) plan = pickToolFromText(String(text || ''));
       else break; // Stop if we can't plan anymore
       
-      // Inject System Warning if no API Key
-      if (plan.name === 'echo' && !process.env.OPENAI_API_KEY && !apiKey && provider === 'llm') {
-          const originalText = plan.input?.text;
-          const warning = `
-### ⚠️ **System Alert: No Brain Detected**
-I am currently running in **Heuristic Mode** because no OpenAI API Key was found.
-I can only understand simple commands like:
-- "Open Google"
-- "Search for [Topic]"
-- "Check weather in Istanbul"
-- "Convert 100 USD to TRY"
-
-**To enable full AI intelligence, please add your OpenAI API Key in the settings.**
-`.trim();
-          plan.input.text = warning + "\n\n---\n" + originalText;
+      if (!plan) {
+          // If heuristics also failed (returned null), we have no way to handle this request.
+          // This ensures we rely on AI Keys or specific hardcoded tools (browser, etc) only.
+          const msg = !process.env.OPENAI_API_KEY && !apiKey 
+              ? "⚠️ **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI."
+              : "⚠️ **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.";
+          
+          ev({ type: 'text', data: msg });
+          forcedText = msg;
+          break;
       }
     }
     
