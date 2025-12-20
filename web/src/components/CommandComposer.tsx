@@ -56,9 +56,24 @@ import {
 
 const AgentBrowserStreamLazy = lazy(() => import('./AgentBrowserStream'));
 
-const ChatBubble = forwardRef(({ event, isUser }: { event: any, isUser: boolean }, ref: any) => {
+const ChatBubble = forwardRef(({ event, isUser, onOptionClick }: { event: any, isUser: boolean, onOptionClick?: (text: string) => void }, ref: any) => {
   const { t } = useTranslation();
   
+  let content = event.data.text || event.data;
+  let options: any[] = [];
+
+  // Parse options block :::options ... :::
+  if (!isUser && typeof content === 'string' && content.includes(':::options')) {
+      const parts = content.split(':::options');
+      content = parts[0];
+      try {
+          const jsonStr = parts[1].replace(/:::/g, '').trim();
+          options = JSON.parse(jsonStr);
+      } catch (e) {
+          console.error('Failed to parse options', e);
+      }
+  }
+
   return (
     <motion.div 
       ref={ref}
@@ -82,7 +97,7 @@ const ChatBubble = forwardRef(({ event, isUser }: { event: any, isUser: boolean 
           <span className="chat-bubble-sender">{isUser ? t('you', 'You') : 'JOE AI'}</span>
           {!isUser && (
             <div className="chat-bubble-actions">
-              <button className="chat-action-btn" title={t('copy', 'Copy')} onClick={() => navigator.clipboard.writeText(event.data.text || event.data)}>
+              <button className="chat-action-btn" title={t('copy', 'Copy')} onClick={() => navigator.clipboard.writeText(content)}>
                 <Copy size={14} />
               </button>
               <button className="chat-action-btn" title={t('regenerate', 'Regenerate')}>
@@ -93,8 +108,9 @@ const ChatBubble = forwardRef(({ event, isUser }: { event: any, isUser: boolean 
         </div>
         <div className="chat-bubble-content">
           {isUser ? (
-            <div style={{ whiteSpace: 'pre-wrap' }}>{event.data.text || event.data}</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>
           ) : (
+             <>
              <ReactMarkdown
                components={{
                   h1: ({node, ...props}: any) => <h1 className="text-[var(--accent-secondary)] text-2xl mb-2 mt-2 border-b border-[var(--border-color)] pb-1" {...props} />,
@@ -134,8 +150,35 @@ const ChatBubble = forwardRef(({ event, isUser }: { event: any, isUser: boolean 
                  }
                }}
              >
-               {event.data.text || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
+               {content || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
              </ReactMarkdown>
+             
+             {options.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
+                  {options.map((opt: any, idx: number) => (
+                    <button 
+                      key={idx}
+                      onClick={() => onOptionClick?.(opt.query)}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 20,
+                        padding: '6px 14px',
+                        color: 'var(--text-secondary)',
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex', alignItems: 'center', gap: 6
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                    >
+                      <span style={{opacity:0.7}}>✨</span> {opt.label}
+                    </button>
+                  ))}
+                </div>
+             )}
+             </>
           )}
         </div>
       </div>
@@ -490,15 +533,17 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     }
   }
 
-  async function run() {
-    if (!text.trim()) return;
+  async function run(overrideText?: string) {
+    const inputText = overrideText || text;
+    if (!inputText.trim()) return;
     
     // Optimistic update
     const tempId = Date.now().toString();
-    setEvents(prev => [...prev, { type: 'user_input', data: text, id: tempId }]);
-    const currentText = text;
-    const currentFiles = [...attachedFiles];
-    setText(''); 
+    setEvents(prev => [...prev, { type: 'user_input', data: inputText, id: tempId }]);
+    
+    if (!overrideText) {
+        setText(''); 
+    }
     setAttachedFiles([]); 
 
     const token = localStorage.getItem('token');
@@ -510,9 +555,9 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ 
-          text: currentText, 
+          text: inputText, 
           sessionId,
-          fileIds: currentFiles.map(f => f.id),
+          fileIds: attachedFiles.map(f => f.id),
           provider: activeProvider === 'llm' ? undefined : activeProvider,
           apiKey: activeProvider === 'llm' ? undefined : providers[activeProvider]?.apiKey,
           baseUrl: activeProvider === 'llm' ? undefined : providers[activeProvider]?.baseUrl,
@@ -534,7 +579,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     } catch (e) {
       console.error(e);
       setEvents(prev => [...prev, { type: 'error', data: t('error') }]);
-      setText(currentText);
+      if (!overrideText) setText(inputText);
     }
   }
 
@@ -693,7 +738,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                  content = p.text || p.output || content;
               }
             } catch {}
-            return <ChatBubble key={i} event={{ data: { text: content } }} isUser={false} />;
+            return <ChatBubble key={i} event={{ data: { text: content } }} isUser={false} onOptionClick={(q) => run(q)} />;
           }
           if (e.type === 'step_started') {
             const isImage = e.data.name && e.data.name.includes('image_generate');

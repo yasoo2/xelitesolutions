@@ -134,6 +134,15 @@ function pickToolFromText(text: string) {
     const sym = arr[1];
     return { name: 'http_fetch', input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
   }
+
+  // Conversational Heuristics (Fallback for no-LLM)
+  if (/^(مرحبا|اهلين|هلا|كيف\s+الحال|كيفك|شلونك|السلام|عليكم)/i.test(tn)) {
+      return { name: 'echo', input: { text: 'أهلاً بك! أنا بخير، شكراً لسؤالك. كيف يمكنني مساعدتك اليوم؟ (تنويه: الذكاء الاصطناعي غير متصل، هذا رد تلقائي)' } };
+  }
+  if (/^(hello|hi|hey|how\s+are\s+you|how\s+is\s+it\s+going|hola)/i.test(tn)) {
+      return { name: 'echo', input: { text: 'I am doing well, thank you! How can I help you today? (System: LLM unavailable, using fallback)' } };
+  }
+
   if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\s/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
     const query = qMatch ? qMatch[1] : text;
@@ -401,13 +410,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       // Fallback if LLM fails
       if (steps === 0) plan = pickToolFromText(String(text || ''));
       else break; // Stop if we can't plan anymore
-    } else if (steps === 0 && plan?.name === 'echo') {
-      const h0 = pickToolFromText(String(text || ''));
-      if (h0?.name && h0.name !== 'echo') {
-        plan = h0;
-      }
     }
-
+    
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
 
     if (plan.name === 'browser_run') {
