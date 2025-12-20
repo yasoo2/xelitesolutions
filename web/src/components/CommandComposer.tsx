@@ -226,13 +226,12 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>({
-    llm: { name: 'Joe System (Default)', apiKey: '', isConnected: true },
     openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
     anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
     gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
     grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
   });
-  const [activeProvider, setActiveProvider] = useState('llm');
+  const [activeProvider, setActiveProvider] = useState('openai');
   const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
 
   // Load providers from localStorage on mount
@@ -558,10 +557,10 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           text: inputText, 
           sessionId,
           fileIds: attachedFiles.map(f => f.id),
-          provider: activeProvider === 'llm' ? undefined : activeProvider,
-          apiKey: activeProvider === 'llm' ? undefined : providers[activeProvider]?.apiKey,
-          baseUrl: activeProvider === 'llm' ? undefined : providers[activeProvider]?.baseUrl,
-          model: activeProvider === 'llm' ? undefined : providers[activeProvider]?.model
+          provider: activeProvider,
+          apiKey: providers[activeProvider]?.apiKey,
+          baseUrl: providers[activeProvider]?.baseUrl,
+          model: providers[activeProvider]?.model
         }),
       });
       const data = await res.json();
@@ -610,7 +609,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({
-                provider: key === 'llm' ? 'llm' : key,
+                provider: key,
                 apiKey: p.apiKey,
                 baseUrl: p.baseUrl,
                 model: p.model
@@ -937,9 +936,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                             </div>
 
                             <div style={{ flex: 1 }}>
-                                {activeProvider !== 'llm' && (
-                                    <div style={{ marginBottom: 20 }}>
-                                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
+                                <div style={{ marginBottom: 20 }}>
+                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
                                         <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
                                             <div style={{ position: 'relative', flex: 1 }}>
                                                 <input 
@@ -972,7 +970,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                                             </button>
                                         </div>
                                     </div>
-                                )}
 
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                                     <div>
