@@ -215,9 +215,34 @@ async function runActions(session: Session, actions: Action[]) {
         }
         case 'click': {
           if (a.selector) {
-            await session.page.click(a.selector);
+            try {
+              const loc = session.page.locator(a.selector).first();
+              const box = await loc.boundingBox({ timeout: 1000 }).catch(() => null);
+              if (box) {
+                const cx = box.x + box.width / 2;
+                const cy = box.y + box.height / 2;
+                notify('cursor_move', { x: cx, y: cy });
+                await new Promise(r => setTimeout(r, 150)); // Visual delay
+              }
+              await loc.click();
+            } catch (e) {
+              // Fallback if locator fails or something else happens, though click() would also fail
+              await session.page.click(a.selector);
+            }
           } else if (a.roleName && a.role) {
-            await session.page.getByRole(a.role as any, { name: a.roleName }).click();
+            try {
+              const loc = session.page.getByRole(a.role as any, { name: a.roleName }).first();
+              const box = await loc.boundingBox({ timeout: 1000 }).catch(() => null);
+              if (box) {
+                const cx = box.x + box.width / 2;
+                const cy = box.y + box.height / 2;
+                notify('cursor_move', { x: cx, y: cy });
+                await new Promise(r => setTimeout(r, 150));
+              }
+              await loc.click();
+            } catch {
+              await session.page.getByRole(a.role as any, { name: a.roleName }).click();
+            }
           } else if (typeof a.x === 'number' && typeof a.y === 'number') {
             await session.page.mouse.click(a.x, a.y, { button: a.button || 'left' });
             notify('cursor_click', { x: a.x, y: a.y });
