@@ -126,7 +126,7 @@ var config = {
   mongoUri: process.env.MONGO_URI || "mongodb://localhost:27017/joe",
   jwtSecret: process.env.JWT_SECRET || "change-me",
   allowedOrigins: process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()) || allowedOriginsDefault,
-  browserWorkerUrl: process.env.BROWSER_WORKER_URL || "http://localhost:7070",
+  browserWorkerUrl: process.env.BROWSER_WORKER_URL || "http://127.0.0.1:7070",
   browserWorkerKey: process.env.BROWSER_WORKER_KEY || "change-me"
 };
 
@@ -382,7 +382,28 @@ var tools = [
     name: "browser_run",
     version: "1.0.0",
     tags: ["browser", "agent"],
-    inputSchema: { type: "object", properties: { sessionId: { type: "string" }, actions: { type: "array" } }, required: ["sessionId", "actions"] },
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        actions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string", description: "Action type (e.g. goto, click, type, scroll, wait)" },
+              url: { type: "string" },
+              selector: { type: "string" },
+              text: { type: "string" },
+              key: { type: "string" }
+            },
+            required: ["type"],
+            additionalProperties: true
+          }
+        }
+      },
+      required: ["sessionId", "actions"]
+    },
     outputSchema: { type: "object", properties: { outputs: { type: "array" } } },
     permissions: ["internet"],
     sideEffects: [],
@@ -1682,8 +1703,20 @@ var import_events = require("events");
 var import_string_decoder = require("string_decoder");
 var TerminalManager = class extends import_events.EventEmitter {
   constructor() {
-    super(...arguments);
+    super();
     this.sessions = {};
+    const cleanup = () => {
+      Object.keys(this.sessions).forEach((id) => this.kill(id));
+    };
+    process.on("exit", cleanup);
+    process.on("SIGINT", () => {
+      cleanup();
+      process.exit();
+    });
+    process.on("SIGTERM", () => {
+      cleanup();
+      process.exit();
+    });
   }
   create(id, cwd = process.cwd()) {
     if (this.sessions[id]) return;
@@ -1735,7 +1768,6 @@ var wssRef = null;
 function attachWebSocket(server) {
   wssRef = new import_ws.WebSocketServer({ server });
   wssRef.on("connection", (ws) => {
-    console.log("Client connected to WebSocket");
     ws.on("message", (message) => {
       try {
         const data = JSON.parse(message.toString());
@@ -1968,7 +2000,7 @@ var Run = import_mongoose5.default.model("Run", RunSchema);
 var import_openai = __toESM(require("openai"));
 var apiKey = process.env.OPENAI_API_KEY;
 if (apiKey) {
-  console.log("LLM: OpenAI API Key found (starts with " + apiKey.slice(0, 7) + "...)");
+  console.info("LLM: OpenAI API Key found (starts with " + apiKey.slice(0, 7) + "...)");
 } else {
   console.warn("LLM: No OpenAI API Key found in environment variables. LLM features will be disabled.");
 }
@@ -1982,7 +2014,10 @@ var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capab
 ## CORE INSTRUCTIONS:
 1. **Think Before Acting**: You are a "Reasoning Engine". Before every action, verify if you have enough information. If not, use a tool to get it.
 2. **Tool First**: Do not guess. If asked about a library, file, or real-world fact, use the appropriate tool (grep_search, browser_open, search) immediately.
-3. **Browser Usage**: The "browser_open" tool is your window to the world. Use it for:
+3. **Conversational Queries**: 
+   - If the user greets you or asks personal questions (e.g. "how are you"), **reply naturally with text only**. Do NOT use any tools.
+   - **Identity**: If asked "who are you", reply that you are Joe, an elite AI autonomous engineer. **NEVER** search for "who are you".
+4. **Browser Usage**: The "browser_open" tool is your window to the world. Use it for:
    - Verifying documentation.
    - Checking live website status.
    - Searching for up-to-date information when internal knowledge is stale.
@@ -1993,15 +2028,11 @@ var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capab
    - **Output**: **STRICTLY FOLLOW THE USER'S LANGUAGE**. If the user asks in Arabic, you MUST reply in "Eloquent & Engaging Arabic" (\u0644\u063A\u0629 \u0639\u0631\u0628\u064A\u0629 \u0641\u0635\u062D\u0649 \u0633\u0644\u0633\u0629 \u0648\u062C\u0645\u064A\u0644\u0629).
    - **Translation**: Never give a "machine translation" vibe. Use natural, professional phrasing.
 
-## STANDARD WORKFLOW:
-1. **Analyze**: Read the user's request. identifying key intent (Fix, Build, Explain, Explore).
-2. **Explore**: Use "read_file_tree" or "analyze_codebase" to ground yourself in the repo.
-3. **Plan**: For complex tasks, create/update an "ARCHITECTURE.md" or "TODO.md".
-4. **Execute**: Use "scaffold_project", "file_write", "shell_execute".
-5. **Verify**: ALWAYS verify your work.
-   - Did you write a file? Read it back to check syntax.
-   - Did you fix a bug? Run the test or script.
-   - Did you build a UI? Open it in the browser if possible.
+## RESPONSE STYLE - CRITICAL:
+- **Concise & Direct**: Give the answer immediately. Do not fluff. Do not apologize unnecessarily.
+- **No Over-Explanation**: Only explain if asked or if the topic is complex.
+- **Visuals**: Use tables, lists, and code blocks liberally.
+- **Follow-up**: At the very end of your final response, you MUST provide 3 relevant follow-up options in a hidden JSON block.
 
 ## RESPONSE FORMATTING:
 - **Visual Hierarchy**: Use Markdown headers (##, ###) to structure your response.
@@ -2009,6 +2040,16 @@ var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capab
 - **Code**: Use code blocks with language tags (e.g., \`\`\`typescript).
 - **Tone**: Professional, confident, yet helpful.
 - **Synthesized Answers**: When reporting search/browser results, synthesize them into a coherent narrative. Do not just dump data.
+
+## FOLLOW-UP OPTIONS FORMAT:
+Append this EXACT format at the end of your message (invisible to user, parsed by UI):
+:::options
+[
+  { "label": "Short Label 1", "query": "Full question for option 1" },
+  { "label": "Short Label 2", "query": "Full question for option 2" },
+  { "label": "Short Label 3", "query": "Full question for option 3" }
+]
+:::
 
 ## CRITICAL RULES:
 - **Persistent Context**: Always check for ".joe/context.json" to understand project history.
@@ -2079,7 +2120,7 @@ async function planNextStep(messages2, options) {
     if (options?.throwOnError) {
       throw error;
     }
-    return heuristicPlanner(messages2);
+    throw error;
   }
 }
 async function generateSessionTitle(messages2) {
@@ -2125,154 +2166,6 @@ async function generateSummary(messages2) {
     console.error("Summary generation failed", e);
     return "Summary generation failed due to an error.";
   }
-}
-function heuristicPlanner(messages2) {
-  const userMsg = messages2.find((m) => m.role === "user")?.content || "";
-  console.error("--- Heuristic Planner Debug ---");
-  console.error("Messages Count:", messages2.length);
-  messages2.forEach((m, i) => {
-    if (m.role === "assistant") {
-      console.error(`Msg[${i}] Assistant: ${String(m.content).slice(0, 100)}...`);
-    }
-  });
-  const lastMsg = messages2[messages2.length - 1];
-  if (lastMsg.role === "assistant" && lastMsg.content && lastMsg.content.includes("FAILED. Error:")) {
-    const errorContent = lastMsg.content;
-    if (errorContent.includes("Tool 'file_read' FAILED") && (errorContent.includes("ENOENT") || errorContent.includes("File not found"))) {
-      let filename = "unknown.txt";
-      const m = userMsg.match(/['"]([^'"]+\.[a-z]+)['"]/i);
-      if (m) filename = m[1];
-      if (filename !== "unknown.txt") {
-        return { name: "file_write", input: { filename, content: "ghost" } };
-      }
-    }
-    if (errorContent.includes("SyntaxError") || errorContent.includes("missing ) after argument list")) {
-      const m = userMsg.match(/['"]([^'"]+\.js)['"]/i);
-      if (m) {
-        const filename = m[1];
-        return { name: "file_write", input: { filename, content: 'console.log("Hello World"); // Fixed by Joe' } };
-      }
-    }
-    if (errorContent.includes("Tool 'shell_execute' FAILED") && errorContent.includes("Cannot find module")) {
-      const m = userMsg.match(/['"]([^'"]+\.js)['"]/i);
-      if (m) {
-        const filename = m[1];
-        const contentMatch = userMsg.match(/content ['"](.+)['"]/i);
-        const content = contentMatch ? contentMatch[1] : 'console.log("Hello World");';
-        return { name: "file_write", input: { filename, content } };
-      }
-    }
-  }
-  if (/(run|execute|job|شغل|نفذ)/i.test(String(userMsg)) && /(node|python|script)/i.test(String(userMsg))) {
-    if (lastMsg.role === "assistant" && lastMsg.content && lastMsg.content.includes("Tool 'shell_execute' executed")) {
-      return { name: "echo", input: { text: "Script executed successfully. Output: " + lastMsg.content.slice(0, 100) } };
-    }
-    const m = userMsg.match(/['"]([^'"]+\.js)['"]/i);
-    if (m) {
-      const filename = m[1];
-      return { name: "shell_execute", input: { command: `node ${filename}` } };
-    }
-  }
-  if (/(read|cat|content|أقرأ|اقرأ)/i.test(String(userMsg)) && /(file|ملف)/i.test(String(userMsg))) {
-    if (lastMsg.role === "assistant" && lastMsg.content && lastMsg.content.includes("Tool 'file_read' executed")) {
-      return { name: "echo", input: { text: "File read successfully. " + lastMsg.content } };
-    }
-    const match = userMsg.match(/['"]([^'"]+\.[a-z]+)['"]/i);
-    if (match) {
-      return { name: "file_read", input: { filename: match[1] } };
-    }
-  }
-  if (/(متجر|ecommerce|shop|store|site|website|موقع|page|landing)/i.test(String(userMsg))) {
-    const toolsCalled = messages2.filter((m) => m.role === "assistant" && m.tool_calls).flatMap((m) => m.tool_calls?.map((tc) => tc.function.name) || []);
-    const textToolsCalled = messages2.filter((m) => m.role === "assistant" && !m.tool_calls && typeof m.content === "string").map((m) => {
-      const match = m.content?.match(/execute tool: (\w+)/);
-      return match ? match[1] : null;
-    }).filter(Boolean);
-    const allToolsCalled = [...toolsCalled, ...textToolsCalled];
-    const filesWritten = messages2.flatMap((m) => {
-      if (m.role === "assistant" && m.tool_calls) {
-        return m.tool_calls.map((tc) => {
-          if (tc.function.name === "file_write") {
-            try {
-              return JSON.parse(tc.function.arguments).filename;
-            } catch {
-              return null;
-            }
-          }
-          return null;
-        });
-      }
-      if (m.role === "assistant" && typeof m.content === "string") {
-        if (m.content.includes("Tool 'file_write' executed")) {
-          return ["__ANY_FILE__"];
-        }
-      }
-      return [];
-    }).filter(Boolean);
-    let targetFilename = "index.html";
-    const filenameMatch = userMsg.match(/(?:['"]([^'"]+\.html)['"]|(\b[\w-]+\.html\b))/i);
-    if (filenameMatch) {
-      targetFilename = filenameMatch[1] || filenameMatch[2];
-    }
-    if (!allToolsCalled.includes("file_write") && !textToolsCalled.includes("file_write") || !filesWritten.includes(targetFilename) && !filesWritten.includes("__ANY_FILE__")) {
-      return {
-        name: "file_write",
-        input: {
-          filename: targetFilename,
-          content: `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${targetFilename === "xelite.html" ? "Xelite Coffee" : "\u0645\u0648\u0642\u0639 \u062C\u062F\u064A\u062F"}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-    body { font-family: 'Cairo', sans-serif; }
-  </style>
-</head>
-<body class="bg-gray-900 text-white">
-  <header class="p-6 border-b border-gray-800 flex justify-between items-center">
-    <h1 class="text-2xl font-bold text-yellow-500">${targetFilename === "xelite.html" ? "Xelite Coffee" : "\u0645\u062A\u062C\u0631 \u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A"}</h1>
-    <nav>
-      <a href="#" class="mx-2 hover:text-yellow-400">\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629</a>
-      <a href="#" class="mx-2 hover:text-yellow-400">\u0627\u0644\u0645\u0646\u062A\u062C\u0627\u062A</a>
-      <a href="#" class="mx-2 hover:text-yellow-400">\u0627\u062A\u0635\u0644 \u0628\u0646\u0627</a>
-    </nav>
-  </header>
-  <main class="container mx-auto p-8 text-center">
-    <h2 class="text-4xl font-bold mb-4">\u0623\u0647\u0644\u0627\u064B \u0628\u0643 \u0641\u064A \u0627\u0644\u0645\u0633\u062A\u0642\u0628\u0644</h2>
-    <p class="text-gray-400 mb-8">\u0646\u062D\u0646 \u0646\u0628\u0646\u064A \u0627\u0644\u062D\u0644\u0648\u0644 \u0627\u0644\u0630\u0643\u064A\u0629.</p>
-    <button class="bg-yellow-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-400 transition">\u0627\u0628\u062F\u0623 \u0627\u0644\u0622\u0646</button>
-  </main>
-  <footer class="p-6 text-center text-gray-600 mt-12 border-t border-gray-800">
-    &copy; 2025 XElite Solutions
-  </footer>
-</body>
-</html>`
-        }
-      };
-    }
-  }
-  const lowerMsg = String(userMsg).toLowerCase();
-  if (/^(hello|hi|hey|salam|مرحبا|هلا|السلام|ahlan)/i.test(lowerMsg)) {
-    return {
-      name: "echo",
-      input: { text: "\u0623\u0647\u0644\u0627\u064B \u0628\u0643! \u0623\u0646\u0627 \u062C\u0648\u060C \u0645\u0647\u0646\u062F\u0633 \u0627\u0644\u0628\u0631\u0645\u062C\u064A\u0627\u062A \u0627\u0644\u0645\u0633\u062A\u0642\u0644. \u0643\u064A\u0641 \u064A\u0645\u0643\u0646\u0646\u064A \u0645\u0633\u0627\u0639\u062F\u062A\u0643 \u0627\u0644\u064A\u0648\u0645\u061F\n(\u0645\u0644\u0627\u062D\u0638\u0629: \u0623\u0646\u0627 \u0623\u0639\u0645\u0644 \u062D\u0627\u0644\u064A\u0627\u064B \u0641\u064A \u0648\u0636\u0639 \u0627\u0644\u062A\u0639\u0627\u0641\u064A \u0646\u0638\u0631\u0627\u064B \u0644\u0639\u062F\u0645 \u062A\u0648\u0641\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0643\u0627\u0645\u0644 \u0628\u0627\u0644\u062F\u0645\u0627\u063A \u0627\u0644\u0645\u0631\u0643\u0632\u064A)" }
-    };
-  }
-  if (/(status|health|state|كيف حالك|وضعك)/i.test(lowerMsg)) {
-    return {
-      name: "echo",
-      input: { text: "\u0627\u0644\u0623\u0646\u0638\u0645\u0629 \u062A\u0639\u0645\u0644. \u0623\u0646\u0627 \u062C\u0627\u0647\u0632 \u0644\u062A\u0646\u0641\u064A\u0630 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629 (\u0642\u0631\u0627\u0621\u0629 \u0645\u0644\u0641\u0627\u062A\u060C \u0643\u062A\u0627\u0628\u0629 \u0623\u0643\u0648\u0627\u062F\u060C \u0628\u0646\u0627\u0621 \u0635\u0641\u062D\u0627\u062A). \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0627\u0644\u0645\u062A\u0642\u062F\u0645: \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631 \u062D\u0627\u0644\u064A\u0627\u064B." }
-    };
-  }
-  return {
-    name: "echo",
-    input: {
-      text: "\u0639\u0630\u0631\u0627\u064B\u060C \u0644\u0645 \u0623\u0641\u0647\u0645 \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628 \u062A\u0645\u0627\u0645\u0627\u064B. \u0628\u0645\u0627 \u0623\u0646\u0646\u064A \u0641\u064A \u0648\u0636\u0639 '\u0627\u0644\u062A\u0639\u0627\u0641\u064A \u0627\u0644\u0630\u0627\u062A\u064A'\u060C \u064A\u0631\u062C\u0649 \u0625\u0639\u0637\u0627\u0626\u064A \u0623\u0648\u0627\u0645\u0631 \u0648\u0627\u0636\u062D\u0629 \u0645\u062B\u0644:\n- '\u0627\u0628\u0646 \u0645\u0648\u0642\u0639\u0627\u064B \u0628\u0627\u0633\u0645 page.html'\n- '\u0627\u0642\u0631\u0623 \u0627\u0644\u0645\u0644\u0641 data.txt'\n- '\u0634\u063A\u0644 \u0627\u0644\u0633\u0643\u0631\u064A\u0628\u062A test.js'"
-    }
-  };
 }
 
 // src/middleware/auth.ts
@@ -2417,7 +2310,6 @@ Output: { "facts": [{ "key": "role", "value": "React Developer" }, { "key": "pre
               sessionId: options?.sessionId
               // Optional link to origin session
             });
-            console.log(`[Memory] Saved fact: ${fact.key} = ${fact.value}`);
           }
         }
       }
@@ -2432,11 +2324,7 @@ var router3 = (0, import_express3.Router)();
 router3.post("/verify", authenticate, async (req, res) => {
   const { provider, apiKey: apiKey2, baseUrl, model } = req.body || {};
   if (provider === "llm") {
-    if (process.env.OPENAI_API_KEY) {
-      return res.json({ status: "ok", message: "Joe System Ready" });
-    } else {
-      return res.json({ status: "ok", message: "Joe System (Heuristic Only)" });
-    }
+    return res.status(400).json({ error: "Local intelligence is disabled. Please provide an API key." });
   }
   try {
     const result = await planNextStep(
@@ -2455,8 +2343,14 @@ router3.post("/verify", authenticate, async (req, res) => {
 });
 function pickToolFromText(text) {
   const t = text.toLowerCase();
-  const tn = t.replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "").replace(/[أإآ]/g, "\u0627");
-  const urlMatch = text.match(/https?:\/\/\S+/);
+  const tn = t.replace(/^(يا\s+)?(جو|joe)\s*[:،,-]?\s*/i, "").replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "").replace(/[أإآ]/g, "\u0627");
+  let urlMatch = text.match(/https?:\/\/[^\s]+/);
+  if (!urlMatch) {
+    const domainMatch = text.match(/(?:www\.)?[\w-]+\.[a-z]{2,}(?:\/[^\s]*)?/i);
+    if (domainMatch && !text.includes("@")) {
+      urlMatch = [`https://${domainMatch[0]}`];
+    }
+  }
   if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
     let url = urlMatch ? urlMatch[0] : "https://www.google.com";
     if (!urlMatch) {
@@ -2465,6 +2359,9 @@ function pickToolFromText(text) {
       else if (/(twitter|تويتر)/i.test(tn)) url = "https://www.twitter.com";
       else if (/(linkedin|لينكد)/i.test(tn)) url = "https://www.linkedin.com";
       else if (/(github|جيت)/i.test(tn)) url = "https://www.github.com";
+      else if (/(facebook|فيسبوك)/i.test(tn)) url = "https://www.facebook.com";
+      else if (/(instagram|انستقرام)/i.test(tn)) url = "https://www.instagram.com";
+      else if (/(x\.com|twitter)/i.test(tn)) url = "https://x.com";
     }
     return { name: "browser_open", input: { url } };
   }
@@ -2549,7 +2446,7 @@ function pickToolFromText(text) {
     const sym = arr[1];
     return { name: "http_fetch", input: { url: `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, base, sym } };
   }
-  if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\s/.test(t)) {
+  if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
     const query = qMatch ? qMatch[1] : text;
     return { name: "web_search", input: { query } };
@@ -2580,7 +2477,7 @@ function pickToolFromText(text) {
   }
   if (t.includes("fetch") && urlMatch) return { name: "http_fetch", input: { url: urlMatch[0] } };
   if (t.includes("write")) return { name: "file_write", input: { filename: "note.txt", content: text } };
-  return { name: "echo", input: { text } };
+  return null;
 }
 function detectRisk(text) {
   const risky = /(rm\s+-rf|delete|drop\s+table|shutdown|kill\s+process)/i;
@@ -2634,7 +2531,7 @@ ${f.content}
     try {
       const memories = await MemoryService.searchMemories(userId, String(text || ""));
       if (memories.length > 0) {
-        console.log(`[Memory] Found ${memories.length} relevant memories`);
+        console.info(`[Memory] Found ${memories.length} relevant memories`);
         fullPromptText += `
 
 [System Note: Known facts about this user (Memory)]:
@@ -2664,12 +2561,7 @@ ${memories.join("\n")}
     console.warn("LLM planning error:", err);
   }
   if (!plan) {
-    plan = pickToolFromText(String(text || ""));
   } else {
-    const h = pickToolFromText(String(text || ""));
-    if (plan?.name === "echo" && h?.name && h.name !== "echo") {
-      plan = h;
-    }
   }
   ev({ type: "step_done", data: { name: "plan", plan } });
   if (!sessionId) {
@@ -2751,7 +2643,7 @@ ${memories.join("\n")}
   while (steps < MAX_STEPS) {
     ev({ type: "step_started", data: { name: `thinking_step_${steps + 1}` } });
     try {
-      console.log(`Step ${steps} History Last Item:`, JSON.stringify(history[history.length - 1]));
+      console.debug(`Step ${steps} History Last Item:`, JSON.stringify(history[history.length - 1]));
       const shouldThrow = Boolean(apiKey2 || provider !== "llm" && provider);
       const isSystemConfigured = !!process.env.OPENAI_API_KEY;
       const throwOnError = !!apiKey2 || provider && provider !== "llm" || isSystemConfigured;
@@ -2768,10 +2660,11 @@ ${memories.join("\n")}
     if (!plan) {
       if (steps === 0) plan = pickToolFromText(String(text || ""));
       else break;
-    } else if (steps === 0 && plan?.name === "echo") {
-      const h0 = pickToolFromText(String(text || ""));
-      if (h0?.name && h0.name !== "echo") {
-        plan = h0;
+      if (!plan) {
+        const msg = !process.env.OPENAI_API_KEY && !apiKey2 ? "\u26A0\uFE0F **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI." : "\u26A0\uFE0F **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.";
+        ev({ type: "text", data: msg });
+        forcedText = msg;
+        break;
       }
     }
     ev({ type: "step_done", data: { name: `thinking_step_${steps + 1}`, plan } });
@@ -4185,7 +4078,7 @@ router18.get("/quality", authenticate, async (req, res) => {
       const lines = content.split("\n");
       const loc = lines.filter((l) => l.trim().length > 0).length;
       const size = import_fs9.default.statSync(file).size;
-      const todos = (content.match(/TODO:/gi) || []).length;
+      const todos = (content.match(new RegExp("TODO:", "gi")) || []).length;
       let complexity = 0;
       const keywords = ["if", "else", "for", "while", "switch", "case", "catch"];
       lines.forEach((line) => {
@@ -4323,9 +4216,12 @@ var import_express20 = require("express");
 
 // src/services/council.ts
 var EXPERTS = [
-  { role: "Architect", name: "Dr. Arch", focus: "Scalability, Clean Architecture, Design Patterns", color: "#3b82f6" },
-  { role: "Security", name: "SecOps Sam", focus: "Vulnerabilities, Auth, Data Protection", color: "#ef4444" },
-  { role: "UX/UI", name: "Designer Dani", focus: "User Experience, Accessibility, Visuals", color: "#eab308" }
+  { role: "Architect", name: "Dr. Arch", focus: "Scalability, Clean Architecture, Design Patterns", color: "#2563eb" },
+  // Blue-600
+  { role: "Security", name: "SecOps Sam", focus: "Vulnerabilities, Auth, Data Protection", color: "#dc2626" },
+  // Red-600
+  { role: "UX/UI", name: "Designer Dani", focus: "User Experience, Accessibility, Visuals", color: "#db2777" }
+  // Pink-600
 ];
 var CouncilService = class {
   static async consult(topic) {
@@ -4366,7 +4262,8 @@ var CouncilService = class {
       try {
         const conclusion = await callLLM(synthesisPrompt, []);
         discussion.push({
-          expert: { role: "Lead", name: "Joe", focus: "Execution", color: "#ffffff" },
+          expert: { role: "Lead", name: "Joe", focus: "Execution", color: "#4f46e5" },
+          // Indigo-600
           content: conclusion
         });
       } catch (e) {
@@ -4395,13 +4292,27 @@ var CodeGraphService = class {
     const links = [];
     const idMap = /* @__PURE__ */ new Map();
     const files = await this.getFiles(rootDir);
+    const directories = /* @__PURE__ */ new Set();
+    const routeFiles = /* @__PURE__ */ new Map();
     files.forEach((file) => {
       const relPath = import_path9.default.relative(rootDir, file);
+      const dirName = import_path9.default.dirname(relPath);
+      let currentDir = dirName;
+      while (currentDir !== "." && currentDir !== "") {
+        directories.add(currentDir);
+        currentDir = import_path9.default.dirname(currentDir);
+      }
+      if (dirName === ".") directories.add(".");
       const id = relPath;
       idMap.set(file, id);
       let group = 4;
-      if (relPath.includes("api/") || relPath.includes("routes/")) group = 1;
-      else if (relPath.includes("services/")) group = 2;
+      if (relPath.includes("api/") || relPath.includes("routes/")) {
+        group = 1;
+        if (relPath.includes("/routes/")) {
+          const routeName = import_path9.default.basename(file, import_path9.default.extname(file));
+          routeFiles.set(routeName, id);
+        }
+      } else if (relPath.includes("services/")) group = 2;
       else if (relPath.includes("components/")) group = 3;
       nodes.push({
         id,
@@ -4411,6 +4322,31 @@ var CodeGraphService = class {
         // Default size
       });
     });
+    directories.forEach((dir) => {
+      nodes.push({
+        id: dir,
+        name: dir === "." ? "ROOT" : import_path9.default.basename(dir) + "/",
+        group: 5,
+        // 5 for Directories
+        val: dir === "." ? 10 : 3
+        // Root is big, dirs are medium
+      });
+    });
+    files.forEach((file) => {
+      const relPath = import_path9.default.relative(rootDir, file);
+      const dir = import_path9.default.dirname(relPath);
+      const targetDir = dir === "" || dir === "." ? "." : dir;
+      links.push({ source: relPath, target: targetDir });
+    });
+    directories.forEach((dir) => {
+      if (dir === ".") return;
+      const parent = import_path9.default.dirname(dir);
+      const targetParent = parent === "" || parent === "." ? "." : parent;
+      if (dir !== targetParent) {
+        links.push({ source: dir, target: targetParent });
+      }
+    });
+    const routeNames = Array.from(routeFiles.keys());
     await Promise.all(files.map(async (file) => {
       try {
         const content = await import_fs11.default.promises.readFile(file, "utf-8");
@@ -4420,10 +4356,51 @@ var CodeGraphService = class {
         if (node) {
           node.val = Math.min(lines / 10, 20);
         }
-        const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
-        let match;
-        while ((match = importRegex.exec(content)) !== null) {
-          const importPath = match[1];
+        const importRegexes = [
+          /import\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
+          // import ... from '...'
+          /export\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
+          // export ... from '...'
+          /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+          // require('...')
+          /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+          // import('...')
+          /import\s+['"]([^'"]+)['"]/g
+          // import '...'
+        ];
+        const foundImports = /* @__PURE__ */ new Set();
+        for (const regex of importRegexes) {
+          let match;
+          while ((match = regex.exec(content)) !== null) {
+            foundImports.add(match[1]);
+          }
+        }
+        for (const importPath of foundImports) {
+          if (importPath.startsWith("@/")) {
+            const aliasPath = import_path9.default.join(rootDir, "web/src", importPath.slice(2));
+            const candidates = [
+              aliasPath,
+              aliasPath + ".ts",
+              aliasPath + ".tsx",
+              aliasPath + ".js",
+              aliasPath + ".jsx",
+              import_path9.default.join(aliasPath, "index.ts"),
+              import_path9.default.join(aliasPath, "index.tsx"),
+              import_path9.default.join(aliasPath, "index.js"),
+              import_path9.default.join(aliasPath, "index.jsx")
+            ];
+            for (const cand of candidates) {
+              if (idMap.has(cand)) {
+                const targetId = idMap.get(cand);
+                if (targetId !== nodeId) {
+                  if (!links.some((l) => l.source === nodeId && l.target === targetId)) {
+                    links.push({ source: nodeId, target: targetId });
+                  }
+                }
+                break;
+              }
+            }
+          }
           if (importPath.startsWith(".")) {
             try {
               const resolvedPath = import_path9.default.resolve(import_path9.default.dirname(file), importPath);
@@ -4432,18 +4409,46 @@ var CodeGraphService = class {
                 resolvedPath + ".ts",
                 resolvedPath + ".tsx",
                 resolvedPath + ".js",
-                resolvedPath + "/index.ts"
+                resolvedPath + ".jsx",
+                import_path9.default.join(resolvedPath, "index.ts"),
+                import_path9.default.join(resolvedPath, "index.tsx"),
+                import_path9.default.join(resolvedPath, "index.js"),
+                import_path9.default.join(resolvedPath, "index.jsx")
               ];
               for (const cand of candidates) {
                 if (idMap.has(cand)) {
-                  if (idMap.get(cand) !== nodeId) {
-                    links.push({ source: nodeId, target: idMap.get(cand) });
+                  const targetId = idMap.get(cand);
+                  if (targetId !== nodeId) {
+                    if (!links.some((l) => l.source === nodeId && l.target === targetId)) {
+                      links.push({ source: nodeId, target: targetId });
+                    }
                   }
                   break;
                 }
               }
             } catch (e) {
             }
+          }
+        }
+        if (routeNames.length > 0) {
+          const pathSegmentRegex = /\/([a-zA-Z0-9_-]+)/g;
+          const quotedStringRegex = /['"]([a-zA-Z0-9_-]+)['"]/g;
+          const checkMatch = (potentialRoute) => {
+            if (routeFiles.has(potentialRoute)) {
+              const targetId = routeFiles.get(potentialRoute);
+              if (targetId && targetId !== nodeId) {
+                if (!links.some((l) => l.source === nodeId && l.target === targetId)) {
+                  links.push({ source: nodeId, target: targetId });
+                }
+              }
+            }
+          };
+          let match;
+          while ((match = pathSegmentRegex.exec(content)) !== null) {
+            checkMatch(match[1]);
+          }
+          while ((match = quotedStringRegex.exec(content)) !== null) {
+            checkMatch(match[1]);
           }
         }
       } catch (e) {
@@ -4514,7 +4519,6 @@ var SentinelService = class {
   static start(rootPath) {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log("\u{1F6E1}\uFE0F Sentinel Active: Monitoring codebase...");
     this.scan(rootPath);
     setInterval(() => this.scan(rootPath), 5 * 60 * 1e3);
   }
@@ -4525,16 +4529,20 @@ var SentinelService = class {
       await Promise.all(files.map(async (file) => {
         try {
           const content = await import_fs12.default.promises.readFile(file, "utf-8");
-          if (content.match(/['"][a-zA-Z0-9]{32,}['"]/) || content.includes("sk-") || content.includes("Bearer ") || content.includes("aws_access_key_id") || content.includes("ghp_")) {
-            if (!content.includes("import ") && !content.includes("sha256")) {
-              newAlerts.push(this.createAlert("security", "high", file, "Potential API Key or Secret detected"));
+          if (!file.includes("test") && !file.includes("script") && !file.includes("spec")) {
+            if (content.match(/['"][a-zA-Z0-9]{32,}['"]/) || content.includes("sk-") || content.includes("Bearer ") || content.includes("aws_access_key_id") || content.includes("ghp_")) {
+              if (!content.includes("import ") && !content.includes("sha256")) {
+                newAlerts.push(this.createAlert("security", "high", file, "Potential API Key or Secret detected"));
+              }
             }
           }
-          if (!file.includes("test") && !file.includes("script") && !file.includes("dev") && content.includes("console.log")) {
-            newAlerts.push(this.createAlert("quality", "low", file, "Console.log statement found in production code"));
+          if (!file.includes("test") && !file.includes("script") && !file.includes("dev")) {
+            if (content.includes("console.log(")) {
+              newAlerts.push(this.createAlert("quality", "low", file, "Console.log statement found (use console.info/warn/error or logger)"));
+            }
           }
           if (content.includes("TODO") || content.includes("FIXME")) {
-            newAlerts.push(this.createAlert("maintenance", "medium", file, "Pending TODO/FIXME detected"));
+            newAlerts.push(this.createAlert("maintenance", "medium", file, "Pending Task detected"));
           }
         } catch (e) {
         }

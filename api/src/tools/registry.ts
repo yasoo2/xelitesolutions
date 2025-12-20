@@ -66,7 +66,18 @@ export const tools: ToolDefinition[] = [
         sessionId: { type: 'string' }, 
         actions: { 
           type: 'array',
-          items: { type: 'object' }
+          items: { 
+            type: 'object',
+            properties: {
+              type: { type: 'string', description: 'Action type (e.g. goto, click, type, scroll, wait)' },
+              url: { type: 'string' },
+              selector: { type: 'string' },
+              text: { type: 'string' },
+              key: { type: 'string' }
+            },
+            required: ['type'],
+            additionalProperties: true
+          }
         } 
       }, 
       required: ['sessionId', 'actions'] 
