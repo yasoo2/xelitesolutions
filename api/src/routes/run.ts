@@ -23,13 +23,7 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
   const { provider, apiKey, baseUrl, model } = req.body || {};
   
   if (provider === 'llm') {
-      // Default system check
-      if (process.env.OPENAI_API_KEY) {
-          return res.json({ status: 'ok', message: 'Joe System Ready' });
-      } else {
-          // If no key, it might still work via heuristics, but for "connection" status we warn
-          return res.json({ status: 'ok', message: 'Joe System (Heuristic Only)' });
-      }
+      return res.status(400).json({ error: 'Local intelligence is disabled. Please provide an API key.' });
   }
 
   try {
@@ -273,12 +267,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   }
 
   if (!plan) {
-    plan = pickToolFromText(String(text || ''));
+    // No plan generated
   } else {
-    const h = pickToolFromText(String(text || ''));
-    if (plan?.name === 'echo' && h?.name && h.name !== 'echo') {
-      plan = h;
-    }
+    // Plan generated
   }
   
   ev({ type: 'step_done', data: { name: 'plan', plan } });
