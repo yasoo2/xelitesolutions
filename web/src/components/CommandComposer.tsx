@@ -1130,7 +1130,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             </button>
             <button 
               className="send-button" 
-              onClick={run}
+              onClick={() => run()}
               disabled={!text.trim() || !!approval}
               title={t('send')}
             >
