@@ -143,7 +143,7 @@ function pickToolFromText(text: string) {
       return { name: 'echo', input: { text: 'I am doing well, thank you! How can I help you today? (System: LLM unavailable, using fallback)' } };
   }
 
-  if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\s/.test(t)) {
+  if (/(ابحث|بحث|search|find|lookup|اعطيني|معلومات|info)/.test(t)) {
     const qMatch = text.match(/(?:عن|حول)\s+(.+)/i);
     const query = qMatch ? qMatch[1] : text;
     return { name: 'web_search', input: { query } };
