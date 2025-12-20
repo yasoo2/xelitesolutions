@@ -377,6 +377,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     if (result.artifacts && Array.isArray(result.artifacts)) {
       for (const art of result.artifacts) {
         ev({ type: 'artifact_created', data: art });
+        if (useMock) {
+          try { store.addArtifact(runId, String(art.name || 'artifact'), String(art.href || '')); } catch {}
+        } else {
+          try { await Artifact.create({ runId, name: String(art.name || 'artifact'), href: String(art.href || '') }); } catch {}
+        }
       }
     }
 

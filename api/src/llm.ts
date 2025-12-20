@@ -167,6 +167,28 @@ export async function planNextStep(
            };
       }
       
+      // Yahoo flow (Mock)
+      if (content.includes('yahoo') || historyStr.includes('yahoo')) {
+          const hasYahooOpen = historyStr.includes('tool call: browser_open') && historyStr.includes('yahoo.com');
+          const hasYahooExtract = historyStr.includes('tool call: html_extract') && historyStr.includes('yahoo.com');
+          if (!hasYahooOpen) {
+              return {
+                  name: 'browser_open',
+                  input: { url: 'https://www.yahoo.com' }
+              };
+          }
+          if (!hasYahooExtract) {
+              return {
+                  name: 'html_extract',
+                  input: { url: 'https://www.yahoo.com' }
+              };
+          }
+          return {
+              name: 'echo',
+              input: { text: "Yahoo analyzed." }
+          };
+      }
+      
       // Default fallback
       return {
           name: 'echo',
