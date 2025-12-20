@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense, forwardRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -56,11 +56,12 @@ import {
 
 const AgentBrowserStreamLazy = lazy(() => import('./AgentBrowserStream'));
 
-function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
+const ChatBubble = forwardRef(({ event, isUser }: { event: any, isUser: boolean }, ref: any) => {
   const { t } = useTranslation();
   
   return (
     <motion.div 
+      ref={ref}
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
@@ -145,7 +146,7 @@ function ChatBubble({ event, isUser }: { event: any, isUser: boolean }) {
       )}
     </motion.div>
   );
-}
+});
 
 interface ProviderConfig {
   name: string;
