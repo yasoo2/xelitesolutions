@@ -40,6 +40,11 @@ const APPS: AppItem[] = [
 export function AppsDashboard({ onAppSelect }: { onAppSelect: (id: string) => void }) {
   const categories = ['Monitor', 'AI', 'Dev'];
 
+  // Mock System Health
+  const cpuUsage = 12;
+  const memUsage = 45;
+  const uptime = '4d 12h 30m';
+
   return (
     <div className="h-full bg-[var(--bg-dark)] text-[var(--text-primary)] p-6 overflow-y-auto">
       <div className="mb-8">
@@ -48,6 +53,47 @@ export function AppsDashboard({ onAppSelect }: { onAppSelect: (id: string) => vo
           Control Center
         </h2>
         <p className="text-[var(--text-secondary)]">Manage your system, AI agents, and development tools from one place.</p>
+      </div>
+
+      {/* System Health Widgets */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-[var(--bg-card)] border border-[var(--border-color)] p-4 rounded-xl flex items-center gap-4">
+              <div className="p-3 bg-blue-500/10 text-blue-500 rounded-lg">
+                  <Cpu size={24} />
+              </div>
+              <div>
+                  <div className="text-sm text-[var(--text-secondary)]">CPU Usage</div>
+                  <div className="text-xl font-bold">{cpuUsage}%</div>
+              </div>
+              <div className="ml-auto h-8 w-16 bg-blue-500/10 rounded flex items-end px-1 gap-0.5 pb-1">
+                  {[40, 60, 30, 80, 50].map((h, i) => (
+                      <div key={i} className="bg-blue-500 w-full rounded-sm" style={{ height: `${h}%` }} />
+                  ))}
+              </div>
+          </div>
+          <div className="bg-[var(--bg-card)] border border-[var(--border-color)] p-4 rounded-xl flex items-center gap-4">
+              <div className="p-3 bg-purple-500/10 text-purple-500 rounded-lg">
+                  <Activity size={24} />
+              </div>
+              <div>
+                  <div className="text-sm text-[var(--text-secondary)]">Memory</div>
+                  <div className="text-xl font-bold">{memUsage}%</div>
+              </div>
+               <div className="ml-auto h-8 w-16 bg-purple-500/10 rounded flex items-end px-1 gap-0.5 pb-1">
+                  {[20, 30, 25, 40, 35].map((h, i) => (
+                      <div key={i} className="bg-purple-500 w-full rounded-sm" style={{ height: `${h}%` }} />
+                  ))}
+              </div>
+          </div>
+           <div className="bg-[var(--bg-card)] border border-[var(--border-color)] p-4 rounded-xl flex items-center gap-4">
+              <div className="p-3 bg-green-500/10 text-green-500 rounded-lg">
+                  <Server size={24} />
+              </div>
+              <div>
+                  <div className="text-sm text-[var(--text-secondary)]">Uptime</div>
+                  <div className="text-xl font-bold">{uptime}</div>
+              </div>
+          </div>
       </div>
 
       <div className="space-y-8">
