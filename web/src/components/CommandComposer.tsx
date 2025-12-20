@@ -676,9 +676,19 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     }
   }
 
-  const isThinking = isConnected && events.length > 0 && 
-    (events[events.length - 1].type === 'user_input' || 
-     events[events.length - 1].type === 'step_started');
+  const isThinking = (() => {
+    if (!isConnected || events.length === 0) return false;
+    const last = events[events.length - 1];
+    if (last.type === 'user_input') return true;
+    if (last.type === 'step_started') {
+        // Only think if we haven't replied yet since the last user input
+        for (let i = events.length - 1; i >= 0; i--) {
+            if (events[i].type === 'text') return false;
+            if (events[i].type === 'user_input') return true;
+        }
+    }
+    return false;
+  })();
 
   return (
     <div className="composer">
