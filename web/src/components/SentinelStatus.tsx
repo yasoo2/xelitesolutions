@@ -59,13 +59,45 @@ export default function SentinelStatus() {
 
   return (
     <div className="w-full px-4 mt-2">
-       {/* Expanded View (Top) */}
+       {/* Collapsed View (Always visible bar) */}
+       <div className={`flex items-center gap-0 border rounded-full pl-4 pr-1.5 py-1.5 text-xs shadow-sm transition-all group ${getStyles()}`}>
+           <div className="flex items-center gap-3 overflow-hidden flex-1">
+               <div className="flex-shrink-0">
+                  {getIcon()}
+               </div>
+               
+               <span className="truncate font-mono flex-1 flex items-center gap-2">
+                   {statusTime && <span className="opacity-60 text-[10px] font-bold tracking-wider">[{statusTime}]</span>}
+                   <span className="opacity-90 group-hover:opacity-100 transition-opacity font-medium">{statusText}</span>
+               </span>
+           </div>
+
+           {/* Count Badge */}
+           {alerts.length > 0 && (
+               <div className="mx-2 px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 text-[10px] font-bold flex items-center justify-center min-w-[20px]">
+                   {alerts.length}
+               </div>
+           )}
+
+           {/* Vertical Separator */}
+           <div className="w-[1px] h-4 bg-current opacity-20 mx-1" />
+
+           <button 
+             onClick={() => setExpanded(!expanded)}
+             className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-all active:scale-95"
+             title={expanded ? "Collapse Logs" : "Expand Logs"}
+           >
+             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+           </button>
+       </div>
+
+       {/* Expanded View (Bottom) */}
        <AnimatePresence>
          {expanded && (
            <motion.div
-             initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-             animate={{ height: 'auto', opacity: 1, marginBottom: 8 }}
-             exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+             initial={{ height: 0, opacity: 0, marginTop: 0 }}
+             animate={{ height: 'auto', opacity: 1, marginTop: 8 }}
+             exit={{ height: 0, opacity: 0, marginTop: 0 }}
              className="overflow-hidden"
            >
               <div className={`bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar`}>
@@ -96,38 +128,6 @@ export default function SentinelStatus() {
            </motion.div>
          )}
        </AnimatePresence>
-
-       {/* Collapsed View (Always visible bar) */}
-       <div className={`flex items-center gap-0 border rounded-full pl-4 pr-1.5 py-1.5 text-xs shadow-sm transition-all group ${getStyles()}`}>
-           <div className="flex items-center gap-3 overflow-hidden flex-1">
-               <div className="flex-shrink-0">
-                  {getIcon()}
-               </div>
-               
-               <span className="truncate font-mono flex-1 flex items-center gap-2">
-                   {statusTime && <span className="opacity-60 text-[10px] font-bold tracking-wider">[{statusTime}]</span>}
-                   <span className="opacity-90 group-hover:opacity-100 transition-opacity font-medium">{statusText}</span>
-               </span>
-           </div>
-
-           {/* Count Badge */}
-           {alerts.length > 0 && (
-               <div className="mx-2 px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 text-[10px] font-bold flex items-center justify-center min-w-[20px]">
-                   {alerts.length}
-               </div>
-           )}
-
-           {/* Vertical Separator */}
-           <div className="w-[1px] h-4 bg-current opacity-20 mx-1" />
-
-           <button 
-             onClick={() => setExpanded(!expanded)}
-             className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-all active:scale-95"
-             title={expanded ? "Collapse Logs" : "Expand Logs"}
-           >
-             {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-           </button>
-       </div>
     </div>
   );
 }
