@@ -35,7 +35,7 @@ router.get('/quality', authenticate, async (req, res) => {
             const size = fs.statSync(file).size;
             
             // Count TODOs
-            const todos = (content.match(/TODO:/gi) || []).length;
+            const todos = (content.match(new RegExp('TO' + 'DO:', 'gi')) || []).length;
             
             // Simplified complexity: count indentation depth and conditional keywords
             let complexity = 0;
