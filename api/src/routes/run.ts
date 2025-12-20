@@ -233,7 +233,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       try {
         const memories = await MemoryService.searchMemories(userId, String(text || ''));
         if (memories.length > 0) {
-          console.log(`[Memory] Found ${memories.length} relevant memories`);
+          console.info(`[Memory] Found ${memories.length} relevant memories`);
           fullPromptText += `\n\n[System Note: Known facts about this user (Memory)]:\n${memories.join('\n')}\n`;
         }
       } catch (e) {
@@ -376,7 +376,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // Plan next step with history
     try {
         // DEBUG HISTORY
-        console.log(`Step ${steps} History Last Item:`, JSON.stringify(history[history.length - 1]));
+        console.debug(`Step ${steps} History Last Item:`, JSON.stringify(history[history.length - 1]));
         
         // If default provider and no API key, do not throw (allow heuristic fallback)
         // If custom provider or API key provided, throw on error to notify user

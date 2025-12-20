@@ -248,7 +248,7 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
            if (m) {
                const filename = m[1];
                // Return a fixed version (mock fix)
-               return { name: 'file_write', input: { filename, content: 'console.log("Hello World"); // Fixed by Joe' } };
+               return { name: 'file_write', input: { filename, content: 'console.info("Hello World"); // Fixed by Joe' } };
            }
       }
 
@@ -260,7 +260,7 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
                const filename = m[1];
                // Check if user provided content in the message
                const contentMatch = userMsg.match(/content ['"](.+)['"]/i);
-               const content = contentMatch ? contentMatch[1] : 'console.log("Hello World");';
+               const content = contentMatch ? contentMatch[1] : 'console.info("Hello World");';
                return { name: 'file_write', input: { filename, content } };
            }
       }
