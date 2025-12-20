@@ -9,11 +9,11 @@ function connect() {
     return;
   }
 
-  console.log('Connecting to WS:', WS_URL);
+  console.info('Connecting to WS:', WS_URL);
   socket = new WebSocket(WS_URL);
 
   socket.onopen = () => {
-    console.log('WS Connected');
+    console.info('WS Connected');
     // Flush pending
     while (pendingQueue.length > 0) {
       const msg = pendingQueue.shift();
@@ -31,7 +31,7 @@ function connect() {
   };
 
   socket.onclose = () => {
-    console.log('WS Closed, retrying in 3s...');
+    console.warn('WS Closed, retrying in 3s...');
     socket = null;
     setTimeout(connect, 3000);
   };

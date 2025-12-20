@@ -478,7 +478,7 @@ export default function Joe() {
           <AppsDashboard 
             onAppSelect={(appId) => {
               // Handle app selection - for now just log or maybe switch tabs if applicable
-              console.log('Selected app:', appId);
+              console.info('Selected app:', appId);
               if (appId === 'GRAPH') setMode('universe');
               // Other mappings can be added later
             }} 
