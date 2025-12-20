@@ -2497,7 +2497,7 @@ ${memories.join("\n")}
     }
   }
   let steps = 0;
-  const MAX_STEPS = 10;
+  const MAX_STEPS = 50;
   let previousMessages = [];
   if (sessionId) {
     if (useMock) {

@@ -1169,6 +1169,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
              </div>
         )}
       </div>
+      
+      <SentinelStatus />
     </div>
   );
 }

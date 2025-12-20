@@ -224,7 +224,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
   // --- Agent Loop ---
   let steps = 0;
-  const MAX_STEPS = 10;
+  const MAX_STEPS = 50;
   
   // Load Conversation History
   let previousMessages: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
@@ -358,6 +358,13 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // Execute tool
     ev({ type: 'step_started', data: { name: `execute:${plan.name}` } });
     const result = await executeTool(plan.name, plan.input);
+    
+    // Add result to history to prevent infinite loops
+    history.push({ 
+        role: 'assistant', 
+        content: `Tool Call: ${plan.name}\nInput: ${JSON.stringify(plan.input)}\nOutput: ${JSON.stringify(result.output || result.error || 'Done')}` 
+    });
+
     lastResult = result;
 
     if (result.logs?.length) {

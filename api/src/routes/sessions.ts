@@ -13,6 +13,42 @@ import { MemoryItem } from '../models/memoryItem';
 
 const router = Router();
 
+// Create Session
+router.post('/', authenticate as any, async (req: Request, res: Response) => {
+  const { title } = req.body;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+
+  try {
+    if (useMock) {
+      const session = store.createSession(title || 'New Session');
+      return res.json(session);
+    }
+
+    const session = await Session.create({ title: title || 'New Session' });
+    res.json(session);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to create session' });
+  }
+});
+
+// Get Session Messages
+router.get('/:id/messages', authenticate as any, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  
+  try {
+    if (useMock) {
+      const messages = store.listMessages(id);
+      return res.json({ messages });
+    }
+    
+    const messages = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).lean();
+    res.json({ messages });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
 // Get Full Session Context
 router.get('/:id/context', authenticate as any, async (req: Request, res: Response) => {
   const { id } = req.params;
