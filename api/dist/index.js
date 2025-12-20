@@ -126,6 +126,7 @@ var config = {
   mongoUri: process.env.MONGO_URI || "mongodb://localhost:27017/joe",
   jwtSecret: process.env.JWT_SECRET || "change-me",
   allowedOrigins: process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()) || allowedOriginsDefault,
+  // Force localhost to avoid IPv4/IPv6 resolution issues with 127.0.0.1 on some systems
   browserWorkerUrl: process.env.BROWSER_WORKER_URL || "http://127.0.0.1:7070",
   browserWorkerKey: process.env.BROWSER_WORKER_KEY || "change-me"
 };
@@ -2478,21 +2479,21 @@ ${memories.join("\n")}
     await Message.create({ sessionId, role: "user", content: String(text || ""), runId });
   }
   const risk = detectRisk(String(text || ""));
-  if (risk) {
+  if (risk && plan) {
     if (useMock) {
       const ap = store.createApproval(runId, String(text || ""), risk, plan.name, plan.input);
       ev({ type: "approval_required", data: { id: ap.id, runId, risk, action: text } });
       store.updateRun(runId, { status: "blocked" });
       const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
       planContext2.set(ap.id, { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, blocked: true, approvalId: ap.id });
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap.id });
     } else {
       const ap = await Approval.create({ runId, action: String(text || ""), risk, status: "pending" });
       ev({ type: "approval_required", data: { id: ap._id.toString(), runId, risk, action: text } });
       await Run.findByIdAndUpdate(runId, { $set: { status: "blocked" } });
       const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
       planContext2.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString() });
     }
   }
   let steps = 0;
@@ -2507,6 +2508,8 @@ ${memories.join("\n")}
       previousMessages = docs.reverse().map((d) => ({ role: d.role, content: d.content }));
     }
   }
+  if (previousMessages.length > 0) {
+  }
   const history = [
     ...previousMessages,
     { role: "user", content: initialContent }
@@ -2516,7 +2519,6 @@ ${memories.join("\n")}
   while (steps < MAX_STEPS) {
     ev({ type: "step_started", data: { name: `thinking_step_${steps + 1}` } });
     try {
-      console.debug(`Step ${steps} History Last Item:`, JSON.stringify(history[history.length - 1]));
       const shouldThrow = Boolean(apiKey2 || provider !== "llm" && provider);
       const isSystemConfigured = !!process.env.OPENAI_API_KEY;
       const throwOnError = !!apiKey2 || provider && provider !== "llm" || isSystemConfigured;
@@ -2531,8 +2533,9 @@ ${memories.join("\n")}
       plan = null;
     }
     if (!plan) {
-      if (steps === 0) plan = pickToolFromText(String(text || ""));
-      else break;
+      if (steps === 0) {
+        plan = null;
+      } else break;
       if (!plan) {
         const msg = !process.env.OPENAI_API_KEY && !apiKey2 ? "\u26A0\uFE0F **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI." : "\u26A0\uFE0F **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.";
         ev({ type: "text", data: msg });
@@ -2804,7 +2807,7 @@ You must analyze this error and attempt to fix the issue in the next step. If it
     await Message.create({ sessionId, role: "assistant", content: finalContent, runId });
     await Run.findByIdAndUpdate(runId, { $set: { status: "done" } });
   }
-  res.json({ runId, status: "done" });
+  return res.json({ runId, sessionId, status: "done" });
 });
 var run_default = router3;
 
@@ -4547,7 +4550,7 @@ async function main() {
   const server = import_http.default.createServer(app);
   attachWebSocket(server);
   server.listen(config.port, "0.0.0.0", () => {
-    logger.info({ port: config.port }, "API listening");
+    logger.info({ port: config.port, browserWorkerUrl: config.browserWorkerUrl }, "API listening");
   });
   process.on("uncaughtException", (err) => {
     logger.error(err, "Uncaught Exception");
