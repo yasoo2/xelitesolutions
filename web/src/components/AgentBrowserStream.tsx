@@ -39,6 +39,33 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   async function runActions(actions: any[]) {
     const sessionId = getSessionId();
     if (!sessionId) return;
+
+    // Check for WS optimization
+    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload'];
+    const canUseWs = wsRef.current && 
+                     wsRef.current.readyState === WebSocket.OPEN && 
+                     actions.every(a => wsActions.includes(a.type));
+
+    if (canUseWs) {
+       actions.forEach(a => {
+         wsRef.current?.send(JSON.stringify({ type: 'action', action: a }));
+       });
+       
+       // UI updates (overlay, etc)
+       const names = actions.map(a => a.type).join(', ');
+       setOverlay(names);
+       setTimeout(() => setOverlay(''), 1200);
+
+       // Handle autoExtract triggers if needed (e.g. Enter press)
+       if (autoExtract && actions.some(a => a.type === 'press' && a.key === 'Enter')) {
+          setTimeout(() => doExtract(), 2000);
+       }
+       if (autoExtract && actions.some(a => a.type === 'reload')) {
+          setTimeout(() => doExtract(), 1500);
+       }
+       return;
+    }
+
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API}/tools/browser_run/execute`, {
@@ -185,6 +212,34 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           const msg = JSON.parse(evt.data);
           if (msg.type === 'stream_start') {
             setSize({ w: msg.w, h: msg.h });
+          }
+          if (msg.type === 'cursor_move') {
+            setCursor({ x: msg.x, y: msg.y });
+          }
+          if (msg.type === 'cursor_click') {
+            setCursor({ x: msg.x, y: msg.y });
+            // Add a temporary click effect if we want
+            const clickEl = document.createElement('div');
+            clickEl.style.cssText = `
+              position: absolute;
+              left: ${(msg.x / size.w) * 100}%;
+              top: ${(msg.y / size.h) * 100}%;
+              width: 20px; height: 20px;
+              background: rgba(255, 0, 0, 0.5);
+              border-radius: 50%;
+              transform: translate(-50%, -50%);
+              pointer-events: none;
+              z-index: 100;
+              transition: opacity 0.5s;
+            `;
+            canvasRef.current?.parentElement?.appendChild(clickEl);
+            setTimeout(() => clickEl.remove(), 500);
+          }
+          if (msg.type === 'action_start') {
+             setOverlay(msg.action.type);
+          }
+          if (msg.type === 'action_done') {
+             setTimeout(() => setOverlay(''), 500);
           }
           if (msg.type === 'frame') {
             const img = new Image();

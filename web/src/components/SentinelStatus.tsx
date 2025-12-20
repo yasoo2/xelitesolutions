@@ -20,7 +20,7 @@ export default function SentinelStatus() {
       } catch (e) {}
     });
 
-    return () => unsubscribe();
+    return () => { unsubscribe(); };
   }, []);
 
   const highSev = alerts.filter(a => a.severity === 'high').length;
