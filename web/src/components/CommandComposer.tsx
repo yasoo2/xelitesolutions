@@ -599,6 +599,36 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
     }
   };
 
+  async function openTestBrowser() {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API}/tools/browser_open/execute`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ url: 'https://www.google.com' })
+      });
+      const data = await res.json();
+      if (data.ok && data.output && data.output.wsUrl) {
+         setEvents(prev => [...prev, {
+             type: 'artifact_created',
+             data: {
+                 kind: 'browser_stream',
+                 href: data.output.wsUrl,
+                 name: 'Test Browser Session'
+             }
+         }]);
+         setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      } else {
+          alert('Browser open failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+        alert('Failed to open test browser: ' + String(e));
+    }
+  }
+
   const isThinking = isConnected && events.length > 0 && 
     (events[events.length - 1].type === 'user_input' || 
      events[events.length - 1].type === 'step_started');
@@ -1017,6 +1047,14 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                  <Cpu size={20} />
                </button>
             </div>
+            <button 
+              className="mic-button"
+              onClick={openTestBrowser}
+              title="Test Browser (Live)"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+            >
+              <Globe size={20} />
+            </button>
             <input 
               type="file" 
               ref={fileInputRef}
