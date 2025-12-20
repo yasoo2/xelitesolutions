@@ -432,7 +432,7 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
   if (/^(hello|hi|hey|salam|مرحبا|هلا|السلام|ahlan)/i.test(lowerMsg)) {
       return {
           name: 'echo',
-          input: { text: "أهلاً بك! أنا جو، مهندس البرمجيات المستقل. كيف يمكنني مساعدتك اليوم؟\n(ملاحظة: أنا أعمل حالياً في وضع التعافي نظراً لعدم توفر الاتصال الكامل بالدماغ المركزي)" }
+          input: { text: "أهلاً بك! أنا جو. لكي أتمكن من مساعدتك بذكاء كامل، يرجى تزويدي بمفتاح API (مثل OpenAI) من قائمة الإعدادات. حالياً أنا أعمل في وضع محدود." }
       };
   }
 
@@ -440,17 +440,12 @@ function heuristicPlanner(messages: { role: 'user' | 'assistant' | 'system' | 't
   if (/(status|health|state|كيف حالك|وضعك)/i.test(lowerMsg)) {
       return {
           name: 'echo',
-          input: { text: "الأنظمة تعمل. أنا جاهز لتنفيذ الأوامر المباشرة (قراءة ملفات، كتابة أكواد، بناء صفحات). الاتصال بالذكاء الاصطناعي المتقدم: غير متوفر حالياً." }
+          input: { text: "النظام يعمل، لكن الذكاء الاصطناعي غير متصل. يرجى إضافة مفتاح API في الإعدادات لتفعيل قدراتي الكاملة." }
       };
   }
 
-  // Default Fallback
-  return {
-      name: 'echo',
-      input: { 
-          text: "عذراً، لم أفهم هذا الطلب تماماً. بما أنني في وضع 'التعافي الذاتي'، يرجى إعطائي أوامر واضحة مثل:\n- 'ابن موقعاً باسم page.html'\n- 'اقرأ الملف data.txt'\n- 'شغل السكريبت test.js'" 
-      }
-  };
+  // Default Fallback - Return null to let run.ts try pickToolFromText heuristics
+  return null;
 }
 
 export async function summarizeToolOutput(userQuery: string, toolName: string, toolOutput: any) {

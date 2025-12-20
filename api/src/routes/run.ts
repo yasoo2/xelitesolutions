@@ -59,7 +59,16 @@ function pickToolFromText(text: string) {
     .replace(/ـ/g, '')
     .replace(/[أإآ]/g, 'ا'); // Normalize Alefs to bare Alef
 
-  const urlMatch = text.match(/https?:\/\/\S+/);
+  // Enhanced URL matching
+  let urlMatch = text.match(/https?:\/\/[^\s]+/);
+  if (!urlMatch) {
+      // Try to find domain-like strings (e.g. google.com, www.yahoo.com)
+      const domainMatch = text.match(/(?:www\.)?[\w-]+\.[a-z]{2,}(?:\/[^\s]*)?/i);
+      if (domainMatch && !text.includes('@')) { // Exclude emails
+          urlMatch = [`https://${domainMatch[0]}`];
+      }
+  }
+
   // Browser open heuristics (Arabic/English)
   // Normalized: "افتح", "ابدا", "ادخل", "اذهب"
   if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
