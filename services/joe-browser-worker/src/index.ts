@@ -1,5 +1,5 @@
 import express from 'express';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { chromium, devices } from 'playwright';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import dotenv from 'dotenv';
@@ -25,6 +25,7 @@ type Session = {
   createdAt: number;
   lastActiveAt: number;
   downloads: Array<{ id: string; filename: string; href: string; size: number }>;
+  ws?: WebSocket;
 };
 
 const SESSIONS = new Map<string, Session>();
@@ -131,8 +132,16 @@ type Action =
 
 async function runActions(session: Session, actions: Action[]) {
   const outputs: any[] = [];
+  
+  const notify = (type: string, data: any) => {
+    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type, ...data }));
+    }
+  };
+
   for (const a of actions) {
     session.lastActiveAt = Date.now();
+    notify('action_start', { action: a });
     try {
       switch (a.type) {
         case 'goto': {
@@ -200,6 +209,7 @@ async function runActions(session: Session, actions: Action[]) {
         }
         case 'mouseMove': {
           await session.page.mouse.move(a.x, a.y, { steps: a.steps || 1 });
+          notify('cursor_move', { x: a.x, y: a.y });
           outputs.push({ type: 'mouseMove', x: a.x, y: a.y });
           break;
         }
@@ -210,6 +220,7 @@ async function runActions(session: Session, actions: Action[]) {
             await session.page.getByRole(a.role as any, { name: a.roleName }).click();
           } else if (typeof a.x === 'number' && typeof a.y === 'number') {
             await session.page.mouse.click(a.x, a.y, { button: a.button || 'left' });
+            notify('cursor_click', { x: a.x, y: a.y });
           }
           outputs.push({ type: 'click' });
           break;
@@ -359,8 +370,10 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
       }
+      notify('action_done', { type: a.type });
     } catch (err: any) {
       logger.warn({ action: a, error: err.message }, 'action_failed');
+      notify('action_error', { type: a.type, error: err.message });
       outputs.push({ type: 'error', action: a.type, message: err.message });
     }
   }
@@ -462,9 +475,25 @@ const server = app.listen(PORT, () => {
   const s = SESSIONS.get(String(sessionId));
   if (!s) return socket.destroy();
   wss.handleUpgrade(req, socket, head, (ws) => {
+    s.ws = ws;
     ws.send(JSON.stringify({ type: 'stream_start', w: s.viewport.width, h: s.viewport.height }));
     let running = true;
-    ws.on('close', () => { running = false; });
+    ws.on('close', () => { running = false; s.ws = undefined; });
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'action') {
+           // Execute single action directly
+           const a = msg.action;
+           // We reuse the switch case from runActions logic or extract it.
+           // For safety and simplicity, we can just call runActions with one action.
+           // But runActions sends HTTP response. We want fire-and-forget or WS ack.
+           // Let's refactor the action logic to be reusable.
+           // Or just call runActions and ignore return? runActions uses 'session' which we have.
+           await runActions(s, [a]);
+        }
+      } catch {}
+    });
     const loop = async () => {
       while (running) {
         try {
