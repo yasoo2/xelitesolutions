@@ -772,8 +772,12 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
             return null;
           }
           if (e.type === 'artifact_created') {
-            const kind = e.data.kind;
-            if (kind === 'browser_stream' && e.data.href) {
+            const kind = e.data?.kind;
+            const href = e.data?.href;
+            const isBrowserStream =
+              kind === 'browser_stream' ||
+              (typeof href === 'string' && /^wss?:\/\//i.test(href) && /\/ws\//i.test(href));
+            if (isBrowserStream && href) {
               return (
                 <motion.div 
                   key={i} 
@@ -783,7 +787,7 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
                 >
                   <div className="event-artifact" style={{ padding: 0 }}>
                     <Suspense fallback={<div style={{ padding: 12, fontSize: 12, opacity: 0.7 }}>Loading Stream...</div>}>
-                      <AgentBrowserStreamLazy wsUrl={e.data.href} />
+                      <AgentBrowserStreamLazy wsUrl={href} />
                     </Suspense>
                   </div>
                 </motion.div>

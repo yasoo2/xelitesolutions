@@ -501,6 +501,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   if (!s) return socket.destroy();
   wss.handleUpgrade(req, socket, head, (ws) => {
     s.ws = ws;
+    s.lastActiveAt = Date.now();
     ws.send(JSON.stringify({ type: 'stream_start', w: s.viewport.width, h: s.viewport.height }));
     let running = true;
     ws.on('close', () => { running = false; s.ws = undefined; });
@@ -508,6 +509,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'action') {
+           s.lastActiveAt = Date.now();
            // Execute single action directly
            const a = msg.action;
            // We reuse the switch case from runActions logic or extract it.
@@ -522,6 +524,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     const loop = async () => {
       while (running) {
         try {
+          s.lastActiveAt = Date.now();
           const buf = await s.page.screenshot({ type: 'jpeg', quality: 50 });
           ws.send(JSON.stringify({ type: 'frame', jpegBase64: buf.toString('base64'), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
           await new Promise(r => setTimeout(r, 200));

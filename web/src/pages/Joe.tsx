@@ -3,10 +3,100 @@ import SessionItem from '../components/SessionItem';
 import CouncilPanel from '../components/CouncilPanel';
 import CodeUniverse from '../components/CodeUniverse';
 import { AppsDashboard } from '../components/AppsDashboard';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft, MessageSquare, Users, Globe, LayoutGrid } from 'lucide-react';
+
+const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
+
+function BrowserApp() {
+  const [url, setUrl] = useState('https://www.google.com');
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
+  const [isOpening, setIsOpening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function openBrowser() {
+    setIsOpening(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API}/tools/browser_open/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
+      if (!data?.ok || !nextWsUrl) {
+        setWsUrl(null);
+        setError(String(data?.error || 'فشل فتح المتصفح'));
+        return;
+      }
+      setWsUrl(String(nextWsUrl));
+    } catch (e: any) {
+      setWsUrl(null);
+      setError(String(e?.message || e));
+    } finally {
+      setIsOpening(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', gap: 8, padding: 12, alignItems: 'center', borderBottom: '1px solid var(--border-color)' }}>
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://example.com"
+          style={{
+            flex: 1,
+            height: 40,
+            borderRadius: 8,
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-input)',
+            color: 'var(--text-primary)',
+            padding: '0 12px',
+            outline: 'none',
+          }}
+        />
+        <button
+          onClick={openBrowser}
+          disabled={isOpening || !url.trim()}
+          style={{
+            height: 40,
+            padding: '0 14px',
+            borderRadius: 8,
+            border: '1px solid var(--border-color)',
+            background: 'rgba(37, 99, 235, 0.12)',
+            color: 'var(--text-primary)',
+            cursor: isOpening ? 'not-allowed' : 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {isOpening ? '...جاري الفتح' : 'فتح'}
+        </button>
+      </div>
+      {error && (
+        <div style={{ padding: 12, color: '#ef4444', borderBottom: '1px solid var(--border-color)' }} dir="auto">
+          {error}
+        </div>
+      )}
+      <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+        {!wsUrl ? (
+          <div style={{ opacity: 0.8, color: 'var(--text-secondary)' }}>افتح رابط لبدء المتصفح.</div>
+        ) : (
+          <Suspense fallback={<div style={{ opacity: 0.8, color: 'var(--text-secondary)' }}>Loading Stream...</div>}>
+            <AgentBrowserStreamLazy wsUrl={wsUrl} />
+          </Suspense>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string }>>([]);
@@ -17,6 +107,7 @@ export default function Joe() {
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [tab, setTab] = useState<'PREVIEW' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'>('PREVIEW');
   const [mode, setMode] = useState<'chat' | 'council' | 'universe' | 'apps'>('chat');
+  const [activeApp, setActiveApp] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,6 +158,10 @@ export default function Joe() {
     loadSessions(); 
     loadFolders();
   }, []);
+  
+  useEffect(() => {
+    if (mode !== 'apps' && activeApp) setActiveApp(null);
+  }, [mode]);
 
   async function createFolder() {
     const name = prompt('اسم المجلد الجديد:');
@@ -475,14 +570,48 @@ export default function Joe() {
         {mode === 'council' && <CouncilPanel />}
         {mode === 'universe' && <CodeUniverse />}
         {mode === 'apps' && (
-          <AppsDashboard 
-            onAppSelect={(appId) => {
-              // Handle app selection - for now just log or maybe switch tabs if applicable
-              console.info('Selected app:', appId);
-              if (appId === 'GRAPH') setMode('universe');
-              // Other mappings can be added later
-            }} 
-          />
+          !activeApp ? (
+            <AppsDashboard 
+              onAppSelect={(appId) => {
+                if (appId === 'GRAPH') {
+                  setMode('universe');
+                  return;
+                }
+                setActiveApp(appId);
+              }} 
+            />
+          ) : (
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border-color)' }}>
+                <button
+                  onClick={() => setActiveApp(null)}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-secondary)',
+                    height: 34,
+                    padding: '0 10px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <ChevronLeft size={16} />
+                  رجوع
+                </button>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{activeApp}</div>
+              </div>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                {activeApp === 'BROWSER' ? (
+                  <BrowserApp />
+                ) : (
+                  <div style={{ padding: 12, color: 'var(--text-secondary)' }}>قريباً</div>
+                )}
+              </div>
+            </div>
+          )
         )}
         </div>
       </main>

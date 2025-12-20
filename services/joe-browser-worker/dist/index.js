@@ -1,6 +1,6 @@
 // src/index.ts
 import express from "express";
-import { WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { chromium, devices } from "playwright";
 import dotenv from "dotenv";
 import pino from "pino";
@@ -43,7 +43,7 @@ async function createSession(opts) {
   });
   const page = await context.newPage();
   const id = uuidv4();
-  const session = {
+  const session2 = {
     id,
     browser,
     context,
@@ -61,18 +61,22 @@ async function createSession(opts) {
       const fileId = uuidv4();
       const filePath = path.join(STORAGE_DIR, "downloads", `${fileId}-${safeName}`);
       const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      try {
+        await fs.promises.mkdir(dir, { recursive: true });
+      } catch {
+      }
       await dl.saveAs(filePath);
-      const size = fs.statSync(filePath).size;
+      const stat = await fs.promises.stat(filePath);
+      const size = stat.size;
       const href = `/downloads/${path.basename(filePath)}`;
-      session.downloads.push({ id: fileId, filename: safeName, href, size });
+      session2.downloads.push({ id: fileId, filename: safeName, href, size });
       logger.info({ fileId, safeName, size }, "download_saved");
     } catch (e) {
       logger.error(e, "download_failed");
     }
   });
-  SESSIONS.set(id, session);
-  return session;
+  SESSIONS.set(id, session2);
+  return session2;
 }
 async function closeSession(id) {
   const s = SESSIONS.get(id);
@@ -93,8 +97,14 @@ async function closeSession(id) {
 }
 async function runActions(session, actions) {
   const outputs = [];
+  const notify = (type, data) => {
+    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type, ...data }));
+    }
+  };
   for (const a of actions) {
     session.lastActiveAt = Date.now();
+    notify("action_start", { action: a });
     try {
       switch (a.type) {
         case "goto": {
@@ -164,16 +174,42 @@ async function runActions(session, actions) {
         }
         case "mouseMove": {
           await session.page.mouse.move(a.x, a.y, { steps: a.steps || 1 });
+          notify("cursor_move", { x: a.x, y: a.y });
           outputs.push({ type: "mouseMove", x: a.x, y: a.y });
           break;
         }
         case "click": {
           if (a.selector) {
-            await session.page.click(a.selector);
+            try {
+              const loc = session.page.locator(a.selector).first();
+              const box = await loc.boundingBox({ timeout: 1e3 }).catch(() => null);
+              if (box) {
+                const cx = box.x + box.width / 2;
+                const cy = box.y + box.height / 2;
+                notify("cursor_move", { x: cx, y: cy });
+                await new Promise((r) => setTimeout(r, 150));
+              }
+              await loc.click();
+            } catch (e) {
+              await session.page.click(a.selector);
+            }
           } else if (a.roleName && a.role) {
-            await session.page.getByRole(a.role, { name: a.roleName }).click();
+            try {
+              const loc = session.page.getByRole(a.role, { name: a.roleName }).first();
+              const box = await loc.boundingBox({ timeout: 1e3 }).catch(() => null);
+              if (box) {
+                const cx = box.x + box.width / 2;
+                const cy = box.y + box.height / 2;
+                notify("cursor_move", { x: cx, y: cy });
+                await new Promise((r) => setTimeout(r, 150));
+              }
+              await loc.click();
+            } catch {
+              await session.page.getByRole(a.role, { name: a.roleName }).click();
+            }
           } else if (typeof a.x === "number" && typeof a.y === "number") {
             await session.page.mouse.click(a.x, a.y, { button: a.button || "left" });
+            notify("cursor_click", { x: a.x, y: a.y });
           }
           outputs.push({ type: "click" });
           break;
@@ -246,7 +282,7 @@ async function runActions(session, actions) {
           break;
         }
         case "extract": {
-          const result = await session.page.evaluate((schema) => {
+          const result2 = await session.page.evaluate((schema) => {
             function pick(el, s) {
               const out = {};
               for (const [k, v] of Object.entries(s.fields || {})) {
@@ -284,7 +320,7 @@ async function runActions(session, actions) {
             }
             return null;
           }, a.schema);
-          outputs.push({ type: "extract", json: result, confidence: 0.7 });
+          outputs.push({ type: "extract", json: result2, confidence: 0.7 });
           break;
         }
         case "fillForm": {
@@ -316,9 +352,18 @@ async function runActions(session, actions) {
           outputs.push({ type: "uploadFile", selector: a.selector });
           break;
         }
+        case "evaluate": {
+          const result = await session.page.evaluate((code) => {
+            return eval(code);
+          }, a.script);
+          outputs.push({ type: "evaluate", result });
+          break;
+        }
       }
+      notify("action_done", { type: a.type });
     } catch (err) {
       logger.warn({ action: a, error: err.message }, "action_failed");
+      notify("action_error", { type: a.type, error: err.message });
       outputs.push({ type: "error", action: a.type, message: err.message });
     }
   }
@@ -335,6 +380,7 @@ app.post("/session/create", auth, async (req, res) => {
     const s = await createSession({ viewport, userAgent, locale });
     if (device && devices[device]) {
       await s.context.close();
+      await s.browser.close();
       const browser = await launchChromium();
       const ctx = await browser.newContext({ ...devices[device], acceptDownloads: true, recordVideo: { dir: path.join(STORAGE_DIR, "videos") } });
       const page = await ctx.newPage();
@@ -356,9 +402,9 @@ app.post("/session/:id/close", auth, async (req, res) => {
 app.post("/session/:id/job/run", auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
   if (!s) return res.status(404).json({ error: "session_not_found" });
-  const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
-  const outputs = await runActions(s, actions);
-  res.json({ ok: true, outputs, artifacts: s.downloads });
+  const actions2 = Array.isArray(req.body?.actions) ? req.body.actions : [];
+  const outputs2 = await runActions(s, actions2);
+  res.json({ ok: true, outputs: outputs2, artifacts: s.downloads });
 });
 app.post("/session/:id/snapshot", auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
@@ -380,8 +426,8 @@ app.post("/session/:id/extract", auth, async (req, res) => {
   if (!s) return res.status(404).json({ error: "session_not_found" });
   const schema = req.body?.schema;
   if (!schema) return res.status(400).json({ error: "schema_required" });
-  const outputs = await runActions(s, [{ type: "extract", schema }]);
-  const out = outputs.find((o) => o.type === "extract");
+  const outputs2 = await runActions(s, [{ type: "extract", schema }]);
+  const out = outputs2.find((o) => o.type === "extract");
   res.json({ json: out?.json, confidence: out?.confidence ?? 0.7 });
 });
 setInterval(() => {
@@ -395,7 +441,7 @@ setInterval(() => {
   }
 }, 3e4);
 var wss = new WebSocketServer({ noServer: true });
-var server = app.listen(PORT, () => {
+var server = app.listen(PORT, "0.0.0.0", () => {
   logger.info({ port: PORT }, "worker_listening");
 });
 server.on("upgrade", async (req, socket, head) => {
@@ -407,14 +453,29 @@ server.on("upgrade", async (req, socket, head) => {
   const s = SESSIONS.get(String(sessionId));
   if (!s) return socket.destroy();
   wss.handleUpgrade(req, socket, head, (ws) => {
+    s.ws = ws;
+    s.lastActiveAt = Date.now();
     ws.send(JSON.stringify({ type: "stream_start", w: s.viewport.width, h: s.viewport.height }));
     let running = true;
     ws.on("close", () => {
       running = false;
+      s.ws = void 0;
+    });
+    ws.on("message", async (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "action") {
+          s.lastActiveAt = Date.now();
+          const a2 = msg.action;
+          await runActions(s, [a2]);
+        }
+      } catch {
+      }
     });
     const loop = async () => {
       while (running) {
         try {
+          s.lastActiveAt = Date.now();
           const buf = await s.page.screenshot({ type: "jpeg", quality: 50 });
           ws.send(JSON.stringify({ type: "frame", jpegBase64: buf.toString("base64"), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
           await new Promise((r) => setTimeout(r, 200));

@@ -34,28 +34,28 @@ var session_exports = {};
 __export(session_exports, {
   Session: () => Session
 });
-var import_mongoose6, SessionSchema, Session;
+var import_mongoose7, SessionSchema, Session;
 var init_session = __esm({
   "src/models/session.ts"() {
     "use strict";
-    import_mongoose6 = __toESM(require("mongoose"));
-    SessionSchema = new import_mongoose6.Schema(
+    import_mongoose7 = __toESM(require("mongoose"));
+    SessionSchema = new import_mongoose7.Schema(
       {
-        tenantId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Tenant", index: true, required: true },
-        projectId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Project", index: true },
-        userId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "User", index: true, required: true },
+        tenantId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "Tenant", index: true, required: true },
+        projectId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "Project", index: true },
+        userId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "User", index: true, required: true },
         title: { type: String, required: true },
         mode: { type: String, enum: ["ADVISOR", "BUILDER", "SAFE", "OWNER"], default: "ADVISOR" },
         isPinned: { type: Boolean, default: false },
         lastSnippet: { type: String },
         lastUpdatedAt: { type: Date, default: Date.now },
-        folderId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Folder" },
+        folderId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "Folder" },
         terminalState: { type: String }
       },
       { timestamps: true }
     );
     SessionSchema.index({ userId: 1, title: 1 }, { unique: true });
-    Session = import_mongoose6.default.model("Session", SessionSchema);
+    Session = import_mongoose7.default.model("Session", SessionSchema);
   }
 });
 
@@ -64,19 +64,19 @@ var tenant_exports = {};
 __export(tenant_exports, {
   Tenant: () => Tenant
 });
-var import_mongoose10, TenantSchema, Tenant;
+var import_mongoose11, TenantSchema, Tenant;
 var init_tenant = __esm({
   "src/models/tenant.ts"() {
     "use strict";
-    import_mongoose10 = __toESM(require("mongoose"));
-    TenantSchema = new import_mongoose10.Schema(
+    import_mongoose11 = __toESM(require("mongoose"));
+    TenantSchema = new import_mongoose11.Schema(
       {
         name: { type: String, required: true, unique: true },
         domain: { type: String }
       },
       { timestamps: true }
     );
-    Tenant = import_mongoose10.default.model("Tenant", TenantSchema);
+    Tenant = import_mongoose11.default.model("Tenant", TenantSchema);
   }
 });
 
@@ -1819,7 +1819,7 @@ var tools_default = router2;
 
 // src/routes/run.ts
 var import_express3 = require("express");
-var import_mongoose11 = __toESM(require("mongoose"));
+var import_mongoose12 = __toESM(require("mongoose"));
 var import_fs3 = __toESM(require("fs"));
 
 // src/mock/store.ts
@@ -1965,24 +1965,36 @@ var ToolExecutionSchema = new import_mongoose3.Schema(
 );
 var ToolExecution = import_mongoose3.default.model("ToolExecution", ToolExecutionSchema);
 
-// src/models/approval.ts
+// src/models/artifact.ts
 var import_mongoose4 = __toESM(require("mongoose"));
-var ApprovalSchema = new import_mongoose4.Schema(
+var ArtifactSchema = new import_mongoose4.Schema(
   {
-    runId: { type: import_mongoose4.Schema.Types.ObjectId, ref: "Run", index: true, required: true },
+    runId: { type: import_mongoose4.Schema.Types.ObjectId, ref: "Run", index: true },
+    name: { type: String, required: true },
+    href: { type: String, required: true }
+  },
+  { timestamps: true }
+);
+var Artifact = import_mongoose4.default.model("Artifact", ArtifactSchema);
+
+// src/models/approval.ts
+var import_mongoose5 = __toESM(require("mongoose"));
+var ApprovalSchema = new import_mongoose5.Schema(
+  {
+    runId: { type: import_mongoose5.Schema.Types.ObjectId, ref: "Run", index: true, required: true },
     action: { type: String, required: true },
     risk: { type: String, required: true },
     status: { type: String, enum: ["pending", "approved", "denied"], default: "pending" }
   },
   { timestamps: true }
 );
-var Approval = import_mongoose4.default.model("Approval", ApprovalSchema);
+var Approval = import_mongoose5.default.model("Approval", ApprovalSchema);
 
 // src/models/run.ts
-var import_mongoose5 = __toESM(require("mongoose"));
-var RunSchema = new import_mongoose5.Schema(
+var import_mongoose6 = __toESM(require("mongoose"));
+var RunSchema = new import_mongoose6.Schema(
   {
-    sessionId: { type: import_mongoose5.Schema.Types.ObjectId, ref: "Session", index: true, required: true },
+    sessionId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Session", index: true, required: true },
     status: { type: String, enum: ["pending", "running", "done", "blocked", "failed"], default: "pending" },
     steps: [
       {
@@ -1995,7 +2007,7 @@ var RunSchema = new import_mongoose5.Schema(
   },
   { timestamps: true }
 );
-var Run = import_mongoose5.default.model("Run", RunSchema);
+var Run = import_mongoose6.default.model("Run", RunSchema);
 
 // src/llm.ts
 var import_openai = __toESM(require("openai"));
@@ -2081,6 +2093,82 @@ async function planNextStep(messages2, options) {
       apiKey: options.apiKey,
       baseURL: options.baseUrl || process.env.OPENAI_BASE_URL
     });
+  }
+  if ((process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true") && !options?.apiKey && !process.env.OPENAI_API_KEY) {
+    console.log("[LLM] Using Mock Planner");
+    const lastMsg = messages2[messages2.length - 1];
+    const content = String(lastMsg.content || "").toLowerCase();
+    const historyStr = JSON.stringify(messages2).toLowerCase();
+    const hasOpened = historyStr.includes("tool call: browser_open");
+    const hasClicked = historyStr.includes("tool call: browser_run") && historyStr.includes("click");
+    const hasAnalyzed = historyStr.includes("tool call: browser_get_state");
+    if (historyStr.includes("github.com") && historyStr.includes("open") && !historyStr.includes("package.json")) {
+      if (hasOpened) {
+        return {
+          name: "echo",
+          input: { text: "I have already opened the browser." }
+        };
+      }
+      return {
+        name: "browser_open",
+        input: { url: "https://github.com/yasoo2/xelitesolutions" }
+      };
+    }
+    if (historyStr.includes("package.json")) {
+      if (!hasOpened) {
+        return {
+          name: "browser_open",
+          input: { url: "https://github.com/yasoo2/xelitesolutions" }
+        };
+      }
+      if (!hasClicked) {
+        const match = JSON.stringify(messages2).match(/"sessionId":"([^"]+)"/);
+        const sessionId = match ? match[1] : "mock-session-id";
+        return {
+          name: "browser_run",
+          input: {
+            sessionId,
+            actions: [{ type: "click", selector: 'a[title="package.json"]' }]
+          }
+        };
+      }
+      if (!hasAnalyzed) {
+        const match = JSON.stringify(messages2).match(/"sessionId":"([^"]+)"/);
+        const sessionId = match ? match[1] : "mock-session-id";
+        return {
+          name: "browser_get_state",
+          input: { sessionId }
+        };
+      }
+      return {
+        name: "echo",
+        input: { text: "I have analyzed the package.json content." }
+      };
+    }
+    if (content.includes("yahoo") || historyStr.includes("yahoo")) {
+      const hasYahooOpen = historyStr.includes("tool call: browser_open") && historyStr.includes("yahoo.com");
+      const hasYahooExtract = historyStr.includes("tool call: html_extract") && historyStr.includes("yahoo.com");
+      if (!hasYahooOpen) {
+        return {
+          name: "browser_open",
+          input: { url: "https://www.yahoo.com" }
+        };
+      }
+      if (!hasYahooExtract) {
+        return {
+          name: "html_extract",
+          input: { url: "https://www.yahoo.com" }
+        };
+      }
+      return {
+        name: "echo",
+        input: { text: "Yahoo analyzed." }
+      };
+    }
+    return {
+      name: "echo",
+      input: { text: "I'm running in MOCK mode. I saw: " + content }
+    };
   }
   const aiTools = activeTools.map((t) => ({
     type: "function",
@@ -2190,10 +2278,10 @@ function authenticate(req, res, next) {
 init_session();
 
 // src/models/message.ts
-var import_mongoose7 = __toESM(require("mongoose"));
-var MessageSchema = new import_mongoose7.Schema(
+var import_mongoose8 = __toESM(require("mongoose"));
+var MessageSchema = new import_mongoose8.Schema(
   {
-    sessionId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "Session", index: true, required: true },
+    sessionId: { type: import_mongoose8.Schema.Types.ObjectId, ref: "Session", index: true, required: true },
     role: { type: String, enum: ["user", "assistant", "system"], required: true },
     content: { type: String, required: true },
     runId: { type: String },
@@ -2201,11 +2289,11 @@ var MessageSchema = new import_mongoose7.Schema(
   },
   { timestamps: true }
 );
-var Message = import_mongoose7.default.model("Message", MessageSchema);
+var Message = import_mongoose8.default.model("Message", MessageSchema);
 
 // src/models/file.ts
-var import_mongoose8 = __toESM(require("mongoose"));
-var FileSchema = new import_mongoose8.Schema({
+var import_mongoose9 = __toESM(require("mongoose"));
+var FileSchema = new import_mongoose9.Schema({
   originalName: { type: String, required: true },
   filename: { type: String, required: true },
   mimeType: { type: String, required: true },
@@ -2215,22 +2303,22 @@ var FileSchema = new import_mongoose8.Schema({
   // For RAG/LLM context
   sessionId: { type: String, index: true }
 }, { timestamps: true });
-var FileModel = import_mongoose8.default.model("File", FileSchema);
+var FileModel = import_mongoose9.default.model("File", FileSchema);
 
 // src/models/memoryItem.ts
-var import_mongoose9 = __toESM(require("mongoose"));
-var MemoryItemSchema = new import_mongoose9.Schema(
+var import_mongoose10 = __toESM(require("mongoose"));
+var MemoryItemSchema = new import_mongoose10.Schema(
   {
     scope: { type: String, enum: ["session", "project", "user"], required: true },
-    sessionId: { type: import_mongoose9.Schema.Types.ObjectId, ref: "Session", index: true },
-    projectId: { type: import_mongoose9.Schema.Types.ObjectId, ref: "Project", index: true },
-    userId: { type: import_mongoose9.Schema.Types.ObjectId, ref: "User", index: true },
+    sessionId: { type: import_mongoose10.Schema.Types.ObjectId, ref: "Session", index: true },
+    projectId: { type: import_mongoose10.Schema.Types.ObjectId, ref: "Project", index: true },
+    userId: { type: import_mongoose10.Schema.Types.ObjectId, ref: "User", index: true },
     key: { type: String, required: true },
-    value: { type: import_mongoose9.Schema.Types.Mixed }
+    value: { type: import_mongoose10.Schema.Types.Mixed }
   },
   { timestamps: true }
 );
-var MemoryItem = import_mongoose9.default.model("MemoryItem", MemoryItemSchema);
+var MemoryItem = import_mongoose10.default.model("MemoryItem", MemoryItemSchema);
 
 // src/services/memory.ts
 var import_openai2 = __toESM(require("openai"));
@@ -2354,7 +2442,7 @@ router3.post("/start", authenticate, async (req, res) => {
   const ev = (e) => broadcast(e);
   const isAuthed = Boolean(req.auth);
   const userId = req.auth?.sub;
-  const useMock = !isAuthed ? true : process.env.MOCK_DB === "1" || import_mongoose11.default.connection.readyState !== 1;
+  const useMock = !isAuthed ? true : process.env.MOCK_DB === "1" || import_mongoose12.default.connection.readyState !== 1;
   let attachedText = "";
   const contentParts = [];
   if (!useMock && fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
@@ -2588,6 +2676,12 @@ ${memories.join("\n")}
     }
     ev({ type: "step_started", data: { name: `execute:${plan.name}` } });
     const result = await executeTool(plan.name, plan.input);
+    history.push({
+      role: "assistant",
+      content: `Tool Call: ${plan.name}
+Input: ${JSON.stringify(plan.input)}
+Output: ${JSON.stringify(result.output || result.error || "Done")}`
+    });
     lastResult = result;
     if (result.logs?.length) {
       for (const line of result.logs) {
@@ -2597,6 +2691,17 @@ ${memories.join("\n")}
     if (result.artifacts && Array.isArray(result.artifacts)) {
       for (const art of result.artifacts) {
         ev({ type: "artifact_created", data: art });
+        if (useMock) {
+          try {
+            store.addArtifact(runId, String(art.name || "artifact"), String(art.href || ""));
+          } catch {
+          }
+        } else {
+          try {
+            await Artifact.create({ runId, name: String(art.name || "artifact"), href: String(art.href || "") });
+          } catch {
+          }
+        }
       }
     }
     ev({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${plan.name}`, result } });
@@ -2814,20 +2919,6 @@ var run_default = router3;
 // src/routes/runs.ts
 var import_express4 = require("express");
 var import_mongoose13 = __toESM(require("mongoose"));
-
-// src/models/artifact.ts
-var import_mongoose12 = __toESM(require("mongoose"));
-var ArtifactSchema = new import_mongoose12.Schema(
-  {
-    runId: { type: import_mongoose12.Schema.Types.ObjectId, ref: "Run", index: true },
-    name: { type: String, required: true },
-    href: { type: String, required: true }
-  },
-  { timestamps: true }
-);
-var Artifact = import_mongoose12.default.model("Artifact", ArtifactSchema);
-
-// src/routes/runs.ts
 var router4 = (0, import_express4.Router)();
 router4.get("/:id", async (req, res) => {
   const id = String(req.params.id);
@@ -2866,6 +2957,34 @@ var Summary = import_mongoose14.default.model("Summary", SummarySchema);
 
 // src/routes/sessions.ts
 var router5 = (0, import_express5.Router)();
+router5.post("/", authenticate, async (req, res) => {
+  const { title } = req.body;
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
+  try {
+    if (useMock) {
+      const session2 = store.createSession(title || "New Session");
+      return res.json(session2);
+    }
+    const session = await Session.create({ title: title || "New Session" });
+    res.json(session);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to create session" });
+  }
+});
+router5.get("/:id/messages", authenticate, async (req, res) => {
+  const { id } = req.params;
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
+  try {
+    if (useMock) {
+      const messages3 = store.listMessages(id);
+      return res.json({ messages: messages3 });
+    }
+    const messages2 = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).lean();
+    res.json({ messages: messages2 });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
 router5.get("/:id/context", authenticate, async (req, res) => {
   const { id } = req.params;
   const userId = req.auth?.sub;

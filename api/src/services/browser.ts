@@ -319,7 +319,6 @@ class BrowserService {
         try {
             const result = await this.page.evaluate((code: string) => {
                 try {
-                    // eslint-disable-next-line no-eval
                     return eval(code);
                 } catch (e: any) {
                     return e.toString();
