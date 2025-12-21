@@ -13,7 +13,14 @@ const apiEnv = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
 // Assuming separate backend for now based on 'api.xelitesolutions.com' errors.
 
 const defaultLocalApiUrl = `${window.location.protocol}//${hostname}:8080`;
-const fallbackApiUrl = isLocal ? defaultLocalApiUrl : 'https://api.xelitesolutions.com';
+const isProbablyApiHost =
+  hostname.includes('joe-api') ||
+  hostname.startsWith('api.') ||
+  hostname === 'joe-api.onrender.com';
+
+const fallbackApiUrl = isLocal
+  ? defaultLocalApiUrl
+  : (isProbablyApiHost ? window.location.origin : 'https://joe-api.onrender.com');
 export const API_URL = String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
 
 // Determine WebSocket URL
