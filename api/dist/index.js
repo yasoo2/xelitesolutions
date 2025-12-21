@@ -361,7 +361,8 @@ async function waitForWorkerHealth(base, timeoutMs) {
   return false;
 }
 async function ensureBrowserWorker(base, key, logs) {
-  const auto = process.env.AUTO_START_BROWSER_WORKER === "1" || process.env.AUTO_START_BROWSER_WORKER === "true" || process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true";
+  const autoSetting = String(process.env.AUTO_START_BROWSER_WORKER ?? "").trim().toLowerCase();
+  const auto = autoSetting === "" ? true : autoSetting === "1" || autoSetting === "true" || autoSetting === "yes";
   if (!auto || process.env.NODE_ENV === "production" || !isLocalWorkerUrl(base)) return;
   const healthy = await waitForWorkerHealth(base, 250);
   if (healthy) return;
@@ -370,6 +371,7 @@ async function ensureBrowserWorker(base, key, logs) {
       const root = repoRoot();
       const workerDir = import_path2.default.join(root, "services", "joe-browser-worker");
       const workerEnv = { ...process.env, PORT: String(new URL(base).port || 7070), WORKER_API_KEY: key };
+      logs.push(`worker_autostart=1 base=${base}`);
       const child = (0, import_child_process.spawn)("npm", ["--prefix", workerDir, "run", "dev"], {
         cwd: root,
         env: workerEnv,
@@ -2178,11 +2180,27 @@ async function planNextStep(messages2, options) {
   if ((process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true") && !options?.apiKey && !process.env.OPENAI_API_KEY) {
     console.info("[LLM] Using Mock Planner");
     const lastMsg = messages2[messages2.length - 1];
-    const content = String(lastMsg.content || "").toLowerCase();
+    const rawText = typeof lastMsg.content === "string" ? lastMsg.content : JSON.stringify(lastMsg.content || "");
+    const content = rawText.toLowerCase();
     const historyStr = JSON.stringify(messages2).toLowerCase();
     const hasOpened = historyStr.includes("tool call: browser_open");
     const hasClicked = historyStr.includes("tool call: browser_run") && historyStr.includes("click");
     const hasAnalyzed = historyStr.includes("tool call: browser_get_state");
+    const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
+    const url = urlMatch?.[0];
+    const wantsOpen = /\bopen\b/i.test(rawText) || /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
+    if (wantsOpen) {
+      if (!hasOpened) {
+        return {
+          name: "browser_open",
+          input: { url: url || "https://www.google.com" }
+        };
+      }
+      return {
+        name: "echo",
+        input: { text: "I have already opened the browser." }
+      };
+    }
     if (historyStr.includes("github.com") && historyStr.includes("open") && !historyStr.includes("package.json")) {
       if (hasOpened) {
         return {

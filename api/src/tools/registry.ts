@@ -40,11 +40,11 @@ async function waitForWorkerHealth(base: string, timeoutMs: number) {
 }
 
 async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
+  const autoSetting = String(process.env.AUTO_START_BROWSER_WORKER ?? '').trim().toLowerCase();
   const auto =
-    process.env.AUTO_START_BROWSER_WORKER === '1' ||
-    process.env.AUTO_START_BROWSER_WORKER === 'true' ||
-    process.env.MOCK_DB === '1' ||
-    process.env.MOCK_DB === 'true';
+    autoSetting === ''
+      ? true
+      : autoSetting === '1' || autoSetting === 'true' || autoSetting === 'yes';
 
   if (!auto || process.env.NODE_ENV === 'production' || !isLocalWorkerUrl(base)) return;
   const healthy = await waitForWorkerHealth(base, 250);
@@ -55,6 +55,7 @@ async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
       const root = repoRoot();
       const workerDir = path.join(root, 'services', 'joe-browser-worker');
       const workerEnv = { ...process.env, PORT: String(new URL(base).port || 7070), WORKER_API_KEY: key };
+      logs.push(`worker_autostart=1 base=${base}`);
       const child = spawn('npm', ['--prefix', workerDir, 'run', 'dev'], {
         cwd: root,
         env: workerEnv,
