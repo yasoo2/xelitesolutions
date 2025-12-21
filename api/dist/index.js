@@ -415,7 +415,10 @@ var tools = [
         }
         const j = await resp.json();
         const sessionId = j.sessionId;
-        const wsUrl = `${base.replace(/^http/, "ws")}${j.wsUrl}?key=${encodeURIComponent(key)}`;
+        const ws = new URL(String(j.wsUrl), base);
+        ws.searchParams.set("key", key);
+        ws.protocol = ws.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = ws.toString();
         const nav = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/job/run`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-worker-key": key },
@@ -1796,6 +1799,23 @@ function broadcast(event) {
   });
 }
 
+// src/middleware/auth.ts
+var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
+function authenticate(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const token = header.slice("Bearer ".length);
+  try {
+    const payload = import_jsonwebtoken2.default.verify(token, config.jwtSecret);
+    req.auth = payload;
+    return next();
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+}
+
 // src/routes/tools.ts
 var router2 = (0, import_express2.Router)();
 router2.get("/", async (_req, res) => {
@@ -1814,7 +1834,7 @@ router2.post("/run", async (req, res) => {
   broadcast({ type: result.ok ? "step_done" : "step_failed", data: { name: "execute:echo", result } });
   res.json(result);
 });
-router2.post("/:name/execute", async (req, res) => {
+router2.post("/:name/execute", authenticate, async (req, res) => {
   const name = String(req.params.name);
   const result = await executeTool(name, req.body || {});
   res.json(result);
@@ -2275,23 +2295,6 @@ async function generateSummary(messages2) {
   } catch (e) {
     console.error("Summary generation failed", e);
     return "Summary generation failed due to an error.";
-  }
-}
-
-// src/middleware/auth.ts
-var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
-function authenticate(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  const token = header.slice("Bearer ".length);
-  try {
-    const payload = import_jsonwebtoken2.default.verify(token, config.jwtSecret);
-    req.auth = payload;
-    return next();
-  } catch {
-    return res.status(401).json({ error: "Invalid token" });
   }
 }
 

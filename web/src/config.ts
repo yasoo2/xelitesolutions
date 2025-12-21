@@ -20,7 +20,11 @@ const isProbablyApiHost =
 
 const fallbackApiUrl = isLocal
   ? defaultLocalApiUrl
-  : (isProbablyApiHost ? window.location.origin : 'https://joe-api.onrender.com');
+  : (() => {
+      if (isProbablyApiHost) return window.location.origin;
+      if (hostname.endsWith('xelitesolutions.com')) return 'https://api.xelitesolutions.com';
+      return 'https://joe-api.onrender.com';
+    })();
 export const API_URL = String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
 
 // Determine WebSocket URL

@@ -100,7 +100,10 @@ export const tools: ToolDefinition[] = [
         }
         const j = await resp.json();
         const sessionId = j.sessionId;
-        const wsUrl = `${base.replace(/^http/, 'ws')}${j.wsUrl}?key=${encodeURIComponent(key)}`;
+        const ws = new URL(String(j.wsUrl), base);
+        ws.searchParams.set('key', key);
+        ws.protocol = ws.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = ws.toString();
         // Navigate
         const nav = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/job/run`, {
           method: 'POST',

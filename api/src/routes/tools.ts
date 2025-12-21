@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { executeTool, tools } from '../tools/registry';
 import { broadcast, LiveEvent } from '../ws';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.post('/run', async (req: Request, res: Response) => {
   res.json(result);
 });
 
-router.post('/:name/execute', async (req: Request, res: Response) => {
+router.post('/:name/execute', authenticate, async (req: Request, res: Response) => {
   const name = String(req.params.name);
   const result = await executeTool(name, req.body || {});
   res.json(result);
