@@ -246,10 +246,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
        }
    }
 
-  if (previousMessages.length > 0) {
-        // console.log('[Memory] Last message:', JSON.stringify(previousMessages[previousMessages.length - 1]));
-    }
-
   const history: { role: 'user' | 'assistant' | 'system', content: string | any[] }[] = [
     ...previousMessages,
     { role: 'user', content: initialContent }

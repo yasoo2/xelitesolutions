@@ -2170,7 +2170,7 @@ async function planNextStep(messages2, options) {
     });
   }
   if ((process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true") && !options?.apiKey && !process.env.OPENAI_API_KEY) {
-    console.log("[LLM] Using Mock Planner");
+    console.info("[LLM] Using Mock Planner");
     const lastMsg = messages2[messages2.length - 1];
     const content = String(lastMsg.content || "").toLowerCase();
     const historyStr = JSON.stringify(messages2).toLowerCase();
@@ -2670,8 +2670,6 @@ ${memories.join("\n")}
       const docs = await Message.find({ sessionId, runId: { $ne: runId } }).sort({ createdAt: -1 }).limit(20);
       previousMessages = docs.reverse().map((d) => ({ role: d.role, content: d.content }));
     }
-  }
-  if (previousMessages.length > 0) {
   }
   const history = [
     ...previousMessages,

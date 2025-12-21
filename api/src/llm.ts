@@ -107,7 +107,7 @@ export async function planNextStep(
 
   // 0. Mock Mode (for local testing without API Key)
   if ((process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true') && !options?.apiKey && !process.env.OPENAI_API_KEY) {
-      console.log('[LLM] Using Mock Planner');
+      console.info('[LLM] Using Mock Planner');
       const lastMsg = messages[messages.length - 1];
       const content = String(lastMsg.content || '').toLowerCase();
       

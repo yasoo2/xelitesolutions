@@ -34,7 +34,6 @@ router.get('/quality', authenticate, async (req, res) => {
             const loc = lines.filter(l => l.trim().length > 0).length;
             const size = fs.statSync(file).size;
             
-            // Count TODOs
             const todos = (content.match(new RegExp('TO' + 'DO:', 'gi')) || []).length;
             
             // Simplified complexity: count indentation depth and conditional keywords
@@ -62,8 +61,6 @@ router.get('/quality', authenticate, async (req, res) => {
             });
         }
 
-        // Calculate overall score (0-100)
-        // Penalty for TODOs, high complexity per file, huge files
         let score = 100;
         const avgComplexity = fileStats.reduce((acc, f) => acc + f.complexity, 0) / (totalFiles || 1);
         
