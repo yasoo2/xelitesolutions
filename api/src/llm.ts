@@ -109,13 +109,34 @@ export async function planNextStep(
   if ((process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true') && !options?.apiKey && !process.env.OPENAI_API_KEY) {
       console.info('[LLM] Using Mock Planner');
       const lastMsg = messages[messages.length - 1];
-      const content = String(lastMsg.content || '').toLowerCase();
+      const rawText =
+        typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content || '');
+      const content = rawText.toLowerCase();
       
       // Check history for actions
       const historyStr = JSON.stringify(messages).toLowerCase();
       const hasOpened = historyStr.includes('tool call: browser_open');
       const hasClicked = historyStr.includes('tool call: browser_run') && historyStr.includes('click');
       const hasAnalyzed = historyStr.includes('tool call: browser_get_state');
+
+      const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
+      const url = urlMatch?.[0];
+      const wantsOpen =
+        /\bopen\b/i.test(rawText) ||
+        /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
+
+      if (wantsOpen) {
+        if (!hasOpened) {
+          return {
+            name: 'browser_open',
+            input: { url: url || 'https://www.google.com' },
+          };
+        }
+        return {
+          name: 'echo',
+          input: { text: 'I have already opened the browser.' },
+        };
+      }
 
       // Simple Heuristics for the GitHub Test
       if (historyStr.includes('github.com') && historyStr.includes('open') && !historyStr.includes('package.json')) {
