@@ -5,7 +5,9 @@ import { broadcast, LiveEvent } from '../ws';
 const router = Router();
 
 router.get('/', async (_req: Request, res: Response) => {
-  res.json({ count: tools.length, tools });
+  const noopCount = tools.filter(t => t.name.startsWith('noop_')).length;
+  const realCount = tools.length - noopCount;
+  res.json({ count: tools.length, realCount, noopCount, tools });
 });
 
 router.post('/run', async (req: Request, res: Response) => {

@@ -918,19 +918,22 @@ var tools = [
     mockSupported: false
   }
 ];
-for (let i = 1; i <= 197; i++) {
-  tools.push({
-    name: `noop_${i}`,
-    version: "1.0.0",
-    tags: ["utility"],
-    inputSchema: { type: "object", properties: { note: { type: "string" } } },
-    outputSchema: { type: "object", properties: { ok: { type: "boolean" } } },
-    permissions: [],
-    sideEffects: [],
-    rateLimitPerMinute: 600,
-    auditFields: [],
-    mockSupported: true
-  });
+var enableNoopTools = process.env.ENABLE_NOOP_TOOLS === "1" || process.env.ENABLE_NOOP_TOOLS === "true";
+if (enableNoopTools) {
+  for (let i = 1; i <= 197; i++) {
+    tools.push({
+      name: `noop_${i}`,
+      version: "1.0.0",
+      tags: ["utility"],
+      inputSchema: { type: "object", properties: { note: { type: "string" } } },
+      outputSchema: { type: "object", properties: { ok: { type: "boolean" } } },
+      permissions: [],
+      sideEffects: [],
+      rateLimitPerMinute: 600,
+      auditFields: [],
+      mockSupported: true
+    });
+  }
 }
 async function executeTool(name, input) {
   const logs = [];
@@ -1638,7 +1641,8 @@ ${doc}
       const searchPath = String(input?.path ?? ".");
       const include = String(input?.include ?? "");
       const exclude = String(input?.exclude ?? "");
-      const workDir = import_path2.default.isAbsolute(searchPath) ? searchPath : import_path2.default.resolve(process.cwd(), searchPath);
+      const root = repoRoot();
+      const workDir = import_path2.default.isAbsolute(searchPath) ? searchPath : import_path2.default.resolve(root, searchPath);
       let cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${workDir}"`;
       if (include) {
         cmd += ` --include="${include}"`;
@@ -1872,7 +1876,9 @@ function broadcast(event) {
 // src/routes/tools.ts
 var router2 = (0, import_express2.Router)();
 router2.get("/", async (_req, res) => {
-  res.json({ count: tools.length, tools });
+  const noopCount = tools.filter((t) => t.name.startsWith("noop_")).length;
+  const realCount = tools.length - noopCount;
+  res.json({ count: tools.length, realCount, noopCount, tools });
 });
 router2.post("/run", async (req, res) => {
   const steps = [
@@ -2088,7 +2094,7 @@ var Run = import_mongoose6.default.model("Run", RunSchema);
 var import_openai = __toESM(require("openai"));
 var apiKey = process.env.OPENAI_API_KEY;
 if (apiKey) {
-  console.info("LLM: OpenAI API Key found (starts with " + apiKey.slice(0, 7) + "...)");
+  console.info("LLM: OpenAI API Key configured.");
 } else {
   console.warn("LLM: No OpenAI API Key found in environment variables. LLM features will be disabled.");
 }
@@ -2280,7 +2286,8 @@ async function planNextStep(messages2, options) {
       input: { text: choice.message.content || "I'm not sure what to do." }
     };
   } catch (error) {
-    console.error("LLM Error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("LLM Error:", msg);
     if (options?.throwOnError) {
       throw error;
     }
@@ -2485,6 +2492,13 @@ Output: { "facts": [{ "key": "role", "value": "React Developer" }, { "key": "pre
 
 // src/routes/run.ts
 var router3 = (0, import_express3.Router)();
+function redactSecretsFromString(input) {
+  return input.replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "sk-[REDACTED]").replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, "Bearer [REDACTED]");
+}
+function safeErrorMessage(err) {
+  const raw = typeof err?.message === "string" ? err.message : String(err);
+  return redactSecretsFromString(raw);
+}
 router3.post("/verify", authenticate, async (req, res) => {
   const { provider, apiKey: apiKey2, baseUrl, model } = req.body || {};
   if (provider === "llm") {
@@ -2501,8 +2515,8 @@ router3.post("/verify", authenticate, async (req, res) => {
       return res.status(500).json({ error: "No response from provider" });
     }
   } catch (err) {
-    console.error("Verify error:", err);
-    return res.status(401).json({ error: err.message || "Connection failed" });
+    console.error("Verify error:", safeErrorMessage(err));
+    return res.status(401).json({ error: safeErrorMessage(err) || "Connection failed" });
   }
 });
 function detectRisk(text) {
@@ -2584,7 +2598,7 @@ ${memories.join("\n")}
       { provider, apiKey: apiKey2, baseUrl, model }
     );
   } catch (err) {
-    console.warn("LLM planning error:", err);
+    console.warn("LLM planning error:", safeErrorMessage(err));
   }
   if (!plan) {
   } else {
@@ -2685,7 +2699,7 @@ ${memories.join("\n")}
       const throwOnError = !!apiKey2 || provider && provider !== "llm" || isSystemConfigured;
       plan = await planNextStep(history, { provider, apiKey: apiKey2, baseUrl, model, throwOnError });
     } catch (err) {
-      console.warn("LLM planning error:", err);
+      console.warn("LLM planning error:", safeErrorMessage(err));
       if (err?.status === 401 || err?.code === "invalid_api_key" || err?.error?.code === "invalid_api_key") {
         ev({ type: "text", data: "\u26A0\uFE0F **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu." });
         forcedText = "Authentication Failed";
@@ -4671,6 +4685,23 @@ var logger = process.env.NODE_ENV === "production" ? (0, import_pino.default)() 
   }
 });
 SentinelService.start(import_path12.default.resolve(__dirname, "../.."));
+function redactSensitive(input, depth = 0) {
+  if (depth > 6) return "[REDACTED]";
+  if (input === null || input === void 0) return input;
+  if (typeof input === "string") return input;
+  if (typeof input !== "object") return input;
+  if (Array.isArray(input)) return input.map((v) => redactSensitive(v, depth + 1));
+  const out = {};
+  for (const [k, v] of Object.entries(input)) {
+    const key = k.toLowerCase();
+    if (key === "apikey" || key === "api_key" || key === "authorization" || key === "token" || key === "password" || key === "secret" || key.endsWith("_token") || key.endsWith("_secret") || key.endsWith("_key")) {
+      out[k] = "[REDACTED]";
+      continue;
+    }
+    out[k] = redactSensitive(v, depth + 1);
+  }
+  return out;
+}
 async function main() {
   const app = (0, import_express21.default)();
   app.use((0, import_cors.default)({
@@ -4684,6 +4715,8 @@ async function main() {
     const requestId = Math.random().toString(36).substring(7);
     res.on("finish", () => {
       const duration = Date.now() - start;
+      const body = req.method === "POST" || req.method === "PUT" ? redactSensitive(req.body) : void 0;
+      const query = redactSensitive(req.query);
       const logEntry = {
         id: requestId,
         method: req.method,
@@ -4691,8 +4724,8 @@ async function main() {
         status: res.statusCode,
         duration,
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        query: req.query,
-        body: req.method === "POST" || req.method === "PUT" ? req.body : void 0
+        query,
+        body
       };
       broadcast({ type: "network:request", data: logEntry });
     });

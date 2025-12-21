@@ -603,19 +603,25 @@ export const tools: ToolDefinition[] = [
   },
 ];
 
-for (let i = 1; i <= 197; i++) {
-  tools.push({
-    name: `noop_${i}`,
-    version: '1.0.0',
-    tags: ['utility'],
-    inputSchema: { type: 'object', properties: { note: { type: 'string' } } },
-    outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } } },
-    permissions: [],
-    sideEffects: [],
-    rateLimitPerMinute: 600,
-    auditFields: [],
-    mockSupported: true,
-  });
+const enableNoopTools =
+  process.env.ENABLE_NOOP_TOOLS === '1' ||
+  process.env.ENABLE_NOOP_TOOLS === 'true';
+
+if (enableNoopTools) {
+  for (let i = 1; i <= 197; i++) {
+    tools.push({
+      name: `noop_${i}`,
+      version: '1.0.0',
+      tags: ['utility'],
+      inputSchema: { type: 'object', properties: { note: { type: 'string' } } },
+      outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } } },
+      permissions: [],
+      sideEffects: [],
+      rateLimitPerMinute: 600,
+      auditFields: [],
+      mockSupported: true,
+    });
+  }
 }
 
 import { KnowledgeService } from '../services/knowledge';
@@ -1427,7 +1433,8 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const include = String(input?.include ?? ''); // e.g., "*.ts"
       const exclude = String(input?.exclude ?? ''); // e.g., "node_modules"
 
-      const workDir = path.isAbsolute(searchPath) ? searchPath : path.resolve(process.cwd(), searchPath);
+      const root = repoRoot();
+      const workDir = path.isAbsolute(searchPath) ? searchPath : path.resolve(root, searchPath);
       
       // Construct grep command
       // -r: recursive

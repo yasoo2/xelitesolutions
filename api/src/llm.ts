@@ -4,7 +4,7 @@ import { tools } from './tools/registry';
 // Initialize OpenAI client
 const apiKey = process.env.OPENAI_API_KEY;
 if (apiKey) {
-  console.info('LLM: OpenAI API Key found (starts with ' + apiKey.slice(0, 7) + '...)');
+  console.info('LLM: OpenAI API Key configured.');
 } else {
   console.warn('LLM: No OpenAI API Key found in environment variables. LLM features will be disabled.');
 }
@@ -240,7 +240,8 @@ export async function planNextStep(
     };
 
   } catch (error) {
-    console.error('LLM Error:', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('LLM Error:', msg);
     if (options?.throwOnError) {
       throw error;
     }

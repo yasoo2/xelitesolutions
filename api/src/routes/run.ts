@@ -18,6 +18,17 @@ import { MemoryService } from '../services/memory';
 
 const router = Router();
 
+function redactSecretsFromString(input: string): string {
+  return input
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]');
+}
+
+function safeErrorMessage(err: any): string {
+  const raw = typeof err?.message === 'string' ? err.message : String(err);
+  return redactSecretsFromString(raw);
+}
+
 // Connection verification endpoint
 router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
   const { provider, apiKey, baseUrl, model } = req.body || {};
@@ -39,8 +50,8 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
         return res.status(500).json({ error: 'No response from provider' });
     }
   } catch (err: any) {
-    console.error('Verify error:', err);
-    return res.status(401).json({ error: err.message || 'Connection failed' });
+    console.error('Verify error:', safeErrorMessage(err));
+    return res.status(401).json({ error: safeErrorMessage(err) || 'Connection failed' });
   }
 });
 
@@ -128,7 +139,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         { provider, apiKey, baseUrl, model }
       );
   } catch (err) {
-      console.warn('LLM planning error:', err);
+      console.warn('LLM planning error:', safeErrorMessage(err));
   }
 
   if (!plan) {
@@ -278,7 +289,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
         plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError });
     } catch (err: any) {
-        console.warn('LLM planning error:', err);
+        console.warn('LLM planning error:', safeErrorMessage(err));
         if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
              ev({ type: 'text', data: '⚠️ **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu.' });
              forcedText = 'Authentication Failed';
