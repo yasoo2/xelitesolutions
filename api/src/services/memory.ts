@@ -7,32 +7,49 @@ const openai = new OpenAI({
 });
 
 export class MemoryService {
-  /**
-   * Search for relevant memories based on text similarity (simple keyword matching for now, 
-   * ideally vector search but avoiding vector DB complexity for this MVP).
-   */
   static async searchMemories(userId: string, text: string, limit = 5): Promise<string[]> {
     if (!userId) return [];
     
-    // Simple heuristic: match keywords from text
-    // In a real system, we'd use embeddings.
-    const keywords = text.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-    if (keywords.length === 0) return [];
+    const normalized = String(text || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ');
 
-    const regex = new RegExp(keywords.join('|'), 'i');
+    const keywords = normalized
+      .split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length >= 2)
+      .slice(0, 12);
+
+    if (keywords.length === 0) {
+      const items = await MemoryItem.find({ userId, scope: 'user' })
+        .sort({ updatedAt: -1 })
+        .limit(limit);
+      return items.map(item => `${item.key}: ${typeof item.value === 'string' ? item.value : JSON.stringify(item.value)}`);
+    }
+
+    const escaped = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const regex = new RegExp(escaped.join('|'), 'i');
     
     const items = await MemoryItem.find({
       userId,
       scope: 'user',
       $or: [
         { key: { $regex: regex } },
-        { value: { $regex: regex } } // Assuming value is stored as string for simple facts
+        { value: { $regex: regex } }
       ]
     })
     .sort({ updatedAt: -1 })
     .limit(limit);
 
-    return items.map(item => `${item.key}: ${item.value}`);
+    if (items.length === 0) {
+      const fallback = await MemoryItem.find({ userId, scope: 'user' })
+        .sort({ updatedAt: -1 })
+        .limit(limit);
+      return fallback.map(item => `${item.key}: ${typeof item.value === 'string' ? item.value : JSON.stringify(item.value)}`);
+    }
+
+    return items.map(item => `${item.key}: ${typeof item.value === 'string' ? item.value : JSON.stringify(item.value)}`);
   }
 
   static async extractAndSaveMemories(userId: string, userText: string, options?: any) {

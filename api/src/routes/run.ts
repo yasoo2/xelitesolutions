@@ -15,6 +15,7 @@ import { Session } from '../models/session';
 import { Message } from '../models/message';
 import { FileModel } from '../models/file';
 import { MemoryService } from '../services/memory';
+import { MemoryItem } from '../models/memoryItem';
 
 const router = Router();
 
@@ -107,10 +108,34 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   // Inject Memory
   if (userId && !useMock) {
       try {
-        const memories = await MemoryService.searchMemories(userId, String(text || ''));
-        if (memories.length > 0) {
-          console.info(`[Memory] Found ${memories.length} relevant memories`);
-          fullPromptText += `\n\n[System Note: Known facts about this user (Memory)]:\n${memories.join('\n')}\n`;
+        const [relevant, recentItems] = await Promise.all([
+          MemoryService.searchMemories(userId, String(text || '')),
+          MemoryItem.find({ userId, scope: 'user' }).sort({ updatedAt: -1 }).limit(20).lean(),
+        ]);
+
+        const recent = (recentItems || []).map((item: any) => {
+          const v =
+            typeof item.value === 'string'
+              ? item.value
+              : item.value == null
+                ? ''
+                : JSON.stringify(item.value);
+          return `${item.key}: ${v}`;
+        }).filter(Boolean);
+
+        const merged: string[] = [];
+        const seen = new Set<string>();
+        for (const line of [...relevant, ...recent]) {
+          const k = String(line || '');
+          if (!k || seen.has(k)) continue;
+          seen.add(k);
+          merged.push(k);
+          if (merged.length >= 20) break;
+        }
+
+        if (merged.length > 0) {
+          console.info(`[Memory] Injecting ${merged.length} memories (relevant+recent)`);
+          fullPromptText += `\n\n[System Note: Known facts about this user (Memory)]:\n${merged.join('\n')}\n`;
         }
       } catch (e) {
         console.error('[Memory] Search failed', e);

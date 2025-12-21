@@ -2348,25 +2348,29 @@ var openai2 = new import_openai2.default({
   baseURL: process.env.OPENAI_BASE_URL
 });
 var MemoryService = class {
-  /**
-   * Search for relevant memories based on text similarity (simple keyword matching for now, 
-   * ideally vector search but avoiding vector DB complexity for this MVP).
-   */
   static async searchMemories(userId, text, limit = 5) {
     if (!userId) return [];
-    const keywords = text.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-    if (keywords.length === 0) return [];
-    const regex = new RegExp(keywords.join("|"), "i");
+    const normalized = String(text || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ");
+    const keywords = normalized.split(/\s+/).map((w) => w.trim()).filter((w) => w.length >= 2).slice(0, 12);
+    if (keywords.length === 0) {
+      const items2 = await MemoryItem.find({ userId, scope: "user" }).sort({ updatedAt: -1 }).limit(limit);
+      return items2.map((item) => `${item.key}: ${typeof item.value === "string" ? item.value : JSON.stringify(item.value)}`);
+    }
+    const escaped = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const regex = new RegExp(escaped.join("|"), "i");
     const items = await MemoryItem.find({
       userId,
       scope: "user",
       $or: [
         { key: { $regex: regex } },
         { value: { $regex: regex } }
-        // Assuming value is stored as string for simple facts
       ]
     }).sort({ updatedAt: -1 }).limit(limit);
-    return items.map((item) => `${item.key}: ${item.value}`);
+    if (items.length === 0) {
+      const fallback = await MemoryItem.find({ userId, scope: "user" }).sort({ updatedAt: -1 }).limit(limit);
+      return fallback.map((item) => `${item.key}: ${typeof item.value === "string" ? item.value : JSON.stringify(item.value)}`);
+    }
+    return items.map((item) => `${item.key}: ${typeof item.value === "string" ? item.value : JSON.stringify(item.value)}`);
   }
   static async extractAndSaveMemories(userId, userText, options) {
     if (!userId || !userText) return;
@@ -2508,13 +2512,29 @@ ${f.content}
   let fullPromptText = (String(text || "") + attachedText).trim();
   if (userId && !useMock) {
     try {
-      const memories = await MemoryService.searchMemories(userId, String(text || ""));
-      if (memories.length > 0) {
-        console.info(`[Memory] Found ${memories.length} relevant memories`);
+      const [relevant, recentItems] = await Promise.all([
+        MemoryService.searchMemories(userId, String(text || "")),
+        MemoryItem.find({ userId, scope: "user" }).sort({ updatedAt: -1 }).limit(20).lean()
+      ]);
+      const recent = (recentItems || []).map((item) => {
+        const v = typeof item.value === "string" ? item.value : item.value == null ? "" : JSON.stringify(item.value);
+        return `${item.key}: ${v}`;
+      }).filter(Boolean);
+      const merged = [];
+      const seen = /* @__PURE__ */ new Set();
+      for (const line of [...relevant, ...recent]) {
+        const k = String(line || "");
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        merged.push(k);
+        if (merged.length >= 20) break;
+      }
+      if (merged.length > 0) {
+        console.info(`[Memory] Injecting ${merged.length} memories (relevant+recent)`);
         fullPromptText += `
 
 [System Note: Known facts about this user (Memory)]:
-${memories.join("\n")}
+${merged.join("\n")}
 `;
       }
     } catch (e) {
