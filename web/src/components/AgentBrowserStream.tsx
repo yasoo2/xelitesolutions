@@ -7,6 +7,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [size, setSize] = useState<{ w: number, h: number }>({ w: 1280, h: 800 });
   const sizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 800 });
   const [status, setStatus] = useState('connecting');
+  const [wsError, setWsError] = useState<string>('');
   const [address, setAddress] = useState<string>('');
   const [downloads, setDownloads] = useState<Array<{ name: string; href: string }>>([]);
   const [overlay, setOverlay] = useState<string>('');
@@ -26,6 +27,9 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [autoTypeAfterFocus, setAutoTypeAfterFocus] = useState<boolean>(true);
   const [defaultSearchText, setDefaultSearchText] = useState<string>('أضرار التدخين');
   const lastMoveRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const connectTimeoutRef = useRef<number | null>(null);
+  const connectAttemptsRef = useRef<number>(0);
 
   useEffect(() => {
     sizeRef.current = size;
@@ -207,74 +211,152 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   }
 
   useEffect(() => {
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      ws.onopen = () => setStatus('connected');
-      ws.onclose = () => setStatus('closed');
-      ws.onmessage = (evt) => {
-        try {
-          const msg = JSON.parse(evt.data);
-          if (msg.type === 'stream_start') {
-            const next = { w: msg.w, h: msg.h };
-            sizeRef.current = next;
-            setSize(next);
+    let disposed = false;
+    connectAttemptsRef.current = 0;
+    setStatus('connecting');
+    setWsError('');
+
+    const clearTimers = () => {
+      if (reconnectTimerRef.current != null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (connectTimeoutRef.current != null) {
+        window.clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
+      }
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      clearTimers();
+
+      try {
+        if (wsRef.current) {
+          try { wsRef.current.close(); } catch {}
+          wsRef.current = null;
+        }
+
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        setStatus(connectAttemptsRef.current > 0 ? 'reconnecting' : 'connecting');
+
+        connectTimeoutRef.current = window.setTimeout(() => {
+          try {
+            if (ws.readyState !== WebSocket.OPEN) ws.close();
+          } catch {}
+        }, 8000);
+
+        ws.onopen = () => {
+          clearTimers();
+          if (disposed) return;
+          connectAttemptsRef.current = 0;
+          setWsError('');
+          setStatus('connected');
+        };
+
+        ws.onclose = (ev) => {
+          clearTimers();
+          if (disposed) return;
+          wsRef.current = null;
+
+          const maxAttempts = 8;
+          const attempt = connectAttemptsRef.current + 1;
+          connectAttemptsRef.current = attempt;
+
+          if (attempt > maxAttempts) {
+            setStatus('error');
+            const reason = ev?.reason ? ` reason=${ev.reason}` : '';
+            setWsError(`WebSocket closed (code=${ev?.code ?? 'unknown'}${reason})`);
+            return;
           }
-          if (msg.type === 'cursor_move') {
-            setCursor({ x: msg.x, y: msg.y });
-          }
-          if (msg.type === 'cursor_click') {
-            setCursor({ x: msg.x, y: msg.y });
-            // Add a temporary click effect if we want
-            const clickEl = document.createElement('div');
-            const s = sizeRef.current;
-            clickEl.style.cssText = `
-              position: absolute;
-              left: ${(msg.x / s.w) * 100}%;
-              top: ${(msg.y / s.h) * 100}%;
-              width: 20px; height: 20px;
-              background: rgba(255, 0, 0, 0.5);
-              border-radius: 50%;
-              transform: translate(-50%, -50%);
-              pointer-events: none;
-              z-index: 100;
-              transition: opacity 0.5s;
-            `;
-            canvasRef.current?.parentElement?.appendChild(clickEl);
-            setTimeout(() => clickEl.remove(), 500);
-          }
-          if (msg.type === 'action_start') {
-             const a = msg.action;
-             let text = a.type;
-             if (a.type === 'goto') text = `Opening ${new URL(a.url).hostname}...`;
-             if (a.type === 'type') text = `Typing...`;
-             if (a.type === 'click') text = `Clicking...`;
-             if (a.type === 'scroll') text = `Scrolling...`;
-             if (a.type === 'screenshot') text = `Capturing View...`;
-             setOverlay(text);
-          }
-          if (msg.type === 'action_done') {
-             setTimeout(() => setOverlay(''), 500);
-          }
-          if (msg.type === 'frame') {
-            const img = new Image();
-            img.onload = () => {
-              const canvas = canvasRef.current!;
-              if (!canvas) return;
+
+          const baseDelay = Math.min(8000, 500 * Math.pow(2, attempt - 1));
+          const jitter = Math.floor(Math.random() * 250);
+          const delay = baseDelay + jitter;
+          setStatus('reconnecting');
+          const reason = ev?.reason ? ` reason=${ev.reason}` : '';
+          setWsError(`WebSocket closed (code=${ev?.code ?? 'unknown'}${reason}). retrying...`);
+          reconnectTimerRef.current = window.setTimeout(connect, delay);
+        };
+
+        ws.onerror = () => {
+          if (disposed) return;
+          setWsError('WebSocket error');
+        };
+
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'stream_start') {
+              const next = { w: msg.w, h: msg.h };
+              sizeRef.current = next;
+              setSize(next);
+            }
+            if (msg.type === 'cursor_move') {
+              setCursor({ x: msg.x, y: msg.y });
+            }
+            if (msg.type === 'cursor_click') {
+              setCursor({ x: msg.x, y: msg.y });
+              const clickEl = document.createElement('div');
               const s = sizeRef.current;
-              canvas.width = s.w;
-              canvas.height = s.h;
-              const ctx = canvas.getContext('2d')!;
-              ctx.drawImage(img, 0, 0, s.w, s.h);
-            };
-            img.src = 'data:image/jpeg;base64,' + msg.jpegBase64;
-          }
-        } catch {}
-      };
-      return () => { try { ws.close(); } catch {} };
-    } catch (e) {
-      setStatus('error');
-    }
+              clickEl.style.cssText = `
+                position: absolute;
+                left: ${(msg.x / s.w) * 100}%;
+                top: ${(msg.y / s.h) * 100}%;
+                width: 20px; height: 20px;
+                background: rgba(255, 0, 0, 0.5);
+                border-radius: 50%;
+                transform: translate(-50%, -50%);
+                pointer-events: none;
+                z-index: 100;
+                transition: opacity 0.5s;
+              `;
+              canvasRef.current?.parentElement?.appendChild(clickEl);
+              setTimeout(() => clickEl.remove(), 500);
+            }
+            if (msg.type === 'action_start') {
+              const a = msg.action;
+              let text = a.type;
+              if (a.type === 'goto') text = `Opening ${new URL(a.url).hostname}...`;
+              if (a.type === 'type') text = `Typing...`;
+              if (a.type === 'click') text = `Clicking...`;
+              if (a.type === 'scroll') text = `Scrolling...`;
+              if (a.type === 'screenshot') text = `Capturing View...`;
+              setOverlay(text);
+            }
+            if (msg.type === 'action_done') {
+              setTimeout(() => setOverlay(''), 500);
+            }
+            if (msg.type === 'frame') {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = canvasRef.current!;
+                if (!canvas) return;
+                const s = sizeRef.current;
+                canvas.width = s.w;
+                canvas.height = s.h;
+                const ctx = canvas.getContext('2d')!;
+                ctx.drawImage(img, 0, 0, s.w, s.h);
+              };
+              img.src = 'data:image/jpeg;base64,' + msg.jpegBase64;
+            }
+          } catch {}
+        };
+      } catch (e: any) {
+        setStatus('error');
+        setWsError(String(e?.message || e));
+      }
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      clearTimers();
+      try { wsRef.current?.close(); } catch {}
+      wsRef.current = null;
+    };
   }, [wsUrl]);
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -357,10 +439,15 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-           <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#22c55e' : '#ef4444', boxShadow: status === 'connected' ? '0 0 8px #22c55e' : 'none' }}></div>
+           <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#22c55e' : (status === 'reconnecting' ? '#f59e0b' : '#ef4444'), boxShadow: status === 'connected' ? '0 0 8px #22c55e' : 'none' }}></div>
            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
              {status === 'connected' ? 'Agent Connected' : status}
            </span>
+           {wsError ? (
+             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
+               {wsError}
+             </span>
+           ) : null}
         </div>
         
         {overlay && (

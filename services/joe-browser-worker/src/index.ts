@@ -493,12 +493,26 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 
 (server as any).on('upgrade', async (req: any, socket: any, head: any) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  if (!url.pathname.startsWith('/ws/')) return socket.destroy();
+  const reject = (status: number, message: string) => {
+    try {
+      socket.write(
+        `HTTP/1.1 ${status} ${message}\r\n` +
+          'Connection: close\r\n' +
+          'Content-Type: text/plain\r\n' +
+          `Content-Length: ${Buffer.byteLength(message)}\r\n` +
+          '\r\n' +
+          message
+      );
+    } catch {}
+    try { socket.destroy(); } catch {}
+  };
+
+  if (!url.pathname.startsWith('/ws/')) return reject(404, 'Not Found');
   const sessionId = url.pathname.split('/').pop();
   const key = url.searchParams.get('key');
-  if (key !== API_KEY) return socket.destroy();
+  if (key !== API_KEY) return reject(401, 'Unauthorized');
   const s = SESSIONS.get(String(sessionId));
-  if (!s) return socket.destroy();
+  if (!s) return reject(404, 'Session Not Found');
   wss.handleUpgrade(req, socket, head, (ws) => {
     s.ws = ws;
     s.lastActiveAt = Date.now();
