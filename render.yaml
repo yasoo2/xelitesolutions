@@ -3,7 +3,7 @@ services:
     name: joe-api
     env: node
     plan: starter
-    buildCommand: cd api && npm install && npm run build
+    buildCommand: cd api && npm ci --legacy-peer-deps && npm run build
     startCommand: cd api && npm run start
     healthCheckPath: /health
     autoDeploy: true
@@ -22,7 +22,7 @@ services:
     name: joe-web
     env: static
     plan: starter
-    buildCommand: cd web && npm install && npm run build
+    buildCommand: cd web && npm ci --legacy-peer-deps && npm run build
     staticPublishPath: web/dist
     autoDeploy: true
     envVars:
