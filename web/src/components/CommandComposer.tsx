@@ -562,7 +562,17 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
           model: providers[activeProvider]?.model
         }),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data: any = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = null;
+      }
+      if (!res.ok) {
+        const msg = data?.error || raw || `HTTP ${res.status}`;
+        throw new Error(String(msg).slice(0, 500));
+      }
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
       }
@@ -576,7 +586,9 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
       }
     } catch (e) {
       console.error(e);
-      setEvents(prev => [...prev, { type: 'error', data: t('error') }]);
+      const msg = String((e as any)?.message || e || '').trim();
+      const finalMsg = msg ? `${t('error')}: ${msg}` : t('error');
+      setEvents(prev => [...prev, { type: 'error', data: finalMsg }]);
       if (!overrideText) setText(inputText);
     }
   }

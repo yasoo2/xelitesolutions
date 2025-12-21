@@ -18,6 +18,16 @@ function repoRoot() {
   return cwd;
 }
 
+function resolveToolPath(p: string) {
+  const root = repoRoot();
+  const val = String(p ?? '').trim();
+  if (!val || val === '.') return root;
+  if (path.isAbsolute(val)) return val;
+  const fromCwd = path.resolve(process.cwd(), val);
+  if (fs.existsSync(fromCwd)) return fromCwd;
+  return path.resolve(root, val);
+}
+
 function isLocalWorkerUrl(base: string) {
   try {
     const u = new URL(base);
@@ -630,12 +640,43 @@ if (enableNoopTools) {
 
 import { KnowledgeService } from '../services/knowledge';
 
+const toolRateBuckets = new Map<string, { minute: number; count: number }>();
+
+function checkToolRateLimit(toolName: string, limitPerMinute: number) {
+  const limit = Number(limitPerMinute);
+  if (!Number.isFinite(limit)) return { allowed: true as const };
+  if (limit <= 0) {
+    return { allowed: false as const, retryAfterMs: 60000 };
+  }
+  const now = Date.now();
+  const minute = Math.floor(now / 60000);
+  const cur = toolRateBuckets.get(toolName);
+  if (!cur || cur.minute !== minute) {
+    toolRateBuckets.set(toolName, { minute, count: 1 });
+    return { allowed: true as const };
+  }
+  const next = cur.count + 1;
+  if (next > limit) {
+    return { allowed: false as const, retryAfterMs: (minute + 1) * 60000 - now };
+  }
+  toolRateBuckets.set(toolName, { minute, count: next });
+  return { allowed: true as const };
+}
+
 export async function executeTool(name: string, input: any): Promise<ToolExecutionResult> {
   const logs: string[] = [];
   const t0 = Date.now();
   logs.push(`[${new Date().toISOString()}] start ${name}`);
   try {
     const tDef = tools.find(t => t.name === name);
+    if (!tDef) {
+      return { ok: false, error: 'unknown_tool', logs };
+    }
+    const rl = checkToolRateLimit(name, tDef.rateLimitPerMinute);
+    if (!rl.allowed) {
+      logs.push(`rate_limited=1 limit_per_minute=${tDef.rateLimitPerMinute} retry_after_ms=${rl.retryAfterMs}`);
+      return { ok: false, error: 'rate_limited', output: { retryAfterMs: rl.retryAfterMs }, logs };
+    }
     if (tDef && typeof (tDef as any).execute === 'function') {
       const res = await (tDef as any).execute(input);
       const ok = !!res?.ok;
@@ -1059,7 +1100,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     if (name === 'file_read') {
       const filename = String(input?.filename ?? '');
       // Allow full path access for system engineering
-      const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+      const full = resolveToolPath(filename);
       
       // Check if it's a directory
       if (fs.existsSync(full) && fs.lstatSync(full).isDirectory()) {
@@ -1076,7 +1117,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     if (name === 'read_file_tree') {
       const p = String(input?.path || '.');
       const maxDepth = Math.min(5, Number(input?.depth ?? 2));
-      const rootPath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+      const rootPath = resolveToolPath(p);
       
       if (!fs.existsSync(rootPath)) {
          return { ok: false, error: 'Directory not found', logs };
@@ -1120,7 +1161,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'ls') {
       const p = String(input?.path || '.');
-      const dirPath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+      const dirPath = resolveToolPath(p);
       if (!fs.existsSync(dirPath)) {
           return { ok: false, error: 'Directory not found', logs };
       }
@@ -1516,7 +1557,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'analyze_codebase') {
        const p = String(input?.path || '.');
-       const root = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+       const root = resolveToolPath(p);
        
        if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
        
