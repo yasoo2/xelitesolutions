@@ -12,28 +12,16 @@ const apiEnv = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
 // UNLESS you are serving the frontend FROM the backend (monolith).
 // Assuming separate backend for now based on 'api.xelitesolutions.com' errors.
 
-// Fallback logic:
-export const API_URL = isLocal 
-  ? `${window.location.protocol}//${hostname}:3000`
-  : (apiEnv || 'https://api.xelitesolutions.com'); // Defaulting to the custom domain if env not set
+const defaultLocalApiUrl = `${window.location.protocol}//${hostname}:8080`;
+const fallbackApiUrl = isLocal ? defaultLocalApiUrl : 'https://api.xelitesolutions.com';
+export const API_URL = String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
 
 // Determine WebSocket URL
 const rawWsUrl = import.meta.env.VITE_WS_URL;
-let wsUrl = rawWsUrl;
+let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
 if (!wsUrl) {
-  if (isLocal) {
-    const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    wsUrl = `${wsProto}://${hostname}:3000/ws`;
-  } else {
-    // Check if API_URL is used and replace protocol
-    if (API_URL.includes('api.xelitesolutions.com')) {
-      wsUrl = 'wss://api.xelitesolutions.com/ws';
-    } else {
-       // Derive from API_URL
-       wsUrl = API_URL.replace(/^http/, 'ws') + '/ws';
-    }
-  }
+  wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
 }
 
 // Protocol safety: Ensure ws/wss instead of http/https
