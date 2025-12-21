@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { broadcast } from '../ws';
 import { callLLM } from '../llm';
 import fs from 'fs';
 import path from 'path';
@@ -20,9 +19,6 @@ export const logError = (error: Error, context: string) => {
     };
     errorLog.unshift(errorEntry);
     if (errorLog.length > 50) errorLog.pop();
-    
-    // Notify frontend
-    broadcast({ type: 'healing:error', data: errorEntry });
     return errorEntry;
 };
 

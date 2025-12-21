@@ -26,7 +26,6 @@ import testRoutes from './routes/tests';
 import advancedRoutes from './routes/advanced';
 import { SentinelService } from './services/sentinel';
 import { authenticate } from './middleware/auth';
-import { broadcast } from './ws';
 import http from 'http';
 import { attachWebSocket } from './ws';
 import path from 'path';
@@ -45,35 +44,6 @@ const logger =
 // Start Sentinel
 SentinelService.start(path.resolve(__dirname, '../..'));
 
-function redactSensitive(input: any, depth = 0): any {
-  if (depth > 6) return '[REDACTED]';
-  if (input === null || input === undefined) return input;
-  if (typeof input === 'string') return input;
-  if (typeof input !== 'object') return input;
-  if (Array.isArray(input)) return input.map(v => redactSensitive(v, depth + 1));
-
-  const out: Record<string, any> = {};
-  for (const [k, v] of Object.entries(input)) {
-    const key = k.toLowerCase();
-    if (
-      key === 'apikey' ||
-      key === 'api_key' ||
-      key === 'authorization' ||
-      key === 'token' ||
-      key === 'password' ||
-      key === 'secret' ||
-      key.endsWith('_token') ||
-      key.endsWith('_secret') ||
-      key.endsWith('_key')
-    ) {
-      out[k] = '[REDACTED]';
-      continue;
-    }
-    out[k] = redactSensitive(v, depth + 1);
-  }
-  return out;
-}
-
 async function main() {
   const app = express();
 
@@ -82,32 +52,6 @@ async function main() {
     credentials: true,
   }));
   app.use(express.json({ limit: '10mb' }));
-  
-  // Network Inspector Middleware
-  app.use((req, res, next) => {
-      const start = Date.now();
-      const requestId = Math.random().toString(36).substring(7);
-      
-      // Hook into response finish to calculate duration
-      res.on('finish', () => {
-          const duration = Date.now() - start;
-          const body = req.method === 'POST' || req.method === 'PUT' ? redactSensitive(req.body) : undefined;
-          const query = redactSensitive(req.query);
-          const logEntry = {
-              id: requestId,
-              method: req.method,
-              url: req.originalUrl,
-              status: res.statusCode,
-              duration,
-              timestamp: new Date().toISOString(),
-              query,
-              body
-          };
-          // Broadcast to Network Inspector
-          broadcast({ type: 'network:request', data: logEntry });
-      });
-      next();
-  });
 
   app.use(morgan('dev'));
 

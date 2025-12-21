@@ -1,6 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
-import { terminalManager } from './services/terminal';
 
 let wssRef: WebSocketServer | null = null;
 
@@ -16,10 +15,7 @@ export interface LiveEvent {
     | 'approval_result'
     | 'run_finished'
     | 'run_completed'
-    | 'text'
-    | 'terminal:data'
-    | 'network:request'
-    | 'healing:error';
+    | 'text';
   data: any;
   id?: string;
 }
@@ -28,25 +24,7 @@ export function attachWebSocket(server: Server) {
   wssRef = new WebSocketServer({ server });
 
   wssRef.on('connection', (ws) => {
-    // console.info('Client connected to WebSocket');
-
-    ws.on('message', (message) => {
-      try {
-        const data = JSON.parse(message.toString());
-        // Handle terminal input
-        if (data.type === 'terminal:input' && data.data) {
-           terminalManager.write(data.id || 'default', data.data);
-        }
-        // Handle terminal resize
-        if (data.type === 'terminal:resize' && data.cols && data.rows) {
-           terminalManager.resize(data.id || 'default', data.cols, data.rows);
-        }
-      } catch (e) {
-        console.error('Failed to parse WS message:', e);
-      }
-    });
-
-    // Send initial terminal state or history if needed
+    ws.on('message', () => {});
   });
 }
 

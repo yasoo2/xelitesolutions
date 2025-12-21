@@ -1778,90 +1778,11 @@ ${archInfo}
 
 // src/ws.ts
 var import_ws = require("ws");
-
-// src/services/terminal.ts
-var import_child_process2 = require("child_process");
-var import_events = require("events");
-var import_string_decoder = require("string_decoder");
-var TerminalManager = class extends import_events.EventEmitter {
-  constructor() {
-    super();
-    this.sessions = {};
-    const cleanup = () => {
-      Object.keys(this.sessions).forEach((id) => this.kill(id));
-    };
-    process.on("exit", cleanup);
-    process.on("SIGINT", () => {
-      cleanup();
-      process.exit();
-    });
-    process.on("SIGTERM", () => {
-      cleanup();
-      process.exit();
-    });
-  }
-  create(id, cwd = process.cwd()) {
-    if (this.sessions[id]) return;
-    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
-    const p = (0, import_child_process2.spawn)(shell, ["-i"], {
-      cwd,
-      env: { ...process.env, TERM: "xterm-256color" },
-      stdio: ["pipe", "pipe", "pipe"]
-    });
-    this.sessions[id] = p;
-    const decoderOut = new import_string_decoder.StringDecoder("utf8");
-    const decoderErr = new import_string_decoder.StringDecoder("utf8");
-    p.stdout?.on("data", (data) => {
-      this.emit("data", { id, data: decoderOut.write(data) });
-    });
-    p.stderr?.on("data", (data) => {
-      this.emit("data", { id, data: decoderErr.write(data) });
-    });
-    p.on("exit", (code) => {
-      this.emit("data", { id, data: `\r
-[Process exited with code ${code}]\r
-` });
-      delete this.sessions[id];
-    });
-    this.emit("data", { id, data: `\r
-Connected to ${shell}\r
-` });
-  }
-  write(id, data) {
-    const p = this.sessions[id];
-    if (p && p.stdin) {
-      p.stdin.write(data);
-    }
-  }
-  resize(id, cols, rows) {
-  }
-  kill(id) {
-    const p = this.sessions[id];
-    if (p) {
-      p.kill();
-      delete this.sessions[id];
-    }
-  }
-};
-var terminalManager = new TerminalManager();
-
-// src/ws.ts
 var wssRef = null;
 function attachWebSocket(server) {
   wssRef = new import_ws.WebSocketServer({ server });
   wssRef.on("connection", (ws) => {
-    ws.on("message", (message) => {
-      try {
-        const data = JSON.parse(message.toString());
-        if (data.type === "terminal:input" && data.data) {
-          terminalManager.write(data.id || "default", data.data);
-        }
-        if (data.type === "terminal:resize" && data.cols && data.rows) {
-          terminalManager.resize(data.id || "default", data.cols, data.rows);
-        }
-      } catch (e) {
-        console.error("Failed to parse WS message:", e);
-      }
+    ws.on("message", () => {
     });
   });
 }
@@ -3959,7 +3880,7 @@ var database_default = router14;
 
 // src/routes/system.ts
 var import_express15 = require("express");
-var import_child_process3 = require("child_process");
+var import_child_process2 = require("child_process");
 var import_os = __toESM(require("os"));
 var router15 = (0, import_express15.Router)();
 router15.get("/stats", authenticate, async (req, res) => {
@@ -3985,7 +3906,7 @@ router15.get("/stats", authenticate, async (req, res) => {
 });
 router15.get("/processes", authenticate, async (req, res) => {
   const cmd = "ps aux | grep -E 'node|ts-node' | grep -v grep | head -n 20";
-  (0, import_child_process3.exec)(cmd, (err, stdout, stderr) => {
+  (0, import_child_process2.exec)(cmd, (err, stdout, stderr) => {
     if (err) {
       return res.status(500).json({ error: "Failed to list processes" });
     }
@@ -4006,7 +3927,7 @@ router15.get("/processes", authenticate, async (req, res) => {
 router15.delete("/processes/:pid", authenticate, async (req, res) => {
   const { pid } = req.params;
   if (pid === "1") return res.status(403).json({ error: "Cannot kill init process" });
-  (0, import_child_process3.exec)(`kill -9 ${pid}`, (err) => {
+  (0, import_child_process2.exec)(`kill -9 ${pid}`, (err) => {
     if (err) {
       return res.status(500).json({ error: `Failed to kill process ${pid}` });
     }
@@ -4031,7 +3952,6 @@ var logError = (error, context) => {
   };
   errorLog.unshift(errorEntry);
   if (errorLog.length > 50) errorLog.pop();
-  broadcast({ type: "healing:error", data: errorEntry });
   return errorEntry;
 };
 router16.get("/errors", authenticate, (req, res) => {
@@ -4229,7 +4149,7 @@ var import_express19 = require("express");
 var import_glob3 = require("glob");
 var import_path8 = __toESM(require("path"));
 var import_fs10 = __toESM(require("fs"));
-var import_child_process4 = require("child_process");
+var import_child_process3 = require("child_process");
 var router19 = (0, import_express19.Router)();
 router19.get("/files", authenticate, async (req, res) => {
   try {
@@ -4256,7 +4176,7 @@ router19.post("/run", authenticate, (req, res) => {
   if (testFile) {
     args.push(import_path8.default.resolve(projectRoot, testFile));
   }
-  const child = (0, import_child_process4.spawn)("npx", args, { cwd });
+  const child = (0, import_child_process3.spawn)("npx", args, { cwd });
   res.setHeader("Content-Type", "text/plain");
   child.stdout.on("data", (data) => {
     res.write(data);
@@ -4703,23 +4623,6 @@ var logger = process.env.NODE_ENV === "production" ? (0, import_pino.default)() 
   }
 });
 SentinelService.start(import_path12.default.resolve(__dirname, "../.."));
-function redactSensitive(input, depth = 0) {
-  if (depth > 6) return "[REDACTED]";
-  if (input === null || input === void 0) return input;
-  if (typeof input === "string") return input;
-  if (typeof input !== "object") return input;
-  if (Array.isArray(input)) return input.map((v) => redactSensitive(v, depth + 1));
-  const out = {};
-  for (const [k, v] of Object.entries(input)) {
-    const key = k.toLowerCase();
-    if (key === "apikey" || key === "api_key" || key === "authorization" || key === "token" || key === "password" || key === "secret" || key.endsWith("_token") || key.endsWith("_secret") || key.endsWith("_key")) {
-      out[k] = "[REDACTED]";
-      continue;
-    }
-    out[k] = redactSensitive(v, depth + 1);
-  }
-  return out;
-}
 async function main() {
   const app = (0, import_express21.default)();
   app.use((0, import_cors.default)({
@@ -4728,27 +4631,6 @@ async function main() {
     credentials: true
   }));
   app.use(import_express21.default.json({ limit: "10mb" }));
-  app.use((req, res, next) => {
-    const start = Date.now();
-    const requestId = Math.random().toString(36).substring(7);
-    res.on("finish", () => {
-      const duration = Date.now() - start;
-      const body = req.method === "POST" || req.method === "PUT" ? redactSensitive(req.body) : void 0;
-      const query = redactSensitive(req.query);
-      const logEntry = {
-        id: requestId,
-        method: req.method,
-        url: req.originalUrl,
-        status: res.statusCode,
-        duration,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        query,
-        body
-      };
-      broadcast({ type: "network:request", data: logEntry });
-    });
-    next();
-  });
   app.use((0, import_morgan.default)("dev"));
   app.get("/health", (_req, res) => res.json({ status: "OK" }));
   app.get("/", (_req, res) => res.send("Joe API is running"));

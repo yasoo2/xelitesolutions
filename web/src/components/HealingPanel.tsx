@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, CheckCircle2, AlertTriangle, Play, Loader2, FileCode } from 'lucide-react';
-import { API_URL as API, WS_URL } from '../config';
+import { API_URL as API } from '../config';
 
 interface ErrorLog {
     id: string;
@@ -29,18 +29,6 @@ export default function HealingPanel() {
             } catch (e) {}
         };
         fetchErrors();
-
-        // Listen for new errors
-        const ws = new WebSocket(WS_URL);
-        ws.onmessage = (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'healing:error') {
-                    setErrors(prev => [msg.data, ...prev]);
-                }
-            } catch (e) {}
-        };
-        return () => ws.close();
     }, []);
 
     const diagnoseError = async (id: string) => {

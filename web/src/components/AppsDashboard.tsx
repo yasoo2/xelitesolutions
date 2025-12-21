@@ -17,7 +17,6 @@ interface AppItem {
 const APPS: AppItem[] = [
   // Monitor
   { id: 'SYSTEM', label: 'System Process', icon: Server, description: 'Monitor system resources and processes', category: 'Monitor', color: 'text-blue-600 dark:text-blue-400' },
-  { id: 'NETWORK', label: 'Network Inspector', icon: Activity, description: 'Real-time API request logging', category: 'Monitor', color: 'text-green-600 dark:text-green-400' },
   { id: 'DATABASE', label: 'Database Viewer', icon: Database, description: 'Manage MongoDB collections', category: 'Monitor', color: 'text-yellow-600 dark:text-yellow-400' },
   
   // AI
