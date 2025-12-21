@@ -8,7 +8,6 @@ import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import SentinelStatus from './SentinelStatus';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -1173,8 +1172,6 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
              </div>
         )}
       </div>
-      
-      <SentinelStatus />
     </div>
   );
 }
