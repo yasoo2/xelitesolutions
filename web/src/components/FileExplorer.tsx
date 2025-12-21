@@ -170,7 +170,7 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
     
     return (
         <div style={{ display: 'flex', height: '100%' }}>
-            <div style={{ width: 250, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ width: 'min(250px, 44vw)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: 8, borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>Files</span>
                     <button onClick={fetchTree} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }}>

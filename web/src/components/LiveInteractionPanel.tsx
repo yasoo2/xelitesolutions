@@ -73,7 +73,7 @@ export function LiveInteractionPanel({
         position: 'relative',
         margin: '16px',
         marginTop: 0,
-        height: isExpanded ? '50%' : '140px',
+        height: isExpanded ? 'min(50%, 420px)' : 'clamp(96px, 18vh, 140px)',
         flexShrink: 0,
         background: 'var(--topbar-bg)',
         backdropFilter: 'blur(12px)',

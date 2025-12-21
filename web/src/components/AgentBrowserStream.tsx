@@ -5,6 +5,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [size, setSize] = useState<{ w: number, h: number }>({ w: 1280, h: 800 });
+  const sizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 800 });
   const [status, setStatus] = useState('connecting');
   const [address, setAddress] = useState<string>('');
   const [downloads, setDownloads] = useState<Array<{ name: string; href: string }>>([]);
@@ -25,6 +26,10 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [autoTypeAfterFocus, setAutoTypeAfterFocus] = useState<boolean>(true);
   const [defaultSearchText, setDefaultSearchText] = useState<string>('أضرار التدخين');
   const lastMoveRef = useRef<number>(0);
+
+  useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
 
   function getSessionId() {
     try {
@@ -211,7 +216,9 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         try {
           const msg = JSON.parse(evt.data);
           if (msg.type === 'stream_start') {
-            setSize({ w: msg.w, h: msg.h });
+            const next = { w: msg.w, h: msg.h };
+            sizeRef.current = next;
+            setSize(next);
           }
           if (msg.type === 'cursor_move') {
             setCursor({ x: msg.x, y: msg.y });
@@ -220,10 +227,11 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
             setCursor({ x: msg.x, y: msg.y });
             // Add a temporary click effect if we want
             const clickEl = document.createElement('div');
+            const s = sizeRef.current;
             clickEl.style.cssText = `
               position: absolute;
-              left: ${(msg.x / size.w) * 100}%;
-              top: ${(msg.y / size.h) * 100}%;
+              left: ${(msg.x / s.w) * 100}%;
+              top: ${(msg.y / s.h) * 100}%;
               width: 20px; height: 20px;
               background: rgba(255, 0, 0, 0.5);
               border-radius: 50%;
@@ -253,10 +261,11 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
             img.onload = () => {
               const canvas = canvasRef.current!;
               if (!canvas) return;
-              canvas.width = size.w;
-              canvas.height = size.h;
+              const s = sizeRef.current;
+              canvas.width = s.w;
+              canvas.height = s.h;
               const ctx = canvas.getContext('2d')!;
-              ctx.drawImage(img, 0, 0, size.w, size.h);
+              ctx.drawImage(img, 0, 0, s.w, s.h);
             };
             img.src = 'data:image/jpeg;base64,' + msg.jpegBase64;
           }
@@ -266,7 +275,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     } catch (e) {
       setStatus('error');
     }
-  }, [wsUrl, size.w, size.h]);
+  }, [wsUrl]);
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
@@ -295,6 +304,33 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     setCursor({ x, y });
     runActions([{ type: 'mouseMove', x, y, steps: 2 }]);
   }
+
+  function handleCanvasTouchStart(e: React.TouchEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    const touch = e.touches?.[0];
+    if (!canvas || !touch) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((touch.clientX - rect.left) * (size.w / rect.width));
+    const y = Math.round((touch.clientY - rect.top) * (size.h / rect.height));
+    runActions([{ type: 'click', x, y }]);
+    setCursor({ x, y });
+  }
+
+  function handleCanvasTouchMove(e: React.TouchEvent<HTMLCanvasElement>) {
+    const now = Date.now();
+    if (now - (lastMoveRef.current || 0) < 60) return;
+    lastMoveRef.current = now;
+    const canvas = canvasRef.current;
+    const touch = e.touches?.[0];
+    if (!canvas || !touch) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((touch.clientX - rect.left) * (size.w / rect.width));
+    const y = Math.round((touch.clientY - rect.top) * (size.h / rect.height));
+    setCursor({ x, y });
+    runActions([{ type: 'mouseMove', x, y, steps: 2 }]);
+  }
   function doType() {
     if (!typeText.trim()) return;
     runActions([{ type: 'type', text: typeText, delay: 30 }]);
@@ -307,7 +343,19 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     <div className="agent-browser-stream" style={{ display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
       
       {/* Minimal Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
+      <div
+        className="agent-browser-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '8px 12px',
+          background: 'var(--bg-secondary)',
+          borderRadius: 8,
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
            <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#22c55e' : '#ef4444', boxShadow: status === 'connected' ? '0 0 8px #22c55e' : 'none' }}></div>
            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
@@ -360,7 +408,9 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           onClick={handleCanvasClick} 
           onWheel={handleCanvasWheel} 
           onMouseMove={handleCanvasMove}
-          style={{ width: '100%', height: 'auto', display: 'block', cursor: 'default' }} 
+          onTouchStart={handleCanvasTouchStart}
+          onTouchMove={handleCanvasTouchMove}
+          style={{ width: '100%', height: 'auto', display: 'block', cursor: 'default', touchAction: 'none' }} 
         />
         
         {/* Agent Overlay Elements */}
@@ -415,7 +465,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
       {/* Advanced Manual Controls (Hidden by Default) */}
       {showControls && (
         <div style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="agent-browser-controls-row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button onClick={() => runActions([{ type: 'goBack' }])} className="btn" title="Back">⟵</button>
                 <button onClick={() => runActions([{ type: 'goForward' }])} className="btn" title="Forward">⟶</button>
                 <button onClick={() => runActions([{ type: 'reload' }])} className="btn" title="Reload">⟳</button>
@@ -425,7 +475,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
                   onChange={e => setAddress(e.target.value)} 
                   onKeyDown={e => { if (e.key === 'Enter' && address) runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }]); }} 
                   placeholder="https://example.com"
-                  style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                  style={{ flex: 1, minWidth: 220, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                 />
                 <button onClick={() => address && runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }])} className="btn">Go</button>
             </div>

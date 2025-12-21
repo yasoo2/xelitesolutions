@@ -152,7 +152,8 @@ body {
   background: var(--bg-dark);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
-  height: 100vh;
+  min-height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -160,7 +161,13 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
+  height: 100dvh;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
 }
 
 .topbar {
@@ -191,7 +198,7 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
-  height: calc(100vh - var(--header-height));
+  height: calc(100dvh - var(--header-height));
   position: relative;
 }
 
@@ -672,4 +679,95 @@ body {
   background-size: 100% 4px;
   pointer-events: none;
   opacity: 0.3;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --header-height: 56px;
+    --sidebar-width: 320px;
+    --right-panel-width: 360px;
+  }
+
+  .topbar {
+    padding: 0 12px;
+    gap: 10px;
+  }
+
+  .brand {
+    font-size: 18px;
+  }
+
+  .joe-layout {
+    height: calc(100dvh - var(--header-height));
+  }
+
+  .sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(var(--sidebar-width), 88vw);
+    padding: 12px;
+    z-index: 60;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  [dir="rtl"] .sidebar {
+    left: auto;
+    right: 0;
+  }
+
+  .joe-layout.sidebar-open::before {
+    content: none;
+  }
+
+  .sidebar-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 50;
+  }
+
+  .sidebar-toggle-btn {
+    left: 12px !important;
+    top: 12px !important;
+    z-index: 70;
+  }
+
+  [dir="rtl"] .sidebar-toggle-btn {
+    left: auto !important;
+    right: 12px !important;
+  }
+
+  .events {
+    padding: 12px;
+  }
+
+  .chat-bubble-wrapper {
+    max-width: 92%;
+  }
+
+  .input-area {
+    padding: 12px 12px;
+  }
+
+  .browser-open-row input {
+    min-width: 240px;
+  }
+}
+
+@media (max-width: 640px) {
+  .empty-state-suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-browser-header {
+    justify-content: flex-start;
+  }
+
+  .agent-browser-controls-row input[type="text"] {
+    min-width: 180px;
+    width: 100%;
+    flex: 1 1 100%;
+  }
 }

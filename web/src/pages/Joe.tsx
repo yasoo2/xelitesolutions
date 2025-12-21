@@ -46,8 +46,18 @@ function BrowserApp() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', gap: 8, padding: 12, alignItems: 'center', borderBottom: '1px solid var(--border-color)' }}>
+    <div className="browser-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div
+        className="browser-open-row"
+        style={{
+          display: 'flex',
+          gap: 8,
+          padding: 12,
+          alignItems: 'center',
+          borderBottom: '1px solid var(--border-color)',
+          flexWrap: 'wrap',
+        }}
+      >
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
@@ -104,16 +114,12 @@ export default function Joe() {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [showRightPanel, setShowRightPanel] = useState(true);
-  const [tab, setTab] = useState<'PREVIEW' | 'ARTIFACTS' | 'MEMORY' | 'STEPS' | 'TERMINAL' | 'ANALYTICS' | 'GRAPH' | 'FILES' | 'PLAN' | 'KNOWLEDGE'>('PREVIEW');
   const [mode, setMode] = useState<'chat' | 'council' | 'universe' | 'apps'>('chat');
   const [activeApp, setActiveApp] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [steps, setSteps] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<any>>([]);
-  const [previewData, setPreviewData] = useState<{ content: string; language: string; } | null>(null);
+  const [isNarrow, setIsNarrow] = useState(false);
 
   const nav = useNavigate();
 
@@ -162,6 +168,22 @@ export default function Joe() {
   useEffect(() => {
     if (mode !== 'apps' && activeApp) setActiveApp(null);
   }, [mode]);
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 900px)');
+    const apply = () => {
+      setIsNarrow(mql.matches);
+      setShowSidebar(!mql.matches);
+    };
+    apply();
+    const onChange = () => apply();
+    if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onChange);
+    else (mql as any).addListener?.(onChange);
+    return () => {
+      if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', onChange);
+      else (mql as any).removeListener?.(onChange);
+    };
+  }, []);
 
   async function createFolder() {
     const name = prompt('اسم المجلد الجديد:');
@@ -255,11 +277,6 @@ export default function Joe() {
     alert('تم نسخ رابط الجلسة');
   }
 
-  function handlePreviewArtifact(content: string, language: string) {
-    setPreviewData({ content, language });
-    setTab('PREVIEW');
-  }
-
   useEffect(() => {
     if (!searchQuery) {
       setIsSearching(false);
@@ -284,6 +301,7 @@ export default function Joe() {
 
   return (
     <div className={`joe-layout ${showSidebar ? 'sidebar-open' : 'sidebar-closed'}`}>
+      {showSidebar && isNarrow && <div className="sidebar-backdrop" onClick={() => setShowSidebar(false)} />}
       {showSidebar && (
         <aside className="sidebar">
           <div className="sidebar-header">
@@ -369,7 +387,10 @@ export default function Joe() {
                          <SessionItem 
                            session={s}
                            isActive={selected === s.id}
-                           onSelect={() => setSelected(s.id)}
+                           onSelect={() => {
+                             setSelected(s.id);
+                             if (isNarrow) setShowSidebar(false);
+                           }}
                            onDelete={() => deleteSession(s.id)}
                            onPin={() => togglePin(s.id, !!s.isPinned)}
                            onShare={() => shareSession(s.id)}
@@ -426,7 +447,10 @@ export default function Joe() {
                 <SessionItem 
                   session={s}
                   isActive={selected === s.id}
-                  onSelect={() => setSelected(s.id)}
+                  onSelect={() => {
+                    setSelected(s.id);
+                    if (isNarrow) setShowSidebar(false);
+                  }}
                   onDelete={() => deleteSession(s.id)}
                   onPin={() => togglePin(s.id, !!s.isPinned)}
                   onShare={() => shareSession(s.id)}
@@ -449,6 +473,7 @@ export default function Joe() {
                      onClick={() => {
                        setSelected(r.sessionId);
                        setSearchQuery(''); // Clear search on select
+                       if (isNarrow) setShowSidebar(false);
                      }}
                    >
                      <div className="result-session-title">{r.sessionTitle}</div>
@@ -474,7 +499,7 @@ export default function Joe() {
       )}
 
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        <div style={{ 
+        <div className="joe-modebar" style={{ 
           height: 48, 
           borderBottom: '1px solid var(--border-color)', 
           display: 'flex', 
@@ -482,7 +507,10 @@ export default function Joe() {
           padding: '0 16px',
           gap: 8,
           background: 'var(--bg-secondary)',
-          flexShrink: 0
+          flexShrink: 0,
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          whiteSpace: 'nowrap',
         }}>
            <button 
              onClick={() => setMode('chat')}
@@ -557,13 +585,6 @@ export default function Joe() {
             onSessionCreated={async (id) => {
               await loadSessions();
               setSelected(id);
-            }}
-            onPreviewArtifact={handlePreviewArtifact}
-            onStepsUpdate={(newSteps) => {
-              setSteps(newSteps);
-            }}
-            onMessagesUpdate={(msgs) => {
-              setMessages(msgs);
             }}
           />
         )}
