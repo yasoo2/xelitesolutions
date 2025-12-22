@@ -39,6 +39,7 @@ export const SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You 
    - Searching for up-to-date information when internal knowledge is stale.
    - **Visual Verification**: Use it to see what you built.
    - **Never use the browser** to inspect the user's local repository or "test code". For codebase analysis, prefer local tools (file_read, file_search, project tree/graph, etc). Only open GitHub if the user explicitly needs to view the website itself, not the code.
+  - When using browser tools, act like a real user: use "browser_run" with deliberate steps (waits, clicks, typing) and prefer visible interactions (mouseMove before click when useful).
 4. **Language Protocol**: 
    - **Input**: Understand any language.
    - **Thinking**: You can reason in English or the user's language.
@@ -73,6 +74,7 @@ Append this EXACT format at the end of your message (invisible to user, parsed b
 - **Error Handling**: If a tool fails, analyze the error, fix the input, and RETRY. Do not give up easily.
 - **Efficiency**: Do not repeat the same tool call if it was successful.
 - **Artifacts**: If you generated an artifact (image, file), use "echo" to confirm it.
+- When you fully finish the user's instructions, end your final answer with: "جو انتهى من التعليمات الموجهة إليه بشكل صحيح."
 `;
 
 export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
@@ -120,12 +122,72 @@ export async function planNextStep(
         historyStr.includes('tool call: browser_open') || historyStr.includes('tool call: browser_run');
       const hasClicked = historyStr.includes('tool call: browser_run') && historyStr.includes('click');
       const hasAnalyzed = historyStr.includes('tool call: browser_get_state');
+      const sessionIdMatch = JSON.stringify(messages).match(/"sessionId"\s*:\s*"([^"]+)"/);
+      const sessionId = sessionIdMatch?.[1];
 
       const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
       let url = urlMatch?.[0];
       const wantsOpen =
         /\bopen\b/i.test(rawText) ||
         /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
+
+      const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes('youtube.com');
+      const wantsSearch =
+        /ابحث|بحث|search/i.test(rawText) ||
+        /ضيعة\s+ضايعة/i.test(rawText) ||
+        /شغل|شغّل|تشغيل|play/i.test(rawText);
+
+      if (wantsYouTube && wantsSearch) {
+        const qMatch =
+          rawText.match(/ابحث(?:\s+عن)?\s+(.+?)(?:\s+(?:وشغل|وشغّل|وشغل|شغل|تشغيل)|$)/i) ||
+          rawText.match(/search\s+for\s+(.+?)(?:\s+and\s+play|$)/i);
+        const query = String(qMatch?.[1] || 'ضيعة ضايعة').trim() || 'ضيعة ضايعة';
+
+        if (!hasOpened || !sessionId) {
+          return { name: 'browser_open', input: { url: 'https://www.youtube.com' } };
+        }
+
+        const hasTypedQuery =
+          historyStr.includes(`"type"`) && historyStr.includes(query.toLowerCase());
+        const hasPressedEnter =
+          historyStr.includes('"press"') && historyStr.includes('"enter"');
+        const hasClickedVideoTitle =
+          historyStr.includes('ytd-video-renderer') && historyStr.includes('video-title');
+
+        if (!hasTypedQuery || !hasPressedEnter) {
+          return {
+            name: 'browser_run',
+            input: {
+              sessionId,
+              actions: [
+                { type: 'goto', url: 'https://www.youtube.com', waitUntil: 'domcontentloaded' },
+                { type: 'waitForSelector', selector: 'input#search', timeoutMs: 8000 },
+                { type: 'click', selector: 'input#search' },
+                { type: 'type', text: query, delay: 80 },
+                { type: 'press', key: 'Enter' },
+                { type: 'wait', ms: 1200 }
+              ]
+            }
+          };
+        }
+
+        if (!hasClickedVideoTitle) {
+          return {
+            name: 'browser_run',
+            input: {
+              sessionId,
+              actions: [
+                { type: 'waitForSelector', selector: 'ytd-video-renderer a#video-title', timeoutMs: 8000 },
+                { type: 'click', selector: 'ytd-video-renderer a#video-title' },
+                { type: 'waitForLoad', state: 'domcontentloaded' },
+                { type: 'wait', ms: 1000 }
+              ]
+            }
+          };
+        }
+
+        return { name: 'echo', input: { text: 'جو انتهى من التعليمات الموجهة إليه بشكل صحيح.' } };
+      }
 
       if (wantsOpen) {
         const explicitBrowser = /(\b(browser|web)\b|متصفح)/i.test(rawText);
@@ -173,9 +235,12 @@ export async function planNextStep(
                 };
            }
            if (!hasClicked) {
-               // Extract sessionId from history
-               const match = JSON.stringify(messages).match(/"sessionId":"([^"]+)"/);
-               const sessionId = match ? match[1] : 'mock-session-id';
+               if (!sessionId) {
+                 return {
+                   name: 'browser_open',
+                   input: { url: 'https://github.com/yasoo2/xelitesolutions' }
+                 };
+               }
 
                return {
                    name: 'browser_run',
@@ -186,10 +251,12 @@ export async function planNextStep(
                };
            }
            if (!hasAnalyzed) {
-               // Extract sessionId from history
-               // Look for "sessionId":"..." in the history
-               const match = JSON.stringify(messages).match(/"sessionId":"([^"]+)"/);
-               const sessionId = match ? match[1] : 'mock-session-id';
+               if (!sessionId) {
+                 return {
+                   name: 'browser_open',
+                   input: { url: 'https://github.com/yasoo2/xelitesolutions' }
+                 };
+               }
                
                return {
                    name: 'browser_get_state',

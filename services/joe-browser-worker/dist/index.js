@@ -34,8 +34,17 @@ function auth(req, res, next) {
 }
 async function launchChromium() {
   const args = ["--no-sandbox", "--disable-dev-shm-usage"];
-  const browser = await chromium.launch({ args, headless: true });
-  return browser;
+  const headless = String(process.env.HEADLESS ?? "1").trim() !== "0";
+  const channel = String(process.env.PLAYWRIGHT_CHANNEL || process.env.BROWSER_CHANNEL || "").trim();
+  try {
+    if (channel) return await chromium.launch({ args, headless, channel });
+  } catch {
+  }
+  try {
+    return await chromium.launch({ args, headless, channel: "chrome" });
+  } catch {
+  }
+  return await chromium.launch({ args, headless });
 }
 function setupPageHooks(session2) {
   const page = session2.page;
@@ -246,6 +255,7 @@ async function runActions(session, actions) {
                 const cy = box.y + box.height / 2;
                 notifySession(session, "cursor_move", { x: cx, y: cy });
                 await new Promise((r) => setTimeout(r, 150));
+                notifySession(session, "cursor_click", { x: cx, y: cy });
               }
               await loc.click();
             } catch (e) {
@@ -260,6 +270,7 @@ async function runActions(session, actions) {
                 const cy = box.y + box.height / 2;
                 notifySession(session, "cursor_move", { x: cx, y: cy });
                 await new Promise((r) => setTimeout(r, 150));
+                notifySession(session, "cursor_click", { x: cx, y: cy });
               }
               await loc.click();
             } catch {

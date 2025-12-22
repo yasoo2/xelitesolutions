@@ -54,8 +54,15 @@ function auth(req: express.Request, res: express.Response, next: express.NextFun
 
 async function launchChromium() {
   const args = ['--no-sandbox', '--disable-dev-shm-usage'];
-  const browser = await chromium.launch({ args, headless: true });
-  return browser;
+  const headless = String(process.env.HEADLESS ?? '1').trim() !== '0';
+  const channel = String(process.env.PLAYWRIGHT_CHANNEL || process.env.BROWSER_CHANNEL || '').trim();
+  try {
+    if (channel) return await chromium.launch({ args, headless, channel: channel as any });
+  } catch {}
+  try {
+    return await chromium.launch({ args, headless, channel: 'chrome' as any });
+  } catch {}
+  return await chromium.launch({ args, headless });
 }
 
 function setupPageHooks(session: Session) {
@@ -284,6 +291,7 @@ async function runActions(session: Session, actions: Action[]) {
                 const cy = box.y + box.height / 2;
                 notifySession(session, 'cursor_move', { x: cx, y: cy });
                 await new Promise(r => setTimeout(r, 150)); // Visual delay
+                notifySession(session, 'cursor_click', { x: cx, y: cy });
               }
               await loc.click();
             } catch (e) {
@@ -299,6 +307,7 @@ async function runActions(session: Session, actions: Action[]) {
                 const cy = box.y + box.height / 2;
                 notifySession(session, 'cursor_move', { x: cx, y: cy });
                 await new Promise(r => setTimeout(r, 150));
+                notifySession(session, 'cursor_click', { x: cx, y: cy });
               }
               await loc.click();
             } catch {

@@ -2134,6 +2134,8 @@ var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capab
    - Checking live website status.
    - Searching for up-to-date information when internal knowledge is stale.
    - **Visual Verification**: Use it to see what you built.
+   - **Never use the browser** to inspect the user's local repository or "test code". For codebase analysis, prefer local tools (file_read, file_search, project tree/graph, etc). Only open GitHub if the user explicitly needs to view the website itself, not the code.
+  - When using browser tools, act like a real user: use "browser_run" with deliberate steps (waits, clicks, typing) and prefer visible interactions (mouseMove before click when useful).
 4. **Language Protocol**: 
    - **Input**: Understand any language.
    - **Thinking**: You can reason in English or the user's language.
@@ -2168,6 +2170,7 @@ Append this EXACT format at the end of your message (invisible to user, parsed b
 - **Error Handling**: If a tool fails, analyze the error, fix the input, and RETRY. Do not give up easily.
 - **Efficiency**: Do not repeat the same tool call if it was successful.
 - **Artifacts**: If you generated an artifact (image, file), use "echo" to confirm it.
+- When you fully finish the user's instructions, end your final answer with: "\u062C\u0648 \u0627\u0646\u062A\u0647\u0649 \u0645\u0646 \u0627\u0644\u062A\u0639\u0644\u064A\u0645\u0627\u062A \u0627\u0644\u0645\u0648\u062C\u0647\u0629 \u0625\u0644\u064A\u0647 \u0628\u0634\u0643\u0644 \u0635\u062D\u064A\u062D."
 `;
 async function callLLM(prompt, context = []) {
   const msgs = [
@@ -2199,13 +2202,70 @@ async function planNextStep(messages2, options) {
     const rawText = typeof lastMsg.content === "string" ? lastMsg.content : JSON.stringify(lastMsg.content || "");
     const content = rawText.toLowerCase();
     const historyStr = JSON.stringify(messages2).toLowerCase();
-    const hasOpened = historyStr.includes("tool call: browser_open");
+    const hasOpened = historyStr.includes("tool call: browser_open") || historyStr.includes("tool call: browser_run");
     const hasClicked = historyStr.includes("tool call: browser_run") && historyStr.includes("click");
     const hasAnalyzed = historyStr.includes("tool call: browser_get_state");
+    const sessionIdMatch = JSON.stringify(messages2).match(/"sessionId"\s*:\s*"([^"]+)"/);
+    const sessionId = sessionIdMatch?.[1];
     const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
-    const url = urlMatch?.[0];
+    let url = urlMatch?.[0];
     const wantsOpen = /\bopen\b/i.test(rawText) || /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
+    const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes("youtube.com");
+    const wantsSearch = /ابحث|بحث|search/i.test(rawText) || /ضيعة\s+ضايعة/i.test(rawText) || /شغل|شغّل|تشغيل|play/i.test(rawText);
+    if (wantsYouTube && wantsSearch) {
+      const qMatch = rawText.match(/ابحث(?:\s+عن)?\s+(.+?)(?:\s+(?:وشغل|وشغّل|وشغل|شغل|تشغيل)|$)/i) || rawText.match(/search\s+for\s+(.+?)(?:\s+and\s+play|$)/i);
+      const query = String(qMatch?.[1] || "\u0636\u064A\u0639\u0629 \u0636\u0627\u064A\u0639\u0629").trim() || "\u0636\u064A\u0639\u0629 \u0636\u0627\u064A\u0639\u0629";
+      if (!hasOpened || !sessionId) {
+        return { name: "browser_open", input: { url: "https://www.youtube.com" } };
+      }
+      const hasTypedQuery = historyStr.includes(`"type"`) && historyStr.includes(query.toLowerCase());
+      const hasPressedEnter = historyStr.includes('"press"') && historyStr.includes('"enter"');
+      const hasClickedVideoTitle = historyStr.includes("ytd-video-renderer") && historyStr.includes("video-title");
+      if (!hasTypedQuery || !hasPressedEnter) {
+        return {
+          name: "browser_run",
+          input: {
+            sessionId,
+            actions: [
+              { type: "goto", url: "https://www.youtube.com", waitUntil: "domcontentloaded" },
+              { type: "waitForSelector", selector: "input#search", timeoutMs: 8e3 },
+              { type: "click", selector: "input#search" },
+              { type: "type", text: query, delay: 80 },
+              { type: "press", key: "Enter" },
+              { type: "wait", ms: 1200 }
+            ]
+          }
+        };
+      }
+      if (!hasClickedVideoTitle) {
+        return {
+          name: "browser_run",
+          input: {
+            sessionId,
+            actions: [
+              { type: "waitForSelector", selector: "ytd-video-renderer a#video-title", timeoutMs: 8e3 },
+              { type: "click", selector: "ytd-video-renderer a#video-title" },
+              { type: "waitForLoad", state: "domcontentloaded" },
+              { type: "wait", ms: 1e3 }
+            ]
+          }
+        };
+      }
+      return { name: "echo", input: { text: "\u062C\u0648 \u0627\u0646\u062A\u0647\u0649 \u0645\u0646 \u0627\u0644\u062A\u0639\u0644\u064A\u0645\u0627\u062A \u0627\u0644\u0645\u0648\u062C\u0647\u0629 \u0625\u0644\u064A\u0647 \u0628\u0634\u0643\u0644 \u0635\u062D\u064A\u062D." } };
+    }
     if (wantsOpen) {
+      const explicitBrowser = /(\b(browser|web)\b|متصفح)/i.test(rawText);
+      const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(rawText);
+      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(rawText);
+      if (githubKeyword && analysisKeyword && !explicitBrowser && !url) {
+        return {
+          name: "echo",
+          input: { text: "\u0633\u0623\u0642\u0648\u0645 \u0628\u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0643\u0648\u062F \u0645\u062D\u0644\u064A\u0627\u064B \u062F\u0648\u0646 \u0641\u062A\u062D \u0627\u0644\u0645\u062A\u0635\u0641\u062D." }
+        };
+      }
+      if (!url) {
+        if (/youtube|يوتيوب/i.test(rawText)) url = "https://www.youtube.com";
+      }
       if (!hasOpened) {
         return {
           name: "browser_open",
@@ -2237,8 +2297,12 @@ async function planNextStep(messages2, options) {
         };
       }
       if (!hasClicked) {
-        const match = JSON.stringify(messages2).match(/"sessionId":"([^"]+)"/);
-        const sessionId = match ? match[1] : "mock-session-id";
+        if (!sessionId) {
+          return {
+            name: "browser_open",
+            input: { url: "https://github.com/yasoo2/xelitesolutions" }
+          };
+        }
         return {
           name: "browser_run",
           input: {
@@ -2248,8 +2312,12 @@ async function planNextStep(messages2, options) {
         };
       }
       if (!hasAnalyzed) {
-        const match = JSON.stringify(messages2).match(/"sessionId":"([^"]+)"/);
-        const sessionId = match ? match[1] : "mock-session-id";
+        if (!sessionId) {
+          return {
+            name: "browser_open",
+            input: { url: "https://github.com/yasoo2/xelitesolutions" }
+          };
+        }
         return {
           name: "browser_get_state",
           input: { sessionId }
@@ -2775,6 +2843,19 @@ ${merged.join("\n")}
       ev({ type: "text", data: msg });
       forcedText = msg;
       break;
+    }
+    const planName = String(plan.name || "");
+    const isBrowserTool = /^browser_/.test(planName);
+    if (kind === "agent" && isBrowserTool) {
+      const reqSid = typeof browserSessionId === "string" ? browserSessionId.trim() : "";
+      const inputSid = String(plan?.input?.sessionId || "").trim();
+      const hasSid = !!(reqSid || inputSid);
+      if (!hasSid) {
+        const msg = "\u0627\u0644\u0645\u062A\u0635\u0641\u062D \u063A\u064A\u0631 \u0645\u0641\u062A\u0648\u062D \u0641\u064A \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0641\u062A\u062D \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u0641\u064A \u0627\u0644\u0648\u0633\u0637 \u0623\u0648\u0644\u0627\u064B \u062B\u0645 \u0623\u0639\u062F \u062A\u0646\u0641\u064A\u0630 \u0623\u0645\u0631 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
+        ev({ type: "text", data: msg });
+        forcedText = msg;
+        break;
+      }
     }
     if (kind === "agent" && String(plan.name || "") === "browser_open" && typeof browserSessionId === "string" && browserSessionId.trim()) {
       const url = String(plan?.input?.url || "https://www.google.com").trim() || "https://www.google.com";
