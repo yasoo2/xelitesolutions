@@ -40,6 +40,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const reconnectTimerRef = useRef<number | null>(null);
   const connectTimeoutRef = useRef<number | null>(null);
   const connectAttemptsRef = useRef<number>(0);
+  const [controlEnabled, setControlEnabled] = useState<boolean>(false);
+  const [canvasFocused, setCanvasFocused] = useState<boolean>(false);
 
   useEffect(() => {
     if (!minimal) return;
@@ -47,6 +49,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     setFocusMode(false);
     setZoom(1);
     setStreamPaused(false);
+    setControlEnabled(false);
   }, [minimal]);
 
   useEffect(() => {
@@ -474,8 +477,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   }, [wsUrl, reconnectNonce]);
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!controlEnabled) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+    try { canvas.focus(); } catch {}
     const rect = canvas.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left) * (size.w / rect.width));
     const y = Math.round((e.clientY - rect.top) * (size.h / rect.height));
@@ -484,11 +489,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   }
 
   function handleCanvasWheel(e: React.WheelEvent<HTMLCanvasElement>) {
+    if (!controlEnabled) return;
     e.preventDefault();
     const dy = Math.round(e.deltaY);
     runActions([{ type: 'scroll', deltaY: dy }]);
   }
   function handleCanvasMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!controlEnabled) return;
     const now = Date.now();
     if (now - (lastMoveRef.current || 0) < 60) return;
     lastMoveRef.current = now;
@@ -502,6 +509,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   }
 
   function handleCanvasTouchStart(e: React.TouchEvent<HTMLCanvasElement>) {
+    if (!controlEnabled) return;
     const canvas = canvasRef.current;
     const touch = e.touches?.[0];
     if (!canvas || !touch) return;
@@ -514,6 +522,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   }
 
   function handleCanvasTouchMove(e: React.TouchEvent<HTMLCanvasElement>) {
+    if (!controlEnabled) return;
     const now = Date.now();
     if (now - (lastMoveRef.current || 0) < 60) return;
     lastMoveRef.current = now;
@@ -535,6 +544,182 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
   const [showControls, setShowControls] = useState(false);
 
+  function handleCanvasKeyDown(e: React.KeyboardEvent<HTMLCanvasElement>) {
+    if (!controlEnabled) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runActions([{ type: 'press', key: 'Enter' }]);
+      return;
+    }
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      runActions([{ type: 'press', key: 'Backspace' }]);
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      runActions([{ type: 'press', key: 'Tab' }]);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      runActions([{ type: 'press', key: 'Escape' }]);
+      return;
+    }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      runActions([{ type: 'press', key: e.key }]);
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key && e.key.length === 1) {
+      e.preventDefault();
+      runActions([{ type: 'type', text: e.key, delay: 0 }]);
+    }
+  }
+
+  const CompactHeader = (
+    <div
+      style={{
+        position: 'absolute',
+        top: 10,
+        left: 10,
+        right: 10,
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <div
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background:
+            status === 'connected'
+              ? 'var(--accent-success)'
+              : status === 'reconnecting'
+                ? 'var(--accent-warning)'
+                : 'var(--accent-danger)',
+          boxShadow: status === 'connected' ? '0 0 8px var(--accent-success)' : 'none',
+          flex: '0 0 auto',
+        }}
+      />
+      <button
+        onClick={() => setControlEnabled(v => !v)}
+        style={{
+          height: 32,
+          padding: '0 10px',
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: controlEnabled ? 'rgba(37, 99, 235, 0.18)' : 'rgba(255,255,255,0.03)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          flex: '0 0 auto',
+        }}
+      >
+        {controlEnabled ? 'تحكم: مفعل' : 'تحكم: متوقف'}
+      </button>
+      <button
+        onClick={() => runActions([{ type: 'goBack' }])}
+        title="Back"
+        style={{
+          width: 34,
+          height: 32,
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: 'rgba(255,255,255,0.03)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          flex: '0 0 auto',
+        }}
+      >
+        ⟵
+      </button>
+      <button
+        onClick={() => runActions([{ type: 'goForward' }])}
+        title="Forward"
+        style={{
+          width: 34,
+          height: 32,
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: 'rgba(255,255,255,0.03)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          flex: '0 0 auto',
+        }}
+      >
+        ⟶
+      </button>
+      <button
+        onClick={() => runActions([{ type: 'reload' }])}
+        title="Reload"
+        style={{
+          width: 34,
+          height: 32,
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: 'rgba(255,255,255,0.03)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          flex: '0 0 auto',
+        }}
+      >
+        ⟳
+      </button>
+      <input
+        type="text"
+        value={address}
+        onChange={e => setAddress(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            const url = normalizeUrl(address);
+            if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
+          }
+        }}
+        placeholder="https://example.com"
+        dir="auto"
+        style={{
+          flex: '1 1 auto',
+          height: 32,
+          padding: '0 10px',
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: 'rgba(0,0,0,0.55)',
+          color: 'var(--text-primary)',
+          outline: 'none',
+          minWidth: 140,
+          backdropFilter: 'blur(8px)',
+        }}
+      />
+      <button
+        onClick={() => {
+          const url = normalizeUrl(address);
+          if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
+        }}
+        style={{
+          height: 32,
+          padding: '0 12px',
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: 'rgba(37, 99, 235, 0.18)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          flex: '0 0 auto',
+        }}
+      >
+        فتح
+      </button>
+      {wsError ? (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 420 }} dir="auto">
+          {wsError}
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <div
       ref={rootRef}
@@ -555,22 +740,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       }}
     >
       {minimal ? (
-        <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 60, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: status === 'connected' ? 'var(--accent-success)' : (status === 'reconnecting' ? 'var(--accent-warning)' : 'var(--accent-danger)'),
-              boxShadow: status === 'connected' ? '0 0 8px var(--accent-success)' : 'none',
-            }}
-          />
-          {wsError ? (
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 520 }} dir="auto">
-              {wsError}
-            </div>
-          ) : null}
-        </div>
+        CompactHeader
       ) : null}
 
       {!minimal ? (
@@ -783,8 +953,32 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             onMouseMove={handleCanvasMove}
             onTouchStart={handleCanvasTouchStart}
             onTouchMove={handleCanvasTouchMove}
-            style={{ width: '100%', height: 'auto', display: 'block', cursor: 'default', touchAction: 'none' }}
+            tabIndex={controlEnabled ? 0 : -1}
+            onFocus={() => setCanvasFocused(true)}
+            onBlur={() => setCanvasFocused(false)}
+            onKeyDown={handleCanvasKeyDown}
+            style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'default', touchAction: 'none', outline: 'none' }}
           />
+          {minimal && controlEnabled && !canvasFocused ? (
+            <div
+              style={{
+                position: 'absolute',
+                left: 12,
+                bottom: 12,
+                zIndex: 70,
+                padding: '6px 10px',
+                borderRadius: 12,
+                background: 'rgba(0,0,0,0.55)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: 'rgba(255,255,255,0.85)',
+                fontSize: 12,
+                backdropFilter: 'blur(8px)',
+              }}
+              dir="auto"
+            >
+              اضغط داخل المتصفح لتفعيل لوحة المفاتيح
+            </div>
+          ) : null}
           {highlight && (
             <div
               style={{
