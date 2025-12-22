@@ -49,6 +49,26 @@ async function waitForBrowserFrames(wsUrl: string, timeoutMs: number) {
   });
 }
 
+function normalizeWsUrl(rawWsUrl: string, token: string) {
+  let v = String(rawWsUrl || '').trim();
+  if (!v) return v;
+  try {
+    if (!/^wss?:\/\//i.test(v)) {
+      const base = String(API).replace(/^http/i, 'ws');
+      v = new URL(v, base).toString();
+    }
+  } catch {}
+  try {
+    const u = new URL(v);
+    if (u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
+      u.searchParams.set('token', token);
+    }
+    return u.toString();
+  } catch {
+    return v;
+  }
+}
+
 async function main() {
   console.log('Testing Browser Worker via Core Tools...');
   
@@ -72,9 +92,10 @@ async function main() {
   }
   const { sessionId, wsUrl } = j1.output;
   console.log(`✅ browser_open ok sessionId=${sessionId}`);
-  console.log(`✅ wsUrl=${wsUrl}`);
+  const streamWsUrl = normalizeWsUrl(String(wsUrl), token);
+  console.log(`✅ wsUrl=${streamWsUrl}`);
 
-  const stream = await waitForBrowserFrames(String(wsUrl), 15000);
+  const stream = await waitForBrowserFrames(streamWsUrl, 15000);
   console.log(`✅ stream ok frames=${stream.frames}`);
 
   const res2 = await fetch(`${API}/tools/browser_get_state/execute`, {
@@ -97,7 +118,7 @@ async function main() {
     body: JSON.stringify({
       sessionId,
       actions: [
-        { type: 'scroll', x: 0, y: 800 },
+        { type: 'scroll', deltaY: 800 },
         { type: 'wait', ms: 500 },
         { type: 'screenshot', fullPage: false }
       ]

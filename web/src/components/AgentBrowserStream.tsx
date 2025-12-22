@@ -1,10 +1,37 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL as API } from '../config';
 
 export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; minimal?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const effectiveWsUrl = useMemo(() => {
+    let abs = String(wsUrl || '').trim();
+    if (!abs) return abs;
+    try {
+      if (!/^wss?:\/\//i.test(abs)) {
+        const base = API.replace(/^http/i, 'ws');
+        abs = new URL(abs, base).toString();
+      }
+    } catch {}
+    try {
+      const u = new URL(abs);
+      if (u.pathname.startsWith('/ws/') && u.searchParams.get('key')) {
+        const sessionId = u.pathname.split('/').filter(Boolean).pop() || '';
+        const base = API.replace(/^http/i, 'ws');
+        abs = new URL(`/browser/ws/${encodeURIComponent(sessionId)}`, base).toString();
+      }
+    } catch {}
+    try {
+      const u = new URL(abs);
+      if (u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
+        const token = localStorage.getItem('token');
+        if (token) u.searchParams.set('token', token);
+      }
+      abs = u.toString();
+    } catch {}
+    return abs;
+  }, [wsUrl]);
   const [size, setSize] = useState<{ w: number, h: number }>({ w: 1280, h: 800 });
   const sizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 800 });
   const [status, setStatus] = useState('connecting');
@@ -84,7 +111,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
   function getSessionId() {
     try {
-      const u = new URL(wsUrl);
+      const u = new URL(effectiveWsUrl);
       const parts = u.pathname.split('/').filter(Boolean);
       return parts[parts.length - 1];
     } catch {
@@ -100,7 +127,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       return u.toString();
     } catch {
       try {
-        const base = new URL(wsUrl);
+        const base = new URL(effectiveWsUrl);
         if (base.protocol === 'ws:') base.protocol = 'http:';
         if (base.protocol === 'wss:') base.protocol = 'https:';
         base.search = '';
@@ -329,7 +356,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           wsRef.current = null;
         }
 
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(effectiveWsUrl);
         wsRef.current = ws;
         setStatus(connectAttemptsRef.current > 0 ? 'reconnecting' : 'connecting');
 
@@ -641,12 +668,16 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
   const TabsStrip = tabs.length ? (
     <div
+      className="agent-browser-tabs glass-panel"
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        padding: minimal ? '0 10px 10px 10px' : '0 12px',
-        flexWrap: 'wrap',
+        padding: minimal ? '8px 10px' : '8px 10px',
+        borderRadius: 14,
+        flexWrap: 'nowrap',
+        overflowX: 'auto',
+        overscrollBehaviorX: 'contain',
       }}
     >
       {tabs.slice(0, 12).map((t) => {
@@ -657,19 +688,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button
               onClick={() => runActions([{ type: 'tab.switch', tabId: t.id }])}
-              style={{
-                height: 28,
-                padding: '0 10px',
-                borderRadius: 999,
-                border: '1px solid var(--border-color)',
-                background: isActive ? 'rgba(37, 99, 235, 0.18)' : 'rgba(255,255,255,0.03)',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                maxWidth: 260,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
+              className={`agent-browser-tab${isActive ? ' active' : ''}`}
               dir="auto"
               title={t.title || t.url || t.id}
             >
@@ -677,15 +696,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             </button>
             <button
               onClick={() => runActions([{ type: 'tab.close', tabId: t.id }])}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 999,
-                border: '1px solid var(--border-color)',
-                background: 'rgba(255,255,255,0.03)',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-              }}
+              className="agent-browser-tab-close"
               title="Close tab"
             >
               ×
@@ -695,15 +706,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       })}
       <button
         onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])}
-        style={{
-          height: 28,
-          padding: '0 12px',
-          borderRadius: 999,
-          border: '1px solid var(--border-color)',
-          background: 'rgba(255,255,255,0.03)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-        }}
+        className="agent-browser-tab-new"
         title="New tab"
       >
         +
@@ -713,6 +716,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
   const CompactHeader = (
     <div
+      className="agent-browser-compact-header glass-panel"
       style={{
         position: 'absolute',
         top: 10,
@@ -722,6 +726,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         display: 'flex',
         alignItems: 'center',
         gap: 8,
+        padding: 10,
+        borderRadius: 14,
       }}
     >
       <div
@@ -895,14 +901,12 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
       {!minimal ? (
       <div
-        className="agent-browser-header"
+        className="agent-browser-header glass-panel"
         style={{
           display: 'flex',
           alignItems: 'center',
           padding: '10px 12px',
-          background: 'var(--bg-secondary)',
-          borderRadius: 12,
-          border: '1px solid var(--border-color)',
+          borderRadius: 14,
           gap: 8,
           flexWrap: 'wrap',
         }}
@@ -960,7 +964,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               padding: '0 10px',
               borderRadius: 10,
               border: '1px solid var(--border-color)',
-              background: 'var(--bg-primary)',
+              background: 'rgba(255,255,255,0.06)',
               color: 'var(--text-primary)',
               outline: 'none',
               minWidth: 200,
@@ -1096,7 +1100,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
       {TabsStrip}
 
-      <div style={{ border: minimal ? 'none' : '1px solid var(--border-color)', borderRadius: minimal ? 0 : 14, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: minimal ? 'none' : '0 4px 20px rgba(0,0,0,0.3)', flex: minimal ? 1 : undefined }}>
+      <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: minimal ? 0 : 16, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: minimal ? 'none' : undefined, flex: minimal ? 1 : undefined }}>
         <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
           <canvas
             ref={canvasRef}
@@ -1167,7 +1171,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       </div>
 
       {!minimal && panelOpen ? (
-        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+        <div className="glass-panel" style={{ borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'flex', gap: 8, padding: 10, borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={() => setActiveTab('console')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'console' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Console</button>
             <button onClick={() => setActiveTab('network')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'network' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Network</button>

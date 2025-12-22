@@ -449,10 +449,7 @@ var tools = [
         }
         const j = await resp.json();
         const sessionId = j.sessionId;
-        const ws = new URL(String(j.wsUrl), base);
-        ws.searchParams.set("key", key);
-        ws.protocol = ws.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = ws.toString();
+        const wsUrl = `/browser/ws/${encodeURIComponent(String(sessionId))}`;
         const nav = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/job/run`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-worker-key": key },
@@ -1856,18 +1853,120 @@ ${archInfo}
 
 // src/ws.ts
 var import_ws = require("ws");
-var wssRef = null;
+var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
+var liveWssRef = null;
+var browserProxyWssRef = null;
 function attachWebSocket(server) {
-  wssRef = new import_ws.WebSocketServer({ server });
-  wssRef.on("connection", (ws) => {
+  liveWssRef = new import_ws.WebSocketServer({ noServer: true });
+  browserProxyWssRef = new import_ws.WebSocketServer({ noServer: true });
+  liveWssRef.on("connection", (ws) => {
     ws.on("message", () => {
     });
   });
+  browserProxyWssRef.on("connection", (clientWs, req) => {
+    const sessionId = String(req.browserSessionId || "").trim();
+    if (!sessionId) {
+      try {
+        clientWs.close(1008, "missing_session_id");
+      } catch {
+      }
+      return;
+    }
+    const upstreamUrl = new URL(`/ws/${encodeURIComponent(sessionId)}`, config.browserWorkerUrl);
+    upstreamUrl.searchParams.set("key", config.browserWorkerKey);
+    upstreamUrl.protocol = upstreamUrl.protocol === "https:" ? "wss:" : "ws:";
+    const upstreamWs = new import_ws.WebSocket(upstreamUrl.toString());
+    const closeBoth = (code, reason) => {
+      try {
+        if (clientWs.readyState === import_ws.WebSocket.OPEN) clientWs.close(code, reason);
+      } catch {
+      }
+      try {
+        if (upstreamWs.readyState === import_ws.WebSocket.OPEN) upstreamWs.close(code, reason);
+      } catch {
+      }
+      try {
+        clientWs.terminate();
+      } catch {
+      }
+      try {
+        upstreamWs.terminate();
+      } catch {
+      }
+    };
+    clientWs.on("message", (data) => {
+      if (upstreamWs.readyState === import_ws.WebSocket.OPEN) {
+        try {
+          upstreamWs.send(data);
+        } catch {
+        }
+      }
+    });
+    upstreamWs.on("message", (data) => {
+      if (clientWs.readyState === import_ws.WebSocket.OPEN) {
+        try {
+          clientWs.send(data);
+        } catch {
+        }
+      }
+    });
+    upstreamWs.on("close", () => closeBoth(1011, "upstream_closed"));
+    upstreamWs.on("error", () => closeBoth(1011, "upstream_error"));
+    clientWs.on("close", () => closeBoth(1e3, "client_closed"));
+    clientWs.on("error", () => closeBoth(1011, "client_error"));
+  });
+  server.on("upgrade", (req, socket, head) => {
+    const reject = (status, message) => {
+      try {
+        socket.write(
+          `HTTP/1.1 ${status} ${message}\r
+Connection: close\r
+Content-Type: text/plain\r
+Content-Length: ${Buffer.byteLength(message)}\r
+\r
+` + message
+        );
+      } catch {
+      }
+      try {
+        socket.destroy();
+      } catch {
+      }
+    };
+    let url;
+    try {
+      url = new URL(req.url, `http://${req.headers.host}`);
+    } catch {
+      return reject(400, "Bad Request");
+    }
+    if (url.pathname === "/ws") {
+      liveWssRef?.handleUpgrade(req, socket, head, (ws) => {
+        liveWssRef?.emit("connection", ws, req);
+      });
+      return;
+    }
+    if (url.pathname.startsWith("/browser/ws/")) {
+      const sessionId = url.pathname.split("/").filter(Boolean).pop();
+      const token = url.searchParams.get("token");
+      if (!token) return reject(401, "Unauthorized");
+      try {
+        import_jsonwebtoken2.default.verify(token, config.jwtSecret);
+      } catch {
+        return reject(401, "Unauthorized");
+      }
+      req.browserSessionId = sessionId;
+      browserProxyWssRef?.handleUpgrade(req, socket, head, (ws) => {
+        browserProxyWssRef?.emit("connection", ws, req);
+      });
+      return;
+    }
+    return reject(404, "Not Found");
+  });
 }
 function broadcast(event) {
-  if (!wssRef) return;
+  if (!liveWssRef) return;
   const payload = JSON.stringify(event);
-  wssRef.clients.forEach((client) => {
+  liveWssRef.clients.forEach((client) => {
     if (client.readyState === import_ws.WebSocket.OPEN) {
       client.send(payload);
     }
@@ -1875,7 +1974,7 @@ function broadcast(event) {
 }
 
 // src/middleware/auth.ts
-var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
+var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
 function authenticate(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith("Bearer ")) {
@@ -1883,7 +1982,7 @@ function authenticate(req, res, next) {
   }
   const token = header.slice("Bearer ".length);
   try {
-    const payload = import_jsonwebtoken2.default.verify(token, config.jwtSecret);
+    const payload = import_jsonwebtoken3.default.verify(token, config.jwtSecret);
     req.auth = payload;
     return next();
   } catch {
