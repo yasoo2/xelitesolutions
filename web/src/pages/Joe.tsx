@@ -1,18 +1,16 @@
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
-import CouncilPanel from '../components/CouncilPanel';
-import { AppsDashboard } from '../components/AppsDashboard';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, ChevronLeft, MessageSquare, Users, Globe, LayoutGrid } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot } from 'lucide-react';
 
 const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
-const CodeUniverseLazy = lazy(() => import('../components/CodeUniverse'));
 
-function BrowserApp() {
+function BrowserApp({ onSession }: { onSession?: (s: { sessionId: string; wsUrl: string }) => void }) {
   const [url, setUrl] = useState('https://www.google.com');
   const [wsUrl, setWsUrl] = useState<string | null>(null);
+  const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,12 +31,18 @@ function BrowserApp() {
       const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
       if (!data?.ok || !nextWsUrl) {
         setWsUrl(null);
+        setBrowserSessionId(null);
         setError(String(data?.error || 'فشل فتح المتصفح'));
         return;
       }
-      setWsUrl(String(nextWsUrl));
+      const sid = String(data?.output?.sessionId || '');
+      const wsu = String(nextWsUrl);
+      setBrowserSessionId(sid || null);
+      setWsUrl(wsu);
+      if (sid && wsu) onSession?.({ sessionId: sid, wsUrl: wsu });
     } catch (e: any) {
       setWsUrl(null);
+      setBrowserSessionId(null);
       setError(String(e?.message || e));
     } finally {
       setIsOpening(false);
@@ -89,6 +93,47 @@ function BrowserApp() {
         >
           {isOpening ? '...جاري الفتح' : 'فتح'}
         </button>
+        {browserSessionId ? (
+          <>
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(browserSessionId).catch(() => {});
+              }}
+              style={{
+                height: 40,
+                padding: '0 14px',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.03)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+              title="Copy Browser Session ID"
+            >
+              نسخ Session
+            </button>
+            <button
+              onClick={() => {
+                const txt = `استخدم المتصفح الحالي: sessionId=${browserSessionId}`;
+                window.dispatchEvent(new CustomEvent('joe:prefill', { detail: { text: txt } }));
+              }}
+              style={{
+                height: 40,
+                padding: '0 14px',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.03)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+              title="Send sessionId to JOE prompt"
+            >
+              إرسال لجو
+            </button>
+          </>
+        ) : null}
       </div>
       {error && (
         <div style={{ padding: 12, color: '#ef4444', borderBottom: '1px solid var(--border-color)' }} dir="auto">
@@ -114,12 +159,12 @@ export default function Joe() {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [mode, setMode] = useState<'chat' | 'council' | 'universe' | 'apps'>('chat');
-  const [activeApp, setActiveApp] = useState<string | null>(null);
+  const [mode, setMode] = useState<'agent' | 'chat'>('agent');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<any>>([]);
   const [isNarrow, setIsNarrow] = useState(false);
+  const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
 
   const nav = useNavigate();
 
@@ -164,10 +209,6 @@ export default function Joe() {
     loadSessions(); 
     loadFolders();
   }, []);
-  
-  useEffect(() => {
-    if (mode !== 'apps' && activeApp) setActiveApp(null);
-  }, [mode]);
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 900px)');
@@ -513,6 +554,22 @@ export default function Joe() {
           whiteSpace: 'nowrap',
         }}>
            <button 
+             onClick={() => setMode('agent')}
+             style={{ 
+               background: 'none', 
+               border: 'none', 
+               color: mode === 'agent' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+               fontWeight: mode === 'agent' ? 600 : 400,
+               cursor: 'pointer',
+               display: 'flex', alignItems: 'center', gap: 6,
+               padding: '6px 12px',
+               borderRadius: 6,
+               backgroundColor: mode === 'agent' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
+             }}
+           >
+             <Bot size={16} /> الوكيل
+           </button>
+           <button 
              onClick={() => setMode('chat')}
              style={{ 
                background: 'none', 
@@ -528,57 +585,71 @@ export default function Joe() {
            >
              <MessageSquare size={16} /> Chat
            </button>
-           <button 
-             onClick={() => setMode('council')}
-             style={{ 
-               background: 'none', 
-               border: 'none', 
-               color: mode === 'council' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-               fontWeight: mode === 'council' ? 600 : 400,
-               cursor: 'pointer',
-               display: 'flex', alignItems: 'center', gap: 6,
-               padding: '6px 12px',
-               borderRadius: 6,
-               backgroundColor: mode === 'council' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
-             }}
-           >
-             <Users size={16} /> Council
-           </button>
-           <button 
-             onClick={() => setMode('universe')}
-             style={{ 
-               background: 'none', 
-               border: 'none', 
-               color: mode === 'universe' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-               fontWeight: mode === 'universe' ? 600 : 400,
-               cursor: 'pointer',
-               display: 'flex', alignItems: 'center', gap: 6,
-               padding: '6px 12px',
-               borderRadius: 6,
-               backgroundColor: mode === 'universe' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
-             }}
-           >
-             <Globe size={16} /> Universe
-           </button>
-           <button 
-             onClick={() => setMode('apps')}
-             style={{ 
-               background: 'none', 
-               border: 'none', 
-               color: mode === 'apps' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-               fontWeight: mode === 'apps' ? 600 : 400,
-               cursor: 'pointer',
-               display: 'flex', alignItems: 'center', gap: 6,
-               padding: '6px 12px',
-               borderRadius: 6,
-               backgroundColor: mode === 'apps' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
-             }}
-           >
-             <LayoutGrid size={16} /> Apps
-           </button>
         </div>
         
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+        {mode === 'agent' && (
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12 }}>
+            <div style={{ flex: isNarrow ? '0 0 auto' : 1.2, minHeight: isNarrow ? 320 : undefined, overflow: 'hidden', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-secondary)' }}>
+              <BrowserApp onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-secondary)' }}>
+              <div style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: 12 }}>
+                <div dir="auto" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {agentBrowserSessionId ? `Browser sessionId: ${agentBrowserSessionId}` : 'افتح المتصفح لبدء جلسة الوكيل'}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    onClick={() => {
+                      if (!agentBrowserSessionId) return;
+                      navigator.clipboard?.writeText(agentBrowserSessionId).catch(() => {});
+                    }}
+                    disabled={!agentBrowserSessionId}
+                    style={{
+                      height: 28,
+                      padding: '0 10px',
+                      borderRadius: 8,
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(255,255,255,0.03)',
+                      color: 'var(--text-primary)',
+                      cursor: agentBrowserSessionId ? 'pointer' : 'not-allowed',
+                      opacity: agentBrowserSessionId ? 1 : 0.5,
+                    }}
+                  >
+                    نسخ
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!agentBrowserSessionId) return;
+                      const txt = `استخدم المتصفح الحالي: sessionId=${agentBrowserSessionId}`;
+                      window.dispatchEvent(new CustomEvent('joe:prefill', { detail: { text: txt } }));
+                    }}
+                    disabled={!agentBrowserSessionId}
+                    style={{
+                      height: 28,
+                      padding: '0 10px',
+                      borderRadius: 8,
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(37, 99, 235, 0.12)',
+                      color: 'var(--text-primary)',
+                      cursor: agentBrowserSessionId ? 'pointer' : 'not-allowed',
+                      opacity: agentBrowserSessionId ? 1 : 0.5,
+                    }}
+                  >
+                    إدراج في الأمر
+                  </button>
+                </div>
+              </div>
+              <CommandComposer 
+                sessionId={selected || undefined} 
+                onSessionCreated={async (id) => {
+                  await loadSessions();
+                  setSelected(id);
+                }}
+              />
+            </div>
+          </div>
+        )}
         {mode === 'chat' && (
           <CommandComposer 
             sessionId={selected || undefined} 
@@ -587,56 +658,6 @@ export default function Joe() {
               setSelected(id);
             }}
           />
-        )}
-        {mode === 'council' && <CouncilPanel />}
-        {mode === 'universe' && (
-          <Suspense fallback={<div style={{ padding: 12, color: 'var(--text-secondary)' }}>Loading...</div>}>
-            <CodeUniverseLazy />
-          </Suspense>
-        )}
-        {mode === 'apps' && (
-          !activeApp ? (
-            <AppsDashboard 
-              onAppSelect={(appId) => {
-                if (appId === 'GRAPH') {
-                  setMode('universe');
-                  return;
-                }
-                setActiveApp(appId);
-              }} 
-            />
-          ) : (
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border-color)' }}>
-                <button
-                  onClick={() => setActiveApp(null)}
-                  style={{
-                    background: 'none',
-                    border: '1px solid var(--border-color)',
-                    color: 'var(--text-secondary)',
-                    height: 34,
-                    padding: '0 10px',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <ChevronLeft size={16} />
-                  رجوع
-                </button>
-                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{activeApp}</div>
-              </div>
-              <div style={{ flex: 1, overflow: 'hidden' }}>
-                {activeApp === 'BROWSER' ? (
-                  <BrowserApp />
-                ) : (
-                  <div style={{ padding: 12, color: 'var(--text-secondary)' }}>قريباً</div>
-                )}
-              </div>
-            </div>
-          )
         )}
         </div>
       </main>

@@ -233,6 +233,17 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
   const [activeProvider, setActiveProvider] = useState('openai');
   const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
 
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail;
+      const next = typeof detail?.text === 'string' ? detail.text : '';
+      if (!next) return;
+      setText((prev) => (prev ? `${prev}\n${next}` : next));
+    };
+    window.addEventListener('joe:prefill', handler as any);
+    return () => window.removeEventListener('joe:prefill', handler as any);
+  }, []);
+
   // Load providers from localStorage on mount
   useEffect(() => {
     try {
