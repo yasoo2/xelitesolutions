@@ -38,6 +38,7 @@ export const SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You 
    - Checking live website status.
    - Searching for up-to-date information when internal knowledge is stale.
    - **Visual Verification**: Use it to see what you built.
+   - **Never use the browser** to inspect the user's local repository or "test code". For codebase analysis, prefer local tools (file_read, file_search, project tree/graph, etc). Only open GitHub if the user explicitly needs to view the website itself, not the code.
 4. **Language Protocol**: 
    - **Input**: Understand any language.
    - **Thinking**: You can reason in English or the user's language.
@@ -127,6 +128,15 @@ export async function planNextStep(
         /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
 
       if (wantsOpen) {
+        const explicitBrowser = /(\b(browser|web)\b|متصفح)/i.test(rawText);
+        const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(rawText);
+        const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(rawText);
+        if (githubKeyword && analysisKeyword && !explicitBrowser && !url) {
+          return {
+            name: 'echo',
+            input: { text: 'سأقوم بتحليل الكود محلياً دون فتح المتصفح.' },
+          };
+        }
         if (!url) {
           if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
         }

@@ -229,7 +229,6 @@ export default function CommandComposer({
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const agentBrowserReady = sessionKind !== 'agent' || !!browserSessionId;
   
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -573,6 +572,52 @@ export default function CommandComposer({
   async function run(overrideText?: string) {
     const inputText = overrideText || text;
     if (!inputText.trim()) return;
+
+    const needsBrowserForText = (raw: string) => {
+      const s = String(raw || '').trim();
+      if (!s) return false;
+
+      const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
+      if (hasUrl) return true;
+
+      const explicitBrowser = /(\b(browser|web)\b|متصفح|داخل المتصفح)/i.test(s);
+      if (explicitBrowser) return true;
+
+      const openKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
+      const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(s);
+      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+
+      if (openKeyword && githubKeyword && analysisKeyword) return false;
+
+      const knownSites = /(youtube|يوتيوب|google|جوجل|facebook|فيسبوك|x\.com|twitter|تويتر|instagram|انستغرام)/i.test(s);
+      if (openKeyword && knownSites) return true;
+
+      if (openKeyword && explicitBrowser) return true;
+
+      return false;
+    };
+
+    const ensureBrowserSession = async (url?: string) => {
+      return await new Promise<{ sessionId: string; wsUrl?: string }>((resolve, reject) => {
+        const timeoutMs = 20000;
+        const onOpened = (ev: Event) => {
+          const detail = (ev as CustomEvent)?.detail || {};
+          const sessionId = String(detail?.sessionId || '').trim();
+          const wsUrl = typeof detail?.wsUrl === 'string' ? detail.wsUrl : undefined;
+          if (!sessionId) return;
+          window.removeEventListener('joe:browser_opened', onOpened as any);
+          resolve({ sessionId, wsUrl });
+        };
+
+        window.addEventListener('joe:browser_opened', onOpened as any);
+        window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url } }));
+
+        window.setTimeout(() => {
+          window.removeEventListener('joe:browser_opened', onOpened as any);
+          reject(new Error('browser_open_timeout'));
+        }, timeoutMs);
+      });
+    };
     
     // Optimistic update
     const tempId = Date.now().toString();
@@ -585,6 +630,17 @@ export default function CommandComposer({
 
     const token = localStorage.getItem('token');
     try {
+      let effectiveBrowserSessionId = browserSessionId;
+      if (sessionKind === 'agent' && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
+        const urlMatch = inputText.match(/https?:\/\/[^\s"'<>]+/i);
+        const directUrl = urlMatch?.[0];
+        const wantsYoutube = /youtube|يوتيوب/i.test(inputText);
+        const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(inputText);
+        const desiredUrl = directUrl || (wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
+        const opened = await ensureBrowserSession(desiredUrl);
+        effectiveBrowserSessionId = opened.sessionId;
+      }
+
       const res = await fetch(`${API}/runs/start`, {
         method: 'POST',
         headers: {
@@ -595,7 +651,7 @@ export default function CommandComposer({
           text: inputText, 
           sessionId,
           sessionKind,
-          ...(sessionKind === 'agent' && browserSessionId ? { browserSessionId } : {}),
+          ...(sessionKind === 'agent' && effectiveBrowserSessionId ? { browserSessionId: effectiveBrowserSessionId } : {}),
           fileIds: attachedFiles.map(f => f.id),
           provider: activeProvider,
           apiKey: providers[activeProvider]?.apiKey,
@@ -1121,19 +1177,19 @@ export default function CommandComposer({
       )}
 
       <div className="input-area">
-        <textarea 
-          value={text} 
-          onChange={(e) => setText(e.target.value)} 
-          placeholder={t('inputPlaceholder')}
-          dir="auto"
-          disabled={!!approval || !agentBrowserReady}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              if (agentBrowserReady) run();
-            }
-          }}
-        />
+    <textarea 
+      value={text} 
+      onChange={(e) => setText(e.target.value)} 
+      placeholder={t('inputPlaceholder')}
+      dir="auto"
+      disabled={!!approval}
+      onKeyDown={e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          run();
+        }
+      }}
+    />
         <div className="input-actions">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={{ 
@@ -1192,7 +1248,7 @@ export default function CommandComposer({
             <button 
               className="send-button" 
               onClick={() => run()}
-              disabled={!text.trim() || !!approval || !agentBrowserReady}
+              disabled={!text.trim() || !!approval}
               title={t('send')}
             >
               <ArrowUp size={20} />

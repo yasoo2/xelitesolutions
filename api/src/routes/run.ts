@@ -363,6 +363,20 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       break;
     }
 
+    const planName = String(plan.name || '');
+    const isBrowserTool = /^browser_/.test(planName);
+    if (kind === 'agent' && isBrowserTool) {
+      const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
+      const inputSid = String((plan as any)?.input?.sessionId || '').trim();
+      const hasSid = !!(reqSid || inputSid);
+      if (!hasSid) {
+        const msg = 'المتصفح غير مفتوح في وضع الوكيل. افتح المتصفح في الوسط أولاً ثم أعد تنفيذ أمر المتصفح.';
+        ev({ type: 'text', data: msg });
+        forcedText = msg;
+        break;
+      }
+    }
+
     if (kind === 'agent' && String(plan.name || '') === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
       const url = String((plan as any)?.input?.url || 'https://www.google.com').trim() || 'https://www.google.com';
       plan = {

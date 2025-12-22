@@ -23,18 +23,19 @@ function BrowserApp({
   const [error, setError] = useState<string | null>(null);
   const didAutoOpen = useRef(false);
 
-  async function openBrowser() {
+  async function openBrowser(nextUrl?: string) {
     setIsOpening(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
+      const effectiveUrl = (typeof nextUrl === 'string' && nextUrl.trim()) ? nextUrl.trim() : url;
       const res = await fetch(`${API}/tools/browser_open/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url: effectiveUrl }),
       });
       const data = await res.json();
       const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
@@ -48,7 +49,10 @@ function BrowserApp({
       const wsu = String(nextWsUrl);
       setBrowserSessionId(sid || null);
       setWsUrl(wsu);
-      if (sid && wsu) onSession?.({ sessionId: sid, wsUrl: wsu });
+      if (sid && wsu) {
+        onSession?.({ sessionId: sid, wsUrl: wsu });
+        window.dispatchEvent(new CustomEvent('joe:browser_opened', { detail: { sessionId: sid, wsUrl: wsu } }));
+      }
     } catch (e: any) {
       setWsUrl(null);
       setBrowserSessionId(null);
@@ -64,6 +68,17 @@ function BrowserApp({
     didAutoOpen.current = true;
     openBrowser();
   }, [autoOpen]);
+
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail || {};
+      const nextUrl = typeof detail?.url === 'string' ? detail.url : undefined;
+      if (typeof nextUrl === 'string' && nextUrl.trim()) setUrl(nextUrl.trim());
+      openBrowser(nextUrl);
+    };
+    window.addEventListener('joe:browser_open_request', handler as any);
+    return () => window.removeEventListener('joe:browser_open_request', handler as any);
+  }, []);
 
   return (
     <div className="browser-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -95,7 +110,7 @@ function BrowserApp({
             }}
           />
           <button
-            onClick={openBrowser}
+            onClick={() => openBrowser()}
             disabled={isOpening || !url.trim()}
             style={{
               height: 40,
@@ -168,7 +183,7 @@ function BrowserApp({
                 <>
                   <div style={{ color: '#ef4444', marginBottom: 10 }}>{error}</div>
                   <button
-                    onClick={openBrowser}
+                    onClick={() => openBrowser()}
                     disabled={isOpening}
                     style={{
                       height: 36,
@@ -184,7 +199,28 @@ function BrowserApp({
                   </button>
                 </>
               ) : (
-                <div>{isOpening ? '...جاري فتح المتصفح' : minimal ? 'جاري تجهيز المتصفح...' : 'افتح رابط لبدء المتصفح.'}</div>
+                <>
+                  <div style={{ marginBottom: minimal ? 10 : 0 }}>
+                    {isOpening ? '...جاري فتح المتصفح' : minimal ? 'المتصفح غير مفتوح.' : 'افتح رابط لبدء المتصفح.'}
+                  </div>
+                  {minimal && (
+                    <button
+                      onClick={() => openBrowser()}
+                      disabled={isOpening}
+                      style={{
+                        height: 36,
+                        padding: '0 14px',
+                        borderRadius: 10,
+                        border: '1px solid var(--border-color)',
+                        background: 'rgba(37, 99, 235, 0.12)',
+                        color: 'var(--text-primary)',
+                        cursor: isOpening ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {isOpening ? '...جاري الفتح' : 'فتح المتصفح'}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -729,7 +765,7 @@ export default function Joe() {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
-              <BrowserApp minimal={true} autoOpen={true} onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
+              <BrowserApp minimal={true} autoOpen={false} onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
             </div>
 
             <div
