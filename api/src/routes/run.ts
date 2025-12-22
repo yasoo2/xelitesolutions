@@ -356,6 +356,24 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
     
+    if (kind === 'chat' && /^browser_/.test(String(plan.name || ''))) {
+      const msg = 'أدوات المتصفح تعمل فقط داخل وضع الوكيل. انتقل إلى تبويب الوكيل لفتح المواقع داخل المتصفح.';
+      ev({ type: 'text', data: msg });
+      forcedText = msg;
+      break;
+    }
+
+    if (kind === 'agent' && String(plan.name || '') === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
+      const url = String((plan as any)?.input?.url || 'https://www.google.com').trim() || 'https://www.google.com';
+      plan = {
+        name: 'browser_run',
+        input: {
+          sessionId: browserSessionId.trim(),
+          actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
+        },
+      } as any;
+    }
+
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
 
     if (plan.name === 'browser_run') {

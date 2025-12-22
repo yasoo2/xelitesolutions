@@ -2770,6 +2770,22 @@ ${merged.join("\n")}
         break;
       }
     }
+    if (kind === "chat" && /^browser_/.test(String(plan.name || ""))) {
+      const msg = "\u0623\u062F\u0648\u0627\u062A \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u062A\u0639\u0645\u0644 \u0641\u0642\u0637 \u062F\u0627\u062E\u0644 \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0646\u062A\u0642\u0644 \u0625\u0644\u0649 \u062A\u0628\u0648\u064A\u0628 \u0627\u0644\u0648\u0643\u064A\u0644 \u0644\u0641\u062A\u062D \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u062F\u0627\u062E\u0644 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
+      ev({ type: "text", data: msg });
+      forcedText = msg;
+      break;
+    }
+    if (kind === "agent" && String(plan.name || "") === "browser_open" && typeof browserSessionId === "string" && browserSessionId.trim()) {
+      const url = String(plan?.input?.url || "https://www.google.com").trim() || "https://www.google.com";
+      plan = {
+        name: "browser_run",
+        input: {
+          sessionId: browserSessionId.trim(),
+          actions: [{ type: "goto", url, waitUntil: "domcontentloaded" }]
+        }
+      };
+    }
     ev({ type: "step_done", data: { name: `thinking_step_${steps + 1}`, plan } });
     if (plan.name === "browser_run") {
       const acts = Array.isArray(plan.input?.actions) ? plan.input.actions : [];

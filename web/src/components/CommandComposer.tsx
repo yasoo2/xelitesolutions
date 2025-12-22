@@ -453,6 +453,17 @@ export default function CommandComposer({
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
+
+          if (msg.type === 'artifact_created') {
+            const kind = msg.data?.kind;
+            const href = msg.data?.href;
+            const isBrowserStream =
+              kind === 'browser_stream' ||
+              (typeof href === 'string' && /^wss?:\/\//i.test(href) && /\/ws\//i.test(href));
+            if (sessionKind === 'agent' && browserSessionId && isBrowserStream) {
+              return;
+            }
+          }
           
           if (msg.type === 'approval_required') {
             const data = msg.data || {};
@@ -818,6 +829,7 @@ export default function CommandComposer({
               kind === 'browser_stream' ||
               (typeof href === 'string' && /^wss?:\/\//i.test(href) && /\/ws\//i.test(href));
             if (isBrowserStream && href) {
+              if (sessionKind === 'agent' && browserSessionId) return null;
               return (
                 <motion.div 
                   key={i} 
