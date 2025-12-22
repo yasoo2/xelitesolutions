@@ -10,6 +10,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [status, setStatus] = useState('connecting');
   const [wsError, setWsError] = useState<string>('');
   const [address, setAddress] = useState<string>('');
+  const [tabs, setTabs] = useState<Array<{ id: string; title?: string; url?: string; createdAt?: number }>>([]);
+  const [activeTabId, setActiveTabId] = useState<string>('');
+  const activeTabIdRef = useRef<string>('');
   const [downloads, setDownloads] = useState<Array<{ name: string; href: string }>>([]);
   const [overlay, setOverlay] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'console' | 'network' | 'downloads'>('console');
@@ -20,6 +23,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [focusMode, setFocusMode] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [streamPaused, setStreamPaused] = useState<boolean>(false);
+  const [streamFps, setStreamFps] = useState<number>(5);
+  const [streamQuality, setStreamQuality] = useState<number>(50);
+  const [redactionEnabled, setRedactionEnabled] = useState<boolean>(true);
   const [reconnectNonce, setReconnectNonce] = useState<number>(0);
   const [extractSchema, setExtractSchema] = useState<string>('{"list":{"selector":"a[href^=\\"https\\"]:not([href*=\\"google.com\\"])","fields":{"text":{"selector":"","attr":""},"url":{"selector":"","attr":"href"}}}}');
   const [extracted, setExtracted] = useState<any>(null);
@@ -42,6 +48,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const connectAttemptsRef = useRef<number>(0);
   const [controlEnabled, setControlEnabled] = useState<boolean>(false);
   const [canvasFocused, setCanvasFocused] = useState<boolean>(false);
+  const [pickerMode, setPickerMode] = useState<boolean>(false);
+  const [picked, setPicked] = useState<any>(null);
+  const [loginMode, setLoginMode] = useState<boolean>(false);
+  const [timelineEnabled, setTimelineEnabled] = useState<boolean>(true);
+  const [timeline, setTimeline] = useState<Array<{ ts: number; jpegBase64: string }>>([]);
+  const [replayMode, setReplayMode] = useState<boolean>(false);
+  const [replayIndex, setReplayIndex] = useState<number>(0);
 
   useEffect(() => {
     if (!minimal) return;
@@ -55,6 +68,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   useEffect(() => {
     sizeRef.current = size;
   }, [size]);
+
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
 
   useEffect(() => {
     const onChange = () => {
@@ -115,7 +132,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!sessionId) return;
 
     // Check for WS optimization
-    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'goto', 'screenshot'];
+    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'goto', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
     const canUseWs = wsRef.current && 
                      wsRef.current.readyState === WebSocket.OPEN && 
                      actions.every(a => wsActions.includes(a.type));
@@ -375,6 +392,11 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 setSize(next);
               }
               if (typeof msg.url === 'string') setAddress(msg.url);
+              if (Array.isArray(msg.tabs)) setTabs(msg.tabs);
+              if (typeof msg.activeTabId === 'string') setActiveTabId(msg.activeTabId);
+              if (msg.stream?.fps) setStreamFps(Number(msg.stream.fps) || 5);
+              if (msg.stream?.quality) setStreamQuality(Number(msg.stream.quality) || 50);
+              if (typeof msg.redactionEnabled === 'boolean') setRedactionEnabled(Boolean(msg.redactionEnabled));
               if (Array.isArray(msg.downloads)) {
                 const items = msg.downloads.map((d: any) => ({ name: d.filename || d.name || 'download', href: absHrefFromWs(d.href) }));
                 setDownloads(items.slice(-10).reverse());
@@ -386,8 +408,19 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 setNetworkEntries(msg.network.slice(-500));
               }
             }
+            if (msg.type === 'tabs') {
+              if (Array.isArray(msg.tabs)) setTabs(msg.tabs);
+              if (typeof msg.activeTabId === 'string') setActiveTabId(msg.activeTabId);
+            }
+            if (msg.type === 'stream') {
+              if (typeof msg.fps === 'number') setStreamFps(msg.fps);
+              if (typeof msg.quality === 'number') setStreamQuality(msg.quality);
+            }
+            if (msg.type === 'redaction') {
+              if (typeof msg.enabled === 'boolean') setRedactionEnabled(Boolean(msg.enabled));
+            }
             if (msg.type === 'url' && typeof msg.url === 'string') {
-              setAddress(msg.url);
+              if (!msg.tabId || String(msg.tabId) === String(activeTabIdRef.current)) setAddress(msg.url);
             }
             if (msg.type === 'console' && msg.entry) {
               setConsoleEntries((prev) => [...prev, msg.entry].slice(-500));
@@ -445,18 +478,19 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               setTimeout(() => setOverlay(''), 1500);
             }
             if (msg.type === 'frame') {
-              if (streamPaused) return;
-              const img = new Image();
-              img.onload = () => {
-                const canvas = canvasRef.current!;
-                if (!canvas) return;
-                const s = sizeRef.current;
-                canvas.width = s.w;
-                canvas.height = s.h;
-                const ctx = canvas.getContext('2d')!;
-                ctx.drawImage(img, 0, 0, s.w, s.h);
-              };
-              img.src = 'data:image/jpeg;base64,' + msg.jpegBase64;
+              if (timelineEnabled && typeof msg.jpegBase64 === 'string') {
+                setTimeline(prev => {
+                  const next = [...prev, { ts: Number(msg.ts || Date.now()), jpegBase64: msg.jpegBase64 }].slice(-80);
+                  return next;
+                });
+              }
+              if (streamPaused || replayMode) return;
+              if (typeof msg.jpegBase64 === 'string') drawJpegBase64(msg.jpegBase64);
+            }
+            if (msg.type === 'pick' && msg.element) {
+              setPicked(msg.element);
+              if (msg.element?.selector) setSelector(String(msg.element.selector));
+              if (msg.element?.boundingBox) setHighlight(msg.element.boundingBox);
             }
           } catch {}
         };
@@ -484,7 +518,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     const rect = canvas.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left) * (size.w / rect.width));
     const y = Math.round((e.clientY - rect.top) * (size.h / rect.height));
-    runActions([{ type: 'click', x, y }]);
+    if (pickerMode) runActions([{ type: 'pick', x, y }]);
+    else runActions([{ type: 'click', x, y }]);
     setCursor({ x, y });
   }
 
@@ -538,7 +573,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   }
   function doType() {
     if (!typeText.trim()) return;
-    runActions([{ type: 'type', text: typeText, delay: 30 }]);
+    runActions([{ type: 'type', text: typeText, delay: 30, sensitive: loginMode }]);
     setTypeText('');
   }
 
@@ -574,9 +609,107 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key && e.key.length === 1) {
       e.preventDefault();
-      runActions([{ type: 'type', text: e.key, delay: 0 }]);
+      runActions([{ type: 'type', text: e.key, delay: 0, sensitive: loginMode }]);
     }
   }
+
+  function drawJpegBase64(jpegBase64: string) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = canvasRef.current!;
+      if (!canvas) return;
+      const s = sizeRef.current;
+      canvas.width = s.w;
+      canvas.height = s.h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, s.w, s.h);
+    };
+    img.src = 'data:image/jpeg;base64,' + jpegBase64;
+  }
+
+  useEffect(() => {
+    if (!replayMode) return;
+    const f = timeline[replayIndex];
+    if (!f?.jpegBase64) return;
+    drawJpegBase64(f.jpegBase64);
+  }, [replayMode, replayIndex, timeline]);
+
+  useEffect(() => {
+    if (!replayMode) return;
+    setReplayIndex(i => Math.max(0, Math.min(i, Math.max(0, timeline.length - 1))));
+  }, [replayMode, timeline.length]);
+
+  const TabsStrip = tabs.length ? (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: minimal ? '0 10px 10px 10px' : '0 12px',
+        flexWrap: 'wrap',
+      }}
+    >
+      {tabs.slice(0, 12).map((t) => {
+        const isActive = String(t.id) === String(activeTabId);
+        let label = t.title && t.title.trim() ? t.title : (t.url ? (() => { try { return new URL(String(t.url)).hostname; } catch { return String(t.url); } })() : t.id);
+        label = String(label).slice(0, 28);
+        return (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={() => runActions([{ type: 'tab.switch', tabId: t.id }])}
+              style={{
+                height: 28,
+                padding: '0 10px',
+                borderRadius: 999,
+                border: '1px solid var(--border-color)',
+                background: isActive ? 'rgba(37, 99, 235, 0.18)' : 'rgba(255,255,255,0.03)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                maxWidth: 260,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              dir="auto"
+              title={t.title || t.url || t.id}
+            >
+              {label}
+            </button>
+            <button
+              onClick={() => runActions([{ type: 'tab.close', tabId: t.id }])}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.03)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+              title="Close tab"
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+      <button
+        onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])}
+        style={{
+          height: 28,
+          padding: '0 12px',
+          borderRadius: 999,
+          border: '1px solid var(--border-color)',
+          background: 'rgba(255,255,255,0.03)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+        }}
+        title="New tab"
+      >
+        +
+      </button>
+    </div>
+  ) : null;
 
   const CompactHeader = (
     <div
@@ -620,6 +753,23 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         }}
       >
         {controlEnabled ? 'تحكم: مفعل' : 'تحكم: متوقف'}
+      </button>
+      <button
+        onClick={() => setPickerMode(v => !v)}
+        disabled={!controlEnabled}
+        style={{
+          height: 32,
+          padding: '0 10px',
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: pickerMode ? 'rgba(234, 179, 8, 0.18)' : 'rgba(255,255,255,0.03)',
+          color: 'var(--text-primary)',
+          cursor: controlEnabled ? 'pointer' : 'not-allowed',
+          opacity: controlEnabled ? 1 : 0.6,
+          flex: '0 0 auto',
+        }}
+      >
+        {pickerMode ? 'Picker: مفعل' : 'Picker'}
       </button>
       <button
         onClick={() => runActions([{ type: 'goBack' }])}
@@ -944,6 +1094,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       </div>
       ) : null}
 
+      {TabsStrip}
+
       <div style={{ border: minimal ? 'none' : '1px solid var(--border-color)', borderRadius: minimal ? 0 : 14, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: minimal ? 'none' : '0 4px 20px rgba(0,0,0,0.3)', flex: minimal ? 1 : undefined }}>
         <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
           <canvas
@@ -1093,6 +1245,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                   style={{ flex: 1, minWidth: 220, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                 />
                 <button onClick={() => address && runActions([{ type: 'goto', url: normalizeUrl(address), waitUntil: 'domcontentloaded' }])} className="btn">Go</button>
+                <button onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])} className="btn" title="New tab">+Tab</button>
+                <button onClick={() => activeTabId && runActions([{ type: 'tab.close', tabId: activeTabId }])} className="btn" title="Close active tab">×Tab</button>
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
@@ -1105,7 +1259,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                  
                  {/* Type */}
                  <div style={{ display: 'flex', gap: 4 }}>
-                    <input type="text" value={typeText} onChange={e => setTypeText(e.target.value)} placeholder="Type text..." style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
+                    <input type={loginMode ? "password" : "text"} value={typeText} onChange={e => setTypeText(e.target.value)} placeholder="Type text..." style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
                     <button onClick={doType} className="btn">Type</button>
                     <button onClick={() => runActions([{ type: 'press', key: 'Enter' }])} className="btn">Ent</button>
                  </div>
@@ -1117,6 +1271,73 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                     <button onClick={() => selector && runActions([{ type: 'click', selector }])} className="btn">Clk</button>
                  </div>
             </div>
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={controlEnabled} onChange={e => setControlEnabled(e.target.checked)} />
+                تحكم
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={pickerMode} onChange={e => setPickerMode(e.target.checked)} disabled={!controlEnabled} />
+                Picker
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={loginMode} onChange={e => setLoginMode(e.target.checked)} />
+                Login
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={redactionEnabled} onChange={e => { const v = e.target.checked; setRedactionEnabled(v); runActions([{ type: 'redaction.set', enabled: v }]); }} />
+                Redaction
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                FPS
+                <select value={streamFps} onChange={e => { const v = Number(e.target.value); setStreamFps(v); runActions([{ type: 'stream.setFps', fps: v }]); }} style={{ height: 26, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                  {[2, 5, 8, 10, 15, 20].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                جودة
+                <select value={streamQuality} onChange={e => { const v = Number(e.target.value); setStreamQuality(v); runActions([{ type: 'stream.setQuality', quality: v }]); }} style={{ height: 26, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                  {[35, 45, 50, 60, 70].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                Timeline
+                <input type="checkbox" checked={timelineEnabled} onChange={e => setTimelineEnabled(e.target.checked)} />
+              </label>
+              <button
+                onClick={() => {
+                  setReplayMode(v => !v);
+                  setStreamPaused(true);
+                }}
+                className="btn"
+              >
+                {replayMode ? 'إغلاق Replay' : 'Replay'}
+              </button>
+              <button onClick={() => { setTimeline([]); setReplayIndex(0); }} className="btn">مسح</button>
+            </div>
+
+            {replayMode && timeline.length ? (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, timeline.length - 1)}
+                  value={Math.min(replayIndex, Math.max(0, timeline.length - 1))}
+                  onChange={e => setReplayIndex(Number(e.target.value))}
+                  style={{ flex: 1, minWidth: 240 }}
+                />
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
+                  {timeline[replayIndex] ? new Date(timeline[replayIndex].ts).toLocaleTimeString() : ''}
+                </div>
+              </div>
+            ) : null}
+
+            {picked ? (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
+                Picked: {String(picked.tag || '')} {picked.id ? `#${picked.id}` : ''} {picked.ariaLabel ? `aria="${picked.ariaLabel}"` : ''} {picked.selector ? `sel=${picked.selector}` : ''}
+              </div>
+            ) : null}
             
             <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
                 DevTools: <label><input type="checkbox" checked={autoExtract} onChange={e => setAutoExtract(e.target.checked)} /> Auto Extract</label>

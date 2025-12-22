@@ -46,12 +46,29 @@ async function launchChromium() {
   }
   return await chromium.launch({ args, headless });
 }
-function setupPageHooks(session2) {
-  const page = session2.page;
+function listTabs(session2) {
+  return session2.tabs.map((t) => ({ id: t.id, title: t.title || "", url: t.url || t.page.url(), createdAt: t.createdAt }));
+}
+function notifyTabs(session2) {
+  notifySession(session2, "tabs", { tabs: listTabs(session2), activeTabId: session2.activeTabId });
+}
+function setupPageHooks(session2, page, tabId) {
+  const findTab = () => session2.tabs.find((t) => t.id === tabId);
   page.on("framenavigated", (frame) => {
     try {
       if (frame === page.mainFrame()) {
-        notifySession(session2, "url", { url: frame.url() });
+        const t = findTab();
+        if (t) t.url = frame.url();
+        notifySession(session2, "url", { url: frame.url(), tabId });
+        if (t) {
+          page.title().then((title) => {
+            const tt = findTab();
+            if (!tt) return;
+            tt.title = title;
+            notifyTabs(session2);
+          }).catch(() => {
+          });
+        }
       }
     } catch {
     }
@@ -61,7 +78,7 @@ function setupPageHooks(session2) {
       const entry = { level: msg.type(), text: msg.text(), ts: Date.now() };
       session2.logs.push(entry);
       if (session2.logs.length > 500) session2.logs.shift();
-      notifySession(session2, "console", { entry });
+      notifySession(session2, "console", { entry, tabId });
     } catch {
     }
   });
@@ -76,7 +93,7 @@ function setupPageHooks(session2) {
       };
       session2.network.push(entry);
       if (session2.network.length > 500) session2.network.shift();
-      notifySession(session2, "network", { entry });
+      notifySession(session2, "network", { entry, tabId });
     } catch {
     }
   });
@@ -93,7 +110,7 @@ function setupPageHooks(session2) {
       };
       session2.network.push(entry);
       if (session2.network.length > 500) session2.network.shift();
-      notifySession(session2, "network", { entry });
+      notifySession(session2, "network", { entry, tabId });
     } catch {
     }
   });
@@ -114,7 +131,7 @@ function setupPageHooks(session2) {
       const download = { id: fileId, filename: safeName, href, size };
       session2.downloads.push(download);
       if (session2.downloads.length > 50) session2.downloads.shift();
-      notifySession(session2, "download", { download });
+      notifySession(session2, "download", { download, tabId });
       logger.info({ fileId, safeName, size }, "download_saved");
     } catch (e) {
       logger.error(e, "download_failed");
@@ -132,30 +149,40 @@ async function createSession(opts) {
   });
   const page = await context.newPage();
   const id = uuidv4();
+  const tabId = uuidv4();
+  const streamFps = Math.max(1, Math.min(30, Number(process.env.STREAM_FPS || 5)));
+  const streamQuality = Math.max(20, Math.min(90, Number(process.env.STREAM_QUALITY || 50)));
   const session2 = {
     id,
     browser,
     context,
     page,
+    tabs: [{ id: tabId, page, createdAt: Date.now(), url: page.url() }],
+    activeTabId: tabId,
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
     locale: opts.locale,
+    streamFps,
+    streamQuality,
+    redactionEnabled: true,
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
     downloads: [],
     logs: [],
     network: []
   };
-  setupPageHooks(session2);
+  setupPageHooks(session2, page, tabId);
   SESSIONS.set(id, session2);
   return session2;
 }
 async function closeSession(id) {
   const s = SESSIONS.get(id);
   if (!s) return;
-  try {
-    await s.page.close();
-  } catch {
+  for (const t of s.tabs) {
+    try {
+      await t.page.close();
+    } catch {
+    }
   }
   try {
     await s.context.close();
@@ -167,11 +194,37 @@ async function closeSession(id) {
   }
   SESSIONS.delete(id);
 }
+function sanitizeAction(session2, a2) {
+  if (!session2.redactionEnabled) return a2;
+  if (a2.type === "type") {
+    return { ...a2, text: `[redacted:${a2.text.length}]` };
+  }
+  if (a2.type === "fillForm") {
+    const fields = a2.fields.map((f) => {
+      const should = a2.sensitive || f.sensitive;
+      if (!should) return f;
+      const v = f.value == null ? "" : String(f.value);
+      return { ...f, value: `[redacted:${v.length}]` };
+    });
+    return { ...a2, fields };
+  }
+  if (a2.type === "evaluate" && a2.sensitive) return { ...a2, script: "[redacted]" };
+  return a2;
+}
+function switchToTab(session2, tabId) {
+  const t = session2.tabs.find((x) => x.id === tabId);
+  if (!t) return false;
+  session2.activeTabId = t.id;
+  session2.page = t.page;
+  notifyTabs(session2);
+  notifySession(session2, "url", { url: t.url || t.page.url(), tabId: t.id });
+  return true;
+}
 async function runActions(session, actions) {
   const outputs = [];
   for (const a of actions) {
     session.lastActiveAt = Date.now();
-    notifySession(session, "action_start", { action: a });
+    notifySession(session, "action_start", { action: sanitizeAction(session, a) });
     try {
       switch (a.type) {
         case "goto": {
@@ -430,8 +483,121 @@ async function runActions(session, actions) {
           outputs.push({ type: "evaluate", result });
           break;
         }
+        case "tab.new": {
+          const page = await session.context.newPage();
+          const tabId = uuidv4();
+          session.tabs.push({ id: tabId, page, createdAt: Date.now(), url: page.url() });
+          setupPageHooks(session, page, tabId);
+          switchToTab(session, tabId);
+          if (a.url) {
+            await page.goto(a.url, { waitUntil: a.waitUntil || "load" });
+            const t = session.tabs.find((x) => x.id === tabId);
+            if (t) t.url = page.url();
+          }
+          outputs.push({ type: "tab.new", tabId, url: a.url || "" });
+          break;
+        }
+        case "tab.switch": {
+          const ok = switchToTab(session, a.tabId);
+          outputs.push({ type: "tab.switch", ok, tabId: a.tabId });
+          break;
+        }
+        case "tab.close": {
+          const tabId = a.tabId || session.activeTabId;
+          const idx = session.tabs.findIndex((t2) => t2.id === tabId);
+          if (idx === -1) {
+            outputs.push({ type: "tab.close", ok: false, tabId });
+            break;
+          }
+          const [t] = session.tabs.splice(idx, 1);
+          try {
+            await t.page.close();
+          } catch {
+          }
+          if (session.tabs.length === 0) {
+            const page = await session.context.newPage();
+            const newId = uuidv4();
+            session.tabs.push({ id: newId, page, createdAt: Date.now(), url: page.url() });
+            setupPageHooks(session, page, newId);
+            switchToTab(session, newId);
+          } else if (session.activeTabId === tabId) {
+            switchToTab(session, session.tabs[Math.max(0, idx - 1)]?.id || session.tabs[0].id);
+          } else {
+            notifyTabs(session);
+          }
+          outputs.push({ type: "tab.close", ok: true, tabId });
+          break;
+        }
+        case "tabs.list": {
+          outputs.push({ type: "tabs.list", tabs: listTabs(session), activeTabId: session.activeTabId });
+          break;
+        }
+        case "pick": {
+          const info = await session.page.evaluate(({ x, y }) => {
+            function cssPath(el2) {
+              const id = el2.id;
+              if (id) return `#${CSS.escape(id)}`;
+              const parts = [];
+              let cur = el2;
+              while (cur && cur.nodeType === 1 && cur !== document.documentElement) {
+                const tag = cur.tagName.toLowerCase();
+                let part = tag;
+                const parent = cur.parentElement;
+                if (parent) {
+                  const siblings = Array.from(parent.children).filter((c) => c.tagName === cur.tagName);
+                  if (siblings.length > 1) {
+                    const index = siblings.indexOf(cur) + 1;
+                    part = `${tag}:nth-of-type(${index})`;
+                  }
+                }
+                parts.unshift(part);
+                cur = parent;
+              }
+              return parts.join(" > ");
+            }
+            const el = document.elementFromPoint(x, y);
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            const text = (el.textContent || "").trim().slice(0, 200);
+            const ariaLabel = el.getAttribute("aria-label") || "";
+            const role = el.getAttribute("role") || "";
+            return {
+              tag: el.tagName.toLowerCase(),
+              id: el.id || "",
+              className: el.className || "",
+              text,
+              ariaLabel,
+              role,
+              selector: cssPath(el),
+              boundingBox: { x: r.x, y: r.y, width: r.width, height: r.height }
+            };
+          }, { x: a.x, y: a.y });
+          outputs.push({ type: "pick", x: a.x, y: a.y, element: info });
+          if (info?.boundingBox) notifySession(session, "pick", { x: a.x, y: a.y, element: info });
+          break;
+        }
+        case "stream.setFps": {
+          const fps = Math.max(1, Math.min(30, Number(a.fps || 0) || 5));
+          session.streamFps = fps;
+          outputs.push({ type: "stream.setFps", fps });
+          notifySession(session, "stream", { fps, quality: session.streamQuality });
+          break;
+        }
+        case "stream.setQuality": {
+          const quality = Math.max(20, Math.min(90, Number(a.quality || 0) || 50));
+          session.streamQuality = quality;
+          outputs.push({ type: "stream.setQuality", quality });
+          notifySession(session, "stream", { fps: session.streamFps, quality });
+          break;
+        }
+        case "redaction.set": {
+          session.redactionEnabled = Boolean(a.enabled);
+          outputs.push({ type: "redaction.set", enabled: session.redactionEnabled });
+          notifySession(session, "redaction", { enabled: session.redactionEnabled });
+          break;
+        }
       }
-      notifySession(session, "action_done", { action: a });
+      notifySession(session, "action_done", { action: sanitizeAction(session, a) });
     } catch (err) {
       logger.warn({ action: a, error: err.message }, "action_failed");
       notifySession(session, "action_error", { type: a.type, error: err.message });
@@ -460,8 +626,12 @@ app.post("/session/create", auth, async (req, res) => {
       s.page = page;
       const preset = devices[device];
       s.viewport = preset && preset.viewport ? preset.viewport : s.viewport;
-      setupPageHooks(s);
+      const tabId = uuidv4();
+      s.tabs = [{ id: tabId, page, createdAt: Date.now(), url: page.url() }];
+      s.activeTabId = tabId;
+      setupPageHooks(s, page, tabId);
     }
+    notifyTabs(s);
     res.json({ sessionId: s.id, wsUrl: `/ws/${s.id}` });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -550,6 +720,10 @@ Content-Length: ${Buffer.byteLength(message)}\r
         type: "state",
         url: s.page.url(),
         viewport: s.viewport,
+        tabs: listTabs(s),
+        activeTabId: s.activeTabId,
+        stream: { fps: s.streamFps, quality: s.streamQuality },
+        redactionEnabled: s.redactionEnabled,
         downloads: s.downloads.slice(-20),
         logs: s.logs.slice(-100),
         network: s.network.slice(-100)
@@ -576,9 +750,10 @@ Content-Length: ${Buffer.byteLength(message)}\r
       while (running) {
         try {
           s.lastActiveAt = Date.now();
-          const buf = await s.page.screenshot({ type: "jpeg", quality: 50 });
+          const buf = await s.page.screenshot({ type: "jpeg", quality: s.streamQuality });
           ws.send(JSON.stringify({ type: "frame", jpegBase64: buf.toString("base64"), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
-          await new Promise((r) => setTimeout(r, 200));
+          const delay = Math.max(33, Math.round(1e3 / Math.max(1, Math.min(30, s.streamFps || 5))));
+          await new Promise((r) => setTimeout(r, delay));
         } catch (e) {
           break;
         }

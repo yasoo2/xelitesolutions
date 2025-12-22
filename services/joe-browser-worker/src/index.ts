@@ -19,9 +19,14 @@ type Session = {
   browser: Browser;
   context: BrowserContext;
   page: Page;
+  tabs: Array<{ id: string; page: Page; createdAt: number; title?: string; url?: string }>;
+  activeTabId: string;
   viewport: { width: number; height: number };
   userAgent?: string;
   locale?: string;
+  streamFps: number;
+  streamQuality: number;
+  redactionEnabled: boolean;
   createdAt: number;
   lastActiveAt: number;
   downloads: Array<{ id: string; filename: string; href: string; size: number }>;
@@ -65,13 +70,31 @@ async function launchChromium() {
   return await chromium.launch({ args, headless });
 }
 
-function setupPageHooks(session: Session) {
-  const page = session.page;
+function listTabs(session: Session) {
+  return session.tabs.map(t => ({ id: t.id, title: t.title || '', url: t.url || t.page.url(), createdAt: t.createdAt }));
+}
+
+function notifyTabs(session: Session) {
+  notifySession(session, 'tabs', { tabs: listTabs(session), activeTabId: session.activeTabId });
+}
+
+function setupPageHooks(session: Session, page: Page, tabId: string) {
+  const findTab = () => session.tabs.find(t => t.id === tabId);
 
   page.on('framenavigated', (frame) => {
     try {
       if (frame === page.mainFrame()) {
-        notifySession(session, 'url', { url: frame.url() });
+        const t = findTab();
+        if (t) t.url = frame.url();
+        notifySession(session, 'url', { url: frame.url(), tabId });
+        if (t) {
+          page.title().then((title) => {
+            const tt = findTab();
+            if (!tt) return;
+            tt.title = title;
+            notifyTabs(session);
+          }).catch(() => {});
+        }
       }
     } catch {}
   });
@@ -81,7 +104,7 @@ function setupPageHooks(session: Session) {
       const entry = { level: msg.type(), text: msg.text(), ts: Date.now() };
       session.logs.push(entry);
       if (session.logs.length > 500) session.logs.shift();
-      notifySession(session, 'console', { entry });
+      notifySession(session, 'console', { entry, tabId });
     } catch {}
   });
 
@@ -96,7 +119,7 @@ function setupPageHooks(session: Session) {
       };
       session.network.push(entry);
       if (session.network.length > 500) session.network.shift();
-      notifySession(session, 'network', { entry });
+      notifySession(session, 'network', { entry, tabId });
     } catch {}
   });
 
@@ -113,7 +136,7 @@ function setupPageHooks(session: Session) {
       };
       session.network.push(entry);
       if (session.network.length > 500) session.network.shift();
-      notifySession(session, 'network', { entry });
+      notifySession(session, 'network', { entry, tabId });
     } catch {}
   });
 
@@ -134,7 +157,7 @@ function setupPageHooks(session: Session) {
       const download = { id: fileId, filename: safeName, href, size };
       session.downloads.push(download);
       if (session.downloads.length > 50) session.downloads.shift();
-      notifySession(session, 'download', { download });
+      notifySession(session, 'download', { download, tabId });
       logger.info({ fileId, safeName, size }, 'download_saved');
     } catch (e: any) {
       logger.error(e, 'download_failed');
@@ -153,18 +176,26 @@ async function createSession(opts: { viewport?: { width: number; height: number 
   });
   const page = await context.newPage();
   const id = uuidv4();
+  const tabId = uuidv4();
+  const streamFps = Math.max(1, Math.min(30, Number(process.env.STREAM_FPS || 5)));
+  const streamQuality = Math.max(20, Math.min(90, Number(process.env.STREAM_QUALITY || 50)));
   const session: Session = {
     id, browser, context, page,
+    tabs: [{ id: tabId, page, createdAt: Date.now(), url: page.url() }],
+    activeTabId: tabId,
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
     locale: opts.locale,
+    streamFps,
+    streamQuality,
+    redactionEnabled: true,
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
     downloads: [],
     logs: [],
     network: []
   };
-  setupPageHooks(session);
+  setupPageHooks(session, page, tabId);
   SESSIONS.set(id, session);
   return session;
 }
@@ -172,7 +203,9 @@ async function createSession(opts: { viewport?: { width: number; height: number 
 async function closeSession(id: string) {
   const s = SESSIONS.get(id);
   if (!s) return;
-  try { await s.page.close(); } catch {}
+  for (const t of s.tabs) {
+    try { await t.page.close(); } catch {}
+  }
   try { await s.context.close(); } catch {}
   try { await s.browser.close(); } catch {}
   SESSIONS.delete(id);
@@ -184,7 +217,7 @@ type Action =
   | { type: 'goBack' }
   | { type: 'goForward' }
   | { type: 'reload' }
-  | { type: 'type', text: string, delay?: number }
+  | { type: 'type', text: string, delay?: number, sensitive?: boolean }
   | { type: 'press', key: string }
   | { type: 'mouseMove', x: number, y: number, steps?: number }
   | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string }
@@ -199,17 +232,53 @@ type Action =
   | { type: 'snapshot.dom' }
   | { type: 'snapshot.a11y' }
   | { type: 'extract', schema: any, mode?: 'dom'|'a11y'|'hybrid' }
-  | { type: 'fillForm', fields: Array<{ label?: string, selector?: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date'|'file' }> }
+  | { type: 'fillForm', fields: Array<{ label?: string, selector?: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date'|'file', sensitive?: boolean }>, sensitive?: boolean }
   | { type: 'uploadFile', selector: string, fileUrl: string }
-  | { type: 'evaluate', script: string }
+  | { type: 'evaluate', script: string, sensitive?: boolean }
+  | { type: 'tab.new', url?: string, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }
+  | { type: 'tab.switch', tabId: string }
+  | { type: 'tab.close', tabId?: string }
+  | { type: 'tabs.list' }
+  | { type: 'pick', x: number, y: number }
+  | { type: 'stream.setFps', fps: number }
+  | { type: 'stream.setQuality', quality: number }
+  | { type: 'redaction.set', enabled: boolean }
   ;
+
+function sanitizeAction(session: Session, a: Action) {
+  if (!session.redactionEnabled) return a as any;
+  if (a.type === 'type') {
+    return { ...a, text: `[redacted:${a.text.length}]` } as any;
+  }
+  if (a.type === 'fillForm') {
+    const fields = a.fields.map(f => {
+      const should = a.sensitive || f.sensitive;
+      if (!should) return f;
+      const v = f.value == null ? '' : String(f.value);
+      return { ...f, value: `[redacted:${v.length}]` };
+    });
+    return { ...a, fields } as any;
+  }
+  if (a.type === 'evaluate' && a.sensitive) return { ...a, script: '[redacted]' } as any;
+  return a as any;
+}
+
+function switchToTab(session: Session, tabId: string) {
+  const t = session.tabs.find(x => x.id === tabId);
+  if (!t) return false;
+  session.activeTabId = t.id;
+  session.page = t.page;
+  notifyTabs(session);
+  notifySession(session, 'url', { url: t.url || t.page.url(), tabId: t.id });
+  return true;
+}
 
 async function runActions(session: Session, actions: Action[]) {
   const outputs: any[] = [];
 
   for (const a of actions) {
     session.lastActiveAt = Date.now();
-    notifySession(session, 'action_start', { action: a });
+    notifySession(session, 'action_start', { action: sanitizeAction(session, a) });
     try {
       switch (a.type) {
         case 'goto': {
@@ -466,8 +535,118 @@ async function runActions(session: Session, actions: Action[]) {
           outputs.push({ type: 'evaluate', result });
           break;
         }
+        case 'tab.new': {
+          const page = await session.context.newPage();
+          const tabId = uuidv4();
+          session.tabs.push({ id: tabId, page, createdAt: Date.now(), url: page.url() });
+          setupPageHooks(session, page, tabId);
+          switchToTab(session, tabId);
+          if (a.url) {
+            await page.goto(a.url, { waitUntil: a.waitUntil || 'load' });
+            const t = session.tabs.find(x => x.id === tabId);
+            if (t) t.url = page.url();
+          }
+          outputs.push({ type: 'tab.new', tabId, url: a.url || '' });
+          break;
+        }
+        case 'tab.switch': {
+          const ok = switchToTab(session, a.tabId);
+          outputs.push({ type: 'tab.switch', ok, tabId: a.tabId });
+          break;
+        }
+        case 'tab.close': {
+          const tabId = a.tabId || session.activeTabId;
+          const idx = session.tabs.findIndex(t => t.id === tabId);
+          if (idx === -1) {
+            outputs.push({ type: 'tab.close', ok: false, tabId });
+            break;
+          }
+          const [t] = session.tabs.splice(idx, 1);
+          try { await t.page.close(); } catch {}
+          if (session.tabs.length === 0) {
+            const page = await session.context.newPage();
+            const newId = uuidv4();
+            session.tabs.push({ id: newId, page, createdAt: Date.now(), url: page.url() });
+            setupPageHooks(session, page, newId);
+            switchToTab(session, newId);
+          } else if (session.activeTabId === tabId) {
+            switchToTab(session, session.tabs[Math.max(0, idx - 1)]?.id || session.tabs[0].id);
+          } else {
+            notifyTabs(session);
+          }
+          outputs.push({ type: 'tab.close', ok: true, tabId });
+          break;
+        }
+        case 'tabs.list': {
+          outputs.push({ type: 'tabs.list', tabs: listTabs(session), activeTabId: session.activeTabId });
+          break;
+        }
+        case 'pick': {
+          const info = await session.page.evaluate(({ x, y }) => {
+            function cssPath(el: Element) {
+              const id = (el as HTMLElement).id;
+              if (id) return `#${CSS.escape(id)}`;
+              const parts: string[] = [];
+              let cur: Element | null = el;
+              while (cur && cur.nodeType === 1 && cur !== document.documentElement) {
+                const tag = cur.tagName.toLowerCase();
+                let part = tag;
+                const parent = cur.parentElement;
+                if (parent) {
+                  const siblings = Array.from(parent.children).filter(c => c.tagName === cur!.tagName);
+                  if (siblings.length > 1) {
+                    const index = siblings.indexOf(cur) + 1;
+                    part = `${tag}:nth-of-type(${index})`;
+                  }
+                }
+                parts.unshift(part);
+                cur = parent;
+              }
+              return parts.join(' > ');
+            }
+            const el = document.elementFromPoint(x, y) as HTMLElement | null;
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            const text = (el.textContent || '').trim().slice(0, 200);
+            const ariaLabel = el.getAttribute('aria-label') || '';
+            const role = el.getAttribute('role') || '';
+            return {
+              tag: el.tagName.toLowerCase(),
+              id: el.id || '',
+              className: el.className || '',
+              text,
+              ariaLabel,
+              role,
+              selector: cssPath(el),
+              boundingBox: { x: r.x, y: r.y, width: r.width, height: r.height }
+            };
+          }, { x: a.x, y: a.y });
+          outputs.push({ type: 'pick', x: a.x, y: a.y, element: info });
+          if (info?.boundingBox) notifySession(session, 'pick', { x: a.x, y: a.y, element: info });
+          break;
+        }
+        case 'stream.setFps': {
+          const fps = Math.max(1, Math.min(30, Number(a.fps || 0) || 5));
+          session.streamFps = fps;
+          outputs.push({ type: 'stream.setFps', fps });
+          notifySession(session, 'stream', { fps, quality: session.streamQuality });
+          break;
+        }
+        case 'stream.setQuality': {
+          const quality = Math.max(20, Math.min(90, Number(a.quality || 0) || 50));
+          session.streamQuality = quality;
+          outputs.push({ type: 'stream.setQuality', quality });
+          notifySession(session, 'stream', { fps: session.streamFps, quality });
+          break;
+        }
+        case 'redaction.set': {
+          session.redactionEnabled = Boolean(a.enabled);
+          outputs.push({ type: 'redaction.set', enabled: session.redactionEnabled });
+          notifySession(session, 'redaction', { enabled: session.redactionEnabled });
+          break;
+        }
       }
-      notifySession(session, 'action_done', { action: a });
+      notifySession(session, 'action_done', { action: sanitizeAction(session, a) });
     } catch (err: any) {
       logger.warn({ action: a, error: err.message }, 'action_failed');
       notifySession(session, 'action_error', { type: a.type, error: err.message });
@@ -500,8 +679,12 @@ app.post('/session/create', auth, async (req, res) => {
       s.page = page;
       const preset = devices[device] as any;
       s.viewport = (preset && preset.viewport) ? preset.viewport : s.viewport;
-      setupPageHooks(s);
+      const tabId = uuidv4();
+      s.tabs = [{ id: tabId, page, createdAt: Date.now(), url: page.url() }];
+      s.activeTabId = tabId;
+      setupPageHooks(s, page, tabId);
     }
+    notifyTabs(s);
     res.json({ sessionId: s.id, wsUrl: `/ws/${s.id}` });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -595,6 +778,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         type: 'state',
         url: s.page.url(),
         viewport: s.viewport,
+        tabs: listTabs(s),
+        activeTabId: s.activeTabId,
+        stream: { fps: s.streamFps, quality: s.streamQuality },
+        redactionEnabled: s.redactionEnabled,
         downloads: s.downloads.slice(-20),
         logs: s.logs.slice(-100),
         network: s.network.slice(-100)
@@ -622,9 +809,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
       while (running) {
         try {
           s.lastActiveAt = Date.now();
-          const buf = await s.page.screenshot({ type: 'jpeg', quality: 50 });
+          const buf = await s.page.screenshot({ type: 'jpeg', quality: s.streamQuality });
           ws.send(JSON.stringify({ type: 'frame', jpegBase64: buf.toString('base64'), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
-          await new Promise(r => setTimeout(r, 200));
+          const delay = Math.max(33, Math.round(1000 / Math.max(1, Math.min(30, s.streamFps || 5))));
+          await new Promise(r => setTimeout(r, delay));
         } catch (e) {
           break;
         }

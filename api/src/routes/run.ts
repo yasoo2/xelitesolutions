@@ -30,6 +30,43 @@ function safeErrorMessage(err: any): string {
   return redactSecretsFromString(raw);
 }
 
+function redactToolInputForStorage(name: string, input: any) {
+  if (!input || typeof input !== 'object') return input;
+  if (name === 'browser_run') {
+    const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
+    const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
+    const redactedActions = actions.map((a: any) => {
+      const t = String(a?.type || '').toLowerCase();
+      if (t === 'type') {
+        const text = typeof a?.text === 'string' ? a.text : '';
+        return { ...a, text: `[redacted:${text.length}]` };
+      }
+      if (t === 'fillform') {
+        const fields = Array.isArray(a?.fields) ? a.fields : [];
+        const nextFields = fields.map((f: any) => {
+          const label = String(f?.label || '').toLowerCase();
+          const selector = String(f?.selector || '').toLowerCase();
+          const combined = `${label} ${selector}`;
+          const v = f?.value == null ? '' : String(f.value);
+          const shouldRedact =
+            Boolean(a?.sensitive) ||
+            Boolean(f?.sensitive) ||
+            /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
+          if (!shouldRedact) return f;
+          return { ...f, value: `[redacted:${v.length}]` };
+        });
+        return { ...a, fields: nextFields };
+      }
+      if (t === 'evaluate' && typeof a?.script === 'string') {
+        if (a?.sensitive) return { ...a, script: '[redacted]' };
+      }
+      return a;
+    });
+    return { sessionId, actions: redactedActions };
+  }
+  return input;
+}
+
 // Connection verification endpoint
 router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
   const { provider, apiKey, baseUrl, model } = req.body || {};
@@ -424,7 +461,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (sensitive) {
         const risk = 'high';
         if (useMock) {
-          const ap = store.createApproval(runId, actionText, risk, plan.name, plan.input);
+          const ap = store.createApproval(runId, actionText, risk, plan.name, redactToolInputForStorage(plan.name, plan.input));
           ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: actionText } });
           store.updateRun(runId, { status: 'blocked' });
           const { planContext } = await import('../approvals/context');
@@ -444,11 +481,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // Execute tool
     ev({ type: 'step_started', data: { name: `execute:${plan.name}` } });
     const result = await executeTool(plan.name, plan.input);
+    const persistedInput = redactToolInputForStorage(plan.name, plan.input);
     
     // Add result to history to prevent infinite loops
     history.push({ 
         role: 'assistant', 
-        content: `Tool Call: ${plan.name}\nInput: ${JSON.stringify(plan.input)}\nOutput: ${JSON.stringify(result.output || result.error || 'Done')}` 
+        content: `Tool Call: ${plan.name}\nInput: ${JSON.stringify(persistedInput)}\nOutput: ${JSON.stringify(result.output || result.error || 'Done')}` 
     });
 
     lastResult = result;
@@ -649,9 +687,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     if (useMock) {
-      store.addExec(runId, plan.name, plan.input, result.output, result.ok, result.logs);
+      store.addExec(runId, plan.name, persistedInput, result.output, result.ok, result.logs);
     } else {
-      await ToolExecution.create({ runId, name: plan.name, input: plan.input, output: result.output, ok: result.ok, logs: result.logs });
+      await ToolExecution.create({ runId, name: plan.name, input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
     }
 
     if (!result.ok) {
