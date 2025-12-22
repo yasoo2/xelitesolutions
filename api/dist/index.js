@@ -46,6 +46,7 @@ var init_session = __esm({
         userId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "User", index: true, required: true },
         title: { type: String, required: true },
         mode: { type: String, enum: ["ADVISOR", "BUILDER", "SAFE", "OWNER"], default: "ADVISOR" },
+        kind: { type: String, enum: ["chat", "agent"], default: "chat", index: true },
         isPinned: { type: Boolean, default: false },
         lastSnippet: { type: String },
         lastUpdatedAt: { type: Date, default: Date.now },
@@ -394,6 +395,30 @@ async function ensureBrowserWorker(base, key, logs) {
   }
   await browserWorkerBoot;
 }
+function isProbablyHtml(text, contentType) {
+  const ct = String(contentType || "").toLowerCase();
+  if (ct.includes("text/html")) return true;
+  const t = String(text || "").trimStart().toLowerCase();
+  return t.startsWith("<!doctype html") || t.startsWith("<html") || t.includes("<head") || t.includes("<body");
+}
+async function workerHealthOrThrow(base, logs) {
+  if (isLocalWorkerUrl(base)) return;
+  const healthy = await waitForWorkerHealth(base, 2500);
+  logs.push(`worker_health=${healthy ? 1 : 0}`);
+  if (!healthy) {
+    throw new Error(`worker_unhealthy base=${base}`);
+  }
+}
+async function formatWorkerHttpError(resp, base) {
+  const status = resp.status;
+  const contentType = resp.headers?.get?.("content-type");
+  const text = await resp.text().catch(() => "");
+  if (isProbablyHtml(text, contentType)) {
+    return `worker_error=${status} base=${base} (HTML response detected)`;
+  }
+  const snippet = String(text || "").replace(/\s+/g, " ").slice(0, 300);
+  return `worker_error=${status} base=${base} ${snippet}`.trim();
+}
 var tools = [
   {
     name: "browser_open",
@@ -413,14 +438,14 @@ var tools = [
       const base = config.browserWorkerUrl;
       try {
         await ensureBrowserWorker(base, key, logs);
+        await workerHealthOrThrow(base, logs);
         const resp = await fetch(`${base}/session/create`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-worker-key": key },
           body: JSON.stringify({ viewport: input?.viewport, device: input?.device })
         });
         if (!resp.ok) {
-          const text = await resp.text().catch(() => "");
-          return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+          return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
         }
         const j = await resp.json();
         const sessionId = j.sessionId;
@@ -487,14 +512,18 @@ var tools = [
         await ensureBrowserWorker(base, key, logs);
       } catch {
       }
+      try {
+        await workerHealthOrThrow(base, logs);
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e), logs };
+      }
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/job/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-worker-key": key },
         body: JSON.stringify({ actions: input?.actions || [] })
       });
       if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+        return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
       const j = await resp.json();
       const artifacts2 = (j.artifacts || []).map((a) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(import_path2.default.basename(a.href))}` }));
@@ -520,14 +549,18 @@ var tools = [
         await ensureBrowserWorker(base, key, logs);
       } catch {
       }
+      try {
+        await workerHealthOrThrow(base, logs);
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e), logs };
+      }
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/extract`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-worker-key": key },
         body: JSON.stringify({ schema: input?.schema })
       });
       if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+        return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
       const j = await resp.json();
       return { ok: true, output: { json: j.json, confidence: j.confidence }, logs };
@@ -553,13 +586,17 @@ var tools = [
         await ensureBrowserWorker(base, key, logs);
       } catch {
       }
+      try {
+        await workerHealthOrThrow(base, logs);
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e), logs };
+      }
       const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-worker-key": key }
       });
       if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        return { ok: false, error: `worker_error=${resp.status} base=${base} ${text.slice(0, 300)}`.trim(), logs };
+        return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
       const j = await resp.json();
       const artifacts2 = [{ name: "snapshot.jpg", href: `${base}/shots/${import_path2.default.basename(j.screenshot)}` }];
@@ -1947,11 +1984,11 @@ var store = {
   listArtifacts(runId) {
     return artifacts.filter((a) => !runId || a.runId === runId);
   },
-  createSession(title, mode = "ADVISOR") {
+  createSession(title, mode = "ADVISOR", kind = "chat") {
     const existing = sessions.find((s2) => s2.title === title);
     if (existing) return existing;
     const id = nextId("sess_", sessions.length + 1);
-    const s = { id, title, mode };
+    const s = { id, title, mode, kind };
     sessions.push(s);
     return s;
   },
@@ -2511,11 +2548,12 @@ function detectRisk(text) {
   return null;
 }
 router3.post("/start", authenticate, async (req, res) => {
-  let { text, sessionId, fileIds, provider, apiKey: apiKey2, baseUrl, model } = req.body || {};
+  let { text, sessionId, fileIds, provider, apiKey: apiKey2, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
   const ev = (e) => broadcast(e);
   const isAuthed = Boolean(req.auth);
   const userId = req.auth?.sub;
   const useMock = !isAuthed ? true : process.env.MOCK_DB === "1" || import_mongoose12.default.connection.readyState !== 1;
+  const kind = sessionKind === "agent" ? "agent" : "chat";
   let attachedText = "";
   const contentParts = [];
   if (!useMock && fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
@@ -2551,6 +2589,20 @@ ${f.content}
     }
   }
   let fullPromptText = (String(text || "") + attachedText).trim();
+  const ctxLines = [];
+  if (typeof browserSessionId === "string" && browserSessionId.trim()) {
+    ctxLines.push(`browserSessionId=${browserSessionId.trim()}`);
+  }
+  if (typeof clientContext === "string" && clientContext.trim()) {
+    ctxLines.push(clientContext.trim());
+  }
+  if (ctxLines.length > 0) {
+    fullPromptText += `
+
+[Client Context]:
+${ctxLines.join("\n")}
+`;
+  }
   if (userId && !useMock) {
     try {
       const [relevant, recentItems] = await Promise.all([
@@ -2606,7 +2658,7 @@ ${merged.join("\n")}
   ev({ type: "step_done", data: { name: "plan", plan } });
   if (!sessionId) {
     if (useMock) {
-      const s = store.createSession("Untitled Session");
+      const s = store.createSession("Untitled Session", "ADVISOR", kind);
       sessionId = s.id;
     } else {
       const { Session: Session2 } = await Promise.resolve().then(() => (init_session(), session_exports));
@@ -2617,7 +2669,7 @@ ${merged.join("\n")}
         { $setOnInsert: { name: tenantName } },
         { upsert: true, new: true }
       );
-      const s = await Session2.create({ title: `Session ${(/* @__PURE__ */ new Date()).toLocaleString()}`, mode: "ADVISOR", userId, tenantId: tenantDoc._id });
+      const s = await Session2.create({ title: `Session ${(/* @__PURE__ */ new Date()).toLocaleString()}`, mode: "ADVISOR", kind, userId, tenantId: tenantDoc._id });
       sessionId = s._id.toString();
     }
   }
@@ -3184,24 +3236,31 @@ router5.post("/merge", authenticate, async (req, res) => {
   return res.json({ ok: true });
 });
 router5.get("/", authenticate, async (_req, res) => {
+  const kindRaw = String(_req.query?.kind || "").trim();
+  const kind = kindRaw === "agent" ? "agent" : kindRaw === "chat" ? "chat" : null;
   const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
   if (useMock) {
-    return res.json({ sessions: store.listSessions() });
+    const all = store.listSessions();
+    const filtered = kind ? all.filter((s) => s.kind === kind) : all;
+    return res.json({ sessions: filtered });
   }
-  const sessions2 = await Session.find().sort({ isPinned: -1, updatedAt: -1 }).lean();
+  const sessions2 = await Session.find(kind ? { kind } : {}).sort({ isPinned: -1, updatedAt: -1 }).lean();
   return res.json({ sessions: sessions2 });
 });
 router5.get("/search", authenticate, async (req, res) => {
   const query = String(req.query.q || "").trim();
   if (!query) return res.json({ results: [] });
+  const kindRaw = String(req.query.kind || "").trim();
+  const kind = kindRaw === "agent" ? "agent" : kindRaw === "chat" ? "chat" : null;
   const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
   if (useMock) {
     return res.json({ results: [] });
   }
   const messages2 = await Message.find({
     content: { $regex: query, $options: "i" }
-  }).sort({ createdAt: -1 }).limit(20).populate("sessionId", "title");
-  const results = messages2.map((m) => ({
+  }).sort({ createdAt: -1 }).limit(20).populate("sessionId", "title kind");
+  const filteredMessages = kind ? messages2.filter((m) => m.sessionId?.kind === kind) : messages2;
+  const results = filteredMessages.map((m) => ({
     messageId: m._id,
     sessionId: m.sessionId._id,
     sessionTitle: m.sessionId.title,
