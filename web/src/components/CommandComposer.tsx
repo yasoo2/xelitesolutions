@@ -202,7 +202,23 @@ interface ProviderConfig {
   lastError?: string;
 }
 
-export default function CommandComposer({ sessionId, onSessionCreated, onPreviewArtifact, onStepsUpdate, onMessagesUpdate }: { sessionId?: string; onSessionCreated?: (id: string) => void; onPreviewArtifact?: (content: string, lang: string) => void; onStepsUpdate?: (steps: any[]) => void; onMessagesUpdate?: (msgs: any[]) => void }) {
+export default function CommandComposer({
+  sessionId,
+  sessionKind = 'chat',
+  browserSessionId = null,
+  onSessionCreated,
+  onPreviewArtifact,
+  onStepsUpdate,
+  onMessagesUpdate,
+}: {
+  sessionId?: string;
+  sessionKind?: 'chat' | 'agent';
+  browserSessionId?: string | null;
+  onSessionCreated?: (id: string) => void;
+  onPreviewArtifact?: (content: string, lang: string) => void;
+  onStepsUpdate?: (steps: any[]) => void;
+  onMessagesUpdate?: (msgs: any[]) => void;
+}) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
@@ -566,6 +582,8 @@ export default function CommandComposer({ sessionId, onSessionCreated, onPreview
         body: JSON.stringify({ 
           text: inputText, 
           sessionId,
+          sessionKind,
+          ...(sessionKind === 'agent' && browserSessionId ? { browserSessionId } : {}),
           fileIds: attachedFiles.map(f => f.id),
           provider: activeProvider,
           apiKey: providers[activeProvider]?.apiKey,

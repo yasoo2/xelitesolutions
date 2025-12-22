@@ -1,18 +1,27 @@
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot } from 'lucide-react';
 
 const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
 
-function BrowserApp({ onSession }: { onSession?: (s: { sessionId: string; wsUrl: string }) => void }) {
+function BrowserApp({
+  onSession,
+  autoOpen,
+  minimal,
+}: {
+  onSession?: (s: { sessionId: string; wsUrl: string }) => void;
+  autoOpen?: boolean;
+  minimal?: boolean;
+}) {
   const [url, setUrl] = useState('https://www.google.com');
   const [wsUrl, setWsUrl] = useState<string | null>(null);
   const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const didAutoOpen = useRef(false);
 
   async function openBrowser() {
     setIsOpening(true);
@@ -49,103 +58,139 @@ function BrowserApp({ onSession }: { onSession?: (s: { sessionId: string; wsUrl:
     }
   }
 
+  useEffect(() => {
+    if (!autoOpen) return;
+    if (didAutoOpen.current) return;
+    didAutoOpen.current = true;
+    openBrowser();
+  }, [autoOpen]);
+
   return (
     <div className="browser-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div
-        className="browser-open-row"
-        style={{
-          display: 'flex',
-          gap: 8,
-          padding: 12,
-          alignItems: 'center',
-          borderBottom: '1px solid var(--border-color)',
-          flexWrap: 'wrap',
-        }}
-      >
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com"
+      {!minimal && (
+        <div
+          className="browser-open-row"
           style={{
-            flex: 1,
-            height: 40,
-            borderRadius: 8,
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-input)',
-            color: 'var(--text-primary)',
-            padding: '0 12px',
-            outline: 'none',
-          }}
-        />
-        <button
-          onClick={openBrowser}
-          disabled={isOpening || !url.trim()}
-          style={{
-            height: 40,
-            padding: '0 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border-color)',
-            background: 'rgba(37, 99, 235, 0.12)',
-            color: 'var(--text-primary)',
-            cursor: isOpening ? 'not-allowed' : 'pointer',
-            whiteSpace: 'nowrap',
+            display: 'flex',
+            gap: 8,
+            padding: 12,
+            alignItems: 'center',
+            borderBottom: '1px solid var(--border-color)',
+            flexWrap: 'wrap',
           }}
         >
-          {isOpening ? '...جاري الفتح' : 'فتح'}
-        </button>
-        {browserSessionId ? (
-          <>
-            <button
-              onClick={() => {
-                navigator.clipboard?.writeText(browserSessionId).catch(() => {});
-              }}
-              style={{
-                height: 40,
-                padding: '0 14px',
-                borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                background: 'rgba(255,255,255,0.03)',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-              title="Copy Browser Session ID"
-            >
-              نسخ Session
-            </button>
-            <button
-              onClick={() => {
-                const txt = `استخدم المتصفح الحالي: sessionId=${browserSessionId}`;
-                window.dispatchEvent(new CustomEvent('joe:prefill', { detail: { text: txt } }));
-              }}
-              style={{
-                height: 40,
-                padding: '0 14px',
-                borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                background: 'rgba(255,255,255,0.03)',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-              title="Send sessionId to JOE prompt"
-            >
-              إرسال لجو
-            </button>
-          </>
-        ) : null}
-      </div>
-      {error && (
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com"
+            style={{
+              flex: 1,
+              height: 40,
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-input)',
+              color: 'var(--text-primary)',
+              padding: '0 12px',
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={openBrowser}
+            disabled={isOpening || !url.trim()}
+            style={{
+              height: 40,
+              padding: '0 14px',
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'rgba(37, 99, 235, 0.12)',
+              color: 'var(--text-primary)',
+              cursor: isOpening ? 'not-allowed' : 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isOpening ? '...جاري الفتح' : 'فتح'}
+          </button>
+          {browserSessionId ? (
+            <>
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(browserSessionId).catch(() => {});
+                }}
+                style={{
+                  height: 40,
+                  padding: '0 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Copy Browser Session ID"
+              >
+                نسخ Session
+              </button>
+              <button
+                onClick={() => {
+                  const txt = `استخدم المتصفح الحالي: sessionId=${browserSessionId}`;
+                  window.dispatchEvent(new CustomEvent('joe:prefill', { detail: { text: txt } }));
+                }}
+                style={{
+                  height: 40,
+                  padding: '0 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Send sessionId to JOE prompt"
+              >
+                إرسال لجو
+              </button>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {!minimal && error && (
         <div style={{ padding: 12, color: '#ef4444', borderBottom: '1px solid var(--border-color)' }} dir="auto">
           {error}
         </div>
       )}
-      <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+
+      <div style={{ flex: 1, overflow: 'hidden' }}>
         {!wsUrl ? (
-          <div style={{ opacity: 0.8, color: 'var(--text-secondary)' }}>افتح رابط لبدء المتصفح.</div>
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-secondary)' }} dir="auto">
+            <div style={{ textAlign: 'center' }}>
+              {error ? (
+                <>
+                  <div style={{ color: '#ef4444', marginBottom: 10 }}>{error}</div>
+                  <button
+                    onClick={openBrowser}
+                    disabled={isOpening}
+                    style={{
+                      height: 36,
+                      padding: '0 14px',
+                      borderRadius: 10,
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(37, 99, 235, 0.12)',
+                      color: 'var(--text-primary)',
+                      cursor: isOpening ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {isOpening ? '...جاري الفتح' : 'إعادة المحاولة'}
+                  </button>
+                </>
+              ) : (
+                <div>{isOpening ? '...جاري فتح المتصفح' : minimal ? 'جاري تجهيز المتصفح...' : 'افتح رابط لبدء المتصفح.'}</div>
+              )}
+            </div>
+          </div>
         ) : (
-          <Suspense fallback={<div style={{ opacity: 0.8, color: 'var(--text-secondary)' }}>Loading Stream...</div>}>
-            <AgentBrowserStreamLazy wsUrl={wsUrl} />
+          <Suspense fallback={<div style={{ padding: 12, color: 'var(--text-secondary)' }}>Loading Stream...</div>}>
+            <AgentBrowserStreamLazy wsUrl={wsUrl} minimal={minimal} />
           </Suspense>
         )}
       </div>
@@ -155,9 +200,11 @@ function BrowserApp({ onSession }: { onSession?: (s: { sessionId: string; wsUrl:
 
 export default function Joe() {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string }>>([]);
+  const [agentSessions, setAgentSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean }>>([]);
   const [folders, setFolders] = useState<Array<{ _id: string; name: string }>>([]);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const [agentSelected, setAgentSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [mode, setMode] = useState<'agent' | 'chat'>('agent');
   const [searchQuery, setSearchQuery] = useState('');
@@ -177,7 +224,7 @@ export default function Joe() {
   async function loadSessions() {
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/sessions`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+      const res = await fetch(`${API}/sessions?kind=chat`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
       if (res.status === 401) {
         localStorage.removeItem('token');
         nav('/login');
@@ -189,6 +236,24 @@ export default function Joe() {
       if (!selected && mapped[0]) setSelected(mapped[0].id);
     } catch (e) {
       console.error('Failed to load sessions', e);
+    }
+  }
+
+  async function loadAgentSessions() {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API}/sessions?kind=agent`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        nav('/login');
+        return;
+      }
+      const data = await res.json();
+      const mapped = (data.sessions || []).map((s: any) => ({ ...s, id: s.id || s._id }));
+      setAgentSessions(mapped);
+      if (!agentSelected && mapped[0]) setAgentSelected(mapped[0].id);
+    } catch (e) {
+      console.error('Failed to load agent sessions', e);
     }
   }
 
@@ -207,8 +272,19 @@ export default function Joe() {
 
   useEffect(() => { 
     loadSessions(); 
+    loadAgentSessions();
     loadFolders();
   }, []);
+
+  useEffect(() => {
+    if (mode === 'agent') {
+      setShowSidebar(false);
+      if (agentSessions.length === 0) loadAgentSessions();
+    } else {
+      setShowSidebar(!isNarrow);
+      if (sessions.length === 0) loadSessions();
+    }
+  }, [mode]);
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 900px)');
@@ -293,6 +369,17 @@ export default function Joe() {
     if (selected === id) setSelected(null);
   }
 
+  async function deleteAgentSession(id: string) {
+    if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/sessions/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    });
+    await loadAgentSessions();
+    if (agentSelected === id) setAgentSelected(null);
+  }
+
   async function deleteAllSessions() {
     if (!confirm('هل أنت متأكد من حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) return;
     const token = localStorage.getItem('token');
@@ -314,6 +401,16 @@ export default function Joe() {
     await loadSessions();
   }
 
+  async function toggleAgentPin(id: string, currentPinned: boolean) {
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/sessions/${id}/pin`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      body: JSON.stringify({ isPinned: !currentPinned }),
+    });
+    await loadAgentSessions();
+  }
+
   function shareSession(id: string) {
     alert('تم نسخ رابط الجلسة');
   }
@@ -328,7 +425,7 @@ export default function Joe() {
       setIsSearching(true);
       const token = localStorage.getItem('token');
       try {
-        const res = await fetch(`${API}/sessions/search?q=${encodeURIComponent(searchQuery)}`, {
+        const res = await fetch(`${API}/sessions/search?q=${encodeURIComponent(searchQuery)}&kind=chat`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         const data = await res.json();
@@ -342,8 +439,8 @@ export default function Joe() {
 
   return (
     <div className={`joe-layout ${showSidebar ? 'sidebar-open' : 'sidebar-closed'}`}>
-      {showSidebar && isNarrow && <div className="sidebar-backdrop" onClick={() => setShowSidebar(false)} />}
-      {showSidebar && (
+      {mode === 'chat' && showSidebar && isNarrow && <div className="sidebar-backdrop" onClick={() => setShowSidebar(false)} />}
+      {mode === 'chat' && showSidebar && (
         <aside className="sidebar">
           <div className="sidebar-header">
             <button className="new-chat-btn" onClick={createSession}>
@@ -533,7 +630,7 @@ export default function Joe() {
           </div>
         </aside>
       )}
-      {!showSidebar && (
+      {mode === 'chat' && !showSidebar && (
         <button className="sidebar-toggle-btn" style={{ position: 'absolute', left: 16, top: 16 }} onClick={() => setShowSidebar(true)}>
           <PanelLeftOpen size={20} />
         </button>
@@ -589,70 +686,79 @@ export default function Joe() {
         
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {mode === 'agent' && (
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12 }}>
-            <div style={{ flex: isNarrow ? '0 0 auto' : 1.2, minHeight: isNarrow ? 320 : undefined, overflow: 'hidden', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-secondary)' }}>
-              <BrowserApp onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
-            </div>
-            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-secondary)' }}>
-              <div style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: 12 }}>
-                <div dir="auto" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {agentBrowserSessionId ? `Browser sessionId: ${agentBrowserSessionId}` : 'افتح المتصفح لبدء جلسة الوكيل'}
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button
-                    onClick={() => {
-                      if (!agentBrowserSessionId) return;
-                      navigator.clipboard?.writeText(agentBrowserSessionId).catch(() => {});
-                    }}
-                    disabled={!agentBrowserSessionId}
-                    style={{
-                      height: 28,
-                      padding: '0 10px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(255,255,255,0.03)',
-                      color: 'var(--text-primary)',
-                      cursor: agentBrowserSessionId ? 'pointer' : 'not-allowed',
-                      opacity: agentBrowserSessionId ? 1 : 0.5,
-                    }}
-                  >
-                    نسخ
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!agentBrowserSessionId) return;
-                      const txt = `استخدم المتصفح الحالي: sessionId=${agentBrowserSessionId}`;
-                      window.dispatchEvent(new CustomEvent('joe:prefill', { detail: { text: txt } }));
-                    }}
-                    disabled={!agentBrowserSessionId}
-                    style={{
-                      height: 28,
-                      padding: '0 10px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(37, 99, 235, 0.12)',
-                      color: 'var(--text-primary)',
-                      cursor: agentBrowserSessionId ? 'pointer' : 'not-allowed',
-                      opacity: agentBrowserSessionId ? 1 : 0.5,
-                    }}
-                  >
-                    إدراج في الأمر
-                  </button>
-                </div>
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
+            <div
+              style={{
+                width: isNarrow ? '100%' : 280,
+                flex: '0 0 auto',
+                minHeight: isNarrow ? 180 : 0,
+                overflow: 'hidden',
+                borderRight: isNarrow ? undefined : '1px solid var(--border-color)',
+                borderBottom: isNarrow ? '1px solid var(--border-color)' : undefined,
+                background: 'var(--bg-secondary)',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>جلسات الوكيل</div>
+                <button
+                  onClick={() => setAgentSelected(null)}
+                  style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                >
+                  جلسة جديدة
+                </button>
               </div>
-              <CommandComposer 
-                sessionId={selected || undefined} 
+              <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
+                {agentSessions.length === 0 ? (
+                  <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 13 }}>لا توجد جلسات بعد</div>
+                ) : (
+                  agentSessions.map((s) => (
+                    <SessionItem
+                      key={s.id}
+                      session={s}
+                      isActive={agentSelected === s.id}
+                      onSelect={() => setAgentSelected(s.id)}
+                      onDelete={() => deleteAgentSession(s.id)}
+                      onPin={() => toggleAgentPin(s.id, !!s.isPinned)}
+                      onShare={() => shareSession(s.id)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+              <BrowserApp minimal={true} autoOpen={true} onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
+            </div>
+
+            <div
+              style={{
+                width: isNarrow ? '100%' : 420,
+                flex: '0 0 auto',
+                minHeight: isNarrow ? 340 : 0,
+                overflow: 'hidden',
+                borderLeft: isNarrow ? undefined : '1px solid var(--border-color)',
+                borderTop: isNarrow ? '1px solid var(--border-color)' : undefined,
+                background: 'var(--bg-secondary)',
+              }}
+            >
+              <CommandComposer
+                sessionId={agentSelected || undefined}
+                sessionKind="agent"
+                browserSessionId={agentBrowserSessionId}
                 onSessionCreated={async (id) => {
-                  await loadSessions();
-                  setSelected(id);
+                  await loadAgentSessions();
+                  setAgentSelected(id);
                 }}
               />
             </div>
           </div>
         )}
         {mode === 'chat' && (
-          <CommandComposer 
-            sessionId={selected || undefined} 
+          <CommandComposer
+            sessionId={selected || undefined}
+            sessionKind="chat"
             onSessionCreated={async (id) => {
               await loadSessions();
               setSelected(id);

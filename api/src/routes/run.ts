@@ -65,11 +65,12 @@ function detectRisk(text: string) {
 }
 
 router.post('/start', authenticate as any, async (req: Request, res: Response) => {
-  let { text, sessionId, fileIds, provider, apiKey, baseUrl, model } = req.body || {};
+  let { text, sessionId, fileIds, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
   const ev = (e: LiveEvent) => broadcast(e);
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
+  const kind = sessionKind === 'agent' ? 'agent' : 'chat';
 
   // 1. Process Attachments
   let attachedText = '';
@@ -104,6 +105,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   }
 
   let fullPromptText = (String(text || '') + attachedText).trim();
+  const ctxLines: string[] = [];
+  if (typeof browserSessionId === 'string' && browserSessionId.trim()) {
+    ctxLines.push(`browserSessionId=${browserSessionId.trim()}`);
+  }
+  if (typeof clientContext === 'string' && clientContext.trim()) {
+    ctxLines.push(clientContext.trim());
+  }
+  if (ctxLines.length > 0) {
+    fullPromptText += `\n\n[Client Context]:\n${ctxLines.join('\n')}\n`;
+  }
 
   // Inject Memory
   if (userId && !useMock) {
@@ -177,7 +188,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
   if (!sessionId) {
     if (useMock) {
-      const s = store.createSession('Untitled Session');
+      const s = store.createSession('Untitled Session', 'ADVISOR', kind);
       sessionId = s.id;
     } else {
       const { Session } = await import('../models/session');
@@ -189,7 +200,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         { upsert: true, new: true }
       );
       
-      const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', userId, tenantId: tenantDoc._id });
+      const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id });
       sessionId = s._id.toString();
     }
   }

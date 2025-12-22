@@ -38,7 +38,7 @@ const runs: MockRun[] = [];
 const execs: MockToolExec[] = [];
 const artifacts: MockArtifact[] = [];
 const approvals: MockApproval[] = [];
-const sessions: Array<{ id: Id; title: string; mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER'; lastSnippet?: string; lastUpdatedAt?: number }> = [];
+const sessions: Array<{ id: Id; title: string; mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER'; kind?: 'chat' | 'agent'; lastSnippet?: string; lastUpdatedAt?: number }> = [];
 const summaries: Array<{ sessionId: Id; content: string; ts: number }> = [];
 const messages: Array<{ id: Id; sessionId: Id; role: 'user' | 'assistant' | 'system'; content: string; ts: number; runId?: Id }> = [];
 
@@ -92,11 +92,15 @@ export const store = {
   listRuns(sessionId?: Id) { return runs.filter(r => !sessionId || r.sessionId === sessionId); },
   listExecs(runId?: Id) { return execs.filter(e => !runId || e.runId === runId); },
   listArtifacts(runId?: Id) { return artifacts.filter(a => !runId || a.runId === runId); },
-  createSession(title: string, mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER' = 'ADVISOR') {
+  createSession(
+    title: string,
+    mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER' = 'ADVISOR',
+    kind: 'chat' | 'agent' = 'chat'
+  ) {
     const existing = sessions.find(s => s.title === title);
     if (existing) return existing;
     const id = nextId('sess_', sessions.length + 1);
-    const s = { id, title, mode };
+    const s = { id, title, mode, kind };
     sessions.push(s);
     return s;
   },

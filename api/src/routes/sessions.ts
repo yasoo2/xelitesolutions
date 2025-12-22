@@ -190,17 +190,24 @@ router.post('/merge', authenticate as any, async (req: Request, res: Response) =
 });
 
 router.get('/', authenticate as any, async (_req: Request, res: Response) => {
+  const kindRaw = String((_req.query as any)?.kind || '').trim();
+  const kind = kindRaw === 'agent' ? 'agent' : kindRaw === 'chat' ? 'chat' : null;
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
-    return res.json({ sessions: store.listSessions() });
+    const all = store.listSessions();
+    const filtered = kind ? all.filter((s: any) => (s as any).kind === kind) : all;
+    return res.json({ sessions: filtered });
   }
-  const sessions = await Session.find().sort({ isPinned: -1, updatedAt: -1 }).lean();
+  const sessions = await Session.find(kind ? { kind } : {}).sort({ isPinned: -1, updatedAt: -1 }).lean();
   return res.json({ sessions });
 });
 
 router.get('/search', authenticate as any, async (req: Request, res: Response) => {
   const query = String(req.query.q || '').trim();
   if (!query) return res.json({ results: [] });
+
+  const kindRaw = String((req.query as any).kind || '').trim();
+  const kind = kindRaw === 'agent' ? 'agent' : kindRaw === 'chat' ? 'chat' : null;
 
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
@@ -210,9 +217,11 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
   // Simple regex search for now. For production, use Atlas Search or Text Index.
   const messages = await Message.find({
     content: { $regex: query, $options: 'i' }
-  }).sort({ createdAt: -1 }).limit(20).populate('sessionId', 'title');
+  }).sort({ createdAt: -1 }).limit(20).populate('sessionId', 'title kind');
 
-  const results = messages.map(m => ({
+  const filteredMessages = kind ? messages.filter(m => (m.sessionId as any)?.kind === kind) : messages;
+
+  const results = filteredMessages.map(m => ({
     messageId: m._id,
     sessionId: (m.sessionId as any)._id,
     sessionTitle: (m.sessionId as any).title,

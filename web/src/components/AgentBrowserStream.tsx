@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_URL as API } from '../config';
 
-export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
+export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; minimal?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -40,6 +40,14 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const reconnectTimerRef = useRef<number | null>(null);
   const connectTimeoutRef = useRef<number | null>(null);
   const connectAttemptsRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!minimal) return;
+    setPanelOpen(false);
+    setFocusMode(false);
+    setZoom(1);
+    setStreamPaused(false);
+  }, [minimal]);
 
   useEffect(() => {
     sizeRef.current = size;
@@ -534,7 +542,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: minimal ? 0 : 8,
         position: focusMode ? 'fixed' : 'relative',
         inset: focusMode ? 12 : undefined,
         zIndex: focusMode ? 9999 : undefined,
@@ -543,8 +551,29 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         borderRadius: focusMode ? 16 : undefined,
         border: focusMode ? '1px solid var(--border-color)' : undefined,
         boxShadow: focusMode ? '0 12px 50px rgba(0,0,0,0.6)' : undefined,
+        height: minimal ? '100%' : undefined,
       }}
     >
+      {minimal ? (
+        <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 60, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: status === 'connected' ? 'var(--accent-success)' : (status === 'reconnecting' ? 'var(--accent-warning)' : 'var(--accent-danger)'),
+              boxShadow: status === 'connected' ? '0 0 8px var(--accent-success)' : 'none',
+            }}
+          />
+          {wsError ? (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 520 }} dir="auto">
+              {wsError}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!minimal ? (
       <div
         className="agent-browser-header"
         style={{
@@ -743,9 +772,10 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
           </div>
         ) : null}
       </div>
+      ) : null}
 
-      <div style={{ border: '1px solid var(--border-color)', borderRadius: 14, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
-        <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
+      <div style={{ border: minimal ? 'none' : '1px solid var(--border-color)', borderRadius: minimal ? 0 : 14, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: minimal ? 'none' : '0 4px 20px rgba(0,0,0,0.3)', flex: minimal ? 1 : undefined }}>
+        <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
           <canvas
             ref={canvasRef}
             onClick={handleCanvasClick}
@@ -790,7 +820,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
         </div>
       </div>
 
-      {panelOpen ? (
+      {!minimal && panelOpen ? (
         <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-secondary)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', gap: 8, padding: 10, borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={() => setActiveTab('console')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'console' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Console</button>
