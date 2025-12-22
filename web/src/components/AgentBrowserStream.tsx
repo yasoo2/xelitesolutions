@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { API_URL as API } from '../config';
 
 export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [size, setSize] = useState<{ w: number, h: number }>({ w: 1280, h: 800 });
@@ -11,6 +12,15 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [address, setAddress] = useState<string>('');
   const [downloads, setDownloads] = useState<Array<{ name: string; href: string }>>([]);
   const [overlay, setOverlay] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'console' | 'network' | 'downloads'>('console');
+  const [panelOpen, setPanelOpen] = useState<boolean>(false);
+  const [consoleEntries, setConsoleEntries] = useState<Array<{ level: string; text: string; ts: number }>>([]);
+  const [networkEntries, setNetworkEntries] = useState<Array<{ stage: 'request' | 'response'; url: string; method: string; status?: number; resourceType?: string; ts: number }>>([]);
+  const [zoom, setZoom] = useState<number>(1);
+  const [focusMode, setFocusMode] = useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [streamPaused, setStreamPaused] = useState<boolean>(false);
+  const [reconnectNonce, setReconnectNonce] = useState<number>(0);
   const [extractSchema, setExtractSchema] = useState<string>('{"list":{"selector":"a[href^=\\"https\\"]:not([href*=\\"google.com\\"])","fields":{"text":{"selector":"","attr":""},"url":{"selector":"","attr":"href"}}}}');
   const [extracted, setExtracted] = useState<any>(null);
   const [uploadSelector, setUploadSelector] = useState<string>('');
@@ -35,6 +45,15 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     sizeRef.current = size;
   }, [size]);
 
+  useEffect(() => {
+    const onChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    onChange();
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
   function getSessionId() {
     try {
       const u = new URL(wsUrl);
@@ -45,12 +64,47 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
     }
   }
 
+  function absHrefFromWs(href: string) {
+    try {
+      const u = new URL(href);
+      if (u.protocol === 'ws:') u.protocol = 'http:';
+      if (u.protocol === 'wss:') u.protocol = 'https:';
+      return u.toString();
+    } catch {
+      try {
+        const base = new URL(wsUrl);
+        if (base.protocol === 'ws:') base.protocol = 'http:';
+        if (base.protocol === 'wss:') base.protocol = 'https:';
+        base.search = '';
+        base.hash = '';
+        base.pathname = '/';
+        return new URL(href, base.toString()).toString();
+      } catch {
+        return href;
+      }
+    }
+  }
+
+  function normalizeUrl(raw: string) {
+    const v = raw.trim();
+    if (!v) return '';
+    try {
+      return new URL(v).toString();
+    } catch {
+      try {
+        return new URL(`https://${v}`).toString();
+      } catch {
+        return v;
+      }
+    }
+  }
+
   async function runActions(actions: any[]) {
     const sessionId = getSessionId();
     if (!sessionId) return;
 
     // Check for WS optimization
-    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload'];
+    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'goto', 'screenshot'];
     const canUseWs = wsRef.current && 
                      wsRef.current.readyState === WebSocket.OPEN && 
                      actions.every(a => wsActions.includes(a.type));
@@ -60,7 +114,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
          wsRef.current?.send(JSON.stringify({ type: 'action', action: a }));
        });
        
-       // UI updates (overlay, etc)
+       // UI updates
        const names = actions.map(a => a.type).join(', ');
        setOverlay(names);
        setTimeout(() => setOverlay(''), 1200);
@@ -71,6 +125,16 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
        }
        if (autoExtract && actions.some(a => a.type === 'reload')) {
           setTimeout(() => doExtract(), 1500);
+       }
+       if (actions.some(a => a.type === 'goto' || a.type === 'reload')) {
+         setHighlight(null);
+         if (autoLocate) {
+           const extra: any[] = [];
+           if (selector) extra.push({ type: 'locate', selector });
+           else if (role && roleName) extra.push({ type: 'locate', role, roleName });
+           if (extra.length) setTimeout(() => runActions(extra), 1000);
+         }
+         if (autoExtract) setTimeout(() => doExtract(), 1500);
        }
        return;
     }
@@ -293,6 +357,43 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
               sizeRef.current = next;
               setSize(next);
             }
+            if (msg.type === 'state') {
+              if (msg.viewport?.width && msg.viewport?.height) {
+                const next = { w: msg.viewport.width, h: msg.viewport.height };
+                sizeRef.current = next;
+                setSize(next);
+              }
+              if (typeof msg.url === 'string') setAddress(msg.url);
+              if (Array.isArray(msg.downloads)) {
+                const items = msg.downloads.map((d: any) => ({ name: d.filename || d.name || 'download', href: absHrefFromWs(d.href) }));
+                setDownloads(items.slice(-10).reverse());
+              }
+              if (Array.isArray(msg.logs)) {
+                setConsoleEntries(msg.logs.slice(-500));
+              }
+              if (Array.isArray(msg.network)) {
+                setNetworkEntries(msg.network.slice(-500));
+              }
+            }
+            if (msg.type === 'url' && typeof msg.url === 'string') {
+              setAddress(msg.url);
+            }
+            if (msg.type === 'console' && msg.entry) {
+              setConsoleEntries((prev) => [...prev, msg.entry].slice(-500));
+            }
+            if (msg.type === 'network' && msg.entry) {
+              setNetworkEntries((prev) => [...prev, msg.entry].slice(-500));
+            }
+            if (msg.type === 'download' && msg.download) {
+              const d = msg.download;
+              const item = { name: d.filename || d.name || 'download', href: absHrefFromWs(d.href) };
+              setDownloads((prev) => [item, ...prev].slice(0, 10));
+            }
+            if (msg.type === 'screenshot' && msg.href) {
+              const href = absHrefFromWs(String(msg.href));
+              const name = String(msg.href).split('/').pop() || 'screenshot.jpg';
+              setDownloads((prev) => [{ name, href }, ...prev].slice(0, 10));
+            }
             if (msg.type === 'cursor_move') {
               setCursor({ x: msg.x, y: msg.y });
             }
@@ -328,7 +429,12 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
             if (msg.type === 'action_done') {
               setTimeout(() => setOverlay(''), 500);
             }
+            if (msg.type === 'action_error') {
+              setOverlay(String(msg.error || 'Action error'));
+              setTimeout(() => setOverlay(''), 1500);
+            }
             if (msg.type === 'frame') {
+              if (streamPaused) return;
               const img = new Image();
               img.onload = () => {
                 const canvas = canvasRef.current!;
@@ -357,7 +463,7 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
       try { wsRef.current?.close(); } catch {}
       wsRef.current = null;
     };
-  }, [wsUrl]);
+  }, [wsUrl, reconnectNonce]);
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
@@ -422,132 +528,330 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
   const [showControls, setShowControls] = useState(false);
 
   return (
-    <div className="agent-browser-stream" style={{ display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
-      
-      {/* Minimal Header */}
+    <div
+      ref={rootRef}
+      className="agent-browser-stream"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        position: focusMode ? 'fixed' : 'relative',
+        inset: focusMode ? 12 : undefined,
+        zIndex: focusMode ? 9999 : undefined,
+        background: focusMode ? 'var(--bg-dark)' : undefined,
+        padding: focusMode ? 12 : undefined,
+        borderRadius: focusMode ? 16 : undefined,
+        border: focusMode ? '1px solid var(--border-color)' : undefined,
+        boxShadow: focusMode ? '0 12px 50px rgba(0,0,0,0.6)' : undefined,
+      }}
+    >
       <div
         className="agent-browser-header"
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '8px 12px',
+          padding: '10px 12px',
           background: 'var(--bg-secondary)',
-          borderRadius: 8,
+          borderRadius: 12,
+          border: '1px solid var(--border-color)',
           gap: 8,
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-           <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#22c55e' : (status === 'reconnecting' ? '#f59e0b' : '#ef4444'), boxShadow: status === 'connected' ? '0 0 8px #22c55e' : 'none' }}></div>
-           <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
-             {status === 'connected' ? 'Agent Connected' : status}
-           </span>
-           {wsError ? (
-             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
-               {wsError}
-             </span>
-           ) : null}
-        </div>
-        
-        {overlay && (
-           <div style={{ 
-              padding: '4px 12px', 
-              background: 'rgba(59, 130, 246, 0.15)', 
-              border: '1px solid rgba(59, 130, 246, 0.3)', 
-              borderRadius: 16, 
-              color: '#60a5fa', 
-              fontSize: 12,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6
-           }}>
-              <span className="animate-pulse">●</span>
-              {overlay}
-           </div>
-        )}
-
-        <button 
-          onClick={() => setShowControls(!showControls)} 
-          style={{ 
-            background: 'transparent', 
-            border: 'none', 
-            color: 'var(--text-secondary)', 
-            cursor: 'pointer',
-            fontSize: 12 
-          }}
-        >
-          {showControls ? 'Hide Controls' : 'Show Controls'}
-        </button>
-      </div>
-
-      {/* Main Browser View */}
-      <div style={{ 
-         border: '1px solid var(--border-color)', 
-         borderRadius: 12, 
-         overflow: 'hidden', 
-         position: 'relative',
-         background: '#000',
-         boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-      }}>
-        <canvas 
-          ref={canvasRef} 
-          onClick={handleCanvasClick} 
-          onWheel={handleCanvasWheel} 
-          onMouseMove={handleCanvasMove}
-          onTouchStart={handleCanvasTouchStart}
-          onTouchMove={handleCanvasTouchMove}
-          style={{ width: '100%', height: 'auto', display: 'block', cursor: 'default', touchAction: 'none' }} 
-        />
-        
-        {/* Agent Overlay Elements */}
-        {highlight && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
           <div
             style={{
-              position: 'absolute',
-              left: `${(highlight.x / size.w) * 100}%`,
-              top: `${(highlight.y / size.h) * 100}%`,
-              width: `${(highlight.width / size.w) * 100}%`,
-              height: `${(highlight.height / size.h) * 100}%`,
-              border: '2px solid #eab308',
-              boxShadow: '0 0 15px rgba(234, 179, 8, 0.4)',
-              pointerEvents: 'none',
-              borderRadius: 4,
-              transition: 'all 0.2s ease'
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: status === 'connected' ? 'var(--accent-success)' : (status === 'reconnecting' ? 'var(--accent-warning)' : 'var(--accent-danger)'),
+              boxShadow: status === 'connected' ? '0 0 8px var(--accent-success)' : 'none'
             }}
           />
-        )}
-        
-        {cursor && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${(cursor.x / size.w) * 100}%`,
-              top: `${(cursor.y / size.h) * 100}%`,
-              transform: 'translate(-50%, -50%)',
-              pointerEvents: 'none',
-              zIndex: 50,
-              transition: 'all 0.1s linear'
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }} dir="auto">
+            {status === 'connected' ? 'متصل' : status}
+          </span>
+          {status === 'error' ? (
+            <button
+              onClick={() => setReconnectNonce(v => v + 1)}
+              style={{
+                height: 28,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              إعادة اتصال
+            </button>
+          ) : null}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '1 1 420px', minWidth: 260 }}>
+          <button onClick={() => runActions([{ type: 'goBack' }])} title="Back" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>⟵</button>
+          <button onClick={() => runActions([{ type: 'goForward' }])} title="Forward" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>⟶</button>
+          <button onClick={() => runActions([{ type: 'reload' }])} title="Reload" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>⟳</button>
+          <input
+            type="text"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                const url = normalizeUrl(address);
+                if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
+              }
             }}
+            placeholder="https://example.com"
+            dir="auto"
+            style={{
+              flex: 1,
+              height: 32,
+              padding: '0 10px',
+              borderRadius: 10,
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              minWidth: 200,
+            }}
+          />
+          <button
+            onClick={() => {
+              const url = normalizeUrl(address);
+              if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
+            }}
+            style={{ height: 32, padding: '0 12px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer' }}
           >
-             <div style={{
-               width: 12, height: 12, borderRadius: '50%', background: '#eab308', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-             }} />
+            فتح
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => {
+              const url = normalizeUrl(address);
+              if (url && navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+            }}
+            title="Copy URL"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            نسخ
+          </button>
+          <button
+            onClick={() => {
+              const url = normalizeUrl(address);
+              if (url) window.open(url, '_blank', 'noreferrer');
+            }}
+            title="Open in new tab"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            فتح خارجي
+          </button>
+          <button
+            onClick={() => runActions([{ type: 'screenshot', fullPage: false, quality: 60 }])}
+            title="Screenshot"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            لقطة
+          </button>
+          <button
+            onClick={() => {
+              const d = downloads[0];
+              if (d?.href) window.open(d.href, '_blank', 'noreferrer');
+            }}
+            disabled={!downloads[0]?.href}
+            title="Open latest download"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: downloads[0]?.href ? 'pointer' : 'not-allowed', opacity: downloads[0]?.href ? 1 : 0.5 }}
+          >
+            تنزيل
+          </button>
+          <button
+            onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
+            title="Zoom out"
+            style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            −
+          </button>
+          <button
+            onClick={() => setZoom(1)}
+            title="Reset zoom"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            onClick={() => setZoom(z => Math.min(2, Number((z + 0.1).toFixed(2))))}
+            title="Zoom in"
+            style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            +
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                if (!document.fullscreenElement) await rootRef.current?.requestFullscreen();
+                else await document.exitFullscreen();
+              } catch {}
+            }}
+            title="Fullscreen"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            {isFullscreen ? 'خروج' : 'ملء'}
+          </button>
+          <button
+            onClick={() => setStreamPaused(v => !v)}
+            title="Pause stream"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: streamPaused ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            {streamPaused ? 'تشغيل' : 'إيقاف'}
+          </button>
+          <button
+            onClick={() => setFocusMode(v => !v)}
+            title="Focus mode"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: focusMode ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            تركيز
+          </button>
+          <button
+            onClick={() => setPanelOpen(v => !v)}
+            title="Logs"
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: panelOpen ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            سجلات
+          </button>
+          <button
+            onClick={() => setShowControls(!showControls)}
+            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            {showControls ? 'أقل' : 'أكثر'}
+          </button>
+        </div>
+
+        {wsError ? (
+          <div style={{ width: '100%', fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
+            {wsError}
           </div>
-        )}
+        ) : null}
+
+        {overlay ? (
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ padding: '4px 12px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: 999, color: '#60a5fa', fontSize: 12 }} dir="auto">
+              {overlay}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {/* Downloads (Automatic) */}
-      {downloads.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, padding: 8, background: 'var(--bg-secondary)', borderRadius: 8 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Downloads:</span>
-          {downloads.map((d, i) => (
-            <a key={i} href={d.href} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#3b82f6' }}>
-              {d.name}
-            </a>
-          ))}
+      <div style={{ border: '1px solid var(--border-color)', borderRadius: 14, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+        <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
+          <canvas
+            ref={canvasRef}
+            onClick={handleCanvasClick}
+            onWheel={handleCanvasWheel}
+            onMouseMove={handleCanvasMove}
+            onTouchStart={handleCanvasTouchStart}
+            onTouchMove={handleCanvasTouchMove}
+            style={{ width: '100%', height: 'auto', display: 'block', cursor: 'default', touchAction: 'none' }}
+          />
+          {highlight && (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${(highlight.x / size.w) * 100}%`,
+                top: `${(highlight.y / size.h) * 100}%`,
+                width: `${(highlight.width / size.w) * 100}%`,
+                height: `${(highlight.height / size.h) * 100}%`,
+                border: '2px solid #eab308',
+                boxShadow: '0 0 15px rgba(234, 179, 8, 0.4)',
+                pointerEvents: 'none',
+                borderRadius: 4,
+                transition: 'all 0.2s ease'
+              }}
+            />
+          )}
+
+          {cursor && (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${(cursor.x / size.w) * 100}%`,
+                top: `${(cursor.y / size.h) * 100}%`,
+                transform: 'translate(-50%, -50%)',
+                pointerEvents: 'none',
+                zIndex: 50,
+                transition: 'all 0.1s linear'
+              }}
+            >
+              <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#eab308', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      {panelOpen ? (
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', gap: 8, padding: 10, borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={() => setActiveTab('console')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'console' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Console</button>
+            <button onClick={() => setActiveTab('network')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'network' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Network</button>
+            <button onClick={() => setActiveTab('downloads')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'downloads' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Downloads</button>
+            <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                onClick={() => {
+                  if (activeTab === 'console') setConsoleEntries([]);
+                  if (activeTab === 'network') setNetworkEntries([]);
+                  if (activeTab === 'downloads') setDownloads([]);
+                }}
+                style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
+              >
+                Clear
+              </button>
+              <button onClick={() => setPanelOpen(false)} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>إخفاء</button>
+            </div>
+          </div>
+
+          <div style={{ maxHeight: 220, overflow: 'auto', padding: 10, fontSize: 12, color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace' }}>
+            {activeTab === 'console' ? (
+              consoleEntries.length ? consoleEntries.slice(-200).map((e, i) => (
+                <div key={i} style={{ opacity: 0.95, padding: '2px 0' }} dir="auto">
+                  <span style={{ color: e.level === 'error' ? 'var(--accent-danger)' : (e.level === 'warning' || e.level === 'warn' ? 'var(--accent-warning)' : 'var(--text-secondary)') }}>
+                    {new Date(e.ts).toLocaleTimeString()}
+                  </span>
+                  {' '}
+                  {e.text}
+                </div>
+              )) : <div style={{ color: 'var(--text-secondary)' }}>لا توجد رسائل</div>
+            ) : null}
+
+            {activeTab === 'network' ? (
+              networkEntries.length ? networkEntries.slice(-200).map((e, i) => (
+                <div key={i} style={{ opacity: 0.95, padding: '2px 0' }} dir="auto">
+                  <span style={{ color: 'var(--text-secondary)' }}>{new Date(e.ts).toLocaleTimeString()}</span>
+                  {' '}
+                  <span style={{ color: e.stage === 'response' && typeof e.status === 'number' && e.status >= 400 ? 'var(--accent-danger)' : 'var(--text-primary)' }}>
+                    {e.method}
+                  </span>
+                  {' '}
+                  {e.stage === 'response' ? <span style={{ color: 'var(--text-secondary)' }}>{e.status ?? ''}</span> : <span style={{ color: 'var(--text-secondary)' }}>→</span>}
+                  {' '}
+                  {e.url}
+                </div>
+              )) : <div style={{ color: 'var(--text-secondary)' }}>لا توجد طلبات</div>
+            ) : null}
+
+            {activeTab === 'downloads' ? (
+              downloads.length ? downloads.map((d, i) => (
+                <div key={i} style={{ padding: '2px 0' }} dir="auto">
+                  <a href={d.href} target="_blank" rel="noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                    {d.name}
+                  </a>
+                </div>
+              )) : <div style={{ color: 'var(--text-secondary)' }}>لا توجد تنزيلات</div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Advanced Manual Controls (Hidden by Default) */}
       {showControls && (
@@ -560,11 +864,11 @@ export default function AgentBrowserStream({ wsUrl }: { wsUrl: string }) {
                   type="text" 
                   value={address} 
                   onChange={e => setAddress(e.target.value)} 
-                  onKeyDown={e => { if (e.key === 'Enter' && address) runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }]); }} 
+                  onKeyDown={e => { if (e.key === 'Enter' && address) runActions([{ type: 'goto', url: normalizeUrl(address), waitUntil: 'domcontentloaded' }]); }} 
                   placeholder="https://example.com"
                   style={{ flex: 1, minWidth: 220, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                 />
-                <button onClick={() => address && runActions([{ type: 'goto', url: address, waitUntil: 'domcontentloaded' }])} className="btn">Go</button>
+                <button onClick={() => address && runActions([{ type: 'goto', url: normalizeUrl(address), waitUntil: 'domcontentloaded' }])} className="btn">Go</button>
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>

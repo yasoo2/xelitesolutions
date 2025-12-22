@@ -46,6 +46,11 @@ if (!import_fs.default.existsSync(STORAGE_DIR)) {
   } catch {
   }
 }
+function notifySession(session2, type, data) {
+  if (session2.ws && session2.ws.readyState === import_ws.WebSocket.OPEN) {
+    session2.ws.send(JSON.stringify({ type, ...data }));
+  }
+}
 function auth(req, res, next) {
   const key = req.headers["x-worker-key"] || req.query.key;
   if (String(key) !== API_KEY) return res.status(401).json({ error: "unauthorized" });
@@ -55,6 +60,81 @@ async function launchChromium() {
   const args = ["--no-sandbox", "--disable-dev-shm-usage"];
   const browser = await import_playwright.chromium.launch({ args, headless: true });
   return browser;
+}
+function setupPageHooks(session2) {
+  const page = session2.page;
+  page.on("framenavigated", (frame) => {
+    try {
+      if (frame === page.mainFrame()) {
+        notifySession(session2, "url", { url: frame.url() });
+      }
+    } catch {
+    }
+  });
+  page.on("console", (msg) => {
+    try {
+      const entry = { level: msg.type(), text: msg.text(), ts: Date.now() };
+      session2.logs.push(entry);
+      if (session2.logs.length > 500) session2.logs.shift();
+      notifySession(session2, "console", { entry });
+    } catch {
+    }
+  });
+  page.on("request", (req) => {
+    try {
+      const entry = {
+        stage: "request",
+        url: req.url(),
+        method: req.method(),
+        resourceType: req.resourceType(),
+        ts: Date.now()
+      };
+      session2.network.push(entry);
+      if (session2.network.length > 500) session2.network.shift();
+      notifySession(session2, "network", { entry });
+    } catch {
+    }
+  });
+  page.on("response", (resp) => {
+    try {
+      const req = resp.request();
+      const entry = {
+        stage: "response",
+        url: resp.url(),
+        method: req.method(),
+        status: resp.status(),
+        resourceType: req.resourceType(),
+        ts: Date.now()
+      };
+      session2.network.push(entry);
+      if (session2.network.length > 500) session2.network.shift();
+      notifySession(session2, "network", { entry });
+    } catch {
+    }
+  });
+  page.on("download", async (dl) => {
+    try {
+      const safeName = dl.suggestedFilename();
+      const fileId = (0, import_uuid.v4)();
+      const filePath = import_path.default.join(STORAGE_DIR, "downloads", `${fileId}-${safeName}`);
+      const dir = import_path.default.dirname(filePath);
+      try {
+        await import_fs.default.promises.mkdir(dir, { recursive: true });
+      } catch {
+      }
+      await dl.saveAs(filePath);
+      const stat = await import_fs.default.promises.stat(filePath);
+      const size = stat.size;
+      const href = `/downloads/${import_path.default.basename(filePath)}`;
+      const download = { id: fileId, filename: safeName, href, size };
+      session2.downloads.push(download);
+      if (session2.downloads.length > 50) session2.downloads.shift();
+      notifySession(session2, "download", { download });
+      logger.info({ fileId, safeName, size }, "download_saved");
+    } catch (e) {
+      logger.error(e, "download_failed");
+    }
+  });
 }
 async function createSession(opts) {
   const browser = await launchChromium();
@@ -77,28 +157,11 @@ async function createSession(opts) {
     locale: opts.locale,
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
-    downloads: []
+    downloads: [],
+    logs: [],
+    network: []
   };
-  page.on("download", async (dl) => {
-    try {
-      const safeName = dl.suggestedFilename();
-      const fileId = (0, import_uuid.v4)();
-      const filePath = import_path.default.join(STORAGE_DIR, "downloads", `${fileId}-${safeName}`);
-      const dir = import_path.default.dirname(filePath);
-      try {
-        await import_fs.default.promises.mkdir(dir, { recursive: true });
-      } catch {
-      }
-      await dl.saveAs(filePath);
-      const stat = await import_fs.default.promises.stat(filePath);
-      const size = stat.size;
-      const href = `/downloads/${import_path.default.basename(filePath)}`;
-      session2.downloads.push({ id: fileId, filename: safeName, href, size });
-      logger.info({ fileId, safeName, size }, "download_saved");
-    } catch (e) {
-      logger.error(e, "download_failed");
-    }
-  });
+  setupPageHooks(session2);
   SESSIONS.set(id, session2);
   return session2;
 }
@@ -121,14 +184,9 @@ async function closeSession(id) {
 }
 async function runActions(session, actions) {
   const outputs = [];
-  const notify = (type, data) => {
-    if (session.ws && session.ws.readyState === import_ws.WebSocket.OPEN) {
-      session.ws.send(JSON.stringify({ type, ...data }));
-    }
-  };
   for (const a of actions) {
     session.lastActiveAt = Date.now();
-    notify("action_start", { action: a });
+    notifySession(session, "action_start", { action: a });
     try {
       switch (a.type) {
         case "goto": {
@@ -198,7 +256,7 @@ async function runActions(session, actions) {
         }
         case "mouseMove": {
           await session.page.mouse.move(a.x, a.y, { steps: a.steps || 1 });
-          notify("cursor_move", { x: a.x, y: a.y });
+          notifySession(session, "cursor_move", { x: a.x, y: a.y });
           outputs.push({ type: "mouseMove", x: a.x, y: a.y });
           break;
         }
@@ -210,7 +268,7 @@ async function runActions(session, actions) {
               if (box) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
-                notify("cursor_move", { x: cx, y: cy });
+                notifySession(session, "cursor_move", { x: cx, y: cy });
                 await new Promise((r) => setTimeout(r, 150));
               }
               await loc.click();
@@ -224,7 +282,7 @@ async function runActions(session, actions) {
               if (box) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
-                notify("cursor_move", { x: cx, y: cy });
+                notifySession(session, "cursor_move", { x: cx, y: cy });
                 await new Promise((r) => setTimeout(r, 150));
               }
               await loc.click();
@@ -233,7 +291,7 @@ async function runActions(session, actions) {
             }
           } else if (typeof a.x === "number" && typeof a.y === "number") {
             await session.page.mouse.click(a.x, a.y, { button: a.button || "left" });
-            notify("cursor_click", { x: a.x, y: a.y });
+            notifySession(session, "cursor_click", { x: a.x, y: a.y });
           }
           outputs.push({ type: "click" });
           break;
@@ -292,7 +350,9 @@ async function runActions(session, actions) {
           const dir = import_path.default.dirname(p);
           if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
           import_fs.default.writeFileSync(p, buf);
-          outputs.push({ type: "screenshot", href: `/shots/${name}` });
+          const href = `/shots/${name}`;
+          outputs.push({ type: "screenshot", href });
+          notifySession(session, "screenshot", { href });
           break;
         }
         case "snapshot.dom": {
@@ -384,10 +444,10 @@ async function runActions(session, actions) {
           break;
         }
       }
-      notify("action_done", { type: a.type });
+      notifySession(session, "action_done", { action: a });
     } catch (err) {
       logger.warn({ action: a, error: err.message }, "action_failed");
-      notify("action_error", { type: a.type, error: err.message });
+      notifySession(session, "action_error", { type: a.type, error: err.message });
       outputs.push({ type: "error", action: a.type, message: err.message });
     }
   }
@@ -413,6 +473,7 @@ app.post("/session/create", auth, async (req, res) => {
       s.page = page;
       const preset = import_playwright.devices[device];
       s.viewport = preset && preset.viewport ? preset.viewport : s.viewport;
+      setupPageHooks(s);
     }
     res.json({ sessionId: s.id, wsUrl: `/ws/${s.id}` });
   } catch (e) {
@@ -497,6 +558,17 @@ Content-Length: ${Buffer.byteLength(message)}\r
     s.ws = ws;
     s.lastActiveAt = Date.now();
     ws.send(JSON.stringify({ type: "stream_start", w: s.viewport.width, h: s.viewport.height }));
+    try {
+      ws.send(JSON.stringify({
+        type: "state",
+        url: s.page.url(),
+        viewport: s.viewport,
+        downloads: s.downloads.slice(-20),
+        logs: s.logs.slice(-100),
+        network: s.network.slice(-100)
+      }));
+    } catch {
+    }
     let running = true;
     ws.on("close", () => {
       running = false;

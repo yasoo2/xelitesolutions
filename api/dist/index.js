@@ -340,6 +340,15 @@ function repoRoot() {
   if (import_path2.default.basename(cwd) === "api") return import_path2.default.resolve(cwd, "..");
   return cwd;
 }
+function resolveToolPath(p) {
+  const root = repoRoot();
+  const val = String(p ?? "").trim();
+  if (!val || val === ".") return root;
+  if (import_path2.default.isAbsolute(val)) return val;
+  const fromCwd = import_path2.default.resolve(process.cwd(), val);
+  if (import_fs2.default.existsSync(fromCwd)) return fromCwd;
+  return import_path2.default.resolve(root, val);
+}
 function isLocalWorkerUrl(base) {
   try {
     const u = new URL(base);
@@ -940,12 +949,41 @@ if (enableNoopTools) {
     });
   }
 }
+var toolRateBuckets = /* @__PURE__ */ new Map();
+function checkToolRateLimit(toolName, limitPerMinute) {
+  const limit = Number(limitPerMinute);
+  if (!Number.isFinite(limit)) return { allowed: true };
+  if (limit <= 0) {
+    return { allowed: false, retryAfterMs: 6e4 };
+  }
+  const now = Date.now();
+  const minute = Math.floor(now / 6e4);
+  const cur = toolRateBuckets.get(toolName);
+  if (!cur || cur.minute !== minute) {
+    toolRateBuckets.set(toolName, { minute, count: 1 });
+    return { allowed: true };
+  }
+  const next = cur.count + 1;
+  if (next > limit) {
+    return { allowed: false, retryAfterMs: (minute + 1) * 6e4 - now };
+  }
+  toolRateBuckets.set(toolName, { minute, count: next });
+  return { allowed: true };
+}
 async function executeTool(name, input) {
   const logs = [];
   const t0 = Date.now();
   logs.push(`[${(/* @__PURE__ */ new Date()).toISOString()}] start ${name}`);
   try {
     const tDef = tools.find((t) => t.name === name);
+    if (!tDef) {
+      return { ok: false, error: "unknown_tool", logs };
+    }
+    const rl = checkToolRateLimit(name, tDef.rateLimitPerMinute);
+    if (!rl.allowed) {
+      logs.push(`rate_limited=1 limit_per_minute=${tDef.rateLimitPerMinute} retry_after_ms=${rl.retryAfterMs}`);
+      return { ok: false, error: "rate_limited", output: { retryAfterMs: rl.retryAfterMs }, logs };
+    }
     if (tDef && typeof tDef.execute === "function") {
       const res = await tDef.execute(input);
       const ok = !!res?.ok;
@@ -1333,7 +1371,7 @@ ${contents.join("\n---\n")}`
     }
     if (name === "file_read") {
       const filename = String(input?.filename ?? "");
-      const full = import_path2.default.isAbsolute(filename) ? filename : import_path2.default.resolve(process.cwd(), filename);
+      const full = resolveToolPath(filename);
       if (import_fs2.default.existsSync(full) && import_fs2.default.lstatSync(full).isDirectory()) {
         return { ok: false, error: "EISDIR: illegal operation on a directory, read", logs };
       }
@@ -1347,7 +1385,7 @@ ${contents.join("\n---\n")}`
     if (name === "read_file_tree") {
       const p = String(input?.path || ".");
       const maxDepth = Math.min(5, Number(input?.depth ?? 2));
-      const rootPath = import_path2.default.isAbsolute(p) ? p : import_path2.default.resolve(process.cwd(), p);
+      const rootPath = resolveToolPath(p);
       if (!import_fs2.default.existsSync(rootPath)) {
         return { ok: false, error: "Directory not found", logs };
       }
@@ -1389,7 +1427,7 @@ ${contents.join("\n---\n")}`
     }
     if (name === "ls") {
       const p = String(input?.path || ".");
-      const dirPath = import_path2.default.isAbsolute(p) ? p : import_path2.default.resolve(process.cwd(), p);
+      const dirPath = resolveToolPath(p);
       if (!import_fs2.default.existsSync(dirPath)) {
         return { ok: false, error: "Directory not found", logs };
       }
@@ -1709,7 +1747,7 @@ ${doc}
     }
     if (name === "analyze_codebase") {
       const p = String(input?.path || ".");
-      const root = import_path2.default.isAbsolute(p) ? p : import_path2.default.resolve(process.cwd(), p);
+      const root = resolveToolPath(p);
       if (!import_fs2.default.existsSync(root)) return { ok: false, error: "Path not found", logs };
       const pkgJsonPath = import_path2.default.join(root, "package.json");
       let pkgInfo = "No package.json";

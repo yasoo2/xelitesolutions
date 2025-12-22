@@ -25,6 +25,8 @@ type Session = {
   createdAt: number;
   lastActiveAt: number;
   downloads: Array<{ id: string; filename: string; href: string; size: number }>;
+  logs: Array<{ level: string; text: string; ts: number }>;
+  network: Array<{ stage: 'request' | 'response'; url: string; method: string; status?: number; resourceType?: string; ts: number }>;
   ws?: WebSocket;
 };
 
@@ -38,6 +40,12 @@ if (!fs.existsSync(STORAGE_DIR)) {
   try { fs.mkdirSync(STORAGE_DIR, { recursive: true }); } catch {}
 }
 
+function notifySession(session: Session, type: string, data: any) {
+  if (session.ws && session.ws.readyState === WebSocket.OPEN) {
+    session.ws.send(JSON.stringify({ type, ...data }));
+  }
+}
+
 function auth(req: express.Request, res: express.Response, next: express.NextFunction) {
   const key = req.headers['x-worker-key'] || req.query.key;
   if (String(key) !== API_KEY) return res.status(401).json({ error: 'unauthorized' });
@@ -48,6 +56,83 @@ async function launchChromium() {
   const args = ['--no-sandbox', '--disable-dev-shm-usage'];
   const browser = await chromium.launch({ args, headless: true });
   return browser;
+}
+
+function setupPageHooks(session: Session) {
+  const page = session.page;
+
+  page.on('framenavigated', (frame) => {
+    try {
+      if (frame === page.mainFrame()) {
+        notifySession(session, 'url', { url: frame.url() });
+      }
+    } catch {}
+  });
+
+  page.on('console', (msg) => {
+    try {
+      const entry = { level: msg.type(), text: msg.text(), ts: Date.now() };
+      session.logs.push(entry);
+      if (session.logs.length > 500) session.logs.shift();
+      notifySession(session, 'console', { entry });
+    } catch {}
+  });
+
+  page.on('request', (req) => {
+    try {
+      const entry = {
+        stage: 'request' as const,
+        url: req.url(),
+        method: req.method(),
+        resourceType: req.resourceType(),
+        ts: Date.now()
+      };
+      session.network.push(entry);
+      if (session.network.length > 500) session.network.shift();
+      notifySession(session, 'network', { entry });
+    } catch {}
+  });
+
+  page.on('response', (resp) => {
+    try {
+      const req = resp.request();
+      const entry = {
+        stage: 'response' as const,
+        url: resp.url(),
+        method: req.method(),
+        status: resp.status(),
+        resourceType: req.resourceType(),
+        ts: Date.now()
+      };
+      session.network.push(entry);
+      if (session.network.length > 500) session.network.shift();
+      notifySession(session, 'network', { entry });
+    } catch {}
+  });
+
+  page.on('download', async (dl) => {
+    try {
+      const safeName = dl.suggestedFilename();
+      const fileId = uuidv4();
+      const filePath = path.join(STORAGE_DIR, 'downloads', `${fileId}-${safeName}`);
+      const dir = path.dirname(filePath);
+      try {
+        await fs.promises.mkdir(dir, { recursive: true });
+      } catch {}
+
+      await dl.saveAs(filePath);
+      const stat = await fs.promises.stat(filePath);
+      const size = stat.size;
+      const href = `/downloads/${path.basename(filePath)}`;
+      const download = { id: fileId, filename: safeName, href, size };
+      session.downloads.push(download);
+      if (session.downloads.length > 50) session.downloads.shift();
+      notifySession(session, 'download', { download });
+      logger.info({ fileId, safeName, size }, 'download_saved');
+    } catch (e: any) {
+      logger.error(e, 'download_failed');
+    }
+  });
 }
 
 async function createSession(opts: { viewport?: { width: number; height: number }, userAgent?: string, locale?: string }) {
@@ -68,29 +153,11 @@ async function createSession(opts: { viewport?: { width: number; height: number 
     locale: opts.locale,
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
-    downloads: []
+    downloads: [],
+    logs: [],
+    network: []
   };
-  // Download handling
-  page.on('download', async (dl) => {
-    try {
-      const safeName = dl.suggestedFilename();
-      const fileId = uuidv4();
-      const filePath = path.join(STORAGE_DIR, 'downloads', `${fileId}-${safeName}`);
-      const dir = path.dirname(filePath);
-      try {
-        await fs.promises.mkdir(dir, { recursive: true });
-      } catch {}
-      
-      await dl.saveAs(filePath);
-      const stat = await fs.promises.stat(filePath);
-      const size = stat.size;
-      const href = `/downloads/${path.basename(filePath)}`;
-      session.downloads.push({ id: fileId, filename: safeName, href, size });
-      logger.info({ fileId, safeName, size }, 'download_saved');
-    } catch (e: any) {
-      logger.error(e, 'download_failed');
-    }
-  });
+  setupPageHooks(session);
   SESSIONS.set(id, session);
   return session;
 }
@@ -132,16 +199,10 @@ type Action =
 
 async function runActions(session: Session, actions: Action[]) {
   const outputs: any[] = [];
-  
-  const notify = (type: string, data: any) => {
-    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
-      session.ws.send(JSON.stringify({ type, ...data }));
-    }
-  };
 
   for (const a of actions) {
     session.lastActiveAt = Date.now();
-    notify('action_start', { action: a });
+    notifySession(session, 'action_start', { action: a });
     try {
       switch (a.type) {
         case 'goto': {
@@ -209,7 +270,7 @@ async function runActions(session: Session, actions: Action[]) {
         }
         case 'mouseMove': {
           await session.page.mouse.move(a.x, a.y, { steps: a.steps || 1 });
-          notify('cursor_move', { x: a.x, y: a.y });
+          notifySession(session, 'cursor_move', { x: a.x, y: a.y });
           outputs.push({ type: 'mouseMove', x: a.x, y: a.y });
           break;
         }
@@ -221,7 +282,7 @@ async function runActions(session: Session, actions: Action[]) {
               if (box) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
-                notify('cursor_move', { x: cx, y: cy });
+                notifySession(session, 'cursor_move', { x: cx, y: cy });
                 await new Promise(r => setTimeout(r, 150)); // Visual delay
               }
               await loc.click();
@@ -236,7 +297,7 @@ async function runActions(session: Session, actions: Action[]) {
               if (box) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
-                notify('cursor_move', { x: cx, y: cy });
+                notifySession(session, 'cursor_move', { x: cx, y: cy });
                 await new Promise(r => setTimeout(r, 150));
               }
               await loc.click();
@@ -245,7 +306,7 @@ async function runActions(session: Session, actions: Action[]) {
             }
           } else if (typeof a.x === 'number' && typeof a.y === 'number') {
             await session.page.mouse.click(a.x, a.y, { button: a.button || 'left' });
-            notify('cursor_click', { x: a.x, y: a.y });
+            notifySession(session, 'cursor_click', { x: a.x, y: a.y });
           }
           outputs.push({ type: 'click' });
           break;
@@ -304,7 +365,9 @@ async function runActions(session: Session, actions: Action[]) {
           const dir = path.dirname(p);
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
           fs.writeFileSync(p, buf);
-          outputs.push({ type: 'screenshot', href: `/shots/${name}` });
+          const href = `/shots/${name}`;
+          outputs.push({ type: 'screenshot', href });
+          notifySession(session, 'screenshot', { href });
           break;
         }
         case 'snapshot.dom': {
@@ -395,10 +458,10 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
       }
-      notify('action_done', { type: a.type });
+      notifySession(session, 'action_done', { action: a });
     } catch (err: any) {
       logger.warn({ action: a, error: err.message }, 'action_failed');
-      notify('action_error', { type: a.type, error: err.message });
+      notifySession(session, 'action_error', { type: a.type, error: err.message });
       outputs.push({ type: 'error', action: a.type, message: err.message });
     }
   }
@@ -428,6 +491,7 @@ app.post('/session/create', auth, async (req, res) => {
       s.page = page;
       const preset = devices[device] as any;
       s.viewport = (preset && preset.viewport) ? preset.viewport : s.viewport;
+      setupPageHooks(s);
     }
     res.json({ sessionId: s.id, wsUrl: `/ws/${s.id}` });
   } catch (e: any) {
@@ -517,6 +581,16 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     s.ws = ws;
     s.lastActiveAt = Date.now();
     ws.send(JSON.stringify({ type: 'stream_start', w: s.viewport.width, h: s.viewport.height }));
+    try {
+      ws.send(JSON.stringify({
+        type: 'state',
+        url: s.page.url(),
+        viewport: s.viewport,
+        downloads: s.downloads.slice(-20),
+        logs: s.logs.slice(-100),
+        network: s.network.slice(-100)
+      }));
+    } catch {}
     let running = true;
     ws.on('close', () => { running = false; s.ws = undefined; });
     ws.on('message', async (data) => {
