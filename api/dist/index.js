@@ -2786,6 +2786,11 @@ ${merged.join("\n")}
         }
       };
     }
+    if (kind === "agent" && typeof browserSessionId === "string" && browserSessionId.trim() && ["browser_run", "browser_get_state", "browser_extract"].includes(String(plan.name || ""))) {
+      const input = plan.input;
+      if (!input || typeof input !== "object") plan.input = {};
+      if (!plan.input.sessionId) plan.input.sessionId = browserSessionId.trim();
+    }
     ev({ type: "step_done", data: { name: `thinking_step_${steps + 1}`, plan } });
     if (plan.name === "browser_run") {
       const acts = Array.isArray(plan.input?.actions) ? plan.input.actions : [];

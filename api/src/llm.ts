@@ -115,17 +115,21 @@ export async function planNextStep(
       
       // Check history for actions
       const historyStr = JSON.stringify(messages).toLowerCase();
-      const hasOpened = historyStr.includes('tool call: browser_open');
+      const hasOpened =
+        historyStr.includes('tool call: browser_open') || historyStr.includes('tool call: browser_run');
       const hasClicked = historyStr.includes('tool call: browser_run') && historyStr.includes('click');
       const hasAnalyzed = historyStr.includes('tool call: browser_get_state');
 
       const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
-      const url = urlMatch?.[0];
+      let url = urlMatch?.[0];
       const wantsOpen =
         /\bopen\b/i.test(rawText) ||
         /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
 
       if (wantsOpen) {
+        if (!url) {
+          if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
+        }
         if (!hasOpened) {
           return {
             name: 'browser_open',

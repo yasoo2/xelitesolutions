@@ -229,6 +229,7 @@ export default function CommandComposer({
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const agentBrowserReady = sessionKind !== 'agent' || !!browserSessionId;
   
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -1125,11 +1126,11 @@ export default function CommandComposer({
           onChange={(e) => setText(e.target.value)} 
           placeholder={t('inputPlaceholder')}
           dir="auto"
-          disabled={!!approval}
+          disabled={!!approval || !agentBrowserReady}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              run();
+              if (agentBrowserReady) run();
             }
           }}
         />
@@ -1161,6 +1162,7 @@ export default function CommandComposer({
               onClick={openTestBrowser}
               title="Test Browser (Live)"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+              hidden={sessionKind === 'agent'}
             >
               <Globe size={20} />
             </button>
@@ -1190,7 +1192,7 @@ export default function CommandComposer({
             <button 
               className="send-button" 
               onClick={() => run()}
-              disabled={!text.trim() || !!approval}
+              disabled={!text.trim() || !!approval || !agentBrowserReady}
               title={t('send')}
             >
               <ArrowUp size={20} />

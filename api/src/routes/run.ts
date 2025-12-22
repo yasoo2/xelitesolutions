@@ -374,6 +374,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       } as any;
     }
 
+    if (
+      kind === 'agent' &&
+      typeof browserSessionId === 'string' &&
+      browserSessionId.trim() &&
+      ['browser_run', 'browser_get_state', 'browser_extract'].includes(String(plan.name || ''))
+    ) {
+      const input = (plan as any).input;
+      if (!input || typeof input !== 'object') (plan as any).input = {};
+      if (!(plan as any).input.sessionId) (plan as any).input.sessionId = browserSessionId.trim();
+    }
+
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
 
     if (plan.name === 'browser_run') {
