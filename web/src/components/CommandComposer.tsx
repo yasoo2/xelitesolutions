@@ -1067,29 +1067,26 @@ export default function CommandComposer({
                       border: `1px solid ${meta.border}`,
                       maxWidth: 760,
                       cursor: 'pointer',
+                      padding: '8px 10px',
                     }}
                     onClick={() => setEvents(prev => prev.map((x, idx) => (idx === i ? { ...x, expanded: !(x as any).expanded } : x)))}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                        <meta.Icon size={16} color={meta.color as any} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            بدء أداة
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <meta.Icon size={14} color={meta.color as any} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, lineHeight: 1.2 }}>
+                          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>بدء أداة</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {toolName}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {toolName}
-                            </div>
-                            <div style={{ fontSize: 11, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
-                              {meta.label}
-                            </div>
+                          <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
+                            {meta.label}
                           </div>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        <Loader2 size={14} className="spin" />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <Loader2 size={12} className="spin" />
                       </div>
                     </div>
                     {expanded && input != null ? (
@@ -1118,12 +1115,13 @@ export default function CommandComposer({
                     background: 'rgba(255,255,255,0.04)',
                     border: '1px solid var(--border-color)',
                     maxWidth: 760,
+                    padding: '8px 10px',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Loader2 size={16} className="spin" />
-                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>بدء خطوة</div>
-                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Loader2 size={12} className="spin" />
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>بدء خطوة</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {formatStepDisplayName(name)}
                     </div>
                   </div>
@@ -1157,33 +1155,32 @@ export default function CommandComposer({
                       border: `1px solid ${ok ? meta.border : 'rgba(239,68,68,0.45)'}`,
                       maxWidth: 760,
                       cursor: 'pointer',
+                      padding: '8px 10px',
                     }}
                     onClick={() => setEvents(prev => prev.map((x, idx) => (idx === i ? { ...x, expanded: !(x as any).expanded } : x)))}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                        {ok ? <CheckCircle2 size={16} color={meta.color as any} /> : <XCircle size={16} color="#ef4444" />}
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        {ok ? <CheckCircle2 size={14} color={meta.color as any} /> : <XCircle size={14} color="#ef4444" />}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, lineHeight: 1.2 }}>
+                          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>
                             {ok ? 'اكتمال أداة' : 'فشل أداة'}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {toolName}
-                            </div>
-                            <div style={{ fontSize: 11, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
-                              {meta.label}
-                            </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {toolName}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
+                            {meta.label}
                           </div>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                         {typeof dur === 'number' ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
                             <Clock size={12} /> {(dur / 1000).toFixed(1)}s
                           </div>
                         ) : null}
-                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                       </div>
                     </div>
                     {!ok && (e.data?.error || result?.error || result?.message) ? (
@@ -1228,13 +1225,14 @@ export default function CommandComposer({
                     background: ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
                     border: `1px solid ${ok ? 'rgba(34,197,94,0.45)' : 'rgba(239,68,68,0.45)'}`,
                     maxWidth: 760,
+                    padding: '8px 10px',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                      {ok ? <CheckCircle2 size={16} color="#22c55e" /> : <XCircle size={16} color="#ef4444" />}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      {ok ? <CheckCircle2 size={14} color="#22c55e" /> : <XCircle size={14} color="#ef4444" />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>
                           {ok ? 'اكتمال خطوة' : 'فشل خطوة'}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
