@@ -960,6 +960,7 @@ export default function CommandComposer({
   };
 
   const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
+  const [runExpandMode, setRunExpandMode] = useState<Record<string, 'auto' | 'manual'>>({});
   const [expandedStepKeys, setExpandedStepKeys] = useState<Record<string, boolean>>({});
 
   const getEventRunId = (e: any) => {
@@ -1000,6 +1001,88 @@ export default function CommandComposer({
     }
     return out;
   }, [sortedEvents]);
+
+  const terminalByRunId = useMemo(() => {
+    const out = new Map<string, boolean>();
+    for (const { e } of sortedEvents) {
+      const type = String(e?.type || '');
+      if (type !== 'run_finished' && type !== 'run_completed') continue;
+      const rid = getEventRunId(e);
+      out.set(rid, true);
+    }
+    return out;
+  }, [sortedEvents]);
+
+  const runStatusByRunId = useMemo(() => {
+    const allRunIds = new Set<string>();
+    for (const rid of stepsByRunId.keys()) allRunIds.add(rid);
+    for (const rid of terminalByRunId.keys()) allRunIds.add(rid);
+
+    const out = new Map<string, { status: 'idle' | 'running' | 'failed' | 'done'; terminal: boolean }>();
+    for (const rid of allRunIds) {
+      const steps = stepsByRunId.get(rid) || [];
+      const terminal = terminalByRunId.get(rid) === true;
+      const running = steps.some((s: any) => s?.status === 'running');
+      const failed = steps.some((s: any) => s?.status === 'failed');
+      const done = steps.length > 0 && steps.every((s: any) => s?.status !== 'running');
+
+      const status: 'idle' | 'running' | 'failed' | 'done' = running ? 'running' : failed ? 'failed' : terminal || done ? 'done' : 'idle';
+      out.set(rid, { status, terminal });
+    }
+    return out;
+  }, [stepsByRunId, terminalByRunId]);
+
+  useEffect(() => {
+    setExpandedRuns((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      for (const [rid, st] of runStatusByRunId.entries()) {
+        const mode = runExpandMode[rid] || 'auto';
+
+        if (st.status === 'running' && mode !== 'manual') {
+          if (!next[rid]) {
+            next[rid] = true;
+            changed = true;
+          }
+        }
+
+        if (st.terminal && mode === 'auto') {
+          if (next[rid]) {
+            next[rid] = false;
+            changed = true;
+          }
+        }
+      }
+
+      return changed ? next : prev;
+    });
+
+    setRunExpandMode((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      for (const [rid, st] of runStatusByRunId.entries()) {
+        const mode = next[rid] || 'auto';
+
+        if (st.status === 'running' && mode !== 'manual') {
+          if (next[rid] !== 'auto') {
+            next[rid] = 'auto';
+            changed = true;
+          }
+        }
+
+        if (st.terminal && mode !== 'manual') {
+          if (next[rid] !== 'auto') {
+            next[rid] = 'auto';
+            changed = true;
+          }
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [runStatusByRunId, runExpandMode]);
 
   const cleanAssistantText = (raw: any) => {
     let s =
@@ -1129,7 +1212,10 @@ export default function CommandComposer({
             })();
 
             const expanded = !!expandedRuns[rid];
-            const toggleRun = () => setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
+            const toggleRun = () => {
+              setRunExpandMode((prev) => ({ ...prev, [rid]: 'manual' }));
+              setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
+            };
 
             const totalDuration = steps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
             const failedCount = steps.filter((s: any) => s?.status === 'failed').length;
