@@ -9,7 +9,7 @@ import { ToolExecution } from '../models/toolExecution';
 import { Artifact } from '../models/artifact';
 import { Approval } from '../models/approval';
 import { Run } from '../models/run';
-import { planNextStep, generateSessionTitle } from '../llm';
+import { planNextStep, generateSessionTitle, SYSTEM_PROMPT } from '../llm';
 import { authenticate } from '../middleware/auth';
 import { Session } from '../models/session';
 import { Message } from '../models/message';
@@ -259,7 +259,34 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     })();
   }
 
+  const systemPromptEventId = `system_prompt:${sessionId}`;
+  let systemPromptCreated = false;
+  let systemPromptText: string | null = null;
+
   const ev = (e: LiveEvent) => broadcast({ ...e, runId });
+
+  try {
+    if (useMock) {
+      const hist = store.listMessages(sessionId);
+      const already = hist.some(m => m.role === 'system');
+      if (!already) {
+        store.addMessage(sessionId, 'system', SYSTEM_PROMPT, runId);
+        systemPromptCreated = true;
+        systemPromptText = SYSTEM_PROMPT;
+        ev({ type: 'text', id: systemPromptEventId, data: SYSTEM_PROMPT });
+      }
+    } else {
+      const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
+      if (!existing) {
+        await Message.create({ sessionId, role: 'system', content: SYSTEM_PROMPT, runId });
+        systemPromptCreated = true;
+        systemPromptText = SYSTEM_PROMPT;
+        ev({ type: 'text', id: systemPromptEventId, data: SYSTEM_PROMPT });
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to create system prompt message:', safeErrorMessage(e));
+  }
 
   ev({ type: 'step_started', data: { name: 'plan' } });
 
@@ -298,14 +325,26 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       // store plan context for continuation
       const { planContext } = await import('../approvals/context');
       planContext.set(ap.id, { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, sessionId, blocked: true, approvalId: ap.id });
+      return res.json({
+        runId,
+        sessionId,
+        blocked: true,
+        approvalId: ap.id,
+        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
+      });
     } else {
       const ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
       ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
       await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString() });
+      return res.json({
+        runId,
+        sessionId,
+        blocked: true,
+        approvalId: ap._id.toString(),
+        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
+      });
     }
   }
 
@@ -732,7 +771,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
   }
   
-  return res.json({ runId, sessionId, status: 'done' });
+  return res.json({
+    runId,
+    sessionId,
+    status: 'done',
+    ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+  });
 });
 
 export default router;

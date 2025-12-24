@@ -626,7 +626,11 @@ export default function CommandComposer({
           }
 
           if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'text', 'user_input'].includes(msg.type)) {
-            setEvents(prev => [...prev, msg]);
+            setEvents(prev => {
+              const id = typeof msg?.id === 'string' ? msg.id : '';
+              if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+              return [...prev, msg];
+            });
           }
         } catch (e) {
           console.error('WS parse error:', e);
@@ -817,6 +821,16 @@ export default function CommandComposer({
         const msg = data?.error || raw || `HTTP ${res.status}`;
         throw new Error(String(msg).slice(0, 500));
       }
+
+      if (typeof data?.systemPrompt === 'string' && data.systemPrompt.trim() && typeof data?.systemPromptId === 'string' && data.systemPromptId.trim()) {
+        const sid = data.systemPromptId.trim();
+        const content = data.systemPrompt;
+        setEvents(prev => {
+          if (prev.some((e: any) => typeof e?.id === 'string' && e.id === sid)) return prev;
+          return [...prev, { type: 'text', id: sid, data: content, ts: Date.now() }];
+        });
+      }
+
       if (typeof data?.runId === 'string' && data.runId.trim()) {
         setActiveRunId(data.runId.trim());
       }
@@ -992,7 +1006,12 @@ export default function CommandComposer({
       .map((e: any, idx: number) => ({
         e,
         idx,
-        seq: typeof e?.seq === 'number' ? e.seq : Number.POSITIVE_INFINITY,
+        seq:
+          typeof e?.id === 'string' && e.id.startsWith('system_prompt:')
+            ? Number.NEGATIVE_INFINITY
+            : typeof e?.seq === 'number'
+              ? e.seq
+              : Number.POSITIVE_INFINITY,
         ts: typeof e?.ts === 'number' ? e.ts : idx,
       }))
       .sort((a: any, b: any) => (a.seq - b.seq) || (a.ts - b.ts) || (a.idx - b.idx));
