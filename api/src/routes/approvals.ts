@@ -19,45 +19,45 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
   if (useMock) {
     const a = store.updateApproval(id, { status: decision as any });
     if (!a || !ctx) return res.status(404).json({ error: 'Approval not found' });
-    broadcast({ type: 'approval_result', data: { id, decision } });
+    broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
     if (decision === 'approved') {
-      broadcast({ type: 'step_started', data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
       const result = await executeTool(ctx.name, ctx.input);
-      broadcast({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${ctx.name}`, result } });
+      broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {
         for (const a of result.artifacts) {
           store.addArtifact(ctx.runId, a.name, a.href);
-          broadcast({ type: 'artifact_created', data: { name: a.name, href: a.href } });
+          broadcast({ type: 'artifact_created', runId: ctx.runId, data: { name: a.name, href: a.href } });
         }
       }
       store.updateRun(ctx.runId, { status: result.ok ? 'done' : 'failed' });
-      broadcast({ type: 'run_finished', data: { runId: ctx.runId, ok: result.ok } });
+      broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: result.ok } });
       planContext.delete(id);
       return res.json({ ok: true, result });
     } else {
       store.updateRun(ctx.runId, { status: 'denied' as any });
-      broadcast({ type: 'run_finished', data: { runId: ctx.runId, ok: false } });
+      broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: false } });
       planContext.delete(id);
       return res.json({ ok: true, denied: true });
     }
   } else {
     const a = await Approval.findByIdAndUpdate(id, { $set: { status: decision } }, { new: true });
     if (!a || !ctx) return res.status(404).json({ error: 'Approval not found' });
-    broadcast({ type: 'approval_result', data: { id, decision } });
+    broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
     if (decision === 'approved') {
-      broadcast({ type: 'step_started', data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
       const result = await executeTool(ctx.name, ctx.input);
-      broadcast({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${ctx.name}`, result } });
+      broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {
         // Persist artifacts in DB using Artifact model if needed
       }
       await Run.findByIdAndUpdate(ctx.runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-      broadcast({ type: 'run_finished', data: { runId: ctx.runId, ok: result.ok } });
+      broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: result.ok } });
       planContext.delete(id);
       return res.json({ ok: true, result });
     } else {
       await Run.findByIdAndUpdate(ctx.runId, { $set: { status: 'denied' } });
-      broadcast({ type: 'run_finished', data: { runId: ctx.runId, ok: false } });
+      broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: false } });
       planContext.delete(id);
       return res.json({ ok: true, denied: true });
     }

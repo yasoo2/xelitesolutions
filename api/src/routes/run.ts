@@ -106,7 +106,6 @@ function detectRisk(text: string) {
 
 router.post('/start', authenticate as any, async (req: Request, res: Response) => {
   let { text, sessionId, fileIds, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
-  const ev = (e: LiveEvent) => broadcast(e);
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
@@ -205,27 +204,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       ];
   }
 
-  ev({ type: 'step_started', data: { name: 'plan' } });
-  
-  let plan = null;
-  try {
-      // Try LLM planning
-      plan = await planNextStep(
-        [{ role: 'user', content: initialContent }],
-        { provider, apiKey, baseUrl, model }
-      );
-  } catch (err) {
-      console.warn('LLM planning error:', safeErrorMessage(err));
-  }
-
-  if (!plan) {
-    // No plan generated
-  } else {
-    // Plan generated
-  }
-  
-  ev({ type: 'step_done', data: { name: 'plan', plan } });
-
   if (!sessionId) {
     if (useMock) {
       const s = store.createSession('Untitled Session', 'ADVISOR', kind);
@@ -255,9 +233,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   if (useMock) {
     const run = store.createRun(sessionId);
     runId = run.id;
-    store.addStep(runId, 'plan', 'done');
   } else {
-    const run = await Run.create({ sessionId, status: 'running', steps: [{ name: 'plan', status: 'done' }] });
+    const run = await Run.create({ sessionId, status: 'running', steps: [] });
     runId = run._id.toString();
 
     // Auto-Title Logic
@@ -280,6 +257,29 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         console.error('Auto-title background task failed', e);
       }
     })();
+  }
+
+  const ev = (e: LiveEvent) => broadcast({ ...e, runId });
+
+  ev({ type: 'step_started', data: { name: 'plan' } });
+
+  let plan = null;
+  try {
+      plan = await planNextStep(
+        [{ role: 'user', content: initialContent }],
+        { provider, apiKey, baseUrl, model }
+      );
+  } catch (err) {
+      console.warn('LLM planning error:', safeErrorMessage(err));
+  }
+
+  ev({ type: 'step_done', data: { name: 'plan', plan } });
+  if (useMock) {
+    store.addStep(runId, 'plan', 'done');
+  } else {
+    try {
+      await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
+    } catch {}
   }
 
   // Save User Message to DB

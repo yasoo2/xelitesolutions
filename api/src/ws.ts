@@ -5,22 +5,29 @@ import { config } from './config';
 
 let liveWssRef: WebSocketServer | null = null;
 let browserProxyWssRef: WebSocketServer | null = null;
+let liveSeq = 0;
+
+export type LiveEventType =
+  | 'step_started'
+  | 'step_progress'
+  | 'step_done'
+  | 'step_failed'
+  | 'evidence_added'
+  | 'artifact_created'
+  | 'approval_required'
+  | 'approval_result'
+  | 'run_finished'
+  | 'run_completed'
+  | 'text'
+  | (string & {});
 
 export interface LiveEvent {
-  type:
-    | 'step_started'
-    | 'step_progress'
-    | 'step_done'
-    | 'step_failed'
-    | 'evidence_added'
-    | 'artifact_created'
-    | 'approval_required'
-    | 'approval_result'
-    | 'run_finished'
-    | 'run_completed'
-    | 'text';
+  type: LiveEventType;
   data: any;
   id?: string;
+  runId?: string;
+  seq?: number;
+  ts?: number;
 }
 
 export function attachWebSocket(server: Server) {
@@ -120,9 +127,22 @@ export function attachWebSocket(server: Server) {
   });
 }
 
-export function broadcast(event: LiveEvent | { type: string; data: any; id?: string }) {
+export function broadcast(
+  event: LiveEvent | { type: string; data: any; id?: string; runId?: string; seq?: number; ts?: number }
+) {
   if (!liveWssRef) return;
-  const payload = JSON.stringify(event);
+  const normalized: LiveEvent = {
+    ...(event as any),
+    ts: typeof (event as any)?.ts === 'number' ? (event as any).ts : Date.now(),
+    seq: typeof (event as any)?.seq === 'number' ? (event as any).seq : (liveSeq += 1),
+    runId:
+      typeof (event as any)?.runId === 'string'
+        ? (event as any).runId
+        : typeof (event as any)?.data?.runId === 'string'
+          ? (event as any).data.runId
+          : undefined,
+  };
+  const payload = JSON.stringify(normalized);
   liveWssRef.clients.forEach((client: WebSocket) => {
     if (client.readyState === WebSocket.OPEN) {
         client.send(payload);

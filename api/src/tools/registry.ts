@@ -4,6 +4,7 @@ import { ToolDefinition, ToolExecutionResult } from './types';
 import { Buffer } from 'buffer';
 import { config } from '../config';
 import { spawn } from 'child_process';
+import os from 'os';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -66,15 +67,89 @@ async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
       const workerDir = path.join(root, 'services', 'joe-browser-worker');
       const workerEnv = { ...process.env, PORT: String(new URL(base).port || 7070), WORKER_API_KEY: key };
       logs.push(`worker_autostart=1 base=${base}`);
-      const child = spawn('npm', ['--prefix', workerDir, 'run', 'dev'], {
+
+      const runAndWait = (
+        command: string,
+        args: string[],
+        opts: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number }
+      ) =>
+        new Promise<void>((resolve, reject) => {
+          const child = spawn(command, args, { cwd: opts.cwd, env: opts.env, stdio: 'ignore' });
+          const timer = setTimeout(() => {
+            try {
+              child.kill('SIGKILL');
+            } catch {}
+            reject(new Error(`worker_cmd_timeout cmd=${command} args=${args.join(' ')}`));
+          }, opts.timeoutMs);
+          child.on('error', (err) => {
+            clearTimeout(timer);
+            reject(err);
+          });
+          child.on('close', (code) => {
+            clearTimeout(timer);
+            if (code === 0) resolve();
+            else reject(new Error(`worker_cmd_failed cmd=${command} exit=${code}`));
+          });
+        });
+
+      const hasNodeModules = fs.existsSync(path.join(workerDir, 'node_modules'));
+      if (!hasNodeModules) {
+        logs.push('worker_install=1');
+        await runAndWait('npm', ['--prefix', workerDir, 'install', '--silent'], {
+          cwd: root,
+          env: workerEnv,
+          timeoutMs: 10 * 60 * 1000,
+        });
+      }
+
+      const autoInstallSetting = String(process.env.AUTO_INSTALL_PLAYWRIGHT ?? '').trim().toLowerCase();
+      const autoInstall =
+        autoInstallSetting === ''
+          ? true
+          : autoInstallSetting === '1' || autoInstallSetting === 'true' || autoInstallSetting === 'yes';
+
+      const hasChromium = (() => {
+        const envPath = String(process.env.PLAYWRIGHT_BROWSERS_PATH || '').trim();
+        const rootCandidates: string[] = [];
+        if (envPath && envPath !== '0') rootCandidates.push(envPath);
+        rootCandidates.push(path.join(workerDir, 'node_modules', 'playwright', '.local-browsers'));
+
+        const home = os.homedir();
+        if (home) {
+          rootCandidates.push(path.join(home, 'Library', 'Caches', 'ms-playwright'));
+          rootCandidates.push(path.join(home, '.cache', 'ms-playwright'));
+          rootCandidates.push(path.join(home, 'AppData', 'Local', 'ms-playwright'));
+        }
+
+        for (const dir of rootCandidates) {
+          try {
+            if (!fs.existsSync(dir)) continue;
+            const entries = fs.readdirSync(dir);
+            if (entries.some((e) => /chromium/i.test(e))) return true;
+          } catch {}
+        }
+        return false;
+      })();
+
+      if (autoInstall && !hasChromium) {
+        logs.push('worker_playwright_install=1');
+        await runAndWait('npm', ['--prefix', workerDir, 'run', 'install-chromium'], {
+          cwd: root,
+          env: workerEnv,
+          timeoutMs: 10 * 60 * 1000,
+        });
+      }
+
+      const child = spawn('npm', ['--prefix', workerDir, 'run', 'start'], {
         cwd: root,
         env: workerEnv,
         stdio: 'ignore',
         detached: true,
       });
       child.unref();
-      await waitForWorkerHealth(base, 15000);
-    })().catch(() => {});
+      const ok = await waitForWorkerHealth(base, 20000);
+      if (!ok) throw new Error(`worker_autostart_failed base=${base}`);
+    })();
   }
 
   await browserWorkerBoot;
@@ -88,7 +163,6 @@ function isProbablyHtml(text: string, contentType?: string | null) {
 }
 
 async function workerHealthOrThrow(base: string, logs: string[]) {
-  if (isLocalWorkerUrl(base)) return;
   const healthy = await waitForWorkerHealth(base, 2500);
   logs.push(`worker_health=${healthy ? 1 : 0}`);
   if (!healthy) {

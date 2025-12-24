@@ -250,24 +250,50 @@ export default function CommandComposer({
   const [builderOpen, setBuilderOpen] = useState(true);
   const [builderTab, setBuilderTab] = useState<'PLAN' | 'STEPS' | 'ARTIFACTS'>('STEPS');
   const [transparencyLevel, setTransparencyLevel] = useState<0 | 1 | 2>(1);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const builderOpenRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    builderOpenRef.current = builderOpen;
+  }, [builderOpen]);
 
   const derived = useMemo(() => {
-    const stepsByName = new Map<string, any>();
+    const stepsByKey = new Map<string, any>();
     const order: string[] = [];
     const logs: string[] = [];
     const artifacts: Array<{ name: string; href: string; kind?: string }> = [];
     const artifactsSeen = new Set<string>();
     const timeline: Array<{ type: string; data: any; duration?: number }> = [];
 
-    const ensureStep = (name: string) => {
-      if (!stepsByName.has(name)) {
-        stepsByName.set(name, { name, status: 'running' });
-        order.push(name);
+    const builderEvents = activeRunId
+      ? events.filter((e: any) => {
+          const rid = typeof e?.runId === 'string' ? e.runId : typeof e?.data?.runId === 'string' ? e.data.runId : undefined;
+          return rid === activeRunId;
+        })
+      : events;
+
+    const sorted = builderEvents
+      .map((e: any, idx: number) => ({
+        e,
+        idx,
+        seq: typeof e?.seq === 'number' ? e.seq : Number.POSITIVE_INFINITY,
+        ts: typeof e?.ts === 'number' ? e.ts : idx,
+      }))
+      .sort((a: any, b: any) => (a.seq - b.seq) || (a.ts - b.ts) || (a.idx - b.idx));
+
+    const ensureStep = (key: string, init: any) => {
+      if (!stepsByKey.has(key)) {
+        stepsByKey.set(key, init);
+        order.push(key);
       }
-      return stepsByName.get(name);
+      return stepsByKey.get(key);
     };
 
-    for (const e of events) {
+    const occ = new Map<string, number>();
+    const open = new Map<string, string[]>();
+
+    for (const { e } of sorted) {
+      const runId = typeof (e as any)?.runId === 'string' ? (e as any).runId : typeof e?.data?.runId === 'string' ? e.data.runId : undefined;
       if (
         e.type === 'user_input' ||
         e.type === 'text' ||
@@ -286,15 +312,35 @@ export default function CommandComposer({
       }
 
       if (e.type === 'step_started' && e.data?.name) {
-        const s = ensureStep(String(e.data.name));
+        const name = String(e.data.name);
+        const base = `${runId || ''}::${name}`;
+        const nextOcc = (occ.get(base) || 0) + 1;
+        occ.set(base, nextOcc);
+        const key = `${base}::${nextOcc}`;
+        const stack = open.get(base) || [];
+        stack.push(key);
+        open.set(base, stack);
+
+        const s = ensureStep(key, { name, status: 'running', runId });
         s.status = 'running';
+        if (typeof (e as any)?.ts === 'number') s.startedAt = (e as any).ts;
       }
 
       if ((e.type === 'step_done' || e.type === 'step_failed') && e.data?.name) {
         const name = String(e.data.name);
-        const s = ensureStep(name);
+        const base = `${runId || ''}::${name}`;
+        const stack = open.get(base) || [];
+        const key = stack.pop();
+        if (stack.length) open.set(base, stack);
+        else open.delete(base);
+
+        const resolvedKey = key || `${base}::${(occ.get(base) || 0) + 1}`;
+        if (!key) occ.set(base, Number(resolvedKey.split('::').pop()) || (occ.get(base) || 0) + 1);
+
+        const s = ensureStep(resolvedKey, { name, status: 'running', runId });
         s.status = e.type === 'step_done' ? 'done' : 'failed';
         if (typeof (e as any).duration === 'number') s.duration = (e as any).duration;
+        else if (typeof s.startedAt === 'number' && typeof (e as any)?.ts === 'number') s.duration = (e as any).ts - s.startedAt;
         if (e.data?.plan) s.plan = e.data.plan;
         if (e.data?.result) {
           s.result = e.data.result;
@@ -317,7 +363,7 @@ export default function CommandComposer({
       }
     }
 
-    const steps = order.map((name) => stepsByName.get(name)).filter(Boolean);
+    const steps = order.map((key) => stepsByKey.get(key)).filter(Boolean);
 
     const formatStepName = (name: string) => {
       if (name.startsWith('thinking_step_')) {
@@ -331,7 +377,7 @@ export default function CommandComposer({
     const displaySteps = steps.map((s: any) => ({ ...s, displayName: formatStepName(String(s.name || '')) }));
 
     return { steps: displaySteps, logs, artifacts, timeline };
-  }, [events]);
+  }, [events, activeRunId]);
 
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -537,6 +583,9 @@ export default function CommandComposer({
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
+          if (typeof msg?.runId === 'string' && msg.runId.trim()) {
+            setActiveRunId(msg.runId.trim());
+          }
 
           if (msg.type === 'artifact_created') {
             const kind = msg.data?.kind;
@@ -551,21 +600,30 @@ export default function CommandComposer({
           
           if (msg.type === 'approval_required') {
             const data = msg.data || {};
-            const { id, runId, risk, action } = data;
+            const { id, risk, action } = data;
+            const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
             if (id) {
                 setApproval({ id, runId, risk, action });
             }
           }
 
           if (msg.type === 'step_started') {
-            stepStartTimes.current[msg.data.name] = Date.now();
+            const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
+            const name = String(msg?.data?.name || '');
+            if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
+            if (builderOpenRef.current) {
+              if (name.startsWith('thinking_step_')) setBuilderTab('PLAN');
+              else setBuilderTab('STEPS');
+            }
           }
 
           if (msg.type === 'step_done' || msg.type === 'step_failed') {
-            const start = stepStartTimes.current[msg.data.name];
+            const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
+            const name = String(msg?.data?.name || '');
+            const start = stepStartTimes.current[`${rid}:${name}`];
             if (start) {
               msg.duration = Date.now() - start;
-              delete stepStartTimes.current[msg.data.name];
+              delete stepStartTimes.current[`${rid}:${name}`];
             }
           }
 
@@ -578,6 +636,10 @@ export default function CommandComposer({
                }
              } catch {}
              speak(String(content));
+          }
+
+          if (msg.type === 'artifact_created' && builderOpenRef.current) {
+            setBuilderTab('ARTIFACTS');
           }
 
           if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'text', 'user_input'].includes(msg.type)) {
@@ -596,9 +658,13 @@ export default function CommandComposer({
   useEffect(() => {
     if (sessionId) {
       setEvents([]);
+      setActiveRunId(null);
+      setApproval(null);
       loadHistory(sessionId);
     } else {
       setEvents([]);
+      setActiveRunId(null);
+      setApproval(null);
     }
   }, [sessionId]);
 
@@ -753,6 +819,9 @@ export default function CommandComposer({
       if (!res.ok) {
         const msg = data?.error || raw || `HTTP ${res.status}`;
         throw new Error(String(msg).slice(0, 500));
+      }
+      if (typeof data?.runId === 'string' && data.runId.trim()) {
+        setActiveRunId(data.runId.trim());
       }
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);

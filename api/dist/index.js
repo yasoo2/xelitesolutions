@@ -248,6 +248,7 @@ var import_fs2 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
 var import_buffer = require("buffer");
 var import_child_process = require("child_process");
+var import_os = __toESM(require("os"));
 
 // src/services/knowledge.ts
 var import_fs = __toESM(require("fs"));
@@ -382,16 +383,75 @@ async function ensureBrowserWorker(base, key, logs) {
       const workerDir = import_path2.default.join(root, "services", "joe-browser-worker");
       const workerEnv = { ...process.env, PORT: String(new URL(base).port || 7070), WORKER_API_KEY: key };
       logs.push(`worker_autostart=1 base=${base}`);
-      const child = (0, import_child_process.spawn)("npm", ["--prefix", workerDir, "run", "dev"], {
+      const runAndWait = (command, args, opts) => new Promise((resolve, reject) => {
+        const child2 = (0, import_child_process.spawn)(command, args, { cwd: opts.cwd, env: opts.env, stdio: "ignore" });
+        const timer = setTimeout(() => {
+          try {
+            child2.kill("SIGKILL");
+          } catch {
+          }
+          reject(new Error(`worker_cmd_timeout cmd=${command} args=${args.join(" ")}`));
+        }, opts.timeoutMs);
+        child2.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        child2.on("close", (code) => {
+          clearTimeout(timer);
+          if (code === 0) resolve();
+          else reject(new Error(`worker_cmd_failed cmd=${command} exit=${code}`));
+        });
+      });
+      const hasNodeModules = import_fs2.default.existsSync(import_path2.default.join(workerDir, "node_modules"));
+      if (!hasNodeModules) {
+        logs.push("worker_install=1");
+        await runAndWait("npm", ["--prefix", workerDir, "install", "--silent"], {
+          cwd: root,
+          env: workerEnv,
+          timeoutMs: 10 * 60 * 1e3
+        });
+      }
+      const autoInstallSetting = String(process.env.AUTO_INSTALL_PLAYWRIGHT ?? "").trim().toLowerCase();
+      const autoInstall = autoInstallSetting === "" ? true : autoInstallSetting === "1" || autoInstallSetting === "true" || autoInstallSetting === "yes";
+      const hasChromium = (() => {
+        const envPath = String(process.env.PLAYWRIGHT_BROWSERS_PATH || "").trim();
+        const rootCandidates = [];
+        if (envPath && envPath !== "0") rootCandidates.push(envPath);
+        rootCandidates.push(import_path2.default.join(workerDir, "node_modules", "playwright", ".local-browsers"));
+        const home = import_os.default.homedir();
+        if (home) {
+          rootCandidates.push(import_path2.default.join(home, "Library", "Caches", "ms-playwright"));
+          rootCandidates.push(import_path2.default.join(home, ".cache", "ms-playwright"));
+          rootCandidates.push(import_path2.default.join(home, "AppData", "Local", "ms-playwright"));
+        }
+        for (const dir of rootCandidates) {
+          try {
+            if (!import_fs2.default.existsSync(dir)) continue;
+            const entries = import_fs2.default.readdirSync(dir);
+            if (entries.some((e) => /chromium/i.test(e))) return true;
+          } catch {
+          }
+        }
+        return false;
+      })();
+      if (autoInstall && !hasChromium) {
+        logs.push("worker_playwright_install=1");
+        await runAndWait("npm", ["--prefix", workerDir, "run", "install-chromium"], {
+          cwd: root,
+          env: workerEnv,
+          timeoutMs: 10 * 60 * 1e3
+        });
+      }
+      const child = (0, import_child_process.spawn)("npm", ["--prefix", workerDir, "run", "start"], {
         cwd: root,
         env: workerEnv,
         stdio: "ignore",
         detached: true
       });
       child.unref();
-      await waitForWorkerHealth(base, 15e3);
-    })().catch(() => {
-    });
+      const ok = await waitForWorkerHealth(base, 2e4);
+      if (!ok) throw new Error(`worker_autostart_failed base=${base}`);
+    })();
   }
   await browserWorkerBoot;
 }
@@ -402,7 +462,6 @@ function isProbablyHtml(text, contentType) {
   return t.startsWith("<!doctype html") || t.startsWith("<html") || t.includes("<head") || t.includes("<body");
 }
 async function workerHealthOrThrow(base, logs) {
-  if (isLocalWorkerUrl(base)) return;
   const healthy = await waitForWorkerHealth(base, 2500);
   logs.push(`worker_health=${healthy ? 1 : 0}`);
   if (!healthy) {
@@ -1856,6 +1915,7 @@ var import_ws = require("ws");
 var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
 var liveWssRef = null;
 var browserProxyWssRef = null;
+var liveSeq = 0;
 function attachWebSocket(server) {
   liveWssRef = new import_ws.WebSocketServer({ noServer: true });
   browserProxyWssRef = new import_ws.WebSocketServer({ noServer: true });
@@ -1965,7 +2025,13 @@ Content-Length: ${Buffer.byteLength(message)}\r
 }
 function broadcast(event) {
   if (!liveWssRef) return;
-  const payload = JSON.stringify(event);
+  const normalized = {
+    ...event,
+    ts: typeof event?.ts === "number" ? event.ts : Date.now(),
+    seq: typeof event?.seq === "number" ? event.seq : liveSeq += 1,
+    runId: typeof event?.runId === "string" ? event.runId : typeof event?.data?.runId === "string" ? event.data.runId : void 0
+  };
+  const payload = JSON.stringify(normalized);
   liveWssRef.clients.forEach((client) => {
     if (client.readyState === import_ws.WebSocket.OPEN) {
       client.send(payload);
@@ -2749,7 +2815,6 @@ function detectRisk(text) {
 }
 router3.post("/start", authenticate, async (req, res) => {
   let { text, sessionId, fileIds, provider, apiKey: apiKey2, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
-  const ev = (e) => broadcast(e);
   const isAuthed = Boolean(req.auth);
   const userId = req.auth?.sub;
   const useMock = !isAuthed ? true : process.env.MOCK_DB === "1" || import_mongoose12.default.connection.readyState !== 1;
@@ -2842,20 +2907,6 @@ ${merged.join("\n")}
       ...contentParts
     ];
   }
-  ev({ type: "step_started", data: { name: "plan" } });
-  let plan = null;
-  try {
-    plan = await planNextStep(
-      [{ role: "user", content: initialContent }],
-      { provider, apiKey: apiKey2, baseUrl, model }
-    );
-  } catch (err) {
-    console.warn("LLM planning error:", safeErrorMessage(err));
-  }
-  if (!plan) {
-  } else {
-  }
-  ev({ type: "step_done", data: { name: "plan", plan } });
   if (!sessionId) {
     if (useMock) {
       const s = store.createSession("Untitled Session", "ADVISOR", kind);
@@ -2880,9 +2931,8 @@ ${merged.join("\n")}
   if (useMock) {
     const run = store.createRun(sessionId);
     runId = run.id;
-    store.addStep(runId, "plan", "done");
   } else {
-    const run = await Run.create({ sessionId, status: "running", steps: [{ name: "plan", status: "done" }] });
+    const run = await Run.create({ sessionId, status: "running", steps: [] });
     runId = run._id.toString();
     (async () => {
       try {
@@ -2901,6 +2951,26 @@ ${merged.join("\n")}
         console.error("Auto-title background task failed", e);
       }
     })();
+  }
+  const ev = (e) => broadcast({ ...e, runId });
+  ev({ type: "step_started", data: { name: "plan" } });
+  let plan = null;
+  try {
+    plan = await planNextStep(
+      [{ role: "user", content: initialContent }],
+      { provider, apiKey: apiKey2, baseUrl, model }
+    );
+  } catch (err) {
+    console.warn("LLM planning error:", safeErrorMessage(err));
+  }
+  ev({ type: "step_done", data: { name: "plan", plan } });
+  if (useMock) {
+    store.addStep(runId, "plan", "done");
+  } else {
+    try {
+      await Run.findByIdAndUpdate(runId, { $push: { steps: { name: "plan", status: "done" } } });
+    } catch {
+    }
   }
   if (useMock) {
     store.addMessage(sessionId, "user", String(text || ""), runId);
@@ -3795,44 +3865,44 @@ router8.post("/:id/decision", authenticate, async (req, res) => {
   if (useMock) {
     const a = store.updateApproval(id, { status: decision });
     if (!a || !ctx) return res.status(404).json({ error: "Approval not found" });
-    broadcast({ type: "approval_result", data: { id, decision } });
+    broadcast({ type: "approval_result", runId: ctx.runId, data: { id, decision } });
     if (decision === "approved") {
-      broadcast({ type: "step_started", data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: "step_started", runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
       const result = await executeTool(ctx.name, ctx.input);
-      broadcast({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${ctx.name}`, result } });
+      broadcast({ type: result.ok ? "step_done" : "step_failed", runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {
         for (const a2 of result.artifacts) {
           store.addArtifact(ctx.runId, a2.name, a2.href);
-          broadcast({ type: "artifact_created", data: { name: a2.name, href: a2.href } });
+          broadcast({ type: "artifact_created", runId: ctx.runId, data: { name: a2.name, href: a2.href } });
         }
       }
       store.updateRun(ctx.runId, { status: result.ok ? "done" : "failed" });
-      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: result.ok } });
+      broadcast({ type: "run_finished", runId: ctx.runId, data: { runId: ctx.runId, ok: result.ok } });
       planContext.delete(id);
       return res.json({ ok: true, result });
     } else {
       store.updateRun(ctx.runId, { status: "denied" });
-      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: false } });
+      broadcast({ type: "run_finished", runId: ctx.runId, data: { runId: ctx.runId, ok: false } });
       planContext.delete(id);
       return res.json({ ok: true, denied: true });
     }
   } else {
     const a = await Approval.findByIdAndUpdate(id, { $set: { status: decision } }, { new: true });
     if (!a || !ctx) return res.status(404).json({ error: "Approval not found" });
-    broadcast({ type: "approval_result", data: { id, decision } });
+    broadcast({ type: "approval_result", runId: ctx.runId, data: { id, decision } });
     if (decision === "approved") {
-      broadcast({ type: "step_started", data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: "step_started", runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
       const result = await executeTool(ctx.name, ctx.input);
-      broadcast({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${ctx.name}`, result } });
+      broadcast({ type: result.ok ? "step_done" : "step_failed", runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {
       }
       await Run.findByIdAndUpdate(ctx.runId, { $set: { status: result.ok ? "done" : "failed" } });
-      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: result.ok } });
+      broadcast({ type: "run_finished", runId: ctx.runId, data: { runId: ctx.runId, ok: result.ok } });
       planContext.delete(id);
       return res.json({ ok: true, result });
     } else {
       await Run.findByIdAndUpdate(ctx.runId, { $set: { status: "denied" } });
-      broadcast({ type: "run_finished", data: { runId: ctx.runId, ok: false } });
+      broadcast({ type: "run_finished", runId: ctx.runId, data: { runId: ctx.runId, ok: false } });
       planContext.delete(id);
       return res.json({ ok: true, denied: true });
     }
@@ -4236,13 +4306,13 @@ var database_default = router14;
 // src/routes/system.ts
 var import_express15 = require("express");
 var import_child_process2 = require("child_process");
-var import_os = __toESM(require("os"));
+var import_os2 = __toESM(require("os"));
 var router15 = (0, import_express15.Router)();
 router15.get("/stats", authenticate, async (req, res) => {
-  const totalMem = import_os.default.totalmem();
-  const freeMem = import_os.default.freemem();
+  const totalMem = import_os2.default.totalmem();
+  const freeMem = import_os2.default.freemem();
   const usedMem = totalMem - freeMem;
-  const cpuUsage = import_os.default.loadavg()[0];
+  const cpuUsage = import_os2.default.loadavg()[0];
   res.json({
     memory: {
       total: totalMem,
@@ -4252,11 +4322,11 @@ router15.get("/stats", authenticate, async (req, res) => {
     },
     cpu: {
       load: cpuUsage,
-      cores: import_os.default.cpus().length
+      cores: import_os2.default.cpus().length
     },
-    uptime: import_os.default.uptime(),
-    platform: import_os.default.platform(),
-    arch: import_os.default.arch()
+    uptime: import_os2.default.uptime(),
+    platform: import_os2.default.platform(),
+    arch: import_os2.default.arch()
   });
 });
 router15.get("/processes", authenticate, async (req, res) => {
