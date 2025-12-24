@@ -777,6 +777,9 @@ export default function Joe() {
                 borderLeft: isNarrow ? undefined : '1px solid var(--border-color)',
                 borderTop: isNarrow ? '1px solid var(--border-color)' : undefined,
                 background: 'var(--bg-secondary)',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
               }}
             >
               <CommandComposer
