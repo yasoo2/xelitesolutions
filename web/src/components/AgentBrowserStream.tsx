@@ -248,7 +248,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             const isSearchRole = Boolean(locAct?.roleName && String(locAct.roleName).includes('بحث'));
             if (autoTypeAfterFocus && !typeText.trim() && (isGoogleSelector || isSearchRole)) {
               setTimeout(() => {
-                runActions([{ type: 'waitForSelector', selector: 'input[name="q"], textarea[name="q"]', timeoutMs: 8000 }]);
+                runActions([{ type: 'waitForSelector', selector: 'textarea[name="q"], input[name="q"]:not([type="hidden"])', timeoutMs: 8000 }]);
                 setTimeout(() => runActions([{ type: 'type', text: defaultSearchText, delay: 30 }]), 200);
                 setTimeout(() => runActions([{ type: 'press', key: 'Enter' }]), 300);
               }, 400);
@@ -272,7 +272,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             try {
               const host = g?.url ? new URL(g.url).hostname : '';
               if (host && /(^|\.)(google)\./i.test(host)) {
-                extra.push({ type: 'locate', selector: 'input[name="q"], textarea[name="q"]' });
+                extra.push({ type: 'locate', selector: 'textarea[name="q"], input[name="q"]:not([type="hidden"])' });
               }
             } catch {}
           }
