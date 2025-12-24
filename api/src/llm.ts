@@ -23,6 +23,7 @@ export interface PlanOptions {
   model?: string;
   baseUrl?: string;
   throwOnError?: boolean;
+  mock?: boolean;
 }
 
 export const SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
@@ -98,7 +99,7 @@ export async function callLLM(prompt: string, context: any[] = []): Promise<stri
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
-) {
+) : Promise<{ name: string; input: any } | null> {
   // Determine client to use
   let client = openai;
   if (options?.apiKey) {
@@ -109,7 +110,11 @@ export async function planNextStep(
   }
 
   // 0. Mock Mode (for local testing without API Key)
-  if ((process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true') && !options?.apiKey && !process.env.OPENAI_API_KEY) {
+  const shouldMock =
+    !options?.apiKey &&
+    !process.env.OPENAI_API_KEY &&
+    (options?.mock === true || process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true');
+  if (shouldMock) {
       console.info('[LLM] Using Mock Planner');
       const lastMsg = messages[messages.length - 1];
       const rawText =
@@ -127,6 +132,40 @@ export async function planNextStep(
 
       const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
       let url = urlMatch?.[0];
+
+      const extractQuoted = (s: string) => {
+        const m = s.match(/["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/);
+        return m?.[1];
+      };
+
+      const writeEn =
+        rawText.match(/write\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i) ||
+        rawText.match(/create\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i);
+      const writeAr =
+        rawText.match(/(?:اكتب|انشئ|أنشئ|سوي|سوِّ|قم\s+بإنشاء)\s+(?:ملف|فايل)\s*(?:باسم|اسم)\s+([^\s"'`]+)(?:\s+(?:بمحتوى|محتوى)\s+(.+))?/i);
+      const write = writeEn || writeAr;
+      if (write) {
+        const filename = String(write[1] || 'verify.txt').trim();
+        const tail = String(write[2] || '').trim();
+        const quoted = tail ? extractQuoted(tail) : undefined;
+        const contentValue = String(quoted || tail || 'verified');
+        return { name: 'file_write', input: { filename, content: contentValue } };
+      }
+
+      const readEn = rawText.match(/read\s+(?:the\s+)?file\s+([^\s"'`]+)/i);
+      const readAr = rawText.match(/(?:اقرأ|اقراء|اعرض|افتح)\s+(?:ملف|فايل)\s+([^\s"'`]+)/i);
+      const read = readEn || readAr;
+      if (read) {
+        const filename = String(read[1] || '').trim();
+        if (filename) return { name: 'file_read', input: { filename } };
+      }
+
+      const wantsLs =
+        /(?:list|show)\s+files/i.test(rawText) ||
+        /(?:ls\b)/i.test(rawText) ||
+        /(?:اعرض|اظهر|أظهر)\s+(?:ال)?ملفات/i.test(rawText) ||
+        /قائمة\s+الملفات/i.test(rawText);
+      if (wantsLs) return { name: 'ls', input: { path: '.' } };
       const wantsOpen =
         /\bopen\b/i.test(rawText) ||
         /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
@@ -347,8 +386,7 @@ export async function planNextStep(
     if (options?.throwOnError) {
       throw error;
     }
-    // No heuristics allowed - fail if LLM fails
-    throw error;
+    return null;
   }
 }
 

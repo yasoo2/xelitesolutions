@@ -267,7 +267,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   try {
       plan = await planNextStep(
         [{ role: 'user', content: initialContent }],
-        { provider, apiKey, baseUrl, model }
+        { provider, apiKey, baseUrl, model, mock: useMock }
       );
   } catch (err) {
       console.warn('LLM planning error:', safeErrorMessage(err));
@@ -363,7 +363,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const isSystemConfigured = !!process.env.OPENAI_API_KEY;
         const throwOnError = !!apiKey || (provider && provider !== 'llm') || isSystemConfigured;
 
-        plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError });
+        plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: useMock });
     } catch (err: any) {
         console.warn('LLM planning error:', safeErrorMessage(err));
         if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
