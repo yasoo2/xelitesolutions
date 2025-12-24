@@ -18,7 +18,6 @@ function BrowserApp({
 }) {
   const [url, setUrl] = useState('https://www.google.com');
   const [wsUrl, setWsUrl] = useState<string | null>(null);
-  const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const didAutoOpen = useRef(false);
@@ -41,13 +40,11 @@ function BrowserApp({
       const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
       if (!data?.ok || !nextWsUrl) {
         setWsUrl(null);
-        setBrowserSessionId(null);
         setError(String(data?.error || 'فشل فتح المتصفح'));
         return;
       }
       const sid = String(data?.output?.sessionId || '');
       const wsu = String(nextWsUrl);
-      setBrowserSessionId(sid || null);
       setWsUrl(wsu);
       if (sid && wsu) {
         onSession?.({ sessionId: sid, wsUrl: wsu });
@@ -55,7 +52,6 @@ function BrowserApp({
       }
     } catch (e: any) {
       setWsUrl(null);
-      setBrowserSessionId(null);
       setError(String(e?.message || e));
     } finally {
       setIsOpening(false);
@@ -82,146 +78,14 @@ function BrowserApp({
 
   return (
     <div className="browser-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {!minimal && (
-        <div
-          className="browser-open-row"
-          style={{
-            display: 'flex',
-            gap: 8,
-            padding: 12,
-            alignItems: 'center',
-            borderBottom: '1px solid var(--border-color)',
-            flexWrap: 'wrap',
-          }}
-        >
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com"
-            style={{
-              flex: 1,
-              height: 40,
-              borderRadius: 8,
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-input)',
-              color: 'var(--text-primary)',
-              padding: '0 12px',
-              outline: 'none',
-            }}
-          />
-          <button
-            onClick={() => openBrowser()}
-            disabled={isOpening || !url.trim()}
-            style={{
-              height: 40,
-              padding: '0 14px',
-              borderRadius: 8,
-              border: '1px solid var(--border-color)',
-              background: 'rgba(37, 99, 235, 0.12)',
-              color: 'var(--text-primary)',
-              cursor: isOpening ? 'not-allowed' : 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {isOpening ? '...جاري الفتح' : 'فتح'}
-          </button>
-          {browserSessionId ? (
-            <>
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(browserSessionId).catch(() => {});
-                }}
-                style={{
-                  height: 40,
-                  padding: '0 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-color)',
-                  background: 'rgba(255,255,255,0.03)',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-                title="Copy Browser Session ID"
-              >
-                نسخ Session
-              </button>
-              <button
-                onClick={() => {
-                  const txt = `استخدم المتصفح الحالي: sessionId=${browserSessionId}`;
-                  window.dispatchEvent(new CustomEvent('joe:prefill', { detail: { text: txt } }));
-                }}
-                style={{
-                  height: 40,
-                  padding: '0 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-color)',
-                  background: 'rgba(255,255,255,0.03)',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-                title="Send sessionId to JOE prompt"
-              >
-                إرسال لجو
-              </button>
-            </>
-          ) : null}
-        </div>
-      )}
-
-      {!minimal && error && (
-        <div style={{ padding: 12, color: '#ef4444', borderBottom: '1px solid var(--border-color)' }} dir="auto">
-          {error}
-        </div>
-      )}
-
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {!wsUrl ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-secondary)' }} dir="auto">
             <div style={{ textAlign: 'center' }}>
-              {error ? (
-                <>
-                  <div style={{ color: '#ef4444', marginBottom: 10 }}>{error}</div>
-                  <button
-                    onClick={() => openBrowser()}
-                    disabled={isOpening}
-                    style={{
-                      height: 36,
-                      padding: '0 14px',
-                      borderRadius: 10,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(37, 99, 235, 0.12)',
-                      color: 'var(--text-primary)',
-                      cursor: isOpening ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {isOpening ? '...جاري الفتح' : 'إعادة المحاولة'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div style={{ marginBottom: minimal ? 10 : 0 }}>
-                    {isOpening ? '...جاري فتح المتصفح' : minimal ? 'المتصفح غير مفتوح.' : 'افتح رابط لبدء المتصفح.'}
-                  </div>
-                  {minimal && (
-                    <button
-                      onClick={() => openBrowser()}
-                      disabled={isOpening}
-                      style={{
-                        height: 36,
-                        padding: '0 14px',
-                        borderRadius: 10,
-                        border: '1px solid var(--border-color)',
-                        background: 'rgba(37, 99, 235, 0.12)',
-                        color: 'var(--text-primary)',
-                        cursor: isOpening ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {isOpening ? '...جاري الفتح' : 'فتح المتصفح'}
-                    </button>
-                  )}
-                </>
-              )}
+              {error ? <div style={{ color: '#ef4444', marginBottom: 10 }}>{error}</div> : null}
+              <div>
+                {isOpening ? '...جاري فتح المتصفح' : 'سيتم فتح المتصفح تلقائياً عند الحاجة.'}
+              </div>
             </div>
           </div>
         ) : (
