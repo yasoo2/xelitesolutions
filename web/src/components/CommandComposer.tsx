@@ -247,15 +247,7 @@ export default function CommandComposer({
   });
   const [activeProvider, setActiveProvider] = useState('openai');
   const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
-  const [builderOpen, setBuilderOpen] = useState(true);
-  const [builderTab, setBuilderTab] = useState<'PLAN' | 'STEPS' | 'ARTIFACTS'>('STEPS');
-  const [transparencyLevel, setTransparencyLevel] = useState<0 | 1 | 2>(1);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const builderOpenRef = useRef<boolean>(true);
-
-  useEffect(() => {
-    builderOpenRef.current = builderOpen;
-  }, [builderOpen]);
 
   const derived = useMemo(() => {
     const stepsByKey = new Map<string, any>();
@@ -611,10 +603,6 @@ export default function CommandComposer({
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
             if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
-            if (builderOpenRef.current) {
-              if (name.startsWith('thinking_step_')) setBuilderTab('PLAN');
-              else setBuilderTab('STEPS');
-            }
           }
 
           if (msg.type === 'step_done' || msg.type === 'step_failed') {
@@ -636,10 +624,6 @@ export default function CommandComposer({
                }
              } catch {}
              speak(String(content));
-          }
-
-          if (msg.type === 'artifact_created' && builderOpenRef.current) {
-            setBuilderTab('ARTIFACTS');
           }
 
           if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'text', 'user_input'].includes(msg.type)) {
@@ -919,13 +903,6 @@ export default function CommandComposer({
     return false;
   })();
 
-  const builderStatus: 'idle' | 'running' | 'paused' | 'error' = (() => {
-    if (approval) return 'paused';
-    if (derived.steps.some((s: any) => s.status === 'running')) return 'running';
-    if (derived.steps.some((s: any) => s.status === 'failed')) return 'error';
-    return 'idle';
-  })();
-
   const currentStepName = (() => {
     for (let i = derived.steps.length - 1; i >= 0; i--) {
       if (derived.steps[i]?.status === 'running') return derived.steps[i]?.displayName || derived.steps[i]?.name;
@@ -933,514 +910,18 @@ export default function CommandComposer({
     return undefined;
   })();
 
-  const hasBuilderData = derived.steps.length > 0 || derived.logs.length > 0 || derived.artifacts.length > 0;
-
-  const planSteps = derived.steps.filter((s: any) => String(s.name || '').startsWith('thinking_step_'));
-  const execSteps = derived.steps.filter((s: any) => String(s.name || '').startsWith('execute:'));
-  const planDone = planSteps.filter((s: any) => s.status === 'done').length;
-  const execDone = execSteps.filter((s: any) => s.status === 'done').length;
-  const planFailed = planSteps.some((s: any) => s.status === 'failed');
-  const execFailed = execSteps.some((s: any) => s.status === 'failed');
-
-  const prettyJson = (v: any) => {
-    try {
-      return JSON.stringify(v, null, 2);
-    } catch {
-      return String(v);
+  const formatStepDisplayName = (name: string) => {
+    if (name.startsWith('thinking_step_')) {
+      const n = name.replace('thinking_step_', '');
+      return `Plan #${n}`;
     }
+    if (name.startsWith('execute:')) return `Execute: ${name.slice('execute:'.length)}`;
+    return name;
   };
 
   return (
     <div className="composer">
       <div className="events">
-        {(hasBuilderData || builderOpen) && (
-          <div
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 20,
-              padding: '10px 14px',
-              background: 'rgba(0,0,0,0.28)',
-              backdropFilter: 'blur(12px)',
-              borderBottom: '1px solid var(--border-color)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                <button
-                  onClick={() => setBuilderOpen((v) => !v)}
-                  style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid var(--border-color)',
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                  title={builderOpen ? 'Collapse' : 'Expand'}
-                >
-                  {builderOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>Builder</span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        border: '1px solid var(--border-color)',
-                        background:
-                          builderStatus === 'running'
-                            ? 'rgba(59,130,246,0.12)'
-                            : builderStatus === 'paused'
-                              ? 'rgba(245,158,11,0.12)'
-                              : builderStatus === 'error'
-                                ? 'rgba(239,68,68,0.12)'
-                                : 'rgba(34,197,94,0.12)',
-                        color:
-                          builderStatus === 'running'
-                            ? '#60a5fa'
-                            : builderStatus === 'paused'
-                              ? '#fbbf24'
-                              : builderStatus === 'error'
-                                ? '#f87171'
-                                : '#34d399',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {builderStatus === 'running'
-                        ? 'RUNNING'
-                        : builderStatus === 'paused'
-                          ? 'WAITING'
-                          : builderStatus === 'error'
-                            ? 'ERROR'
-                            : 'READY'}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {currentStepName ? currentStepName : 'No active step'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 }}>الشفافية</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={1}
-                  value={transparencyLevel}
-                  onChange={(e) => setTransparencyLevel(Number(e.target.value) as 0 | 1 | 2)}
-                  style={{ width: 110 }}
-                />
-              </div>
-            </div>
-
-            {builderOpen && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                  <div
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 12,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(255,255,255,0.04)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Plan</span>
-                      <span style={{ fontSize: 11, color: planFailed ? '#f87171' : 'var(--text-secondary)', fontWeight: 700 }}>
-                        {planDone}/{planSteps.length}
-                      </span>
-                    </div>
-                    <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          width: planSteps.length ? `${Math.round((planDone / planSteps.length) * 100)}%` : '0%',
-                          height: '100%',
-                          background: planFailed ? '#ef4444' : '#3b82f6',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 12,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(255,255,255,0.04)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Execute</span>
-                      <span style={{ fontSize: 11, color: execFailed ? '#f87171' : 'var(--text-secondary)', fontWeight: 700 }}>
-                        {execDone}/{execSteps.length}
-                      </span>
-                    </div>
-                    <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          width: execSteps.length ? `${Math.round((execDone / execSteps.length) * 100)}%` : '0%',
-                          height: '100%',
-                          background: execFailed ? '#ef4444' : '#22c55e',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 12,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(255,255,255,0.04)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Artifacts</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 700 }}>{derived.artifacts.length}</span>
-                    </div>
-                    <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                      <div style={{ width: derived.artifacts.length ? '100%' : '0%', height: '100%', background: '#a78bfa' }} />
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => setBuilderTab('PLAN')}
-                    style={{
-                      height: 30,
-                      padding: '0 12px',
-                      borderRadius: 999,
-                      border: '1px solid var(--border-color)',
-                      background: builderTab === 'PLAN' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)',
-                      color: builderTab === 'PLAN' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontWeight: 700,
-                      fontSize: 12,
-                    }}
-                  >
-                    Plan
-                  </button>
-                  <button
-                    onClick={() => setBuilderTab('STEPS')}
-                    style={{
-                      height: 30,
-                      padding: '0 12px',
-                      borderRadius: 999,
-                      border: '1px solid var(--border-color)',
-                      background: builderTab === 'STEPS' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)',
-                      color: builderTab === 'STEPS' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontWeight: 700,
-                      fontSize: 12,
-                    }}
-                  >
-                    Steps
-                  </button>
-                  <button
-                    onClick={() => setBuilderTab('ARTIFACTS')}
-                    style={{
-                      height: 30,
-                      padding: '0 12px',
-                      borderRadius: 999,
-                      border: '1px solid var(--border-color)',
-                      background: builderTab === 'ARTIFACTS' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)',
-                      color: builderTab === 'ARTIFACTS' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontWeight: 700,
-                      fontSize: 12,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <FileText size={14} /> Artifacts ({derived.artifacts.length})
-                  </button>
-                </div>
-
-                <div style={{ marginTop: 10 }}>
-                  {builderTab === 'PLAN' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {planSteps.filter((s: any) => s.plan).length === 0 && (
-                        <div style={{ opacity: 0.7, fontSize: 12, color: 'var(--text-secondary)' }}>No plan steps yet.</div>
-                      )}
-                      {planSteps
-                        .filter((s: any) => s.plan)
-                        .map((s: any, idx: number) => (
-                          <div
-                            key={`${String(s.name)}:${idx}`}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: 12,
-                              border: '1px solid var(--border-color)',
-                              background: 'rgba(255,255,255,0.03)',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                                {s.status === 'done' ? (
-                                  <CheckCircle2 size={16} color="#22c55e" />
-                                ) : s.status === 'failed' ? (
-                                  <XCircle size={16} color="#ef4444" />
-                                ) : (
-                                  <Loader2 size={16} className="spin" />
-                                )}
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {s.displayName}
-                                  </div>
-                                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                                    {(s.plan?.name ? String(s.plan.name) : '').trim()}
-                                  </div>
-                                </div>
-                              </div>
-                              {typeof s.duration === 'number' && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
-                                  <Clock size={12} /> {(s.duration / 1000).toFixed(1)}s
-                                </div>
-                              )}
-                            </div>
-                            {transparencyLevel >= 1 && s.plan?.input && (
-                              <pre
-                                style={{
-                                  marginTop: 8,
-                                  padding: 10,
-                                  borderRadius: 10,
-                                  background: 'rgba(0,0,0,0.25)',
-                                  border: '1px solid var(--border-light)',
-                                  color: 'var(--text-secondary)',
-                                  fontSize: 11,
-                                  overflowX: 'auto',
-                                  maxHeight: transparencyLevel === 2 ? 240 : 90,
-                                }}
-                              >
-                                {transparencyLevel === 2 ? prettyJson(s.plan.input) : prettyJson(s.plan.input).slice(0, 400)}
-                              </pre>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                  )}
-
-                  {builderTab === 'STEPS' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {derived.steps.length === 0 && (
-                        <div style={{ opacity: 0.7, fontSize: 12, color: 'var(--text-secondary)' }}>Waiting for steps...</div>
-                      )}
-                      {derived.steps.map((s: any, idx: number) => (
-                        <div
-                          key={`${String(s.name)}:${idx}`}
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: 12,
-                            border: '1px solid var(--border-color)',
-                            background: 'rgba(255,255,255,0.03)',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                              {s.status === 'done' ? (
-                                <CheckCircle2 size={16} color="#22c55e" />
-                              ) : s.status === 'failed' ? (
-                                <XCircle size={16} color="#ef4444" />
-                              ) : (
-                                <Loader2 size={16} className="spin" />
-                              )}
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {s.displayName || s.name}
-                                </div>
-                                {s.error && (
-                                  <div style={{ fontSize: 11, color: '#f87171', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {String(s.error)}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                              {typeof s.duration === 'number' && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
-                                  <Clock size={12} /> {(s.duration / 1000).toFixed(1)}s
-                                </div>
-                              )}
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 800,
-                                  color:
-                                    s.status === 'done'
-                                      ? '#22c55e'
-                                      : s.status === 'failed'
-                                        ? '#ef4444'
-                                        : '#60a5fa',
-                                }}
-                              >
-                                {String(s.status || '').toUpperCase()}
-                              </span>
-                            </div>
-                          </div>
-
-                          {transparencyLevel === 2 && (s.plan || s.result) && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-                              {s.plan && (
-                                <pre
-                                  style={{
-                                    margin: 0,
-                                    padding: 10,
-                                    borderRadius: 10,
-                                    background: 'rgba(0,0,0,0.25)',
-                                    border: '1px solid var(--border-light)',
-                                    color: 'var(--text-secondary)',
-                                    fontSize: 11,
-                                    overflowX: 'auto',
-                                    maxHeight: 220,
-                                  }}
-                                >
-                                  {prettyJson(s.plan)}
-                                </pre>
-                              )}
-                              {s.result && (
-                                <pre
-                                  style={{
-                                    margin: 0,
-                                    padding: 10,
-                                    borderRadius: 10,
-                                    background: 'rgba(0,0,0,0.25)',
-                                    border: '1px solid var(--border-light)',
-                                    color: 'var(--text-secondary)',
-                                    fontSize: 11,
-                                    overflowX: 'auto',
-                                    maxHeight: 220,
-                                  }}
-                                >
-                                  {prettyJson(s.result)}
-                                </pre>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-
-                      {transparencyLevel >= 1 && (derived.logs.length > 0 || derived.timeline.length > 0) && (
-                        <div style={{ marginTop: 6, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)' }}>
-                          <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--text-primary)' }}>Action Timeline</div>
-                          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {derived.timeline.slice(Math.max(0, derived.timeline.length - 20)).map((it: any, idx: number) => (
-                              <div
-                                key={idx}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: 10,
-                                  fontSize: 11,
-                                  color: 'var(--text-secondary)',
-                                  borderBottom: '1px solid rgba(255,255,255,0.06)',
-                                  paddingBottom: 6,
-                                }}
-                              >
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {it.type === 'user_input'
-                                    ? 'user_input'
-                                    : it.type === 'text'
-                                      ? 'assistant_text'
-                                      : it.type}
-                                </span>
-                                <span style={{ opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>
-                                  {typeof it.data === 'string'
-                                    ? it.data
-                                    : typeof it.data?.text === 'string'
-                                      ? it.data.text
-                                      : typeof it.data?.name === 'string'
-                                        ? it.data.name
-                                        : ''}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {builderTab === 'ARTIFACTS' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {derived.artifacts.length === 0 && (
-                        <div style={{ opacity: 0.7, fontSize: 12, color: 'var(--text-secondary)' }}>No artifacts yet.</div>
-                      )}
-                      {derived.artifacts.map((a, idx) => {
-                        const name = String(a.name || 'artifact');
-                        const href = String(a.href || '');
-                        const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(name) || /\.(png|jpg|jpeg|webp|gif)$/i.test(href);
-                        const isVideo = /\.(mp4|webm|mov)$/i.test(name) || /\.(mp4|webm|mov)$/i.test(href);
-                        return (
-                          <div
-                            key={`${href}:${idx}`}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: 12,
-                              border: '1px solid var(--border-color)',
-                              background: 'rgba(255,255,255,0.03)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: 12,
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                              {isImage ? <ImageIcon size={16} /> : isVideo ? <VideoIcon size={16} /> : <FileCode size={16} />}
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {name}
-                                </div>
-                                <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {href}
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  height: 30,
-                                  padding: '0 10px',
-                                  borderRadius: 10,
-                                  border: '1px solid var(--border-color)',
-                                  background: 'rgba(255,255,255,0.05)',
-                                  color: 'var(--text-primary)',
-                                  textDecoration: 'none',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 8,
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                }}
-                              >
-                                <LinkIcon size={14} /> Open
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
         {events.length === 0 && (
           <div className="empty-state">
             <div className="empty-state-logo-ring">
@@ -1519,7 +1000,162 @@ export default function CommandComposer({
                  </motion.div>
                );
             }
-            return null;
+            const name = String(e.data?.name || '');
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
+                <div
+                  className="message-bubble"
+                  dir="auto"
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid var(--border-color)',
+                    maxWidth: 760,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Loader2 size={16} className="spin" />
+                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>بدء خطوة</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {formatStepDisplayName(name)}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          }
+          if (e.type === 'step_done' || e.type === 'step_failed') {
+            const name = String(e.data?.name || '');
+            const ok = e.type === 'step_done';
+            const dur = typeof (e as any).duration === 'number' ? (e as any).duration : undefined;
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
+                <div
+                  className="message-bubble"
+                  dir="auto"
+                  style={{
+                    background: ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                    border: `1px solid ${ok ? 'rgba(34,197,94,0.45)' : 'rgba(239,68,68,0.45)'}`,
+                    maxWidth: 760,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      {ok ? <CheckCircle2 size={16} color="#22c55e" /> : <XCircle size={16} color="#ef4444" />}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ok ? 'اكتمال خطوة' : 'فشل خطوة'}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {formatStepDisplayName(name)}
+                        </div>
+                      </div>
+                    </div>
+                    {typeof dur === 'number' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
+                        <Clock size={12} /> {(dur / 1000).toFixed(1)}s
+                      </div>
+                    ) : null}
+                  </div>
+                  {!ok && (e.data?.error || e.data?.result?.error || e.data?.result?.message) ? (
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
+                      {String(e.data?.error || e.data?.result?.error || e.data?.result?.message)}
+                    </div>
+                  ) : null}
+                </div>
+              </motion.div>
+            );
+          }
+          if (e.type === 'step_progress') {
+            const text =
+              typeof e.data?.text === 'string'
+                ? e.data.text
+                : typeof e.data?.message === 'string'
+                  ? e.data.message
+                  : '';
+            if (!text) return null;
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
+                <div
+                  className="message-bubble"
+                  dir="auto"
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--border-color)',
+                    maxWidth: 760,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{text}</div>
+                </div>
+              </motion.div>
+            );
+          }
+          if (e.type === 'evidence_added' && String(e.data?.kind || '') === 'log') {
+            const text = typeof e.data?.text === 'string' ? e.data.text : '';
+            if (!text) return null;
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
+                <div
+                  className="message-bubble"
+                  dir="auto"
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--border-color)',
+                    maxWidth: 760,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <Terminal size={14} />
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)' }}>Log</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{text}</div>
+                </div>
+              </motion.div>
+            );
+          }
+          if (e.type === 'run_finished' || e.type === 'run_completed') {
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
+                <div
+                  className="message-bubble"
+                  dir="auto"
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--border-color)',
+                    maxWidth: 760,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <CheckCircle2 size={16} color="#22c55e" />
+                    <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)' }}>تم إنهاء التنفيذ</div>
+                  </div>
+                </div>
+              </motion.div>
+            );
           }
           if (e.type === 'artifact_created') {
             const kind = e.data?.kind;
