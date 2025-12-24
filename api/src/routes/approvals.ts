@@ -10,6 +10,43 @@ import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
+function redactToolInputForBroadcast(name: string, input: any) {
+  if (!input || typeof input !== 'object') return input;
+  if (name === 'browser_run') {
+    const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
+    const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
+    const redactedActions = actions.map((a: any) => {
+      const t = String(a?.type || '').toLowerCase();
+      if (t === 'type') {
+        const text = typeof a?.text === 'string' ? a.text : '';
+        return { ...a, text: `[redacted:${text.length}]` };
+      }
+      if (t === 'fillform') {
+        const fields = Array.isArray(a?.fields) ? a.fields : [];
+        const nextFields = fields.map((f: any) => {
+          const label = String(f?.label || '').toLowerCase();
+          const selector = String(f?.selector || '').toLowerCase();
+          const combined = `${label} ${selector}`;
+          const v = f?.value == null ? '' : String(f.value);
+          const shouldRedact =
+            Boolean(a?.sensitive) ||
+            Boolean(f?.sensitive) ||
+            /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
+          if (!shouldRedact) return f;
+          return { ...f, value: `[redacted:${v.length}]` };
+        });
+        return { ...a, fields: nextFields };
+      }
+      if (t === 'evaluate' && typeof a?.script === 'string') {
+        if (a?.sensitive) return { ...a, script: '[redacted]' };
+      }
+      return a;
+    });
+    return { sessionId, actions: redactedActions };
+  }
+  return input;
+}
+
 router.post('/:id/decision', authenticate as any, async (req, res) => {
   const id = String(req.params.id);
   const { decision } = req.body || {};
@@ -21,7 +58,7 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
     if (!a || !ctx) return res.status(404).json({ error: 'Approval not found' });
     broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
     if (decision === 'approved') {
-      broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
       const result = await executeTool(ctx.name, ctx.input);
       broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {
@@ -45,7 +82,7 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
     if (!a || !ctx) return res.status(404).json({ error: 'Approval not found' });
     broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
     if (decision === 'approved') {
-      broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
       const result = await executeTool(ctx.name, ctx.input);
       broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {

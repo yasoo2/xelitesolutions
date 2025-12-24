@@ -919,6 +919,52 @@ export default function CommandComposer({
     return name;
   };
 
+  const getToolNameFromStep = (name: string) => {
+    if (!name.startsWith('execute:')) return null;
+    const tool = name.slice('execute:'.length).trim();
+    return tool || null;
+  };
+
+  const formatValue = (value: any, maxChars = 1600) => {
+    try {
+      const str =
+        typeof value === 'string'
+          ? value
+          : value == null
+            ? ''
+            : JSON.stringify(value, null, 2);
+      if (str.length <= maxChars) return str;
+      return `${str.slice(0, maxChars)}\n…`;
+    } catch {
+      const str = String(value ?? '');
+      if (str.length <= maxChars) return str;
+      return `${str.slice(0, maxChars)}\n…`;
+    }
+  };
+
+  const toolUi = (toolName: string) => {
+    const t = toolName.toLowerCase();
+    if (t.includes('web_search') || t.includes('knowledge_search') || t.includes('deep_research')) {
+      return { label: 'بحث', Icon: Search, color: '#38bdf8', bg: 'rgba(56,189,248,0.08)', border: 'rgba(56,189,248,0.35)' };
+    }
+    if (t.includes('file_read') || t.includes('read_file_tree') || t === 'ls' || t.includes('grep_search')) {
+      return { label: 'قراءة ملف', Icon: FileText, color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.35)' };
+    }
+    if (t.includes('file_edit') || t.includes('file_write') || t.includes('scaffold_project')) {
+      return { label: 'تعديل/كتابة ملف', Icon: FileCode, color: '#22c55e', bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.35)' };
+    }
+    if (t.includes('shell_execute') || t.includes('install_dependencies') || t.includes('check_syntax')) {
+      return { label: 'تنفيذ أوامر', Icon: Terminal, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.35)' };
+    }
+    if (t.includes('browser_')) {
+      return { label: 'تصفح/معاينة', Icon: Eye, color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.35)' };
+    }
+    if (t.includes('image_generate')) {
+      return { label: 'توليد صورة', Icon: ImageIcon, color: '#eab308', bg: 'rgba(234,179,8,0.08)', border: 'rgba(234,179,8,0.35)' };
+    }
+    return { label: 'أداة', Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
+  };
+
   return (
     <div className="composer">
       <div className="events">
@@ -1001,6 +1047,63 @@ export default function CommandComposer({
                );
             }
             const name = String(e.data?.name || '');
+            const toolName = getToolNameFromStep(name);
+            if (toolName) {
+              const meta = toolUi(toolName);
+              const expanded = !!(e as any).expanded;
+              const input = e.data?.input;
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="message-row joe"
+                >
+                  <div
+                    className="message-bubble"
+                    dir="auto"
+                    style={{
+                      background: meta.bg,
+                      border: `1px solid ${meta.border}`,
+                      maxWidth: 760,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setEvents(prev => prev.map((x, idx) => (idx === i ? { ...x, expanded: !(x as any).expanded } : x)))}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                        <meta.Icon size={16} color={meta.color as any} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            بدء أداة
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {toolName}
+                            </div>
+                            <div style={{ fontSize: 11, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
+                              {meta.label}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        <Loader2 size={14} className="spin" />
+                      </div>
+                    </div>
+                    {expanded && input != null ? (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المدخلات</div>
+                        <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                          {formatValue(input)}
+                        </pre>
+                      </div>
+                    ) : null}
+                  </div>
+                </motion.div>
+              );
+            }
             return (
               <motion.div
                 key={i}
@@ -1032,6 +1135,85 @@ export default function CommandComposer({
             const name = String(e.data?.name || '');
             const ok = e.type === 'step_done';
             const dur = typeof (e as any).duration === 'number' ? (e as any).duration : undefined;
+            const toolName = getToolNameFromStep(name);
+            if (toolName) {
+              const meta = toolUi(toolName);
+              const expanded = !!(e as any).expanded;
+              const result = e.data?.result;
+              const output = result?.output;
+              const href = typeof output?.href === 'string' ? output.href : undefined;
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="message-row joe"
+                >
+                  <div
+                    className="message-bubble"
+                    dir="auto"
+                    style={{
+                      background: ok ? meta.bg : 'rgba(239,68,68,0.08)',
+                      border: `1px solid ${ok ? meta.border : 'rgba(239,68,68,0.45)'}`,
+                      maxWidth: 760,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setEvents(prev => prev.map((x, idx) => (idx === i ? { ...x, expanded: !(x as any).expanded } : x)))}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                        {ok ? <CheckCircle2 size={16} color={meta.color as any} /> : <XCircle size={16} color="#ef4444" />}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {ok ? 'اكتمال أداة' : 'فشل أداة'}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {toolName}
+                            </div>
+                            <div style={{ fontSize: 11, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
+                              {meta.label}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        {typeof dur === 'number' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
+                            <Clock size={12} /> {(dur / 1000).toFixed(1)}s
+                          </div>
+                        ) : null}
+                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                    </div>
+                    {!ok && (e.data?.error || result?.error || result?.message) ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
+                        {String(e.data?.error || result?.error || result?.message)}
+                      </div>
+                    ) : null}
+                    {expanded ? (
+                      <div style={{ marginTop: 10 }}>
+                        {href ? (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="artifact-link">
+                              <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
+                            </a>
+                          </div>
+                        ) : null}
+                        {output != null ? (
+                          <>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المخرجات</div>
+                            <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                              {formatValue(output)}
+                            </pre>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </motion.div>
+              );
+            }
             return (
               <motion.div
                 key={i}

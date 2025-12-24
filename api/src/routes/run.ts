@@ -481,10 +481,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
 
-    // Execute tool
-    ev({ type: 'step_started', data: { name: `execute:${plan.name}` } });
-    const result = await executeTool(plan.name, plan.input);
     const persistedInput = redactToolInputForStorage(plan.name, plan.input);
+    ev({ type: 'step_started', data: { name: `execute:${plan.name}`, input: persistedInput } });
+    const result = await executeTool(plan.name, plan.input);
     
     // Add result to history to prevent infinite loops
     history.push({ 

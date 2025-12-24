@@ -2064,13 +2064,14 @@ router2.get("/", async (_req, res) => {
   res.json({ count: tools.length, realCount, noopCount, tools });
 });
 router2.post("/run", async (req, res) => {
+  const input = { text: String(req.body?.text ?? "hello") };
   const steps = [
     { type: "step_started", data: { name: "plan" } },
     { type: "step_done", data: { name: "plan" } },
-    { type: "step_started", data: { name: "execute:echo" } }
+    { type: "step_started", data: { name: "execute:echo", input } }
   ];
   steps.forEach((ev) => broadcast(ev));
-  const result = await executeTool("echo", { text: String(req.body?.text ?? "hello") });
+  const result = await executeTool("echo", input);
   broadcast({ type: result.ok ? "step_done" : "step_failed", data: { name: "execute:echo", result } });
   res.json(result);
 });
@@ -3117,9 +3118,9 @@ ${merged.join("\n")}
         }
       }
     }
-    ev({ type: "step_started", data: { name: `execute:${plan.name}` } });
-    const result = await executeTool(plan.name, plan.input);
     const persistedInput = redactToolInputForStorage(plan.name, plan.input);
+    ev({ type: "step_started", data: { name: `execute:${plan.name}`, input: persistedInput } });
+    const result = await executeTool(plan.name, plan.input);
     history.push({
       role: "assistant",
       content: `Tool Call: ${plan.name}
@@ -3856,6 +3857,39 @@ var import_express8 = require("express");
 var import_mongoose17 = __toESM(require("mongoose"));
 init_context();
 var router8 = (0, import_express8.Router)();
+function redactToolInputForBroadcast(name, input) {
+  if (!input || typeof input !== "object") return input;
+  if (name === "browser_run") {
+    const sessionId = typeof input.sessionId === "string" ? input.sessionId : void 0;
+    const actions = Array.isArray(input.actions) ? input.actions : [];
+    const redactedActions = actions.map((a) => {
+      const t = String(a?.type || "").toLowerCase();
+      if (t === "type") {
+        const text = typeof a?.text === "string" ? a.text : "";
+        return { ...a, text: `[redacted:${text.length}]` };
+      }
+      if (t === "fillform") {
+        const fields = Array.isArray(a?.fields) ? a.fields : [];
+        const nextFields = fields.map((f) => {
+          const label = String(f?.label || "").toLowerCase();
+          const selector = String(f?.selector || "").toLowerCase();
+          const combined = `${label} ${selector}`;
+          const v = f?.value == null ? "" : String(f.value);
+          const shouldRedact = Boolean(a?.sensitive) || Boolean(f?.sensitive) || /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
+          if (!shouldRedact) return f;
+          return { ...f, value: `[redacted:${v.length}]` };
+        });
+        return { ...a, fields: nextFields };
+      }
+      if (t === "evaluate" && typeof a?.script === "string") {
+        if (a?.sensitive) return { ...a, script: "[redacted]" };
+      }
+      return a;
+    });
+    return { sessionId, actions: redactedActions };
+  }
+  return input;
+}
 router8.post("/:id/decision", authenticate, async (req, res) => {
   const id = String(req.params.id);
   const { decision } = req.body || {};
@@ -3867,7 +3901,7 @@ router8.post("/:id/decision", authenticate, async (req, res) => {
     if (!a || !ctx) return res.status(404).json({ error: "Approval not found" });
     broadcast({ type: "approval_result", runId: ctx.runId, data: { id, decision } });
     if (decision === "approved") {
-      broadcast({ type: "step_started", runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: "step_started", runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
       const result = await executeTool(ctx.name, ctx.input);
       broadcast({ type: result.ok ? "step_done" : "step_failed", runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {
@@ -3891,7 +3925,7 @@ router8.post("/:id/decision", authenticate, async (req, res) => {
     if (!a || !ctx) return res.status(404).json({ error: "Approval not found" });
     broadcast({ type: "approval_result", runId: ctx.runId, data: { id, decision } });
     if (decision === "approved") {
-      broadcast({ type: "step_started", runId: ctx.runId, data: { name: `execute:${ctx.name}` } });
+      broadcast({ type: "step_started", runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
       const result = await executeTool(ctx.name, ctx.input);
       broadcast({ type: result.ok ? "step_done" : "step_failed", runId: ctx.runId, data: { name: `execute:${ctx.name}`, result } });
       if (result.artifacts) {
