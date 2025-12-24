@@ -965,6 +965,45 @@ export default function CommandComposer({
     return { label: 'أداة', Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
   };
 
+  const displayItems = (() => {
+    const out: Array<any> = [];
+    let buf: Array<{ e: any; idx: number }> = [];
+    const flush = () => {
+      if (!buf.length) return;
+      out.push({ kind: 'ribbon', items: buf });
+      buf = [];
+    };
+
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i];
+
+      const isImage = e.type === 'step_started' && e.data?.name && String(e.data.name).includes('image_generate');
+      if (isImage) {
+        const isDone = events.slice(i + 1).some((next) => (next.type === 'step_done' || next.type === 'step_failed') && (next.data.name === e.data.name || next.data.name === `execute:${e.data.name}`));
+        if (!isDone) {
+          flush();
+          out.push({ kind: 'event', e, idx: i });
+          continue;
+        }
+      }
+
+      const isStep = e.type === 'step_started' || e.type === 'step_done' || e.type === 'step_failed';
+      if (isStep) {
+        const name = String(e.data?.name || '');
+        const toolName = getToolNameFromStep(name);
+        if (e.type === 'step_started' && !toolName) continue;
+        buf.push({ e, idx: i });
+        continue;
+      }
+
+      flush();
+      out.push({ kind: 'event', e, idx: i });
+    }
+
+    flush();
+    return out;
+  })();
+
   return (
     <div className="composer">
       <div className="events">
@@ -998,7 +1037,185 @@ export default function CommandComposer({
         )}
         
         <AnimatePresence mode="popLayout">
-        {events.map((e, i) => {
+        {displayItems.map((item, itemIdx) => {
+          if (item.kind === 'ribbon') {
+            const ribbonItems: Array<{ e: any; idx: number }> = item.items || [];
+
+            return (
+              <motion.div
+                key={`ribbon-${itemIdx}-${ribbonItems[0]?.idx ?? itemIdx}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="message-row joe"
+              >
+                <div
+                  className="message-bubble"
+                  dir="auto"
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--border-color)',
+                    maxWidth: 760,
+                    padding: '8px 10px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      overflowX: 'auto',
+                      overflowY: 'hidden',
+                      whiteSpace: 'nowrap',
+                      paddingBottom: 2,
+                    }}
+                  >
+                    {ribbonItems.map(({ e, idx }) => {
+                      const name = String(e.data?.name || '');
+                      const toolName = getToolNameFromStep(name);
+                      const ok = e.type === 'step_done';
+                      const failed = e.type === 'step_failed';
+                      const running = e.type === 'step_started';
+                      const dur = typeof (e as any).duration === 'number' ? (e as any).duration : undefined;
+                      const expanded = !!(e as any).expanded;
+
+                      const meta = toolName ? toolUi(toolName) : null;
+                      const ToolIcon = meta ? meta.Icon : null;
+                      const bg = toolName
+                        ? running
+                          ? meta!.bg
+                          : ok
+                            ? meta!.bg
+                            : 'rgba(239,68,68,0.10)'
+                        : running
+                          ? 'rgba(255,255,255,0.03)'
+                          : ok
+                            ? 'rgba(34,197,94,0.10)'
+                            : 'rgba(239,68,68,0.10)';
+                      const border = toolName
+                        ? running
+                          ? meta!.border
+                          : ok
+                            ? meta!.border
+                            : 'rgba(239,68,68,0.35)'
+                        : running
+                          ? 'var(--border-color)'
+                          : ok
+                            ? 'rgba(34,197,94,0.35)'
+                            : 'rgba(239,68,68,0.35)';
+                      const iconColor = toolName ? (meta!.color as any) : ok ? '#22c55e' : failed ? '#ef4444' : 'var(--text-secondary)';
+
+                      const label = toolName ? toolName : formatStepDisplayName(name);
+
+                      return (
+                        <div
+                          key={`${idx}-${e.type}`}
+                          onClick={() => {
+                            if (!toolName) return;
+                            setEvents((prev) => prev.map((x, j) => (j === idx ? { ...x, expanded: !(x as any).expanded } : x)));
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '4px 8px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            color: 'var(--text-secondary)',
+                            background: bg,
+                            border: `1px solid ${border}`,
+                            cursor: toolName ? 'pointer' : 'default',
+                            maxWidth: 520,
+                          }}
+                        >
+                          {toolName ? (
+                            ToolIcon ? <ToolIcon size={12} color={iconColor} /> : null
+                          ) : ok ? (
+                            <CheckCircle2 size={12} color={iconColor} />
+                          ) : failed ? (
+                            <XCircle size={12} color={iconColor} />
+                          ) : (
+                            <Loader2 size={12} className="spin" />
+                          )}
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                            {label}
+                          </div>
+                          {toolName ? (
+                            <div style={{ fontSize: 10.5, color: meta!.color, background: 'rgba(0,0,0,0.12)', padding: '2px 6px', borderRadius: 999, flexShrink: 0 }}>
+                              {meta!.label}
+                            </div>
+                          ) : null}
+                          {typeof dur === 'number' && !running ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--text-secondary)', flexShrink: 0 }}>
+                              <Clock size={11} /> {(dur / 1000).toFixed(1)}s
+                            </div>
+                          ) : null}
+                          {toolName ? (
+                            expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {ribbonItems.some(({ e }) => !!(e as any).expanded) ? (
+                    <div style={{ marginTop: 10 }}>
+                      {ribbonItems.map(({ e, idx }) => {
+                        const name = String(e.data?.name || '');
+                        const toolName = getToolNameFromStep(name);
+                        if (!toolName) return null;
+                        if (!(e as any).expanded) return null;
+
+                        const meta = toolUi(toolName);
+                        const input = e.type === 'step_started' ? e.data?.input : undefined;
+                        const result = e.data?.result;
+                        const output = result?.output;
+                        const errorText = String(e.data?.error || result?.error || result?.message || '');
+
+                        return (
+                          <div key={`expanded-${idx}`} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <meta.Icon size={13} color={meta.color as any} />
+                              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)' }}>{toolName}</div>
+                              <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.12)', padding: '2px 6px', borderRadius: 999 }}>
+                                {meta.label}
+                              </div>
+                            </div>
+
+                            {input != null ? (
+                              <>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المدخلات</div>
+                                <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                  {formatValue(input)}
+                                </pre>
+                              </>
+                            ) : null}
+
+                            {output != null ? (
+                              <>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginTop: input != null ? 10 : 0, marginBottom: 6 }}>المخرجات</div>
+                                <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                  {formatValue(output)}
+                                </pre>
+                              </>
+                            ) : null}
+
+                            {errorText ? (
+                              <div style={{ marginTop: 10, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
+                                {errorText}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </motion.div>
+            );
+          }
+
+          const e = item.e;
+          const i = item.idx;
           if (e.type === 'user_input') {
             return <ChatBubble key={i} event={e} isUser={true} />;
           }
