@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-export const ThinkingIndicator: React.FC = () => {
+export const ThinkingIndicator: React.FC<{ label?: string; stepName?: string }> = ({ label, stepName }) => {
   return (
     <div className="flex items-center gap-2 p-4 rounded-2xl bg-[var(--surface-2)] w-fit backdrop-blur-md border border-[var(--border-light)] shadow-sm">
       <div className="flex gap-1">
@@ -22,7 +22,9 @@ export const ThinkingIndicator: React.FC = () => {
           />
         ))}
       </div>
-      <span className="text-xs text-[var(--text-secondary)] font-medium">Joe is thinking...</span>
+      <span className="text-xs text-[var(--text-secondary)] font-medium">
+        {label || (stepName ? `Joe is working on: ${stepName}` : 'Joe is thinking...')}
+      </span>
     </div>
   );
 };
