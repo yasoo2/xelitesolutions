@@ -159,7 +159,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!sessionId) return;
 
     // Check for WS optimization
-    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'goto', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
+    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
     const canUseWs = wsRef.current && 
                      wsRef.current.readyState === WebSocket.OPEN && 
                      actions.every(a => wsActions.includes(a.type));
@@ -210,6 +210,21 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         setDownloads(prev => [...items, ...prev].slice(0, 5));
       }
       if (j?.ok && Array.isArray(j?.output?.outputs)) {
+        const outs = j.output.outputs;
+        const blocked = outs.find((o: any) => o && o.type === 'goto_blocked');
+        if (blocked?.url) {
+          const msg = `تم حظر فتح هذا الرابط: ${String(blocked.url)}`;
+          setWsError(msg);
+          setOverlay(msg);
+          setTimeout(() => setOverlay(''), 2500);
+        }
+        const err = outs.find((o: any) => o && o.type === 'error' && (o.message || o.action));
+        if (err?.message) {
+          const msg = String(err.message);
+          setWsError(msg);
+          setOverlay(msg);
+          setTimeout(() => setOverlay(''), 2500);
+        }
         const loc = j.output.outputs.find((o: any) => o.type === 'locate' && o.boundingBox);
         if (loc?.boundingBox) {
           setHighlight(loc.boundingBox);

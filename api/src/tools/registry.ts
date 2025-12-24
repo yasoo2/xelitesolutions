@@ -140,7 +140,7 @@ async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
         });
       }
 
-      const child = spawn('npm', ['--prefix', workerDir, 'run', 'start'], {
+      const child = spawn('npm', ['--prefix', workerDir, 'run', 'dev'], {
         cwd: root,
         env: workerEnv,
         stdio: 'ignore',

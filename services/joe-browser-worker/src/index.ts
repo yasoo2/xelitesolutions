@@ -171,6 +171,7 @@ async function createSession(opts: { viewport?: { width: number; height: number 
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
     locale: opts.locale || 'en-US',
+    ignoreHTTPSErrors: true,
     acceptDownloads: true,
     recordVideo: { dir: path.join(STORAGE_DIR, 'videos') }
   });

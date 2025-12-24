@@ -442,7 +442,7 @@ async function ensureBrowserWorker(base, key, logs) {
           timeoutMs: 10 * 60 * 1e3
         });
       }
-      const child = (0, import_child_process.spawn)("npm", ["--prefix", workerDir, "run", "start"], {
+      const child = (0, import_child_process.spawn)("npm", ["--prefix", workerDir, "run", "dev"], {
         cwd: root,
         env: workerEnv,
         stdio: "ignore",
