@@ -236,6 +236,8 @@ export default function CommandComposer({
   const endRef = useRef<HTMLDivElement>(null);
   const stepStartTimes = useRef<{[key: string]: number}>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastLiveSeqRef = useRef<number>(0);
+  const prevSessionIdRef = useRef<string | undefined>(undefined);
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -569,6 +571,9 @@ export default function CommandComposer({
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
+          if (typeof msg?.seq === 'number' && Number.isFinite(msg.seq)) {
+            if (msg.seq > lastLiveSeqRef.current) lastLiveSeqRef.current = msg.seq;
+          }
           if (typeof msg?.runId === 'string' && msg.runId.trim()) {
             setActiveRunId(msg.runId.trim());
           }
@@ -634,15 +639,26 @@ export default function CommandComposer({
   }
 
   useEffect(() => {
-    if (sessionId) {
+    const prev = prevSessionIdRef.current;
+    prevSessionIdRef.current = sessionId;
+
+    if (!sessionId) {
+      setEvents([]);
+      setActiveRunId(null);
+      setApproval(null);
+      return;
+    }
+
+    if (prev && prev !== sessionId) {
       setEvents([]);
       setActiveRunId(null);
       setApproval(null);
       loadHistory(sessionId);
-    } else {
-      setEvents([]);
-      setActiveRunId(null);
-      setApproval(null);
+      return;
+    }
+
+    if (!prev && events.length === 0) {
+      loadHistory(sessionId);
     }
   }, [sessionId]);
 
@@ -749,7 +765,10 @@ export default function CommandComposer({
     
     // Optimistic update
     const tempId = Date.now().toString();
-    setEvents(prev => [...prev, { type: 'user_input', data: inputText, id: tempId }]);
+    setEvents(prev => [
+      ...prev,
+      { type: 'user_input', data: inputText, id: tempId, ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
+    ]);
     
     if (!overrideText) {
         setText(''); 
@@ -1043,13 +1062,6 @@ export default function CommandComposer({
         if (st.status === 'running' && mode !== 'manual') {
           if (!next[rid]) {
             next[rid] = true;
-            changed = true;
-          }
-        }
-
-        if (st.terminal && mode === 'auto') {
-          if (next[rid]) {
-            next[rid] = false;
             changed = true;
           }
         }
