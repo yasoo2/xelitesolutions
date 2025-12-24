@@ -257,14 +257,7 @@ export default function CommandComposer({
     const artifactsSeen = new Set<string>();
     const timeline: Array<{ type: string; data: any; duration?: number }> = [];
 
-    const builderEvents = activeRunId
-      ? events.filter((e: any) => {
-          const rid = typeof e?.runId === 'string' ? e.runId : typeof e?.data?.runId === 'string' ? e.data.runId : undefined;
-          return rid === activeRunId;
-        })
-      : events;
-
-    const sorted = builderEvents
+    const sorted = events
       .map((e: any, idx: number) => ({
         e,
         idx,
@@ -275,7 +268,7 @@ export default function CommandComposer({
 
     const ensureStep = (key: string, init: any) => {
       if (!stepsByKey.has(key)) {
-        stepsByKey.set(key, init);
+        stepsByKey.set(key, { ...init, key });
         order.push(key);
       }
       return stepsByKey.get(key);
@@ -316,6 +309,7 @@ export default function CommandComposer({
         const s = ensureStep(key, { name, status: 'running', runId });
         s.status = 'running';
         if (typeof (e as any)?.ts === 'number') s.startedAt = (e as any).ts;
+        if (e.data?.input != null && s.input == null) s.input = e.data.input;
       }
 
       if ((e.type === 'step_done' || e.type === 'step_failed') && e.data?.name) {
@@ -369,7 +363,7 @@ export default function CommandComposer({
     const displaySteps = steps.map((s: any) => ({ ...s, displayName: formatStepName(String(s.name || '')) }));
 
     return { steps: displaySteps, logs, artifacts, timeline };
-  }, [events, activeRunId]);
+  }, [events]);
 
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -965,44 +959,128 @@ export default function CommandComposer({
     return { label: 'أداة', Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
   };
 
-  const displayItems = (() => {
-    const out: Array<any> = [];
-    let buf: Array<{ e: any; idx: number }> = [];
-    const flush = () => {
-      if (!buf.length) return;
-      out.push({ kind: 'ribbon', items: buf });
-      buf = [];
-    };
+  const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
+  const [expandedStepKeys, setExpandedStepKeys] = useState<Record<string, boolean>>({});
 
-    for (let i = 0; i < events.length; i++) {
-      const e = events[i];
+  const getEventRunId = (e: any) => {
+    const rid = typeof e?.runId === 'string' ? e.runId : typeof e?.data?.runId === 'string' ? e.data.runId : '';
+    return rid && rid.trim() ? rid.trim() : 'no-run';
+  };
 
-      const isImage = e.type === 'step_started' && e.data?.name && String(e.data.name).includes('image_generate');
-      if (isImage) {
-        const isDone = events.slice(i + 1).some((next) => (next.type === 'step_done' || next.type === 'step_failed') && (next.data.name === e.data.name || next.data.name === `execute:${e.data.name}`));
-        if (!isDone) {
-          flush();
-          out.push({ kind: 'event', e, idx: i });
-          continue;
+  const sortedEvents = useMemo(() => {
+    return events
+      .map((e: any, idx: number) => ({
+        e,
+        idx,
+        seq: typeof e?.seq === 'number' ? e.seq : Number.POSITIVE_INFINITY,
+        ts: typeof e?.ts === 'number' ? e.ts : idx,
+      }))
+      .sort((a: any, b: any) => (a.seq - b.seq) || (a.ts - b.ts) || (a.idx - b.idx));
+  }, [events]);
+
+  const stepsByRunId = useMemo(() => {
+    const out = new Map<string, any[]>();
+    for (const s of derived.steps || []) {
+      const rid = typeof s?.runId === 'string' && s.runId.trim() ? s.runId.trim() : 'no-run';
+      if (!out.has(rid)) out.set(rid, []);
+      out.get(rid)!.push(s);
+    }
+    return out;
+  }, [derived.steps]);
+
+  const logsByRunId = useMemo(() => {
+    const out = new Map<string, string[]>();
+    for (const { e } of sortedEvents) {
+      if (e?.type !== 'evidence_added') continue;
+      if (String(e?.data?.kind || '') !== 'log') continue;
+      if (typeof e?.data?.text !== 'string') continue;
+      const rid = getEventRunId(e);
+      if (!out.has(rid)) out.set(rid, []);
+      out.get(rid)!.push(e.data.text);
+    }
+    return out;
+  }, [sortedEvents]);
+
+  const cleanAssistantText = (raw: any) => {
+    let s =
+      typeof raw === 'string'
+        ? raw
+        : raw && typeof raw === 'object' && typeof raw.text === 'string'
+          ? raw.text
+          : String(raw ?? '');
+    s = s.replace(/\r\n/g, '\n');
+    if (!s.trim()) return '';
+
+    const lower = s.toLowerCase();
+    const toolWords = [
+      'file_write',
+      'file_read',
+      'file_edit',
+      'shell_execute',
+      'web_search',
+      'knowledge_search',
+      'grep_search',
+      'read_file_tree',
+      'scaffold_project',
+      'install_dependencies',
+      'check_syntax',
+      'image_generate',
+      'browser_',
+    ];
+    const hits = toolWords.reduce((acc, w) => acc + (lower.includes(w) ? 1 : 0), 0);
+    const looksLikeTranscript =
+      hits >= 2 ||
+      (/(\bplan\s*#\d+\b)/i.test(s) && /\b\d+(\.\d+)?s\b/.test(s) && hits >= 1) ||
+      (/\bLog\b/.test(s) && hits >= 1) ||
+      (/\[20\d\d-\d\d-\d\dT/.test(s) && hits >= 1);
+
+    if (!looksLikeTranscript) return s;
+
+    const kept = s
+      .split('\n')
+      .map((line: string) => line.trimEnd())
+      .filter((line: string) => {
+        const t = line.trim();
+        if (!t) return false;
+        const tl = t.toLowerCase();
+        if (toolWords.some((w) => tl.includes(w))) return false;
+        if (/^\d+(\.\d+)?s\b/i.test(t)) return false;
+        if (/\bplan\s*#\d+\b/i.test(t)) return false;
+        if (/\bLog\b/.test(t) || /\[20\d\d-\d\d-\d\dT/.test(t)) return false;
+        if (/^تم إنهاء التنفيذ\b/.test(t)) return false;
+        return true;
+      })
+      .join('\n')
+      .trim();
+
+    return kept;
+  };
+
+  const renderItems = useMemo(() => {
+    const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
+    const inserted = new Set<string>();
+
+    for (const { e, idx } of sortedEvents) {
+      const type = String(e?.type || '');
+
+      if (type === 'step_started' || type === 'step_progress' || type === 'step_done' || type === 'step_failed' || type === 'evidence_added') {
+        const rid = getEventRunId(e);
+        if (!inserted.has(rid)) {
+          inserted.add(rid);
+          out.push({ kind: 'activity', key: `activity:${rid}:${idx}`, runId: rid });
         }
-      }
-
-      const isStep = e.type === 'step_started' || e.type === 'step_done' || e.type === 'step_failed';
-      if (isStep) {
-        const name = String(e.data?.name || '');
-        const toolName = getToolNameFromStep(name);
-        if (e.type === 'step_started' && !toolName) continue;
-        buf.push({ e, idx: i });
         continue;
       }
 
-      flush();
-      out.push({ kind: 'event', e, idx: i });
+      if (type === 'user_input') out.push({ kind: 'user', key: `user:${idx}`, e, idx });
+      else if (type === 'text') out.push({ kind: 'text', key: `text:${idx}`, e, idx });
+      else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
+      else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
+      else if (type === 'run_finished' || type === 'run_completed') out.push({ kind: 'run_done', key: `run_done:${idx}`, e, idx });
     }
 
-    flush();
     return out;
-  })();
+  }, [sortedEvents]);
 
   return (
     <div className="composer">
@@ -1037,13 +1115,29 @@ export default function CommandComposer({
         )}
         
         <AnimatePresence mode="popLayout">
-        {displayItems.map((item, itemIdx) => {
-          if (item.kind === 'ribbon') {
-            const ribbonItems: Array<{ e: any; idx: number }> = item.items || [];
+        {renderItems.map((item) => {
+          if (item.kind === 'activity') {
+            const rid = item.runId || 'no-run';
+            const steps = stepsByRunId.get(rid) || [];
+            const logs = logsByRunId.get(rid) || [];
+
+            const status = (() => {
+              if (steps.some((s: any) => s?.status === 'running')) return 'running';
+              if (steps.some((s: any) => s?.status === 'failed')) return 'failed';
+              if (steps.length > 0) return 'done';
+              return 'idle';
+            })();
+
+            const expanded = !!expandedRuns[rid];
+            const toggleRun = () => setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
+
+            const totalDuration = steps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
+            const failedCount = steps.filter((s: any) => s?.status === 'failed').length;
+            const doneCount = steps.filter((s: any) => s?.status === 'done').length;
 
             return (
               <motion.div
-                key={`ribbon-${itemIdx}-${ribbonItems[0]?.idx ?? itemIdx}`}
+                key={item.key}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="message-row joe"
@@ -1055,158 +1149,165 @@ export default function CommandComposer({
                     background: 'rgba(255,255,255,0.03)',
                     border: '1px solid var(--border-color)',
                     maxWidth: 760,
-                    padding: '8px 10px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
                   }}
+                  onClick={toggleRun}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      overflowX: 'auto',
-                      overflowY: 'hidden',
-                      whiteSpace: 'nowrap',
-                      paddingBottom: 2,
-                    }}
-                  >
-                    {ribbonItems.map(({ e, idx }) => {
-                      const name = String(e.data?.name || '');
-                      const toolName = getToolNameFromStep(name);
-                      const ok = e.type === 'step_done';
-                      const failed = e.type === 'step_failed';
-                      const running = e.type === 'step_started';
-                      const dur = typeof (e as any).duration === 'number' ? (e as any).duration : undefined;
-                      const expanded = !!(e as any).expanded;
-
-                      const meta = toolName ? toolUi(toolName) : null;
-                      const ToolIcon = meta ? meta.Icon : null;
-                      const bg = toolName
-                        ? running
-                          ? meta!.bg
-                          : ok
-                            ? meta!.bg
-                            : 'rgba(239,68,68,0.10)'
-                        : running
-                          ? 'rgba(255,255,255,0.03)'
-                          : ok
-                            ? 'rgba(34,197,94,0.10)'
-                            : 'rgba(239,68,68,0.10)';
-                      const border = toolName
-                        ? running
-                          ? meta!.border
-                          : ok
-                            ? meta!.border
-                            : 'rgba(239,68,68,0.35)'
-                        : running
-                          ? 'var(--border-color)'
-                          : ok
-                            ? 'rgba(34,197,94,0.35)'
-                            : 'rgba(239,68,68,0.35)';
-                      const iconColor = toolName ? (meta!.color as any) : ok ? '#22c55e' : failed ? '#ef4444' : 'var(--text-secondary)';
-
-                      const label = toolName ? toolName : formatStepDisplayName(name);
-
-                      return (
-                        <div
-                          key={`${idx}-${e.type}`}
-                          onClick={() => {
-                            if (!toolName) return;
-                            setEvents((prev) => prev.map((x, j) => (j === idx ? { ...x, expanded: !(x as any).expanded } : x)));
-                          }}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '4px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            color: 'var(--text-secondary)',
-                            background: bg,
-                            border: `1px solid ${border}`,
-                            cursor: toolName ? 'pointer' : 'default',
-                            maxWidth: 520,
-                          }}
-                        >
-                          {toolName ? (
-                            ToolIcon ? <ToolIcon size={12} color={iconColor} /> : null
-                          ) : ok ? (
-                            <CheckCircle2 size={12} color={iconColor} />
-                          ) : failed ? (
-                            <XCircle size={12} color={iconColor} />
-                          ) : (
-                            <Loader2 size={12} className="spin" />
-                          )}
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                            {label}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <Cpu size={16} color="var(--text-secondary)" />
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>سرد الأدوات</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {steps.length ? `${steps.length} خطوة` : 'جارٍ التحضير'}
                           </div>
-                          {toolName ? (
-                            <div style={{ fontSize: 10.5, color: meta!.color, background: 'rgba(0,0,0,0.12)', padding: '2px 6px', borderRadius: 999, flexShrink: 0 }}>
-                              {meta!.label}
-                            </div>
-                          ) : null}
-                          {typeof dur === 'number' && !running ? (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--text-secondary)', flexShrink: 0 }}>
-                              <Clock size={11} /> {(dur / 1000).toFixed(1)}s
-                            </div>
-                          ) : null}
-                          {toolName ? (
-                            expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />
-                          ) : null}
                         </div>
-                      );
-                    })}
+                        {steps.length ? (
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                            {failedCount ? `فشل ${failedCount}` : doneCount ? `اكتمل ${doneCount}` : '...'} {totalDuration ? `• ${(totalDuration / 1000).toFixed(1)}s` : ''}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      {status === 'running' ? <Loader2 size={14} className="spin" /> : status === 'failed' ? <XCircle size={14} color="#ef4444" /> : status === 'done' ? <CheckCircle2 size={14} color="#22c55e" /> : null}
+                      {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </div>
                   </div>
 
-                  {ribbonItems.some(({ e }) => !!(e as any).expanded) ? (
-                    <div style={{ marginTop: 10 }}>
-                      {ribbonItems.map(({ e, idx }) => {
-                        const name = String(e.data?.name || '');
-                        const toolName = getToolNameFromStep(name);
-                        if (!toolName) return null;
-                        if (!(e as any).expanded) return null;
+                  {expanded ? (
+                    <div style={{ marginTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {steps.map((s: any) => {
+                        const stepName = String(s?.name || '');
+                        const toolName = getToolNameFromStep(stepName);
+                        const meta = toolName
+                          ? toolUi(toolName)
+                          : { label: 'خطوة', Icon: Sparkles, color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.08)' };
+                        const isExpandedStep = !!expandedStepKeys[s.key];
+                        const toggleStep = (ev: any) => {
+                          ev.stopPropagation();
+                          setExpandedStepKeys((prev) => ({ ...prev, [s.key]: !prev[s.key] }));
+                        };
 
-                        const meta = toolUi(toolName);
-                        const input = e.type === 'step_started' ? e.data?.input : undefined;
-                        const result = e.data?.result;
+                        const ok = s.status === 'done';
+                        const failed = s.status === 'failed';
+                        const running = s.status === 'running';
+                        const dur = typeof s.duration === 'number' ? s.duration : undefined;
+                        const title = toolName ? toolName : s.displayName || formatStepDisplayName(stepName);
+                        const input = s.input;
+                        const result = s.result;
                         const output = result?.output;
-                        const errorText = String(e.data?.error || result?.error || result?.message || '');
+                        const href = typeof output?.href === 'string' ? output.href : undefined;
+                        const errorText = String(s.error || result?.error || result?.message || '');
+
+                        const badgeBg = failed ? 'rgba(239,68,68,0.10)' : ok ? 'rgba(34,197,94,0.10)' : 'rgba(255,255,255,0.02)';
+                        const badgeBorder = failed ? 'rgba(239,68,68,0.35)' : ok ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.10)';
 
                         return (
-                          <div key={`expanded-${idx}`} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                              <meta.Icon size={13} color={meta.color as any} />
-                              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)' }}>{toolName}</div>
-                              <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.12)', padding: '2px 6px', borderRadius: 999 }}>
-                                {meta.label}
+                          <div
+                            key={s.key}
+                            style={{
+                              border: `1px solid ${meta.border}`,
+                              background: meta.bg,
+                              borderRadius: 10,
+                              padding: '8px 10px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                <meta.Icon size={14} color={meta.color as any} />
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {title}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                                    <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.12)', padding: '2px 6px', borderRadius: 999 }}>
+                                      {meta.label}
+                                    </div>
+                                    <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', background: badgeBg, border: `1px solid ${badgeBorder}`, padding: '2px 6px', borderRadius: 999 }}>
+                                      {running ? 'جارٍ التنفيذ' : ok ? 'اكتملت' : 'فشلت'}
+                                    </div>
+                                    {typeof dur === 'number' && !running ? (
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--text-secondary)' }}>
+                                        <Clock size={11} /> {(dur / 1000).toFixed(1)}s
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={toggleStep}
+                                style={{
+                                  background: 'rgba(255,255,255,0.04)',
+                                  border: '1px solid var(--border-color)',
+                                  color: 'var(--text-secondary)',
+                                  borderRadius: 8,
+                                  padding: '4px 8px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {isExpandedStep ? <ChevronDown size={14} /> : <ChevronRight size={14} />} التفاصيل
+                              </button>
                             </div>
 
-                            {input != null ? (
-                              <>
-                                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المدخلات</div>
-                                <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                  {formatValue(input)}
-                                </pre>
-                              </>
-                            ) : null}
+                            {isExpandedStep ? (
+                              <div style={{ marginTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
+                                {input != null ? (
+                                  <>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المدخلات</div>
+                                    <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                      {formatValue(input)}
+                                    </pre>
+                                  </>
+                                ) : null}
 
-                            {output != null ? (
-                              <>
-                                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginTop: input != null ? 10 : 0, marginBottom: 6 }}>المخرجات</div>
-                                <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                  {formatValue(output)}
-                                </pre>
-                              </>
-                            ) : null}
+                                {href ? (
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: input != null ? 10 : 0, marginBottom: 8 }}>
+                                    <a href={href} target="_blank" rel="noopener noreferrer" className="artifact-link" onClick={(ev) => ev.stopPropagation()}>
+                                      <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
+                                    </a>
+                                  </div>
+                                ) : null}
 
-                            {errorText ? (
-                              <div style={{ marginTop: 10, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
-                                {errorText}
+                                {output != null ? (
+                                  <>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginTop: input != null ? 10 : 0, marginBottom: 6 }}>المخرجات</div>
+                                    <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                      {formatValue(output)}
+                                    </pre>
+                                  </>
+                                ) : null}
+
+                                {errorText ? (
+                                  <div style={{ marginTop: 10, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
+                                    {errorText}
+                                  </div>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>
                         );
                       })}
+
+                      {logs.length ? (
+                        <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 10px', background: 'rgba(0,0,0,0.08)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <Terminal size={14} />
+                            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)' }}>Log</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{logs.length}</div>
+                          </div>
+                          <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                            {formatValue(logs.slice(-20).join('\n'), 4000)}
+                          </pre>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -1214,325 +1315,41 @@ export default function CommandComposer({
             );
           }
 
-          const e = item.e;
-          const i = item.idx;
-          if (e.type === 'user_input') {
-            return <ChatBubble key={i} event={e} isUser={true} />;
-          }
-          if (e.type === 'error') {
+          if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} />;
+
+          if (item.kind === 'error') {
             return (
-              <motion.div 
-                key={i} 
-                initial={{ opacity: 0, y: 10 }} 
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="message-row joe"
               >
                 <div className="message-bubble error" dir="auto" style={{ color: '#ef4444', border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)' }}>
-                  ⚠️ {e.data}
+                  ⚠️ {item.e?.data}
                 </div>
               </motion.div>
             );
           }
-          if (e.type === 'text') {
-            let content = e.data;
+
+          if (item.kind === 'text') {
+            let content = item.e?.data;
             try {
               if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                 const p = JSON.parse(content);
-                 content = p.text || p.output || content;
+                const p = JSON.parse(content);
+                content = p.text || p.output || content;
               }
             } catch {}
-            return <ChatBubble key={i} event={{ data: { text: content } }} isUser={false} onOptionClick={(q) => run(q)} />;
+
+            const cleaned = cleanAssistantText(content);
+            if (!cleaned) return null;
+            return <ChatBubble key={item.key} event={{ data: { text: cleaned } }} isUser={false} onOptionClick={(q) => run(q)} />;
           }
-          if (e.type === 'step_started') {
-            const isImage = e.data.name && e.data.name.includes('image_generate');
-            const isDone = events.slice(i + 1).some(next => (next.type === 'step_done' || next.type === 'step_failed') && (next.data.name === e.data.name || next.data.name === `execute:${e.data.name}`));
-            if (isImage && !isDone) {
-               return (
-                 <motion.div 
-                   key={i} 
-                   initial={{ opacity: 0, scale: 0.9 }}
-                   animate={{ opacity: 1, scale: 1 }}
-                   exit={{ opacity: 0, scale: 0.9 }}
-                   className="message-row joe" 
-                   style={{ marginBottom: 4 }}
-                 >
-                   <div className="image-loading-frame" style={{ width: 300, height: 300, background: 'rgba(30, 30, 30, 0.4)', backdropFilter: 'blur(10px)', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed var(--border-color)', position: 'relative', overflow: 'hidden' }}>
-                     <Loader2 size={32} className="spin" style={{ marginBottom: 16, color: '#eab308' }} />
-                     <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Generating Image...</div>
-                   </div>
-                 </motion.div>
-               );
-            }
-            const name = String(e.data?.name || '');
-            const toolName = getToolNameFromStep(name);
-            if (toolName) {
-              const meta = toolUi(toolName);
-              const expanded = !!(e as any).expanded;
-              const input = e.data?.input;
-              return (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="message-row joe"
-                >
-                  <div
-                    className="message-bubble"
-                    dir="auto"
-                    style={{
-                      background: meta.bg,
-                      border: `1px solid ${meta.border}`,
-                      maxWidth: 760,
-                      cursor: 'pointer',
-                      padding: '8px 10px',
-                    }}
-                    onClick={() => setEvents(prev => prev.map((x, idx) => (idx === i ? { ...x, expanded: !(x as any).expanded } : x)))}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                        <meta.Icon size={14} color={meta.color as any} />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, lineHeight: 1.2 }}>
-                          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>بدء أداة</div>
-                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {toolName}
-                          </div>
-                          <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
-                            {meta.label}
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        <Loader2 size={12} className="spin" />
-                      </div>
-                    </div>
-                    {expanded && input != null ? (
-                      <div style={{ marginTop: 10 }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المدخلات</div>
-                        <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                          {formatValue(input)}
-                        </pre>
-                      </div>
-                    ) : null}
-                  </div>
-                </motion.div>
-              );
-            }
+
+          if (item.kind === 'run_done') {
             return (
               <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="message-row joe"
-              >
-                <div
-                  className="message-bubble"
-                  dir="auto"
-                  style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid var(--border-color)',
-                    maxWidth: 760,
-                    padding: '8px 10px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Loader2 size={12} className="spin" />
-                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>بدء خطوة</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {formatStepDisplayName(name)}
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          }
-          if (e.type === 'step_done' || e.type === 'step_failed') {
-            const name = String(e.data?.name || '');
-            const ok = e.type === 'step_done';
-            const dur = typeof (e as any).duration === 'number' ? (e as any).duration : undefined;
-            const toolName = getToolNameFromStep(name);
-            if (toolName) {
-              const meta = toolUi(toolName);
-              const expanded = !!(e as any).expanded;
-              const result = e.data?.result;
-              const output = result?.output;
-              const href = typeof output?.href === 'string' ? output.href : undefined;
-              return (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="message-row joe"
-                >
-                  <div
-                    className="message-bubble"
-                    dir="auto"
-                    style={{
-                      background: ok ? meta.bg : 'rgba(239,68,68,0.08)',
-                      border: `1px solid ${ok ? meta.border : 'rgba(239,68,68,0.45)'}`,
-                      maxWidth: 760,
-                      cursor: 'pointer',
-                      padding: '8px 10px',
-                    }}
-                    onClick={() => setEvents(prev => prev.map((x, idx) => (idx === i ? { ...x, expanded: !(x as any).expanded } : x)))}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                        {ok ? <CheckCircle2 size={14} color={meta.color as any} /> : <XCircle size={14} color="#ef4444" />}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, lineHeight: 1.2 }}>
-                          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>
-                            {ok ? 'اكتمال أداة' : 'فشل أداة'}
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {toolName}
-                          </div>
-                          <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.15)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
-                            {meta.label}
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                        {typeof dur === 'number' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
-                            <Clock size={12} /> {(dur / 1000).toFixed(1)}s
-                          </div>
-                        ) : null}
-                        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      </div>
-                    </div>
-                    {!ok && (e.data?.error || result?.error || result?.message) ? (
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
-                        {String(e.data?.error || result?.error || result?.message)}
-                      </div>
-                    ) : null}
-                    {expanded ? (
-                      <div style={{ marginTop: 10 }}>
-                        {href ? (
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                            <a href={href} target="_blank" rel="noopener noreferrer" className="artifact-link">
-                              <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
-                            </a>
-                          </div>
-                        ) : null}
-                        {output != null ? (
-                          <>
-                            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المخرجات</div>
-                            <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                              {formatValue(output)}
-                            </pre>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                </motion.div>
-              );
-            }
-            return (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="message-row joe"
-              >
-                <div
-                  className="message-bubble"
-                  dir="auto"
-                  style={{
-                    background: ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-                    border: `1px solid ${ok ? 'rgba(34,197,94,0.45)' : 'rgba(239,68,68,0.45)'}`,
-                    maxWidth: 760,
-                    padding: '8px 10px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                      {ok ? <CheckCircle2 size={14} color="#22c55e" /> : <XCircle size={14} color="#ef4444" />}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, lineHeight: 1.2 }}>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>
-                          {ok ? 'اكتمال خطوة' : 'فشل خطوة'}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {formatStepDisplayName(name)}
-                        </div>
-                      </div>
-                    </div>
-                    {typeof dur === 'number' ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
-                        <Clock size={12} /> {(dur / 1000).toFixed(1)}s
-                      </div>
-                    ) : null}
-                  </div>
-                  {!ok && (e.data?.error || e.data?.result?.error || e.data?.result?.message) ? (
-                    <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
-                      {String(e.data?.error || e.data?.result?.error || e.data?.result?.message)}
-                    </div>
-                  ) : null}
-                </div>
-              </motion.div>
-            );
-          }
-          if (e.type === 'step_progress') {
-            const text =
-              typeof e.data?.text === 'string'
-                ? e.data.text
-                : typeof e.data?.message === 'string'
-                  ? e.data.message
-                  : '';
-            if (!text) return null;
-            return (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="message-row joe"
-              >
-                <div
-                  className="message-bubble"
-                  dir="auto"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid var(--border-color)',
-                    maxWidth: 760,
-                  }}
-                >
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{text}</div>
-                </div>
-              </motion.div>
-            );
-          }
-          if (e.type === 'evidence_added' && String(e.data?.kind || '') === 'log') {
-            const text = typeof e.data?.text === 'string' ? e.data.text : '';
-            if (!text) return null;
-            return (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="message-row joe"
-              >
-                <div
-                  className="message-bubble"
-                  dir="auto"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid var(--border-color)',
-                    maxWidth: 760,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <Terminal size={14} />
-                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)' }}>Log</div>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{text}</div>
-                </div>
-              </motion.div>
-            );
-          }
-          if (e.type === 'run_finished' || e.type === 'run_completed') {
-            return (
-              <motion.div
-                key={i}
+                key={item.key}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="message-row joe"
@@ -1554,21 +1371,18 @@ export default function CommandComposer({
               </motion.div>
             );
           }
-          if (e.type === 'artifact_created') {
-            const kind = e.data?.kind;
-            const href = e.data?.href;
+
+          if (item.kind === 'artifact') {
+            const e = item.e;
+            const kind = e?.data?.kind;
+            const href = e?.data?.href;
             const isBrowserStream =
               kind === 'browser_stream' ||
               (typeof href === 'string' && /^wss?:\/\//i.test(href) && /\/ws\//i.test(href));
             if (isBrowserStream && href) {
               if (sessionKind === 'agent' && browserSessionId) return null;
               return (
-                <motion.div 
-                  key={i} 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="message-row joe"
-                >
+                <motion.div key={item.key} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message-row joe">
                   <div className="event-artifact" style={{ padding: 0 }}>
                     <Suspense fallback={<div style={{ padding: 12, fontSize: 12, opacity: 0.7 }}>Loading Stream...</div>}>
                       <AgentBrowserStreamLazy wsUrl={href} />
@@ -1577,32 +1391,23 @@ export default function CommandComposer({
                 </motion.div>
               );
             }
-            const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e.data.href || '');
-            const isVideo = /\.(mp4|webm|mov)$/i.test(e.data.name || '') || /\.(mp4|webm|mov)$/i.test(e.data.href || '');
-            
+
+            const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.href || '');
+            const isVideo = /\.(mp4|webm|mov)$/i.test(e?.data?.name || '') || /\.(mp4|webm|mov)$/i.test(e?.data?.href || '');
+
             if (isImage) {
-               return (
-                 <motion.div 
-                   key={i} 
-                   initial={{ opacity: 0, scale: 0.9 }}
-                   animate={{ opacity: 1, scale: 1 }}
-                   className="message-row joe"
-                 >
-                   <div className="image-generation-frame">
-                     <div className="scanline-overlay"></div>
-                     <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
-                   </div>
-                 </motion.div>
-               );
+              return (
+                <motion.div key={item.key} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="message-row joe">
+                  <div className="image-generation-frame">
+                    <div className="scanline-overlay"></div>
+                    <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
+                  </div>
+                </motion.div>
+              );
             }
 
             return (
-              <motion.div 
-                key={i} 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="message-row joe"
-              >
+              <motion.div key={item.key} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message-row joe">
                 <div className="event-artifact">
                   {isVideo ? (
                     <>
@@ -1632,6 +1437,7 @@ export default function CommandComposer({
               </motion.div>
             );
           }
+
           return null;
         })}
         </AnimatePresence>
