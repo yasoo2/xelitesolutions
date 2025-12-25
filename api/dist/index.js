@@ -2315,6 +2315,13 @@ var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capab
 ## CORE INSTRUCTIONS:
 1. **Think Before Acting**: You are a "Reasoning Engine". Before every action, verify if you have enough information. If not, use a tool to get it.
 2. **Tool First**: Do not guess. If asked about a library, file, or real-world fact, use the appropriate tool (grep_search, browser_open, search) immediately.
+3. **Smart Internet Answers (CRITICAL)**:
+   - If the user asks for a factual answer that depends on current internet information, follow this exact workflow:
+     1) Use **web_search** with a precise query.
+     2) Select the best 1\u20132 results and fetch context using **html_extract** (preferred) or **http_fetch**.
+     3) Synthesize a direct, accurate answer from the extracted evidence.
+   - Always put the final answer in **echo**. Never respond with raw search results, long page dumps, or a list of links as the final answer.
+   - Include 1\u20133 source URLs in the final answer when you used internet tools.
 3. **Conversational Queries**: 
    - If the user greets you or asks personal questions (e.g. "how are you"), **reply naturally with text only**. Do NOT use any tools.
    - **Identity**: If asked "who are you", reply that you are Joe, an elite AI autonomous engineer. **NEVER** search for "who are you".
@@ -3409,54 +3416,22 @@ Please verify your OpenAI organization settings or try a different prompt.`;
     if (result.ok && plan.name === "web_search") {
       try {
         const results = Array.isArray(result.output?.results) ? result.output.results : [];
-        if (results.length > 0) {
-          const mdParts = [];
-          mdParts.push(`### \u0646\u062A\u0627\u0626\u062C \u0627\u0644\u0628\u062D\u062B`);
-          const limit = 5;
-          const displayResults = results.slice(0, limit);
-          for (let i = 0; i < displayResults.length; i++) {
-            const r = displayResults[i];
-            const title = String(r.title || "").trim();
-            const url = String(r.url || "").trim();
-            const desc = String(r.description || "").trim();
-            let domain = "";
-            try {
-              domain = new URL(url).hostname;
-            } catch {
-            }
-            const num = `${i + 1}.`;
-            const head = domain ? `${num} **[${title}](${url})** _(${domain})_` : `${num} **[${title}](${url})**`;
-            mdParts.push(head);
-            if (desc) mdParts.push(`   > ${desc.slice(0, 150)}...`);
-            mdParts.push("");
-          }
-          const mds = mdParts.join("\n");
-          forcedText = mds;
-          ev({ type: "text", data: mds });
-          assistantTextEmitted = true;
+        const top = results && results[0] ? results[0] : null;
+        const title = top ? String(top.title || "").trim() : "";
+        const url = top ? String(top.url || "").trim() : "";
+        if (title || url) {
+          ev({ type: "evidence_added", data: { kind: "search", text: `${title}${title && url ? " \u2014 " : ""}${url}` } });
         }
       } catch {
       }
     }
     if (result.ok && plan.name === "html_extract") {
       try {
-        const o = result.output || {};
-        const title = String(o.title || "").trim();
-        const desc = String(o.metaDescription || "").trim();
-        const heads = Array.isArray(o.headings) ? o.headings.slice(0, 8) : [];
-        const links = Array.isArray(o.links) ? o.links.slice(0, 8) : [];
-        const parts = [];
-        parts.push(`### \u062A\u062D\u0644\u064A\u0644 \u0635\u0641\u062D\u0629`);
-        if (title) parts.push(`- \u0627\u0644\u0639\u0646\u0648\u0627\u0646: ${title}`);
-        if (desc) parts.push(`- \u0627\u0644\u0648\u0635\u0641: ${desc}`);
-        if (heads.length > 0) {
-          parts.push(`- \u0627\u0644\u0639\u0646\u0627\u0648\u064A\u0646 \u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629:`);
-          heads.forEach((h) => parts.push(`  - ${h}`));
+        const title = String(result.output?.title || "").trim();
+        const url = String(plan.input?.url || "").trim();
+        if (title || url) {
+          ev({ type: "evidence_added", data: { kind: "page", text: `${title}${title && url ? " \u2014 " : ""}${url}` } });
         }
-        const mde = parts.join("\n");
-        forcedText = mde;
-        ev({ type: "text", data: mde });
-        assistantTextEmitted = true;
       } catch {
       }
     }

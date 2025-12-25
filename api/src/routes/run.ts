@@ -746,51 +746,21 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     if (result.ok && plan.name === 'web_search') {
       try {
         const results = Array.isArray(result.output?.results) ? result.output.results : [];
-        if (results.length > 0) {
-          const mdParts: string[] = [];
-          mdParts.push(`### نتائج البحث`);
-          const limit = 5;
-          const displayResults = results.slice(0, limit);
-          
-          for (let i = 0; i < displayResults.length; i++) {
-            const r = displayResults[i];
-            const title = String(r.title || '').trim();
-            const url = String(r.url || '').trim();
-            const desc = String(r.description || '').trim();
-            let domain = '';
-            try { domain = new URL(url).hostname; } catch {}
-            const num = `${i + 1}.`;
-            const head = domain ? `${num} **[${title}](${url})** _(${domain})_` : `${num} **[${title}](${url})**`;
-            mdParts.push(head);
-            if (desc) mdParts.push(`   > ${desc.slice(0, 150)}...`);
-            mdParts.push('');
-          }
-          const mds = mdParts.join('\n');
-          forcedText = mds;
-          ev({ type: 'text', data: mds });
-          assistantTextEmitted = true;
+        const top = results && results[0] ? results[0] : null;
+        const title = top ? String(top.title || '').trim() : '';
+        const url = top ? String(top.url || '').trim() : '';
+        if (title || url) {
+          ev({ type: 'evidence_added', data: { kind: 'search', text: `${title}${title && url ? ' — ' : ''}${url}` } });
         }
       } catch {}
     }
     if (result.ok && plan.name === 'html_extract') {
       try {
-        const o = result.output || {};
-        const title = String(o.title || '').trim();
-        const desc = String(o.metaDescription || '').trim();
-        const heads = Array.isArray(o.headings) ? o.headings.slice(0, 8) : [];
-        const links = Array.isArray(o.links) ? o.links.slice(0, 8) : [];
-        const parts: string[] = [];
-        parts.push(`### تحليل صفحة`);
-        if (title) parts.push(`- العنوان: ${title}`);
-        if (desc) parts.push(`- الوصف: ${desc}`);
-        if (heads.length > 0) {
-          parts.push(`- العناوين الرئيسية:`);
-          heads.forEach((h: string) => parts.push(`  - ${h}`));
+        const title = String(result.output?.title || '').trim();
+        const url = String(plan.input?.url || '').trim();
+        if (title || url) {
+          ev({ type: 'evidence_added', data: { kind: 'page', text: `${title}${title && url ? ' — ' : ''}${url}` } });
         }
-        const mde = parts.join('\n');
-        forcedText = mde;
-        ev({ type: 'text', data: mde });
-        assistantTextEmitted = true;
       } catch {}
     }
 
