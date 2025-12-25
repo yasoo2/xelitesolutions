@@ -343,6 +343,10 @@ export default function CommandComposer({
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number>();
   const endRef = useRef<HTMLDivElement>(null);
+  const eventsScrollRef = useRef<HTMLDivElement>(null);
+  const eventsContentRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef<boolean>(true);
+  const scrollRafRef = useRef<number | null>(null);
   const stepStartTimes = useRef<{[key: string]: number}>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastLiveSeqRef = useRef<number>(0);
@@ -524,9 +528,67 @@ export default function CommandComposer({
     localStorage.setItem('active_provider', activeProvider);
   }, [activeProvider]);
 
-  // Scroll to bottom on new events
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    const scroller = eventsScrollRef.current;
+    if (!scroller) {
+      endRef.current?.scrollIntoView({ behavior });
+      return;
+    }
+    if (scrollRafRef.current != null) {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
+    }
+    scrollRafRef.current = requestAnimationFrame(() => {
+      if (behavior === 'smooth') {
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+      } else {
+        scroller.scrollTop = scroller.scrollHeight;
+      }
+    });
+  };
+
+  const recomputeAutoScroll = () => {
+    const scroller = eventsScrollRef.current;
+    if (!scroller) {
+      autoScrollRef.current = true;
+      return;
+    }
+    const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+    autoScrollRef.current = remaining < 120;
+  };
+
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    autoScrollRef.current = true;
+    scrollToBottom('auto');
+  }, [sessionId, sessionKind]);
+
+  useEffect(() => {
+    const el = eventsScrollRef.current;
+    if (!el) return;
+    const onScroll = () => recomputeAutoScroll();
+    el.addEventListener('scroll', onScroll, { passive: true } as any);
+    return () => el.removeEventListener('scroll', onScroll as any);
+  }, []);
+
+  useEffect(() => {
+    const el = eventsContentRef.current;
+    if (!el) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (autoScrollRef.current) scrollToBottom('auto');
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (autoScrollRef.current) scrollToBottom('auto');
     if (onStepsUpdate) onStepsUpdate(derived.steps);
     if (onMessagesUpdate) onMessagesUpdate(events);
     
@@ -537,7 +599,7 @@ export default function CommandComposer({
             speak(last.data.text);
         }
     }
-  }, [events, derived.steps, isVoiceMode, onMessagesUpdate, onStepsUpdate]);
+  }, [events, derived.steps, isVoiceMode, onMessagesUpdate, onStepsUpdate, isThinking]);
 
   const speak = async (text: string) => {
     if (!isVoiceMode) return;
@@ -1405,7 +1467,8 @@ export default function CommandComposer({
 
   return (
     <div className="composer">
-      <div className="events">
+      <div className="events" ref={eventsScrollRef}>
+        <div className="events-content" ref={eventsContentRef}>
         {events.length === 0 && (
           <div className="empty-state">
             <div className="empty-state-logo-ring">
@@ -1760,6 +1823,7 @@ export default function CommandComposer({
           </motion.div>
         )}
         <div ref={endRef} />
+      </div>
       </div>
       
       {approval && (
