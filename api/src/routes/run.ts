@@ -379,6 +379,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
   let lastResult: any = null;
   let forcedText: string | null = null;
+  let assistantTextEmitted = false;
 
   while (steps < MAX_STEPS) {
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
@@ -408,6 +409,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
              ev({ type: 'text', data: '⚠️ **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu.' });
              forcedText = 'Authentication Failed';
+             assistantTextEmitted = true;
              break;
         }
         plan = null;
@@ -431,6 +433,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           
           ev({ type: 'text', data: msg });
           forcedText = msg;
+          assistantTextEmitted = true;
           break;
       }
     }
@@ -439,6 +442,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const msg = 'أدوات المتصفح تعمل فقط داخل وضع الوكيل. انتقل إلى تبويب الوكيل لفتح المواقع داخل المتصفح.';
       ev({ type: 'text', data: msg });
       forcedText = msg;
+      assistantTextEmitted = true;
       break;
     }
 
@@ -452,6 +456,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const msg = 'المتصفح غير مفتوح في وضع الوكيل. افتح المتصفح في الوسط أولاً ثم أعد تنفيذ أمر المتصفح.';
         ev({ type: 'text', data: msg });
         forcedText = msg;
+        assistantTextEmitted = true;
         break;
       }
     }
@@ -560,6 +565,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
            const msg = `❌ **Image Generation Failed**\n${errorMsg}\n\nPlease verify your OpenAI organization settings or try a different prompt.`;
            forcedText = msg;
            ev({ type: 'text', data: msg });
+           assistantTextEmitted = true;
            break;
        }
     }
@@ -569,6 +575,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (text) {
         forcedText = text;
         ev({ type: 'text', data: text });
+        assistantTextEmitted = true;
       }
     }
 
@@ -578,6 +585,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         // Do not emit markdown image to avoid duplication. The UI handles artifact_created event.
         forcedText = `🎨 Image generated successfully.`;
         ev({ type: 'text', data: forcedText }); 
+        assistantTextEmitted = true;
         break; 
       }
     }
@@ -593,6 +601,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const msg = msgParts.join('\n');
       forcedText = msg;
       ev({ type: 'text', data: msg });
+      assistantTextEmitted = true;
       break;
     }
 
@@ -629,6 +638,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           ].join('\n');
           forcedText = md;
           ev({ type: 'text', data: md });
+          assistantTextEmitted = true;
         } else if (base && sym) {
           const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
           ev({ type: 'step_started', data: { name: `execute:http_fetch(fallback)` } });
@@ -650,6 +660,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             ].join('\n');
             forcedText = md2;
             ev({ type: 'text', data: md2 });
+            assistantTextEmitted = true;
           }
           if (useMock) {
             store.addExec(runId, 'http_fetch', { url: fbUrl }, fbRes.output, fbRes.ok, fbRes.logs);
@@ -674,6 +685,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             const mdw = parts.join('\n');
             forcedText = mdw;
             ev({ type: 'text', data: mdw });
+            assistantTextEmitted = true;
           }
         }
       } catch {}
@@ -703,6 +715,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           const mds = mdParts.join('\n');
           forcedText = mds;
           ev({ type: 'text', data: mds });
+          assistantTextEmitted = true;
         }
       } catch {}
     }
@@ -724,6 +737,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const mde = parts.join('\n');
         forcedText = mde;
         ev({ type: 'text', data: mde });
+        assistantTextEmitted = true;
       } catch {}
     }
 
@@ -756,12 +770,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
   }
 
-  // Emit both events to ensure client compatibility
+  const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : 'No output');
+
+  if (!assistantTextEmitted) {
+    ev({ type: 'text', data: finalContent });
+  }
+
   ev({ type: 'run_completed', data: { runId, result: lastResult } });
   ev({ type: 'run_finished', data: { runId, status: 'done' } });
-  
-  // Save message to DB
-  const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : 'No output');
   
   if (useMock) {
     store.addMessage(sessionId, 'assistant', finalContent, runId);
