@@ -61,15 +61,89 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick }: { event: any, i
   let content = event.data.text || event.data;
   let options: any[] = [];
 
-  // Parse options block :::options ... :::
   if (!isUser && typeof content === 'string' && content.includes(':::options')) {
-      const parts = content.split(':::options');
-      content = parts[0];
-      try {
-          const jsonStr = parts[1].replace(/:::/g, '').trim();
-          options = JSON.parse(jsonStr);
-      } catch (e) {
-          console.error('Failed to parse options', e);
+      const extractFirstJsonValue = (s: string) => {
+          const start = s.search(/[\[{]/);
+          if (start < 0) return null;
+          const stack: string[] = [];
+          const openToClose: Record<string, string> = { '{': '}', '[': ']' };
+          let inStr = false;
+          let esc = false;
+          for (let i = start; i < s.length; i++) {
+              const ch = s[i];
+              if (inStr) {
+                  if (esc) {
+                      esc = false;
+                      continue;
+                  }
+                  if (ch === '\\') {
+                      esc = true;
+                      continue;
+                  }
+                  if (ch === '"') inStr = false;
+                  continue;
+              }
+              if (ch === '"') {
+                  inStr = true;
+                  continue;
+              }
+              if (ch === '{' || ch === '[') {
+                  stack.push(openToClose[ch]);
+                  continue;
+              }
+              if (ch === '}' || ch === ']') {
+                  if (stack.length === 0) return null;
+                  const expected = stack[stack.length - 1];
+                  if (ch !== expected) return null;
+                  stack.pop();
+                  if (stack.length === 0) {
+                      return { jsonText: s.slice(start, i + 1), rest: s.slice(i + 1) };
+                  }
+              }
+          }
+          return null;
+      };
+
+      const extracted: any[] = [];
+      let cleaned = content;
+      const re = /:::options\s*([\s\S]*?):::/g;
+      let match: RegExpExecArray | null = null;
+      let lastIndex = 0;
+      const keptParts: string[] = [];
+      while ((match = re.exec(content))) {
+          keptParts.push(content.slice(lastIndex, match.index));
+          lastIndex = re.lastIndex;
+          const block = String(match[1] ?? '').trim();
+          if (!block) continue;
+          try {
+              const parsed = JSON.parse(block);
+              if (Array.isArray(parsed)) extracted.push(...parsed);
+              else if (parsed) extracted.push(parsed);
+          } catch {}
+      }
+      if (lastIndex > 0) {
+          keptParts.push(content.slice(lastIndex));
+          cleaned = keptParts.join('').trimEnd();
+      }
+
+      if (extracted.length === 0) {
+          const idx = content.indexOf(':::options');
+          const prefix = content.slice(0, idx).trimEnd();
+          const after = content.slice(idx + ':::options'.length);
+          const first = extractFirstJsonValue(after);
+          if (first) {
+              try {
+                  const parsed = JSON.parse(first.jsonText);
+                  if (Array.isArray(parsed)) extracted.push(...parsed);
+                  else if (parsed) extracted.push(parsed);
+                  cleaned = prefix;
+              } catch {}
+          }
+      }
+
+      if (extracted.length > 0) {
+          options = extracted;
+          content = cleaned;
       }
   }
 
