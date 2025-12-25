@@ -628,6 +628,7 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 5,
     auditFields: ['topic'],
     mockSupported: false,
+    description: 'Perform a comprehensive deep dive into a topic. Uses recursive search, browsing, and synthesis to generate a detailed report. Best for "analyze", "research", or complex questions requiring multiple sources.',
   },
   {
     name: 'web_search',
@@ -640,6 +641,7 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 10,
     auditFields: ['query'],
     mockSupported: false,
+    description: 'Perform a standard web search (like Google/DuckDuckGo). Best for quick facts, current events, or checking if a library exists. Returns a list of titles and snippets. Use deep_research for complex topics.',
   },
   {
     name: 'file_read',
