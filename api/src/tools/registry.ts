@@ -1152,120 +1152,116 @@ Instructions:
     if (name === 'web_search') {
       const query = String(input?.query ?? '').trim();
       const logs: string[] = [];
-      const officialUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
       
-      let results: any[] = [];
-      
-      // 1. Fast try on official API (often fails on servers, so short timeout)
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 1500);
-        const resp = await fetch(officialUrl, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (resp.ok) {
-          const body = await resp.text();
-          let json: any = null;
-          try { json = JSON.parse(body); } catch {}
-          const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
-          const items = topics.map((t: any) => ({
-             title: String(t?.Text || '').slice(0, 120),
-             url: String(t?.FirstURL || ''),
-             description: String(t?.Text || '')
-           })).filter((x: any) => x.url && x.title).slice(0, 5);
-           results.push(...items);
-        }
-      } catch (err: any) {
-        logs.push(`ddg_api.error=${err.name === 'AbortError' ? 'timeout' : err.message}`);
-      }
-
-      // 2. If few results, run Scraper + Wiki in parallel
-      if (results.length < 3) {
-        const [scrapeRes, wikiRes] = await Promise.allSettled([
-          (async () => {
-             const ddg = await import('duck-duck-scrape');
-             try {
-                // Timeout promise for DDG
-                const timeout = new Promise<any>((_, reject) => setTimeout(() => reject(new Error('DDG Timeout')), 5000));
-                const search = ddg.search(query);
-                const res = await Promise.race([search, timeout]);
-                
-                return (res.results || []).map((r: any) => ({
-                  title: String(r.title).slice(0, 120),
-                  url: String(r.url),
-                  description: String(r.description)
-                })).filter((x: any) => x.url && x.title);
-             } catch (e) {
-                return [];
-             }
-          })(),
-          (async () => {
-             const hasArabic = /[\u0600-\u06FF]/.test(query);
-             const lang = hasArabic ? 'ar' : 'en';
-             
-             // Smart query cleaning for Wikipedia
-             let wikiQuery = query;
-             if (hasArabic) {
-                 // Remove common question words and prepositions
-                 const stopWords = ['اين', 'أين', 'تقع', 'يقع', 'ماهي', 'ما', 'هي', 'هو', 'معلومات', 'عن', 'حي', 'كيف', 'متى', 'لماذا', 'كم', 'هل', 'اسم'];
-                 // Normalize prefixes like 'بال' -> 'في ال'
-                 const normalized = query.replace(/\bبال(\w+)/g, 'في ال$1');
-                 
-                 wikiQuery = normalized.split(' ')
-                    .filter(w => !stopWords.includes(w.replace(/[أإآ]/g, 'ا').trim()))
-                    .join(' ');
-             }
-
-             // Strategy: Try quoted phrase first for precision, then loose search
-             const trySearch = async (q: string) => {
-                 const controller = new AbortController();
-                 const id = setTimeout(() => controller.abort(), 5000);
-                 try {
-                    // Fetch more context from Wiki
-                    const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=7&srprop=snippet|titlesnippet|sectiontitle`;
-                    const r = await fetch(wurl, { signal: controller.signal });
-                    clearTimeout(id);
-                    if (!r.ok) return [];
-                    const j = await r.json();
-                    return (j.query?.search || []).map((it: any) => ({
-                      title: String(it.title).slice(0, 120),
-                      url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
-                      description: String(it.snippet).replace(/<[^>]+>/g, '')
-                    })).filter((x: any) => x.url && x.title);
-                 } catch (e) {
-                    clearTimeout(id);
-                    return [];
-                 }
-             };
-
-             // 1. Try quoted exact match if we have a cleaned query
-             if (wikiQuery.trim()) {
-                 const quoted = `"${wikiQuery.trim()}"`;
-                 const exactRes = await trySearch(quoted);
-                 if (exactRes.length > 0) return exactRes;
-             }
-
-             // 2. Fallback to loose search
-             return await trySearch(wikiQuery);
-          })()
-        ]);
-
-        if (scrapeRes.status === 'fulfilled') results.push(...scrapeRes.value);
-        else logs.push(`scrape.failed=${scrapeRes.reason}`);
+        const puppeteer = await import('puppeteer');
+        // Launch standard headless browser
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+        });
         
-        if (wikiRes.status === 'fulfilled') results.push(...wikiRes.value);
-        else logs.push(`wiki.failed=${wikiRes.reason}`);
-      }
+        const page = await browser.newPage();
+        
+        // Use Mobile User Agent to get simpler, parse-friendly Google results
+        await page.setUserAgent('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36');
+        
+        // Block heavy resources
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            const type = req.resourceType();
+            if (['image', 'stylesheet', 'font', 'media', 'script'].includes(type)) req.abort();
+            else req.continue();
+        });
 
-      // Dedup
-      const unique = new Map();
-      for (const r of results) {
-        const key = r.url;
-        if (!unique.has(key)) unique.set(key, r);
+        // Search Google
+        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        
+        // Wait briefly for content
+        try { await page.waitForSelector('div', { timeout: 3000 }); } catch {}
+
+        const results = await page.evaluate(() => {
+            const items: any[] = [];
+            
+            // In Mobile View, Google uses .BNeawe classes heavily for answers and snippets
+            // "BNeawe iBp4i AP7Wnd" -> Large text (often the direct answer)
+            // "BNeawe s3v9rd AP7Wnd" -> Snippet text
+            // "BNeawe UPmit AP7Wnd" -> URL/Breadcrumb
+            
+            // 1. Check for Direct Answer (Large Text)
+            const largeTexts = document.querySelectorAll('.BNeawe.iBp4i.AP7Wnd');
+            largeTexts.forEach(el => {
+                if (el.textContent && el.textContent.length < 200) {
+                     items.push({
+                        title: 'Direct Answer / Featured Result',
+                        url: 'https://www.google.com',
+                        description: `**ANSWER**: ${el.textContent.trim()}`
+                    });
+                }
+            });
+
+            // 2. Standard Results
+            // The container for a result in mobile view often varies, but usually:
+            // .xpd -> container
+            // .kCrYT -> link wrapper
+            
+            const containers = document.querySelectorAll('.xpd');
+            containers.forEach(div => {
+                // Try to find title, link, and snippet within this container
+                const titleEl = div.querySelector('.BNeawe.vvjwJb.AP7Wnd') || div.querySelector('h3');
+                const linkEl = div.querySelector('a');
+                // Snippet is often in a different BNeawe class
+                const snippetEl = div.querySelector('.BNeawe.s3v9rd.AP7Wnd');
+                
+                if (titleEl && linkEl && snippetEl) {
+                    const title = titleEl.textContent?.trim();
+                    const url = linkEl.href;
+                    // Extract URL from google redirect if needed (google.com/url?q=...)
+                    let finalUrl = url;
+                    if (url.includes('/url?q=')) {
+                        try { finalUrl = new URLSearchParams(new URL(url).search).get('q') || url; } catch {}
+                    }
+                    
+                    if (title && finalUrl && !finalUrl.includes('google.com')) {
+                        items.push({
+                            title,
+                            url: finalUrl,
+                            description: snippetEl.textContent?.trim() || ''
+                        });
+                    }
+                }
+            });
+            
+            return items;
+        });
+
+        await browser.close();
+        
+        // Deduplicate
+        const unique = new Map();
+        for (const r of results) {
+            if (r.title.includes('Direct Answer')) {
+                // Prioritize direct answers
+                unique.set('direct_' + Math.random(), r);
+            } else {
+                if (!unique.has(r.url)) unique.set(r.url, r);
+            }
+        }
+        
+        const final = Array.from(unique.values()).slice(0, 8);
+        logs.push(`google.search_count=${final.length}`);
+        
+        if (final.length === 0) {
+             // Fallback to error
+             return { ok: false, error: 'No results found', logs };
+        }
+        
+        return { ok: true, output: { results: final }, logs };
+
+      } catch (err: any) {
+         logs.push(`google.error=${err.message}`);
+         return { ok: false, error: `Search failed: ${err.message}`, logs };
       }
-      
-      const final = Array.from(unique.values()).slice(0, 10);
-      logs.push(`search.final_count=${final.length}`);
-      return { ok: final.length > 0, output: { results: final }, logs };
     }
     if (name === 'file_read') {
       const filename = String(input?.filename ?? '');
