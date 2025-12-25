@@ -1420,97 +1420,82 @@ ${contents.join("\n---\n")}`
     if (name === "web_search") {
       const query = String(input?.query ?? "").trim();
       const logs2 = [];
-      const officialUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-      let results = [];
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 1500);
-        const resp = await fetch(officialUrl, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (resp.ok) {
-          const body = await resp.text();
-          let json = null;
-          try {
-            json = JSON.parse(body);
-          } catch {
-          }
-          const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
-          const items = topics.map((t) => ({
-            title: String(t?.Text || "").slice(0, 120),
-            url: String(t?.FirstURL || ""),
-            description: String(t?.Text || "")
-          })).filter((x) => x.url && x.title).slice(0, 5);
-          results.push(...items);
+        const puppeteer = await import("puppeteer");
+        const browser = await puppeteer.launch({
+          headless: "new",
+          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+        });
+        const page = await browser.newPage();
+        await page.setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36");
+        await page.setRequestInterception(true);
+        page.on("request", (req) => {
+          const type = req.resourceType();
+          if (["image", "stylesheet", "font", "media", "script"].includes(type)) req.abort();
+          else req.continue();
+        });
+        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { waitUntil: "domcontentloaded", timeout: 15e3 });
+        try {
+          await page.waitForSelector("div", { timeout: 3e3 });
+        } catch {
         }
-      } catch (err) {
-        logs2.push(`ddg_api.error=${err.name === "AbortError" ? "timeout" : err.message}`);
-      }
-      if (results.length < 3) {
-        const [scrapeRes, wikiRes] = await Promise.allSettled([
-          (async () => {
-            const ddg = await import("duck-duck-scrape");
-            try {
-              const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("DDG Timeout")), 5e3));
-              const search = ddg.search(query);
-              const res = await Promise.race([search, timeout]);
-              return (res.results || []).map((r) => ({
-                title: String(r.title).slice(0, 120),
-                url: String(r.url),
-                description: String(r.description)
-              })).filter((x) => x.url && x.title);
-            } catch (e) {
-              return [];
+        const results = await page.evaluate(() => {
+          const items = [];
+          const largeTexts = document.querySelectorAll(".BNeawe.iBp4i.AP7Wnd");
+          largeTexts.forEach((el) => {
+            if (el.textContent && el.textContent.length < 200) {
+              items.push({
+                title: "Direct Answer / Featured Result",
+                url: "https://www.google.com",
+                description: `**ANSWER**: ${el.textContent.trim()}`
+              });
             }
-          })(),
-          (async () => {
-            const hasArabic = /[\u0600-\u06FF]/.test(query);
-            const lang = hasArabic ? "ar" : "en";
-            let wikiQuery = query;
-            if (hasArabic) {
-              const stopWords = ["\u0627\u064A\u0646", "\u0623\u064A\u0646", "\u062A\u0642\u0639", "\u064A\u0642\u0639", "\u0645\u0627\u0647\u064A", "\u0645\u0627", "\u0647\u064A", "\u0647\u0648", "\u0645\u0639\u0644\u0648\u0645\u0627\u062A", "\u0639\u0646", "\u062D\u064A", "\u0643\u064A\u0641", "\u0645\u062A\u0649", "\u0644\u0645\u0627\u0630\u0627", "\u0643\u0645", "\u0647\u0644", "\u0627\u0633\u0645"];
-              const normalized = query.replace(/\bبال(\w+)/g, "\u0641\u064A \u0627\u0644$1");
-              wikiQuery = normalized.split(" ").filter((w) => !stopWords.includes(w.replace(/[أإآ]/g, "\u0627").trim())).join(" ");
-            }
-            const trySearch = async (q) => {
-              const controller = new AbortController();
-              const id = setTimeout(() => controller.abort(), 5e3);
-              try {
-                const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=7&srprop=snippet|titlesnippet|sectiontitle`;
-                const r = await fetch(wurl, { signal: controller.signal });
-                clearTimeout(id);
-                if (!r.ok) return [];
-                const j = await r.json();
-                return (j.query?.search || []).map((it) => ({
-                  title: String(it.title).slice(0, 120),
-                  url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, "_"))}`,
-                  description: String(it.snippet).replace(/<[^>]+>/g, "")
-                })).filter((x) => x.url && x.title);
-              } catch (e) {
-                clearTimeout(id);
-                return [];
+          });
+          const containers = document.querySelectorAll(".xpd");
+          containers.forEach((div) => {
+            const titleEl = div.querySelector(".BNeawe.vvjwJb.AP7Wnd") || div.querySelector("h3");
+            const linkEl = div.querySelector("a");
+            const snippetEl = div.querySelector(".BNeawe.s3v9rd.AP7Wnd");
+            if (titleEl && linkEl && snippetEl) {
+              const title = titleEl.textContent?.trim();
+              const url = linkEl.href;
+              let finalUrl = url;
+              if (url.includes("/url?q=")) {
+                try {
+                  finalUrl = new URLSearchParams(new URL(url).search).get("q") || url;
+                } catch {
+                }
               }
-            };
-            if (wikiQuery.trim()) {
-              const quoted = `"${wikiQuery.trim()}"`;
-              const exactRes = await trySearch(quoted);
-              if (exactRes.length > 0) return exactRes;
+              if (title && finalUrl && !finalUrl.includes("google.com")) {
+                items.push({
+                  title,
+                  url: finalUrl,
+                  description: snippetEl.textContent?.trim() || ""
+                });
+              }
             }
-            return await trySearch(wikiQuery);
-          })()
-        ]);
-        if (scrapeRes.status === "fulfilled") results.push(...scrapeRes.value);
-        else logs2.push(`scrape.failed=${scrapeRes.reason}`);
-        if (wikiRes.status === "fulfilled") results.push(...wikiRes.value);
-        else logs2.push(`wiki.failed=${wikiRes.reason}`);
+          });
+          return items;
+        });
+        await browser.close();
+        const unique = /* @__PURE__ */ new Map();
+        for (const r of results) {
+          if (r.title.includes("Direct Answer")) {
+            unique.set("direct_" + Math.random(), r);
+          } else {
+            if (!unique.has(r.url)) unique.set(r.url, r);
+          }
+        }
+        const final = Array.from(unique.values()).slice(0, 8);
+        logs2.push(`google.search_count=${final.length}`);
+        if (final.length === 0) {
+          return { ok: false, error: "No results found", logs: logs2 };
+        }
+        return { ok: true, output: { results: final }, logs: logs2 };
+      } catch (err) {
+        logs2.push(`google.error=${err.message}`);
+        return { ok: false, error: `Search failed: ${err.message}`, logs: logs2 };
       }
-      const unique = /* @__PURE__ */ new Map();
-      for (const r of results) {
-        const key = r.url;
-        if (!unique.has(key)) unique.set(key, r);
-      }
-      const final = Array.from(unique.values()).slice(0, 10);
-      logs2.push(`search.final_count=${final.length}`);
-      return { ok: final.length > 0, output: { results: final }, logs: logs2 };
     }
     if (name === "file_read") {
       const filename = String(input?.filename ?? "");
@@ -2452,8 +2437,15 @@ Before *every* single tool call, you must go through this internal cycle:
    - Use strictly for verification, live testing, or up-to-date documentation.
 
 ## CRITICAL INSTRUCTIONS:
-1. **Smart Internet Answers**:
-   - If the user asks for a factual answer that depends on current internet information:
+1. **Direct & Concise Answers**:
+   - If the user asks for a specific fact (e.g., "Current USD rate", "Weather in Dubai", "Time in Tokyo"):
+     1) Use **web_search** with a precise query (e.g., "USD to TRY rate today", "current weather Dubai").
+     2) **Trust the search result**: If the search returns a snippet with the answer, report it IMMEDIATELY and CONCISELY.
+     3) **Do not hedge**: Avoid saying "I cannot verify". If the search says "34.50", say "The rate is 34.50".
+     4) **Format**: "The current price of [Currency A] against [Currency B] is [Value]."
+
+2. **Smart Internet Answers**:
+   - For broader topics:
      1) Use **web_search** with a precise query.
      2) Select the best 1\u20132 results and fetch context using **html_extract** (preferred) or **http_fetch**.
      3) **SYNTHESIZE**: Combine the information into a single, coherent, accurate answer.
