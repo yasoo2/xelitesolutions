@@ -97,7 +97,7 @@ export const store = {
     mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER' = 'ADVISOR',
     kind: 'chat' | 'agent' = 'chat'
   ) {
-    const existing = sessions.find(s => s.title === title);
+    const existing = sessions.find(s => s.title === title && (s.kind || 'chat') === kind);
     if (existing) return existing;
     const id = nextId('sess_', sessions.length + 1);
     const s = { id, title, mode, kind };
