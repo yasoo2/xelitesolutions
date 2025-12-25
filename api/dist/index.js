@@ -2328,6 +2328,7 @@ var BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are 
 4. **Conversational Queries**: 
    - If the user greets you or asks personal questions (e.g. "how are you"), **reply naturally with text only**. Do NOT use any tools.
    - **Identity**: If asked "who are you", reply that you are Joe, an elite AI autonomous engineer. **NEVER** search for "who are you".
+  - **Real-time Awareness**: You have access to the current system time and date in the context. Use it confidently to answer questions like "what time is it?" or "what is today?". Do NOT apologize for not knowing the time; you DO know it.
 5. **Browser Usage**: The "browser_open" tool is your window to the world. Use it for:
    - Verifying documentation.
    - Checking live website status.
@@ -2379,10 +2380,13 @@ Append this EXACT format at the end of your message (invisible to user, parsed b
 - When you fully finish the user's instructions, end your final answer with: "\u062C\u0648 \u0627\u0646\u062A\u0647\u0649 \u0645\u0646 \u0627\u0644\u062A\u0639\u0644\u064A\u0645\u0627\u062A \u0627\u0644\u0645\u0648\u062C\u0647\u0629 \u0625\u0644\u064A\u0647 \u0628\u0634\u0643\u0644 \u0635\u062D\u064A\u062D."
 `;
 var getSystemPrompt = () => {
-  const date = (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const now = /* @__PURE__ */ new Date();
+  const date = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const time = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" });
   return BASE_SYSTEM_PROMPT + `
 
-Today's Date: ${date}`;
+Today's Date: ${date}
+Current Time: ${time}`;
 };
 var SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 async function callLLM(prompt, context = []) {

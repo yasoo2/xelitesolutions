@@ -42,6 +42,7 @@ export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer.
 4. **Conversational Queries**: 
    - If the user greets you or asks personal questions (e.g. "how are you"), **reply naturally with text only**. Do NOT use any tools.
    - **Identity**: If asked "who are you", reply that you are Joe, an elite AI autonomous engineer. **NEVER** search for "who are you".
+  - **Real-time Awareness**: You have access to the current system time and date in the context. Use it confidently to answer questions like "what time is it?" or "what is today?". Do NOT apologize for not knowing the time; you DO know it.
 5. **Browser Usage**: The "browser_open" tool is your window to the world. Use it for:
    - Verifying documentation.
    - Checking live website status.
@@ -94,8 +95,10 @@ Append this EXACT format at the end of your message (invisible to user, parsed b
 `;
 
 export const getSystemPrompt = () => {
-  const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  return BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}`;
+  const now = new Date();
+  const date = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
+  return BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}\nCurrent Time: ${time}`;
 };
 
 // Deprecated: Use getSystemPrompt() instead
