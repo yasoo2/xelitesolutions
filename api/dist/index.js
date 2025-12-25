@@ -1420,10 +1420,12 @@ ${contents.join("\n---\n")}`
     if (name === "web_search") {
       const query = String(input?.query ?? "").trim();
       const logs2 = [];
+      let results = [];
       try {
         const puppeteer = await import("puppeteer");
         const browser = await puppeteer.launch({
-          headless: "new",
+          headless: true,
+          // Use boolean true for stability
           args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
         });
         const page = await browser.newPage();
@@ -1439,7 +1441,7 @@ ${contents.join("\n---\n")}`
           await page.waitForSelector("div", { timeout: 3e3 });
         } catch {
         }
-        const results = await page.evaluate(() => {
+        const googleResults = await page.evaluate(() => {
           const items = [];
           const largeTexts = document.querySelectorAll(".BNeawe.iBp4i.AP7Wnd");
           largeTexts.forEach((el) => {
@@ -1478,24 +1480,97 @@ ${contents.join("\n---\n")}`
           return items;
         });
         await browser.close();
-        const unique = /* @__PURE__ */ new Map();
-        for (const r of results) {
-          if (r.title.includes("Direct Answer")) {
-            unique.set("direct_" + Math.random(), r);
-          } else {
-            if (!unique.has(r.url)) unique.set(r.url, r);
-          }
+        if (googleResults.length > 0) {
+          results.push(...googleResults);
+          logs2.push(`google.success=${googleResults.length}`);
+        } else {
+          throw new Error("No Google results found");
         }
-        const final = Array.from(unique.values()).slice(0, 8);
-        logs2.push(`google.search_count=${final.length}`);
-        if (final.length === 0) {
-          return { ok: false, error: "No results found", logs: logs2 };
-        }
-        return { ok: true, output: { results: final }, logs: logs2 };
       } catch (err) {
-        logs2.push(`google.error=${err.message}`);
-        return { ok: false, error: `Search failed: ${err.message}`, logs: logs2 };
+        logs2.push(`google.failed=${err.message}. Switching to fallback...`);
+        try {
+          const officialUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 2e3);
+            const resp = await fetch(officialUrl, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (resp.ok) {
+              const body = await resp.text();
+              let json = null;
+              try {
+                json = JSON.parse(body);
+              } catch {
+              }
+              const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
+              const items = topics.map((t) => ({
+                title: String(t?.Text || "").slice(0, 120),
+                url: String(t?.FirstURL || ""),
+                description: String(t?.Text || "")
+              })).filter((x) => x.url && x.title).slice(0, 5);
+              results.push(...items);
+            }
+          } catch {
+          }
+          if (results.length < 2) {
+            const [scrapeRes, wikiRes] = await Promise.allSettled([
+              (async () => {
+                const ddg = await import("duck-duck-scrape");
+                try {
+                  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("DDG Timeout")), 5e3));
+                  const search = ddg.search(query);
+                  const res = await Promise.race([search, timeout]);
+                  return (res.results || []).map((r) => ({
+                    title: String(r.title).slice(0, 120),
+                    url: String(r.url),
+                    description: String(r.description)
+                  })).filter((x) => x.url && x.title);
+                } catch (e) {
+                  return [];
+                }
+              })(),
+              (async () => {
+                const hasArabic = /[\u0600-\u06FF]/.test(query);
+                const lang = hasArabic ? "ar" : "en";
+                const trySearch = async (q) => {
+                  try {
+                    const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=5`;
+                    const r = await fetch(wurl);
+                    if (!r.ok) return [];
+                    const j = await r.json();
+                    return (j.query?.search || []).map((it) => ({
+                      title: String(it.title),
+                      url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, "_"))}`,
+                      description: String(it.snippet).replace(/<[^>]+>/g, "")
+                    }));
+                  } catch {
+                    return [];
+                  }
+                };
+                return await trySearch(query);
+              })()
+            ]);
+            if (scrapeRes.status === "fulfilled") results.push(...scrapeRes.value);
+            if (wikiRes.status === "fulfilled") results.push(...wikiRes.value);
+          }
+        } catch (fallbackErr) {
+          logs2.push(`fallback.failed=${fallbackErr.message}`);
+        }
       }
+      const unique = /* @__PURE__ */ new Map();
+      for (const r of results) {
+        if (r.title.includes("Direct Answer")) {
+          unique.set("direct_" + Math.random(), r);
+        } else {
+          if (!unique.has(r.url)) unique.set(r.url, r);
+        }
+      }
+      const final = Array.from(unique.values()).slice(0, 10);
+      logs2.push(`search.final_count=${final.length}`);
+      if (final.length === 0) {
+        return { ok: false, error: "No results found in Google or Fallbacks", logs: logs2 };
+      }
+      return { ok: true, output: { results: final }, logs: logs2 };
     }
     if (name === "file_read") {
       const filename = String(input?.filename ?? "");
