@@ -1017,43 +1017,94 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const logs: string[] = [];
       logs.push(`research.topic=${topic}`);
 
-      // 1. Search
-      const searchRes = await executeTool('web_search', { query: topic });
-      if (!searchRes.ok || !searchRes.output?.results?.length) {
-        return { ok: false, error: 'No search results found', logs };
+      const apiKey = process.env.OPENAI_API_KEY;
+      let searchQueries = [topic];
+
+      // 1. PLAN: Generate search queries if we have an LLM
+      if (apiKey) {
+        try {
+          const { default: OpenAI } = await import('openai');
+          const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+          
+          const planCompletion = await client.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+              { 
+                role: 'system', 
+                content: 'You are a Senior Research Planner. Breakdown the user topic into 3-5 distinct, targeted web search queries to gather comprehensive information. Return ONLY a JSON array of strings, e.g. ["query1", "query2"].' 
+              },
+              { role: 'user', content: `Topic: ${topic}` }
+            ],
+            response_format: { type: 'json_object' }
+          });
+          
+          const planText = planCompletion.choices[0].message.content || '{}';
+          const planJson = JSON.parse(planText);
+          if (Array.isArray(planJson.queries)) {
+            searchQueries = planJson.queries.slice(0, 5);
+          } else if (Array.isArray(planJson)) {
+             searchQueries = planJson.slice(0, 5);
+          }
+          logs.push(`research.plan=${searchQueries.join('|')}`);
+        } catch (e: any) {
+          logs.push(`planning_failed=${e.message}`);
+        }
+      }
+
+      // 2. SEARCH: Execute searches in parallel
+      const allResults: any[] = [];
+      const searchPromises = searchQueries.map(q => executeTool('web_search', { query: q }));
+      const searchOutcomes = await Promise.all(searchPromises);
+      
+      for (const res of searchOutcomes) {
+        if (res.ok && Array.isArray(res.output?.results)) {
+          allResults.push(...res.output.results);
+        }
+      }
+
+      if (allResults.length === 0) {
+        return { ok: false, error: 'No search results found for any query', logs };
       }
       
-      const results = (searchRes.output.results as any[]).slice(0, 3);
-      logs.push(`research.sources=${results.length}`);
+      // Dedup results by URL
+      const uniqueResults = new Map();
+      for (const r of allResults) {
+        if (!uniqueResults.has(r.url)) uniqueResults.set(r.url, r);
+      }
+      const topResults = Array.from(uniqueResults.values()).slice(0, 8); // Increase from 3 to 8
+      logs.push(`research.sources_found=${topResults.length}`);
       
       const contents: string[] = [];
       
-      // 2. Extract Content
-      for (const res of results) {
-        try {
-          logs.push(`fetching=${res.url}`);
-          const ext = await executeTool('html_extract', { url: res.url });
-          if (ext.ok && ext.output?.textSnippet) {
-            contents.push(`Source: ${res.title} (${res.url})\nContent: ${ext.output.textSnippet}\n`);
-          }
-        } catch (e) {
-          logs.push(`fetch_error=${e}`);
-        }
+      // 3. EXTRACT: Fetch content (sequential to be nice to rate limits/network, or parallel with limit)
+      // Let's do parallel with a limit of 4 at a time
+      const chunkSize = 4;
+      for (let i = 0; i < topResults.length; i += chunkSize) {
+          const chunk = topResults.slice(i, i + chunkSize);
+          await Promise.all(chunk.map(async (res: any) => {
+            try {
+                // logs.push(`fetching=${res.url}`); // Reduce log spam
+                const ext = await executeTool('html_extract', { url: res.url });
+                if (ext.ok && ext.output?.textSnippet) {
+                    contents.push(`Source: ${res.title} (${res.url})\nContent: ${ext.output.textSnippet}\n`);
+                }
+            } catch (e) {
+                // Ignore
+            }
+          }));
       }
       
       if (contents.length === 0) {
         return { ok: false, error: 'Failed to extract content from sources', logs };
       }
 
-      // 3. Synthesize
-      const apiKey = process.env.OPENAI_API_KEY;
+      // 4. SYNTHESIZE
       if (!apiKey) {
-        // Fallback: just return concatenated text if no LLM
         return { 
           ok: true, 
           output: { 
             report: `## Research Results for ${topic}\n\n${contents.join('\n\n')}`, 
-            sources: results.map(r => r.url) 
+            sources: topResults.map(r => r.url) 
           }, 
           logs 
         };
@@ -1068,7 +1119,14 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           messages: [
             { 
               role: 'system', 
-              content: 'You are a Research Assistant. Summarize the provided sources into a comprehensive, well-structured report (Markdown). Cite sources where appropriate. If Arabic content, write in Arabic.' 
+              content: `You are an Elite Research Assistant. Your goal is to produce a definitive, comprehensive report on the topic.
+Instructions:
+1. Synthesize information from multiple sources.
+2. Resolve conflicts if any.
+3. Structure with clear headings, bullet points, and sections.
+4. Cite sources using [1], [2] notation and provide a reference list at the end.
+5. If the topic or sources are in Arabic, write the report in Arabic.
+6. Be objective, detailed, and professional.` 
             },
             {
               role: 'user',
@@ -1082,7 +1140,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           ok: true,
           output: {
             report,
-            sources: results.map(r => r.url)
+            sources: topResults.map(r => r.url)
           },
           logs
         };

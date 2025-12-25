@@ -1301,30 +1301,71 @@ async function executeTool(name, input) {
       const topic = String(input?.topic ?? "").trim();
       const logs2 = [];
       logs2.push(`research.topic=${topic}`);
-      const searchRes = await executeTool("web_search", { query: topic });
-      if (!searchRes.ok || !searchRes.output?.results?.length) {
-        return { ok: false, error: "No search results found", logs: logs2 };
-      }
-      const results = searchRes.output.results.slice(0, 3);
-      logs2.push(`research.sources=${results.length}`);
-      const contents = [];
-      for (const res of results) {
+      const apiKey2 = process.env.OPENAI_API_KEY;
+      let searchQueries = [topic];
+      if (apiKey2) {
         try {
-          logs2.push(`fetching=${res.url}`);
-          const ext = await executeTool("html_extract", { url: res.url });
-          if (ext.ok && ext.output?.textSnippet) {
-            contents.push(`Source: ${res.title} (${res.url})
+          const { default: OpenAI4 } = await import("openai");
+          const client = new OpenAI4({ apiKey: apiKey2, baseURL: process.env.OPENAI_BASE_URL });
+          const planCompletion = await client.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: 'You are a Senior Research Planner. Breakdown the user topic into 3-5 distinct, targeted web search queries to gather comprehensive information. Return ONLY a JSON array of strings, e.g. ["query1", "query2"].'
+              },
+              { role: "user", content: `Topic: ${topic}` }
+            ],
+            response_format: { type: "json_object" }
+          });
+          const planText = planCompletion.choices[0].message.content || "{}";
+          const planJson = JSON.parse(planText);
+          if (Array.isArray(planJson.queries)) {
+            searchQueries = planJson.queries.slice(0, 5);
+          } else if (Array.isArray(planJson)) {
+            searchQueries = planJson.slice(0, 5);
+          }
+          logs2.push(`research.plan=${searchQueries.join("|")}`);
+        } catch (e) {
+          logs2.push(`planning_failed=${e.message}`);
+        }
+      }
+      const allResults = [];
+      const searchPromises = searchQueries.map((q) => executeTool("web_search", { query: q }));
+      const searchOutcomes = await Promise.all(searchPromises);
+      for (const res of searchOutcomes) {
+        if (res.ok && Array.isArray(res.output?.results)) {
+          allResults.push(...res.output.results);
+        }
+      }
+      if (allResults.length === 0) {
+        return { ok: false, error: "No search results found for any query", logs: logs2 };
+      }
+      const uniqueResults = /* @__PURE__ */ new Map();
+      for (const r of allResults) {
+        if (!uniqueResults.has(r.url)) uniqueResults.set(r.url, r);
+      }
+      const topResults = Array.from(uniqueResults.values()).slice(0, 8);
+      logs2.push(`research.sources_found=${topResults.length}`);
+      const contents = [];
+      const chunkSize = 4;
+      for (let i = 0; i < topResults.length; i += chunkSize) {
+        const chunk = topResults.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(async (res) => {
+          try {
+            const ext = await executeTool("html_extract", { url: res.url });
+            if (ext.ok && ext.output?.textSnippet) {
+              contents.push(`Source: ${res.title} (${res.url})
 Content: ${ext.output.textSnippet}
 `);
+            }
+          } catch (e) {
           }
-        } catch (e) {
-          logs2.push(`fetch_error=${e}`);
-        }
+        }));
       }
       if (contents.length === 0) {
         return { ok: false, error: "Failed to extract content from sources", logs: logs2 };
       }
-      const apiKey2 = process.env.OPENAI_API_KEY;
       if (!apiKey2) {
         return {
           ok: true,
@@ -1332,7 +1373,7 @@ Content: ${ext.output.textSnippet}
             report: `## Research Results for ${topic}
 
 ${contents.join("\n\n")}`,
-            sources: results.map((r) => r.url)
+            sources: topResults.map((r) => r.url)
           },
           logs: logs2
         };
@@ -1345,7 +1386,14 @@ ${contents.join("\n\n")}`,
           messages: [
             {
               role: "system",
-              content: "You are a Research Assistant. Summarize the provided sources into a comprehensive, well-structured report (Markdown). Cite sources where appropriate. If Arabic content, write in Arabic."
+              content: `You are an Elite Research Assistant. Your goal is to produce a definitive, comprehensive report on the topic.
+Instructions:
+1. Synthesize information from multiple sources.
+2. Resolve conflicts if any.
+3. Structure with clear headings, bullet points, and sections.
+4. Cite sources using [1], [2] notation and provide a reference list at the end.
+5. If the topic or sources are in Arabic, write the report in Arabic.
+6. Be objective, detailed, and professional.`
             },
             {
               role: "user",
@@ -1361,7 +1409,7 @@ ${contents.join("\n---\n")}`
           ok: true,
           output: {
             report,
-            sources: results.map((r) => r.url)
+            sources: topResults.map((r) => r.url)
           },
           logs: logs2
         };
