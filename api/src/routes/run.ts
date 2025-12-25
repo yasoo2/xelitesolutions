@@ -476,7 +476,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
     
-    if (kind === 'chat' && /^browser_/.test(String(plan.name || ''))) {
+    if (kind === 'chat' && /^browser_/.test(String(plan?.name || ''))) {
       const msg = 'أدوات المتصفح تعمل فقط داخل وضع الوكيل. انتقل إلى تبويب الوكيل لفتح المواقع داخل المتصفح.';
       ev({ type: 'text', data: msg });
       forcedText = msg;
@@ -484,7 +484,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       break;
     }
 
-    const planName = String(plan.name || '');
+    const planName = String(plan?.name || '');
     const isBrowserTool = /^browser_/.test(planName);
     if (kind === 'agent' && isBrowserTool) {
       const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
@@ -516,7 +516,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
 
-    if (kind === 'agent' && String(plan.name || '') === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
+    if (kind === 'agent' && String(plan?.name || '') === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
       const url = String((plan as any)?.input?.url || 'https://www.google.com').trim() || 'https://www.google.com';
       plan = {
         name: 'browser_run',
@@ -531,7 +531,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       kind === 'agent' &&
       typeof browserSessionId === 'string' &&
       browserSessionId.trim() &&
-      ['browser_run', 'browser_get_state', 'browser_extract'].includes(String(plan.name || ''))
+      ['browser_run', 'browser_get_state', 'browser_extract'].includes(String(plan?.name || ''))
     ) {
       const input = (plan as any).input;
       if (!input || typeof input !== 'object') (plan as any).input = {};
@@ -540,7 +540,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
 
-    if (plan.name === 'browser_run') {
+    if (plan?.name === 'browser_run') {
       const acts = Array.isArray((plan as any).input?.actions) ? (plan as any).input.actions : [];
       let sensitive = false;
       let actionText = 'browser_run';
@@ -563,31 +563,31 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (sensitive) {
         const risk = 'high';
         if (useMock) {
-          const ap = store.createApproval(runId, actionText, risk, plan.name, redactToolInputForStorage(plan.name, plan.input));
+          const ap = store.createApproval(runId, actionText, risk, plan?.name || '', redactToolInputForStorage(plan?.name || '', plan?.input));
           ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: actionText } });
           store.updateRun(runId, { status: 'blocked' });
           const { planContext } = await import('../approvals/context');
-          planContext.set(ap.id, { runId, name: plan.name, input: plan.input });
+          planContext.set(ap.id, { runId, name: plan?.name || '', input: plan?.input });
           return res.json({ runId, blocked: true, approvalId: ap.id });
         } else {
           const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
           ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: actionText } });
           await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
           const { planContext } = await import('../approvals/context');
-          planContext.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
+          planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
           return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
         }
       }
     }
 
-    const persistedInput = redactToolInputForStorage(plan.name, plan.input);
-    ev({ type: 'step_started', data: { name: `execute:${plan.name}`, input: persistedInput } });
-    const result = await executeTool(plan.name, plan.input);
+    const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
+    ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
+    const result = await executeTool(plan?.name || '', plan?.input);
     
     // Add result to history to prevent infinite loops
     history.push({ 
         role: 'assistant', 
-        content: `Tool Call: ${plan.name}\nInput: ${JSON.stringify(persistedInput)}\nOutput: ${JSON.stringify(result.output || result.error || 'Done')}` 
+        content: `Tool Call: ${plan?.name}\nInput: ${JSON.stringify(persistedInput)}\nOutput: ${JSON.stringify(result.output || result.error || 'Done')}` 
     });
 
     lastResult = result;
@@ -610,10 +610,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
 
-    ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan.name}`, result } });
+    ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
     
     // Stop on fatal errors (403, verification, etc.)
-    if (!result.ok && plan.name === 'image_generate') {
+    if (!result.ok && plan?.name === 'image_generate') {
        const errorMsg = String(result.error || '');
        const logsStr = (result.logs || []).join('\n');
        if (errorMsg.includes('403') || errorMsg.includes('verification') || logsStr.includes('error=403')) {
@@ -625,7 +625,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
        }
     }
 
-    if (result.ok && plan.name === 'echo') {
+    if (result.ok && plan?.name === 'echo') {
       const text = result.output?.text;
       if (text) {
         forcedText = text;
@@ -634,7 +634,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
 
-    if (result.ok && plan.name === 'image_generate') {
+    if (result.ok && plan?.name === 'image_generate') {
       const href = result.output?.href;
       if (href) {
         // Do not emit markdown image to avoid duplication. The UI handles artifact_created event.
@@ -646,9 +646,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     // Emit a user-visible confirmation when a file is created
-    if (result.ok && plan.name === 'file_write') {
+    if (result.ok && plan?.name === 'file_write') {
       const href = result.output?.href;
-      const fname = String(plan.input?.filename || '').trim();
+      const fname = String(plan?.input?.filename || '').trim();
       const msgParts: string[] = [];
       msgParts.push(`### تم إنشاء ملف`);
       if (fname) msgParts.push(`- الاسم: ${fname}`);
@@ -660,9 +660,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       break;
     }
 
-    if (result.ok && plan.name === 'http_fetch') {
+    if (result.ok && plan?.name === 'http_fetch') {
       try {
-        const urlStr = String(plan.input?.url || '');
+        const urlStr = String(plan?.input?.url || '');
         const u = new URL(urlStr);
         let base = (u.searchParams.get('base') || '').toUpperCase();
         let sym = (u.searchParams.get('symbols') || u.searchParams.get('sym') || '').toUpperCase();
@@ -670,11 +670,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           const m = u.pathname.match(/\/latest\/([A-Z]{3,4})/i);
           if (m) base = m[1].toUpperCase();
         }
-        if (!sym && typeof plan.input?.sym === 'string') {
-          sym = String(plan.input.sym).toUpperCase();
+        if (!sym && typeof plan?.input?.sym === 'string') {
+          sym = String(plan?.input?.sym).toUpperCase();
         }
-        if (!base && typeof plan.input?.base === 'string') {
-          base = String(plan.input.base).toUpperCase();
+        if (!base && typeof plan?.input?.base === 'string') {
+          base = String(plan?.input?.base).toUpperCase();
         }
         const rates = result.output?.json?.rates || {};
         let rate: number | null = null;
@@ -724,7 +724,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           }
         }
         if (u.hostname.includes('wttr.in')) {
-          const city = String(plan.input?.city || 'Istanbul');
+          const city = String(plan?.input?.city || 'Istanbul');
           const cc = Array.isArray(result.output?.json?.current_condition) ? result.output.json.current_condition[0] : null;
           const tempC = cc ? Number(cc.temp_C) : null;
           const desc = cc && Array.isArray(cc.weatherDesc) && cc.weatherDesc[0] ? String(cc.weatherDesc[0].value || '') : '';
@@ -745,7 +745,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         }
       } catch {}
     }
-    if (result.ok && plan.name === 'web_search') {
+    if (result.ok && plan?.name === 'web_search') {
       try {
         const results = Array.isArray(result.output?.results) ? result.output.results : [];
         const top = results && results[0] ? results[0] : null;
@@ -756,10 +756,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         }
       } catch {}
     }
-    if (result.ok && plan.name === 'html_extract') {
+    if (result.ok && plan?.name === 'html_extract') {
       try {
         const title = String(result.output?.title || '').trim();
-        const url = String(plan.input?.url || '').trim();
+        const url = String(plan?.input?.url || '').trim();
         if (title || url) {
           ev({ type: 'evidence_added', data: { kind: 'page', text: `${title}${title && url ? ' — ' : ''}${url}` } });
         }
@@ -767,30 +767,30 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     if (useMock) {
-      store.addExec(runId, plan.name, persistedInput, result.output, result.ok, result.logs);
+      store.addExec(runId, plan?.name || 'unknown', persistedInput, result.output, result.ok, result.logs);
     } else {
-      await ToolExecution.create({ runId, name: plan.name, input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
+      await ToolExecution.create({ runId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
     }
 
     if (!result.ok) {
         const errorMsg = result.error || (result.logs ? result.logs.join('\n') : 'Unknown error');
         
         // Self-Healing Notification
-        ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan.name}'. Analyzing fix...` });
+        ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });
         
         history.push({ 
             role: 'assistant', 
-            content: `Tool '${plan.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.` 
+            content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.` 
         });
     } else {
-        history.push({ role: 'assistant', content: `Tool '${plan.name}' executed. Result: ${JSON.stringify(result.output)}` });
+        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. Result: ${JSON.stringify(result.output)}` });
     }
     
     steps++;
 
     // If echo, we are done
-    if (plan.name === 'echo') {
-      forcedText = String(plan.input?.text || '');
+    if (plan?.name === 'echo') {
+      forcedText = String(plan?.input?.text || '');
       break;
     }
   }

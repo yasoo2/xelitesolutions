@@ -1153,6 +1153,85 @@ Instructions:
       const query = String(input?.query ?? '').trim();
       const logs: string[] = [];
       let results: any[] = [];
+
+      const q = query;
+      const norm = q.toLowerCase();
+      const candidates: Array<{ code: string; idx: number }> = [];
+      const pushCandidate = (code: string, idx: number) => {
+        if (idx < 0) return;
+        const upper = code.toUpperCase();
+        if (!/^[A-Z]{3}$/.test(upper)) return;
+        if (candidates.some(c => c.code === upper)) return;
+        candidates.push({ code: upper, idx });
+      };
+
+      const isoMatches = q.match(/\b[A-Z]{3}\b/gi) || [];
+      for (const m of isoMatches) {
+        pushCandidate(m.toUpperCase(), q.toUpperCase().indexOf(m.toUpperCase()));
+      }
+
+      const aliasRules: Array<{ re: RegExp; code: string }> = [
+        { re: /\b(usd|u\.s\.?\s*dollars?)\b/i, code: 'USD' },
+        { re: /\b(try)\b/i, code: 'TRY' },
+        { re: /\b(jod)\b/i, code: 'JOD' },
+        { re: /\b(ils)\b/i, code: 'ILS' },
+        { re: /\b(egp)\b/i, code: 'EGP' },
+        { re: /\b(sar)\b/i, code: 'SAR' },
+        { re: /\b(aed)\b/i, code: 'AED' },
+        { re: /\b(eur)\b/i, code: 'EUR' },
+        { re: /\b(gbp)\b/i, code: 'GBP' },
+        { re: /\b(cad)\b/i, code: 'CAD' },
+        { re: /\b(jpy)\b/i, code: 'JPY' },
+        { re: /\b(cny)\b/i, code: 'CNY' },
+        { re: /(دولار|الدولار)/i, code: 'USD' },
+        { re: /(الليرة التركية|ليرة تركية|التركية)/i, code: 'TRY' },
+        { re: /(الدينار الأردني|دينار أردني|الأردني)/i, code: 'JOD' },
+        { re: /(الشيكل|شيكل|₪)/i, code: 'ILS' },
+        { re: /(اليورو)/i, code: 'EUR' },
+        { re: /(الجنيه الإسترليني|الجنيه الاسترليني|إسترليني)/i, code: 'GBP' },
+        { re: /(الريال السعودي|ريال سعودي)/i, code: 'SAR' },
+        { re: /(الدرهم الإماراتي|درهم إماراتي|الدرهم الاماراتي)/i, code: 'AED' },
+        { re: /(الجنيه المصري|جنيه مصري)/i, code: 'EGP' },
+      ];
+
+      for (const r of aliasRules) {
+        pushCandidate(r.code, norm.search(r.re));
+      }
+
+      candidates.sort((a, b) => a.idx - b.idx);
+      const codeA = candidates[0]?.code;
+      const codeB = candidates[1]?.code;
+
+      const looksLikeFx =
+        /(\bto\b|\/|->|=|مقابل|تحويل|سعر|كم|يساوي)/i.test(q) &&
+        !!codeA &&
+        !!codeB &&
+        codeA !== codeB;
+
+      if (looksLikeFx) {
+        const base = codeA!;
+        const quote = codeB!;
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3500);
+          const resp = await fetch(`https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (resp.ok) {
+            const j: any = await resp.json().catch(() => null);
+            const rate = j?.rates?.[quote];
+            if (typeof rate === 'number' && Number.isFinite(rate)) {
+              const updated = typeof j?.time_last_update_utc === 'string' ? j.time_last_update_utc : '';
+              const desc = `**ANSWER**: 1 ${base} = ${rate} ${quote}${updated ? ` (updated: ${updated})` : ''}`;
+              results.push({ title: 'Currency Rate (API)', url: `https://open.er-api.com/v6/latest/${base}`, description: desc });
+              logs.push(`fx.api=1 base=${base} quote=${quote}`);
+              logs.push(`search.final_count=${results.length}`);
+              return { ok: true, output: { results }, logs };
+            }
+          }
+        } catch (e: any) {
+          logs.push(`fx.api_failed=${String(e?.message || e)}`);
+        }
+      }
       
       // 1. Try Puppeteer (Google)
       try {
@@ -1172,7 +1251,7 @@ Instructions:
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const type = req.resourceType();
-            if (['image', 'stylesheet', 'font', 'media', 'script'].includes(type)) req.abort();
+            if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
             else req.continue();
         });
 
@@ -1246,6 +1325,24 @@ Instructions:
                     });
                 }
             });
+
+            if (items.length < 3) {
+              const h3s = Array.from(document.querySelectorAll('#search a h3'));
+              for (const h3 of h3s) {
+                const a = h3.closest('a') as HTMLAnchorElement | null;
+                if (!a?.href) continue;
+                const title = (h3.textContent || '').trim();
+                if (!title) continue;
+                let desc = '';
+                const container = a.closest('div');
+                if (container) {
+                  const t = container.textContent || '';
+                  desc = t.replace(title, '').replace(/\s+/g, ' ').trim().slice(0, 220);
+                }
+                items.push({ title, url: a.href, description: desc });
+                if (items.length >= 10) break;
+              }
+            }
             
             return items;
         });

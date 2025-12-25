@@ -1421,6 +1421,74 @@ ${contents.join("\n---\n")}`
       const query = String(input?.query ?? "").trim();
       const logs2 = [];
       let results = [];
+      const q = query;
+      const norm = q.toLowerCase();
+      const candidates = [];
+      const pushCandidate = (code, idx) => {
+        if (idx < 0) return;
+        const upper = code.toUpperCase();
+        if (!/^[A-Z]{3}$/.test(upper)) return;
+        if (candidates.some((c) => c.code === upper)) return;
+        candidates.push({ code: upper, idx });
+      };
+      const isoMatches = q.match(/\b[A-Z]{3}\b/gi) || [];
+      for (const m of isoMatches) {
+        pushCandidate(m.toUpperCase(), q.toUpperCase().indexOf(m.toUpperCase()));
+      }
+      const aliasRules = [
+        { re: /\b(usd|u\.s\.?\s*dollars?)\b/i, code: "USD" },
+        { re: /\b(try)\b/i, code: "TRY" },
+        { re: /\b(jod)\b/i, code: "JOD" },
+        { re: /\b(ils)\b/i, code: "ILS" },
+        { re: /\b(egp)\b/i, code: "EGP" },
+        { re: /\b(sar)\b/i, code: "SAR" },
+        { re: /\b(aed)\b/i, code: "AED" },
+        { re: /\b(eur)\b/i, code: "EUR" },
+        { re: /\b(gbp)\b/i, code: "GBP" },
+        { re: /\b(cad)\b/i, code: "CAD" },
+        { re: /\b(jpy)\b/i, code: "JPY" },
+        { re: /\b(cny)\b/i, code: "CNY" },
+        { re: /(دولار|الدولار)/i, code: "USD" },
+        { re: /(الليرة التركية|ليرة تركية|التركية)/i, code: "TRY" },
+        { re: /(الدينار الأردني|دينار أردني|الأردني)/i, code: "JOD" },
+        { re: /(الشيكل|شيكل|₪)/i, code: "ILS" },
+        { re: /(اليورو)/i, code: "EUR" },
+        { re: /(الجنيه الإسترليني|الجنيه الاسترليني|إسترليني)/i, code: "GBP" },
+        { re: /(الريال السعودي|ريال سعودي)/i, code: "SAR" },
+        { re: /(الدرهم الإماراتي|درهم إماراتي|الدرهم الاماراتي)/i, code: "AED" },
+        { re: /(الجنيه المصري|جنيه مصري)/i, code: "EGP" }
+      ];
+      for (const r of aliasRules) {
+        pushCandidate(r.code, norm.search(r.re));
+      }
+      candidates.sort((a, b) => a.idx - b.idx);
+      const codeA = candidates[0]?.code;
+      const codeB = candidates[1]?.code;
+      const looksLikeFx = /(\bto\b|\/|->|=|مقابل|تحويل|سعر|كم|يساوي)/i.test(q) && !!codeA && !!codeB && codeA !== codeB;
+      if (looksLikeFx) {
+        const base = codeA;
+        const quote = codeB;
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3500);
+          const resp = await fetch(`https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (resp.ok) {
+            const j = await resp.json().catch(() => null);
+            const rate = j?.rates?.[quote];
+            if (typeof rate === "number" && Number.isFinite(rate)) {
+              const updated = typeof j?.time_last_update_utc === "string" ? j.time_last_update_utc : "";
+              const desc = `**ANSWER**: 1 ${base} = ${rate} ${quote}${updated ? ` (updated: ${updated})` : ""}`;
+              results.push({ title: "Currency Rate (API)", url: `https://open.er-api.com/v6/latest/${base}`, description: desc });
+              logs2.push(`fx.api=1 base=${base} quote=${quote}`);
+              logs2.push(`search.final_count=${results.length}`);
+              return { ok: true, output: { results }, logs: logs2 };
+            }
+          }
+        } catch (e) {
+          logs2.push(`fx.api_failed=${String(e?.message || e)}`);
+        }
+      }
       try {
         const puppeteer = await import("puppeteer");
         const browser = await puppeteer.launch({
@@ -1433,7 +1501,7 @@ ${contents.join("\n---\n")}`
         await page.setRequestInterception(true);
         page.on("request", (req) => {
           const type = req.resourceType();
-          if (["image", "stylesheet", "font", "media", "script"].includes(type)) req.abort();
+          if (["image", "stylesheet", "font", "media"].includes(type)) req.abort();
           else req.continue();
         });
         await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ar`, { waitUntil: "domcontentloaded", timeout: 15e3 });
@@ -1490,6 +1558,23 @@ ${contents.join("\n---\n")}`
               });
             }
           });
+          if (items.length < 3) {
+            const h3s = Array.from(document.querySelectorAll("#search a h3"));
+            for (const h3 of h3s) {
+              const a = h3.closest("a");
+              if (!a?.href) continue;
+              const title2 = (h3.textContent || "").trim();
+              if (!title2) continue;
+              let desc = "";
+              const container = a.closest("div");
+              if (container) {
+                const t = container.textContent || "";
+                desc = t.replace(title2, "").replace(/\s+/g, " ").trim().slice(0, 220);
+              }
+              items.push({ title: title2, url: a.href, description: desc });
+              if (items.length >= 10) break;
+            }
+          }
           return items;
         });
         await browser.close();
@@ -1545,9 +1630,9 @@ ${contents.join("\n---\n")}`
               (async () => {
                 const hasArabic = /[\u0600-\u06FF]/.test(query);
                 const lang = hasArabic ? "ar" : "en";
-                const trySearch = async (q) => {
+                const trySearch = async (q2) => {
                   try {
-                    const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=5`;
+                    const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q2)}&format=json&srlimit=5`;
                     const r = await fetch(wurl);
                     if (!r.ok) return [];
                     const j = await r.json();
@@ -3393,14 +3478,14 @@ ${merged.join("\n")}
         break;
       }
     }
-    if (kind === "chat" && /^browser_/.test(String(plan.name || ""))) {
+    if (kind === "chat" && /^browser_/.test(String(plan?.name || ""))) {
       const msg = "\u0623\u062F\u0648\u0627\u062A \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u062A\u0639\u0645\u0644 \u0641\u0642\u0637 \u062F\u0627\u062E\u0644 \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0646\u062A\u0642\u0644 \u0625\u0644\u0649 \u062A\u0628\u0648\u064A\u0628 \u0627\u0644\u0648\u0643\u064A\u0644 \u0644\u0641\u062A\u062D \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u062F\u0627\u062E\u0644 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
       ev({ type: "text", data: msg });
       forcedText = msg;
       assistantTextEmitted = true;
       break;
     }
-    const planName = String(plan.name || "");
+    const planName = String(plan?.name || "");
     const isBrowserTool = /^browser_/.test(planName);
     if (kind === "agent" && isBrowserTool) {
       const reqSid = typeof browserSessionId === "string" ? browserSessionId.trim() : "";
@@ -3430,7 +3515,7 @@ ${merged.join("\n")}
         }
       }
     }
-    if (kind === "agent" && String(plan.name || "") === "browser_open" && typeof browserSessionId === "string" && browserSessionId.trim()) {
+    if (kind === "agent" && String(plan?.name || "") === "browser_open" && typeof browserSessionId === "string" && browserSessionId.trim()) {
       const url = String(plan?.input?.url || "https://www.google.com").trim() || "https://www.google.com";
       plan = {
         name: "browser_run",
@@ -3440,13 +3525,13 @@ ${merged.join("\n")}
         }
       };
     }
-    if (kind === "agent" && typeof browserSessionId === "string" && browserSessionId.trim() && ["browser_run", "browser_get_state", "browser_extract"].includes(String(plan.name || ""))) {
+    if (kind === "agent" && typeof browserSessionId === "string" && browserSessionId.trim() && ["browser_run", "browser_get_state", "browser_extract"].includes(String(plan?.name || ""))) {
       const input = plan.input;
       if (!input || typeof input !== "object") plan.input = {};
       if (!plan.input.sessionId) plan.input.sessionId = browserSessionId.trim();
     }
     ev({ type: "step_done", data: { name: `thinking_step_${steps + 1}`, plan } });
-    if (plan.name === "browser_run") {
+    if (plan?.name === "browser_run") {
       const acts = Array.isArray(plan.input?.actions) ? plan.input.actions : [];
       let sensitive = false;
       let actionText = "browser_run";
@@ -3472,28 +3557,28 @@ ${merged.join("\n")}
       if (sensitive) {
         const risk2 = "high";
         if (useMock) {
-          const ap = store.createApproval(runId, actionText, risk2, plan.name, redactToolInputForStorage(plan.name, plan.input));
+          const ap = store.createApproval(runId, actionText, risk2, plan?.name || "", redactToolInputForStorage(plan?.name || "", plan?.input));
           ev({ type: "approval_required", data: { id: ap.id, runId, risk: risk2, action: actionText } });
           store.updateRun(runId, { status: "blocked" });
           const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
-          planContext2.set(ap.id, { runId, name: plan.name, input: plan.input });
+          planContext2.set(ap.id, { runId, name: plan?.name || "", input: plan?.input });
           return res.json({ runId, blocked: true, approvalId: ap.id });
         } else {
           const ap = await Approval.create({ runId, action: actionText, risk: risk2, status: "pending" });
           ev({ type: "approval_required", data: { id: ap._id.toString(), runId, risk: risk2, action: actionText } });
           await Run.findByIdAndUpdate(runId, { $set: { status: "blocked" } });
           const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
-          planContext2.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
+          planContext2.set(ap._id.toString(), { runId, name: plan?.name || "", input: plan?.input });
           return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
         }
       }
     }
-    const persistedInput = redactToolInputForStorage(plan.name, plan.input);
-    ev({ type: "step_started", data: { name: `execute:${plan.name}`, input: persistedInput } });
-    const result = await executeTool(plan.name, plan.input);
+    const persistedInput = redactToolInputForStorage(plan?.name || "", plan?.input);
+    ev({ type: "step_started", data: { name: `execute:${plan?.name}`, input: persistedInput } });
+    const result = await executeTool(plan?.name || "", plan?.input);
     history.push({
       role: "assistant",
-      content: `Tool Call: ${plan.name}
+      content: `Tool Call: ${plan?.name}
 Input: ${JSON.stringify(persistedInput)}
 Output: ${JSON.stringify(result.output || result.error || "Done")}`
     });
@@ -3519,8 +3604,8 @@ Output: ${JSON.stringify(result.output || result.error || "Done")}`
         }
       }
     }
-    ev({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${plan.name}`, result } });
-    if (!result.ok && plan.name === "image_generate") {
+    ev({ type: result.ok ? "step_done" : "step_failed", data: { name: `execute:${plan?.name}`, result } });
+    if (!result.ok && plan?.name === "image_generate") {
       const errorMsg = String(result.error || "");
       const logsStr = (result.logs || []).join("\n");
       if (errorMsg.includes("403") || errorMsg.includes("verification") || logsStr.includes("error=403")) {
@@ -3534,7 +3619,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
         break;
       }
     }
-    if (result.ok && plan.name === "echo") {
+    if (result.ok && plan?.name === "echo") {
       const text2 = result.output?.text;
       if (text2) {
         forcedText = text2;
@@ -3542,7 +3627,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
         assistantTextEmitted = true;
       }
     }
-    if (result.ok && plan.name === "image_generate") {
+    if (result.ok && plan?.name === "image_generate") {
       const href = result.output?.href;
       if (href) {
         forcedText = `\u{1F3A8} Image generated successfully.`;
@@ -3551,9 +3636,9 @@ Please verify your OpenAI organization settings or try a different prompt.`;
         break;
       }
     }
-    if (result.ok && plan.name === "file_write") {
+    if (result.ok && plan?.name === "file_write") {
       const href = result.output?.href;
-      const fname = String(plan.input?.filename || "").trim();
+      const fname = String(plan?.input?.filename || "").trim();
       const msgParts = [];
       msgParts.push(`### \u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u0645\u0644\u0641`);
       if (fname) msgParts.push(`- \u0627\u0644\u0627\u0633\u0645: ${fname}`);
@@ -3564,9 +3649,9 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       assistantTextEmitted = true;
       break;
     }
-    if (result.ok && plan.name === "http_fetch") {
+    if (result.ok && plan?.name === "http_fetch") {
       try {
-        const urlStr = String(plan.input?.url || "");
+        const urlStr = String(plan?.input?.url || "");
         const u = new URL(urlStr);
         let base = (u.searchParams.get("base") || "").toUpperCase();
         let sym = (u.searchParams.get("symbols") || u.searchParams.get("sym") || "").toUpperCase();
@@ -3574,11 +3659,11 @@ Please verify your OpenAI organization settings or try a different prompt.`;
           const m = u.pathname.match(/\/latest\/([A-Z]{3,4})/i);
           if (m) base = m[1].toUpperCase();
         }
-        if (!sym && typeof plan.input?.sym === "string") {
-          sym = String(plan.input.sym).toUpperCase();
+        if (!sym && typeof plan?.input?.sym === "string") {
+          sym = String(plan?.input?.sym).toUpperCase();
         }
-        if (!base && typeof plan.input?.base === "string") {
-          base = String(plan.input.base).toUpperCase();
+        if (!base && typeof plan?.input?.base === "string") {
+          base = String(plan?.input?.base).toUpperCase();
         }
         const rates = result.output?.json?.rates || {};
         let rate = null;
@@ -3628,7 +3713,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
           }
         }
         if (u.hostname.includes("wttr.in")) {
-          const city = String(plan.input?.city || "Istanbul");
+          const city = String(plan?.input?.city || "Istanbul");
           const cc = Array.isArray(result.output?.json?.current_condition) ? result.output.json.current_condition[0] : null;
           const tempC = cc ? Number(cc.temp_C) : null;
           const desc = cc && Array.isArray(cc.weatherDesc) && cc.weatherDesc[0] ? String(cc.weatherDesc[0].value || "") : "";
@@ -3650,7 +3735,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       } catch {
       }
     }
-    if (result.ok && plan.name === "web_search") {
+    if (result.ok && plan?.name === "web_search") {
       try {
         const results = Array.isArray(result.output?.results) ? result.output.results : [];
         const top = results && results[0] ? results[0] : null;
@@ -3662,10 +3747,10 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       } catch {
       }
     }
-    if (result.ok && plan.name === "html_extract") {
+    if (result.ok && plan?.name === "html_extract") {
       try {
         const title = String(result.output?.title || "").trim();
-        const url = String(plan.input?.url || "").trim();
+        const url = String(plan?.input?.url || "").trim();
         if (title || url) {
           ev({ type: "evidence_added", data: { kind: "page", text: `${title}${title && url ? " \u2014 " : ""}${url}` } });
         }
@@ -3673,24 +3758,24 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       }
     }
     if (useMock) {
-      store.addExec(runId, plan.name, persistedInput, result.output, result.ok, result.logs);
+      store.addExec(runId, plan?.name || "unknown", persistedInput, result.output, result.ok, result.logs);
     } else {
-      await ToolExecution.create({ runId, name: plan.name, input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
+      await ToolExecution.create({ runId, name: plan?.name || "unknown", input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
     }
     if (!result.ok) {
       const errorMsg = result.error || (result.logs ? result.logs.join("\n") : "Unknown error");
-      ev({ type: "text", data: `\u26A0\uFE0F **Self-Healing Activated**: Detected error in '${plan.name}'. Analyzing fix...` });
+      ev({ type: "text", data: `\u26A0\uFE0F **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });
       history.push({
         role: "assistant",
-        content: `Tool '${plan.name}' FAILED. Error: ${errorMsg}. 
+        content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. 
 You must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.`
       });
     } else {
-      history.push({ role: "assistant", content: `Tool '${plan.name}' executed. Result: ${JSON.stringify(result.output)}` });
+      history.push({ role: "assistant", content: `Tool '${plan?.name}' executed. Result: ${JSON.stringify(result.output)}` });
     }
     steps++;
-    if (plan.name === "echo") {
-      forcedText = String(plan.input?.text || "");
+    if (plan?.name === "echo") {
+      forcedText = String(plan?.input?.text || "");
       break;
     }
   }
