@@ -104,6 +104,42 @@ function detectRisk(text: string) {
   return null;
 }
 
+function normalizeArabicQuery(input: string) {
+  return String(input || '')
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/ـ/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .trim();
+}
+
+function isWeatherLikeQuery(text: string) {
+  const t = normalizeArabicQuery(text);
+  if (!t) return false;
+  if (/(weather|temperature|forecast)/i.test(text)) return true;
+  if (/(طقس|درجه|درجة|حراره|الحراره|الجو|الجوّ|الاجواء|توقعات|تنبؤات)/.test(t)) return true;
+  if (/كم\s+.*(درجه|درجة|حراره|حرارة)/.test(t)) return true;
+  return false;
+}
+
+function extractWeatherCity(text: string) {
+  const raw = String(text || '').trim();
+  const t = normalizeArabicQuery(raw);
+  if (!t) return 'Istanbul';
+
+  if (/(istanbul|اسطنبول|اسطنبول|اسطنبول|إسطنبول)/i.test(raw) || /اسطنبول/.test(t)) return 'Istanbul';
+
+  const m1 = raw.match(/(?:في|ب|بال)\s*([^\s؟?!.,،؛:]+(?:\s+[^\s؟?!.,،؛:]+){0,2})/);
+  const candidate = m1 ? String(m1[1] || '').trim() : '';
+  if (candidate) return candidate;
+
+  return 'Istanbul';
+}
+
 router.post('/start', authenticate as any, async (req: Request, res: Response) => {
   let { text, sessionId, fileIds, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
   const isAuthed = Boolean((req as any).auth);
@@ -453,11 +489,28 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const inputSid = String((plan as any)?.input?.sessionId || '').trim();
       const hasSid = !!(reqSid || inputSid);
       if (!hasSid) {
-        const msg = 'المتصفح غير مفتوح في وضع الوكيل. افتح المتصفح في الوسط أولاً ثم أعد تنفيذ أمر المتصفح.';
-        ev({ type: 'text', data: msg });
-        forcedText = msg;
-        assistantTextEmitted = true;
-        break;
+        const userText = String(text || '');
+        if (isWeatherLikeQuery(userText)) {
+          const city = extractWeatherCity(userText);
+          plan = {
+            name: 'http_fetch',
+            input: { url: `https://wttr.in/${encodeURIComponent(city)}?format=j1`, city },
+          } as any;
+        } else {
+          const tn = normalizeArabicQuery(userText);
+          const hasUrl = /https?:\/\/\S+/i.test(userText);
+          const isExplicitOpen =
+            hasUrl || /(open|افتح|اذهب|ادخل|دخول|فتح|زيارة|browser)/i.test(tn);
+          if (!isExplicitOpen) {
+            plan = { name: 'web_search', input: { query: userText || planName } } as any;
+          } else {
+            const msg = 'المتصفح غير مفتوح في وضع الوكيل. افتح المتصفح في الوسط أولاً ثم أعد تنفيذ أمر المتصفح.';
+            ev({ type: 'text', data: msg });
+            forcedText = msg;
+            assistantTextEmitted = true;
+            break;
+          }
+        }
       }
     }
 

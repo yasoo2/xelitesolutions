@@ -109,7 +109,7 @@ var init_context = __esm({
 var import_express21 = __toESM(require("express"));
 var import_cors = __toESM(require("cors"));
 var import_morgan = __toESM(require("morgan"));
-var import_mongoose19 = __toESM(require("mongoose"));
+var import_mongoose20 = __toESM(require("mongoose"));
 var import_pino = __toESM(require("pino"));
 
 // src/config.ts
@@ -1647,8 +1647,8 @@ ${content}` }
       if (!connStr) return { ok: false, error: "No connection string provided", logs };
       if (connStr.startsWith("mongodb")) {
         try {
-          const mongoose20 = await import("mongoose");
-          const conn = await mongoose20.createConnection(connStr).asPromise();
+          const mongoose21 = await import("mongoose");
+          const conn = await mongoose21.createConnection(connStr).asPromise();
           if (!conn.db) {
             await conn.close();
             return { ok: false, error: "Failed to connect to DB", logs };
@@ -2092,6 +2092,7 @@ var runs = [];
 var execs = [];
 var artifacts = [];
 var approvals = [];
+var folders = [];
 var sessions = [];
 var summaries = [];
 var messages = [];
@@ -2141,6 +2142,28 @@ var store = {
   getApproval(id) {
     return approvals.find((x) => x.id === id) || null;
   },
+  listFolders() {
+    return folders.slice().sort((a, b) => a.createdAt - b.createdAt);
+  },
+  createFolder(name) {
+    const id = nextId("fold_", folders.length + 1);
+    const now = Date.now();
+    const f = { _id: id, name, createdAt: now, updatedAt: now };
+    folders.push(f);
+    return f;
+  },
+  updateFolder(id, patch) {
+    const f = folders.find((x) => x._id === id);
+    if (!f) return null;
+    if (typeof patch.name === "string") f.name = patch.name;
+    f.updatedAt = Date.now();
+    return f;
+  },
+  deleteFolder(id) {
+    const idx = folders.findIndex((x) => x._id === id);
+    if (idx !== -1) folders.splice(idx, 1);
+    return true;
+  },
   listRuns(sessionId) {
     return runs.filter((r) => !sessionId || r.sessionId === sessionId);
   },
@@ -2151,7 +2174,7 @@ var store = {
     return artifacts.filter((a) => !runId || a.runId === runId);
   },
   createSession(title, mode = "ADVISOR", kind = "chat") {
-    const existing = sessions.find((s2) => s2.title === title);
+    const existing = sessions.find((s2) => s2.title === title && (s2.kind || "chat") === kind);
     if (existing) return existing;
     const id = nextId("sess_", sessions.length + 1);
     const s = { id, title, mode, kind };
@@ -2362,7 +2385,8 @@ async function planNextStep(messages2, options) {
       baseURL: options.baseUrl || process.env.OPENAI_BASE_URL
     });
   }
-  if ((process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true") && !options?.apiKey && !process.env.OPENAI_API_KEY) {
+  const shouldMock = !options?.apiKey && !process.env.OPENAI_API_KEY && (options?.mock === true || process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true");
+  if (shouldMock) {
     console.info("[LLM] Using Mock Planner");
     const lastMsg = messages2[messages2.length - 1];
     const rawText = typeof lastMsg.content === "string" ? lastMsg.content : JSON.stringify(lastMsg.content || "");
@@ -2375,6 +2399,29 @@ async function planNextStep(messages2, options) {
     const sessionId = sessionIdMatch?.[1];
     const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
     let url = urlMatch?.[0];
+    const extractQuoted = (s) => {
+      const m = s.match(/["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/);
+      return m?.[1];
+    };
+    const writeEn = rawText.match(/write\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i) || rawText.match(/create\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i);
+    const writeAr = rawText.match(/(?:اكتب|انشئ|أنشئ|سوي|سوِّ|قم\s+بإنشاء)\s+(?:ملف|فايل)\s*(?:باسم|اسم)\s+([^\s"'`]+)(?:\s+(?:بمحتوى|محتوى)\s+(.+))?/i);
+    const write = writeEn || writeAr;
+    if (write) {
+      const filename = String(write[1] || "verify.txt").trim();
+      const tail = String(write[2] || "").trim();
+      const quoted = tail ? extractQuoted(tail) : void 0;
+      const contentValue = String(quoted || tail || "verified");
+      return { name: "file_write", input: { filename, content: contentValue } };
+    }
+    const readEn = rawText.match(/read\s+(?:the\s+)?file\s+([^\s"'`]+)/i);
+    const readAr = rawText.match(/(?:اقرأ|اقراء|اعرض|افتح)\s+(?:ملف|فايل)\s+([^\s"'`]+)/i);
+    const read = readEn || readAr;
+    if (read) {
+      const filename = String(read[1] || "").trim();
+      if (filename) return { name: "file_read", input: { filename } };
+    }
+    const wantsLs = /(?:list|show)\s+files/i.test(rawText) || /(?:ls\b)/i.test(rawText) || /(?:اعرض|اظهر|أظهر)\s+(?:ال)?ملفات/i.test(rawText) || /قائمة\s+الملفات/i.test(rawText);
+    if (wantsLs) return { name: "ls", input: { path: "." } };
     const wantsOpen = /\bopen\b/i.test(rawText) || /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
     const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes("youtube.com");
     const wantsSearch = /ابحث|بحث|search/i.test(rawText) || /ضيعة\s+ضايعة/i.test(rawText) || /شغل|شغّل|تشغيل|play/i.test(rawText);
@@ -2559,7 +2606,7 @@ async function planNextStep(messages2, options) {
     if (options?.throwOnError) {
       throw error;
     }
-    throw error;
+    return null;
   }
 }
 async function generateSessionTitle(messages2) {
@@ -2814,6 +2861,27 @@ function detectRisk(text) {
   }
   return null;
 }
+function normalizeArabicQuery(input) {
+  return String(input || "").toLowerCase().replace(/[\u064B-\u065F\u0670]/g, "").replace(/ـ/g, "").replace(/[أإآ]/g, "\u0627").replace(/ى/g, "\u064A").replace(/ؤ/g, "\u0648").replace(/ئ/g, "\u064A").replace(/ة/g, "\u0647").trim();
+}
+function isWeatherLikeQuery(text) {
+  const t = normalizeArabicQuery(text);
+  if (!t) return false;
+  if (/(weather|temperature|forecast)/i.test(text)) return true;
+  if (/(طقس|درجه|درجة|حراره|الحراره|الجو|الجوّ|الاجواء|توقعات|تنبؤات)/.test(t)) return true;
+  if (/كم\s+.*(درجه|درجة|حراره|حرارة)/.test(t)) return true;
+  return false;
+}
+function extractWeatherCity(text) {
+  const raw = String(text || "").trim();
+  const t = normalizeArabicQuery(raw);
+  if (!t) return "Istanbul";
+  if (/(istanbul|اسطنبول|اسطنبول|اسطنبول|إسطنبول)/i.test(raw) || /اسطنبول/.test(t)) return "Istanbul";
+  const m1 = raw.match(/(?:في|ب|بال)\s*([^\s؟?!.,،؛:]+(?:\s+[^\s؟?!.,،؛:]+){0,2})/);
+  const candidate = m1 ? String(m1[1] || "").trim() : "";
+  if (candidate) return candidate;
+  return "Istanbul";
+}
 router3.post("/start", authenticate, async (req, res) => {
   let { text, sessionId, fileIds, provider, apiKey: apiKey2, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
   const isAuthed = Boolean(req.auth);
@@ -2953,13 +3021,38 @@ ${merged.join("\n")}
       }
     })();
   }
+  const systemPromptEventId = `system_prompt:${sessionId}`;
+  let systemPromptCreated = false;
+  let systemPromptText = null;
   const ev = (e) => broadcast({ ...e, runId });
+  try {
+    if (useMock) {
+      const hist = store.listMessages(sessionId);
+      const already = hist.some((m) => m.role === "system");
+      if (!already) {
+        store.addMessage(sessionId, "system", SYSTEM_PROMPT, runId);
+        systemPromptCreated = true;
+        systemPromptText = SYSTEM_PROMPT;
+        ev({ type: "text", id: systemPromptEventId, data: SYSTEM_PROMPT });
+      }
+    } else {
+      const existing = await Message.findOne({ sessionId, role: "system" }).select({ _id: 1 }).lean();
+      if (!existing) {
+        await Message.create({ sessionId, role: "system", content: SYSTEM_PROMPT, runId });
+        systemPromptCreated = true;
+        systemPromptText = SYSTEM_PROMPT;
+        ev({ type: "text", id: systemPromptEventId, data: SYSTEM_PROMPT });
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to create system prompt message:", safeErrorMessage(e));
+  }
   ev({ type: "step_started", data: { name: "plan" } });
   let plan = null;
   try {
     plan = await planNextStep(
       [{ role: "user", content: initialContent }],
-      { provider, apiKey: apiKey2, baseUrl, model }
+      { provider, apiKey: apiKey2, baseUrl, model, mock: useMock }
     );
   } catch (err) {
     console.warn("LLM planning error:", safeErrorMessage(err));
@@ -2986,14 +3079,26 @@ ${merged.join("\n")}
       store.updateRun(runId, { status: "blocked" });
       const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
       planContext2.set(ap.id, { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, sessionId, blocked: true, approvalId: ap.id });
+      return res.json({
+        runId,
+        sessionId,
+        blocked: true,
+        approvalId: ap.id,
+        ...systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}
+      });
     } else {
       const ap = await Approval.create({ runId, action: String(text || ""), risk, status: "pending" });
       ev({ type: "approval_required", data: { id: ap._id.toString(), runId, risk, action: text } });
       await Run.findByIdAndUpdate(runId, { $set: { status: "blocked" } });
       const { planContext: planContext2 } = await Promise.resolve().then(() => (init_context(), context_exports));
       planContext2.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
-      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString() });
+      return res.json({
+        runId,
+        sessionId,
+        blocked: true,
+        approvalId: ap._id.toString(),
+        ...systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}
+      });
     }
   }
   let steps = 0;
@@ -3014,18 +3119,20 @@ ${merged.join("\n")}
   ];
   let lastResult = null;
   let forcedText = null;
+  let assistantTextEmitted = false;
   while (steps < MAX_STEPS) {
     ev({ type: "step_started", data: { name: `thinking_step_${steps + 1}` } });
     try {
       const shouldThrow = Boolean(apiKey2 || provider !== "llm" && provider);
       const isSystemConfigured = !!process.env.OPENAI_API_KEY;
       const throwOnError = !!apiKey2 || provider && provider !== "llm" || isSystemConfigured;
-      plan = await planNextStep(history, { provider, apiKey: apiKey2, baseUrl, model, throwOnError });
+      plan = await planNextStep(history, { provider, apiKey: apiKey2, baseUrl, model, throwOnError, mock: useMock });
     } catch (err) {
       console.warn("LLM planning error:", safeErrorMessage(err));
       if (err?.status === 401 || err?.code === "invalid_api_key" || err?.error?.code === "invalid_api_key") {
         ev({ type: "text", data: "\u26A0\uFE0F **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu." });
         forcedText = "Authentication Failed";
+        assistantTextEmitted = true;
         break;
       }
       plan = null;
@@ -3038,6 +3145,7 @@ ${merged.join("\n")}
         const msg = !process.env.OPENAI_API_KEY && !apiKey2 ? "\u26A0\uFE0F **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI." : "\u26A0\uFE0F **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.";
         ev({ type: "text", data: msg });
         forcedText = msg;
+        assistantTextEmitted = true;
         break;
       }
     }
@@ -3045,6 +3153,7 @@ ${merged.join("\n")}
       const msg = "\u0623\u062F\u0648\u0627\u062A \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u062A\u0639\u0645\u0644 \u0641\u0642\u0637 \u062F\u0627\u062E\u0644 \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0646\u062A\u0642\u0644 \u0625\u0644\u0649 \u062A\u0628\u0648\u064A\u0628 \u0627\u0644\u0648\u0643\u064A\u0644 \u0644\u0641\u062A\u062D \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u062F\u0627\u062E\u0644 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
       ev({ type: "text", data: msg });
       forcedText = msg;
+      assistantTextEmitted = true;
       break;
     }
     const planName = String(plan.name || "");
@@ -3054,10 +3163,27 @@ ${merged.join("\n")}
       const inputSid = String(plan?.input?.sessionId || "").trim();
       const hasSid = !!(reqSid || inputSid);
       if (!hasSid) {
-        const msg = "\u0627\u0644\u0645\u062A\u0635\u0641\u062D \u063A\u064A\u0631 \u0645\u0641\u062A\u0648\u062D \u0641\u064A \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0641\u062A\u062D \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u0641\u064A \u0627\u0644\u0648\u0633\u0637 \u0623\u0648\u0644\u0627\u064B \u062B\u0645 \u0623\u0639\u062F \u062A\u0646\u0641\u064A\u0630 \u0623\u0645\u0631 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
-        ev({ type: "text", data: msg });
-        forcedText = msg;
-        break;
+        const userText = String(text || "");
+        if (isWeatherLikeQuery(userText)) {
+          const city = extractWeatherCity(userText);
+          plan = {
+            name: "http_fetch",
+            input: { url: `https://wttr.in/${encodeURIComponent(city)}?format=j1`, city }
+          };
+        } else {
+          const tn = normalizeArabicQuery(userText);
+          const hasUrl = /https?:\/\/\S+/i.test(userText);
+          const isExplicitOpen = hasUrl || /(open|افتح|اذهب|ادخل|دخول|فتح|زيارة|browser)/i.test(tn);
+          if (!isExplicitOpen) {
+            plan = { name: "web_search", input: { query: userText || planName } };
+          } else {
+            const msg = "\u0627\u0644\u0645\u062A\u0635\u0641\u062D \u063A\u064A\u0631 \u0645\u0641\u062A\u0648\u062D \u0641\u064A \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0641\u062A\u062D \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u0641\u064A \u0627\u0644\u0648\u0633\u0637 \u0623\u0648\u0644\u0627\u064B \u062B\u0645 \u0623\u0639\u062F \u062A\u0646\u0641\u064A\u0630 \u0623\u0645\u0631 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
+            ev({ type: "text", data: msg });
+            forcedText = msg;
+            assistantTextEmitted = true;
+            break;
+          }
+        }
       }
     }
     if (kind === "agent" && String(plan.name || "") === "browser_open" && typeof browserSessionId === "string" && browserSessionId.trim()) {
@@ -3160,6 +3286,7 @@ ${errorMsg}
 Please verify your OpenAI organization settings or try a different prompt.`;
         forcedText = msg;
         ev({ type: "text", data: msg });
+        assistantTextEmitted = true;
         break;
       }
     }
@@ -3168,6 +3295,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       if (text2) {
         forcedText = text2;
         ev({ type: "text", data: text2 });
+        assistantTextEmitted = true;
       }
     }
     if (result.ok && plan.name === "image_generate") {
@@ -3175,6 +3303,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       if (href) {
         forcedText = `\u{1F3A8} Image generated successfully.`;
         ev({ type: "text", data: forcedText });
+        assistantTextEmitted = true;
         break;
       }
     }
@@ -3188,6 +3317,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
       const msg = msgParts.join("\n");
       forcedText = msg;
       ev({ type: "text", data: msg });
+      assistantTextEmitted = true;
       break;
     }
     if (result.ok && plan.name === "http_fetch") {
@@ -3223,6 +3353,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
           ].join("\n");
           forcedText = md;
           ev({ type: "text", data: md });
+          assistantTextEmitted = true;
         } else if (base && sym) {
           const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
           ev({ type: "step_started", data: { name: `execute:http_fetch(fallback)` } });
@@ -3244,6 +3375,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
             ].join("\n");
             forcedText = md2;
             ev({ type: "text", data: md2 });
+            assistantTextEmitted = true;
           }
           if (useMock) {
             store.addExec(runId, "http_fetch", { url: fbUrl }, fbRes.output, fbRes.ok, fbRes.logs);
@@ -3268,6 +3400,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
             const mdw = parts.join("\n");
             forcedText = mdw;
             ev({ type: "text", data: mdw });
+            assistantTextEmitted = true;
           }
         }
       } catch {
@@ -3300,6 +3433,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
           const mds = mdParts.join("\n");
           forcedText = mds;
           ev({ type: "text", data: mds });
+          assistantTextEmitted = true;
         }
       } catch {
       }
@@ -3322,6 +3456,7 @@ Please verify your OpenAI organization settings or try a different prompt.`;
         const mde = parts.join("\n");
         forcedText = mde;
         ev({ type: "text", data: mde });
+        assistantTextEmitted = true;
       } catch {
       }
     }
@@ -3347,9 +3482,12 @@ You must analyze this error and attempt to fix the issue in the next step. If it
       break;
     }
   }
+  const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : "No output");
+  if (!assistantTextEmitted) {
+    ev({ type: "text", data: finalContent });
+  }
   ev({ type: "run_completed", data: { runId, result: lastResult } });
   ev({ type: "run_finished", data: { runId, status: "done" } });
-  const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : "No output");
   if (useMock) {
     store.addMessage(sessionId, "assistant", finalContent, runId);
     store.updateRun(runId, { status: "done" });
@@ -3357,7 +3495,12 @@ You must analyze this error and attempt to fix the issue in the next step. If it
     await Message.create({ sessionId, role: "assistant", content: finalContent, runId });
     await Run.findByIdAndUpdate(runId, { $set: { status: "done" } });
   }
-  return res.json({ runId, sessionId, status: "done" });
+  return res.json({
+    runId,
+    sessionId,
+    status: "done",
+    ...systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}
+  });
 });
 var run_default = router3;
 
@@ -3723,6 +3866,7 @@ var sessions_default = router5;
 
 // src/routes/folders.ts
 var import_express6 = require("express");
+var import_mongoose17 = __toESM(require("mongoose"));
 
 // src/models/folder.ts
 var import_mongoose16 = __toESM(require("mongoose"));
@@ -3736,17 +3880,26 @@ var Folder = import_mongoose16.default.model("Folder", FolderSchema);
 init_session();
 var router6 = (0, import_express6.Router)();
 router6.get("/", authenticate, async (req, res) => {
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose17.default.connection.readyState !== 1;
+  if (useMock) {
+    return res.json(store.listFolders());
+  }
   try {
-    const folders = await Folder.find().sort({ createdAt: 1 });
-    res.json(folders);
+    const folders2 = await Folder.find().sort({ createdAt: 1 });
+    res.json(folders2);
   } catch (e) {
     res.status(500).json({ error: "Failed to fetch folders" });
   }
 });
 router6.post("/", authenticate, async (req, res) => {
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose17.default.connection.readyState !== 1;
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
+    if (useMock) {
+      const folder2 = store.createFolder(String(name));
+      return res.json(folder2);
+    }
     const folder = await Folder.create({ name });
     res.json(folder);
   } catch (e) {
@@ -3754,8 +3907,13 @@ router6.post("/", authenticate, async (req, res) => {
   }
 });
 router6.patch("/:id", authenticate, async (req, res) => {
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose17.default.connection.readyState !== 1;
   try {
     const { name } = req.body;
+    if (useMock) {
+      const folder2 = store.updateFolder(String(req.params.id), { name: String(name || "") });
+      return res.json(folder2);
+    }
     const folder = await Folder.findByIdAndUpdate(
       req.params.id,
       { name },
@@ -3767,7 +3925,12 @@ router6.patch("/:id", authenticate, async (req, res) => {
   }
 });
 router6.delete("/:id", authenticate, async (req, res) => {
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose17.default.connection.readyState !== 1;
   try {
+    if (useMock) {
+      store.deleteFolder(String(req.params.id));
+      return res.json({ success: true });
+    }
     await Session.updateMany({ folderId: req.params.id }, { $unset: { folderId: "" } });
     await Folder.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -3854,7 +4017,7 @@ var files_default = router7;
 
 // src/routes/approvals.ts
 var import_express8 = require("express");
-var import_mongoose17 = __toESM(require("mongoose"));
+var import_mongoose18 = __toESM(require("mongoose"));
 init_context();
 var router8 = (0, import_express8.Router)();
 function redactToolInputForBroadcast(name, input) {
@@ -3894,7 +4057,7 @@ router8.post("/:id/decision", authenticate, async (req, res) => {
   const id = String(req.params.id);
   const { decision } = req.body || {};
   if (!["approved", "denied"].includes(String(decision))) return res.status(400).json({ error: "Invalid decision" });
-  const useMock = process.env.MOCK_DB === "1" || import_mongoose17.default.connection.readyState !== 1;
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose18.default.connection.readyState !== 1;
   const ctx = planContext.get(id);
   if (useMock) {
     const a = store.updateApproval(id, { status: decision });
@@ -4271,17 +4434,17 @@ var knowledge_default = router13;
 
 // src/routes/database.ts
 var import_express14 = require("express");
-var import_mongoose18 = __toESM(require("mongoose"));
+var import_mongoose19 = __toESM(require("mongoose"));
 var router14 = (0, import_express14.Router)();
 router14.use((req, res, next) => {
-  if (import_mongoose18.default.connection.readyState !== 1 || !import_mongoose18.default.connection.db) {
+  if (import_mongoose19.default.connection.readyState !== 1 || !import_mongoose19.default.connection.db) {
     return res.status(503).json({ error: "Database not connected" });
   }
   next();
 });
 router14.get("/", authenticate, async (req, res) => {
   try {
-    const collections = await import_mongoose18.default.connection.db.listCollections().toArray();
+    const collections = await import_mongoose19.default.connection.db.listCollections().toArray();
     const names = collections.map((c) => c.name).sort();
     res.json({ collections: names });
   } catch (error) {
@@ -4294,7 +4457,7 @@ router14.get("/:collection", authenticate, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const query = req.query.q ? JSON.parse(req.query.q) : {};
-    const coll = import_mongoose18.default.connection.db.collection(collection);
+    const coll = import_mongoose19.default.connection.db.collection(collection);
     const total = await coll.countDocuments(query);
     const docs = await coll.find(query).skip((page - 1) * limit).limit(limit).toArray();
     res.json({
@@ -4315,9 +4478,9 @@ router14.put("/:collection/:id", authenticate, async (req, res) => {
     const { collection, id } = req.params;
     const update = req.body;
     delete update._id;
-    const coll = import_mongoose18.default.connection.db.collection(collection);
+    const coll = import_mongoose19.default.connection.db.collection(collection);
     const result = await coll.updateOne(
-      { _id: new import_mongoose18.default.Types.ObjectId(id) },
+      { _id: new import_mongoose19.default.Types.ObjectId(id) },
       { $set: update }
     );
     res.json({ success: true, result });
@@ -4328,8 +4491,8 @@ router14.put("/:collection/:id", authenticate, async (req, res) => {
 router14.delete("/:collection/:id", authenticate, async (req, res) => {
   try {
     const { collection, id } = req.params;
-    const coll = import_mongoose18.default.connection.db.collection(collection);
-    const result = await coll.deleteOne({ _id: new import_mongoose18.default.Types.ObjectId(id) });
+    const coll = import_mongoose19.default.connection.db.collection(collection);
+    const result = await coll.deleteOne({ _id: new import_mongoose19.default.Types.ObjectId(id) });
     res.json({ success: true, result });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -5126,7 +5289,7 @@ async function main() {
   }
   app.use("/artifacts", import_express21.default.static(ARTIFACT_DIR2));
   try {
-    await import_mongoose19.default.connect(config.mongoUri, { serverSelectionTimeoutMS: 5e3 });
+    await import_mongoose20.default.connect(config.mongoUri, { serverSelectionTimeoutMS: 5e3 });
     logger.info("MongoDB connected");
   } catch (e) {
     logger.error(e, "MongoDB connection failed (continuing without DB)");
