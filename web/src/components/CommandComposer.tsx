@@ -7,7 +7,6 @@ import VoiceVisualizer from './VoiceVisualizer';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ThinkingWithTools } from './ThinkingIndicator';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -53,7 +52,38 @@ import {
   MicOff
 } from 'lucide-react';
 
+const DEBUG_TOOL_UI = false;
+
 const AgentBrowserStreamLazy = lazy(() => import('./AgentBrowserStream'));
+
+function ToolTicker({
+  isThinking,
+  toolVisible,
+  activeToolName,
+}: {
+  isThinking: boolean;
+  toolVisible: boolean;
+  activeToolName: string | null;
+}) {
+  return (
+    <div className="mt-1">
+      <AnimatePresence>
+        {isThinking && toolVisible && activeToolName && (
+          <motion.div
+            key={activeToolName}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.18 }}
+            className="text-[12px] leading-4 font-normal text-zinc-400/70"
+          >
+            Running: {activeToolName}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 const ChatBubble = forwardRef(({ event, isUser, onOptionClick }: { event: any, isUser: boolean, onOptionClick?: (text: string) => void }, ref: any) => {
   const { t } = useTranslation();
@@ -303,8 +333,9 @@ export default function CommandComposer({
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [status, setStatus] = useState<'idle' | 'thinking' | 'answering'>('idle');
+  const [isThinking, setIsThinking] = useState(false);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
-  const [, setToolHistory] = useState<string[]>([]);
+  const [toolVisible, setToolVisible] = useState(false);
   
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -315,13 +346,10 @@ export default function CommandComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastLiveSeqRef = useRef<number>(0);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
-  const toolVisibleSinceRef = useRef<number>(0);
-  const pendingNextToolRef = useRef<string | null>(null);
-  const toolSwitchTimerRef = useRef<number | null>(null);
-  const pendingFinalTextRef = useRef<any | null>(null);
-  const finalHideTimerRef = useRef<number | null>(null);
-  const finalShowTimerRef = useRef<number | null>(null);
-  const statusRef = useRef<'idle' | 'thinking' | 'answering'>(status);
+  const lastToolShownAtRef = useRef<number>(0);
+  const toolHideTimerRef = useRef<number | null>(null);
+  const isThinkingRef = useRef<boolean>(isThinking);
+  const toolVisibleRef = useRef<boolean>(toolVisible);
   const activeToolNameRef = useRef<string | null>(activeToolName);
 
   // AI Provider State
@@ -609,122 +637,53 @@ export default function CommandComposer({
   };
 
   const clearToolTimers = () => {
-    if (toolSwitchTimerRef.current != null) {
-      window.clearTimeout(toolSwitchTimerRef.current);
-      toolSwitchTimerRef.current = null;
+    if (toolHideTimerRef.current != null) {
+      window.clearTimeout(toolHideTimerRef.current);
+      toolHideTimerRef.current = null;
     }
-    if (finalHideTimerRef.current != null) {
-      window.clearTimeout(finalHideTimerRef.current);
-      finalHideTimerRef.current = null;
-    }
-    if (finalShowTimerRef.current != null) {
-      window.clearTimeout(finalShowTimerRef.current);
-      finalShowTimerRef.current = null;
-    }
-    pendingNextToolRef.current = null;
-    pendingFinalTextRef.current = null;
   };
 
   useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
+    isThinkingRef.current = isThinking;
+  }, [isThinking]);
+
+  useEffect(() => {
+    toolVisibleRef.current = toolVisible;
+  }, [toolVisible]);
 
   useEffect(() => {
     activeToolNameRef.current = activeToolName;
   }, [activeToolName]);
 
-  const scheduleTool = (name: string) => {
+  const showTool = (name: string) => {
     const next = String(name || '').trim();
     if (!next) return;
-
-    const MIN_MS = 200;
-    const current = activeToolNameRef.current;
-    if (!current || current === next) {
-      toolVisibleSinceRef.current = Date.now();
-      setActiveToolName(next);
-      setStatus('thinking');
-      setToolHistory((prev) => [next, ...prev.filter((t) => t !== next)].slice(0, 3));
-      return;
+    if (toolHideTimerRef.current != null) {
+      window.clearTimeout(toolHideTimerRef.current);
+      toolHideTimerRef.current = null;
     }
-
-    const now = Date.now();
-    const elapsed = now - toolVisibleSinceRef.current;
-    const wait = Math.max(0, MIN_MS - elapsed);
-
-    pendingNextToolRef.current = next;
-    if (toolSwitchTimerRef.current != null) return;
-
-    if (wait === 0) {
-      pendingNextToolRef.current = null;
-      toolVisibleSinceRef.current = now;
-      setActiveToolName(next);
-      setStatus('thinking');
-      setToolHistory((prev) => [next, ...prev.filter((t) => t !== next)].slice(0, 3));
-      return;
-    }
-
-    toolSwitchTimerRef.current = window.setTimeout(() => {
-      toolSwitchTimerRef.current = null;
-      const tool = pendingNextToolRef.current;
-      pendingNextToolRef.current = null;
-      if (!tool) return;
-      toolVisibleSinceRef.current = Date.now();
-      setActiveToolName(tool);
-      setStatus('thinking');
-      setToolHistory((prev) => [tool, ...prev.filter((t) => t !== tool)].slice(0, 3));
-    }, wait);
+    setStatus('thinking');
+    setIsThinking(true);
+    setActiveToolName(next);
+    setToolVisible(true);
+    lastToolShownAtRef.current = Date.now();
   };
 
-  const scheduleFinalText = (msg: any) => {
-    if (msg == null) return;
-    if (toolSwitchTimerRef.current != null) {
-      window.clearTimeout(toolSwitchTimerRef.current);
-      toolSwitchTimerRef.current = null;
-    }
-    pendingNextToolRef.current = null;
-    if (finalHideTimerRef.current != null) {
-      window.clearTimeout(finalHideTimerRef.current);
-      finalHideTimerRef.current = null;
-    }
-    if (finalShowTimerRef.current != null) {
-      window.clearTimeout(finalShowTimerRef.current);
-      finalShowTimerRef.current = null;
-    }
-    pendingFinalTextRef.current = msg;
-    setStatus('thinking');
-
-    const MIN_MS = 200;
-    const now = Date.now();
-    const hasTool = activeToolNameRef.current != null;
-    const elapsed = now - toolVisibleSinceRef.current;
-    const wait = hasTool ? Math.max(0, MIN_MS - elapsed) : 0;
-
-    finalHideTimerRef.current = window.setTimeout(() => {
-      finalHideTimerRef.current = null;
-      setActiveToolName(null);
-      finalShowTimerRef.current = window.setTimeout(() => {
-        finalShowTimerRef.current = null;
-        const pending = pendingFinalTextRef.current;
-        pendingFinalTextRef.current = null;
-        if (pending != null) {
-          setEvents((prev) => {
-            const id = typeof pending?.id === 'string' ? pending.id : '';
-            if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-            return [...prev, pending];
-          });
-          try {
-            let content = pending.data;
-            if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-              const p = JSON.parse(content);
-              content = p.text || p.output || content;
-            }
-            speak(String(content));
-          } catch {}
-        }
-        setStatus('idle');
+  const hideToolSoon = () => {
+    const elapsed = Date.now() - lastToolShownAtRef.current;
+    const wait = Math.max(250 - elapsed, 0);
+    if (toolHideTimerRef.current != null) window.clearTimeout(toolHideTimerRef.current);
+    const totalDelay = wait + 250;
+    toolHideTimerRef.current = window.setTimeout(() => {
+      toolHideTimerRef.current = null;
+      setToolVisible(false);
+      window.setTimeout(() => {
         setActiveToolName(null);
-      }, 180);
+        setIsThinking(false);
+        setStatus('idle');
+      }, 250);
     }, wait);
+    return totalDelay;
   };
 
   useEffect(() => {
@@ -755,8 +714,10 @@ export default function CommandComposer({
             setActiveRunId(msg.runId.trim());
           }
           if (msg.type === 'user_input') {
-            setStatus('thinking');
+            clearToolTimers();
+            setIsThinking(true);
             setActiveToolName(null);
+            setToolVisible(false);
           }
 
           if (msg.type === 'artifact_created') {
@@ -783,11 +744,9 @@ export default function CommandComposer({
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
             if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
-            if (name.startsWith('execute:')) {
-              scheduleTool(name.slice('execute:'.length));
-            } else if (name) {
-              scheduleTool(name);
-            }
+            if (name === 'plan' || name.startsWith('thinking_step_')) showTool('plan');
+            else if (name.startsWith('execute:')) showTool(name.slice('execute:'.length));
+            else if (name) showTool(name);
           }
 
           if (msg.type === 'step_done' || msg.type === 'step_failed') {
@@ -798,46 +757,38 @@ export default function CommandComposer({
               msg.duration = Date.now() - start;
               delete stepStartTimes.current[`${rid}:${name}`];
             }
+            hideToolSoon();
           }
 
           if (msg.type === 'text') {
             const id = typeof msg?.id === 'string' ? msg.id : '';
             const isSystemPrompt = id.startsWith('system_prompt:');
-            const hasThinkingContext =
-              statusRef.current === 'thinking' ||
-              activeToolNameRef.current != null ||
-              pendingNextToolRef.current != null ||
-              toolSwitchTimerRef.current != null ||
-              pendingFinalTextRef.current != null ||
-              finalHideTimerRef.current != null ||
-              finalShowTimerRef.current != null;
+            if (isSystemPrompt) return;
 
-            if (!isSystemPrompt && hasThinkingContext) {
-              scheduleFinalText(msg);
-              return;
-            }
-
-            let content = msg.data;
-            try {
-              if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                const p = JSON.parse(content);
-                content = p.text || p.output || content;
-              }
-            } catch {}
-            speak(String(content));
+            const delay = isThinkingRef.current || toolVisibleRef.current || activeToolNameRef.current != null ? hideToolSoon() : 0;
+            window.setTimeout(() => {
+              setEvents((prev) => {
+                if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                return [...prev, msg];
+              });
+              try {
+                let content = msg.data;
+                if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                  const p = JSON.parse(content);
+                  content = p.text || p.output || content;
+                }
+                speak(String(content));
+              } catch {}
+            }, delay);
+            return;
           }
 
           if (msg.type === 'run_finished') {
-            if (finalHideTimerRef.current == null && finalShowTimerRef.current == null && pendingFinalTextRef.current == null) {
-              setActiveToolName(null);
-              window.setTimeout(() => {
-                if (statusRef.current === 'thinking') setStatus('idle');
-                setActiveToolName(null);
-              }, 300);
-            }
+            hideToolSoon();
           }
 
-          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'text', 'user_input'].includes(msg.type)) {
+          if (!DEBUG_TOOL_UI && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
+          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'user_input'].includes(msg.type)) {
             setEvents(prev => {
               const id = typeof msg?.id === 'string' ? msg.id : '';
               if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
@@ -1176,8 +1127,6 @@ export default function CommandComposer({
     }
   };
 
-  const isThinking = status === 'thinking';
-
   const formatStepDisplayName = (name: string) => {
     if (name.startsWith('thinking_step_')) {
       const n = name.replace('thinking_step_', '');
@@ -1475,6 +1424,7 @@ export default function CommandComposer({
         <AnimatePresence mode="popLayout">
         {renderItems.map((item) => {
           if (item.kind === 'activity') {
+            if (!DEBUG_TOOL_UI) return null;
             const rid = item.runId || 'no-run';
             const steps = stepsByRunId.get(rid) || [];
             const logs = logsByRunId.get(rid) || [];
@@ -1784,7 +1734,10 @@ export default function CommandComposer({
             exit={{ opacity: 0, y: 10 }}
             className="message-row joe"
           >
-             <ThinkingWithTools status={status} activeToolName={activeToolName} />
+            <div className="px-3 py-2">
+              <div className="text-sm font-medium text-zinc-200/90">Joe is thinking…</div>
+              <ToolTicker isThinking={isThinking} toolVisible={toolVisible} activeToolName={activeToolName} />
+            </div>
           </motion.div>
         )}
         <div ref={endRef} />
