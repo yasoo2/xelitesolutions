@@ -26,7 +26,7 @@ export interface PlanOptions {
   mock?: boolean;
 }
 
-export const SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
+export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
 
 ## CORE INSTRUCTIONS:
 1. **Think Before Acting**: You are a "Reasoning Engine". Before every action, verify if you have enough information. If not, use a tool to get it.
@@ -84,6 +84,15 @@ Append this EXACT format at the end of your message (invisible to user, parsed b
 - **Artifacts**: If you generated an artifact (image, file), use "echo" to confirm it.
 - When you fully finish the user's instructions, end your final answer with: "جو انتهى من التعليمات الموجهة إليه بشكل صحيح."
 `;
+
+export const getSystemPrompt = () => {
+  const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}`;
+};
+
+// Deprecated: Use getSystemPrompt() instead
+export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
+
 
 export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
     const msgs = [
@@ -358,7 +367,7 @@ export async function planNextStep(
   const msgs = [
     { 
       role: 'system', 
-      content: SYSTEM_PROMPT 
+      content: getSystemPrompt() 
     },
     ...messages
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];

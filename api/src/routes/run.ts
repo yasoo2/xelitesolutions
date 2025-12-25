@@ -9,7 +9,7 @@ import { ToolExecution } from '../models/toolExecution';
 import { Artifact } from '../models/artifact';
 import { Approval } from '../models/approval';
 import { Run } from '../models/run';
-import { planNextStep, generateSessionTitle, SYSTEM_PROMPT } from '../llm';
+import { planNextStep, generateSessionTitle, getSystemPrompt } from '../llm';
 import { authenticate } from '../middleware/auth';
 import { Session } from '../models/session';
 import { Message } from '../models/message';
@@ -302,22 +302,23 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const ev = (e: LiveEvent) => broadcast({ ...e, runId });
 
   try {
+    const currentSystemPrompt = getSystemPrompt();
     if (useMock) {
       const hist = store.listMessages(sessionId);
       const already = hist.some(m => m.role === 'system');
       if (!already) {
-        store.addMessage(sessionId, 'system', SYSTEM_PROMPT, runId);
+        store.addMessage(sessionId, 'system', currentSystemPrompt, runId);
         systemPromptCreated = true;
-        systemPromptText = SYSTEM_PROMPT;
-        ev({ type: 'text', id: systemPromptEventId, data: SYSTEM_PROMPT });
+        systemPromptText = currentSystemPrompt;
+        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     } else {
       const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
       if (!existing) {
-        await Message.create({ sessionId, role: 'system', content: SYSTEM_PROMPT, runId });
+        await Message.create({ sessionId, role: 'system', content: currentSystemPrompt, runId });
         systemPromptCreated = true;
-        systemPromptText = SYSTEM_PROMPT;
-        ev({ type: 'text', id: systemPromptEventId, data: SYSTEM_PROMPT });
+        systemPromptText = currentSystemPrompt;
+        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     }
   } catch (e) {
