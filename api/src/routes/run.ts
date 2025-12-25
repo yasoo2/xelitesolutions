@@ -310,7 +310,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         store.addMessage(sessionId, 'system', currentSystemPrompt, runId);
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
-        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
+        // ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     } else {
       const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
@@ -318,7 +318,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         await Message.create({ sessionId, role: 'system', content: currentSystemPrompt, runId });
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
-        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
+        // ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     }
   } catch (e) {
@@ -399,9 +399,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
            // Store.listMessages returns all. 
            // We filter out current run messages to avoid duplication with 'initialContent' which is added to history array manually.
            // And we take the last 20.
-           previousMessages = hist.filter(m => m.runId !== runId).slice(-20).map(m => ({ role: m.role as any, content: m.content }));
+           previousMessages = hist.filter(m => m.runId !== runId && m.role !== 'system').slice(-20).map(m => ({ role: m.role as any, content: m.content }));
        } else {
-           const docs = await Message.find({ sessionId, runId: { $ne: runId } })
+           const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: 'system' } })
                .sort({ createdAt: -1 }) // Get newest first
                .limit(20); // Last 20 messages
            // Reverse to chronological order (Old -> New)

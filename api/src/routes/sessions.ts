@@ -38,11 +38,11 @@ router.get('/:id/messages', authenticate as any, async (req: Request, res: Respo
   
   try {
     if (useMock) {
-      const messages = store.listMessages(id);
+      const messages = store.listMessages(id).filter(m => m.role !== 'system');
       return res.json({ messages });
     }
     
-    const messages = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).lean();
+    const messages = await Message.find({ sessionId: id, role: { $ne: 'system' } }).sort({ createdAt: 1 }).lean();
     res.json({ messages });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch messages' });
@@ -62,12 +62,12 @@ router.get('/:id/context', authenticate as any, async (req: Request, res: Respon
 
     if (useMock) {
         summary = store.getSummary(id)?.content || '';
-        recentMessages = store.listMessages(id).slice(-10);
+        recentMessages = store.listMessages(id).filter(m => m.role !== 'system').slice(-10);
     } else {
         const sumDoc = await Summary.findOne({ sessionId: id });
         summary = sumDoc?.content || '';
         
-        recentMessages = await Message.find({ sessionId: id })
+        recentMessages = await Message.find({ sessionId: id, role: { $ne: 'system' } })
             .sort({ createdAt: -1 })
             .limit(10)
             .lean();
@@ -216,7 +216,8 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
 
   // Simple regex search for now. For production, use Atlas Search or Text Index.
   const messages = await Message.find({
-    content: { $regex: query, $options: 'i' }
+    content: { $regex: query, $options: 'i' },
+    role: { $ne: 'system' }
   }).sort({ createdAt: -1 }).limit(20).populate('sessionId', 'title kind');
 
   const filteredMessages = kind ? messages.filter(m => (m.sessionId as any)?.kind === kind) : messages;
@@ -236,7 +237,7 @@ router.get('/:id/history', authenticate as any, async (req: Request, res: Respon
   const { id } = req.params;
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
-    const msgs = store.listMessages(id);
+    const msgs = store.listMessages(id).filter(m => m.role !== 'system');
     const events = msgs.map(m => ({
       type: m.role === 'user' ? 'user_input' : 'text',
       data: m.content,
@@ -245,7 +246,7 @@ router.get('/:id/history', authenticate as any, async (req: Request, res: Respon
     return res.json({ events });
   }
   try {
-    const msgs = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).lean();
+    const msgs = await Message.find({ sessionId: id, role: { $ne: 'system' } }).sort({ createdAt: 1 }).lean();
     const events = msgs.map(m => ({
       type: m.role === 'user' ? 'user_input' : 'text',
       data: m.content,
