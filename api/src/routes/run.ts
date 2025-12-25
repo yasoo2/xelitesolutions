@@ -325,70 +325,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     console.warn('Failed to create system prompt message:', safeErrorMessage(e));
   }
 
-  ev({ type: 'step_started', data: { name: 'plan' } });
-
-  let plan = null;
-  try {
-      plan = await planNextStep(
-        [{ role: 'user', content: initialContent }],
-        { provider, apiKey, baseUrl, model, mock: useMock }
-      );
-  } catch (err) {
-      console.warn('LLM planning error:', safeErrorMessage(err));
-  }
-
-  ev({ type: 'step_done', data: { name: 'plan', plan } });
-  if (useMock) {
-    store.addStep(runId, 'plan', 'done');
-  } else {
-    try {
-      await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
-    } catch {}
-  }
-
-  // Save User Message to DB
-  if (useMock) {
-    store.addMessage(sessionId, 'user', String(text || ''), runId);
-  } else {
-    await Message.create({ sessionId, role: 'user', content: String(text || ''), runId });
-  }
-
-  const risk = detectRisk(String(text || ''));
-  if (risk && plan) {
-    if (useMock) {
-      const ap = store.createApproval(runId, String(text || ''), risk, plan.name, plan.input);
-      ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: text } });
-      store.updateRun(runId, { status: 'blocked' });
-      // store plan context for continuation
-      const { planContext } = await import('../approvals/context');
-      planContext.set(ap.id, { runId, name: plan.name, input: plan.input });
-      return res.json({
-        runId,
-        sessionId,
-        blocked: true,
-        approvalId: ap.id,
-        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
-      });
-    } else {
-      const ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
-      ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
-      await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
-      const { planContext } = await import('../approvals/context');
-      planContext.set(ap._id.toString(), { runId, name: plan.name, input: plan.input });
-      return res.json({
-        runId,
-        sessionId,
-        blocked: true,
-        approvalId: ap._id.toString(),
-        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
-      });
-    }
-  }
-
-  // --- Agent Loop ---
-  let steps = 0;
-  const MAX_STEPS = 50;
-  
   // Load Conversation History
   let previousMessages: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
   if (sessionId) {
@@ -414,42 +350,107 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     { role: 'user', content: initialContent }
   ];
 
+  ev({ type: 'step_started', data: { name: 'plan' } });
+
+  let initialPlan = null;
+  try {
+      // Use full history for planning to ensure context awareness
+      initialPlan = await planNextStep(
+        history,
+        { provider, apiKey, baseUrl, model, mock: useMock }
+      );
+  } catch (err) {
+      console.warn('LLM planning error:', safeErrorMessage(err));
+  }
+
+  ev({ type: 'step_done', data: { name: 'plan', plan: initialPlan } });
+  if (useMock) {
+    store.addStep(runId, 'plan', 'done');
+  } else {
+    try {
+      await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
+    } catch {}
+  }
+
+  // Save User Message to DB
+  if (useMock) {
+    store.addMessage(sessionId, 'user', String(text || ''), runId);
+  } else {
+    await Message.create({ sessionId, role: 'user', content: String(text || ''), runId });
+  }
+
+  const risk = detectRisk(String(text || ''));
+  if (risk && initialPlan) {
+    if (useMock) {
+      const ap = store.createApproval(runId, String(text || ''), risk, initialPlan.name, initialPlan.input);
+      ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: text } });
+      store.updateRun(runId, { status: 'blocked' });
+      // store plan context for continuation
+      const { planContext } = await import('../approvals/context');
+      planContext.set(ap.id, { runId, name: initialPlan.name, input: initialPlan.input });
+      return res.json({
+        runId,
+        sessionId,
+        blocked: true,
+        approvalId: ap.id,
+        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
+      });
+    } else {
+      const ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
+      ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
+      await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
+      const { planContext } = await import('../approvals/context');
+      planContext.set(ap._id.toString(), { runId, name: initialPlan.name, input: initialPlan.input });
+      return res.json({
+        runId,
+        sessionId,
+        blocked: true,
+        approvalId: ap._id.toString(),
+        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
+      });
+    }
+  }
+
+  // --- Agent Loop ---
+  let steps = 0;
+  const MAX_STEPS = 50;
+  
+  // History already loaded above
+
+
   let lastResult: any = null;
   let forcedText: string | null = null;
   let assistantTextEmitted = false;
+  let plan: { name: string, input: any } | null = null;
 
   while (steps < MAX_STEPS) {
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
     
-    // Plan next step with history
-    try {
-        // If default provider and no API key, do not throw (allow heuristic fallback)
-        // If custom provider or API key provided, throw on error to notify user
-        const shouldThrow = Boolean(apiKey || (provider !== 'llm' && provider));
-        
-        // If default provider has a system-wide key, we also want to know if it fails?
-        // Actually, if system key is present but fails (e.g. quota), we might want to know.
-        // But if system key is MISSING, we want fallback.
-        // Let's refine:
-        // - If apiKey is provided in request: throwOnError = true
-        // - If provider is NOT 'llm' (and not null): throwOnError = true
-        // - If provider IS 'llm' (or null):
-        //    - If process.env.OPENAI_API_KEY is set: throwOnError = true (system is configured but failing)
-        //    - If process.env.OPENAI_API_KEY is NOT set: throwOnError = false (system unconfigured, use heuristic)
-        
-        const isSystemConfigured = !!process.env.OPENAI_API_KEY;
-        const throwOnError = !!apiKey || (provider && provider !== 'llm') || isSystemConfigured;
+    // Optimization: Reuse initial plan if available for the first step to reduce latency
+    if (steps === 0 && initialPlan) {
+        plan = initialPlan;
+        initialPlan = null; // Prevent reuse
+    } else {
+        // Plan next step with history
+        try {
+            // If default provider and no API key, do not throw (allow heuristic fallback)
+            // If custom provider or API key provided, throw on error to notify user
+            const shouldThrow = Boolean(apiKey || (provider !== 'llm' && provider));
+            
+            const isSystemConfigured = !!process.env.OPENAI_API_KEY;
+            const throwOnError = !!apiKey || (provider && provider !== 'llm') || isSystemConfigured;
 
-        plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: useMock });
-    } catch (err: any) {
-        console.warn('LLM planning error:', safeErrorMessage(err));
-        if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
-             ev({ type: 'text', data: '⚠️ **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu.' });
-             forcedText = 'Authentication Failed';
-             assistantTextEmitted = true;
-             break;
+            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: useMock });
+        } catch (err: any) {
+            console.warn('LLM planning error:', safeErrorMessage(err));
+            if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
+                 ev({ type: 'text', data: '⚠️ **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu.' });
+                 forcedText = 'Authentication Failed';
+                 assistantTextEmitted = true;
+                 break;
+            }
+            plan = null;
         }
-        plan = null;
     }
 
     if (!plan) {
