@@ -926,7 +926,8 @@ var tools = [
     sideEffects: [],
     rateLimitPerMinute: 5,
     auditFields: ["topic"],
-    mockSupported: false
+    mockSupported: false,
+    description: 'Perform a comprehensive deep dive into a topic. Uses recursive search, browsing, and synthesis to generate a detailed report. Best for "analyze", "research", or complex questions requiring multiple sources.'
   },
   {
     name: "web_search",
@@ -938,7 +939,8 @@ var tools = [
     sideEffects: [],
     rateLimitPerMinute: 10,
     auditFields: ["query"],
-    mockSupported: false
+    mockSupported: false,
+    description: "Perform a standard web search (like Google/DuckDuckGo). Best for quick facts, current events, or checking if a library exists. Returns a list of titles and snippets. Use deep_research for complex topics."
   },
   {
     name: "file_read",
@@ -2310,7 +2312,7 @@ var openai = new import_openai.default({
   baseURL: process.env.OPENAI_BASE_URL
 });
 var activeTools = tools.filter((t) => !t.name.startsWith("noop_"));
-var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
+var BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capable of building complete websites, applications, and solving complex tasks without human intervention.
 
 ## CORE INSTRUCTIONS:
 1. **Think Before Acting**: You are a "Reasoning Engine". Before every action, verify if you have enough information. If not, use a tool to get it.
@@ -2320,6 +2322,7 @@ var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capab
      1) Use **web_search** with a precise query.
      2) Select the best 1\u20132 results and fetch context using **html_extract** (preferred) or **http_fetch**.
      3) Synthesize a direct, accurate answer from the extracted evidence.
+   - **Deep Analysis**: If the user asks for a "report", "analysis", "comprehensive view", or "research", use **deep_research** immediately.
    - Always put the final answer in **echo**. Never respond with raw search results, long page dumps, or a list of links as the final answer.
    - Include 1\u20133 source URLs in the final answer when you used internet tools.
 4. **Conversational Queries**: 
@@ -2337,6 +2340,13 @@ var SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer. You are capab
    - **Thinking**: You can reason in English or the user's language.
    - **Output**: **STRICTLY FOLLOW THE USER'S LANGUAGE**. If the user asks in Arabic, you MUST reply in "Eloquent & Engaging Arabic" (\u0644\u063A\u0629 \u0639\u0631\u0628\u064A\u0629 \u0641\u0635\u062D\u0649 \u0633\u0644\u0633\u0629 \u0648\u062C\u0645\u064A\u0644\u0629).
    - **Translation**: Never give a "machine translation" vibe. Use natural, professional phrasing.
+
+## ADVANCED REASONING & QUALITY CONTROL:
+- **Analyze First**: Before choosing a tool, dissect the user's request. What is the *real* goal?
+- **Precision Search**: When using \`web_search\`, use specific keywords. Don't just paste the user's entire sentence.
+- **Verify & Filter**: If \`web_search\` returns irrelevant results, DO NOT just dump them. Try a different query.
+- **Code Intelligence**: When writing code, always check \`package.json\` or directory structure first to understand the environment.
+- **Self-Correction**: If you encounter an error, pause and think. Do not loop the same error.
 
 ## RESPONSE STYLE - CRITICAL:
 - **Concise & Direct**: Give the answer immediately. Do not fluff. Do not apologize unnecessarily.
@@ -2368,6 +2378,13 @@ Append this EXACT format at the end of your message (invisible to user, parsed b
 - **Artifacts**: If you generated an artifact (image, file), use "echo" to confirm it.
 - When you fully finish the user's instructions, end your final answer with: "\u062C\u0648 \u0627\u0646\u062A\u0647\u0649 \u0645\u0646 \u0627\u0644\u062A\u0639\u0644\u064A\u0645\u0627\u062A \u0627\u0644\u0645\u0648\u062C\u0647\u0629 \u0625\u0644\u064A\u0647 \u0628\u0634\u0643\u0644 \u0635\u062D\u064A\u062D."
 `;
+var getSystemPrompt = () => {
+  const date = (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  return BASE_SYSTEM_PROMPT + `
+
+Today's Date: ${date}`;
+};
+var SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 async function callLLM(prompt, context = []) {
   const msgs = [
     { role: "system", content: "You are a helpful assistant." },
@@ -2584,7 +2601,7 @@ async function planNextStep(messages2, options) {
   const msgs = [
     {
       role: "system",
-      content: SYSTEM_PROMPT
+      content: getSystemPrompt()
     },
     ...messages2
   ];
@@ -3033,22 +3050,21 @@ ${merged.join("\n")}
   let systemPromptText = null;
   const ev = (e) => broadcast({ ...e, runId });
   try {
+    const currentSystemPrompt = getSystemPrompt();
     if (useMock) {
       const hist = store.listMessages(sessionId);
       const already = hist.some((m) => m.role === "system");
       if (!already) {
-        store.addMessage(sessionId, "system", SYSTEM_PROMPT, runId);
+        store.addMessage(sessionId, "system", currentSystemPrompt, runId);
         systemPromptCreated = true;
-        systemPromptText = SYSTEM_PROMPT;
-        ev({ type: "text", id: systemPromptEventId, data: SYSTEM_PROMPT });
+        systemPromptText = currentSystemPrompt;
       }
     } else {
       const existing = await Message.findOne({ sessionId, role: "system" }).select({ _id: 1 }).lean();
       if (!existing) {
-        await Message.create({ sessionId, role: "system", content: SYSTEM_PROMPT, runId });
+        await Message.create({ sessionId, role: "system", content: currentSystemPrompt, runId });
         systemPromptCreated = true;
-        systemPromptText = SYSTEM_PROMPT;
-        ev({ type: "text", id: systemPromptEventId, data: SYSTEM_PROMPT });
+        systemPromptText = currentSystemPrompt;
       }
     }
   } catch (e) {
@@ -3114,9 +3130,9 @@ ${merged.join("\n")}
   if (sessionId) {
     if (useMock) {
       const hist = store.listMessages(sessionId);
-      previousMessages = hist.filter((m) => m.runId !== runId).slice(-20).map((m) => ({ role: m.role, content: m.content }));
+      previousMessages = hist.filter((m) => m.runId !== runId && m.role !== "system").slice(-20).map((m) => ({ role: m.role, content: m.content }));
     } else {
-      const docs = await Message.find({ sessionId, runId: { $ne: runId } }).sort({ createdAt: -1 }).limit(20);
+      const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: "system" } }).sort({ createdAt: -1 }).limit(20);
       previousMessages = docs.reverse().map((d) => ({ role: d.role, content: d.content }));
     }
   }
@@ -3539,10 +3555,10 @@ router5.get("/:id/messages", authenticate, async (req, res) => {
   const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
   try {
     if (useMock) {
-      const messages3 = store.listMessages(id);
+      const messages3 = store.listMessages(id).filter((m) => m.role !== "system");
       return res.json({ messages: messages3 });
     }
-    const messages2 = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).lean();
+    const messages2 = await Message.find({ sessionId: id, role: { $ne: "system" } }).sort({ createdAt: 1 }).lean();
     res.json({ messages: messages2 });
   } catch (e) {
     res.status(500).json({ error: "Failed to fetch messages" });
@@ -3558,11 +3574,11 @@ router5.get("/:id/context", authenticate, async (req, res) => {
     let memories = [];
     if (useMock) {
       summary = store.getSummary(id)?.content || "";
-      recentMessages = store.listMessages(id).slice(-10);
+      recentMessages = store.listMessages(id).filter((m) => m.role !== "system").slice(-10);
     } else {
       const sumDoc = await Summary.findOne({ sessionId: id });
       summary = sumDoc?.content || "";
-      recentMessages = await Message.find({ sessionId: id }).sort({ createdAt: -1 }).limit(10).lean();
+      recentMessages = await Message.find({ sessionId: id, role: { $ne: "system" } }).sort({ createdAt: -1 }).limit(10).lean();
       recentMessages.reverse();
       if (userId) {
         memories = await MemoryItem.find({ userId }).sort({ createdAt: -1 }).lean();
@@ -3681,7 +3697,8 @@ router5.get("/search", authenticate, async (req, res) => {
     return res.json({ results: [] });
   }
   const messages2 = await Message.find({
-    content: { $regex: query, $options: "i" }
+    content: { $regex: query, $options: "i" },
+    role: { $ne: "system" }
   }).sort({ createdAt: -1 }).limit(20).populate("sessionId", "title kind");
   const filteredMessages = kind ? messages2.filter((m) => m.sessionId?.kind === kind) : messages2;
   const results = filteredMessages.map((m) => ({
@@ -3697,7 +3714,7 @@ router5.get("/:id/history", authenticate, async (req, res) => {
   const { id } = req.params;
   const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
   if (useMock) {
-    const msgs = store.listMessages(id);
+    const msgs = store.listMessages(id).filter((m) => m.role !== "system");
     const events = msgs.map((m) => ({
       type: m.role === "user" ? "user_input" : "text",
       data: m.content,
@@ -3706,7 +3723,7 @@ router5.get("/:id/history", authenticate, async (req, res) => {
     return res.json({ events });
   }
   try {
-    const msgs = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).lean();
+    const msgs = await Message.find({ sessionId: id, role: { $ne: "system" } }).sort({ createdAt: 1 }).lean();
     const events = msgs.map((m) => ({
       type: m.role === "user" ? "user_input" : "text",
       data: m.content,
