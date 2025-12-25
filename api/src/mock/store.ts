@@ -34,10 +34,18 @@ export interface MockApproval {
   planInput: any;
 }
 
+export interface MockFolder {
+  _id: Id;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 const runs: MockRun[] = [];
 const execs: MockToolExec[] = [];
 const artifacts: MockArtifact[] = [];
 const approvals: MockApproval[] = [];
+const folders: MockFolder[] = [];
 const sessions: Array<{ id: Id; title: string; mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER'; kind?: 'chat' | 'agent'; lastSnippet?: string; lastUpdatedAt?: number }> = [];
 const summaries: Array<{ sessionId: Id; content: string; ts: number }> = [];
 const messages: Array<{ id: Id; sessionId: Id; role: 'user' | 'assistant' | 'system'; content: string; ts: number; runId?: Id }> = [];
@@ -88,6 +96,28 @@ export const store = {
   },
   getApproval(id: Id) {
     return approvals.find(x => x.id === id) || null;
+  },
+  listFolders() {
+    return folders.slice().sort((a, b) => a.createdAt - b.createdAt);
+  },
+  createFolder(name: string) {
+    const id = nextId('fold_', folders.length + 1);
+    const now = Date.now();
+    const f: MockFolder = { _id: id, name, createdAt: now, updatedAt: now };
+    folders.push(f);
+    return f;
+  },
+  updateFolder(id: Id, patch: Partial<Pick<MockFolder, 'name'>>) {
+    const f = folders.find(x => x._id === id);
+    if (!f) return null;
+    if (typeof patch.name === 'string') f.name = patch.name;
+    f.updatedAt = Date.now();
+    return f;
+  },
+  deleteFolder(id: Id) {
+    const idx = folders.findIndex(x => x._id === id);
+    if (idx !== -1) folders.splice(idx, 1);
+    return true;
   },
   listRuns(sessionId?: Id) { return runs.filter(r => !sessionId || r.sessionId === sessionId); },
   listExecs(runId?: Id) { return execs.filter(e => !runId || e.runId === runId); },

@@ -22,7 +22,6 @@ const fallbackApiUrl = isLocal
   ? defaultLocalApiUrl
   : (() => {
       if (isProbablyApiHost) return window.location.origin;
-      if (hostname.endsWith('xelitesolutions.com')) return 'https://api.xelitesolutions.com';
       return 'https://joe-api.onrender.com';
     })();
 export const API_URL = String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
