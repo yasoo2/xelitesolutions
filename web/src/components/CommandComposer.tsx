@@ -1276,7 +1276,6 @@ export default function CommandComposer({
       else if (type === 'text') out.push({ kind: 'text', key: `text:${idx}`, e, idx });
       else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
-      else if (type === 'run_finished' || type === 'run_completed') out.push({ kind: 'run_done', key: `run_done:${idx}`, e, idx });
     }
 
     return out;
@@ -1547,32 +1546,6 @@ export default function CommandComposer({
             const cleaned = cleanAssistantText(content);
             if (!cleaned) return null;
             return <ChatBubble key={item.key} event={{ data: { text: cleaned } }} isUser={false} onOptionClick={(q) => run(q)} />;
-          }
-
-          if (item.kind === 'run_done') {
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="message-row joe"
-              >
-                <div
-                  className="message-bubble"
-                  dir="auto"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid var(--border-color)',
-                    maxWidth: 760,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <CheckCircle2 size={16} color="#22c55e" />
-                    <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)' }}>تم إنهاء التنفيذ</div>
-                  </div>
-                </div>
-              </motion.div>
-            );
           }
 
           if (item.kind === 'artifact') {
