@@ -66,7 +66,7 @@ function ToolTicker({
   activeToolName: string | null;
 }) {
   return (
-    <div className="mt-1">
+    <div className="mt-0.5">
       <AnimatePresence>
         {isThinking && toolVisible && activeToolName && (
           <motion.div
@@ -75,9 +75,9 @@ function ToolTicker({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -2 }}
             transition={{ duration: 0.18 }}
-            className="text-[12px] leading-4 font-normal text-zinc-400/70"
+            className="text-[10px] leading-3 font-light text-zinc-400/60"
           >
-            Running: {activeToolName}
+            {activeToolName}
           </motion.div>
         )}
       </AnimatePresence>
@@ -336,6 +336,7 @@ export default function CommandComposer({
   const [isThinking, setIsThinking] = useState(false);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [toolVisible, setToolVisible] = useState(false);
+  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -681,6 +682,7 @@ export default function CommandComposer({
         setActiveToolName(null);
         setIsThinking(false);
         setStatus('idle');
+        setThinkingSteps([]);
       }, 250);
     }, wait);
     return totalDelay;
@@ -718,6 +720,7 @@ export default function CommandComposer({
             setIsThinking(true);
             setActiveToolName(null);
             setToolVisible(false);
+            setThinkingSteps([]);
           }
 
           if (msg.type === 'artifact_created') {
@@ -744,9 +747,19 @@ export default function CommandComposer({
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
             if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
-            if (name === 'plan' || name.startsWith('thinking_step_')) showTool('plan');
-            else if (name.startsWith('execute:')) showTool(name.slice('execute:'.length));
-            else if (name) showTool(name);
+            if (name === 'plan') {
+              showTool('خطة');
+              setThinkingSteps((prev) => [...prev, 'خطة'].slice(-4));
+            } else if (name.startsWith('thinking_step_')) {
+              const n = name.replace('thinking_step_', '').trim();
+              const label = n ? `خطة #${n}` : 'خطة';
+              showTool(label);
+              setThinkingSteps((prev) => [...prev, label].slice(-4));
+            } else if (name.startsWith('execute:')) {
+              showTool(name.slice('execute:'.length));
+            } else if (name) {
+              showTool(name);
+            }
           }
 
           if (msg.type === 'step_done' || msg.type === 'step_failed') {
@@ -928,6 +941,7 @@ export default function CommandComposer({
     clearToolTimers();
     setStatus('thinking');
     setActiveToolName(null);
+    setThinkingSteps([]);
 
     const needsBrowserForText = (raw: string) => {
       const s = String(raw || '').trim();
@@ -1734,9 +1748,14 @@ export default function CommandComposer({
             exit={{ opacity: 0, y: 10 }}
             className="message-row joe"
           >
-            <div className="px-3 py-2">
-              <div className="text-sm font-medium text-zinc-200/90">Joe is thinking…</div>
+            <div className="px-3 py-2" dir="auto">
+              <div className="text-[10px] leading-3 font-light text-zinc-400/65">يفكّر…</div>
               <ToolTicker isThinking={isThinking} toolVisible={toolVisible} activeToolName={activeToolName} />
+              {thinkingSteps.length ? (
+                <div className="mt-0.5 text-[10px] leading-3 font-light text-zinc-500/60">
+                  {thinkingSteps.join(' › ')}
+                </div>
+              ) : null}
             </div>
           </motion.div>
         )}
