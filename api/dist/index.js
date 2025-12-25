@@ -1891,41 +1891,105 @@ ${doc}
     if (name === "analyze_codebase") {
       const p = String(input?.path || ".");
       const root = resolveToolPath(p);
-      if (!import_fs2.default.existsSync(root)) return { ok: false, error: "Path not found", logs };
-      const pkgJsonPath = import_path2.default.join(root, "package.json");
-      let pkgInfo = "No package.json";
-      if (import_fs2.default.existsSync(pkgJsonPath)) {
+      if (!import_fs2.default.existsSync(root)) return { ok: false, error: "Path not found", logs: logs2 };
+      const logs2 = [];
+      logs2.push(`analyze.root=${root}`);
+      const getStructure = (dir, depth) => {
+        if (depth > 3) return [];
         try {
-          const pkg = JSON.parse(import_fs2.default.readFileSync(pkgJsonPath, "utf-8"));
-          pkgInfo = `Name: ${pkg.name}
-Dependencies: ${Object.keys(pkg.dependencies || {}).join(", ")}`;
+          const items = import_fs2.default.readdirSync(dir, { withFileTypes: true });
+          let res = [];
+          for (const item of items) {
+            if (item.name.startsWith(".") || item.name === "node_modules" || item.name === "dist" || item.name === "build" || item.name === "coverage") continue;
+            if (item.isDirectory()) {
+              res.push(`${item.name}/`);
+              const subs = getStructure(import_path2.default.join(dir, item.name), depth + 1);
+              res = res.concat(subs.map((s) => `${item.name}/${s}`));
+            } else {
+              res.push(item.name);
+            }
+          }
+          return res;
         } catch {
+          return [];
+        }
+      };
+      const allFiles = getStructure(root, 0);
+      const structure = allFiles.filter((f) => !f.includes("test/") && !f.includes("__tests__/")).slice(0, 60).join("\n");
+      const keyFiles = ["package.json", "README.md", "tsconfig.json", "Dockerfile", "docker-compose.yml", "go.mod", "requirements.txt", "Cargo.toml", "Gemfile", "pyproject.toml"];
+      const fileContents = [];
+      for (const kf of keyFiles) {
+        const kp = import_path2.default.join(root, kf);
+        if (import_fs2.default.existsSync(kp)) {
+          const content = import_fs2.default.readFileSync(kp, "utf-8");
+          if (kf === "package.json") {
+            try {
+              const pkg = JSON.parse(content);
+              const slim = { name: pkg.name, version: pkg.version, scripts: pkg.scripts, dependencies: pkg.dependencies, devDependencies: pkg.devDependencies };
+              fileContents.push(`=== ${kf} ===
+${JSON.stringify(slim, null, 2)}
+`);
+            } catch {
+              fileContents.push(`=== ${kf} ===
+${content.slice(0, 1e3)}
+`);
+            }
+          } else {
+            fileContents.push(`=== ${kf} ===
+${content.slice(0, 1500)}
+`);
+          }
+        }
+      }
+      const sourceFiles = allFiles.filter((f) => /^(src\/|app\/|lib\/)?(index|main|server|app|root)\.(ts|js|py|go|rb|java)$/.test(f)).slice(0, 2);
+      for (const sf of sourceFiles) {
+        const sp = import_path2.default.join(root, sf);
+        if (import_fs2.default.existsSync(sp)) {
+          const content = import_fs2.default.readFileSync(sp, "utf-8").slice(0, 1e3);
+          fileContents.push(`=== ${sf} ===
+${content}
+`);
         }
       }
       const contextPath = import_path2.default.join(root, ".joe/context.json");
-      let contextInfo = "No .joe/context.json found";
       if (import_fs2.default.existsSync(contextPath)) {
-        contextInfo = import_fs2.default.readFileSync(contextPath, "utf-8").slice(0, 500);
+        fileContents.push(`=== .joe/context.json ===
+${import_fs2.default.readFileSync(contextPath, "utf-8").slice(0, 1e3)}
+`);
       }
-      const archPath = import_path2.default.join(root, "ARCHITECTURE.md");
-      let archInfo = "No ARCHITECTURE.md found";
-      if (import_fs2.default.existsSync(archPath)) {
-        archInfo = import_fs2.default.readFileSync(archPath, "utf-8").slice(0, 1e3);
+      const apiKey2 = process.env.OPENAI_API_KEY;
+      if (!apiKey2) {
+        return { ok: true, output: { summary: `## File Structure
+${structure}
+
+## Key Files Found
+${fileContents.map((f) => f.split("\n")[0]).join("\n")}` }, logs: logs2 };
       }
-      const summary = `
-## Codebase Analysis for ${root}
+      try {
+        const { default: OpenAI4 } = await import("openai");
+        const client = new OpenAI4({ apiKey: apiKey2, baseURL: process.env.OPENAI_BASE_URL });
+        const completion = await client.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: "You are a Senior Software Architect. Analyze the provided codebase context and generate a high-level architectural summary. Focus on: Tech Stack, Key Components, Entry Points, and Project Structure. Be concise." },
+            { role: "user", content: `File Structure (partial):
+${structure}
 
-### Package Info
-${pkgInfo}
+Key File Contents:
+${fileContents.join("\n")}` }
+          ]
+        });
+        const summary = completion.choices[0].message.content || "Analysis failed";
+        return { ok: true, output: { summary }, logs: logs2 };
+      } catch (e) {
+        logs2.push(`analyze.llm_error=${e.message}`);
+        return { ok: true, output: { summary: `## File Structure
+${structure}
 
-### Project Context (.joe/context.json)
-${contextInfo}
-
-### Architecture (ARCHITECTURE.md)
-${archInfo}
-       `.trim();
-      logs.push("analyze.ok");
-      return { ok: true, output: { summary }, logs };
+## Key Files Found
+${fileContents.map((f) => f.split("\n")[0]).join("\n")}
+(LLM Analysis Failed: ${e.message})` }, logs: logs2 };
+      }
     }
     if (name === "knowledge_search") {
       const query = String(input?.query ?? "");

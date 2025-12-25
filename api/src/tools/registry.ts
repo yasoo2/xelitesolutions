@@ -1731,45 +1731,99 @@ Instructions:
        
        if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
        
-       // Gather key info
-       const pkgJsonPath = path.join(root, 'package.json');
-       let pkgInfo = 'No package.json';
-       if (fs.existsSync(pkgJsonPath)) {
+       const logs: string[] = [];
+       logs.push(`analyze.root=${root}`);
+
+       // 1. Get File Structure (limited to depth 3)
+       const getStructure = (dir: string, depth: number): string[] => {
+           if (depth > 3) return [];
            try {
-               const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
-               pkgInfo = `Name: ${pkg.name}\nDependencies: ${Object.keys(pkg.dependencies || {}).join(', ')}`;
-           } catch {}
+               const items = fs.readdirSync(dir, { withFileTypes: true });
+               let res: string[] = [];
+               for (const item of items) {
+                   if (item.name.startsWith('.') || item.name === 'node_modules' || item.name === 'dist' || item.name === 'build' || item.name === 'coverage') continue;
+                   if (item.isDirectory()) {
+                       res.push(`${item.name}/`);
+                       const subs = getStructure(path.join(dir, item.name), depth + 1);
+                       res = res.concat(subs.map(s => `${item.name}/${s}`));
+                   } else {
+                       res.push(item.name);
+                   }
+               }
+               return res;
+           } catch { return []; }
+       };
+       const allFiles = getStructure(root, 0);
+       // Smart filter: prioritize root files and src/
+       const structure = allFiles
+           .filter(f => !f.includes('test/') && !f.includes('__tests__/')) // Hide tests in summary to save space
+           .slice(0, 60)
+           .join('\n');
+
+       // 2. Identify and Read Key Files
+       const keyFiles = ['package.json', 'README.md', 'tsconfig.json', 'Dockerfile', 'docker-compose.yml', 'go.mod', 'requirements.txt', 'Cargo.toml', 'Gemfile', 'pyproject.toml'];
+       const fileContents: string[] = [];
+       
+       for (const kf of keyFiles) {
+           const kp = path.join(root, kf);
+           if (fs.existsSync(kp)) {
+               const content = fs.readFileSync(kp, 'utf-8');
+               // For package.json, just take scripts and dependencies to save tokens
+               if (kf === 'package.json') {
+                   try {
+                       const pkg = JSON.parse(content);
+                       const slim = { name: pkg.name, version: pkg.version, scripts: pkg.scripts, dependencies: pkg.dependencies, devDependencies: pkg.devDependencies };
+                       fileContents.push(`=== ${kf} ===\n${JSON.stringify(slim, null, 2)}\n`);
+                   } catch {
+                       fileContents.push(`=== ${kf} ===\n${content.slice(0, 1000)}\n`);
+                   }
+               } else {
+                   fileContents.push(`=== ${kf} ===\n${content.slice(0, 1500)}\n`);
+               }
+           }
        }
        
-       // Check for context file
+       // Add some source code samples (entry points)
+       const sourceFiles = allFiles.filter(f => /^(src\/|app\/|lib\/)?(index|main|server|app|root)\.(ts|js|py|go|rb|java)$/.test(f)).slice(0, 2);
+       for (const sf of sourceFiles) {
+           const sp = path.join(root, sf);
+            if (fs.existsSync(sp)) {
+               const content = fs.readFileSync(sp, 'utf-8').slice(0, 1000);
+               fileContents.push(`=== ${sf} ===\n${content}\n`);
+           }
+       }
+       
+       // Context file
        const contextPath = path.join(root, '.joe/context.json');
-       let contextInfo = 'No .joe/context.json found';
        if (fs.existsSync(contextPath)) {
-           contextInfo = fs.readFileSync(contextPath, 'utf-8').slice(0, 500);
+           fileContents.push(`=== .joe/context.json ===\n${fs.readFileSync(contextPath, 'utf-8').slice(0, 1000)}\n`);
        }
-       
-       // Check for architecture doc
-       const archPath = path.join(root, 'ARCHITECTURE.md');
-       let archInfo = 'No ARCHITECTURE.md found';
-       if (fs.existsSync(archPath)) {
-           archInfo = fs.readFileSync(archPath, 'utf-8').slice(0, 1000);
+
+       // 3. Generate Summary with LLM
+       const apiKey = process.env.OPENAI_API_KEY;
+       if (!apiKey) {
+           return { ok: true, output: { summary: `## File Structure\n${structure}\n\n## Key Files Found\n${fileContents.map(f => f.split('\n')[0]).join('\n')}` }, logs };
        }
-       
-       const summary = `
-## Codebase Analysis for ${root}
 
-### Package Info
-${pkgInfo}
-
-### Project Context (.joe/context.json)
-${contextInfo}
-
-### Architecture (ARCHITECTURE.md)
-${archInfo}
-       `.trim();
-       
-       logs.push('analyze.ok');
-       return { ok: true, output: { summary }, logs };
+       try {
+           const { default: OpenAI } = await import('openai');
+           const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+           
+           const completion = await client.chat.completions.create({
+               model: 'gpt-4o',
+               messages: [
+                   { role: 'system', content: 'You are a Senior Software Architect. Analyze the provided codebase context and generate a high-level architectural summary. Focus on: Tech Stack, Key Components, Entry Points, and Project Structure. Be concise.' },
+                   { role: 'user', content: `File Structure (partial):\n${structure}\n\nKey File Contents:\n${fileContents.join('\n')}` }
+               ]
+           });
+           
+           const summary = completion.choices[0].message.content || 'Analysis failed';
+           return { ok: true, output: { summary }, logs };
+       } catch (e: any) {
+           logs.push(`analyze.llm_error=${e.message}`);
+           // Fallback to raw dump
+           return { ok: true, output: { summary: `## File Structure\n${structure}\n\n## Key Files Found\n${fileContents.map(f => f.split('\n')[0]).join('\n')}\n(LLM Analysis Failed: ${e.message})` }, logs };
+       }
     }
     if (name === 'knowledge_search') {
       const query = String(input?.query ?? '');
