@@ -613,36 +613,8 @@ export default function CommandComposer({
       }
       const primaryUrl = WS;
       const fallbackUrl = `${API.replace(/^http/, 'ws')}/ws`;
-      const ws = new WebSocket(primaryUrl);
-      wsRef.current = ws;
 
-      ws.onopen = () => {
-        setIsConnected(true);
-      };
-
-      ws.onclose = () => {
-        setIsConnected(false);
-        const triedFallback = (wsRef.current as any)?.__triedFallback === true;
-        if (!triedFallback && primaryUrl !== fallbackUrl) {
-          try {
-            const fws = new WebSocket(fallbackUrl);
-            (fws as any).__triedFallback = true;
-            wsRef.current = fws;
-            fws.onopen = () => setIsConnected(true);
-            fws.onclose = () => {
-              setIsConnected(false);
-              reconnectTimerRef.current = window.setTimeout(() => {
-                connectWS();
-              }, 2000);
-            };
-            fws.onmessage = ws.onmessage!;
-            return;
-          } catch {}
-        }
-        reconnectTimerRef.current = window.setTimeout(() => connectWS(), 2000);
-      };
-
-      ws.onmessage = (evt) => {
+      const handleMessage = (evt: MessageEvent) => {
         try {
           const msg = JSON.parse(evt.data);
           if (typeof msg?.seq === 'number' && Number.isFinite(msg.seq)) {
@@ -710,6 +682,42 @@ export default function CommandComposer({
           console.error('WS parse error:', e);
         }
       };
+
+      const attach = (ws: WebSocket, allowFallback: boolean) => {
+        ws.onopen = () => {
+          if (wsRef.current !== ws) return;
+          setIsConnected(true);
+        };
+
+        ws.onmessage = handleMessage;
+
+        ws.onclose = () => {
+          if (wsRef.current !== ws) return;
+          setIsConnected(false);
+
+          const triedFallback = (ws as any)?.__triedFallback === true;
+          if (allowFallback && !triedFallback && primaryUrl !== fallbackUrl) {
+            try {
+              const fws = new WebSocket(fallbackUrl);
+              (fws as any).__triedFallback = true;
+              wsRef.current = fws;
+              attach(fws, false);
+              return;
+            } catch {}
+          }
+
+          reconnectTimerRef.current = window.setTimeout(() => connectWS(), 2000);
+        };
+
+        ws.onerror = () => {
+          if (wsRef.current !== ws) return;
+          setIsConnected(false);
+        };
+      };
+
+      const ws = new WebSocket(primaryUrl);
+      wsRef.current = ws;
+      attach(ws, true);
     } catch (e) {
       console.error('WS connect failed:', e);
       setIsConnected(false);
@@ -1076,19 +1084,23 @@ export default function CommandComposer({
   };
 
   const sortedEvents = useMemo(() => {
-    return events
-      .map((e: any, idx: number) => ({
-        e,
-        idx,
-        seq:
-          typeof e?.id === 'string' && e.id.startsWith('system_prompt:')
-            ? Number.NEGATIVE_INFINITY
-            : typeof e?.seq === 'number'
-              ? e.seq
-              : Number.POSITIVE_INFINITY,
-        ts: typeof e?.ts === 'number' ? e.ts : idx,
-      }))
-      .sort((a: any, b: any) => (a.seq - b.seq) || (a.ts - b.ts) || (a.idx - b.idx));
+    const normalized = events.map((e: any, idx: number) => {
+      const ts = typeof e?.ts === 'number' ? e.ts : idx;
+      const seq = typeof e?.seq === 'number' ? e.seq : undefined;
+      const isSystemPrompt = typeof e?.id === 'string' && e.id.startsWith('system_prompt:');
+      return { e, idx, ts, seq, isSystemPrompt };
+    });
+
+    return normalized.sort((a: any, b: any) => {
+      if (a.isSystemPrompt && !b.isSystemPrompt) return -1;
+      if (!a.isSystemPrompt && b.isSystemPrompt) return 1;
+
+      const aHasSeq = typeof a.seq === 'number' && Number.isFinite(a.seq);
+      const bHasSeq = typeof b.seq === 'number' && Number.isFinite(b.seq);
+
+      if (aHasSeq && bHasSeq) return (a.seq - b.seq) || (a.ts - b.ts) || (a.idx - b.idx);
+      return (a.ts - b.ts) || (a.idx - b.idx);
+    });
   }, [events]);
 
   const stepsByRunId = useMemo(() => {
