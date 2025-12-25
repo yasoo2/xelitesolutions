@@ -315,9 +315,9 @@ export default function CommandComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastLiveSeqRef = useRef<number>(0);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
-  const lastToolShownAtRef = useRef<number>(0);
-  const pendingToolNameRef = useRef<string | null>(null);
-  const toolTimerRef = useRef<number | null>(null);
+  const toolVisibleSinceRef = useRef<number>(0);
+  const pendingNextToolRef = useRef<string | null>(null);
+  const toolSwitchTimerRef = useRef<number | null>(null);
   const pendingFinalTextRef = useRef<any | null>(null);
   const finalHideTimerRef = useRef<number | null>(null);
   const finalShowTimerRef = useRef<number | null>(null);
@@ -609,9 +609,9 @@ export default function CommandComposer({
   };
 
   const clearToolTimers = () => {
-    if (toolTimerRef.current != null) {
-      window.clearTimeout(toolTimerRef.current);
-      toolTimerRef.current = null;
+    if (toolSwitchTimerRef.current != null) {
+      window.clearTimeout(toolSwitchTimerRef.current);
+      toolSwitchTimerRef.current = null;
     }
     if (finalHideTimerRef.current != null) {
       window.clearTimeout(finalHideTimerRef.current);
@@ -621,7 +621,7 @@ export default function CommandComposer({
       window.clearTimeout(finalShowTimerRef.current);
       finalShowTimerRef.current = null;
     }
-    pendingToolNameRef.current = null;
+    pendingNextToolRef.current = null;
     pendingFinalTextRef.current = null;
   };
 
@@ -637,20 +637,38 @@ export default function CommandComposer({
     const next = String(name || '').trim();
     if (!next) return;
 
-    pendingToolNameRef.current = next;
-
-    if (toolTimerRef.current != null) return;
-
     const MIN_MS = 200;
-    const now = Date.now();
-    const wait = Math.max(0, MIN_MS - (now - lastToolShownAtRef.current));
+    const current = activeToolNameRef.current;
+    if (!current || current === next) {
+      toolVisibleSinceRef.current = Date.now();
+      setActiveToolName(next);
+      setStatus('thinking');
+      setToolHistory((prev) => [next, ...prev.filter((t) => t !== next)].slice(0, 3));
+      return;
+    }
 
-    toolTimerRef.current = window.setTimeout(() => {
-      toolTimerRef.current = null;
-      const tool = pendingToolNameRef.current;
-      pendingToolNameRef.current = null;
+    const now = Date.now();
+    const elapsed = now - toolVisibleSinceRef.current;
+    const wait = Math.max(0, MIN_MS - elapsed);
+
+    pendingNextToolRef.current = next;
+    if (toolSwitchTimerRef.current != null) return;
+
+    if (wait === 0) {
+      pendingNextToolRef.current = null;
+      toolVisibleSinceRef.current = now;
+      setActiveToolName(next);
+      setStatus('thinking');
+      setToolHistory((prev) => [next, ...prev.filter((t) => t !== next)].slice(0, 3));
+      return;
+    }
+
+    toolSwitchTimerRef.current = window.setTimeout(() => {
+      toolSwitchTimerRef.current = null;
+      const tool = pendingNextToolRef.current;
+      pendingNextToolRef.current = null;
       if (!tool) return;
-      lastToolShownAtRef.current = Date.now();
+      toolVisibleSinceRef.current = Date.now();
       setActiveToolName(tool);
       setStatus('thinking');
       setToolHistory((prev) => [tool, ...prev.filter((t) => t !== tool)].slice(0, 3));
@@ -659,11 +677,11 @@ export default function CommandComposer({
 
   const scheduleFinalText = (msg: any) => {
     if (msg == null) return;
-    if (toolTimerRef.current != null) {
-      window.clearTimeout(toolTimerRef.current);
-      toolTimerRef.current = null;
+    if (toolSwitchTimerRef.current != null) {
+      window.clearTimeout(toolSwitchTimerRef.current);
+      toolSwitchTimerRef.current = null;
     }
-    pendingToolNameRef.current = null;
+    pendingNextToolRef.current = null;
     if (finalHideTimerRef.current != null) {
       window.clearTimeout(finalHideTimerRef.current);
       finalHideTimerRef.current = null;
@@ -674,6 +692,13 @@ export default function CommandComposer({
     }
     pendingFinalTextRef.current = msg;
     setStatus('thinking');
+
+    const MIN_MS = 200;
+    const now = Date.now();
+    const hasTool = activeToolNameRef.current != null;
+    const elapsed = now - toolVisibleSinceRef.current;
+    const wait = hasTool ? Math.max(0, MIN_MS - elapsed) : 0;
+
     finalHideTimerRef.current = window.setTimeout(() => {
       finalHideTimerRef.current = null;
       setActiveToolName(null);
@@ -699,7 +724,7 @@ export default function CommandComposer({
         setStatus('idle');
         setActiveToolName(null);
       }, 180);
-    }, 300);
+    }, wait);
   };
 
   useEffect(() => {
@@ -781,8 +806,11 @@ export default function CommandComposer({
             const hasThinkingContext =
               statusRef.current === 'thinking' ||
               activeToolNameRef.current != null ||
-              pendingToolNameRef.current != null ||
-              toolTimerRef.current != null;
+              pendingNextToolRef.current != null ||
+              toolSwitchTimerRef.current != null ||
+              pendingFinalTextRef.current != null ||
+              finalHideTimerRef.current != null ||
+              finalShowTimerRef.current != null;
 
             if (!isSystemPrompt && hasThinkingContext) {
               scheduleFinalText(msg);
