@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 
 export const ThinkingIndicator: React.FC<{ label?: string; stepName?: string }> = ({ label, stepName }) => {
   return (
@@ -28,3 +28,47 @@ export const ThinkingIndicator: React.FC<{ label?: string; stepName?: string }> 
     </div>
   );
 };
+
+export function ThinkingWithTools({
+  status,
+  activeToolName,
+}: {
+  status: 'idle' | 'thinking' | 'answering';
+  activeToolName: string | null;
+}) {
+  const show = status === 'thinking';
+
+  return (
+    <div className="px-3 py-2">
+      <AnimatePresence mode="wait">
+        {show && (
+          <motion.div
+            key="thinking"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-1"
+          >
+            <div className="text-sm font-medium text-zinc-200/90">Joe is thinking…</div>
+
+            <AnimatePresence mode="wait">
+              {activeToolName && (
+                <motion.div
+                  key={activeToolName}
+                  initial={{ opacity: 0, y: 2 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -2 }}
+                  transition={{ duration: 0.15 }}
+                  className="text-[12px] leading-4 font-normal text-zinc-400/70"
+                >
+                  Running: <span className="font-normal">{activeToolName}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

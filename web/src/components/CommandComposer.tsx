@@ -7,7 +7,7 @@ import VoiceVisualizer from './VoiceVisualizer';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ThinkingIndicator } from './ThinkingIndicator';
+import { ThinkingWithTools } from './ThinkingIndicator';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -302,6 +302,9 @@ export default function CommandComposer({
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'thinking' | 'answering'>('idle');
+  const [activeToolName, setActiveToolName] = useState<string | null>(null);
+  const [, setToolHistory] = useState<string[]>([]);
   
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -312,6 +315,14 @@ export default function CommandComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastLiveSeqRef = useRef<number>(0);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
+  const lastToolShownAtRef = useRef<number>(0);
+  const pendingToolNameRef = useRef<string | null>(null);
+  const toolTimerRef = useRef<number | null>(null);
+  const pendingFinalTextRef = useRef<any | null>(null);
+  const finalHideTimerRef = useRef<number | null>(null);
+  const finalShowTimerRef = useRef<number | null>(null);
+  const statusRef = useRef<'idle' | 'thinking' | 'answering'>(status);
+  const activeToolNameRef = useRef<string | null>(activeToolName);
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -597,11 +608,106 @@ export default function CommandComposer({
     }
   };
 
+  const clearToolTimers = () => {
+    if (toolTimerRef.current != null) {
+      window.clearTimeout(toolTimerRef.current);
+      toolTimerRef.current = null;
+    }
+    if (finalHideTimerRef.current != null) {
+      window.clearTimeout(finalHideTimerRef.current);
+      finalHideTimerRef.current = null;
+    }
+    if (finalShowTimerRef.current != null) {
+      window.clearTimeout(finalShowTimerRef.current);
+      finalShowTimerRef.current = null;
+    }
+    pendingToolNameRef.current = null;
+    pendingFinalTextRef.current = null;
+  };
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  useEffect(() => {
+    activeToolNameRef.current = activeToolName;
+  }, [activeToolName]);
+
+  const scheduleTool = (name: string) => {
+    const next = String(name || '').trim();
+    if (!next) return;
+
+    pendingToolNameRef.current = next;
+
+    if (toolTimerRef.current != null) return;
+
+    const MIN_MS = 200;
+    const now = Date.now();
+    const wait = Math.max(0, MIN_MS - (now - lastToolShownAtRef.current));
+
+    toolTimerRef.current = window.setTimeout(() => {
+      toolTimerRef.current = null;
+      const tool = pendingToolNameRef.current;
+      pendingToolNameRef.current = null;
+      if (!tool) return;
+      lastToolShownAtRef.current = Date.now();
+      setActiveToolName(tool);
+      setStatus('thinking');
+      setToolHistory((prev) => [tool, ...prev.filter((t) => t !== tool)].slice(0, 3));
+    }, wait);
+  };
+
+  const scheduleFinalText = (msg: any) => {
+    if (msg == null) return;
+    if (toolTimerRef.current != null) {
+      window.clearTimeout(toolTimerRef.current);
+      toolTimerRef.current = null;
+    }
+    pendingToolNameRef.current = null;
+    if (finalHideTimerRef.current != null) {
+      window.clearTimeout(finalHideTimerRef.current);
+      finalHideTimerRef.current = null;
+    }
+    if (finalShowTimerRef.current != null) {
+      window.clearTimeout(finalShowTimerRef.current);
+      finalShowTimerRef.current = null;
+    }
+    pendingFinalTextRef.current = msg;
+    setStatus('thinking');
+    finalHideTimerRef.current = window.setTimeout(() => {
+      finalHideTimerRef.current = null;
+      setActiveToolName(null);
+      finalShowTimerRef.current = window.setTimeout(() => {
+        finalShowTimerRef.current = null;
+        const pending = pendingFinalTextRef.current;
+        pendingFinalTextRef.current = null;
+        if (pending != null) {
+          setEvents((prev) => {
+            const id = typeof pending?.id === 'string' ? pending.id : '';
+            if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+            return [...prev, pending];
+          });
+          try {
+            let content = pending.data;
+            if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+              const p = JSON.parse(content);
+              content = p.text || p.output || content;
+            }
+            speak(String(content));
+          } catch {}
+        }
+        setStatus('idle');
+        setActiveToolName(null);
+      }, 180);
+    }, 300);
+  };
+
   useEffect(() => {
     connectWS();
     return () => {
       if (wsRef.current) wsRef.current.close();
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+      clearToolTimers();
     };
   }, []);
 
@@ -622,6 +728,10 @@ export default function CommandComposer({
           }
           if (typeof msg?.runId === 'string' && msg.runId.trim()) {
             setActiveRunId(msg.runId.trim());
+          }
+          if (msg.type === 'user_input') {
+            setStatus('thinking');
+            setActiveToolName(null);
           }
 
           if (msg.type === 'artifact_created') {
@@ -648,6 +758,11 @@ export default function CommandComposer({
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
             if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
+            if (name.startsWith('execute:')) {
+              scheduleTool(name.slice('execute:'.length));
+            } else if (name) {
+              scheduleTool(name);
+            }
           }
 
           if (msg.type === 'step_done' || msg.type === 'step_failed') {
@@ -661,14 +776,37 @@ export default function CommandComposer({
           }
 
           if (msg.type === 'text') {
-             let content = msg.data;
-             try {
-               if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                  const p = JSON.parse(content);
-                  content = p.text || p.output || content;
-               }
-             } catch {}
-             speak(String(content));
+            const id = typeof msg?.id === 'string' ? msg.id : '';
+            const isSystemPrompt = id.startsWith('system_prompt:');
+            const hasThinkingContext =
+              statusRef.current === 'thinking' ||
+              activeToolNameRef.current != null ||
+              pendingToolNameRef.current != null ||
+              toolTimerRef.current != null;
+
+            if (!isSystemPrompt && hasThinkingContext) {
+              scheduleFinalText(msg);
+              return;
+            }
+
+            let content = msg.data;
+            try {
+              if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                const p = JSON.parse(content);
+                content = p.text || p.output || content;
+              }
+            } catch {}
+            speak(String(content));
+          }
+
+          if (msg.type === 'run_finished') {
+            if (finalHideTimerRef.current == null && finalShowTimerRef.current == null && pendingFinalTextRef.current == null) {
+              setActiveToolName(null);
+              window.setTimeout(() => {
+                if (statusRef.current === 'thinking') setStatus('idle');
+                setActiveToolName(null);
+              }, 300);
+            }
           }
 
           if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'text', 'user_input'].includes(msg.type)) {
@@ -732,6 +870,9 @@ export default function CommandComposer({
       setEvents([]);
       setActiveRunId(null);
       setApproval(null);
+      clearToolTimers();
+      setStatus('idle');
+      setActiveToolName(null);
       return;
     }
 
@@ -739,6 +880,9 @@ export default function CommandComposer({
       setEvents([]);
       setActiveRunId(null);
       setApproval(null);
+      clearToolTimers();
+      setStatus('idle');
+      setActiveToolName(null);
       loadHistory(sessionId);
       return;
     }
@@ -802,6 +946,9 @@ export default function CommandComposer({
   async function run(overrideText?: string) {
     const inputText = overrideText || text;
     if (!inputText.trim()) return;
+    clearToolTimers();
+    setStatus('thinking');
+    setActiveToolName(null);
 
     const needsBrowserForText = (raw: string) => {
       const s = String(raw || '').trim();
@@ -933,6 +1080,9 @@ export default function CommandComposer({
       const finalMsg = msg ? `${t('error')}: ${msg}` : t('error');
       setEvents(prev => [...prev, { type: 'error', data: finalMsg }]);
       if (!overrideText) setText(inputText);
+      clearToolTimers();
+      setStatus('idle');
+      setActiveToolName(null);
     }
   }
 
@@ -998,26 +1148,7 @@ export default function CommandComposer({
     }
   };
 
-  const isThinking = (() => {
-    if (!isConnected || events.length === 0) return false;
-    const last = events[events.length - 1];
-    if (last.type === 'user_input') return true;
-    if (last.type === 'step_started') {
-        // Only think if we haven't replied yet since the last user input
-        for (let i = events.length - 1; i >= 0; i--) {
-            if (events[i].type === 'text') return false;
-            if (events[i].type === 'user_input') return true;
-        }
-    }
-    return false;
-  })();
-
-  const currentStepName = (() => {
-    for (let i = derived.steps.length - 1; i >= 0; i--) {
-      if (derived.steps[i]?.status === 'running') return derived.steps[i]?.displayName || derived.steps[i]?.name;
-    }
-    return undefined;
-  })();
+  const isThinking = status === 'thinking';
 
   const formatStepDisplayName = (name: string) => {
     if (name.startsWith('thinking_step_')) {
@@ -1625,7 +1756,7 @@ export default function CommandComposer({
             exit={{ opacity: 0, y: 10 }}
             className="message-row joe"
           >
-             <ThinkingIndicator stepName={currentStepName} />
+             <ThinkingWithTools status={status} activeToolName={activeToolName} />
           </motion.div>
         )}
         <div ref={endRef} />
