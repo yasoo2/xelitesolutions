@@ -1165,8 +1165,8 @@ Instructions:
         
         const page = await browser.newPage();
         
-        // Use Mobile User Agent to get simpler, parse-friendly Google results
-        await page.setUserAgent('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36');
+        // Use Desktop User Agent for better structure
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
         
         // Block heavy resources
         await page.setRequestInterception(true);
@@ -1176,57 +1176,74 @@ Instructions:
             else req.continue();
         });
 
-        // Search Google
-        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        // Search Google (force English for consistency or Arabic if preferred? Let's use auto but maybe add hl=ar if query is arabic?)
+        // Actually, let's just use the query as is.
+        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ar`, { waitUntil: 'domcontentloaded', timeout: 15000 });
         
         // Wait briefly for content
-        try { await page.waitForSelector('div', { timeout: 3000 }); } catch {}
+        try { await page.waitForSelector('#search', { timeout: 3000 }); } catch {}
+
+        // Check for Consent Page
+        const title = await page.title();
+        logs.push(`google.title=${title}`);
+        
+        if (title.includes('Consent') || title.includes('Before you continue') || title.includes('Google') && !title.includes(' - ')) {
+             // Try to find and click "Reject all" or "Accept all"
+             // Buttons usually have class "QS5gu sy4vM"
+             try {
+                const buttons = await page.$$('button');
+                for (const btn of buttons) {
+                    const text = await page.evaluate(el => el.textContent, btn);
+                    if (text && (text.includes('Reject all') || text.includes('رفض الكل') || text.includes('I agree') || text.includes('أوافق'))) {
+                        await btn.click();
+                        await page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+                        break;
+                    }
+                }
+             } catch {}
+        }
 
         const googleResults = await page.evaluate(() => {
             const items: any[] = [];
             
-            // In Mobile View, Google uses .BNeawe classes heavily for answers and snippets
-            // "BNeawe iBp4i AP7Wnd" -> Large text (often the direct answer)
-            // "BNeawe s3v9rd AP7Wnd" -> Snippet text
-            // "BNeawe UPmit AP7Wnd" -> URL/Breadcrumb
+            // Desktop Selectors
             
-            // 1. Check for Direct Answer (Large Text)
-            const largeTexts = document.querySelectorAll('.BNeawe.iBp4i.AP7Wnd');
-            largeTexts.forEach(el => {
-                if (el.textContent && el.textContent.length < 200) {
-                     items.push({
-                        title: 'Direct Answer / Featured Result',
-                        url: 'https://www.google.com',
-                        description: `**ANSWER**: ${el.textContent.trim()}`
-                    });
-                }
-            });
+            // 1. Currency Converter Specifics (often has class DFlfde SwHCTb for value)
+            const currencyValue = document.querySelector('.DFlfde.SwHCTb');
+            const currencySource = document.querySelector('.vLqKYe'); // "1 Jordanian Dinar equals"
+            const currencyTarget = document.querySelector('.MWvIVe'); // "New Israeli Shekel"
+            
+            if (currencyValue && currencySource) {
+                 items.push({
+                    title: 'Currency Rate (Direct)',
+                    url: 'https://www.google.com',
+                    description: `**ANSWER**: ${currencySource.textContent} ${currencyValue.textContent} ${currencyTarget?.textContent || ''}`
+                });
+            }
 
-            // 2. Standard Results
-            const containers = document.querySelectorAll('.xpd');
-            containers.forEach(div => {
-                // Try to find title, link, and snippet within this container
-                const titleEl = div.querySelector('.BNeawe.vvjwJb.AP7Wnd') || div.querySelector('h3');
+            // 2. Featured Snippet / Direct Answer
+            const snippetEl = document.querySelector('.hgKElc') || document.querySelector('.kno-rdesc span');
+            if (snippetEl && snippetEl.textContent) {
+                 items.push({
+                    title: 'Direct Answer',
+                    url: 'https://www.google.com',
+                    description: `**ANSWER**: ${snippetEl.textContent.trim()}`
+                });
+            }
+            
+            // 3. Standard Results (.g)
+            const results = document.querySelectorAll('#search .g');
+            results.forEach(div => {
+                const titleEl = div.querySelector('h3');
                 const linkEl = div.querySelector('a');
-                // Snippet is often in a different BNeawe class
-                const snippetEl = div.querySelector('.BNeawe.s3v9rd.AP7Wnd');
+                const descEl = div.querySelector('.VwiC3b') || div.querySelector('.IsZvec') || div.querySelector('.st'); 
                 
-                if (titleEl && linkEl && snippetEl) {
-                    const title = titleEl.textContent?.trim();
-                    const url = linkEl.href;
-                    // Extract URL from google redirect if needed (google.com/url?q=...)
-                    let finalUrl = url;
-                    if (url.includes('/url?q=')) {
-                        try { finalUrl = new URLSearchParams(new URL(url).search).get('q') || url; } catch {}
-                    }
-                    
-                    if (title && finalUrl && !finalUrl.includes('google.com')) {
-                        items.push({
-                            title,
-                            url: finalUrl,
-                            description: snippetEl.textContent?.trim() || ''
-                        });
-                    }
+                if (titleEl && linkEl) {
+                     items.push({
+                        title: titleEl.textContent?.trim(),
+                        url: linkEl.href,
+                        description: descEl?.textContent?.trim() || ''
+                    });
                 }
             });
             
@@ -1792,10 +1809,10 @@ Instructions:
     if (name === 'analyze_codebase') {
        const p = String(input?.path || '.');
        const root = resolveToolPath(p);
+       const logs: string[] = [];
        
        if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
        
-       const logs: string[] = [];
        logs.push(`analyze.root=${root}`);
 
        // 1. Get File Structure (limited to depth 3)

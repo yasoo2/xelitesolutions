@@ -1429,52 +1429,65 @@ ${contents.join("\n---\n")}`
           args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
         });
         const page = await browser.newPage();
-        await page.setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36");
+        await page.setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36");
         await page.setRequestInterception(true);
         page.on("request", (req) => {
           const type = req.resourceType();
           if (["image", "stylesheet", "font", "media", "script"].includes(type)) req.abort();
           else req.continue();
         });
-        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { waitUntil: "domcontentloaded", timeout: 15e3 });
+        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ar`, { waitUntil: "domcontentloaded", timeout: 15e3 });
         try {
-          await page.waitForSelector("div", { timeout: 3e3 });
+          await page.waitForSelector("#search", { timeout: 3e3 });
         } catch {
+        }
+        const title = await page.title();
+        logs2.push(`google.title=${title}`);
+        if (title.includes("Consent") || title.includes("Before you continue") || title.includes("Google") && !title.includes(" - ")) {
+          try {
+            const buttons = await page.$$("button");
+            for (const btn of buttons) {
+              const text = await page.evaluate((el) => el.textContent, btn);
+              if (text && (text.includes("Reject all") || text.includes("\u0631\u0641\u0636 \u0627\u0644\u0643\u0644") || text.includes("I agree") || text.includes("\u0623\u0648\u0627\u0641\u0642"))) {
+                await btn.click();
+                await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+                break;
+              }
+            }
+          } catch {
+          }
         }
         const googleResults = await page.evaluate(() => {
           const items = [];
-          const largeTexts = document.querySelectorAll(".BNeawe.iBp4i.AP7Wnd");
-          largeTexts.forEach((el) => {
-            if (el.textContent && el.textContent.length < 200) {
-              items.push({
-                title: "Direct Answer / Featured Result",
-                url: "https://www.google.com",
-                description: `**ANSWER**: ${el.textContent.trim()}`
-              });
-            }
-          });
-          const containers = document.querySelectorAll(".xpd");
-          containers.forEach((div) => {
-            const titleEl = div.querySelector(".BNeawe.vvjwJb.AP7Wnd") || div.querySelector("h3");
+          const currencyValue = document.querySelector(".DFlfde.SwHCTb");
+          const currencySource = document.querySelector(".vLqKYe");
+          const currencyTarget = document.querySelector(".MWvIVe");
+          if (currencyValue && currencySource) {
+            items.push({
+              title: "Currency Rate (Direct)",
+              url: "https://www.google.com",
+              description: `**ANSWER**: ${currencySource.textContent} ${currencyValue.textContent} ${currencyTarget?.textContent || ""}`
+            });
+          }
+          const snippetEl = document.querySelector(".hgKElc") || document.querySelector(".kno-rdesc span");
+          if (snippetEl && snippetEl.textContent) {
+            items.push({
+              title: "Direct Answer",
+              url: "https://www.google.com",
+              description: `**ANSWER**: ${snippetEl.textContent.trim()}`
+            });
+          }
+          const results2 = document.querySelectorAll("#search .g");
+          results2.forEach((div) => {
+            const titleEl = div.querySelector("h3");
             const linkEl = div.querySelector("a");
-            const snippetEl = div.querySelector(".BNeawe.s3v9rd.AP7Wnd");
-            if (titleEl && linkEl && snippetEl) {
-              const title = titleEl.textContent?.trim();
-              const url = linkEl.href;
-              let finalUrl = url;
-              if (url.includes("/url?q=")) {
-                try {
-                  finalUrl = new URLSearchParams(new URL(url).search).get("q") || url;
-                } catch {
-                }
-              }
-              if (title && finalUrl && !finalUrl.includes("google.com")) {
-                items.push({
-                  title,
-                  url: finalUrl,
-                  description: snippetEl.textContent?.trim() || ""
-                });
-              }
+            const descEl = div.querySelector(".VwiC3b") || div.querySelector(".IsZvec") || div.querySelector(".st");
+            if (titleEl && linkEl) {
+              items.push({
+                title: titleEl.textContent?.trim(),
+                url: linkEl.href,
+                description: descEl?.textContent?.trim() || ""
+              });
             }
           });
           return items;
@@ -1951,8 +1964,8 @@ ${doc}
     if (name === "analyze_codebase") {
       const p = String(input?.path || ".");
       const root = resolveToolPath(p);
-      if (!import_fs2.default.existsSync(root)) return { ok: false, error: "Path not found", logs: logs2 };
       const logs2 = [];
+      if (!import_fs2.default.existsSync(root)) return { ok: false, error: "Path not found", logs: logs2 };
       logs2.push(`analyze.root=${root}`);
       const getStructure = (dir, depth) => {
         if (depth > 3) return [];
