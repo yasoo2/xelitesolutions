@@ -422,12 +422,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   let forcedText: string | null = null;
   let assistantTextEmitted = false;
   let plan: { name: string, input: any } | null = null;
+  let pendingPlan: { name: string, input: any } | null = null;
 
   while (steps < MAX_STEPS) {
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
     
     // Optimization: Reuse initial plan if available for the first step to reduce latency
-    if (steps === 0 && initialPlan) {
+    if (pendingPlan) {
+        plan = pendingPlan;
+        pendingPlan = null;
+    } else if (steps === 0 && initialPlan) {
         plan = initialPlan;
         initialPlan = null; // Prevent reuse
     } else {
@@ -476,17 +480,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
     
-    if (kind === 'chat' && /^browser_/.test(String(plan?.name || ''))) {
-      const msg = 'أدوات المتصفح تعمل فقط داخل وضع الوكيل. انتقل إلى تبويب الوكيل لفتح المواقع داخل المتصفح.';
-      ev({ type: 'text', data: msg });
-      forcedText = msg;
-      assistantTextEmitted = true;
-      break;
-    }
-
     const planName = String(plan?.name || '');
     const isBrowserTool = /^browser_/.test(planName);
-    if (kind === 'agent' && isBrowserTool) {
+    if (isBrowserTool) {
       const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
       const inputSid = String((plan as any)?.input?.sessionId || '').trim();
       const hasSid = !!(reqSid || inputSid);
@@ -499,19 +495,20 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             input: { url: `https://wttr.in/${encodeURIComponent(city)}?format=j1`, city },
           } as any;
         } else {
-          const tn = normalizeArabicQuery(userText);
-          const hasUrl = /https?:\/\/\S+/i.test(userText);
-          const isExplicitOpen =
-            hasUrl || /(open|افتح|اذهب|ادخل|دخول|فتح|زيارة|browser)/i.test(tn);
-          if (!isExplicitOpen) {
-            plan = { name: 'web_search', input: { query: userText || planName } } as any;
-          } else {
-            const msg = 'المتصفح غير مفتوح في وضع الوكيل. افتح المتصفح في الوسط أولاً ثم أعد تنفيذ أمر المتصفح.';
-            ev({ type: 'text', data: msg });
-            forcedText = msg;
-            assistantTextEmitted = true;
-            break;
-          }
+          const urlMatch = userText.match(/https?:\/\/[^\s"'<>]+/i);
+          const urlFromUser = urlMatch?.[0];
+          const urlFromInput = String((plan as any)?.input?.url || '').trim();
+          const actions = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+          const goto = actions.find((a: any) => String(a?.type || '').toLowerCase() === 'goto' && typeof a?.url === 'string' && a.url.trim());
+          const urlFromActions = goto ? String(goto.url).trim() : '';
+          const wantsYoutube = /youtube|يوتيوب/i.test(userText);
+          const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(userText);
+          const desiredUrl =
+            (urlFromUser || urlFromInput || urlFromActions || '').trim() ||
+            (wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
+
+          if (planName !== 'browser_open') pendingPlan = plan as any;
+          plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
         }
       }
     }
@@ -528,7 +525,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     if (
-      kind === 'agent' &&
       typeof browserSessionId === 'string' &&
       browserSessionId.trim() &&
       ['browser_run', 'browser_get_state', 'browser_extract'].includes(String(plan?.name || ''))
@@ -583,6 +579,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
     ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
     const result = await executeTool(plan?.name || '', plan?.input);
+    if (result?.ok && plan?.name === 'browser_open') {
+      const sid = String(result?.output?.sessionId || '').trim();
+      if (sid) browserSessionId = sid;
+    }
     
     // Add result to history to prevent infinite loops
     history.push({ 

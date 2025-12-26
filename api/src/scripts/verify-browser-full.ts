@@ -17,14 +17,17 @@ async function runTest() {
   const browserRun = tools.find(t => t.name === 'browser_run');
   const browserExtract = tools.find(t => t.name === 'browser_extract');
 
-  if (!browserOpen || !browserRun || !browserExtract) {
+  if (!browserOpen?.execute || !browserRun?.execute || !browserExtract?.execute) {
     console.error('❌ Critical Error: Browser tools not found in registry!');
     process.exit(1);
   }
+  const open = browserOpen.execute;
+  const run = browserRun.execute;
+  const extract = browserExtract.execute;
 
   // 2. Open Browser Session (Google)
   console.log('\nTesting: browser_open (https://www.google.com)...');
-  const openResult = await browserOpen.execute({ url: 'https://www.google.com' });
+  const openResult = await open({ url: 'https://www.google.com' });
   
   if (!openResult.ok) {
     console.error('❌ browser_open failed:', openResult.error);
@@ -47,7 +50,7 @@ async function runTest() {
     ]
   };
   
-  const searchResult = await browserRun.execute(searchAction);
+  const searchResult = await run(searchAction);
   if (!searchResult.ok) {
     console.error('❌ browser_run (Search) failed:', searchResult.error);
   } else {
@@ -63,7 +66,7 @@ async function runTest() {
       { type: 'wait', timeoutMs: 1000 }
     ]
   };
-  const scrollResult = await browserRun.execute(scrollAction);
+  const scrollResult = await run(scrollAction);
   if (!scrollResult.ok) {
     console.error('❌ browser_run (Scroll) failed:', scrollResult.error);
   } else {
@@ -85,7 +88,7 @@ async function runTest() {
     }
   };
 
-  const extractResult = await browserExtract.execute({
+  const extractResult = await extract({
     sessionId,
     schema
   });
@@ -99,7 +102,7 @@ async function runTest() {
   
   // 5b. Get State (Full Snapshot)
   const browserGetState = tools.find(t => t.name === 'browser_get_state');
-  if (browserGetState) {
+  if (browserGetState?.execute) {
       console.log('\nTesting: browser_get_state (DOM & Screenshot)...');
       const stateResult = await browserGetState.execute({ sessionId });
       if (!stateResult.ok) {
@@ -119,7 +122,7 @@ async function runTest() {
       { type: 'screenshot' }
     ]
   };
-  const screenshotResult = await browserRun.execute(screenshotAction);
+  const screenshotResult = await run(screenshotAction);
   if (!screenshotResult.ok) {
     console.error('❌ browser_run (Screenshot) failed:', screenshotResult.error);
   } else {

@@ -407,8 +407,8 @@ export const tools: ToolDefinition[] = [
     name: 'html_extract',
     version: '1.0.0',
     tags: ['network', 'html', 'extract'],
-    inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
-    outputSchema: { type: 'object', properties: { title: { type: 'string' }, metaDescription: { type: 'string' }, headings: { type: 'array', items: { type: 'string' } }, links: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, url: { type: 'string' } } } }, textSnippet: { type: 'string' } } },
+    inputSchema: { type: 'object', properties: { url: { type: 'string' }, render: { type: 'boolean' } }, required: ['url'] },
+    outputSchema: { type: 'object', properties: { title: { type: 'string' }, metaDescription: { type: 'string' }, headings: { type: 'array', items: { type: 'string' } }, links: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, url: { type: 'string' } } } }, textSnippet: { type: 'string' }, url: { type: 'string' }, rendered: { type: 'boolean' } } },
     permissions: ['read'],
     sideEffects: [],
     rateLimitPerMinute: 30,
@@ -830,29 +830,106 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     }
     if (name === 'html_extract') {
       const url = String(input?.url ?? '');
-      const resp = await fetch(url);
-      const html = await resp.text();
-      const tMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      const title = tMatch ? String(tMatch[1]).trim() : '';
-      const mMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i) || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["'][^>]*>/i);
-      const metaDescription = mMatch ? String(mMatch[1]).trim() : '';
-      const headings: string[] = [];
-      const hRegex = /<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi;
-      let hm;
-      while ((hm = hRegex.exec(html))) {
-        const txt = String(hm[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (txt) headings.push(txt);
+      const renderRequested = input?.render === true;
+
+      const parseHtml = (rawHtml: string, baseUrl: string) => {
+        const html = String(rawHtml || '');
+        const tMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const title = tMatch ? String(tMatch[1]).trim() : '';
+        const mMatch =
+          html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+          html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["'][^>]*>/i);
+        const metaDescription = mMatch ? String(mMatch[1]).trim() : '';
+        const headings: string[] = [];
+        const hRegex = /<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi;
+        let hm;
+        while ((hm = hRegex.exec(html))) {
+          const txt = String(hm[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          if (txt) headings.push(txt);
+        }
+        const links: Array<{ text: string; url: string }> = [];
+        const aRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+        let am;
+        while ((am = aRegex.exec(html))) {
+          const hrefRaw = String(am[1]).trim();
+          const txt = String(am[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          if (!hrefRaw || !txt) continue;
+          let abs = hrefRaw;
+          try { abs = new URL(hrefRaw, baseUrl).toString(); } catch {}
+          links.push({ text: txt.slice(0, 160), url: abs });
+        }
+        const textSnippet = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 1200);
+        return { title, metaDescription, headings: headings.slice(0, 12), links: links.slice(0, 12), textSnippet };
+      };
+
+      const renderWithPuppeteer = async (targetUrl: string) => {
+        const puppeteer = await import('puppeteer');
+        const browser = await puppeteer.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+        });
+        try {
+          const page = await browser.newPage();
+          await page.setRequestInterception(true);
+          page.on('request', (req) => {
+            const type = req.resourceType();
+            if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
+            else req.continue();
+          });
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          const finalUrl = page.url();
+          const html = await page.content();
+          return { html, finalUrl };
+        } finally {
+          try { await browser.close(); } catch {}
+        }
+      };
+
+      let html = '';
+      let finalUrl = url;
+      let rendered = false;
+
+      if (renderRequested) {
+        const out = await renderWithPuppeteer(url);
+        html = out.html;
+        finalUrl = out.finalUrl;
+        rendered = true;
+        logs.push('html_extract.rendered=1');
+      } else {
+        const resp = await fetch(url);
+        finalUrl = (resp as any)?.url ? String((resp as any).url) : url;
+        logs.push(`fetch.status=${resp.status}`);
+        html = await resp.text();
       }
-      const links: Array<{ text: string; url: string }> = [];
-      const aRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let am;
-      while ((am = aRegex.exec(html))) {
-        const href = String(am[1]).trim();
-        const txt = String(am[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (href && txt) links.push({ text: txt.slice(0, 160), url: href });
+
+      let parsed = parseHtml(html, finalUrl);
+      const weak =
+        !rendered &&
+        String(parsed.title || '').trim().length === 0 &&
+        String(parsed.textSnippet || '').trim().length < 80 &&
+        (parsed.headings?.length || 0) === 0;
+
+      if (weak) {
+        try {
+          const out = await renderWithPuppeteer(url);
+          html = out.html;
+          finalUrl = out.finalUrl;
+          rendered = true;
+          logs.push('html_extract.auto_rendered=1');
+          parsed = parseHtml(html, finalUrl);
+        } catch (e: any) {
+          logs.push(`html_extract.auto_render_failed=${String(e?.message || e)}`);
+        }
       }
-      const textSnippet = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800);
-      return { ok: true, output: { title, metaDescription, headings: headings.slice(0, 12), links: links.slice(0, 12), textSnippet }, logs };
+
+      return { ok: true, output: { ...parsed, url: finalUrl, rendered }, logs };
     }
     if (name === 'rss_fetch') {
       const url = String(input?.url ?? '');
