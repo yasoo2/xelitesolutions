@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState, lazy, Suspense, forwardRef } from
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import CodeWithPreview from './CodeWithPreview';
-import VoiceVisualizer from './VoiceVisualizer';
+
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -240,11 +239,14 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick }: { event: any, i
                   code({node, inline, className, children, ...props}: any) {
                    const match = /language-(\w+)/.exec(className || '');
                    return !inline && match ? (
-                     <CodeWithPreview
+                     <SyntaxHighlighter
+                       style={vscDarkPlus}
                        language={match[1]}
-                       code={String(children).replace(/\n$/, '')}
+                       PreTag="div"
                        {...props}
-                     />
+                     >
+                       {String(children).replace(/\n$/, '')}
+                     </SyntaxHighlighter>
                    ) : (
                      <code className={className} {...props} style={!inline ? { display: 'block', padding: '10px', background: '#1e1e1e', borderRadius: '4px', overflowX: 'auto' } : { background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '3px' }}>
                        {children}
@@ -1840,8 +1842,7 @@ export default function CommandComposer({
         </div>
       )}
 
-      {/* Voice Visualizer */}
-      <VoiceVisualizer isSpeaking={isSpeaking} onStop={stopSpeaking} />
+
 
       {/* AI Providers Modal */}
       {showProviders && (
@@ -2118,7 +2119,7 @@ export default function CommandComposer({
                      <span>{isListening ? 'Listening...' : 'Tap to Speak'}</span>
                      <span style={{ fontSize: 10, opacity: 0.7 }}>Arabic (SA) / English (US)</span>
                  </div>
-                 {isSpeaking && <VoiceVisualizer isSpeaking={true} onStop={stopSpeaking} />}
+
                  
                  <button className="icon-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
                      <Volume2 size={18} />

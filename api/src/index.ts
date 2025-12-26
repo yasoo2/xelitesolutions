@@ -17,14 +17,8 @@ import audioRoutes from './routes/audio';
 import assetsRoutes from './routes/assets';
 import memoryRoutes from './routes/memory';
 import knowledgeRoutes from './routes/knowledge';
-import databaseRoutes from './routes/database';
 import systemRoutes from './routes/system';
-import healingRoutes, { logError } from './routes/healing';
-import docsRoutes from './routes/docs';
-import analyticsRoutes from './routes/analytics';
-import testRoutes from './routes/tests';
-import advancedRoutes from './routes/advanced';
-import { SentinelService } from './services/sentinel';
+
 import { authenticate } from './middleware/auth';
 import http from 'http';
 import { attachWebSocket } from './ws';
@@ -42,7 +36,7 @@ const logger =
       });
 
 // Start Sentinel
-SentinelService.start(path.resolve(__dirname, '../..'));
+// SentinelService.start(path.resolve(__dirname, '../..'));
 
 async function main() {
   const app = express();
@@ -72,14 +66,9 @@ async function main() {
   app.use('/assets', assetsRoutes);
   app.use('/memory', memoryRoutes);
   app.use('/knowledge', knowledgeRoutes);
-  app.use('/database', databaseRoutes);
-  app.use('/system', systemRoutes);
-  app.use('/healing', healingRoutes);
-  app.use('/advanced', advancedRoutes);
-  app.use('/docs', docsRoutes);
-  app.use('/analytics', analyticsRoutes);
-  app.use('/tests', testRoutes);
 
+  app.use('/system', systemRoutes);
+  
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
     const auth = (req as any).auth;
@@ -110,12 +99,10 @@ async function main() {
   // Global Error Handler for Healing
   process.on('uncaughtException', (err) => {
       logger.error(err, 'Uncaught Exception');
-      logError(err, 'Uncaught Exception');
   });
 
   process.on('unhandledRejection', (reason: any) => {
       logger.error(reason, 'Unhandled Rejection');
-      logError(reason instanceof Error ? reason : new Error(String(reason)), 'Unhandled Rejection');
   });
 }
 
