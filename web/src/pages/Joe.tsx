@@ -4,8 +4,9 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot } from 'lucide-react';
+import BrowserView from '../components/BrowserView';
 
-const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
+// const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
 
 function BrowserApp({
   onSession,
@@ -20,6 +21,7 @@ function BrowserApp({
 }) {
   const [url, setUrl] = useState('https://www.google.com');
   const [wsUrl, setWsUrl] = useState<string | null>(initialSession?.wsUrl || null);
+  const [sessionId, setSessionId] = useState<string | null>(initialSession?.sessionId || null);
   const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const didAutoOpen = useRef(false);
@@ -27,6 +29,7 @@ function BrowserApp({
   useEffect(() => {
     if (initialSession?.wsUrl) {
       setWsUrl(initialSession.wsUrl);
+      setSessionId(initialSession.sessionId);
     }
   }, [initialSession]);
 
@@ -48,18 +51,21 @@ function BrowserApp({
       const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
       if (!data?.ok || !nextWsUrl) {
         setWsUrl(null);
+        setSessionId(null);
         setError(String(data?.error || 'فشل فتح المتصفح'));
         return;
       }
       const sid = String(data?.output?.sessionId || '');
       const wsu = String(nextWsUrl);
       setWsUrl(wsu);
+      setSessionId(sid);
       if (sid && wsu) {
         onSession?.({ sessionId: sid, wsUrl: wsu });
         window.dispatchEvent(new CustomEvent('joe:browser_opened', { detail: { sessionId: sid, wsUrl: wsu } }));
       }
     } catch (e: any) {
       setWsUrl(null);
+      setSessionId(null);
       setError(String(e?.message || e));
     } finally {
       setIsOpening(false);
@@ -91,6 +97,7 @@ function BrowserApp({
       const wsu = String(detail?.wsUrl || '');
       if (sid && wsu) {
         setWsUrl(wsu);
+        setSessionId(sid);
         onSession?.({ sessionId: sid, wsUrl: wsu });
       }
     };
@@ -100,8 +107,8 @@ function BrowserApp({
 
   return (
     <div className="browser-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {!wsUrl ? (
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+        {!sessionId ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-secondary)' }} dir="auto">
             <div style={{ textAlign: 'center' }}>
               {error ? <div style={{ color: '#ef4444', marginBottom: 10 }}>{error}</div> : null}
@@ -111,9 +118,7 @@ function BrowserApp({
             </div>
           </div>
         ) : (
-          <Suspense fallback={<div style={{ padding: 12, color: 'var(--text-secondary)' }}>Loading Stream...</div>}>
-            <AgentBrowserStreamLazy wsUrl={wsUrl} minimal={minimal} />
-          </Suspense>
+          <BrowserView sessionId={sessionId} />
         )}
       </div>
     </div>
