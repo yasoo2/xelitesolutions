@@ -504,6 +504,23 @@ async function runActions(session: Session, actions: Action[]) {
         }
         case 'fillForm': {
           for (const f of a.fields) {
+            // Visual feedback: move cursor to field
+            try {
+              let loc = null;
+              if (f.selector) loc = session.page.locator(f.selector).first();
+              else if (f.label) loc = session.page.getByLabel(f.label).first();
+              
+              if (loc) {
+                const box = await loc.boundingBox({ timeout: 500 }).catch(() => null);
+                if (box) {
+                  const cx = box.x + box.width / 2;
+                  const cy = box.y + box.height / 2;
+                  notifySession(session, 'cursor_move', { x: cx, y: cy });
+                  await new Promise(r => setTimeout(r, 150));
+                }
+              }
+            } catch {}
+
             if (f.selector) {
               if (f.kind === 'file') {
                 // file handled via uploadFile

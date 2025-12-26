@@ -15,6 +15,9 @@ export default function BrowserView({ sessionId, className, onClose }: BrowserVi
   const [size, setSize] = useState({ w: 1280, h: 800 });
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
 
+  const [lastFrame, setLastFrame] = useState<HTMLImageElement | null>(null);
+  const [clickEffect, setClickEffect] = useState<{ x: number, y: number, ts: number } | null>(null);
+
   useEffect(() => {
     if (!sessionId) return;
 
@@ -64,11 +67,21 @@ export default function BrowserView({ sessionId, className, onClose }: BrowserVi
         }
 
         if (msg.type === 'frame' && msg.jpegBase64) {
-          drawFrame(msg.jpegBase64);
+          const img = new Image();
+          img.onload = () => {
+            setLastFrame(img);
+          };
+          img.src = 'data:image/jpeg;base64,' + msg.jpegBase64;
         }
 
         if (msg.type === 'cursor_move') {
           setCursor({ x: msg.x, y: msg.y });
+        }
+
+        if (msg.type === 'cursor_click') {
+          setCursor({ x: msg.x, y: msg.y });
+          setClickEffect({ x: msg.x, y: msg.y, ts: Date.now() });
+          setTimeout(() => setClickEffect(null), 300);
         }
       } catch (e) {
         console.error('BrowserView: Parse error', e);
@@ -80,25 +93,63 @@ export default function BrowserView({ sessionId, className, onClose }: BrowserVi
     };
   }, [sessionId]);
 
-  function drawFrame(base64: string) {
+  // Redraw whenever relevant state changes
+  useEffect(() => {
+    draw();
+  }, [lastFrame, cursor, clickEffect, size]);
+
+  function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Draw cursor
-      /*
+    // Clear
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Frame
+    if (lastFrame) {
+      ctx.drawImage(lastFrame, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle = '#1e1e1e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#666';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('Waiting for stream...', 20, 30);
+    }
+
+    // Draw Cursor
+    if (cursor.x >= 0 && cursor.y >= 0) {
+      // Circle Cursor
       ctx.beginPath();
-      ctx.arc(cursor.x, cursor.y, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = 'red';
+      ctx.arc(cursor.x, cursor.y, 8, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.8)'; // Red-500 with opacity
       ctx.fill();
-      */
-    };
-    img.src = 'data:image/jpeg;base64,' + base64;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Dot center
+      ctx.beginPath();
+      ctx.arc(cursor.x, cursor.y, 2, 0, 2 * Math.PI);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+    }
+
+    // Draw Click Effect
+    if (clickEffect) {
+      const age = Date.now() - clickEffect.ts;
+      if (age < 300) {
+        const radius = 10 + (age / 300) * 20;
+        const alpha = 1 - (age / 300);
+        
+        ctx.beginPath();
+        ctx.arc(clickEffect.x, clickEffect.y, radius, 0, 2 * Math.PI);
+        ctx.strokeStyle = `rgba(239, 68, 68, ${alpha})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+    }
   }
 
   function sendAction(action: any) {

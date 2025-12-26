@@ -40,6 +40,8 @@ var TTL_MS = Number(process.env.SESSION_TTL_MS || 30 * 60 * 1e3);
 var API_KEY = process.env.WORKER_API_KEY || "change-me";
 var STORAGE_DIR = process.env.WORKER_STORAGE_DIR || "/tmp/joe-browser-worker";
 var PORT = Number(process.env.PORT || 7070);
+var browserHealthy = false;
+var startupError = null;
 if (!import_fs.default.existsSync(STORAGE_DIR)) {
   try {
     import_fs.default.mkdirSync(STORAGE_DIR, { recursive: true });
@@ -58,7 +60,7 @@ function auth(req, res, next) {
 }
 async function launchChromium() {
   const args = ["--no-sandbox", "--disable-dev-shm-usage"];
-  const headless = String(process.env.HEADLESS ?? "1").trim() !== "0";
+  const headless = process.env.HEADLESS !== "0" && process.env.HEADLESS !== "false";
   const channel = String(process.env.PLAYWRIGHT_CHANNEL || process.env.BROWSER_CHANNEL || "").trim();
   try {
     if (channel) return await import_playwright.chromium.launch({ args, headless, channel });
@@ -168,6 +170,7 @@ async function createSession(opts) {
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
     locale: opts.locale || "en-US",
+    ignoreHTTPSErrors: true,
     acceptDownloads: true,
     recordVideo: { dir: import_path.default.join(STORAGE_DIR, "videos") }
   });
@@ -473,6 +476,21 @@ async function runActions(session, actions) {
         }
         case "fillForm": {
           for (const f of a.fields) {
+            try {
+              let loc = null;
+              if (f.selector) loc = session.page.locator(f.selector).first();
+              else if (f.label) loc = session.page.getByLabel(f.label).first();
+              if (loc) {
+                const box = await loc.boundingBox({ timeout: 500 }).catch(() => null);
+                if (box) {
+                  const cx = box.x + box.width / 2;
+                  const cy = box.y + box.height / 2;
+                  notifySession(session, "cursor_move", { x: cx, y: cy });
+                  await new Promise((r) => setTimeout(r, 150));
+                }
+              }
+            } catch {
+            }
             if (f.selector) {
               if (f.kind === "file") {
               } else {
@@ -632,7 +650,11 @@ async function runActions(session, actions) {
 }
 var app = (0, import_express.default)();
 app.use(import_express.default.json({ limit: "10mb" }));
-app.get("/health", (_req, res) => res.json({ status: "OK" }));
+app.get("/health", (_req, res) => {
+  if (startupError) return res.status(503).json({ status: "ERROR", error: startupError, help: "If on Render, ensure Service Type is set to Docker" });
+  if (!browserHealthy) return res.status(503).json({ status: "STARTING" });
+  res.json({ status: "OK" });
+});
 app.use("/downloads", import_express.default.static(import_path.default.join(STORAGE_DIR, "downloads")));
 app.use("/shots", import_express.default.static(import_path.default.join(STORAGE_DIR, "shots")));
 app.post("/session/create", auth, async (req, res) => {
@@ -709,6 +731,18 @@ setInterval(() => {
 var wss = new import_ws.WebSocketServer({ noServer: true });
 var server = app.listen(PORT, "0.0.0.0", () => {
   logger.info({ port: PORT }, "worker_listening");
+  (async () => {
+    try {
+      logger.info("Running startup browser dependency check...");
+      const browser = await launchChromium();
+      await browser.close();
+      browserHealthy = true;
+      logger.info("Startup browser dependency check PASSED");
+    } catch (err) {
+      startupError = err.message;
+      logger.error({ err }, "Startup browser dependency check FAILED - Missing system dependencies? Ensure Docker is used.");
+    }
+  })();
 });
 server.on("upgrade", async (req, socket, head) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
