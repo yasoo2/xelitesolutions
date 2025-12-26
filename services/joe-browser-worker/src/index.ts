@@ -41,6 +41,9 @@ const API_KEY = process.env.WORKER_API_KEY || 'change-me';
 const STORAGE_DIR = process.env.WORKER_STORAGE_DIR || '/tmp/joe-browser-worker';
 const PORT = Number(process.env.PORT || 7070);
 
+let browserHealthy = false;
+let startupError: string | null = null;
+
 if (!fs.existsSync(STORAGE_DIR)) {
   try { fs.mkdirSync(STORAGE_DIR, { recursive: true }); } catch {}
 }
@@ -660,7 +663,11 @@ async function runActions(session: Session, actions: Action[]) {
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
-app.get('/health', (_req, res) => res.json({ status: 'OK' }));
+app.get('/health', (_req, res) => {
+  if (startupError) return res.status(503).json({ status: 'ERROR', error: startupError, help: 'If on Render, ensure Service Type is set to Docker' });
+  if (!browserHealthy) return res.status(503).json({ status: 'STARTING' });
+  res.json({ status: 'OK' });
+});
 app.use('/downloads', express.static(path.join(STORAGE_DIR, 'downloads')));
 app.use('/shots', express.static(path.join(STORAGE_DIR, 'shots')));
 
@@ -747,6 +754,20 @@ setInterval(() => {
 const wss = new WebSocketServer({ noServer: true });
 const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info({ port: PORT }, 'worker_listening');
+  
+  // Startup Check
+  (async () => {
+    try {
+      logger.info('Running startup browser dependency check...');
+      const browser = await launchChromium();
+      await browser.close();
+      browserHealthy = true;
+      logger.info('Startup browser dependency check PASSED');
+    } catch (err: any) {
+      startupError = err.message;
+      logger.error({ err }, 'Startup browser dependency check FAILED - Missing system dependencies? Ensure Docker is used.');
+    }
+  })();
 });
 
 (server as any).on('upgrade', async (req: any, socket: any, head: any) => {
