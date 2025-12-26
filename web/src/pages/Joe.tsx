@@ -643,7 +643,7 @@ export default function Joe() {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
-              <BrowserApp minimal={true} autoOpen={false} onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
+              <BrowserApp minimal={true} autoOpen={true} onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
             </div>
 
             <div

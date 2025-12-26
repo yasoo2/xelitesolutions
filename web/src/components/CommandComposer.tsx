@@ -1043,10 +1043,13 @@ export default function CommandComposer({
 
       if (openKeyword && githubKeyword && analysisKeyword) return false;
 
-      const knownSites = /(youtube|يوتيوب|google|جوجل|facebook|فيسبوك|x\.com|twitter|تويتر|instagram|انستغرام)/i.test(s);
-      if (openKeyword && knownSites) return true;
+      const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
+      if (openKeyword && isFileOp) return false;
 
-      if (openKeyword && explicitBrowser) return true;
+      if (openKeyword) return true;
+
+      const knownSites = /(youtube|يوتيوب|google|جوجل|facebook|فيسبوك|x\.com|twitter|تويتر|instagram|انستغرام)/i.test(s);
+      if (knownSites) return true;
 
       return false;
     };
