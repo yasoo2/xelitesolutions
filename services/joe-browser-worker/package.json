@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "HEADLESS=0 ts-node-esm src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.cjs --packages=external && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --packages=external && npx playwright install chromium",
-    "start": "node dist/index.cjs",
+    "dev": "PLAYWRIGHT_BROWSERS_PATH=./ms-playwright HEADLESS=0 ts-node-esm src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.cjs --packages=external && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --packages=external && PLAYWRIGHT_BROWSERS_PATH=./ms-playwright npx playwright install chromium",
+    "start": "PLAYWRIGHT_BROWSERS_PATH=./ms-playwright node dist/index.cjs",
     "install-chromium": "npx playwright install --with-deps chromium"
   },
   "dependencies": {
