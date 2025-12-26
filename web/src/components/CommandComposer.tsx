@@ -792,7 +792,7 @@ export default function CommandComposer({
             const href = msg.data?.href;
             const isBrowserStream =
               kind === 'browser_stream' ||
-              (typeof href === 'string' && /^wss?:\/\//i.test(href) && /\/ws\//i.test(href));
+              (typeof href === 'string' && (/^wss?:\/\//i.test(href) || /^\/browser\/ws\//i.test(href)) && /\/ws\//i.test(href));
             
             if (isBrowserStream) {
               try {
@@ -846,7 +846,7 @@ export default function CommandComposer({
             }
           }
 
-          if (msg.type === 'step_done' || msg.type === 'step_failed') {
+          if (msg.type === 'step_done') {
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
             const start = stepStartTimes.current[`${rid}:${name}`];
@@ -854,6 +854,17 @@ export default function CommandComposer({
               msg.duration = Date.now() - start;
               delete stepStartTimes.current[`${rid}:${name}`];
             }
+
+            // Backup: Detect browser_open result directly
+            if (name === 'execute:browser_open' && msg.data?.result?.ok) {
+              const output = msg.data.result.output;
+              if (output?.sessionId && output?.wsUrl) {
+                window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
+                  detail: { sessionId: output.sessionId, wsUrl: output.wsUrl } 
+                }));
+              }
+            }
+
             hideToolSoon();
           }
 

@@ -143,6 +143,7 @@ export default function Joe() {
        const detail = (ev as CustomEvent)?.detail || {};
        if (detail.sessionId && detail.wsUrl) {
           setActiveBrowserSession({ sessionId: detail.sessionId, wsUrl: detail.wsUrl });
+          setAgentBrowserSessionId(detail.sessionId);
           setMode('agent');
        }
     };
