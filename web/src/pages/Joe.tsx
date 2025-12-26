@@ -76,6 +76,20 @@ function BrowserApp({
     return () => window.removeEventListener('joe:browser_open_request', handler as any);
   }, []);
 
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail || {};
+      const sid = String(detail?.sessionId || '');
+      const wsu = String(detail?.wsUrl || '');
+      if (sid && wsu) {
+        setWsUrl(wsu);
+        onSession?.({ sessionId: sid, wsUrl: wsu });
+      }
+    };
+    window.addEventListener('joe:browser_attached', handler as any);
+    return () => window.removeEventListener('joe:browser_attached', handler as any);
+  }, []);
+
   return (
     <div className="browser-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflow: 'hidden' }}>

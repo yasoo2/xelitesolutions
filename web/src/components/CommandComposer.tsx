@@ -793,8 +793,28 @@ export default function CommandComposer({
             const isBrowserStream =
               kind === 'browser_stream' ||
               (typeof href === 'string' && /^wss?:\/\//i.test(href) && /\/ws\//i.test(href));
-            if (sessionKind === 'agent' && browserSessionId && isBrowserStream) {
-              return;
+            
+            if (isBrowserStream) {
+              try {
+                // Try to extract sessionId from URL (e.g. /browser/ws/{sessionId})
+                // href can be relative or absolute
+                const dummyBase = 'http://dummy.com';
+                const u = new URL(href, dummyBase);
+                const parts = u.pathname.split('/').filter(Boolean);
+                // Expected: browser/ws/{sessionId} or ws/{sessionId}
+                const sid = parts[parts.length - 1];
+                if (sid) {
+                  window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
+                    detail: { sessionId: sid, wsUrl: href } 
+                  }));
+                }
+              } catch (e) {
+                console.error('Failed to parse browser stream artifact', e);
+              }
+
+              if (sessionKind === 'agent' && browserSessionId) {
+                return;
+              }
             }
           }
           

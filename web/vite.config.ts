@@ -18,4 +18,15 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['lucide-react', 'framer-motion'],
+          markdown: ['react-markdown', 'react-syntax-highlighter']
+        }
+      }
+    }
+  }
 });
