@@ -30,3 +30,16 @@ services:
         value: "https://joe-api.onrender.com"
       - key: VITE_WS_URL
         value: "wss://joe-api.onrender.com/ws"
+  - type: web
+    name: joe-browser-worker
+    env: docker
+    plan: starter
+    dockerContext: services/joe-browser-worker
+    dockerfilePath: services/joe-browser-worker/Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: WORKER_API_KEY
+        generateValue: true
+
