@@ -12,7 +12,7 @@ const apiEnv = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
 // UNLESS you are serving the frontend FROM the backend (monolith).
 // Assuming separate backend for now based on 'api.xelitesolutions.com' errors.
 
-const defaultLocalApiUrl = `${window.location.protocol}//${hostname}:8080`;
+const defaultLocalApiUrl = `${window.location.protocol}//127.0.0.1:8080`;
 const isProbablyApiHost =
   hostname.includes('joe-api') ||
   hostname.startsWith('api.') ||
