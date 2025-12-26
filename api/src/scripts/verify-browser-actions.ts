@@ -1,4 +1,3 @@
-
 import { tools } from '../tools/registry';
 import { config } from '../config';
 import WebSocket from 'ws';
@@ -66,10 +65,38 @@ async function runTest() {
               { selector: '#name', value: 'John Doe' },
               { selector: '#email', value: 'john@example.com' }
             ]
+          },
+          {
+            type: 'screenshot'
           }
         ]
       });
-      console.log('✅ fillForm executed:', res.ok ? 'OK' : res.error);
+
+      console.log('✅ fillForm and screenshot executed:', res.ok ? 'OK' : res.error);
+      const screenshotResult = res.output?.outputs?.find((r: any) => r.type === 'screenshot');
+      
+      if (screenshotResult && screenshotResult.href) {
+         console.log('✅ Screenshot captured successfully. URL:', screenshotResult.href);
+         
+         // Verify we can fetch it
+         const imageUrl = `${config.browserWorkerUrl}${screenshotResult.href}`;
+         try {
+           const imgRes = await fetch(imageUrl);
+           if (imgRes.ok) {
+             console.log(`✅ Screenshot verified accessible at ${imageUrl} (${imgRes.status} ${imgRes.statusText})`);
+             const blob = await imgRes.blob();
+             console.log(`   Size: ${blob.size} bytes`);
+           } else {
+             console.error(`❌ Failed to fetch screenshot at ${imageUrl}: ${imgRes.status} ${imgRes.statusText}`);
+           }
+         } catch (err) {
+            console.error(`❌ Network error fetching screenshot at ${imageUrl}:`, err);
+         }
+
+      } else {
+         console.error('❌ Screenshot missing in output or no href');
+         console.log('Output results:', JSON.stringify(res.output?.outputs, null, 2));
+      }
     } catch (e) {
       console.error('❌ fillForm execution error:', e);
     }

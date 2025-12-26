@@ -237,6 +237,9 @@ type Action =
   | { type: 'snapshot.dom' }
   | { type: 'snapshot.a11y' }
   | { type: 'extract', schema: any, mode?: 'dom'|'a11y'|'hybrid' }
+  | { type: 'goBack' }
+  | { type: 'goForward' }
+  | { type: 'reload' }
   | { type: 'fillForm', fields: Array<{ label?: string, selector?: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date'|'file', sensitive?: boolean }>, sensitive?: boolean }
   | { type: 'uploadFile', selector: string, fileUrl: string }
   | { type: 'evaluate', script: string, sensitive?: boolean }
@@ -299,7 +302,7 @@ async function runActions(session: Session, actions: Action[]) {
           outputs.push({ type: 'goto', url: a.url });
           try {
             const u = new URL(a.url);
-            if (/(^|\\.)google\\./i.test(u.hostname)) {
+            if (/(^|\.)google\./i.test(u.hostname)) {
               const selectors = [
                 '#L2AGLb',
                 'button[aria-label*="Agree"]',
@@ -349,6 +352,21 @@ async function runActions(session: Session, actions: Action[]) {
           outputs.push({ type: 'press', key: a.key });
           break;
         }
+        case 'goBack': {
+          await session.page.goBack();
+          outputs.push({ type: 'goBack' });
+          break;
+        }
+        case 'goForward': {
+          await session.page.goForward();
+          outputs.push({ type: 'goForward' });
+          break;
+        }
+        case 'reload': {
+          await session.page.reload();
+          outputs.push({ type: 'reload' });
+          break;
+        }
         case 'mouseMove': {
           await session.page.mouse.move(a.x, a.y, { steps: a.steps || 1 });
           notifySession(session, 'cursor_move', { x: a.x, y: a.y });
@@ -364,7 +382,7 @@ async function runActions(session: Session, actions: Action[]) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
                 notifySession(session, 'cursor_move', { x: cx, y: cy });
-                await new Promise(r => setTimeout(r, 150)); // Visual delay
+                await new Promise(r => setTimeout(r, 400)); // Visual delay
                 notifySession(session, 'cursor_click', { x: cx, y: cy });
               }
               await loc.click();
@@ -380,7 +398,7 @@ async function runActions(session: Session, actions: Action[]) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
                 notifySession(session, 'cursor_move', { x: cx, y: cy });
-                await new Promise(r => setTimeout(r, 150));
+                await new Promise(r => setTimeout(r, 400));
                 notifySession(session, 'cursor_click', { x: cx, y: cy });
               }
               await loc.click();
@@ -439,6 +457,11 @@ async function runActions(session: Session, actions: Action[]) {
         case 'waitForLoad': {
           await session.page.waitForLoadState(a.state);
           outputs.push({ type: 'waitForLoad', state: a.state });
+          break;
+        }
+        case 'goBack': {
+          await session.page.goBack();
+          outputs.push({ type: 'goBack' });
           break;
         }
         case 'screenshot': {
@@ -516,7 +539,9 @@ async function runActions(session: Session, actions: Action[]) {
                   const cx = box.x + box.width / 2;
                   const cy = box.y + box.height / 2;
                   notifySession(session, 'cursor_move', { x: cx, y: cy });
-                  await new Promise(r => setTimeout(r, 150));
+                  // Increase delay slightly to allow animation to complete visually
+                  await new Promise(r => setTimeout(r, 400));
+                  notifySession(session, 'cursor_click', { x: cx, y: cy });
                 }
               }
             } catch {}
