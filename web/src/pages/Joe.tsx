@@ -118,7 +118,7 @@ function BrowserApp({
             </div>
           </div>
         ) : (
-          <BrowserView sessionId={sessionId} />
+          <BrowserView sessionId={sessionId} wsUrl={wsUrl} />
         )}
       </div>
     </div>

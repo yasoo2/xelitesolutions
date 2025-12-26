@@ -352,21 +352,6 @@ async function runActions(session: Session, actions: Action[]) {
           outputs.push({ type: 'press', key: a.key });
           break;
         }
-        case 'goBack': {
-          await session.page.goBack();
-          outputs.push({ type: 'goBack' });
-          break;
-        }
-        case 'goForward': {
-          await session.page.goForward();
-          outputs.push({ type: 'goForward' });
-          break;
-        }
-        case 'reload': {
-          await session.page.reload();
-          outputs.push({ type: 'reload' });
-          break;
-        }
         case 'mouseMove': {
           await session.page.mouse.move(a.x, a.y, { steps: a.steps || 1 });
           notifySession(session, 'cursor_move', { x: a.x, y: a.y });
@@ -382,12 +367,11 @@ async function runActions(session: Session, actions: Action[]) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
                 notifySession(session, 'cursor_move', { x: cx, y: cy });
-                await new Promise(r => setTimeout(r, 400)); // Visual delay
+                await new Promise(r => setTimeout(r, 400));
                 notifySession(session, 'cursor_click', { x: cx, y: cy });
               }
               await loc.click();
             } catch (e) {
-              // Fallback if locator fails or something else happens, though click() would also fail
               await session.page.click(a.selector);
             }
           } else if (a.roleName && a.role) {
@@ -482,8 +466,9 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'snapshot.a11y': {
-          const snap = await session.page.accessibility.snapshot();
-          outputs.push({ type: 'snapshot.a11y', nodes: (snap?.children || []).length });
+          const accessibility = (session.page as any).accessibility;
+          const snap = accessibility?.snapshot ? await accessibility.snapshot().catch(() => null) : null;
+          outputs.push({ type: 'snapshot.a11y', nodes: Array.isArray(snap?.children) ? snap.children.length : 0 });
           break;
         }
         case 'extract': {
@@ -527,7 +512,6 @@ async function runActions(session: Session, actions: Action[]) {
         }
         case 'fillForm': {
           for (const f of a.fields) {
-            // Visual feedback: move cursor to field
             try {
               let loc = null;
               if (f.selector) loc = session.page.locator(f.selector).first();
@@ -539,7 +523,6 @@ async function runActions(session: Session, actions: Action[]) {
                   const cx = box.x + box.width / 2;
                   const cy = box.y + box.height / 2;
                   notifySession(session, 'cursor_move', { x: cx, y: cy });
-                  // Increase delay slightly to allow animation to complete visually
                   await new Promise(r => setTimeout(r, 400));
                   notifySession(session, 'cursor_click', { x: cx, y: cy });
                 }
@@ -638,11 +621,11 @@ async function runActions(session: Session, actions: Action[]) {
               while (cur && cur.nodeType === 1 && cur !== document.documentElement) {
                 const tag = cur.tagName.toLowerCase();
                 let part = tag;
-                const parent = cur.parentElement;
+                const parent = cur.parentElement as Element | null;
                 if (parent) {
-                  const siblings = Array.from(parent.children).filter(c => c.tagName === cur!.tagName);
+                  const siblings = Array.from(parent.children as any as Element[]).filter((c: any) => (c as Element).tagName === (cur as Element).tagName);
                   if (siblings.length > 1) {
-                    const index = siblings.indexOf(cur) + 1;
+                    const index = siblings.indexOf(cur as any) + 1;
                     part = `${tag}:nth-of-type(${index})`;
                   }
                 }
@@ -760,7 +743,7 @@ app.post('/session/:id/snapshot', auth, async (req, res) => {
   if (!s) return res.status(404).json({ error: 'session_not_found' });
   const [html, a11ySnap, buf] = await Promise.all([
     s.page.content(),
-    s.page.accessibility ? s.page.accessibility.snapshot().catch(() => null) : Promise.resolve(null),
+    (s.page as any).accessibility?.snapshot ? (s.page as any).accessibility.snapshot().catch(() => null) : Promise.resolve(null),
     s.page.screenshot({ type: 'jpeg', quality: 60 })
   ]);
   const name = `snap-${Date.now()}.jpg`;
