@@ -33,10 +33,7 @@ const logger =
           target: 'pino-pretty',
           options: { translateTime: 'SYS:standard', colorize: true },
         },
-      });
-
-// Start Sentinel
-// SentinelService.start(path.resolve(__dirname, '../..'));
+  });
 
 async function main() {
   const app = express();
@@ -96,7 +93,7 @@ async function main() {
     logger.info({ port: config.port, browserWorkerUrl: config.browserWorkerUrl }, 'API listening');
   });
 
-  // Global Error Handler for Healing
+  // Global Error Handler
   process.on('uncaughtException', (err) => {
       logger.error(err, 'Uncaught Exception');
   });
