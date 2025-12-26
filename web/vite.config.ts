@@ -23,8 +23,11 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          ui: ['lucide-react', 'framer-motion'],
-          markdown: ['react-markdown', 'react-syntax-highlighter']
+          ui: ['lucide-react', 'framer-motion', 'classnames'],
+          markdown: ['react-markdown', 'react-syntax-highlighter'],
+          monaco: ['@monaco-editor/react'],
+          charts: ['react-force-graph-2d', 'react-force-graph-3d', 'reactflow'],
+          terminal: ['xterm', 'xterm-addon-fit']
         }
       }
     }

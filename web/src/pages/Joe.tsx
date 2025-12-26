@@ -11,16 +11,24 @@ function BrowserApp({
   onSession,
   autoOpen,
   minimal,
+  initialSession,
 }: {
   onSession?: (s: { sessionId: string; wsUrl: string }) => void;
   autoOpen?: boolean;
   minimal?: boolean;
+  initialSession?: { sessionId: string; wsUrl: string } | null;
 }) {
   const [url, setUrl] = useState('https://www.google.com');
-  const [wsUrl, setWsUrl] = useState<string | null>(null);
+  const [wsUrl, setWsUrl] = useState<string | null>(initialSession?.wsUrl || null);
   const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const didAutoOpen = useRef(false);
+
+  useEffect(() => {
+    if (initialSession?.wsUrl) {
+      setWsUrl(initialSession.wsUrl);
+    }
+  }, [initialSession]);
 
   async function openBrowser(nextUrl?: string) {
     setIsOpening(true);
@@ -126,8 +134,21 @@ export default function Joe() {
   const [searchResults, setSearchResults] = useState<Array<any>>([]);
   const [isNarrow, setIsNarrow] = useState(false);
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
+  const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
 
   const nav = useNavigate();
+
+  useEffect(() => {
+    const handler = (ev: Event) => {
+       const detail = (ev as CustomEvent)?.detail || {};
+       if (detail.sessionId && detail.wsUrl) {
+          setActiveBrowserSession({ sessionId: detail.sessionId, wsUrl: detail.wsUrl });
+          setMode('agent');
+       }
+    };
+    window.addEventListener('joe:browser_attached', handler as any);
+    return () => window.removeEventListener('joe:browser_attached', handler as any);
+  }, []);
 
   function createSession() {
     setSelected(null);
@@ -643,7 +664,12 @@ export default function Joe() {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
-              <BrowserApp minimal={true} autoOpen={true} onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} />
+              <BrowserApp 
+                minimal={true} 
+                autoOpen={true} 
+                onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} 
+                initialSession={activeBrowserSession}
+              />
             </div>
 
             <div
