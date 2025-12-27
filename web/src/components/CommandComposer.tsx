@@ -350,6 +350,7 @@ export default function CommandComposer({
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const eventsContentRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef<boolean>(true);
+  const lastJoeAutoScrollKeyRef = useRef<string>('');
   const scrollRafRef = useRef<number | null>(null);
   const stepStartTimes = useRef<{[key: string]: number}>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -592,7 +593,23 @@ export default function CommandComposer({
   }, []);
 
   useEffect(() => {
-    if (autoScrollRef.current) scrollToBottom('auto');
+    const last = events.length ? (events[events.length - 1] as any) : null;
+    const lastType = String(last?.type || '');
+    const shouldForceScroll =
+      lastType === 'text' || lastType === 'artifact_created' || lastType === 'error';
+
+    if (shouldForceScroll) {
+      const id = typeof last?.id === 'string' ? last.id : '';
+      const ts = typeof last?.ts === 'number' ? String(last.ts) : '';
+      const key = id || `${lastType}:${ts}:${events.length}`;
+      if (lastJoeAutoScrollKeyRef.current !== key) {
+        lastJoeAutoScrollKeyRef.current = key;
+        autoScrollRef.current = true;
+        scrollToBottom('auto');
+      }
+    } else if (autoScrollRef.current) {
+      scrollToBottom('auto');
+    }
     if (onStepsUpdate) onStepsUpdate(derived.steps);
     if (onMessagesUpdate) onMessagesUpdate(events);
     
