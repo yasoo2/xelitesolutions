@@ -70,6 +70,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [autoTypeAfterFocus, setAutoTypeAfterFocus] = useState<boolean>(true);
   const [defaultSearchText, setDefaultSearchText] = useState<string>('أضرار التدخين');
   const lastMoveRef = useRef<number>(0);
+  const cursorRafRef = useRef<number | null>(null);
+  const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const connectTimeoutRef = useRef<number | null>(null);
   const connectAttemptsRef = useRef<number>(0);
@@ -78,10 +80,15 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [pickerMode, setPickerMode] = useState<boolean>(false);
   const [picked, setPicked] = useState<any>(null);
   const [loginMode, setLoginMode] = useState<boolean>(false);
-  const [timelineEnabled, setTimelineEnabled] = useState<boolean>(true);
+  const [timelineEnabled, setTimelineEnabled] = useState<boolean>(false);
   const [timeline, setTimeline] = useState<Array<{ ts: number; jpegBase64: string }>>([]);
   const [replayMode, setReplayMode] = useState<boolean>(false);
   const [replayIndex, setReplayIndex] = useState<number>(0);
+  const lastTimelinePushAtRef = useRef<number>(0);
+  const pendingFrameRef = useRef<string | null>(null);
+  const decodingFrameRef = useRef<boolean>(false);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const lastCanvasSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
 
   useEffect(() => {
     if (!minimal) return;
@@ -481,7 +488,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               setDownloads((prev) => [{ name, href }, ...prev].slice(0, 10));
             }
             if (msg.type === 'cursor_move') {
-              setCursor({ x: msg.x, y: msg.y });
+              pendingCursorRef.current = { x: msg.x, y: msg.y };
+              if (cursorRafRef.current == null) {
+                cursorRafRef.current = requestAnimationFrame(() => {
+                  cursorRafRef.current = null;
+                  if (pendingCursorRef.current) setCursor(pendingCursorRef.current);
+                });
+              }
             }
             if (msg.type === 'cursor_click') {
               setCursor({ x: msg.x, y: msg.y });
@@ -521,13 +534,17 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             }
             if (msg.type === 'frame') {
               if (timelineEnabled && typeof msg.jpegBase64 === 'string') {
-                setTimeline(prev => {
-                  const next = [...prev, { ts: Number(msg.ts || Date.now()), jpegBase64: msg.jpegBase64 }].slice(-80);
-                  return next;
-                });
+                const now = Date.now();
+                if (now - lastTimelinePushAtRef.current >= 800) {
+                  lastTimelinePushAtRef.current = now;
+                  setTimeline(prev => {
+                    const next = [...prev, { ts: Number(msg.ts || now), jpegBase64: msg.jpegBase64 }].slice(-30);
+                    return next;
+                  });
+                }
               }
               if (streamPaused || replayMode) return;
-              if (typeof msg.jpegBase64 === 'string') drawJpegBase64(msg.jpegBase64);
+              if (typeof msg.jpegBase64 === 'string') enqueueJpegFrame(msg.jpegBase64);
             }
             if (msg.type === 'pick' && msg.element) {
               setPicked(msg.element);
@@ -547,6 +564,11 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     return () => {
       disposed = true;
       clearTimers();
+      if (cursorRafRef.current != null) cancelAnimationFrame(cursorRafRef.current);
+      cursorRafRef.current = null;
+      pendingCursorRef.current = null;
+      pendingFrameRef.current = null;
+      decodingFrameRef.current = false;
       try { wsRef.current?.close(); } catch {}
       wsRef.current = null;
     };
@@ -655,25 +677,77 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     }
   }
 
-  function drawJpegBase64(jpegBase64: string) {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = canvasRef.current!;
-      if (!canvas) return;
-      const s = sizeRef.current;
+  function ensureCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const s = sizeRef.current;
+    const last = lastCanvasSizeRef.current;
+    if (canvas.width !== s.w || canvas.height !== s.h || last.w !== s.w || last.h !== s.h) {
       canvas.width = s.w;
       canvas.height = s.h;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, s.w, s.h);
+      lastCanvasSizeRef.current = { w: s.w, h: s.h };
+      ctxRef.current = null;
+    }
+    if (!ctxRef.current) ctxRef.current = canvas.getContext('2d');
+    return ctxRef.current;
+  }
+
+  async function decodeAndDraw(jpegBase64: string) {
+    const ctx = ensureCanvas();
+    if (!ctx) return;
+    const s = sizeRef.current;
+    const toBytes = (b64: string) => {
+      const bin = atob(b64);
+      const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
     };
-    img.src = 'data:image/jpeg;base64,' + jpegBase64;
+
+    if (typeof (window as any).createImageBitmap === 'function') {
+      try {
+        const bytes = toBytes(jpegBase64);
+        const blob = new Blob([bytes], { type: 'image/jpeg' });
+        const bmp = await createImageBitmap(blob);
+        ctx.drawImage(bmp as any, 0, 0, s.w, s.h);
+        try { (bmp as any).close?.(); } catch {}
+        return;
+      } catch {}
+    }
+
+    await new Promise<void>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, s.w, s.h);
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = 'data:image/jpeg;base64,' + jpegBase64;
+    });
+  }
+
+  function enqueueJpegFrame(jpegBase64: string) {
+    pendingFrameRef.current = jpegBase64;
+    if (decodingFrameRef.current) return;
+    decodingFrameRef.current = true;
+    void (async () => {
+      try {
+        while (pendingFrameRef.current) {
+          const next = pendingFrameRef.current;
+          pendingFrameRef.current = null;
+          await decodeAndDraw(next);
+        }
+      } finally {
+        decodingFrameRef.current = false;
+      }
+    })();
   }
 
   useEffect(() => {
     if (!replayMode) return;
     const f = timeline[replayIndex];
     if (!f?.jpegBase64) return;
-    drawJpegBase64(f.jpegBase64);
+    enqueueJpegFrame(f.jpegBase64);
   }, [replayMode, replayIndex, timeline]);
 
   useEffect(() => {
