@@ -346,7 +346,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         store.addMessage(sessionId, 'system', currentSystemPrompt, runId);
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
-        // ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
+        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     } else {
       const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
@@ -354,7 +354,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         await Message.create({ sessionId, role: 'system', content: currentSystemPrompt, runId });
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
-        // ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
+        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     }
   } catch (e) {
@@ -497,9 +497,25 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     if (!plan) {
       // Fallback if LLM fails
       if (steps === 0) {
-        // No heuristics allowed. If LLM fails, we stop.
-        // plan = pickToolFromText(String(text || '')); 
-        plan = null;
+        const userTextForOverrides = String(text || '');
+        const wantsGithubRepo =
+          /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
+          /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
+          /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
+
+        if (wantsGithubRepo) {
+          const requested = extractRequestedRepoName(userTextForOverrides);
+          if (requested) {
+            plan = {
+              name: 'github_create_repo',
+              input: {
+                name: requested,
+                private: /(private|خاص)/i.test(userTextForOverrides),
+                sessionId: String(sessionId),
+              },
+            } as any;
+          }
+        }
       }
       else break; // Stop if we can't plan anymore
       
@@ -523,7 +539,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     const wantsGithubRepo =
       /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
       /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
-      /(create|new|انشي|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
+      /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
     if (wantsGithubRepo) {
       const requested = extractRequestedRepoName(userTextForOverrides);
       if (requested) {

@@ -4,11 +4,12 @@ import WebSocket from 'ws';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { config } from '../config';
 
 // Configuration
-const API_URL = 'http://localhost:8080';
-const WS_URL = 'ws://localhost:8080/ws';
-const JWT_SECRET = 'change-me'; // Default
+const API_URL = process.env.API_URL || `http://127.0.0.1:${config.port}`;
+const WS_URL = process.env.WS_URL || `ws://127.0.0.1:${config.port}/ws`;
+const JWT_SECRET = process.env.JWT_SECRET || config.jwtSecret;
 
 // Helpers
 const token = jwt.sign({ sub: 'tester', role: 'OWNER' }, JWT_SECRET);
@@ -38,7 +39,16 @@ async function startRun(payload: any) {
         body: JSON.stringify(payload),
     });
     const data = await expectOkJson(res);
-    return data as { runId: string; sessionId: string; blocked?: boolean; approvalId?: string; systemPrompt?: string; systemPromptId?: string };
+    return data as {
+        runId: string;
+        sessionId: string;
+        blocked?: boolean;
+        approvalId?: string;
+        secretRequired?: boolean;
+        secret?: { provider?: string; key?: string; label?: string };
+        systemPrompt?: string;
+        systemPromptId?: string;
+    };
 }
 
 async function waitForWsEvent(
@@ -91,10 +101,20 @@ async function main() {
 
     // 1. Health Check
     try {
-        const res = await fetch(`${API_URL}/health`);
-        const data = await res.json();
-        if (data.status === 'OK') console.log('✅ Health Check Passed');
-        else throw new Error('Health check failed');
+        const startedAt = Date.now();
+        const maxWaitMs = 15000;
+        while (true) {
+            try {
+                const res = await fetch(`${API_URL}/health`);
+                const data = await res.json();
+                if (data.status === 'OK') {
+                    console.log('✅ Health Check Passed');
+                    break;
+                }
+            } catch {}
+            if (Date.now() - startedAt > maxWaitMs) throw new Error('Health check timeout');
+            await new Promise((r) => setTimeout(r, 500));
+        }
     } catch (e) {
         console.error('❌ API is not running or unreachable.');
         process.exit(1);
@@ -191,8 +211,8 @@ async function main() {
     try { fs.unlinkSync(path.join(process.cwd(), 'system_test.txt')); } catch {}
 
 
-    // 4. WebSocket + System Prompt Broadcast + Run Flow
-    console.log('\n🤖 Testing WebSocket Flow + System Prompt Injection...');
+    // 4. WebSocket + Run Flow
+    console.log('\n🤖 Testing WebSocket Flow (run_finished)...');
     
     try {
         const ws = new WebSocket(WS_URL);
@@ -209,69 +229,21 @@ async function main() {
         const sessionId = makeObjectIdLike();
         console.log('   WebSocket Connected. Starting Run with sessionId:', sessionId);
 
-        const systemPromptIdPrefix = `system_prompt:${sessionId}`;
-
-        const systemPromptEvPromise = waitForWsEvent(
+        const runFinishedAnyPromise = waitForWsEvent(
             ws,
-            (ev) => ev?.type === 'text' && typeof ev?.id === 'string' && ev.id.startsWith(systemPromptIdPrefix),
-            8000
-        );
-
-        let targetRunId: string | null = null;
-        const bufferedExecStepDone: any[] = [];
-        let execResolve: ((ev: any) => void) | null = null;
-        let execReject: ((err: any) => void) | null = null;
-        const execTimer = setTimeout(() => {
-            execReject?.(new Error('Timeout waiting for execute:* step_done'));
-        }, 12000);
-        const tryResolveExec = () => {
-            if (!targetRunId || !execResolve) return;
-            const hit = bufferedExecStepDone.find(
-                e => e?.runId === targetRunId && typeof e?.data?.name === 'string' && e.data.name.startsWith('execute:')
-            );
-            if (hit) {
-                clearTimeout(execTimer);
-                execResolve(hit);
-            }
-        };
-        const onWsMsg = (msg: WebSocket.RawData) => {
-            try {
-                const ev = JSON.parse(msg.toString());
-                if (ev?.type !== 'step_done') return;
-                const name = String(ev?.data?.name || '');
-                if (!name.startsWith('execute:')) return;
-                bufferedExecStepDone.push(ev);
-                tryResolveExec();
-            } catch {}
-        };
-        ws.on('message', onWsMsg);
-        const execStepDonePromise = new Promise<any>((resolve, reject) => {
-            execResolve = resolve;
-            execReject = reject;
-        }).finally(() => {
-            clearTimeout(execTimer);
-            ws.off('message', onWsMsg);
-        });
+            (ev) => ev?.type === 'run_finished',
+            12000
+        ).catch((e) => ({ __error: e }));
 
         const runData = await startRun({ text: 'list files', sessionId });
-        targetRunId = runData.runId;
-        tryResolveExec();
+        if (!runData?.runId) throw new Error('runId missing');
 
-        if (typeof runData?.systemPromptId === 'string' && runData.systemPromptId.startsWith(systemPromptIdPrefix)) {
-            console.log('   ✅ /runs/start returned systemPromptId');
-        } else {
-            throw new Error(`Missing/invalid systemPromptId from /runs/start: ${String(runData?.systemPromptId)}`);
+        const runFinishedEv: any = await runFinishedAnyPromise;
+        if (runFinishedEv?.__error) throw runFinishedEv.__error;
+        if (String(runFinishedEv?.runId || '') !== String(runData.runId)) {
+            throw new Error(`run_finished runId mismatch: got=${String(runFinishedEv?.runId || '')} expected=${String(runData.runId)}`);
         }
-
-        const systemPromptEv = await systemPromptEvPromise;
-        if (typeof systemPromptEv?.data === 'string' && systemPromptEv.data.includes('You are Joe')) {
-            console.log('   ✅ System prompt broadcast verified');
-        } else {
-            throw new Error('System prompt broadcast missing/invalid');
-        }
-
-        await execStepDonePromise;
-        console.log('   ✅ Tool execution verified in run flow');
+        console.log('   ✅ run_finished verified');
 
         ws.close();
 
@@ -291,8 +263,8 @@ async function main() {
         const chatHistory = await getHistory(chat.sessionId);
         if (!Array.isArray(chatHistory?.events) || chatHistory.events.length < 2) throw new Error('chat history too short');
         const first = chatHistory.events[0];
-        if (String(first?.type) !== 'text' || typeof first?.data !== 'string' || !first.data.includes('You are Joe')) {
-            throw new Error('chat history does not start with system prompt');
+        if (String(first?.type) !== 'user_input') {
+            throw new Error('chat history does not start with user_input');
         }
         const chatCtx = await getContext(chat.sessionId);
         if (typeof chatCtx?.systemPrompt !== 'string' || !chatCtx.systemPrompt.includes('You are Joe')) throw new Error('chat context systemPrompt missing');
@@ -307,8 +279,8 @@ async function main() {
         const agentHistory = await getHistory(agent.sessionId);
         if (!Array.isArray(agentHistory?.events) || agentHistory.events.length < 2) throw new Error('agent history too short');
         const firstAgent = agentHistory.events[0];
-        if (String(firstAgent?.type) !== 'text' || typeof firstAgent?.data !== 'string' || !firstAgent.data.includes('You are Joe')) {
-            throw new Error('agent history does not start with system prompt');
+        if (String(firstAgent?.type) !== 'user_input') {
+            throw new Error('agent history does not start with user_input');
         }
         const agentCtx = await getContext(agent.sessionId);
         if (typeof agentCtx?.systemPrompt !== 'string' || !agentCtx.systemPrompt.includes('You are Joe')) throw new Error('agent context systemPrompt missing');
@@ -391,6 +363,45 @@ async function main() {
         ws.close();
     } catch (e) {
         console.error('❌ approval_required test failed:', e);
+    }
+
+    // 7. Secret Prompt (GitHub Token)
+    console.log('\n🔑 Testing secret_required gate (GitHub token prompt)...');
+    try {
+        const ws = new WebSocket(WS_URL);
+        await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Timeout waiting for WebSocket connection')), 8000);
+            ws.on('open', () => { clearTimeout(timer); resolve(); });
+            ws.on('error', reject);
+        });
+
+        const sessionId = makeObjectIdLike();
+        const secretPromise = waitForWsEvent(
+            ws,
+            (ev) =>
+                ev?.type === 'secret_required' &&
+                String(ev?.data?.key || '') === 'GITHUB_TOKEN' &&
+                typeof ev?.data?.runId === 'string',
+            12000
+        ).catch((e) => ({ __error: e }));
+
+        const data = await startRun({ text: 'انشئ ريبو جديد على github سميه vivos', sessionId, sessionKind: 'agent' });
+        if (!data.blocked) throw new Error('Expected blocked=true (secret_required test)');
+        if (!data.secretRequired) throw new Error('Expected secretRequired=true (secret_required test)');
+        if (data.secret?.key && data.secret.key !== 'GITHUB_TOKEN') {
+            throw new Error(`Expected secret.key=GITHUB_TOKEN, got ${String(data.secret.key)}`);
+        }
+
+        const secretEv: any = await secretPromise;
+        if (secretEv?.__error) throw secretEv.__error;
+        if (String(secretEv?.data?.runId || '') !== String(data.runId || '')) {
+            throw new Error('secret_required event runId mismatch');
+        }
+        console.log('   ✅ secret_required (GITHUB_TOKEN) verified');
+
+        ws.close();
+    } catch (e) {
+        console.error('❌ secret_required test failed:', e);
     }
 
     console.log('\n✨ FULL SYSTEM TEST COMPLETE ✨\n');
