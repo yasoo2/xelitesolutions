@@ -47,6 +47,28 @@ function isGitAuthError(raw: string) {
   );
 }
 
+function isGithubAuthError(raw: string) {
+  const s = String(raw || '');
+  return (
+    /Missing GitHub token/i.test(s) ||
+    /Bad credentials/i.test(s) ||
+    /Requires authentication/i.test(s) ||
+    /\b401\b/.test(s) ||
+    /\b403\b/.test(s)
+  );
+}
+
+function extractRequestedRepoName(raw: string): string | null {
+  const s = String(raw || '');
+  const m1 = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (m1 && m1[1]) return m1[1].trim();
+  const m2 = s.match(/(?:named|name it|call it)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (m2 && m2[1]) return m2[1].trim();
+  const m3 = s.match(/\brepo(?:sitory)?\b.*?\b([A-Za-z0-9._-]{1,100})\b/i);
+  if (m3 && m3[1]) return m3[1].trim();
+  return null;
+}
+
 function redactToolInputForStorage(name: string, input: any) {
   if (!input || typeof input !== 'object') return input;
   if (name === 'browser_run') {
@@ -497,6 +519,24 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     
     const planName = String(plan?.name || '');
     const isBrowserTool = /^browser_/.test(planName);
+    const userTextForOverrides = String(text || '');
+    const wantsGithubRepo =
+      /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
+      /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
+      /(create|new|انشي|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
+    if (wantsGithubRepo) {
+      const requested = extractRequestedRepoName(userTextForOverrides);
+      if (requested) {
+        plan = {
+          name: 'github_create_repo',
+          input: {
+            name: requested,
+            private: /(private|خاص)/i.test(userTextForOverrides),
+            sessionId: String(sessionId),
+          },
+        } as any;
+      }
+    }
     if (isBrowserTool) {
       const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
       const inputSid = String((plan as any)?.input?.sessionId || '').trim();
@@ -862,6 +902,45 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
               key: 'GITHUB_TOKEN',
               label: 'GitHub Token',
               reason: 'git push يحتاج مصادقة',
+            },
+          });
+
+          const { setPendingTool } = await import('../services/secrets');
+          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+          if (useMock) {
+            store.updateRun(runId, { status: 'blocked' as any });
+          } else {
+            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
+          }
+
+          return res.json({
+            runId,
+            sessionId,
+            blocked: true,
+            secretRequired: true,
+            secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+          });
+        }
+
+        if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
+          const msg = [
+            `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
+            `- أدخل GitHub Personal Access Token في النافذة التي ستظهر الآن.`,
+            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+          ].join('\n');
+
+          ev({ type: 'text', data: msg });
+          ev({
+            type: 'secret_required',
+            data: {
+              sessionId,
+              runId,
+              provider: 'github',
+              key: 'GITHUB_TOKEN',
+              label: 'GitHub Token',
+              reason: 'إنشاء ريبو يحتاج مصادقة',
             },
           });
 

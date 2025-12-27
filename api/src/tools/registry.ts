@@ -599,6 +599,34 @@ export const tools: ToolDefinition[] = [
     mockSupported: true,
   },
   {
+    name: 'github_create_repo',
+    version: '1.0.0',
+    tags: ['dev', 'github'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        private: { type: 'boolean' },
+        description: { type: 'string' },
+        sessionId: { type: 'string' },
+      },
+      required: ['name'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        fullName: { type: 'string' },
+        htmlUrl: { type: 'string' },
+        apiUrl: { type: 'string' },
+      },
+    },
+    permissions: ['read', 'write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 20,
+    auditFields: ['name'],
+    mockSupported: true,
+  },
+  {
     name: 'npm_manager',
     version: '1.0.0',
     tags: ['dev', 'npm'],
@@ -1888,6 +1916,55 @@ Instructions:
               } catch {}
             }
             return { ok: false, error: e.message || e.stderr, logs };
+        }
+    }
+    if (name === 'github_create_repo') {
+        const repoName = String(input?.name || '').trim();
+        const isPrivate = Boolean(input?.private);
+        const description = typeof input?.description === 'string' ? input.description : undefined;
+        const sessionId = typeof (input as any)?.sessionId === 'string' ? String((input as any).sessionId).trim() : '';
+        if (!repoName) return { ok: false, error: 'Missing repo name', logs };
+        if (!sessionId) return { ok: false, error: 'Missing sessionId', logs };
+
+        const { getSessionSecret } = await import('../services/secrets');
+        const token = (getSessionSecret(sessionId, 'GITHUB_TOKEN') || '').trim();
+        if (!token) return { ok: false, error: 'Missing GitHub token', logs };
+
+        const payload: any = { name: repoName, private: isPrivate };
+        if (description && description.trim()) payload.description = description.trim();
+
+        try {
+          const resp = await fetch('https://api.github.com/user/repos', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'JOE AI',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          const text = await resp.text();
+          let json: any = null;
+          try { json = JSON.parse(text); } catch {}
+
+          if (!resp.ok) {
+            const msg = typeof json?.message === 'string' ? json.message : text.slice(0, 300);
+            return { ok: false, error: `GitHub API ${resp.status}: ${msg}`, logs };
+          }
+
+          return {
+            ok: true,
+            output: {
+              fullName: typeof json?.full_name === 'string' ? json.full_name : '',
+              htmlUrl: typeof json?.html_url === 'string' ? json.html_url : '',
+              apiUrl: typeof json?.url === 'string' ? json.url : '',
+            },
+            logs,
+          };
+        } catch (e: any) {
+          return { ok: false, error: e?.message || String(e), logs };
         }
     }
     if (name === 'npm_manager') {
