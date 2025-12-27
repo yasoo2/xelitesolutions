@@ -22,6 +22,8 @@ const router = Router();
 function redactSecretsFromString(input: string): string {
   return input
     .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]')
+    .replace(/\bghp_[A-Za-z0-9_]{10,}\b/g, 'ghp_[REDACTED]')
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/g, 'github_pat_[REDACTED]')
     .replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]')
     .replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]')
     .replace(/\bx-worker-key\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, 'x-worker-key:[REDACTED]')
@@ -31,6 +33,18 @@ function redactSecretsFromString(input: string): string {
 function safeErrorMessage(err: any): string {
   const raw = typeof err?.message === 'string' ? err.message : String(err);
   return redactSecretsFromString(raw);
+}
+
+function isGitAuthError(raw: string) {
+  const s = String(raw || '');
+  return (
+    /could not read Username/i.test(s) ||
+    /could not read Password/i.test(s) ||
+    /Authentication failed/i.test(s) ||
+    /Support for password authentication was removed/i.test(s) ||
+    /Permission denied \(publickey\)/i.test(s) ||
+    /fatal:.*could not read/i.test(s)
+  );
 }
 
 function redactToolInputForStorage(name: string, input: any) {
@@ -373,10 +387,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   }
 
   // Save User Message to DB
+  const persistedUserText = redactSecretsFromString(String(text || ''));
   if (useMock) {
-    store.addMessage(sessionId, 'user', String(text || ''), runId);
+    store.addMessage(sessionId, 'user', persistedUserText, runId);
   } else {
-    await Message.create({ sessionId, role: 'user', content: String(text || ''), runId });
+    await Message.create({ sessionId, role: 'user', content: persistedUserText, runId });
   }
 
   const risk = detectRisk(String(text || ''));
@@ -576,6 +591,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
 
+    if (String(plan?.name || '') === 'git_ops') {
+      const input = (plan as any).input;
+      if (!input || typeof input !== 'object') (plan as any).input = {};
+      if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+    }
+    if (String(plan?.name || '') === 'http_fetch') {
+      const input = (plan as any).input;
+      if (!input || typeof input !== 'object') (plan as any).input = {};
+      if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+    }
+
     const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
     ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
     const result = await executeTool(plan?.name || '', plan?.input);
@@ -772,8 +798,91 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       await ToolExecution.create({ runId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
     }
 
+    if (result.ok && String(plan?.name || '') === 'http_fetch') {
+      const status = Number((result as any)?.output?.status);
+      if (status === 401 || status === 403) {
+        const urlStr = String((plan as any)?.input?.url || '').trim();
+        const msg = [
+          `⚠️ الوصول لهذا الرابط يحتاج تسجيل دخول أو توكن.`,
+          urlStr ? `- الرابط: ${urlStr}` : ``,
+          `- أدخل Bearer Token في النافذة التي ستظهر الآن.`,
+          `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+        ].filter(Boolean).join('\n');
+
+        ev({ type: 'text', data: msg });
+        ev({
+          type: 'secret_required',
+          data: {
+            sessionId,
+            runId,
+            provider: 'generic',
+            key: 'HTTP_BEARER_TOKEN',
+            label: 'Bearer Token',
+            reason: `HTTP ${status}`,
+          },
+        });
+
+        const { setPendingTool } = await import('../services/secrets');
+        setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+        if (useMock) {
+          store.updateRun(runId, { status: 'blocked' as any });
+        } else {
+          try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
+        }
+
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: 'generic', key: 'HTTP_BEARER_TOKEN', label: 'Bearer Token' },
+          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+        });
+      }
+    }
+
     if (!result.ok) {
         const errorMsg = result.error || (result.logs ? result.logs.join('\n') : 'Unknown error');
+
+        if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
+          const msg = [
+            `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
+            `- أدخل توكن GitHub (Personal Access Token) في النافذة التي ستظهر الآن.`,
+            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+          ].join('\n');
+
+          ev({ type: 'text', data: msg });
+          ev({
+            type: 'secret_required',
+            data: {
+              sessionId,
+              runId,
+              provider: 'github',
+              key: 'GITHUB_TOKEN',
+              label: 'GitHub Token',
+              reason: 'git push يحتاج مصادقة',
+            },
+          });
+
+          const { setPendingTool } = await import('../services/secrets');
+          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+          if (useMock) {
+            store.updateRun(runId, { status: 'blocked' as any });
+          } else {
+            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
+          }
+
+          return res.json({
+            runId,
+            sessionId,
+            blocked: true,
+            secretRequired: true,
+            secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+          });
+        }
         
         // Self-Healing Notification
         ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });

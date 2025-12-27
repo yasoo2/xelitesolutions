@@ -10,6 +10,9 @@ import { Summary } from '../models/summary';
 import { MemoryService } from '../services/memory';
 import { generateSummary, SYSTEM_PROMPT } from '../llm';
 import { MemoryItem } from '../models/memoryItem';
+import { broadcast } from '../ws';
+import { executeTool } from '../tools/registry';
+import { popPendingTool, setSessionSecret } from '../services/secrets';
 
 const router = Router();
 
@@ -29,6 +32,78 @@ router.post('/', authenticate as any, async (req: Request, res: Response) => {
   } catch (e) {
     res.status(500).json({ error: 'Failed to create session' });
   }
+});
+
+router.post('/:id/secrets', authenticate as any, async (req: Request, res: Response) => {
+  const sessionId = String(req.params.id || '').trim();
+  const key = String(req.body?.key || '').trim();
+  const value = typeof req.body?.value === 'string' ? req.body.value : String(req.body?.value ?? '');
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+
+  if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
+  if (!key) return res.status(400).json({ error: 'Missing key' });
+  if (!value) return res.status(400).json({ error: 'Missing value' });
+  if (value.length > 8000) return res.status(400).json({ error: 'Value too large' });
+
+  setSessionSecret(sessionId, key, value);
+
+  const pending = popPendingTool(sessionId);
+  if (!pending) return res.json({ ok: true });
+
+  if (useMock) {
+    store.updateRun(pending.runId, { status: 'running' as any });
+  } else {
+    try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch {}
+  }
+
+  broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${pending.name}`, input: pending.input } });
+  const result = await executeTool(pending.name, pending.input);
+  broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: pending.runId, data: { name: `execute:${pending.name}`, result } });
+
+  const toText = (r: any) => {
+    const outStr =
+      typeof r?.output?.output === 'string'
+        ? r.output.output
+        : typeof r?.output?.text === 'string'
+          ? r.output.text
+          : r?.output != null
+            ? JSON.stringify(r.output)
+            : '';
+    if (r?.ok) return outStr || 'تم التنفيذ بنجاح.';
+    const errStr = typeof r?.error === 'string' ? r.error : Array.isArray(r?.logs) ? r.logs.join('\n') : 'فشل التنفيذ.';
+    return `فشل التنفيذ: ${errStr}`;
+  };
+
+  const assistantText = toText(result);
+  broadcast({ type: 'text', runId: pending.runId, data: assistantText });
+
+  if (useMock) {
+    store.addExec(pending.runId, pending.name, pending.input, result.output, result.ok, result.logs);
+    store.addMessage(sessionId, 'assistant', assistantText, pending.runId);
+  } else {
+    try {
+      await ToolExecution.create({
+        runId: pending.runId,
+        name: pending.name || 'unknown',
+        input: pending.input,
+        output: result.output,
+        ok: result.ok,
+        logs: result.logs,
+      });
+    } catch {}
+    try {
+      await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
+    } catch {}
+  }
+
+  if (useMock) {
+    store.updateRun(pending.runId, { status: result.ok ? 'done' : 'failed' });
+  } else {
+    try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch {}
+  }
+
+  broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: result.ok } });
+  return res.json({ ok: true, resumed: true, result });
 });
 
 // Get Session Messages

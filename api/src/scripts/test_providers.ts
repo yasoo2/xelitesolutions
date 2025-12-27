@@ -43,7 +43,7 @@ async function main() {
     text: 'hello openai',
     sessionId: 'test-session-2',
     provider: 'openai',
-    apiKey: 'sk-invalid-key-12345',
+    apiKey: 'invalid-key',
     model: 'gpt-4o'
   });
 

@@ -110,7 +110,7 @@ async function main() {
     await runInteraction('OpenAI (Missing Key)', 'openai', undefined, 'Hello OpenAI');
 
     // 5. Test OpenAI (Invalid Key - Should Fail Gracefully)
-    await runInteraction('OpenAI (Invalid Key)', 'openai', 'sk-invalid-key-123', 'Hello OpenAI');
+    await runInteraction('OpenAI (Invalid Key)', 'openai', 'invalid-key', 'Hello OpenAI');
 
     console.log('\n✅ DONE');
     process.exit(0);

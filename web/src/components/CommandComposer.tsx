@@ -330,6 +330,8 @@ export default function CommandComposer({
   const [isUploading, setIsUploading] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
+  const [secretPrompt, setSecretPrompt] = useState<{ sessionId: string; runId?: string; provider?: string; key: string; label?: string; reason?: string } | null>(null);
+  const [secretValue, setSecretValue] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -827,6 +829,23 @@ export default function CommandComposer({
             }
           }
 
+          if (msg.type === 'secret_required') {
+            const data = msg.data || {};
+            const sid = String(data?.sessionId || sessionId || '').trim();
+            const key = String(data?.key || '').trim();
+            if (sid && key) {
+              setSecretValue('');
+              setSecretPrompt({
+                sessionId: sid,
+                runId: typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : undefined,
+                provider: typeof data?.provider === 'string' ? data.provider : undefined,
+                key,
+                label: typeof data?.label === 'string' ? data.label : undefined,
+                reason: typeof data?.reason === 'string' ? data.reason : undefined,
+              });
+            }
+          }
+
           if (msg.type === 'step_started') {
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
@@ -896,7 +915,7 @@ export default function CommandComposer({
           }
 
           if (!DEBUG_TOOL_UI && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
-          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'user_input'].includes(msg.type)) {
+          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'user_input', 'secret_required'].includes(msg.type)) {
             setEvents(prev => {
               const id = typeof msg?.id === 'string' ? msg.id : '';
               if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
@@ -957,6 +976,8 @@ export default function CommandComposer({
       setEvents([]);
       setActiveRunId(null);
       setApproval(null);
+      setSecretPrompt(null);
+      setSecretValue('');
       clearToolTimers();
       setStatus('idle');
       setActiveToolName(null);
@@ -967,6 +988,8 @@ export default function CommandComposer({
       setEvents([]);
       setActiveRunId(null);
       setApproval(null);
+      setSecretPrompt(null);
+      setSecretValue('');
       clearToolTimers();
       setStatus('idle');
       setActiveToolName(null);
@@ -1157,6 +1180,21 @@ export default function CommandComposer({
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
       }
+
+      if (data?.blocked && data?.secretRequired && data?.sessionId && data?.secret?.key) {
+        const sid = String(data.sessionId || '').trim();
+        const key = String(data.secret.key || '').trim();
+        if (sid && key) {
+          setSecretValue('');
+          setSecretPrompt({
+            sessionId: sid,
+            runId: typeof data?.runId === 'string' ? data.runId : undefined,
+            provider: typeof data?.secret?.provider === 'string' ? data.secret.provider : undefined,
+            key,
+            label: typeof data?.secret?.label === 'string' ? data.secret.label : undefined,
+          });
+        }
+      }
       
       if (!isConnected && data?.result) {
          const r = data.result;
@@ -1189,6 +1227,25 @@ export default function CommandComposer({
       body: JSON.stringify({ decision }),
     });
     setApproval(null);
+  }
+
+  async function submitSecret() {
+    if (!secretPrompt) return;
+    const sid = secretPrompt.sessionId;
+    const key = secretPrompt.key;
+    const val = String(secretValue || '');
+    if (!sid || !key || !val) return;
+    const token = localStorage.getItem('token');
+    await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ key, value: val }),
+    });
+    setSecretPrompt(null);
+    setSecretValue('');
   }
 
   const checkConnection = async (key: string) => {
@@ -1871,6 +1928,31 @@ export default function CommandComposer({
             <div className="approval-actions">
               <button onClick={() => approve('denied')} className="btn deny">{t('deny')}</button>
               <button onClick={() => approve('approved')} className="btn approve">{t('approve')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {secretPrompt && (
+        <div className="approval-modal">
+          <div className="approval-content">
+            <h3>مطلوب مصادقة</h3>
+            {secretPrompt.reason ? <p>{secretPrompt.reason}</p> : null}
+            <p>{secretPrompt.label || secretPrompt.key}</p>
+            <input
+              type="password"
+              value={secretValue}
+              onChange={(e) => setSecretValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitSecret();
+              }}
+              placeholder="الصق التوكن هنا"
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+              autoFocus
+            />
+            <div className="approval-actions">
+              <button onClick={() => { setSecretPrompt(null); setSecretValue(''); }} className="btn deny">إلغاء</button>
+              <button onClick={() => submitSecret()} className="btn approve">حفظ ومتابعة</button>
             </div>
           </div>
         </div>

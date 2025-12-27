@@ -585,8 +585,9 @@ export const tools: ToolDefinition[] = [
     inputSchema: { 
       type: 'object', 
       properties: { 
-        operation: { type: 'string', enum: ['status', 'add', 'commit', 'push', 'checkout', 'log'] },
-        args: { type: 'array', items: { type: 'string' } }
+        operation: { type: 'string', enum: ['status', 'add', 'commit', 'push', 'checkout', 'log', 'fetch', 'pull', 'clone'] },
+        args: { type: 'array', items: { type: 'string' } },
+        sessionId: { type: 'string' }
       },
       required: ['operation']
     },
@@ -810,13 +811,24 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const url = String(input?.url ?? '');
       const method = String(input?.method ?? 'GET').toUpperCase();
       const headers = (typeof input?.headers === 'object' && input?.headers) ? input.headers : {};
+      const reqHeaders: Record<string, string> = { ...headers };
+      const sessionId = typeof (input as any)?.sessionId === 'string' ? String((input as any).sessionId).trim() : '';
+      if (sessionId) {
+        try {
+          const { getSessionSecret } = await import('../services/secrets');
+          if (!reqHeaders.Authorization && !reqHeaders.authorization) {
+            const token = getSessionSecret(sessionId, 'HTTP_BEARER_TOKEN') || '';
+            if (token) reqHeaders.Authorization = `Bearer ${token}`;
+          }
+        } catch {}
+      }
       let reqBody: any = undefined;
       if (typeof input?.body === 'string') reqBody = input.body;
       else if (input?.json && typeof input.json === 'object') {
         reqBody = JSON.stringify(input.json);
-        if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
+        if (!reqHeaders['Content-Type']) reqHeaders['Content-Type'] = 'application/json';
       }
-      const resp = await fetch(url, { method, headers, body: reqBody });
+      const resp = await fetch(url, { method, headers: reqHeaders, body: reqBody });
       const contentType = resp.headers.get('content-type') || '';
       const respText = await resp.text();
       let json: any = null;
@@ -1818,6 +1830,7 @@ Instructions:
         const { exec } = await import('child_process');
         const util = await import('util');
         const execAsync = util.promisify(exec);
+        let askpassDir = '';
         
         try {
             let cmd = `git ${op} ${args.join(' ')}`;
@@ -1830,11 +1843,50 @@ Instructions:
                     await execAsync('git config user.email "joe@xelitesolutions.com"');
                  }
             }
-            
-            const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd() });
-            logs.push(`git.op=${op} success`);
-            return { ok: true, output: { output: stdout || stderr }, logs };
+
+            const env: Record<string, string> = {};
+            const sessionId = typeof (input as any)?.sessionId === 'string' ? String((input as any).sessionId).trim() : '';
+            const wantsAuth = ['push', 'fetch', 'pull', 'clone'].includes(op);
+            let askpassPath = '';
+            if (wantsAuth && sessionId) {
+              try {
+                const { getSessionSecret } = await import('../services/secrets');
+                const token = getSessionSecret(sessionId, 'GITHUB_TOKEN') || '';
+                if (token) {
+                  const fs = await import('fs');
+                  const os = await import('os');
+                  const path = await import('path');
+                  askpassDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'joe-askpass-'));
+                  askpassPath = path.join(askpassDir, 'askpass.sh');
+                  const script = `#!/bin/sh\ncase \"$1\" in\n*Username*) echo \"x-access-token\";;\n*) echo \"$JOE_GIT_TOKEN\";;\nesac\n`;
+                  await fs.promises.writeFile(askpassPath, script, { mode: 0o700 });
+                  env.GIT_ASKPASS = askpassPath;
+                  env.GIT_TERMINAL_PROMPT = '0';
+                  env.DISPLAY = '1';
+                  env.JOE_GIT_TOKEN = token;
+                }
+              } catch {}
+            }
+
+            try {
+              const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd(), env: { ...process.env, ...env } });
+              logs.push(`git.op=${op} success`);
+              return { ok: true, output: { output: stdout || stderr }, logs };
+            } finally {
+              if (askpassDir) {
+                try {
+                  const fs = await import('fs');
+                  await fs.promises.rm(askpassDir, { recursive: true, force: true });
+                } catch {}
+              }
+            }
         } catch (e: any) {
+            if (askpassDir) {
+              try {
+                const fs = await import('fs');
+                await fs.promises.rm(askpassDir, { recursive: true, force: true });
+              } catch {}
+            }
             return { ok: false, error: e.message || e.stderr, logs };
         }
     }

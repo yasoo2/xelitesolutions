@@ -121,7 +121,7 @@ async function main() {
             headers,
             body: JSON.stringify({ 
                 provider: 'openai', 
-                apiKey: 'sk-invalid-test-key-123',
+                apiKey: 'invalid-key',
                 model: 'gpt-4o'
             })
         });
