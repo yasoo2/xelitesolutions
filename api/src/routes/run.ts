@@ -154,17 +154,11 @@ function redactToolInputForStorage(name: string, input: any) {
 router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
   const { provider, apiKey, baseUrl, model } = req.body || {};
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
-  const llmMock = useMock && !apiKey && !process.env.OPENAI_API_KEY;
-  
-  if (provider === 'llm') {
-      return res.status(400).json({ error: 'Local intelligence is disabled. Please provide an API key.' });
-  }
-
-  if (llmMock) {
-    return res.json({ status: 'ok', message: 'MOCK mode is enabled (no external provider call).', mock: true });
-  }
-
   const providerKey = String(provider || '').trim().toLowerCase();
+  
+  if (!providerKey || providerKey === 'llm') {
+    return res.json({ status: 'ok', message: 'Local mode is available.', mock: useMock });
+  }
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
     return res.status(400).json({
@@ -176,7 +170,7 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
     // Try a simple planning step
     const result = await planNextStep(
         [{ role: 'user', content: 'hello' }], 
-        { provider, apiKey, baseUrl, model, throwOnError: true, mock: llmMock }
+        { provider, apiKey, baseUrl, model, throwOnError: true }
     );
     
     if (result) {
@@ -239,9 +233,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
-  const llmMock = useMock && !apiKey && !process.env.OPENAI_API_KEY;
   const kind = sessionKind === 'agent' ? 'agent' : 'chat';
   const providerKey = String(provider || 'llm').trim().toLowerCase();
+  const plannerMock = providerKey === 'llm' || (useMock && !apiKey);
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
 
   // 1. Process Attachments
@@ -551,7 +545,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             const isSystemConfigured = !!process.env.OPENAI_API_KEY;
             const throwOnError = !!apiKey || (provider && provider !== 'llm') || isSystemConfigured;
 
-            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: llmMock });
+            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: plannerMock });
         } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
             console.warn('LLM planning error:', lastPlanError);
@@ -561,7 +555,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                  assistantTextEmitted = true;
                  break;
             }
-            if (!apiKey) {
+            if (plannerMock || !apiKey) {
               try {
                 plan = await planNextStep(history, { provider: 'llm', throwOnError: false, mock: true });
               } catch {}

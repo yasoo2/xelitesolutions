@@ -373,12 +373,13 @@ export default function CommandComposer({
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>({
+    llm: { name: 'Joe (Local)', apiKey: '', isConnected: true },
     openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
     anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
     gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
     grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
   });
-  const [activeProvider, setActiveProvider] = useState('openai');
+  const [activeProvider, setActiveProvider] = useState('llm');
   const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
@@ -513,20 +514,28 @@ export default function CommandComposer({
   useEffect(() => {
     try {
       const saved = localStorage.getItem('ai_providers');
+      const baseProviders = { ...providers };
       if (saved) {
         const parsed = JSON.parse(saved);
-        setProviders(prev => {
-          const next = { ...prev };
-          Object.keys(parsed).forEach(k => {
-            if (next[k]) {
-              next[k] = { ...next[k], ...parsed[k] };
-            }
-          });
-          return next;
+        Object.keys(parsed).forEach(k => {
+          if (baseProviders[k]) {
+            baseProviders[k] = { ...baseProviders[k], ...parsed[k] };
+          }
         });
       }
       const savedActive = localStorage.getItem('active_provider');
-      if (savedActive && providers[savedActive]) setActiveProvider(savedActive);
+      setProviders(baseProviders);
+      if (savedActive && baseProviders[savedActive]) {
+        if (savedActive === 'llm') {
+          setActiveProvider('llm');
+        } else if (String(baseProviders[savedActive]?.apiKey || '').trim()) {
+          setActiveProvider(savedActive);
+        } else {
+          setActiveProvider('llm');
+        }
+      } else {
+        setActiveProvider('llm');
+      }
     } catch (e) {
       console.error('Failed to load providers settings', e);
     }
@@ -1529,6 +1538,11 @@ export default function CommandComposer({
   }
 
   const checkConnection = async (key: string) => {
+    if (key === 'llm') {
+      setProviders(prev => ({ ...prev, llm: { ...prev.llm, isConnected: true, isVerifying: false, lastError: undefined } }));
+      setActiveProvider('llm');
+      return;
+    }
     const p = providers[key];
     setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, lastError: undefined } }));
     
