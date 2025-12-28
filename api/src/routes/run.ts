@@ -861,7 +861,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const msg = [
           `⚠️ الوصول لهذا الرابط يحتاج تسجيل دخول أو توكن.`,
           urlStr ? `- الرابط: ${urlStr}` : ``,
-          `- أدخل Bearer Token في النافذة التي ستظهر الآن.`,
+          `- اكتب Bearer Token هنا في المحادثة وأرسله كرسالة واحدة.`,
           `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
         ].filter(Boolean).join('\n');
 
@@ -904,7 +904,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
           const msg = [
             `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
-            `- أدخل توكن GitHub (Personal Access Token) في النافذة التي ستظهر الآن.`,
+            `- اكتب توكن GitHub (Personal Access Token) هنا في المحادثة وأرسله كرسالة واحدة.`,
             `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
           ].join('\n');
 
@@ -943,7 +943,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
           const msg = [
             `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
-            `- أدخل GitHub Personal Access Token في النافذة التي ستظهر الآن.`,
+            `- اكتب GitHub Personal Access Token هنا في المحادثة وأرسله كرسالة واحدة.`,
             `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
           ].join('\n');
 

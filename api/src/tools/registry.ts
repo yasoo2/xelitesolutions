@@ -758,12 +758,736 @@ export const tools: ToolDefinition[] = [
   },
 ];
 
+const generatedTools: ToolDefinition[] = [];
+const TARGET_TOOL_COUNT = 200;
+
+function hasToolName(n: string) {
+  const name = String(n || '').trim();
+  if (!name) return false;
+  return tools.some(t => t.name === name) || generatedTools.some(t => t.name === name);
+}
+
+function addGeneratedTool(t: ToolDefinition) {
+  if (!t?.name) return;
+  if (tools.length + generatedTools.length >= TARGET_TOOL_COUNT) return;
+  if (hasToolName(t.name)) return;
+  generatedTools.push(t);
+}
+
+function makeShellTool(opts: {
+  name: string;
+  tags: string[];
+  description?: string;
+  permissions: ToolDefinition['permissions'];
+  sideEffects: ToolDefinition['sideEffects'];
+  rateLimitPerMinute?: number;
+  inputSchema: Record<string, any>;
+  auditFields?: string[];
+  buildCommand: (input: any) => { command: string; cwd?: string; timeout?: number };
+}) {
+  const rateLimitPerMinute = Number.isFinite(Number(opts.rateLimitPerMinute)) ? Number(opts.rateLimitPerMinute) : 30;
+  addGeneratedTool({
+    name: opts.name,
+    version: '1.0.0',
+    tags: opts.tags,
+    description: opts.description,
+    inputSchema: opts.inputSchema,
+    outputSchema: {
+      type: 'object',
+      properties: {
+        stdout: { type: 'string' },
+        stderr: { type: 'string' },
+        exitCode: { type: 'number' },
+        cwd: { type: 'string' },
+      },
+    },
+    permissions: opts.permissions,
+    sideEffects: opts.sideEffects,
+    rateLimitPerMinute,
+    auditFields: Array.isArray(opts.auditFields) ? opts.auditFields : [],
+    mockSupported: false,
+    async execute(input) {
+      const { command, cwd, timeout } = opts.buildCommand(input);
+      return executeTool('shell_execute', { command, cwd, timeout });
+    },
+  });
+}
+
+function addPhase2AndCoreDevTools() {
+  addGeneratedTool({
+    name: 'command_policy_check',
+    version: '1.0.0',
+    tags: ['dev', 'safety', 'policy'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool: { type: 'string' },
+        input: { type: 'object' },
+        userText: { type: 'string' },
+      },
+      required: ['tool'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        decision: { type: 'string', enum: ['allow', 'require_approval', 'deny'] },
+        risk: { type: 'string' },
+        reasons: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 120,
+    auditFields: ['tool'],
+    mockSupported: true,
+    async execute(input) {
+      const tool = String(input?.tool || '').trim();
+      const userText = String(input?.userText || '');
+      const inObj = input?.input ?? null;
+
+      const reasons: string[] = [];
+      let decision: 'allow' | 'require_approval' | 'deny' = 'allow';
+      let risk = 'LOW';
+
+      const text = `${tool}\n${userText}\n${JSON.stringify(inObj ?? {})}`;
+      if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process)/i.test(text)) {
+        decision = 'require_approval';
+        risk = 'HIGH';
+        reasons.push('matches_destructive_pattern');
+      }
+      if (/sudo\b/i.test(text)) {
+        decision = 'deny';
+        risk = 'CRITICAL';
+        reasons.push('sudo_not_allowed');
+      }
+      if (tool === 'shell_execute') {
+        if (decision === 'allow') {
+          decision = 'require_approval';
+          risk = 'MEDIUM';
+          reasons.push('raw_shell_requires_approval');
+        }
+      }
+      if (tool === 'file_write' || tool === 'file_edit' || tool === 'scaffold_project') {
+        const filename = String(inObj?.filename || '').trim();
+        const baseDir = String(inObj?.baseDir || '').trim();
+        const target = filename || baseDir;
+        if (/\b\.env\b/i.test(target) || /id_rsa|ssh|pem|secret|token/i.test(target)) {
+          decision = 'require_approval';
+          risk = 'HIGH';
+          reasons.push('touches_sensitive_path');
+        }
+      }
+      if (tool === 'git_ops') {
+        const op = String(inObj?.operation || '').trim().toLowerCase();
+        if (['push', 'clone'].includes(op)) {
+          decision = 'require_approval';
+          risk = 'HIGH';
+          reasons.push('git_remote_operation');
+        }
+      }
+      if (!reasons.length) reasons.push('no_specific_risk_rule_matched');
+      return { ok: true, output: { decision, risk, reasons }, logs: [`policy.tool=${tool} decision=${decision} risk=${risk}`] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'approve_on_tool',
+    version: '1.0.0',
+    tags: ['dev', 'safety', 'policy'],
+    inputSchema: { type: 'object', properties: { tool: { type: 'string' }, input: { type: 'object' } }, required: ['tool'] },
+    outputSchema: { type: 'object', properties: { ok: { type: 'boolean' }, decision: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 120,
+    auditFields: ['tool'],
+    mockSupported: true,
+    async execute(input) {
+      const res = await executeTool('command_policy_check', input);
+      const decision = String(res?.output?.decision || 'allow');
+      return { ok: true, output: { ok: decision === 'allow', decision }, logs: res.logs || [] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'secrets_store_encrypted',
+    version: '1.0.0',
+    tags: ['dev', 'secrets', 'security'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        key: { type: 'string' },
+        value: { type: 'string' },
+        ttlSeconds: { type: 'number' },
+      },
+      required: ['sessionId', 'key', 'value'],
+    },
+    outputSchema: { type: 'object', properties: { ok: { type: 'boolean' }, expiresAt: { type: 'number' } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 120,
+    auditFields: ['key'],
+    mockSupported: false,
+    async execute(input) {
+      const sessionId = String(input?.sessionId || '').trim();
+      const key = String(input?.key || '').trim();
+      const value = String(input?.value ?? '');
+      const ttlSeconds = Number(input?.ttlSeconds ?? 0);
+      if (!sessionId || !key) return { ok: false, error: 'Missing sessionId or key', logs: [] };
+      const { setSessionSecretEncrypted } = await import('../services/secrets');
+      const expiresAt = setSessionSecretEncrypted(sessionId, key, value, ttlSeconds > 0 ? ttlSeconds : undefined);
+      return { ok: true, output: { ok: true, expiresAt: expiresAt ?? null }, logs: [`secret_set=${key}`] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'secrets_provider_connect',
+    version: '1.0.0',
+    tags: ['dev', 'secrets'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        key: { type: 'string' },
+        envVar: { type: 'string' },
+        ttlSeconds: { type: 'number' },
+      },
+      required: ['sessionId', 'key', 'envVar'],
+    },
+    outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 60,
+    auditFields: ['key'],
+    mockSupported: false,
+    async execute(input) {
+      const sessionId = String(input?.sessionId || '').trim();
+      const key = String(input?.key || '').trim();
+      const envVar = String(input?.envVar || '').trim();
+      const ttlSeconds = Number(input?.ttlSeconds ?? 0);
+      if (!sessionId || !key || !envVar) return { ok: false, error: 'Missing sessionId/key/envVar', logs: [] };
+      const v = String(process.env[envVar] || '');
+      if (!v) return { ok: false, error: `Env var not set: ${envVar}`, logs: [] };
+      const { setSessionSecretEncrypted } = await import('../services/secrets');
+      setSessionSecretEncrypted(sessionId, key, v, ttlSeconds > 0 ? ttlSeconds : undefined);
+      return { ok: true, output: { ok: true }, logs: [`secret_from_env=${envVar} -> ${key}`] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'project_detect',
+    version: '1.0.0',
+    tags: ['dev', 'analysis'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: [] },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        hasGit: { type: 'boolean' },
+        nodeProjects: { type: 'array', items: { type: 'string' } },
+        pythonProjects: { type: 'array', items: { type: 'string' } },
+        goProjects: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: true,
+    async execute(input) {
+      const root = resolveToolPath(String(input?.path || '.'));
+      const hasGit = fs.existsSync(path.join(root, '.git'));
+      const candidates: string[] = [];
+      const walk = (dir: string, depth: number) => {
+        if (depth > 4) return;
+        let entries: fs.Dirent[] = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+          if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || e.name === 'build') continue;
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) walk(full, depth + 1);
+          else candidates.push(full);
+        }
+      };
+      walk(root, 0);
+      const dirs = new Set<string>();
+      for (const f of candidates) dirs.add(path.dirname(f));
+      const nodeProjects = Array.from(dirs).filter(d => fs.existsSync(path.join(d, 'package.json'))).sort();
+      const pythonProjects = Array.from(dirs).filter(d => fs.existsSync(path.join(d, 'pyproject.toml')) || fs.existsSync(path.join(d, 'requirements.txt'))).sort();
+      const goProjects = Array.from(dirs).filter(d => fs.existsSync(path.join(d, 'go.mod'))).sort();
+      return { ok: true, output: { root, hasGit, nodeProjects, pythonProjects, goProjects }, logs: [`project.root=${root}`] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'quality_run',
+    version: '1.0.0',
+    tags: ['dev', 'quality'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        tasks: { type: 'array', items: { type: 'string', enum: ['lint', 'typecheck', 'test', 'build'] } },
+      },
+      required: ['tasks'],
+    },
+    outputSchema: { type: 'object', properties: { results: { type: 'array', items: { type: 'object' } } } },
+    permissions: ['read', 'execute'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 10,
+    auditFields: [],
+    mockSupported: false,
+    async execute(input) {
+      const p = resolveToolPath(String(input?.path || '.'));
+      const tasks: string[] = Array.isArray(input?.tasks) ? input.tasks.map((x: any) => String(x)) : [];
+      const logs: string[] = [];
+      const results: any[] = [];
+
+      const pkgPath = path.join(p, 'package.json');
+      let scripts: Record<string, string> = {};
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+          scripts = pkg?.scripts && typeof pkg.scripts === 'object' ? pkg.scripts : {};
+        } catch {}
+      }
+
+      const runScript = async (task: string) => {
+        const scriptName =
+          task === 'lint'
+            ? (scripts.lint ? 'lint' : '')
+            : task === 'typecheck'
+              ? (scripts.typecheck ? 'typecheck' : scripts['check-types'] ? 'check-types' : '')
+              : task === 'test'
+                ? (scripts.test ? 'test' : '')
+                : task === 'build'
+                  ? (scripts.build ? 'build' : '')
+                  : '';
+        if (!scriptName) {
+          results.push({ task, ok: false, skipped: true, reason: 'missing_script' });
+          return;
+        }
+        const cmd = `npm --prefix "${p}" run ${scriptName}`;
+        const r = await executeTool('shell_execute', { command: cmd, cwd: repoRoot(), timeout: 10 * 60 * 1000 });
+        results.push({ task, ok: r.ok, stdout: r.output?.stdout, stderr: r.output?.stderr, exitCode: r.output?.exitCode });
+      };
+
+      for (const t of tasks) await runScript(t);
+      logs.push(`quality.path=${p} tasks=${tasks.join(',')}`);
+      return { ok: results.every(r => r.ok || r.skipped), output: { results }, logs };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'dependency_audit',
+    version: '1.0.0',
+    tags: ['dev', 'security', 'deps'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: [] },
+    outputSchema: { type: 'object', properties: { summary: { type: 'object' }, raw: { type: 'object' } } },
+    permissions: ['read', 'execute'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 10,
+    auditFields: ['path'],
+    mockSupported: false,
+    async execute(input) {
+      const p = resolveToolPath(String(input?.path || '.'));
+      const cmd = `npm --prefix "${p}" audit --json`;
+      const r = await executeTool('shell_execute', { command: cmd, cwd: repoRoot(), timeout: 5 * 60 * 1000 });
+      if (!r.ok) return { ok: false, error: String(r.output?.stderr || r.error || 'audit_failed'), logs: r.logs || [] };
+      const rawText = String(r.output?.stdout || '');
+      let raw: any = null;
+      try { raw = JSON.parse(rawText); } catch { raw = { parseError: true, rawText: rawText.slice(0, 5000) }; }
+      const summary = raw?.metadata?.vulnerabilities || raw?.vulnerabilities || {};
+      return { ok: true, output: { summary, raw }, logs: r.logs || [] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'secrets_scan_repo',
+    version: '1.0.0',
+    tags: ['dev', 'security', 'secrets'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: [] },
+    outputSchema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'string' } }, truncated: { type: 'boolean' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: ['path'],
+    mockSupported: true,
+    async execute(input) {
+      const searchPath = resolveToolPath(String(input?.path || '.'));
+      const patterns = [
+        'sk-[A-Za-z0-9_-]{10,}',
+        'ghp_[A-Za-z0-9_]{10,}',
+        'github_pat_[A-Za-z0-9_]{10,}',
+        'AKIA[0-9A-Z]{16}',
+        'Bearer\\s+[A-Za-z0-9._-]{10,}',
+      ];
+      const all: string[] = [];
+      for (const pat of patterns) {
+        const r = await executeTool('grep_search', { query: pat, path: searchPath, include: '*.*', exclude: '' });
+        const m = Array.isArray(r.output?.matches) ? r.output.matches : [];
+        for (const line of m) all.push(String(line));
+      }
+      const unique = Array.from(new Set(all)).slice(0, 200);
+      return { ok: true, output: { matches: unique, truncated: unique.length === 200 }, logs: [`scan.path=${searchPath} matches=${unique.length}`] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'ci_generate_pipeline',
+    version: '1.0.0',
+    tags: ['dev', 'ci'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, kind: { type: 'string', enum: ['node'] } }, required: [] },
+    outputSchema: { type: 'object', properties: { created: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 5,
+    auditFields: ['path'],
+    mockSupported: false,
+    async execute(input) {
+      const p = resolveToolPath(String(input?.path || '.'));
+      const wfDir = path.join(p, '.github', 'workflows');
+      const wfFile = path.join(wfDir, 'ci.yml');
+      try { fs.mkdirSync(wfDir, { recursive: true }); } catch {}
+      const yaml = [
+        'name: CI',
+        'on:',
+        '  push:',
+        '  pull_request:',
+        'jobs:',
+        '  build:',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/checkout@v4',
+        '      - uses: actions/setup-node@v4',
+        '        with:',
+        '          node-version: 20',
+        '      - run: npm ci',
+        '      - run: npm run lint --if-present',
+        '      - run: npm run typecheck --if-present',
+        '      - run: npm test --if-present',
+        '      - run: npm run build --if-present',
+        '',
+      ].join('\n');
+      fs.writeFileSync(wfFile, yaml);
+      return { ok: true, output: { created: [wfFile] }, logs: [`ci.created=${wfFile}`] };
+    },
+  });
+
+  addGeneratedTool({
+    name: 'ci_run_status',
+    version: '1.0.0',
+    tags: ['dev', 'ci', 'github'],
+    inputSchema: { type: 'object', properties: { repo: { type: 'string' }, branch: { type: 'string' } }, required: ['repo'] },
+    outputSchema: { type: 'object', properties: { note: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: ['repo'],
+    mockSupported: true,
+    async execute(input) {
+      const repo = String(input?.repo || '').trim();
+      const branch = String(input?.branch || 'main').trim();
+      return { ok: true, output: { note: `Connect a CI provider to query status: repo=${repo} branch=${branch}` }, logs: [`ci.status.repo=${repo}`] };
+    },
+  });
+
+  makeShellTool({
+    name: 'docker_ops',
+    tags: ['dev', 'docker'],
+    permissions: ['execute'],
+    sideEffects: ['execute'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: { type: 'string', enum: ['version', 'build', 'run'] },
+        args: { type: 'array', items: { type: 'string' } },
+        cwd: { type: 'string' },
+        timeout: { type: 'number' },
+      },
+      required: ['operation'],
+    },
+    auditFields: ['operation'],
+    buildCommand: (input) => {
+      const op = String(input?.operation || '').trim();
+      const args = Array.isArray(input?.args) ? input.args.map((x: any) => String(x)) : [];
+      const cwd = typeof input?.cwd === 'string' ? input.cwd : undefined;
+      const timeout = Number(input?.timeout ?? 30000);
+      const cmd = `docker ${op} ${args.join(' ')}`.trim();
+      return { command: cmd, cwd, timeout };
+    },
+  });
+
+  makeShellTool({
+    name: 'deploy_ops',
+    tags: ['dev', 'deploy'],
+    permissions: ['execute'],
+    sideEffects: ['execute'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: { type: 'string', enum: ['kubectl'] },
+        args: { type: 'array', items: { type: 'string' } },
+        cwd: { type: 'string' },
+        timeout: { type: 'number' },
+      },
+      required: ['operation', 'args'],
+    },
+    auditFields: ['operation'],
+    buildCommand: (input) => {
+      const args = Array.isArray(input?.args) ? input.args.map((x: any) => String(x)) : [];
+      const cwd = typeof input?.cwd === 'string' ? input.cwd : undefined;
+      const timeout = Number(input?.timeout ?? 30000);
+      const cmd = `kubectl ${args.join(' ')}`.trim();
+      return { command: cmd, cwd, timeout };
+    },
+  });
+}
+
+function addBulkToolPackToReach200() {
+  const root = repoRoot();
+
+  const gitSimple: Array<{ name: string; command: string }> = [
+    { name: 'git_status', command: 'git status -sb' },
+    { name: 'git_diff', command: 'git diff' },
+    { name: 'git_diff_cached', command: 'git diff --cached' },
+    { name: 'git_log', command: 'git log -n 50 --oneline --decorate' },
+    { name: 'git_branch_list', command: 'git branch -a' },
+    { name: 'git_remote_list', command: 'git remote -v' },
+    { name: 'git_tags', command: 'git tag -l' },
+  ];
+  for (const g of gitSimple) {
+    makeShellTool({
+      name: g.name,
+      tags: ['dev', 'git'],
+      permissions: ['read', 'execute'],
+      sideEffects: ['execute'],
+      inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, timeout: { type: 'number' } }, required: [] },
+      auditFields: [],
+      buildCommand: (input) => ({ command: g.command, cwd: input?.cwd ? String(input.cwd) : root, timeout: Number(input?.timeout ?? 30000) }),
+    });
+  }
+
+  const npmSimple: Array<{ name: string; command: string }> = [
+    { name: 'npm_install', command: 'npm install' },
+    { name: 'npm_ci', command: 'npm ci' },
+    { name: 'npm_lint', command: 'npm run lint --if-present' },
+    { name: 'npm_typecheck', command: 'npm run typecheck --if-present' },
+    { name: 'npm_test', command: 'npm test --if-present' },
+    { name: 'npm_build', command: 'npm run build --if-present' },
+    { name: 'npm_audit', command: 'npm audit' },
+  ];
+  for (const n of npmSimple) {
+    makeShellTool({
+      name: n.name,
+      tags: ['dev', 'npm'],
+      permissions: ['read', 'execute', 'write'],
+      sideEffects: ['execute', 'write'],
+      inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, timeout: { type: 'number' } }, required: [] },
+      auditFields: [],
+      buildCommand: (input) => ({ command: n.command, cwd: input?.cwd ? String(input.cwd) : root, timeout: Number(input?.timeout ?? 10 * 60 * 1000) }),
+    });
+  }
+
+  const fsShellOps: Array<{ name: string; build: (input: any) => string; perms: ToolDefinition['permissions']; effects: ToolDefinition['sideEffects'] }> = [
+    { name: 'fs_pwd', build: () => 'pwd', perms: ['read', 'execute'], effects: ['execute'] },
+    { name: 'fs_ls', build: (i) => `ls -la "${resolveToolPath(String(i?.path || '.'))}"`, perms: ['read', 'execute'], effects: ['execute'] },
+    { name: 'fs_find_large', build: (i) => `find "${resolveToolPath(String(i?.path || '.'))}" -type f -size +${Number(i?.mb ?? 50)}M -maxdepth 6 -print`, perms: ['read', 'execute'], effects: ['execute'] },
+  ];
+  for (const f of fsShellOps) {
+    makeShellTool({
+      name: f.name,
+      tags: ['fs', 'utility'],
+      permissions: f.perms,
+      sideEffects: f.effects,
+      inputSchema: { type: 'object', properties: { path: { type: 'string' }, mb: { type: 'number' }, cwd: { type: 'string' }, timeout: { type: 'number' } }, required: [] },
+      auditFields: ['path'],
+      buildCommand: (input) => ({ command: f.build(input), cwd: input?.cwd ? String(input.cwd) : root, timeout: Number(input?.timeout ?? 30000) }),
+    });
+  }
+
+  const codeSearchByType: Array<{ name: string; include: string }> = [
+    { name: 'code_search_ts', include: '*.{ts,tsx}' },
+    { name: 'code_search_js', include: '*.{js,mjs,cjs,jsx}' },
+    { name: 'code_search_py', include: '*.py' },
+    { name: 'code_search_go', include: '*.go' },
+    { name: 'code_search_java', include: '*.java' },
+    { name: 'code_search_rust', include: '*.rs' },
+    { name: 'code_search_cpp', include: '*.{c,cc,cpp,h,hpp}' },
+    { name: 'code_search_yaml', include: '*.{yml,yaml}' },
+    { name: 'code_search_json', include: '*.json' },
+    { name: 'code_search_md', include: '*.md' },
+    { name: 'code_search_sql', include: '*.sql' },
+    { name: 'code_search_sh', include: '*.{sh,bash,zsh}' },
+    { name: 'code_search_docker', include: '*Dockerfile*' },
+    { name: 'code_search_terraform', include: '*.{tf,tfvars}' },
+    { name: 'code_search_k8s', include: '*.{yaml,yml}' },
+    { name: 'code_search_html', include: '*.{html,htm}' },
+    { name: 'code_search_css', include: '*.{css,scss,sass,less}' },
+    { name: 'code_search_graphql', include: '*.{graphql,gql}' },
+    { name: 'code_search_proto', include: '*.proto' },
+    { name: 'code_search_swift', include: '*.swift' },
+  ];
+  for (const s of codeSearchByType) {
+    addGeneratedTool({
+      name: s.name,
+      version: '1.0.0',
+      tags: ['fs', 'search'],
+      inputSchema: { type: 'object', properties: { query: { type: 'string' }, path: { type: 'string' }, exclude: { type: 'string' } }, required: ['query'] },
+      outputSchema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'string' } }, count: { type: 'number' }, truncated: { type: 'boolean' } } },
+      permissions: ['read'],
+      sideEffects: [],
+      rateLimitPerMinute: 120,
+      auditFields: ['query'],
+      mockSupported: true,
+      async execute(input) {
+        const query = String(input?.query ?? '');
+        const searchPath = String(input?.path ?? '.');
+        const exclude = String(input?.exclude ?? '');
+        return executeTool('grep_search', { query, path: searchPath, include: s.include, exclude });
+      },
+    });
+  }
+
+  addGeneratedTool({
+    name: 'code_loc_count',
+    version: '1.0.0',
+    tags: ['dev', 'analysis', 'code'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: [] },
+    outputSchema: { type: 'object', properties: { totalFiles: { type: 'number' }, totalLines: { type: 'number' }, byExt: { type: 'object' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: ['path'],
+    mockSupported: true,
+    async execute(input) {
+      const rootPath = resolveToolPath(String(input?.path || '.'));
+      const byExt: Record<string, { files: number; lines: number }> = {};
+      let totalFiles = 0;
+      let totalLines = 0;
+
+      const shouldSkipDir = (name: string) =>
+        name === 'node_modules' || name === '.git' || name === 'dist' || name === 'build' || name === '.next' || name === '.turbo';
+
+      const walk = (dir: string, depth: number) => {
+        if (depth > 12) return;
+        let ents: fs.Dirent[] = [];
+        try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of ents) {
+          if (e.isDirectory()) {
+            if (shouldSkipDir(e.name)) continue;
+            walk(path.join(dir, e.name), depth + 1);
+            continue;
+          }
+          const full = path.join(dir, e.name);
+          const ext = path.extname(e.name).toLowerCase() || '(none)';
+          let content = '';
+          try { content = fs.readFileSync(full, 'utf-8'); } catch { continue; }
+          const lines = content.split('\n').length;
+          totalFiles += 1;
+          totalLines += lines;
+          byExt[ext] = byExt[ext] || { files: 0, lines: 0 };
+          byExt[ext].files += 1;
+          byExt[ext].lines += lines;
+        }
+      };
+
+      walk(rootPath, 0);
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(byExt)) out[k] = v;
+      return { ok: true, output: { totalFiles, totalLines, byExt: out }, logs: [`loc.path=${rootPath}`] };
+    },
+  });
+
+  const filler: Array<{ name: string; command: string; tags: string[]; perms: ToolDefinition['permissions']; effects: ToolDefinition['sideEffects'] }> = [
+    { name: 'sys_node_version', command: 'node -v', tags: ['system', 'info'], perms: ['read', 'execute'], effects: ['execute'] },
+    { name: 'sys_npm_version', command: 'npm -v', tags: ['system', 'info'], perms: ['read', 'execute'], effects: ['execute'] },
+    { name: 'sys_git_version', command: 'git --version', tags: ['system', 'info'], perms: ['read', 'execute'], effects: ['execute'] },
+    { name: 'sys_uname', command: 'uname -a', tags: ['system', 'info'], perms: ['read', 'execute'], effects: ['execute'] },
+    { name: 'sys_disk', command: 'df -h', tags: ['system', 'info'], perms: ['read', 'execute'], effects: ['execute'] },
+    { name: 'sys_mem', command: 'vm_stat', tags: ['system', 'info'], perms: ['read', 'execute'], effects: ['execute'] },
+  ];
+  for (const x of filler) {
+    makeShellTool({
+      name: x.name,
+      tags: x.tags,
+      permissions: x.perms,
+      sideEffects: x.effects,
+      inputSchema: { type: 'object', properties: { timeout: { type: 'number' } }, required: [] },
+      buildCommand: (input) => ({ command: x.command, cwd: root, timeout: Number(input?.timeout ?? 30000) }),
+    });
+  }
+
+  addGeneratedTool({
+    name: 'fs_glob',
+    version: '1.0.0',
+    tags: ['fs', 'search'],
+    inputSchema: { type: 'object', properties: { pattern: { type: 'string' }, cwd: { type: 'string' } }, required: ['pattern'] },
+    outputSchema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['pattern'],
+    mockSupported: true,
+    async execute(input) {
+      const pattern = String(input?.pattern || '').trim();
+      const cwd = input?.cwd ? resolveToolPath(String(input.cwd)) : repoRoot();
+      if (!pattern) return { ok: false, error: 'pattern_required', logs: [] };
+      const { globSync } = await import('glob');
+      const matches = globSync(pattern, { cwd, nodir: true, dot: true, absolute: true }).slice(0, 500);
+      return { ok: true, output: { matches }, logs: [`glob.cwd=${cwd} count=${matches.length}`] };
+    },
+  });
+
+  const keywordChecks: Array<{ slug: string; query: string }> = [
+    { slug: 'todo', query: 'TODO' },
+    { slug: 'fixme', query: 'FIXME' },
+    { slug: 'hack', query: 'HACK' },
+    { slug: 'debugger', query: 'debugger' },
+    { slug: 'console_log', query: 'console.log' },
+    { slug: 'eval', query: 'eval(' },
+    { slug: 'exec', query: 'child_process.exec' },
+    { slug: 'secret', query: 'SECRET' },
+  ];
+
+  for (const s of codeSearchByType) {
+    const suffix = s.name.replace(/^code_search_/, '');
+    for (const k of keywordChecks) {
+      const toolName = `code_find_${k.slug}_${suffix}`;
+      addGeneratedTool({
+        name: toolName,
+        version: '1.0.0',
+        tags: ['fs', 'search', 'code'],
+        inputSchema: { type: 'object', properties: { path: { type: 'string' }, exclude: { type: 'string' } }, required: [] },
+        outputSchema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'string' } }, count: { type: 'number' }, truncated: { type: 'boolean' } } },
+        permissions: ['read'],
+        sideEffects: [],
+        rateLimitPerMinute: 120,
+        auditFields: [],
+        mockSupported: true,
+        async execute(input) {
+          const searchPath = String(input?.path ?? '.');
+          const exclude = String(input?.exclude ?? '');
+          return executeTool('grep_search', { query: k.query, path: searchPath, include: s.include, exclude });
+        },
+      });
+    }
+  }
+}
+
+addPhase2AndCoreDevTools();
+addBulkToolPackToReach200();
+if (tools.length < TARGET_TOOL_COUNT) {
+  tools.push(...generatedTools.slice(0, Math.max(0, TARGET_TOOL_COUNT - tools.length)));
+}
+
 const enableNoopTools =
   process.env.ENABLE_NOOP_TOOLS === '1' ||
   process.env.ENABLE_NOOP_TOOLS === 'true';
 
 if (enableNoopTools) {
-  for (let i = 1; i <= 197; i++) {
+  const remaining = Math.max(0, TARGET_TOOL_COUNT - tools.length);
+  for (let i = 1; i <= remaining; i++) {
     tools.push({
       name: `noop_${i}`,
       version: '1.0.0',

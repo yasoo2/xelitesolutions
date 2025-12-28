@@ -331,7 +331,6 @@ export default function CommandComposer({
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [secretPrompt, setSecretPrompt] = useState<{ sessionId: string; runId?: string; provider?: string; key: string; label?: string; reason?: string } | null>(null);
-  const [secretValue, setSecretValue] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -361,6 +360,7 @@ export default function CommandComposer({
   const isThinkingRef = useRef<boolean>(isThinking);
   const toolVisibleRef = useRef<boolean>(toolVisible);
   const activeToolNameRef = useRef<string | null>(activeToolName);
+  const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -842,7 +842,20 @@ export default function CommandComposer({
             const { id, risk, action } = data;
             const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
             if (id) {
+                const sig = `${String(id)}:${String(runId || '')}`;
+                if (lastGateSigRef.current.approval === sig) return;
+                lastGateSigRef.current.approval = sig;
                 setApproval({ id, runId, risk, action });
+                const actionText = String(action || '').trim();
+                const riskText = String(risk || '').trim();
+                const lines = [
+                  t('approvalGateTitle', 'Approval is required before continuing.'),
+                  actionText ? `- ${t('action', 'Action')}: ${actionText}` : '',
+                  riskText ? `- ${t('risk', 'Risk')}: ${riskText}` : '',
+                  '',
+                  t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
+                ].filter(Boolean);
+                setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
             }
           }
 
@@ -851,7 +864,10 @@ export default function CommandComposer({
             const sid = String(data?.sessionId || sessionId || '').trim();
             const key = String(data?.key || '').trim();
             if (sid && key) {
-              setSecretValue('');
+              const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
+              const sig = `${sid}:${key}:${runId}`;
+              if (lastGateSigRef.current.secret === sig) return;
+              lastGateSigRef.current.secret = sig;
               setSecretPrompt({
                 sessionId: sid,
                 runId: typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : undefined,
@@ -860,6 +876,17 @@ export default function CommandComposer({
                 label: typeof data?.label === 'string' ? data.label : undefined,
                 reason: typeof data?.reason === 'string' ? data.reason : undefined,
               });
+              const label = typeof data?.label === 'string' && data.label.trim() ? data.label.trim() : key;
+              const reason = typeof data?.reason === 'string' && data.reason.trim() ? data.reason.trim() : '';
+              const lines = [
+                t('secretGateTitle', 'A token/key is required to continue.'),
+                `- ${t('secretGateRequired', 'Required')}: ${label}`,
+                reason ? `- ${t('secretGateReason', 'Reason')}: ${reason}` : '',
+                '',
+                t('secretGateInstruction', 'Paste the token here and send it as a single message.'),
+                t('secretGatePrivacy', 'The token will not be shown after sending.'),
+              ].filter(Boolean);
+              setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
             }
           }
 
@@ -932,7 +959,7 @@ export default function CommandComposer({
           }
 
           if (!DEBUG_TOOL_UI && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
-          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_required', 'approval_result', 'run_finished', 'run_completed', 'user_input', 'secret_required'].includes(msg.type)) {
+          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed', 'user_input'].includes(msg.type)) {
             setEvents(prev => {
               const id = typeof msg?.id === 'string' ? msg.id : '';
               if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
@@ -994,7 +1021,7 @@ export default function CommandComposer({
       setActiveRunId(null);
       setApproval(null);
       setSecretPrompt(null);
-      setSecretValue('');
+      lastGateSigRef.current = {};
       clearToolTimers();
       setStatus('idle');
       setActiveToolName(null);
@@ -1006,7 +1033,7 @@ export default function CommandComposer({
       setActiveRunId(null);
       setApproval(null);
       setSecretPrompt(null);
-      setSecretValue('');
+      lastGateSigRef.current = {};
       clearToolTimers();
       setStatus('idle');
       setActiveToolName(null);
@@ -1073,6 +1100,102 @@ export default function CommandComposer({
   async function run(overrideText?: string) {
     const inputText = overrideText || text;
     if (!inputText.trim()) return;
+
+    const normalizeDecision = (raw: string) =>
+      String(raw || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\u064B-\u065F\u0670]/g, '')
+        .replace(/ـ/g, '')
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ؤ/g, 'و')
+        .replace(/ئ/g, 'ي')
+        .replace(/ة/g, 'ه');
+
+    const isApproveText = (raw: string) => {
+      const s = normalizeDecision(raw);
+      return (
+        s === 'موافق' ||
+        s === 'موافقه' ||
+        s === 'نعم' ||
+        s === 'اوافق' ||
+        s === 'موافقه علي' ||
+        s === 'yes' ||
+        s === 'y' ||
+        s === 'ok' ||
+        s === 'approve' ||
+        s.includes('موافق')
+      );
+    };
+
+    const isDenyText = (raw: string) => {
+      const s = normalizeDecision(raw);
+      return (
+        s === 'رفض' ||
+        s === 'ارفض' ||
+        s === 'لا' ||
+        s === 'no' ||
+        s === 'n' ||
+        s === 'deny' ||
+        s.includes('رفض')
+      );
+    };
+
+    if (secretPrompt) {
+      const sid = String(secretPrompt.sessionId || '').trim();
+      const key = String(secretPrompt.key || '').trim();
+      const val = String(inputText || '').trim();
+      if (!sid || !key || !val) return;
+
+      setEvents(prev => [
+        ...prev,
+        { type: 'user_input', data: t('secretSentMask', '🔐 [token sent]'), id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
+      ]);
+
+      if (!overrideText) setText('');
+      setAttachedFiles([]);
+
+      const token = localStorage.getItem('token');
+      try {
+        await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ key, value: val }),
+        });
+        setSecretPrompt(null);
+        lastGateSigRef.current.secret = undefined;
+        setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
+      } catch (e) {
+        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء حفظ التوكن: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+      }
+      return;
+    }
+
+    if (approval) {
+      const decision = isApproveText(inputText) ? 'approved' : isDenyText(inputText) ? 'denied' : null;
+      setEvents(prev => [
+        ...prev,
+        { type: 'user_input', data: inputText, id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
+      ]);
+      if (!overrideText) setText('');
+      setAttachedFiles([]);
+      if (!decision) {
+        setEvents(prev => [...prev, { type: 'text', data: t('approvalGateOnlyHint', 'Please type only "approve" or "deny".'), ts: Date.now() }]);
+        return;
+      }
+      try {
+        await approve(decision);
+        lastGateSigRef.current.approval = undefined;
+      } catch (e) {
+        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء إرسال قرار الموافقة: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+      }
+      return;
+    }
+
     clearToolTimers();
     setStatus('thinking');
     setActiveToolName(null);
@@ -1202,7 +1325,10 @@ export default function CommandComposer({
         const sid = String(data.sessionId || '').trim();
         const key = String(data.secret.key || '').trim();
         if (sid && key) {
-          setSecretValue('');
+          const runId = typeof data?.runId === 'string' ? data.runId : '';
+          const sig = `${sid}:${key}:${runId}`;
+          if (lastGateSigRef.current.secret === sig) return;
+          lastGateSigRef.current.secret = sig;
           setSecretPrompt({
             sessionId: sid,
             runId: typeof data?.runId === 'string' ? data.runId : undefined,
@@ -1210,6 +1336,15 @@ export default function CommandComposer({
             key,
             label: typeof data?.secret?.label === 'string' ? data.secret.label : undefined,
           });
+          const label = typeof data?.secret?.label === 'string' && data.secret.label.trim() ? data.secret.label.trim() : key;
+          const lines = [
+            t('secretGateTitle', 'A token/key is required to continue.'),
+            `- ${t('secretGateRequired', 'Required')}: ${label}`,
+            '',
+            t('secretGateInstruction', 'Paste the token here and send it as a single message.'),
+            t('secretGatePrivacy', 'The token will not be shown after sending.'),
+          ];
+          setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
         }
       }
       
@@ -1244,25 +1379,6 @@ export default function CommandComposer({
       body: JSON.stringify({ decision }),
     });
     setApproval(null);
-  }
-
-  async function submitSecret() {
-    if (!secretPrompt) return;
-    const sid = secretPrompt.sessionId;
-    const key = secretPrompt.key;
-    const val = String(secretValue || '');
-    if (!sid || !key || !val) return;
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ key, value: val }),
-    });
-    setSecretPrompt(null);
-    setSecretValue('');
   }
 
   const checkConnection = async (key: string) => {
@@ -1936,44 +2052,7 @@ export default function CommandComposer({
       </div>
       </div>
       
-      {approval && (
-        <div className="approval-modal">
-          <div className="approval-content">
-            <h3>{t('approvalRequired')}</h3>
-            <div className="risk-badge">{approval.risk}</div>
-            <p>{t('action')}: {approval.action}</p>
-            <div className="approval-actions">
-              <button onClick={() => approve('denied')} className="btn deny">{t('deny')}</button>
-              <button onClick={() => approve('approved')} className="btn approve">{t('approve')}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {secretPrompt && (
-        <div className="approval-modal">
-          <div className="approval-content">
-            <h3>مطلوب مصادقة</h3>
-            {secretPrompt.reason ? <p>{secretPrompt.reason}</p> : null}
-            <p>{secretPrompt.label || secretPrompt.key}</p>
-            <input
-              type="password"
-              value={secretValue}
-              onChange={(e) => setSecretValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitSecret();
-              }}
-              placeholder="الصق التوكن هنا"
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-              autoFocus
-            />
-            <div className="approval-actions">
-              <button onClick={() => { setSecretPrompt(null); setSecretValue(''); }} className="btn deny">إلغاء</button>
-              <button onClick={() => submitSecret()} className="btn approve">حفظ ومتابعة</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {null}
 
 
 

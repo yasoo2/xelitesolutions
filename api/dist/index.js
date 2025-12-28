@@ -29,6 +29,130 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/services/secrets.ts
+var secrets_exports = {};
+__export(secrets_exports, {
+  clearSessionSecrets: () => clearSessionSecrets,
+  getSessionSecret: () => getSessionSecret,
+  popPendingTool: () => popPendingTool,
+  setPendingTool: () => setPendingTool,
+  setSessionSecret: () => setSessionSecret,
+  setSessionSecretEncrypted: () => setSessionSecretEncrypted
+});
+function nowMs() {
+  return Date.now();
+}
+function getMasterKeyBytes() {
+  const raw = String(process.env.SECRETS_MASTER_KEY || process.env.JWT_SECRET || "").trim();
+  if (!raw) return null;
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(raw, "utf8").digest();
+}
+function encrypt(value) {
+  const key = getMasterKeyBytes();
+  if (!key) return null;
+  const crypto = require("crypto");
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const c1 = cipher.update(value, "utf8");
+  const c2 = cipher.final();
+  const tag = cipher.getAuthTag();
+  const buf = Buffer.concat([c1, c2]);
+  return { value: buf.toString("base64"), ivB64: iv.toString("base64"), tagB64: tag.toString("base64") };
+}
+function decrypt(entry) {
+  if (!entry.enc) return entry.value;
+  const key = getMasterKeyBytes();
+  if (!key) return null;
+  const crypto = require("crypto");
+  const iv = Buffer.from(entry.enc.ivB64, "base64");
+  const tag = Buffer.from(entry.enc.tagB64, "base64");
+  const decipher = crypto.createDecipheriv(entry.enc.alg, key, iv);
+  decipher.setAuthTag(tag);
+  const c1 = decipher.update(Buffer.from(entry.value, "base64"));
+  const c2 = decipher.final();
+  return Buffer.concat([c1, c2]).toString("utf8");
+}
+function purgeExpired(bucket) {
+  const now = nowMs();
+  for (const [k, v] of bucket.entries()) {
+    if (typeof v.expiresAt === "number" && v.expiresAt > 0 && v.expiresAt <= now) bucket.delete(k);
+  }
+}
+function setSessionSecret(sessionId, key, value) {
+  const sid = String(sessionId || "").trim();
+  const k = String(key || "").trim();
+  if (!sid || !k) return;
+  let bucket = sessionSecrets.get(sid);
+  if (!bucket) {
+    bucket = /* @__PURE__ */ new Map();
+    sessionSecrets.set(sid, bucket);
+  }
+  purgeExpired(bucket);
+  bucket.set(k, { value });
+}
+function getSessionSecret(sessionId, key) {
+  const sid = String(sessionId || "").trim();
+  const k = String(key || "").trim();
+  if (!sid || !k) return null;
+  const bucket = sessionSecrets.get(sid);
+  if (!bucket) return null;
+  purgeExpired(bucket);
+  const entry = bucket.get(k);
+  if (!entry) return null;
+  if (typeof entry.expiresAt === "number" && entry.expiresAt > 0 && entry.expiresAt <= nowMs()) {
+    bucket.delete(k);
+    return null;
+  }
+  const plain = decrypt(entry);
+  return plain ?? null;
+}
+function clearSessionSecrets(sessionId) {
+  const sid = String(sessionId || "").trim();
+  if (!sid) return;
+  sessionSecrets.delete(sid);
+}
+function setSessionSecretEncrypted(sessionId, key, value, ttlSeconds) {
+  const sid = String(sessionId || "").trim();
+  const k = String(key || "").trim();
+  if (!sid || !k) return null;
+  let bucket = sessionSecrets.get(sid);
+  if (!bucket) {
+    bucket = /* @__PURE__ */ new Map();
+    sessionSecrets.set(sid, bucket);
+  }
+  purgeExpired(bucket);
+  const ttl = typeof ttlSeconds === "number" && Number.isFinite(ttlSeconds) && ttlSeconds > 0 ? ttlSeconds : void 0;
+  const expiresAt = ttl ? nowMs() + ttl * 1e3 : void 0;
+  const enc = encrypt(String(value ?? ""));
+  if (enc) {
+    bucket.set(k, { value: enc.value, expiresAt, enc: { alg: "aes-256-gcm", ivB64: enc.ivB64, tagB64: enc.tagB64 } });
+  } else {
+    bucket.set(k, { value: String(value ?? ""), expiresAt });
+  }
+  return expiresAt ?? null;
+}
+function setPendingTool(sessionId, ctx) {
+  const sid = String(sessionId || "").trim();
+  if (!sid) return;
+  pendingToolBySession.set(sid, ctx);
+}
+function popPendingTool(sessionId) {
+  const sid = String(sessionId || "").trim();
+  if (!sid) return null;
+  const ctx = pendingToolBySession.get(sid) || null;
+  pendingToolBySession.delete(sid);
+  return ctx;
+}
+var sessionSecrets, pendingToolBySession;
+var init_secrets = __esm({
+  "src/services/secrets.ts"() {
+    "use strict";
+    sessionSecrets = /* @__PURE__ */ new Map();
+    pendingToolBySession = /* @__PURE__ */ new Map();
+  }
+});
+
 // src/models/session.ts
 var session_exports = {};
 __export(session_exports, {
@@ -106,10 +230,10 @@ var init_context = __esm({
 });
 
 // src/index.ts
-var import_express21 = __toESM(require("express"));
+var import_express15 = __toESM(require("express"));
 var import_cors = __toESM(require("cors"));
 var import_morgan = __toESM(require("morgan"));
-var import_mongoose20 = __toESM(require("mongoose"));
+var import_mongoose19 = __toESM(require("mongoose"));
 var import_pino = __toESM(require("pino"));
 
 // src/config.ts
@@ -706,8 +830,8 @@ var tools = [
     name: "html_extract",
     version: "1.0.0",
     tags: ["network", "html", "extract"],
-    inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
-    outputSchema: { type: "object", properties: { title: { type: "string" }, metaDescription: { type: "string" }, headings: { type: "array", items: { type: "string" } }, links: { type: "array", items: { type: "object", properties: { text: { type: "string" }, url: { type: "string" } } } }, textSnippet: { type: "string" } } },
+    inputSchema: { type: "object", properties: { url: { type: "string" }, render: { type: "boolean" } }, required: ["url"] },
+    outputSchema: { type: "object", properties: { title: { type: "string" }, metaDescription: { type: "string" }, headings: { type: "array", items: { type: "string" } }, links: { type: "array", items: { type: "object", properties: { text: { type: "string" }, url: { type: "string" } } } }, textSnippet: { type: "string" }, url: { type: "string" }, rendered: { type: "boolean" } } },
     permissions: ["read"],
     sideEffects: [],
     rateLimitPerMinute: 30,
@@ -884,8 +1008,9 @@ var tools = [
     inputSchema: {
       type: "object",
       properties: {
-        operation: { type: "string", enum: ["status", "add", "commit", "push", "checkout", "log"] },
-        args: { type: "array", items: { type: "string" } }
+        operation: { type: "string", enum: ["status", "add", "commit", "push", "checkout", "log", "fetch", "pull", "clone"] },
+        args: { type: "array", items: { type: "string" } },
+        sessionId: { type: "string" }
       },
       required: ["operation"]
     },
@@ -894,6 +1019,34 @@ var tools = [
     sideEffects: ["write", "execute"],
     rateLimitPerMinute: 60,
     auditFields: ["operation"],
+    mockSupported: true
+  },
+  {
+    name: "github_create_repo",
+    version: "1.0.0",
+    tags: ["dev", "github"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        private: { type: "boolean" },
+        description: { type: "string" },
+        sessionId: { type: "string" }
+      },
+      required: ["name"]
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        fullName: { type: "string" },
+        htmlUrl: { type: "string" },
+        apiUrl: { type: "string" }
+      }
+    },
+    permissions: ["read", "write"],
+    sideEffects: ["write"],
+    rateLimitPerMinute: 20,
+    auditFields: ["name"],
     mockSupported: true
   },
   {
@@ -1027,9 +1180,700 @@ var tools = [
     mockSupported: false
   }
 ];
+var generatedTools = [];
+var TARGET_TOOL_COUNT = 200;
+function hasToolName(n) {
+  const name = String(n || "").trim();
+  if (!name) return false;
+  return tools.some((t) => t.name === name) || generatedTools.some((t) => t.name === name);
+}
+function addGeneratedTool(t) {
+  if (!t?.name) return;
+  if (tools.length + generatedTools.length >= TARGET_TOOL_COUNT) return;
+  if (hasToolName(t.name)) return;
+  generatedTools.push(t);
+}
+function makeShellTool(opts) {
+  const rateLimitPerMinute = Number.isFinite(Number(opts.rateLimitPerMinute)) ? Number(opts.rateLimitPerMinute) : 30;
+  addGeneratedTool({
+    name: opts.name,
+    version: "1.0.0",
+    tags: opts.tags,
+    description: opts.description,
+    inputSchema: opts.inputSchema,
+    outputSchema: {
+      type: "object",
+      properties: {
+        stdout: { type: "string" },
+        stderr: { type: "string" },
+        exitCode: { type: "number" },
+        cwd: { type: "string" }
+      }
+    },
+    permissions: opts.permissions,
+    sideEffects: opts.sideEffects,
+    rateLimitPerMinute,
+    auditFields: Array.isArray(opts.auditFields) ? opts.auditFields : [],
+    mockSupported: false,
+    async execute(input) {
+      const { command, cwd, timeout } = opts.buildCommand(input);
+      return executeTool("shell_execute", { command, cwd, timeout });
+    }
+  });
+}
+function addPhase2AndCoreDevTools() {
+  addGeneratedTool({
+    name: "command_policy_check",
+    version: "1.0.0",
+    tags: ["dev", "safety", "policy"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        tool: { type: "string" },
+        input: { type: "object" },
+        userText: { type: "string" }
+      },
+      required: ["tool"]
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        decision: { type: "string", enum: ["allow", "require_approval", "deny"] },
+        risk: { type: "string" },
+        reasons: { type: "array", items: { type: "string" } }
+      }
+    },
+    permissions: ["read"],
+    sideEffects: [],
+    rateLimitPerMinute: 120,
+    auditFields: ["tool"],
+    mockSupported: true,
+    async execute(input) {
+      const tool = String(input?.tool || "").trim();
+      const userText = String(input?.userText || "");
+      const inObj = input?.input ?? null;
+      const reasons = [];
+      let decision = "allow";
+      let risk = "LOW";
+      const text = `${tool}
+${userText}
+${JSON.stringify(inObj ?? {})}`;
+      if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process)/i.test(text)) {
+        decision = "require_approval";
+        risk = "HIGH";
+        reasons.push("matches_destructive_pattern");
+      }
+      if (/sudo\b/i.test(text)) {
+        decision = "deny";
+        risk = "CRITICAL";
+        reasons.push("sudo_not_allowed");
+      }
+      if (tool === "shell_execute") {
+        if (decision === "allow") {
+          decision = "require_approval";
+          risk = "MEDIUM";
+          reasons.push("raw_shell_requires_approval");
+        }
+      }
+      if (tool === "file_write" || tool === "file_edit" || tool === "scaffold_project") {
+        const filename = String(inObj?.filename || "").trim();
+        const baseDir = String(inObj?.baseDir || "").trim();
+        const target = filename || baseDir;
+        if (/\b\.env\b/i.test(target) || /id_rsa|ssh|pem|secret|token/i.test(target)) {
+          decision = "require_approval";
+          risk = "HIGH";
+          reasons.push("touches_sensitive_path");
+        }
+      }
+      if (tool === "git_ops") {
+        const op = String(inObj?.operation || "").trim().toLowerCase();
+        if (["push", "clone"].includes(op)) {
+          decision = "require_approval";
+          risk = "HIGH";
+          reasons.push("git_remote_operation");
+        }
+      }
+      if (!reasons.length) reasons.push("no_specific_risk_rule_matched");
+      return { ok: true, output: { decision, risk, reasons }, logs: [`policy.tool=${tool} decision=${decision} risk=${risk}`] };
+    }
+  });
+  addGeneratedTool({
+    name: "approve_on_tool",
+    version: "1.0.0",
+    tags: ["dev", "safety", "policy"],
+    inputSchema: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
+    outputSchema: { type: "object", properties: { ok: { type: "boolean" }, decision: { type: "string" } } },
+    permissions: ["read"],
+    sideEffects: [],
+    rateLimitPerMinute: 120,
+    auditFields: ["tool"],
+    mockSupported: true,
+    async execute(input) {
+      const res = await executeTool("command_policy_check", input);
+      const decision = String(res?.output?.decision || "allow");
+      return { ok: true, output: { ok: decision === "allow", decision }, logs: res.logs || [] };
+    }
+  });
+  addGeneratedTool({
+    name: "secrets_store_encrypted",
+    version: "1.0.0",
+    tags: ["dev", "secrets", "security"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        key: { type: "string" },
+        value: { type: "string" },
+        ttlSeconds: { type: "number" }
+      },
+      required: ["sessionId", "key", "value"]
+    },
+    outputSchema: { type: "object", properties: { ok: { type: "boolean" }, expiresAt: { type: "number" } } },
+    permissions: ["write"],
+    sideEffects: ["write"],
+    rateLimitPerMinute: 120,
+    auditFields: ["key"],
+    mockSupported: false,
+    async execute(input) {
+      const sessionId = String(input?.sessionId || "").trim();
+      const key = String(input?.key || "").trim();
+      const value = String(input?.value ?? "");
+      const ttlSeconds = Number(input?.ttlSeconds ?? 0);
+      if (!sessionId || !key) return { ok: false, error: "Missing sessionId or key", logs: [] };
+      const { setSessionSecretEncrypted: setSessionSecretEncrypted2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+      const expiresAt = setSessionSecretEncrypted2(sessionId, key, value, ttlSeconds > 0 ? ttlSeconds : void 0);
+      return { ok: true, output: { ok: true, expiresAt: expiresAt ?? null }, logs: [`secret_set=${key}`] };
+    }
+  });
+  addGeneratedTool({
+    name: "secrets_provider_connect",
+    version: "1.0.0",
+    tags: ["dev", "secrets"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        key: { type: "string" },
+        envVar: { type: "string" },
+        ttlSeconds: { type: "number" }
+      },
+      required: ["sessionId", "key", "envVar"]
+    },
+    outputSchema: { type: "object", properties: { ok: { type: "boolean" } } },
+    permissions: ["write"],
+    sideEffects: ["write"],
+    rateLimitPerMinute: 60,
+    auditFields: ["key"],
+    mockSupported: false,
+    async execute(input) {
+      const sessionId = String(input?.sessionId || "").trim();
+      const key = String(input?.key || "").trim();
+      const envVar = String(input?.envVar || "").trim();
+      const ttlSeconds = Number(input?.ttlSeconds ?? 0);
+      if (!sessionId || !key || !envVar) return { ok: false, error: "Missing sessionId/key/envVar", logs: [] };
+      const v = String(process.env[envVar] || "");
+      if (!v) return { ok: false, error: `Env var not set: ${envVar}`, logs: [] };
+      const { setSessionSecretEncrypted: setSessionSecretEncrypted2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+      setSessionSecretEncrypted2(sessionId, key, v, ttlSeconds > 0 ? ttlSeconds : void 0);
+      return { ok: true, output: { ok: true }, logs: [`secret_from_env=${envVar} -> ${key}`] };
+    }
+  });
+  addGeneratedTool({
+    name: "project_detect",
+    version: "1.0.0",
+    tags: ["dev", "analysis"],
+    inputSchema: { type: "object", properties: { path: { type: "string" } }, required: [] },
+    outputSchema: {
+      type: "object",
+      properties: {
+        root: { type: "string" },
+        hasGit: { type: "boolean" },
+        nodeProjects: { type: "array", items: { type: "string" } },
+        pythonProjects: { type: "array", items: { type: "string" } },
+        goProjects: { type: "array", items: { type: "string" } }
+      }
+    },
+    permissions: ["read"],
+    sideEffects: [],
+    rateLimitPerMinute: 30,
+    auditFields: ["path"],
+    mockSupported: true,
+    async execute(input) {
+      const root = resolveToolPath(String(input?.path || "."));
+      const hasGit = import_fs2.default.existsSync(import_path2.default.join(root, ".git"));
+      const candidates = [];
+      const walk = (dir, depth) => {
+        if (depth > 4) return;
+        let entries = [];
+        try {
+          entries = import_fs2.default.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const e of entries) {
+          if (e.name === "node_modules" || e.name === ".git" || e.name === "dist" || e.name === "build") continue;
+          const full = import_path2.default.join(dir, e.name);
+          if (e.isDirectory()) walk(full, depth + 1);
+          else candidates.push(full);
+        }
+      };
+      walk(root, 0);
+      const dirs = /* @__PURE__ */ new Set();
+      for (const f of candidates) dirs.add(import_path2.default.dirname(f));
+      const nodeProjects = Array.from(dirs).filter((d) => import_fs2.default.existsSync(import_path2.default.join(d, "package.json"))).sort();
+      const pythonProjects = Array.from(dirs).filter((d) => import_fs2.default.existsSync(import_path2.default.join(d, "pyproject.toml")) || import_fs2.default.existsSync(import_path2.default.join(d, "requirements.txt"))).sort();
+      const goProjects = Array.from(dirs).filter((d) => import_fs2.default.existsSync(import_path2.default.join(d, "go.mod"))).sort();
+      return { ok: true, output: { root, hasGit, nodeProjects, pythonProjects, goProjects }, logs: [`project.root=${root}`] };
+    }
+  });
+  addGeneratedTool({
+    name: "quality_run",
+    version: "1.0.0",
+    tags: ["dev", "quality"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        tasks: { type: "array", items: { type: "string", enum: ["lint", "typecheck", "test", "build"] } }
+      },
+      required: ["tasks"]
+    },
+    outputSchema: { type: "object", properties: { results: { type: "array", items: { type: "object" } } } },
+    permissions: ["read", "execute"],
+    sideEffects: ["execute"],
+    rateLimitPerMinute: 10,
+    auditFields: [],
+    mockSupported: false,
+    async execute(input) {
+      const p = resolveToolPath(String(input?.path || "."));
+      const tasks = Array.isArray(input?.tasks) ? input.tasks.map((x) => String(x)) : [];
+      const logs = [];
+      const results = [];
+      const pkgPath = import_path2.default.join(p, "package.json");
+      let scripts = {};
+      if (import_fs2.default.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(import_fs2.default.readFileSync(pkgPath, "utf-8"));
+          scripts = pkg?.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
+        } catch {
+        }
+      }
+      const runScript = async (task) => {
+        const scriptName = task === "lint" ? scripts.lint ? "lint" : "" : task === "typecheck" ? scripts.typecheck ? "typecheck" : scripts["check-types"] ? "check-types" : "" : task === "test" ? scripts.test ? "test" : "" : task === "build" ? scripts.build ? "build" : "" : "";
+        if (!scriptName) {
+          results.push({ task, ok: false, skipped: true, reason: "missing_script" });
+          return;
+        }
+        const cmd = `npm --prefix "${p}" run ${scriptName}`;
+        const r = await executeTool("shell_execute", { command: cmd, cwd: repoRoot(), timeout: 10 * 60 * 1e3 });
+        results.push({ task, ok: r.ok, stdout: r.output?.stdout, stderr: r.output?.stderr, exitCode: r.output?.exitCode });
+      };
+      for (const t of tasks) await runScript(t);
+      logs.push(`quality.path=${p} tasks=${tasks.join(",")}`);
+      return { ok: results.every((r) => r.ok || r.skipped), output: { results }, logs };
+    }
+  });
+  addGeneratedTool({
+    name: "dependency_audit",
+    version: "1.0.0",
+    tags: ["dev", "security", "deps"],
+    inputSchema: { type: "object", properties: { path: { type: "string" } }, required: [] },
+    outputSchema: { type: "object", properties: { summary: { type: "object" }, raw: { type: "object" } } },
+    permissions: ["read", "execute"],
+    sideEffects: ["execute"],
+    rateLimitPerMinute: 10,
+    auditFields: ["path"],
+    mockSupported: false,
+    async execute(input) {
+      const p = resolveToolPath(String(input?.path || "."));
+      const cmd = `npm --prefix "${p}" audit --json`;
+      const r = await executeTool("shell_execute", { command: cmd, cwd: repoRoot(), timeout: 5 * 60 * 1e3 });
+      if (!r.ok) return { ok: false, error: String(r.output?.stderr || r.error || "audit_failed"), logs: r.logs || [] };
+      const rawText = String(r.output?.stdout || "");
+      let raw = null;
+      try {
+        raw = JSON.parse(rawText);
+      } catch {
+        raw = { parseError: true, rawText: rawText.slice(0, 5e3) };
+      }
+      const summary = raw?.metadata?.vulnerabilities || raw?.vulnerabilities || {};
+      return { ok: true, output: { summary, raw }, logs: r.logs || [] };
+    }
+  });
+  addGeneratedTool({
+    name: "secrets_scan_repo",
+    version: "1.0.0",
+    tags: ["dev", "security", "secrets"],
+    inputSchema: { type: "object", properties: { path: { type: "string" } }, required: [] },
+    outputSchema: { type: "object", properties: { matches: { type: "array", items: { type: "string" } }, truncated: { type: "boolean" } } },
+    permissions: ["read"],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: ["path"],
+    mockSupported: true,
+    async execute(input) {
+      const searchPath = resolveToolPath(String(input?.path || "."));
+      const patterns = [
+        "sk-[A-Za-z0-9_-]{10,}",
+        "ghp_[A-Za-z0-9_]{10,}",
+        "github_pat_[A-Za-z0-9_]{10,}",
+        "AKIA[0-9A-Z]{16}",
+        "Bearer\\s+[A-Za-z0-9._-]{10,}"
+      ];
+      const all = [];
+      for (const pat of patterns) {
+        const r = await executeTool("grep_search", { query: pat, path: searchPath, include: "*.*", exclude: "" });
+        const m = Array.isArray(r.output?.matches) ? r.output.matches : [];
+        for (const line of m) all.push(String(line));
+      }
+      const unique = Array.from(new Set(all)).slice(0, 200);
+      return { ok: true, output: { matches: unique, truncated: unique.length === 200 }, logs: [`scan.path=${searchPath} matches=${unique.length}`] };
+    }
+  });
+  addGeneratedTool({
+    name: "ci_generate_pipeline",
+    version: "1.0.0",
+    tags: ["dev", "ci"],
+    inputSchema: { type: "object", properties: { path: { type: "string" }, kind: { type: "string", enum: ["node"] } }, required: [] },
+    outputSchema: { type: "object", properties: { created: { type: "array", items: { type: "string" } } } },
+    permissions: ["write"],
+    sideEffects: ["write"],
+    rateLimitPerMinute: 5,
+    auditFields: ["path"],
+    mockSupported: false,
+    async execute(input) {
+      const p = resolveToolPath(String(input?.path || "."));
+      const wfDir = import_path2.default.join(p, ".github", "workflows");
+      const wfFile = import_path2.default.join(wfDir, "ci.yml");
+      try {
+        import_fs2.default.mkdirSync(wfDir, { recursive: true });
+      } catch {
+      }
+      const yaml = [
+        "name: CI",
+        "on:",
+        "  push:",
+        "  pull_request:",
+        "jobs:",
+        "  build:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - uses: actions/checkout@v4",
+        "      - uses: actions/setup-node@v4",
+        "        with:",
+        "          node-version: 20",
+        "      - run: npm ci",
+        "      - run: npm run lint --if-present",
+        "      - run: npm run typecheck --if-present",
+        "      - run: npm test --if-present",
+        "      - run: npm run build --if-present",
+        ""
+      ].join("\n");
+      import_fs2.default.writeFileSync(wfFile, yaml);
+      return { ok: true, output: { created: [wfFile] }, logs: [`ci.created=${wfFile}`] };
+    }
+  });
+  addGeneratedTool({
+    name: "ci_run_status",
+    version: "1.0.0",
+    tags: ["dev", "ci", "github"],
+    inputSchema: { type: "object", properties: { repo: { type: "string" }, branch: { type: "string" } }, required: ["repo"] },
+    outputSchema: { type: "object", properties: { note: { type: "string" } } },
+    permissions: ["read"],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: ["repo"],
+    mockSupported: true,
+    async execute(input) {
+      const repo = String(input?.repo || "").trim();
+      const branch = String(input?.branch || "main").trim();
+      return { ok: true, output: { note: `Connect a CI provider to query status: repo=${repo} branch=${branch}` }, logs: [`ci.status.repo=${repo}`] };
+    }
+  });
+  makeShellTool({
+    name: "docker_ops",
+    tags: ["dev", "docker"],
+    permissions: ["execute"],
+    sideEffects: ["execute"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        operation: { type: "string", enum: ["version", "build", "run"] },
+        args: { type: "array", items: { type: "string" } },
+        cwd: { type: "string" },
+        timeout: { type: "number" }
+      },
+      required: ["operation"]
+    },
+    auditFields: ["operation"],
+    buildCommand: (input) => {
+      const op = String(input?.operation || "").trim();
+      const args = Array.isArray(input?.args) ? input.args.map((x) => String(x)) : [];
+      const cwd = typeof input?.cwd === "string" ? input.cwd : void 0;
+      const timeout = Number(input?.timeout ?? 3e4);
+      const cmd = `docker ${op} ${args.join(" ")}`.trim();
+      return { command: cmd, cwd, timeout };
+    }
+  });
+  makeShellTool({
+    name: "deploy_ops",
+    tags: ["dev", "deploy"],
+    permissions: ["execute"],
+    sideEffects: ["execute"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        operation: { type: "string", enum: ["kubectl"] },
+        args: { type: "array", items: { type: "string" } },
+        cwd: { type: "string" },
+        timeout: { type: "number" }
+      },
+      required: ["operation", "args"]
+    },
+    auditFields: ["operation"],
+    buildCommand: (input) => {
+      const args = Array.isArray(input?.args) ? input.args.map((x) => String(x)) : [];
+      const cwd = typeof input?.cwd === "string" ? input.cwd : void 0;
+      const timeout = Number(input?.timeout ?? 3e4);
+      const cmd = `kubectl ${args.join(" ")}`.trim();
+      return { command: cmd, cwd, timeout };
+    }
+  });
+}
+function addBulkToolPackToReach200() {
+  const root = repoRoot();
+  const gitSimple = [
+    { name: "git_status", command: "git status -sb" },
+    { name: "git_diff", command: "git diff" },
+    { name: "git_diff_cached", command: "git diff --cached" },
+    { name: "git_log", command: "git log -n 50 --oneline --decorate" },
+    { name: "git_branch_list", command: "git branch -a" },
+    { name: "git_remote_list", command: "git remote -v" },
+    { name: "git_tags", command: "git tag -l" }
+  ];
+  for (const g of gitSimple) {
+    makeShellTool({
+      name: g.name,
+      tags: ["dev", "git"],
+      permissions: ["read", "execute"],
+      sideEffects: ["execute"],
+      inputSchema: { type: "object", properties: { cwd: { type: "string" }, timeout: { type: "number" } }, required: [] },
+      auditFields: [],
+      buildCommand: (input) => ({ command: g.command, cwd: input?.cwd ? String(input.cwd) : root, timeout: Number(input?.timeout ?? 3e4) })
+    });
+  }
+  const npmSimple = [
+    { name: "npm_install", command: "npm install" },
+    { name: "npm_ci", command: "npm ci" },
+    { name: "npm_lint", command: "npm run lint --if-present" },
+    { name: "npm_typecheck", command: "npm run typecheck --if-present" },
+    { name: "npm_test", command: "npm test --if-present" },
+    { name: "npm_build", command: "npm run build --if-present" },
+    { name: "npm_audit", command: "npm audit" }
+  ];
+  for (const n of npmSimple) {
+    makeShellTool({
+      name: n.name,
+      tags: ["dev", "npm"],
+      permissions: ["read", "execute", "write"],
+      sideEffects: ["execute", "write"],
+      inputSchema: { type: "object", properties: { cwd: { type: "string" }, timeout: { type: "number" } }, required: [] },
+      auditFields: [],
+      buildCommand: (input) => ({ command: n.command, cwd: input?.cwd ? String(input.cwd) : root, timeout: Number(input?.timeout ?? 10 * 60 * 1e3) })
+    });
+  }
+  const fsShellOps = [
+    { name: "fs_pwd", build: () => "pwd", perms: ["read", "execute"], effects: ["execute"] },
+    { name: "fs_ls", build: (i) => `ls -la "${resolveToolPath(String(i?.path || "."))}"`, perms: ["read", "execute"], effects: ["execute"] },
+    { name: "fs_find_large", build: (i) => `find "${resolveToolPath(String(i?.path || "."))}" -type f -size +${Number(i?.mb ?? 50)}M -maxdepth 6 -print`, perms: ["read", "execute"], effects: ["execute"] }
+  ];
+  for (const f of fsShellOps) {
+    makeShellTool({
+      name: f.name,
+      tags: ["fs", "utility"],
+      permissions: f.perms,
+      sideEffects: f.effects,
+      inputSchema: { type: "object", properties: { path: { type: "string" }, mb: { type: "number" }, cwd: { type: "string" }, timeout: { type: "number" } }, required: [] },
+      auditFields: ["path"],
+      buildCommand: (input) => ({ command: f.build(input), cwd: input?.cwd ? String(input.cwd) : root, timeout: Number(input?.timeout ?? 3e4) })
+    });
+  }
+  const codeSearchByType = [
+    { name: "code_search_ts", include: "*.{ts,tsx}" },
+    { name: "code_search_js", include: "*.{js,mjs,cjs,jsx}" },
+    { name: "code_search_py", include: "*.py" },
+    { name: "code_search_go", include: "*.go" },
+    { name: "code_search_java", include: "*.java" },
+    { name: "code_search_rust", include: "*.rs" },
+    { name: "code_search_cpp", include: "*.{c,cc,cpp,h,hpp}" },
+    { name: "code_search_yaml", include: "*.{yml,yaml}" },
+    { name: "code_search_json", include: "*.json" },
+    { name: "code_search_md", include: "*.md" },
+    { name: "code_search_sql", include: "*.sql" },
+    { name: "code_search_sh", include: "*.{sh,bash,zsh}" },
+    { name: "code_search_docker", include: "*Dockerfile*" },
+    { name: "code_search_terraform", include: "*.{tf,tfvars}" },
+    { name: "code_search_k8s", include: "*.{yaml,yml}" },
+    { name: "code_search_html", include: "*.{html,htm}" },
+    { name: "code_search_css", include: "*.{css,scss,sass,less}" },
+    { name: "code_search_graphql", include: "*.{graphql,gql}" },
+    { name: "code_search_proto", include: "*.proto" },
+    { name: "code_search_swift", include: "*.swift" }
+  ];
+  for (const s of codeSearchByType) {
+    addGeneratedTool({
+      name: s.name,
+      version: "1.0.0",
+      tags: ["fs", "search"],
+      inputSchema: { type: "object", properties: { query: { type: "string" }, path: { type: "string" }, exclude: { type: "string" } }, required: ["query"] },
+      outputSchema: { type: "object", properties: { matches: { type: "array", items: { type: "string" } }, count: { type: "number" }, truncated: { type: "boolean" } } },
+      permissions: ["read"],
+      sideEffects: [],
+      rateLimitPerMinute: 120,
+      auditFields: ["query"],
+      mockSupported: true,
+      async execute(input) {
+        const query = String(input?.query ?? "");
+        const searchPath = String(input?.path ?? ".");
+        const exclude = String(input?.exclude ?? "");
+        return executeTool("grep_search", { query, path: searchPath, include: s.include, exclude });
+      }
+    });
+  }
+  addGeneratedTool({
+    name: "code_loc_count",
+    version: "1.0.0",
+    tags: ["dev", "analysis", "code"],
+    inputSchema: { type: "object", properties: { path: { type: "string" } }, required: [] },
+    outputSchema: { type: "object", properties: { totalFiles: { type: "number" }, totalLines: { type: "number" }, byExt: { type: "object" } } },
+    permissions: ["read"],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: ["path"],
+    mockSupported: true,
+    async execute(input) {
+      const rootPath = resolveToolPath(String(input?.path || "."));
+      const byExt = {};
+      let totalFiles = 0;
+      let totalLines = 0;
+      const shouldSkipDir = (name) => name === "node_modules" || name === ".git" || name === "dist" || name === "build" || name === ".next" || name === ".turbo";
+      const walk = (dir, depth) => {
+        if (depth > 12) return;
+        let ents = [];
+        try {
+          ents = import_fs2.default.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const e of ents) {
+          if (e.isDirectory()) {
+            if (shouldSkipDir(e.name)) continue;
+            walk(import_path2.default.join(dir, e.name), depth + 1);
+            continue;
+          }
+          const full = import_path2.default.join(dir, e.name);
+          const ext = import_path2.default.extname(e.name).toLowerCase() || "(none)";
+          let content = "";
+          try {
+            content = import_fs2.default.readFileSync(full, "utf-8");
+          } catch {
+            continue;
+          }
+          const lines = content.split("\n").length;
+          totalFiles += 1;
+          totalLines += lines;
+          byExt[ext] = byExt[ext] || { files: 0, lines: 0 };
+          byExt[ext].files += 1;
+          byExt[ext].lines += lines;
+        }
+      };
+      walk(rootPath, 0);
+      const out = {};
+      for (const [k, v] of Object.entries(byExt)) out[k] = v;
+      return { ok: true, output: { totalFiles, totalLines, byExt: out }, logs: [`loc.path=${rootPath}`] };
+    }
+  });
+  const filler = [
+    { name: "sys_node_version", command: "node -v", tags: ["system", "info"], perms: ["read", "execute"], effects: ["execute"] },
+    { name: "sys_npm_version", command: "npm -v", tags: ["system", "info"], perms: ["read", "execute"], effects: ["execute"] },
+    { name: "sys_git_version", command: "git --version", tags: ["system", "info"], perms: ["read", "execute"], effects: ["execute"] },
+    { name: "sys_uname", command: "uname -a", tags: ["system", "info"], perms: ["read", "execute"], effects: ["execute"] },
+    { name: "sys_disk", command: "df -h", tags: ["system", "info"], perms: ["read", "execute"], effects: ["execute"] },
+    { name: "sys_mem", command: "vm_stat", tags: ["system", "info"], perms: ["read", "execute"], effects: ["execute"] }
+  ];
+  for (const x of filler) {
+    makeShellTool({
+      name: x.name,
+      tags: x.tags,
+      permissions: x.perms,
+      sideEffects: x.effects,
+      inputSchema: { type: "object", properties: { timeout: { type: "number" } }, required: [] },
+      buildCommand: (input) => ({ command: x.command, cwd: root, timeout: Number(input?.timeout ?? 3e4) })
+    });
+  }
+  addGeneratedTool({
+    name: "fs_glob",
+    version: "1.0.0",
+    tags: ["fs", "search"],
+    inputSchema: { type: "object", properties: { pattern: { type: "string" }, cwd: { type: "string" } }, required: ["pattern"] },
+    outputSchema: { type: "object", properties: { matches: { type: "array", items: { type: "string" } } } },
+    permissions: ["read"],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ["pattern"],
+    mockSupported: true,
+    async execute(input) {
+      const pattern = String(input?.pattern || "").trim();
+      const cwd = input?.cwd ? resolveToolPath(String(input.cwd)) : repoRoot();
+      if (!pattern) return { ok: false, error: "pattern_required", logs: [] };
+      const { globSync } = await import("glob");
+      const matches = globSync(pattern, { cwd, nodir: true, dot: true, absolute: true }).slice(0, 500);
+      return { ok: true, output: { matches }, logs: [`glob.cwd=${cwd} count=${matches.length}`] };
+    }
+  });
+  const keywordChecks = [
+    { slug: "todo", query: "TODO" },
+    { slug: "fixme", query: "FIXME" },
+    { slug: "hack", query: "HACK" },
+    { slug: "debugger", query: "debugger" },
+    { slug: "console_log", query: "console.log" },
+    { slug: "eval", query: "eval(" },
+    { slug: "exec", query: "child_process.exec" },
+    { slug: "secret", query: "SECRET" }
+  ];
+  for (const s of codeSearchByType) {
+    const suffix = s.name.replace(/^code_search_/, "");
+    for (const k of keywordChecks) {
+      const toolName = `code_find_${k.slug}_${suffix}`;
+      addGeneratedTool({
+        name: toolName,
+        version: "1.0.0",
+        tags: ["fs", "search", "code"],
+        inputSchema: { type: "object", properties: { path: { type: "string" }, exclude: { type: "string" } }, required: [] },
+        outputSchema: { type: "object", properties: { matches: { type: "array", items: { type: "string" } }, count: { type: "number" }, truncated: { type: "boolean" } } },
+        permissions: ["read"],
+        sideEffects: [],
+        rateLimitPerMinute: 120,
+        auditFields: [],
+        mockSupported: true,
+        async execute(input) {
+          const searchPath = String(input?.path ?? ".");
+          const exclude = String(input?.exclude ?? "");
+          return executeTool("grep_search", { query: k.query, path: searchPath, include: s.include, exclude });
+        }
+      });
+    }
+  }
+}
+addPhase2AndCoreDevTools();
+addBulkToolPackToReach200();
+if (tools.length < TARGET_TOOL_COUNT) {
+  tools.push(...generatedTools.slice(0, Math.max(0, TARGET_TOOL_COUNT - tools.length)));
+}
 var enableNoopTools = process.env.ENABLE_NOOP_TOOLS === "1" || process.env.ENABLE_NOOP_TOOLS === "true";
 if (enableNoopTools) {
-  for (let i = 1; i <= 197; i++) {
+  const remaining = Math.max(0, TARGET_TOOL_COUNT - tools.length);
+  for (let i = 1; i <= remaining; i++) {
     tools.push({
       name: `noop_${i}`,
       version: "1.0.0",
@@ -1099,13 +1943,25 @@ async function executeTool(name, input) {
       const url = String(input?.url ?? "");
       const method = String(input?.method ?? "GET").toUpperCase();
       const headers = typeof input?.headers === "object" && input?.headers ? input.headers : {};
+      const reqHeaders = { ...headers };
+      const sessionId = typeof input?.sessionId === "string" ? String(input.sessionId).trim() : "";
+      if (sessionId) {
+        try {
+          const { getSessionSecret: getSessionSecret2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+          if (!reqHeaders.Authorization && !reqHeaders.authorization) {
+            const token = getSessionSecret2(sessionId, "HTTP_BEARER_TOKEN") || "";
+            if (token) reqHeaders.Authorization = `Bearer ${token}`;
+          }
+        } catch {
+        }
+      }
       let reqBody = void 0;
       if (typeof input?.body === "string") reqBody = input.body;
       else if (input?.json && typeof input.json === "object") {
         reqBody = JSON.stringify(input.json);
-        if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+        if (!reqHeaders["Content-Type"]) reqHeaders["Content-Type"] = "application/json";
       }
-      const resp = await fetch(url, { method, headers, body: reqBody });
+      const resp = await fetch(url, { method, headers: reqHeaders, body: reqBody });
       const contentType = resp.headers.get("content-type") || "";
       const respText = await resp.text();
       let json = null;
@@ -1124,29 +1980,92 @@ async function executeTool(name, input) {
     }
     if (name === "html_extract") {
       const url = String(input?.url ?? "");
-      const resp = await fetch(url);
-      const html = await resp.text();
-      const tMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      const title = tMatch ? String(tMatch[1]).trim() : "";
-      const mMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i) || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["'][^>]*>/i);
-      const metaDescription = mMatch ? String(mMatch[1]).trim() : "";
-      const headings = [];
-      const hRegex = /<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi;
-      let hm;
-      while (hm = hRegex.exec(html)) {
-        const txt = String(hm[2]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        if (txt) headings.push(txt);
+      const renderRequested = input?.render === true;
+      const parseHtml = (rawHtml, baseUrl) => {
+        const html2 = String(rawHtml || "");
+        const tMatch = html2.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const title = tMatch ? String(tMatch[1]).trim() : "";
+        const mMatch = html2.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i) || html2.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["'][^>]*>/i);
+        const metaDescription = mMatch ? String(mMatch[1]).trim() : "";
+        const headings = [];
+        const hRegex = /<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi;
+        let hm;
+        while (hm = hRegex.exec(html2)) {
+          const txt = String(hm[2]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          if (txt) headings.push(txt);
+        }
+        const links = [];
+        const aRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+        let am;
+        while (am = aRegex.exec(html2)) {
+          const hrefRaw = String(am[1]).trim();
+          const txt = String(am[2]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          if (!hrefRaw || !txt) continue;
+          let abs = hrefRaw;
+          try {
+            abs = new URL(hrefRaw, baseUrl).toString();
+          } catch {
+          }
+          links.push({ text: txt.slice(0, 160), url: abs });
+        }
+        const textSnippet = html2.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1200);
+        return { title, metaDescription, headings: headings.slice(0, 12), links: links.slice(0, 12), textSnippet };
+      };
+      const renderWithPuppeteer = async (targetUrl) => {
+        const puppeteer = await import("puppeteer");
+        const browser = await puppeteer.launch({
+          headless: true,
+          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+        });
+        try {
+          const page = await browser.newPage();
+          await page.setRequestInterception(true);
+          page.on("request", (req) => {
+            const type = req.resourceType();
+            if (["image", "stylesheet", "font", "media"].includes(type)) req.abort();
+            else req.continue();
+          });
+          await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 2e4 });
+          const finalUrl2 = page.url();
+          const html2 = await page.content();
+          return { html: html2, finalUrl: finalUrl2 };
+        } finally {
+          try {
+            await browser.close();
+          } catch {
+          }
+        }
+      };
+      let html = "";
+      let finalUrl = url;
+      let rendered = false;
+      if (renderRequested) {
+        const out = await renderWithPuppeteer(url);
+        html = out.html;
+        finalUrl = out.finalUrl;
+        rendered = true;
+        logs.push("html_extract.rendered=1");
+      } else {
+        const resp = await fetch(url);
+        finalUrl = resp?.url ? String(resp.url) : url;
+        logs.push(`fetch.status=${resp.status}`);
+        html = await resp.text();
       }
-      const links = [];
-      const aRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let am;
-      while (am = aRegex.exec(html)) {
-        const href = String(am[1]).trim();
-        const txt = String(am[2]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        if (href && txt) links.push({ text: txt.slice(0, 160), url: href });
+      let parsed = parseHtml(html, finalUrl);
+      const weak = !rendered && String(parsed.title || "").trim().length === 0 && String(parsed.textSnippet || "").trim().length < 80 && (parsed.headings?.length || 0) === 0;
+      if (weak) {
+        try {
+          const out = await renderWithPuppeteer(url);
+          html = out.html;
+          finalUrl = out.finalUrl;
+          rendered = true;
+          logs.push("html_extract.auto_rendered=1");
+          parsed = parseHtml(html, finalUrl);
+        } catch (e) {
+          logs.push(`html_extract.auto_render_failed=${String(e?.message || e)}`);
+        }
       }
-      const textSnippet = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 800);
-      return { ok: true, output: { title, metaDescription, headings: headings.slice(0, 12), links: links.slice(0, 12), textSnippet }, logs };
+      return { ok: true, output: { ...parsed, url: finalUrl, rendered }, logs };
     }
     if (name === "rss_fetch") {
       const url = String(input?.url ?? "");
@@ -1169,8 +2088,8 @@ async function executeTool(name, input) {
     }
     if (name === "json_query") {
       const obj = input?.json ?? null;
-      const path13 = String(input?.path ?? "");
-      const norm = path13.replace(/\[(\d+)\]/g, ".$1");
+      const path5 = String(input?.path ?? "");
+      const norm = path5.replace(/\[(\d+)\]/g, ".$1");
       const parts = norm.split(".").filter(Boolean);
       let cur = obj;
       for (const p of parts) {
@@ -1855,8 +2774,8 @@ ${content}` }
       if (!connStr) return { ok: false, error: "No connection string provided", logs };
       if (connStr.startsWith("mongodb")) {
         try {
-          const mongoose21 = await import("mongoose");
-          const conn = await mongoose21.createConnection(connStr).asPromise();
+          const mongoose20 = await import("mongoose");
+          const conn = await mongoose20.createConnection(connStr).asPromise();
           if (!conn.db) {
             await conn.close();
             return { ok: false, error: "Failed to connect to DB", logs };
@@ -1916,6 +2835,7 @@ ${doc}
       const { exec: exec2 } = await import("child_process");
       const util = await import("util");
       const execAsync = util.promisify(exec2);
+      let askpassDir = "";
       try {
         let cmd = `git ${op} ${args.join(" ")}`;
         if (op === "commit") {
@@ -1926,11 +2846,103 @@ ${doc}
             await execAsync('git config user.email "joe@xelitesolutions.com"');
           }
         }
-        const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd() });
-        logs.push(`git.op=${op} success`);
-        return { ok: true, output: { output: stdout || stderr }, logs };
+        const env = {};
+        const sessionId = typeof input?.sessionId === "string" ? String(input.sessionId).trim() : "";
+        const wantsAuth = ["push", "fetch", "pull", "clone"].includes(op);
+        let askpassPath = "";
+        if (wantsAuth && sessionId) {
+          try {
+            const { getSessionSecret: getSessionSecret2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+            const token = getSessionSecret2(sessionId, "GITHUB_TOKEN") || "";
+            if (token) {
+              const fs8 = await import("fs");
+              const os3 = await import("os");
+              const path5 = await import("path");
+              askpassDir = await fs8.promises.mkdtemp(path5.join(os3.tmpdir(), "joe-askpass-"));
+              askpassPath = path5.join(askpassDir, "askpass.sh");
+              const script = `#!/bin/sh
+case "$1" in
+*Username*) echo "x-access-token";;
+*) echo "$JOE_GIT_TOKEN";;
+esac
+`;
+              await fs8.promises.writeFile(askpassPath, script, { mode: 448 });
+              env.GIT_ASKPASS = askpassPath;
+              env.GIT_TERMINAL_PROMPT = "0";
+              env.DISPLAY = "1";
+              env.JOE_GIT_TOKEN = token;
+            }
+          } catch {
+          }
+        }
+        try {
+          const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd(), env: { ...process.env, ...env } });
+          logs.push(`git.op=${op} success`);
+          return { ok: true, output: { output: stdout || stderr }, logs };
+        } finally {
+          if (askpassDir) {
+            try {
+              const fs8 = await import("fs");
+              await fs8.promises.rm(askpassDir, { recursive: true, force: true });
+            } catch {
+            }
+          }
+        }
       } catch (e) {
+        if (askpassDir) {
+          try {
+            const fs8 = await import("fs");
+            await fs8.promises.rm(askpassDir, { recursive: true, force: true });
+          } catch {
+          }
+        }
         return { ok: false, error: e.message || e.stderr, logs };
+      }
+    }
+    if (name === "github_create_repo") {
+      const repoName = String(input?.name || "").trim();
+      const isPrivate = Boolean(input?.private);
+      const description = typeof input?.description === "string" ? input.description : void 0;
+      const sessionId = typeof input?.sessionId === "string" ? String(input.sessionId).trim() : "";
+      if (!repoName) return { ok: false, error: "Missing repo name", logs };
+      if (!sessionId) return { ok: false, error: "Missing sessionId", logs };
+      const { getSessionSecret: getSessionSecret2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+      const token = (getSessionSecret2(sessionId, "GITHUB_TOKEN") || "").trim();
+      if (!token) return { ok: false, error: "Missing GitHub token", logs };
+      const payload = { name: repoName, private: isPrivate };
+      if (description && description.trim()) payload.description = description.trim();
+      try {
+        const resp = await fetch("https://api.github.com/user/repos", {
+          method: "POST",
+          headers: {
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "JOE AI",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        const text = await resp.text();
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch {
+        }
+        if (!resp.ok) {
+          const msg = typeof json?.message === "string" ? json.message : text.slice(0, 300);
+          return { ok: false, error: `GitHub API ${resp.status}: ${msg}`, logs };
+        }
+        return {
+          ok: true,
+          output: {
+            fullName: typeof json?.full_name === "string" ? json.full_name : "",
+            htmlUrl: typeof json?.html_url === "string" ? json.html_url : "",
+            apiUrl: typeof json?.url === "string" ? json.url : ""
+          },
+          logs
+        };
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e), logs };
       }
     }
     if (name === "npm_manager") {
@@ -2685,22 +3697,6 @@ Today's Date: ${date}
 Current Time: ${time}`;
 };
 var SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
-async function callLLM(prompt, context = []) {
-  const msgs = [
-    { role: "system", content: "You are a helpful assistant." },
-    ...context,
-    { role: "user", content: prompt }
-  ];
-  try {
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o",
-      messages: msgs
-    });
-    return completion.choices[0]?.message?.content || "";
-  } catch (e) {
-    throw new Error(`LLM call failed: ${e.message}`);
-  }
-}
 async function planNextStep(messages2, options) {
   let client = openai;
   if (options?.apiKey) {
@@ -3119,11 +4115,29 @@ Output: { "facts": [{ "key": "role", "value": "React Developer" }, { "key": "pre
 // src/routes/run.ts
 var router3 = (0, import_express3.Router)();
 function redactSecretsFromString(input) {
-  return input.replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "sk-[REDACTED]").replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, "Bearer [REDACTED]").replace(/([?&]key=)[^&\s]+/gi, "$1[REDACTED]").replace(/\bx-worker-key\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, "x-worker-key:[REDACTED]").replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, "$1=[REDACTED]");
+  return input.replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "sk-[REDACTED]").replace(/\bghp_[A-Za-z0-9_]{10,}\b/g, "ghp_[REDACTED]").replace(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/g, "github_pat_[REDACTED]").replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, "Bearer [REDACTED]").replace(/([?&]key=)[^&\s]+/gi, "$1[REDACTED]").replace(/\bx-worker-key\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, "x-worker-key:[REDACTED]").replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, "$1=[REDACTED]");
 }
 function safeErrorMessage(err) {
   const raw = typeof err?.message === "string" ? err.message : String(err);
   return redactSecretsFromString(raw);
+}
+function isGitAuthError(raw) {
+  const s = String(raw || "");
+  return /could not read Username/i.test(s) || /could not read Password/i.test(s) || /Authentication failed/i.test(s) || /Support for password authentication was removed/i.test(s) || /Permission denied \(publickey\)/i.test(s) || /fatal:.*could not read/i.test(s);
+}
+function isGithubAuthError(raw) {
+  const s = String(raw || "");
+  return /Missing GitHub token/i.test(s) || /Bad credentials/i.test(s) || /Requires authentication/i.test(s) || /\b401\b/.test(s) || /\b403\b/.test(s);
+}
+function extractRequestedRepoName(raw) {
+  const s = String(raw || "");
+  const m1 = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (m1 && m1[1]) return m1[1].trim();
+  const m2 = s.match(/(?:named|name it|call it)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (m2 && m2[1]) return m2[1].trim();
+  const m3 = s.match(/\brepo(?:sitory)?\b.*?\b([A-Za-z0-9._-]{1,100})\b/i);
+  if (m3 && m3[1]) return m3[1].trim();
+  return null;
 }
 function redactToolInputForStorage(name, input) {
   if (!input || typeof input !== "object") return input;
@@ -3358,6 +4372,7 @@ ${merged.join("\n")}
         store.addMessage(sessionId, "system", currentSystemPrompt, runId);
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
+        ev({ type: "text", id: systemPromptEventId, data: currentSystemPrompt });
       }
     } else {
       const existing = await Message.findOne({ sessionId, role: "system" }).select({ _id: 1 }).lean();
@@ -3365,6 +4380,7 @@ ${merged.join("\n")}
         await Message.create({ sessionId, role: "system", content: currentSystemPrompt, runId });
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
+        ev({ type: "text", id: systemPromptEventId, data: currentSystemPrompt });
       }
     }
   } catch (e) {
@@ -3403,10 +4419,11 @@ ${merged.join("\n")}
     } catch {
     }
   }
+  const persistedUserText = redactSecretsFromString(String(text || ""));
   if (useMock) {
-    store.addMessage(sessionId, "user", String(text || ""), runId);
+    store.addMessage(sessionId, "user", persistedUserText, runId);
   } else {
-    await Message.create({ sessionId, role: "user", content: String(text || ""), runId });
+    await Message.create({ sessionId, role: "user", content: persistedUserText, runId });
   }
   const risk = detectRisk(String(text || ""));
   if (risk && initialPlan) {
@@ -3444,9 +4461,13 @@ ${merged.join("\n")}
   let forcedText = null;
   let assistantTextEmitted = false;
   let plan = null;
+  let pendingPlan = null;
   while (steps < MAX_STEPS) {
     ev({ type: "step_started", data: { name: `thinking_step_${steps + 1}` } });
-    if (steps === 0 && initialPlan) {
+    if (pendingPlan) {
+      plan = pendingPlan;
+      pendingPlan = null;
+    } else if (steps === 0 && initialPlan) {
       plan = initialPlan;
       initialPlan = null;
     } else {
@@ -3468,7 +4489,21 @@ ${merged.join("\n")}
     }
     if (!plan) {
       if (steps === 0) {
-        plan = null;
+        const userTextForOverrides2 = String(text || "");
+        const wantsGithubRepo2 = /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides2) && /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides2) && /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides2);
+        if (wantsGithubRepo2) {
+          const requested = extractRequestedRepoName(userTextForOverrides2);
+          if (requested) {
+            plan = {
+              name: "github_create_repo",
+              input: {
+                name: requested,
+                private: /(private|خاص)/i.test(userTextForOverrides2),
+                sessionId: String(sessionId)
+              }
+            };
+          }
+        }
       } else break;
       if (!plan) {
         const msg = !process.env.OPENAI_API_KEY && !apiKey2 ? "\u26A0\uFE0F **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI." : "\u26A0\uFE0F **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.";
@@ -3478,16 +4513,24 @@ ${merged.join("\n")}
         break;
       }
     }
-    if (kind === "chat" && /^browser_/.test(String(plan?.name || ""))) {
-      const msg = "\u0623\u062F\u0648\u0627\u062A \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u062A\u0639\u0645\u0644 \u0641\u0642\u0637 \u062F\u0627\u062E\u0644 \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0646\u062A\u0642\u0644 \u0625\u0644\u0649 \u062A\u0628\u0648\u064A\u0628 \u0627\u0644\u0648\u0643\u064A\u0644 \u0644\u0641\u062A\u062D \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u062F\u0627\u062E\u0644 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
-      ev({ type: "text", data: msg });
-      forcedText = msg;
-      assistantTextEmitted = true;
-      break;
-    }
     const planName = String(plan?.name || "");
     const isBrowserTool = /^browser_/.test(planName);
-    if (kind === "agent" && isBrowserTool) {
+    const userTextForOverrides = String(text || "");
+    const wantsGithubRepo = /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) && /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) && /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
+    if (wantsGithubRepo) {
+      const requested = extractRequestedRepoName(userTextForOverrides);
+      if (requested) {
+        plan = {
+          name: "github_create_repo",
+          input: {
+            name: requested,
+            private: /(private|خاص)/i.test(userTextForOverrides),
+            sessionId: String(sessionId)
+          }
+        };
+      }
+    }
+    if (isBrowserTool) {
       const reqSid = typeof browserSessionId === "string" ? browserSessionId.trim() : "";
       const inputSid = String(plan?.input?.sessionId || "").trim();
       const hasSid = !!(reqSid || inputSid);
@@ -3500,18 +4543,17 @@ ${merged.join("\n")}
             input: { url: `https://wttr.in/${encodeURIComponent(city)}?format=j1`, city }
           };
         } else {
-          const tn = normalizeArabicQuery(userText);
-          const hasUrl = /https?:\/\/\S+/i.test(userText);
-          const isExplicitOpen = hasUrl || /(open|افتح|اذهب|ادخل|دخول|فتح|زيارة|browser)/i.test(tn);
-          if (!isExplicitOpen) {
-            plan = { name: "web_search", input: { query: userText || planName } };
-          } else {
-            const msg = "\u0627\u0644\u0645\u062A\u0635\u0641\u062D \u063A\u064A\u0631 \u0645\u0641\u062A\u0648\u062D \u0641\u064A \u0648\u0636\u0639 \u0627\u0644\u0648\u0643\u064A\u0644. \u0627\u0641\u062A\u062D \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u0641\u064A \u0627\u0644\u0648\u0633\u0637 \u0623\u0648\u0644\u0627\u064B \u062B\u0645 \u0623\u0639\u062F \u062A\u0646\u0641\u064A\u0630 \u0623\u0645\u0631 \u0627\u0644\u0645\u062A\u0635\u0641\u062D.";
-            ev({ type: "text", data: msg });
-            forcedText = msg;
-            assistantTextEmitted = true;
-            break;
-          }
+          const urlMatch = userText.match(/https?:\/\/[^\s"'<>]+/i);
+          const urlFromUser = urlMatch?.[0];
+          const urlFromInput = String(plan?.input?.url || "").trim();
+          const actions = Array.isArray(plan?.input?.actions) ? plan.input.actions : [];
+          const goto = actions.find((a) => String(a?.type || "").toLowerCase() === "goto" && typeof a?.url === "string" && a.url.trim());
+          const urlFromActions = goto ? String(goto.url).trim() : "";
+          const wantsYoutube = /youtube|يوتيوب/i.test(userText);
+          const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(userText);
+          const desiredUrl = (urlFromUser || urlFromInput || urlFromActions || "").trim() || (wantsYoutube ? "https://www.youtube.com" : wantsGithub ? "https://github.com" : "https://www.google.com");
+          if (planName !== "browser_open") pendingPlan = plan;
+          plan = { name: "browser_open", input: { url: desiredUrl } };
         }
       }
     }
@@ -3525,7 +4567,7 @@ ${merged.join("\n")}
         }
       };
     }
-    if (kind === "agent" && typeof browserSessionId === "string" && browserSessionId.trim() && ["browser_run", "browser_get_state", "browser_extract"].includes(String(plan?.name || ""))) {
+    if (typeof browserSessionId === "string" && browserSessionId.trim() && ["browser_run", "browser_get_state", "browser_extract"].includes(String(plan?.name || ""))) {
       const input = plan.input;
       if (!input || typeof input !== "object") plan.input = {};
       if (!plan.input.sessionId) plan.input.sessionId = browserSessionId.trim();
@@ -3573,9 +4615,23 @@ ${merged.join("\n")}
         }
       }
     }
+    if (String(plan?.name || "") === "git_ops") {
+      const input = plan.input;
+      if (!input || typeof input !== "object") plan.input = {};
+      if (!plan.input.sessionId) plan.input.sessionId = String(sessionId);
+    }
+    if (String(plan?.name || "") === "http_fetch") {
+      const input = plan.input;
+      if (!input || typeof input !== "object") plan.input = {};
+      if (!plan.input.sessionId) plan.input.sessionId = String(sessionId);
+    }
     const persistedInput = redactToolInputForStorage(plan?.name || "", plan?.input);
     ev({ type: "step_started", data: { name: `execute:${plan?.name}`, input: persistedInput } });
     const result = await executeTool(plan?.name || "", plan?.input);
+    if (result?.ok && plan?.name === "browser_open") {
+      const sid = String(result?.output?.sessionId || "").trim();
+      if (sid) browserSessionId = sid;
+    }
     history.push({
       role: "assistant",
       content: `Tool Call: ${plan?.name}
@@ -3762,8 +4818,124 @@ Please verify your OpenAI organization settings or try a different prompt.`;
     } else {
       await ToolExecution.create({ runId, name: plan?.name || "unknown", input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
     }
+    if (result.ok && String(plan?.name || "") === "http_fetch") {
+      const status = Number(result?.output?.status);
+      if (status === 401 || status === 403) {
+        const urlStr = String(plan?.input?.url || "").trim();
+        const msg = [
+          `\u26A0\uFE0F \u0627\u0644\u0648\u0635\u0648\u0644 \u0644\u0647\u0630\u0627 \u0627\u0644\u0631\u0627\u0628\u0637 \u064A\u062D\u062A\u0627\u062C \u062A\u0633\u062C\u064A\u0644 \u062F\u062E\u0648\u0644 \u0623\u0648 \u062A\u0648\u0643\u0646.`,
+          urlStr ? `- \u0627\u0644\u0631\u0627\u0628\u0637: ${urlStr}` : ``,
+          `- \u0627\u0643\u062A\u0628 Bearer Token \u0647\u0646\u0627 \u0641\u064A \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0648\u0623\u0631\u0633\u0644\u0647 \u0643\u0631\u0633\u0627\u0644\u0629 \u0648\u0627\u062D\u062F\u0629.`,
+          `- \u0644\u0646 \u064A\u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u062A\u0648\u0643\u0646 \u0641\u064A \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0623\u0648 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.`
+        ].filter(Boolean).join("\n");
+        ev({ type: "text", data: msg });
+        ev({
+          type: "secret_required",
+          data: {
+            sessionId,
+            runId,
+            provider: "generic",
+            key: "HTTP_BEARER_TOKEN",
+            label: "Bearer Token",
+            reason: `HTTP ${status}`
+          }
+        });
+        const { setPendingTool: setPendingTool2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+        setPendingTool2(String(sessionId), { runId, name: String(plan?.name || ""), input: plan?.input });
+        if (useMock) {
+          store.updateRun(runId, { status: "blocked" });
+        } else {
+          try {
+            await Run.findByIdAndUpdate(runId, { $set: { status: "blocked" } });
+          } catch {
+          }
+        }
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: "generic", key: "HTTP_BEARER_TOKEN", label: "Bearer Token" },
+          ...systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}
+        });
+      }
+    }
     if (!result.ok) {
       const errorMsg = result.error || (result.logs ? result.logs.join("\n") : "Unknown error");
+      if (String(plan?.name || "") === "git_ops" && isGitAuthError(errorMsg)) {
+        const msg = [
+          `\u26A0\uFE0F \u0645\u0637\u0644\u0648\u0628 \u062A\u0633\u062C\u064A\u0644 \u062F\u062E\u0648\u0644 \u0642\u0628\u0644 \u062F\u0641\u0639 \u0627\u0644\u062A\u062D\u062F\u064A\u062B\u0627\u062A \u0625\u0644\u0649 GitHub.`,
+          `- \u0627\u0643\u062A\u0628 \u062A\u0648\u0643\u0646 GitHub (Personal Access Token) \u0647\u0646\u0627 \u0641\u064A \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0648\u0623\u0631\u0633\u0644\u0647 \u0643\u0631\u0633\u0627\u0644\u0629 \u0648\u0627\u062D\u062F\u0629.`,
+          `- \u0644\u0646 \u064A\u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u062A\u0648\u0643\u0646 \u0641\u064A \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0623\u0648 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.`
+        ].join("\n");
+        ev({ type: "text", data: msg });
+        ev({
+          type: "secret_required",
+          data: {
+            sessionId,
+            runId,
+            provider: "github",
+            key: "GITHUB_TOKEN",
+            label: "GitHub Token",
+            reason: "git push \u064A\u062D\u062A\u0627\u062C \u0645\u0635\u0627\u062F\u0642\u0629"
+          }
+        });
+        const { setPendingTool: setPendingTool2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+        setPendingTool2(String(sessionId), { runId, name: String(plan?.name || ""), input: plan?.input });
+        if (useMock) {
+          store.updateRun(runId, { status: "blocked" });
+        } else {
+          try {
+            await Run.findByIdAndUpdate(runId, { $set: { status: "blocked" } });
+          } catch {
+          }
+        }
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: "github", key: "GITHUB_TOKEN", label: "GitHub Token" },
+          ...systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}
+        });
+      }
+      if (String(plan?.name || "") === "github_create_repo" && isGithubAuthError(errorMsg)) {
+        const msg = [
+          `\u26A0\uFE0F \u0645\u0637\u0644\u0648\u0628 \u062A\u0648\u0643\u0646 GitHub \u0644\u0625\u0646\u0634\u0627\u0621 \u0645\u0633\u062A\u0648\u062F\u0639 \u062C\u062F\u064A\u062F \u0639\u0628\u0631 API.`,
+          `- \u0627\u0643\u062A\u0628 GitHub Personal Access Token \u0647\u0646\u0627 \u0641\u064A \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0648\u0623\u0631\u0633\u0644\u0647 \u0643\u0631\u0633\u0627\u0644\u0629 \u0648\u0627\u062D\u062F\u0629.`,
+          `- \u0644\u0646 \u064A\u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u062A\u0648\u0643\u0646 \u0641\u064A \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629 \u0623\u0648 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.`
+        ].join("\n");
+        ev({ type: "text", data: msg });
+        ev({
+          type: "secret_required",
+          data: {
+            sessionId,
+            runId,
+            provider: "github",
+            key: "GITHUB_TOKEN",
+            label: "GitHub Token",
+            reason: "\u0625\u0646\u0634\u0627\u0621 \u0631\u064A\u0628\u0648 \u064A\u062D\u062A\u0627\u062C \u0645\u0635\u0627\u062F\u0642\u0629"
+          }
+        });
+        const { setPendingTool: setPendingTool2 } = await Promise.resolve().then(() => (init_secrets(), secrets_exports));
+        setPendingTool2(String(sessionId), { runId, name: String(plan?.name || ""), input: plan?.input });
+        if (useMock) {
+          store.updateRun(runId, { status: "blocked" });
+        } else {
+          try {
+            await Run.findByIdAndUpdate(runId, { $set: { status: "blocked" } });
+          } catch {
+          }
+        }
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: "github", key: "GITHUB_TOKEN", label: "GitHub Token" },
+          ...systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}
+        });
+      }
       ev({ type: "text", data: `\u26A0\uFE0F **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });
       history.push({
         role: "assistant",
@@ -3841,6 +5013,7 @@ var SummarySchema = new import_mongoose14.Schema(
 var Summary = import_mongoose14.default.model("Summary", SummarySchema);
 
 // src/routes/sessions.ts
+init_secrets();
 var router5 = (0, import_express5.Router)();
 router5.post("/", authenticate, async (req, res) => {
   const { title } = req.body;
@@ -3855,6 +5028,68 @@ router5.post("/", authenticate, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: "Failed to create session" });
   }
+});
+router5.post("/:id/secrets", authenticate, async (req, res) => {
+  const sessionId = String(req.params.id || "").trim();
+  const key = String(req.body?.key || "").trim();
+  const value = typeof req.body?.value === "string" ? req.body.value : String(req.body?.value ?? "");
+  const useMock = process.env.MOCK_DB === "1" || import_mongoose15.default.connection.readyState !== 1;
+  if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
+  if (!key) return res.status(400).json({ error: "Missing key" });
+  if (!value) return res.status(400).json({ error: "Missing value" });
+  if (value.length > 8e3) return res.status(400).json({ error: "Value too large" });
+  setSessionSecret(sessionId, key, value);
+  const pending = popPendingTool(sessionId);
+  if (!pending) return res.json({ ok: true });
+  if (useMock) {
+    store.updateRun(pending.runId, { status: "running" });
+  } else {
+    try {
+      await Run.findByIdAndUpdate(pending.runId, { $set: { status: "running" } });
+    } catch {
+    }
+  }
+  broadcast({ type: "step_started", runId: pending.runId, data: { name: `execute:${pending.name}`, input: pending.input } });
+  const result = await executeTool(pending.name, pending.input);
+  broadcast({ type: result.ok ? "step_done" : "step_failed", runId: pending.runId, data: { name: `execute:${pending.name}`, result } });
+  const toText = (r) => {
+    const outStr = typeof r?.output?.output === "string" ? r.output.output : typeof r?.output?.text === "string" ? r.output.text : r?.output != null ? JSON.stringify(r.output) : "";
+    if (r?.ok) return outStr || "\u062A\u0645 \u0627\u0644\u062A\u0646\u0641\u064A\u0630 \u0628\u0646\u062C\u0627\u062D.";
+    const errStr = typeof r?.error === "string" ? r.error : Array.isArray(r?.logs) ? r.logs.join("\n") : "\u0641\u0634\u0644 \u0627\u0644\u062A\u0646\u0641\u064A\u0630.";
+    return `\u0641\u0634\u0644 \u0627\u0644\u062A\u0646\u0641\u064A\u0630: ${errStr}`;
+  };
+  const assistantText = toText(result);
+  broadcast({ type: "text", runId: pending.runId, data: assistantText });
+  if (useMock) {
+    store.addExec(pending.runId, pending.name, pending.input, result.output, result.ok, result.logs);
+    store.addMessage(sessionId, "assistant", assistantText, pending.runId);
+  } else {
+    try {
+      await ToolExecution.create({
+        runId: pending.runId,
+        name: pending.name || "unknown",
+        input: pending.input,
+        output: result.output,
+        ok: result.ok,
+        logs: result.logs
+      });
+    } catch {
+    }
+    try {
+      await Message.create({ sessionId, role: "assistant", content: assistantText, runId: pending.runId });
+    } catch {
+    }
+  }
+  if (useMock) {
+    store.updateRun(pending.runId, { status: result.ok ? "done" : "failed" });
+  } else {
+    try {
+      await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? "done" : "failed" } });
+    } catch {
+    }
+  }
+  broadcast({ type: "run_finished", runId: pending.runId, data: { runId: pending.runId, ok: result.ok } });
+  return res.json({ ok: true, resumed: true, result });
 });
 router5.get("/:id/messages", authenticate, async (req, res) => {
   const { id } = req.params;
@@ -4730,80 +5965,12 @@ router13.delete("/:id", authenticate, async (req, res) => {
 });
 var knowledge_default = router13;
 
-// src/routes/database.ts
-var import_express14 = require("express");
-var import_mongoose19 = __toESM(require("mongoose"));
-var router14 = (0, import_express14.Router)();
-router14.use((req, res, next) => {
-  if (import_mongoose19.default.connection.readyState !== 1 || !import_mongoose19.default.connection.db) {
-    return res.status(503).json({ error: "Database not connected" });
-  }
-  next();
-});
-router14.get("/", authenticate, async (req, res) => {
-  try {
-    const collections = await import_mongoose19.default.connection.db.listCollections().toArray();
-    const names = collections.map((c) => c.name).sort();
-    res.json({ collections: names });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-router14.get("/:collection", authenticate, async (req, res) => {
-  try {
-    const { collection } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const query = req.query.q ? JSON.parse(req.query.q) : {};
-    const coll = import_mongoose19.default.connection.db.collection(collection);
-    const total = await coll.countDocuments(query);
-    const docs = await coll.find(query).skip((page - 1) * limit).limit(limit).toArray();
-    res.json({
-      data: docs,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-router14.put("/:collection/:id", authenticate, async (req, res) => {
-  try {
-    const { collection, id } = req.params;
-    const update = req.body;
-    delete update._id;
-    const coll = import_mongoose19.default.connection.db.collection(collection);
-    const result = await coll.updateOne(
-      { _id: new import_mongoose19.default.Types.ObjectId(id) },
-      { $set: update }
-    );
-    res.json({ success: true, result });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-router14.delete("/:collection/:id", authenticate, async (req, res) => {
-  try {
-    const { collection, id } = req.params;
-    const coll = import_mongoose19.default.connection.db.collection(collection);
-    const result = await coll.deleteOne({ _id: new import_mongoose19.default.Types.ObjectId(id) });
-    res.json({ success: true, result });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-var database_default = router14;
-
 // src/routes/system.ts
-var import_express15 = require("express");
+var import_express14 = require("express");
 var import_child_process2 = require("child_process");
 var import_os2 = __toESM(require("os"));
-var router15 = (0, import_express15.Router)();
-router15.get("/stats", authenticate, async (req, res) => {
+var router14 = (0, import_express14.Router)();
+router14.get("/stats", authenticate, async (req, res) => {
   const totalMem = import_os2.default.totalmem();
   const freeMem = import_os2.default.freemem();
   const usedMem = totalMem - freeMem;
@@ -4824,7 +5991,7 @@ router15.get("/stats", authenticate, async (req, res) => {
     arch: import_os2.default.arch()
   });
 });
-router15.get("/processes", authenticate, async (req, res) => {
+router14.get("/processes", authenticate, async (req, res) => {
   const cmd = "ps aux | grep -E 'node|ts-node' | grep -v grep | head -n 20";
   (0, import_child_process2.exec)(cmd, (err, stdout, stderr) => {
     if (err) {
@@ -4844,7 +6011,7 @@ router15.get("/processes", authenticate, async (req, res) => {
     res.json({ processes });
   });
 });
-router15.delete("/processes/:pid", authenticate, async (req, res) => {
+router14.delete("/processes/:pid", authenticate, async (req, res) => {
   const { pid } = req.params;
   if (pid === "1") return res.status(403).json({ error: "Cannot kill init process" });
   (0, import_child_process2.exec)(`kill -9 ${pid}`, (err) => {
@@ -4854,703 +6021,25 @@ router15.delete("/processes/:pid", authenticate, async (req, res) => {
     res.json({ success: true, message: `Process ${pid} killed` });
   });
 });
-var system_default = router15;
-
-// src/routes/healing.ts
-var import_express16 = require("express");
-var import_fs7 = __toESM(require("fs"));
-var import_path5 = __toESM(require("path"));
-var router16 = (0, import_express16.Router)();
-var errorLog = [];
-var logError = (error, context) => {
-  const errorEntry = {
-    id: Math.random().toString(36).substring(7),
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    message: error.message,
-    stack: error.stack,
-    context
-  };
-  errorLog.unshift(errorEntry);
-  if (errorLog.length > 50) errorLog.pop();
-  return errorEntry;
-};
-router16.get("/errors", authenticate, (req, res) => {
-  res.json(errorLog);
-});
-router16.post("/diagnose", authenticate, async (req, res) => {
-  const { errorId } = req.body;
-  const error = errorLog.find((e) => e.id === errorId);
-  if (!error) {
-    return res.status(404).json({ error: "Error not found" });
-  }
-  try {
-    const prompt = `
-        You are a Self-Healing System Agent.
-        Analyze this error and provide a fix plan.
-        
-        Error Message: ${error.message}
-        Context: ${error.context}
-        Stack Trace:
-        ${error.stack}
-        
-        If the error is related to a file, identify the file and provide the fixed code.
-        Format response as JSON: { "analysis": "string", "suggestedFix": "code or description", "isAutoFixable": boolean, "filePath": "string (optional)" }
-        `;
-    let diagnosis;
-    try {
-      const llmResponse = await callLLM(prompt, []);
-      const jsonStr = llmResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-      diagnosis = JSON.parse(jsonStr);
-    } catch (e) {
-      diagnosis = {
-        analysis: "LLM unavailable. Manual analysis required.",
-        suggestedFix: "Check the stack trace and fix the logic manually.",
-        isAutoFixable: false
-      };
-    }
-    res.json(diagnosis);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router16.post("/apply", authenticate, async (req, res) => {
-  const { filePath, content } = req.body;
-  if (!filePath || !content) {
-    return res.status(400).json({ error: "Missing filePath or content" });
-  }
-  try {
-    const projectRoot = import_path5.default.resolve(__dirname, "../../..");
-    const resolvedPath = import_path5.default.resolve(projectRoot, filePath);
-    if (!resolvedPath.startsWith(projectRoot)) {
-    }
-    await import_fs7.default.promises.writeFile(resolvedPath, content);
-    res.json({ success: true, message: "Fix applied successfully" });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-var healing_default = router16;
-
-// src/routes/docs.ts
-var import_express17 = require("express");
-var import_fs8 = __toESM(require("fs"));
-var import_path6 = __toESM(require("path"));
-var import_glob = require("glob");
-var router17 = (0, import_express17.Router)();
-var docsCache = {};
-router17.get("/", authenticate, (req, res) => {
-  res.json(docsCache);
-});
-router17.post("/generate", authenticate, async (req, res) => {
-  try {
-    const projectRoot = import_path6.default.resolve(__dirname, "../../..");
-    const files = await (0, import_glob.glob)("**/*.{ts,tsx}", {
-      cwd: projectRoot,
-      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/*.d.ts", "**/test/**"],
-      absolute: true
-    });
-    const selectedFiles = files.slice(0, 10);
-    const results = [];
-    for (const file of selectedFiles) {
-      const relativePath = import_path6.default.relative(projectRoot, file);
-      if (docsCache[relativePath]) {
-        results.push(docsCache[relativePath]);
-        continue;
-      }
-      const content = import_fs8.default.readFileSync(file, "utf-8");
-      if (content.length < 50) continue;
-      const prompt = `
-            Analyze the following TypeScript code and generate documentation.
-            File: ${relativePath}
-            
-            Code:
-            ${content.substring(0, 3e3)} // Truncate to avoid context limits
-            
-            Provide a JSON response with:
-            - summary: Brief description of what this file does.
-            - exports: Array of exported functions/classes with description, params, and returns.
-            - complexity: "Low" | "Medium" | "High" based on your assessment.
-            
-            Format as valid JSON only.
-            `;
-      try {
-        const llmResponse = await callLLM(prompt);
-        const jsonStr = llmResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-        const doc = JSON.parse(jsonStr);
-        const entry = {
-          filePath: relativePath,
-          ...doc,
-          lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        docsCache[relativePath] = entry;
-        results.push(entry);
-      } catch (e) {
-        console.error(`Failed to document ${relativePath}:`, e);
-      }
-    }
-    res.json(results);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-var docs_default = router17;
-
-// src/routes/analytics.ts
-var import_express18 = require("express");
-var import_fs9 = __toESM(require("fs"));
-var import_path7 = __toESM(require("path"));
-var import_glob2 = require("glob");
-var router18 = (0, import_express18.Router)();
-router18.get("/quality", authenticate, async (req, res) => {
-  try {
-    const projectRoot = import_path7.default.resolve(__dirname, "../../..");
-    const files = await (0, import_glob2.glob)("**/*.{ts,tsx,js,jsx,css,scss}", {
-      cwd: projectRoot,
-      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/*.d.ts", "**/coverage/**"],
-      absolute: true
-    });
-    let totalLoc = 0;
-    let totalFiles = 0;
-    let totalTodos = 0;
-    const fileStats = [];
-    for (const file of files) {
-      const content = import_fs9.default.readFileSync(file, "utf-8");
-      const lines = content.split("\n");
-      const loc = lines.filter((l) => l.trim().length > 0).length;
-      const size = import_fs9.default.statSync(file).size;
-      const todos = (content.match(new RegExp("TODO:", "gi")) || []).length;
-      let complexity = 0;
-      const keywords = ["if", "else", "for", "while", "switch", "case", "catch"];
-      lines.forEach((line) => {
-        const trimmed = line.trim();
-        keywords.forEach((kw) => {
-          if (trimmed.startsWith(kw + " ") || trimmed.startsWith(kw + "(")) {
-            complexity++;
-          }
-        });
-      });
-      totalLoc += loc;
-      totalFiles++;
-      totalTodos += todos;
-      fileStats.push({
-        path: import_path7.default.relative(projectRoot, file),
-        size,
-        loc,
-        todoCount: todos,
-        complexity
-      });
-    }
-    let score = 100;
-    const avgComplexity = fileStats.reduce((acc, f) => acc + f.complexity, 0) / (totalFiles || 1);
-    if (avgComplexity > 10) score -= 10;
-    if (avgComplexity > 20) score -= 20;
-    if (totalTodos > 10) score -= 5;
-    if (totalTodos > 50) score -= 15;
-    score = Math.max(0, Math.min(100, score));
-    res.json({
-      overview: {
-        totalFiles,
-        totalLoc,
-        totalTodos,
-        score,
-        avgComplexity: parseFloat(avgComplexity.toFixed(2))
-      },
-      files: fileStats.sort((a, b) => b.complexity - a.complexity).slice(0, 50)
-      // Return top 50 most complex
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-var analytics_default = router18;
-
-// src/routes/tests.ts
-var import_express19 = require("express");
-var import_glob3 = require("glob");
-var import_path8 = __toESM(require("path"));
-var import_fs10 = __toESM(require("fs"));
-var import_child_process3 = require("child_process");
-var router19 = (0, import_express19.Router)();
-router19.get("/files", authenticate, async (req, res) => {
-  try {
-    const projectRoot = import_path8.default.resolve(__dirname, "../../..");
-    const files = await (0, import_glob3.glob)("**/*.{test,spec}.{ts,tsx,js,jsx}", {
-      cwd: projectRoot,
-      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
-      absolute: true
-    });
-    const testFiles = files.map((f) => ({
-      path: import_path8.default.relative(projectRoot, f),
-      name: import_path8.default.basename(f)
-    }));
-    res.json(testFiles);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router19.post("/run", authenticate, (req, res) => {
-  const { testFile } = req.body;
-  const projectRoot = import_path8.default.resolve(__dirname, "../../..");
-  const cwd = import_path8.default.resolve(__dirname, "../..");
-  const args = ["jest", "--colors"];
-  if (testFile) {
-    args.push(import_path8.default.resolve(projectRoot, testFile));
-  }
-  const child = (0, import_child_process3.spawn)("npx", args, { cwd });
-  res.setHeader("Content-Type", "text/plain");
-  child.stdout.on("data", (data) => {
-    res.write(data);
-  });
-  child.stderr.on("data", (data) => {
-    res.write(data);
-  });
-  child.on("close", (code) => {
-    res.write(`
-Test process exited with code ${code}`);
-    res.end();
-  });
-});
-router19.post("/generate", authenticate, async (req, res) => {
-  const { filePath } = req.body;
-  const projectRoot = import_path8.default.resolve(__dirname, "../../..");
-  const fullPath = import_path8.default.resolve(projectRoot, filePath);
-  if (!import_fs10.default.existsSync(fullPath)) {
-    return res.status(404).json({ error: "File not found" });
-  }
-  try {
-    const content = import_fs10.default.readFileSync(fullPath, "utf-8");
-    const prompt = `
-        You are a senior QA Engineer. Write a comprehensive unit test using Jest for the following TypeScript code.
-        File: ${filePath}
-        
-        Code:
-        ${content.substring(0, 5e3)}
-        
-        Requirements:
-        1. Use 'describe' and 'test'/'it' blocks.
-        2. Mock external dependencies if necessary.
-        3. Cover happy paths and edge cases.
-        4. Return ONLY the code for the test file. No markdown, no explanations.
-        5. Imports should be relative to the file structure.
-        `;
-    let testCode = await callLLM(prompt);
-    testCode = testCode.replace(/```typescript/g, "").replace(/```/g, "").trim();
-    const dir = import_path8.default.dirname(fullPath);
-    const ext = import_path8.default.extname(fullPath);
-    const name = import_path8.default.basename(fullPath, ext);
-    const testFilePath = import_path8.default.join(dir, `${name}.test${ext}`);
-    import_fs10.default.writeFileSync(testFilePath, testCode);
-    res.json({
-      success: true,
-      testFilePath: import_path8.default.relative(projectRoot, testFilePath),
-      code: testCode
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-var tests_default = router19;
-
-// src/routes/advanced.ts
-var import_express20 = require("express");
-
-// src/services/council.ts
-var EXPERTS = [
-  { role: "Architect", name: "Dr. Arch", focus: "Scalability, Clean Architecture, Design Patterns", color: "#2563eb" },
-  // Blue-600
-  { role: "Security", name: "SecOps Sam", focus: "Vulnerabilities, Auth, Data Protection", color: "#dc2626" },
-  // Red-600
-  { role: "UX/UI", name: "Designer Dani", focus: "User Experience, Accessibility, Visuals", color: "#db2777" }
-  // Pink-600
-];
-var CouncilService = class {
-  static async consult(topic) {
-    const discussion = [];
-    const expertPromises = EXPERTS.map(async (expert) => {
-      const prompt = `
-        You are ${expert.name}, a world-class ${expert.role} expert.
-        Focus ONLY on: ${expert.focus}.
-        
-        Topic: "${topic}"
-        
-        Provide your expert analysis and recommendations. Be concise (max 3 sentences).
-        Do not be polite, be direct and technical.
-      `;
-      try {
-        const response = await callLLM(prompt, []);
-        return {
-          expert,
-          content: response
-        };
-      } catch (e) {
-        console.error(`Expert ${expert.name} failed to respond`, e);
-        return null;
-      }
-    });
-    const results = await Promise.all(expertPromises);
-    results.forEach((r) => {
-      if (r) discussion.push(r);
-    });
-    if (discussion.length > 0) {
-      const synthesisPrompt = `
-        You are the Lead Engineer. Review the feedback from your team:
-        
-        ${discussion.map((d) => `${d.expert.role}: ${d.content}`).join("\n\n")}
-        
-        Synthesize a final execution plan that balances all these concerns.
-      `;
-      try {
-        const conclusion = await callLLM(synthesisPrompt, []);
-        discussion.push({
-          expert: { role: "Lead", name: "Joe", focus: "Execution", color: "#4f46e5" },
-          // Indigo-600
-          content: conclusion
-        });
-      } catch (e) {
-        console.error("Synthesis failed", e);
-        discussion.push({
-          expert: { role: "System", name: "Error", focus: "Recovery", color: "#ff0000" },
-          content: "Failed to synthesize a conclusion due to an internal error."
-        });
-      }
-    } else {
-      discussion.push({
-        expert: { role: "System", name: "Error", focus: "Availability", color: "#ff0000" },
-        content: "The council is currently unavailable."
-      });
-    }
-    return discussion;
-  }
-};
-
-// src/services/graph.ts
-var import_fs11 = __toESM(require("fs"));
-var import_path9 = __toESM(require("path"));
-var CodeGraphService = class {
-  static async generateGraph(rootDir) {
-    const nodes = [];
-    const links = [];
-    const idMap = /* @__PURE__ */ new Map();
-    const files = await this.getFiles(rootDir);
-    const directories = /* @__PURE__ */ new Set();
-    const routeFiles = /* @__PURE__ */ new Map();
-    files.forEach((file) => {
-      const relPath = import_path9.default.relative(rootDir, file);
-      const dirName = import_path9.default.dirname(relPath);
-      let currentDir = dirName;
-      while (currentDir !== "." && currentDir !== "") {
-        directories.add(currentDir);
-        currentDir = import_path9.default.dirname(currentDir);
-      }
-      if (dirName === ".") directories.add(".");
-      const id = relPath;
-      idMap.set(file, id);
-      let group = 4;
-      if (relPath.includes("api/") || relPath.includes("routes/")) {
-        group = 1;
-        if (relPath.includes("/routes/")) {
-          const routeName = import_path9.default.basename(file, import_path9.default.extname(file));
-          routeFiles.set(routeName, id);
-        }
-      } else if (relPath.includes("services/")) group = 2;
-      else if (relPath.includes("components/")) group = 3;
-      nodes.push({
-        id,
-        name: import_path9.default.basename(file),
-        group,
-        val: 1
-        // Default size
-      });
-    });
-    directories.forEach((dir) => {
-      nodes.push({
-        id: dir,
-        name: dir === "." ? "ROOT" : import_path9.default.basename(dir) + "/",
-        group: 5,
-        // 5 for Directories
-        val: dir === "." ? 10 : 3
-        // Root is big, dirs are medium
-      });
-    });
-    files.forEach((file) => {
-      const relPath = import_path9.default.relative(rootDir, file);
-      const dir = import_path9.default.dirname(relPath);
-      const targetDir = dir === "" || dir === "." ? "." : dir;
-      links.push({ source: relPath, target: targetDir });
-    });
-    directories.forEach((dir) => {
-      if (dir === ".") return;
-      const parent = import_path9.default.dirname(dir);
-      const targetParent = parent === "" || parent === "." ? "." : parent;
-      if (dir !== targetParent) {
-        links.push({ source: dir, target: targetParent });
-      }
-    });
-    const routeNames = Array.from(routeFiles.keys());
-    await Promise.all(files.map(async (file) => {
-      try {
-        const content = await import_fs11.default.promises.readFile(file, "utf-8");
-        const lines = content.split("\n").length;
-        const nodeId = idMap.get(file);
-        const node = nodes.find((n) => n.id === nodeId);
-        if (node) {
-          node.val = Math.min(lines / 10, 20);
-        }
-        const importRegexes = [
-          /import\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
-          // import ... from '...'
-          /export\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
-          // export ... from '...'
-          /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-          // require('...')
-          /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-          // import('...')
-          /import\s+['"]([^'"]+)['"]/g
-          // import '...'
-        ];
-        const foundImports = /* @__PURE__ */ new Set();
-        for (const regex of importRegexes) {
-          let match;
-          while ((match = regex.exec(content)) !== null) {
-            foundImports.add(match[1]);
-          }
-        }
-        for (const importPath of foundImports) {
-          if (importPath.startsWith("@/")) {
-            const aliasPath = import_path9.default.join(rootDir, "web/src", importPath.slice(2));
-            const candidates = [
-              aliasPath,
-              aliasPath + ".ts",
-              aliasPath + ".tsx",
-              aliasPath + ".js",
-              aliasPath + ".jsx",
-              import_path9.default.join(aliasPath, "index.ts"),
-              import_path9.default.join(aliasPath, "index.tsx"),
-              import_path9.default.join(aliasPath, "index.js"),
-              import_path9.default.join(aliasPath, "index.jsx")
-            ];
-            for (const cand of candidates) {
-              if (idMap.has(cand)) {
-                const targetId = idMap.get(cand);
-                if (targetId !== nodeId) {
-                  if (!links.some((l) => l.source === nodeId && l.target === targetId)) {
-                    links.push({ source: nodeId, target: targetId });
-                  }
-                }
-                break;
-              }
-            }
-          }
-          if (importPath.startsWith(".")) {
-            try {
-              const resolvedPath = import_path9.default.resolve(import_path9.default.dirname(file), importPath);
-              const candidates = [
-                resolvedPath,
-                resolvedPath + ".ts",
-                resolvedPath + ".tsx",
-                resolvedPath + ".js",
-                resolvedPath + ".jsx",
-                import_path9.default.join(resolvedPath, "index.ts"),
-                import_path9.default.join(resolvedPath, "index.tsx"),
-                import_path9.default.join(resolvedPath, "index.js"),
-                import_path9.default.join(resolvedPath, "index.jsx")
-              ];
-              for (const cand of candidates) {
-                if (idMap.has(cand)) {
-                  const targetId = idMap.get(cand);
-                  if (targetId !== nodeId) {
-                    if (!links.some((l) => l.source === nodeId && l.target === targetId)) {
-                      links.push({ source: nodeId, target: targetId });
-                    }
-                  }
-                  break;
-                }
-              }
-            } catch (e) {
-            }
-          }
-        }
-        if (routeNames.length > 0) {
-          const pathSegmentRegex = /\/([a-zA-Z0-9_-]+)/g;
-          const quotedStringRegex = /['"]([a-zA-Z0-9_-]+)['"]/g;
-          const checkMatch = (potentialRoute) => {
-            if (routeFiles.has(potentialRoute)) {
-              const targetId = routeFiles.get(potentialRoute);
-              if (targetId && targetId !== nodeId) {
-                if (!links.some((l) => l.source === nodeId && l.target === targetId)) {
-                  links.push({ source: nodeId, target: targetId });
-                }
-              }
-            }
-          };
-          let match;
-          while ((match = pathSegmentRegex.exec(content)) !== null) {
-            checkMatch(match[1]);
-          }
-          while ((match = quotedStringRegex.exec(content)) !== null) {
-            checkMatch(match[1]);
-          }
-        }
-      } catch (e) {
-      }
-    }));
-    return { nodes, links };
-  }
-  static async getFiles(dir) {
-    let results = [];
-    try {
-      const list = await import_fs11.default.promises.readdir(dir);
-      for (const file of list) {
-        const filePath = import_path9.default.join(dir, file);
-        try {
-          const stat = await import_fs11.default.promises.stat(filePath);
-          if (stat && stat.isDirectory()) {
-            if (!file.startsWith(".") && file !== "node_modules" && file !== "dist" && file !== "build") {
-              const subResults = await this.getFiles(filePath);
-              results = results.concat(subResults);
-            }
-          } else {
-            if (/\.(ts|tsx|js|jsx)$/.test(file)) {
-              results.push(filePath);
-            }
-          }
-        } catch (e) {
-        }
-      }
-    } catch (e) {
-    }
-    return results;
-  }
-};
-
-// src/routes/advanced.ts
-var import_path10 = __toESM(require("path"));
-var router20 = (0, import_express20.Router)();
-router20.post("/council/consult", async (req, res) => {
-  const { topic } = req.body;
-  try {
-    const result = await CouncilService.consult(topic);
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-router20.get("/graph", async (req, res) => {
-  try {
-    const rootDir = import_path10.default.resolve(__dirname, "../../..");
-    const graph = await CodeGraphService.generateGraph(rootDir);
-    res.json(graph);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-var advanced_default = router20;
-
-// src/services/sentinel.ts
-var import_fs12 = __toESM(require("fs"));
-var import_path11 = __toESM(require("path"));
-var SentinelService = class {
-  static {
-    this.isRunning = false;
-  }
-  static {
-    this.alerts = [];
-  }
-  static start(rootPath) {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.scan(rootPath);
-    setInterval(() => this.scan(rootPath), 5 * 60 * 1e3);
-  }
-  static async scan(dir) {
-    try {
-      const files = await this.getFiles(dir);
-      const newAlerts = [];
-      await Promise.all(files.map(async (file) => {
-        try {
-          const content = await import_fs12.default.promises.readFile(file, "utf-8");
-          if (!file.includes("test") && !file.includes("script") && !file.includes("spec")) {
-            if (content.match(/['"][a-zA-Z0-9]{32,}['"]/) || content.includes("sk-") || content.includes("Bearer ") || content.includes("aws_access_key_id") || content.includes("ghp_")) {
-              if (!content.includes("import ") && !content.includes("sha256")) {
-                newAlerts.push(this.createAlert("security", "high", file, "Potential API Key or Secret detected"));
-              }
-            }
-          }
-          if (!file.includes("test") && !file.includes("script") && !file.includes("dev")) {
-            if (content.includes("console.log(")) {
-              newAlerts.push(this.createAlert("quality", "low", file, "Console.log statement found (use console.info/warn/error or logger)"));
-            }
-          }
-          if (content.includes("TODO") || content.includes("FIXME")) {
-            newAlerts.push(this.createAlert("maintenance", "medium", file, "Pending Task detected"));
-          }
-        } catch (e) {
-        }
-      }));
-      if (newAlerts.length > 0) {
-        this.alerts = [...newAlerts, ...this.alerts].slice(0, 50);
-        broadcast({ type: "sentinel:alert", data: newAlerts });
-      }
-    } catch (e) {
-      console.error("Sentinel Scan Error:", e);
-    }
-  }
-  static createAlert(type, severity, file, message) {
-    return {
-      id: Math.random().toString(36).substring(7),
-      type,
-      severity,
-      file: import_path11.default.basename(file),
-      message,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString()
-    };
-  }
-  static async getFiles(dir) {
-    let results = [];
-    try {
-      const list = await import_fs12.default.promises.readdir(dir);
-      for (const file of list) {
-        const filePath = import_path11.default.join(dir, file);
-        try {
-          const stat = await import_fs12.default.promises.stat(filePath);
-          if (stat && stat.isDirectory()) {
-            if (!file.startsWith(".") && file !== "node_modules" && file !== "dist" && file !== "build") {
-              const subResults = await this.getFiles(filePath);
-              results = results.concat(subResults);
-            }
-          } else {
-            if (/\.(ts|tsx|js|jsx)$/.test(file)) {
-              results.push(filePath);
-            }
-          }
-        } catch (e) {
-        }
-      }
-    } catch (e) {
-    }
-    return results;
-  }
-};
+var system_default = router14;
 
 // src/index.ts
 var import_http = __toESM(require("http"));
-var import_path12 = __toESM(require("path"));
-var import_fs13 = __toESM(require("fs"));
+var import_fs7 = __toESM(require("fs"));
 var logger = process.env.NODE_ENV === "production" ? (0, import_pino.default)() : (0, import_pino.default)({
   transport: {
     target: "pino-pretty",
     options: { translateTime: "SYS:standard", colorize: true }
   }
 });
-SentinelService.start(import_path12.default.resolve(__dirname, "../.."));
 async function main() {
-  const app = (0, import_express21.default)();
+  const app = (0, import_express15.default)();
   app.use((0, import_cors.default)({
     origin: true,
     // Allow all origins for now to fix connectivity issues
     credentials: true
   }));
-  app.use(import_express21.default.json({ limit: "10mb" }));
+  app.use(import_express15.default.json({ limit: "10mb" }));
   app.use((0, import_morgan.default)("dev"));
   app.get("/health", (_req, res) => res.json({ status: "OK" }));
   app.get("/", (_req, res) => res.send("Joe API is running"));
@@ -5567,27 +6056,21 @@ async function main() {
   app.use("/assets", assets_default);
   app.use("/memory", memory_default);
   app.use("/knowledge", knowledge_default);
-  app.use("/database", database_default);
   app.use("/system", system_default);
-  app.use("/healing", healing_default);
-  app.use("/advanced", advanced_default);
-  app.use("/docs", docs_default);
-  app.use("/analytics", analytics_default);
-  app.use("/tests", tests_default);
   app.get("/me", authenticate, async (req, res) => {
     const auth = req.auth;
     res.json({ userId: auth.sub, role: auth.role });
   });
   const ARTIFACT_DIR2 = process.env.ARTIFACT_DIR || "/tmp/joe-artifacts";
-  if (!import_fs13.default.existsSync(ARTIFACT_DIR2)) {
+  if (!import_fs7.default.existsSync(ARTIFACT_DIR2)) {
     try {
-      import_fs13.default.mkdirSync(ARTIFACT_DIR2, { recursive: true });
+      import_fs7.default.mkdirSync(ARTIFACT_DIR2, { recursive: true });
     } catch {
     }
   }
-  app.use("/artifacts", import_express21.default.static(ARTIFACT_DIR2));
+  app.use("/artifacts", import_express15.default.static(ARTIFACT_DIR2));
   try {
-    await import_mongoose20.default.connect(config.mongoUri, { serverSelectionTimeoutMS: 5e3 });
+    await import_mongoose19.default.connect(config.mongoUri, { serverSelectionTimeoutMS: 5e3 });
     logger.info("MongoDB connected");
   } catch (e) {
     logger.error(e, "MongoDB connection failed (continuing without DB)");
@@ -5599,11 +6082,9 @@ async function main() {
   });
   process.on("uncaughtException", (err) => {
     logger.error(err, "Uncaught Exception");
-    logError(err, "Uncaught Exception");
   });
   process.on("unhandledRejection", (reason) => {
     logger.error(reason, "Unhandled Rejection");
-    logError(reason instanceof Error ? reason : new Error(String(reason)), "Unhandled Rejection");
   });
 }
 main().catch((err) => {

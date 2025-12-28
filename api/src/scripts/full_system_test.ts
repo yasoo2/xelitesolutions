@@ -159,8 +159,60 @@ async function main() {
         }
     } catch (e) { console.error('❌ External Provider Test Error:', e); }
 
+    // 3. Tool Registry Integrity (Count + shape)
+    console.log('\n🧰 Verifying tool registry (count + schema)...');
+    try {
+        const res = await fetch(`${API_URL}/tools`, { headers });
+        const data = await expectOkJson(res);
+        const count = Number(data?.count ?? 0);
+        const realCount = Number(data?.realCount ?? 0);
+        const noopCount = Number(data?.noopCount ?? 0);
+        const toolList = Array.isArray(data?.tools) ? data.tools : [];
 
-    // 3. Tool Execution Tests (Direct)
+        if (count !== 200) throw new Error(`Expected tools.count=200, got ${count}`);
+        if (realCount !== 200) throw new Error(`Expected tools.realCount=200, got ${realCount}`);
+        if (noopCount !== 0) throw new Error(`Expected tools.noopCount=0, got ${noopCount}`);
+        if (toolList.length !== 200) throw new Error(`Expected tools.tools.length=200, got ${toolList.length}`);
+
+        const names = toolList.map((t: any) => String(t?.name || ''));
+        const unique = new Set(names);
+        if (unique.size !== names.length) throw new Error('Duplicate tool names detected');
+
+        const requiredNames = [
+            'echo',
+            'ls',
+            'file_read',
+            'file_write',
+            'grep_search',
+            'command_policy_check',
+            'secrets_store_encrypted',
+            'project_detect',
+            'quality_run',
+        ];
+        for (const n of requiredNames) {
+            if (!unique.has(n)) throw new Error(`Missing required tool: ${n}`);
+        }
+
+        for (const t of toolList) {
+            if (!t || typeof t !== 'object') throw new Error('Tool is not an object');
+            if (typeof t.name !== 'string' || !t.name.trim()) throw new Error('Tool name missing');
+            if (typeof t.version !== 'string' || !t.version.trim()) throw new Error(`Tool ${t.name}: version missing`);
+            if (!Array.isArray(t.tags)) throw new Error(`Tool ${t.name}: tags missing`);
+            if (!t.inputSchema || typeof t.inputSchema !== 'object') throw new Error(`Tool ${t.name}: inputSchema missing`);
+            if (!t.outputSchema || typeof t.outputSchema !== 'object') throw new Error(`Tool ${t.name}: outputSchema missing`);
+            if (!Array.isArray(t.permissions)) throw new Error(`Tool ${t.name}: permissions missing`);
+            if (!Array.isArray(t.sideEffects)) throw new Error(`Tool ${t.name}: sideEffects missing`);
+            if (typeof t.rateLimitPerMinute !== 'number') throw new Error(`Tool ${t.name}: rateLimitPerMinute missing`);
+            if (!Array.isArray(t.auditFields)) throw new Error(`Tool ${t.name}: auditFields missing`);
+            if (typeof t.mockSupported !== 'boolean') throw new Error(`Tool ${t.name}: mockSupported missing`);
+        }
+
+        console.log('   ✅ tool registry verified (200 tools)');
+    } catch (e) {
+        console.error('❌ tool registry verification failed:', e);
+    }
+
+    // 4. Tool Execution Tests (Direct)
     console.log('\n🛠️  Testing Individual Tools...');
     
     const toolsToTest = [
@@ -183,6 +235,31 @@ async function main() {
             name: 'file_read', 
             input: { filename: 'system_test.txt' }, 
             check: (res: any) => res.output?.content === 'test_content' 
+        },
+        {
+            name: 'command_policy_check',
+            input: { tool: 'shell_execute', input: { command: 'ls' }, userText: '' },
+            check: (res: any) => res.ok === true && res.output?.decision === 'require_approval'
+        },
+        {
+            name: 'command_policy_check',
+            input: { tool: 'shell_execute', input: { command: 'sudo ls' }, userText: '' },
+            check: (res: any) => res.ok === true && res.output?.decision === 'deny'
+        },
+        {
+            name: 'secrets_store_encrypted',
+            input: { sessionId: makeObjectIdLike(), key: 'TEST_SECRET', value: 'abc123', ttlSeconds: 60 },
+            check: (res: any) => res.ok === true && res.output?.ok === true
+        },
+        {
+            name: 'project_detect',
+            input: { path: '.' },
+            check: (res: any) => res.ok === true && typeof res.output?.root === 'string'
+        },
+        {
+            name: 'grep_search',
+            input: { query: 'executeTool(', path: 'src', include: '*.{ts,tsx}', exclude: 'node_modules' },
+            check: (res: any) => res.ok === true && Array.isArray(res.output?.matches)
         },
     ];
 
