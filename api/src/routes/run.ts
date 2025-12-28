@@ -471,6 +471,18 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     })();
   }
 
+  try {
+    const { setSessionRunConfig } = await import('../services/secrets');
+    setSessionRunConfig(String(sessionId), {
+      provider: typeof provider === 'string' ? provider : undefined,
+      apiKey: typeof apiKey === 'string' ? apiKey : undefined,
+      baseUrl: typeof baseUrl === 'string' ? baseUrl : undefined,
+      model: typeof model === 'string' ? model : undefined,
+      kind,
+      browserSessionId: typeof browserSessionId === 'string' ? browserSessionId : undefined,
+    });
+  } catch {}
+
   const systemPromptEventId = `system_prompt:${sessionId}`;
   let systemPromptCreated = false;
   let systemPromptText: string | null = null;

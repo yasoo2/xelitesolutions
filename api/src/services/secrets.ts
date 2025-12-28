@@ -16,6 +16,18 @@ type SecretEntry = {
 
 const sessionSecrets = new Map<string, Map<string, SecretEntry>>();
 const pendingToolBySession = new Map<string, PendingToolContext>();
+const runConfigBySession = new Map<
+  string,
+  {
+    provider?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+    kind?: 'chat' | 'agent';
+    browserSessionId?: string;
+    expiresAt: number;
+  }
+>();
 
 function nowMs() {
   return Date.now();
@@ -133,4 +145,45 @@ export function popPendingTool(sessionId: string): PendingToolContext | null {
   const ctx = pendingToolBySession.get(sid) || null;
   pendingToolBySession.delete(sid);
   return ctx;
+}
+
+export function setSessionRunConfig(
+  sessionId: string,
+  cfg: {
+    provider?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+    kind?: 'chat' | 'agent';
+    browserSessionId?: string;
+    ttlSeconds?: number;
+  }
+) {
+  const sid = String(sessionId || '').trim();
+  if (!sid) return;
+  const ttlSeconds =
+    typeof cfg.ttlSeconds === 'number' && Number.isFinite(cfg.ttlSeconds) && cfg.ttlSeconds > 0
+      ? cfg.ttlSeconds
+      : 15 * 60;
+  runConfigBySession.set(sid, {
+    provider: cfg.provider,
+    apiKey: cfg.apiKey,
+    baseUrl: cfg.baseUrl,
+    model: cfg.model,
+    kind: cfg.kind,
+    browserSessionId: cfg.browserSessionId,
+    expiresAt: nowMs() + ttlSeconds * 1000,
+  });
+}
+
+export function getSessionRunConfig(sessionId: string) {
+  const sid = String(sessionId || '').trim();
+  if (!sid) return null;
+  const cur = runConfigBySession.get(sid) || null;
+  if (!cur) return null;
+  if (typeof cur.expiresAt === 'number' && cur.expiresAt > 0 && cur.expiresAt <= nowMs()) {
+    runConfigBySession.delete(sid);
+    return null;
+  }
+  return cur;
 }

@@ -8,13 +8,91 @@ import { Run } from '../models/run';
 import { ToolExecution } from '../models/toolExecution';
 import { Summary } from '../models/summary';
 import { MemoryService } from '../services/memory';
-import { generateSummary, SYSTEM_PROMPT } from '../llm';
+import { generateSummary, SYSTEM_PROMPT, planNextStep } from '../llm';
 import { MemoryItem } from '../models/memoryItem';
 import { broadcast } from '../ws';
 import { executeTool } from '../tools/registry';
-import { popPendingTool, setSessionSecret } from '../services/secrets';
+import { getSessionRunConfig, popPendingTool, setPendingTool, setSessionSecret } from '../services/secrets';
 
 const router = Router();
+
+function redactSecretsFromString(input: string): string {
+  return input
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]')
+    .replace(/\bghp_[A-Za-z0-9_]{10,}\b/g, 'ghp_[REDACTED]')
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/g, 'github_pat_[REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]')
+    .replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/\bx-worker-key\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, 'x-worker-key:[REDACTED]')
+    .replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, '$1=[REDACTED]');
+}
+
+function safeErrorMessage(err: any): string {
+  const raw = typeof err?.message === 'string' ? err.message : String(err);
+  return redactSecretsFromString(raw);
+}
+
+function redactToolInputForStorage(name: string, input: any) {
+  if (!input || typeof input !== 'object') return input;
+  if (name === 'browser_run') {
+    const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
+    const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
+    const redactedActions = actions.map((a: any) => {
+      const t = String(a?.type || '').toLowerCase();
+      if (t === 'type') {
+        const text = typeof a?.text === 'string' ? a.text : '';
+        return { ...a, text: `[redacted:${text.length}]` };
+      }
+      if (t === 'fillform') {
+        const fields = Array.isArray(a?.fields) ? a.fields : [];
+        const nextFields = fields.map((f: any) => {
+          const label = String(f?.label || '').toLowerCase();
+          const selector = String(f?.selector || '').toLowerCase();
+          const combined = `${label} ${selector}`;
+          const v = f?.value == null ? '' : String(f.value);
+          const shouldRedact =
+            Boolean(a?.sensitive) ||
+            Boolean(f?.sensitive) ||
+            /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
+          if (!shouldRedact) return f;
+          return { ...f, value: `[redacted:${v.length}]` };
+        });
+        return { ...a, fields: nextFields };
+      }
+      if (t === 'evaluate' && typeof a?.script === 'string') {
+        if (a?.sensitive) return { ...a, script: '[redacted]' };
+      }
+      return a;
+    });
+    return { sessionId, actions: redactedActions };
+  }
+  return input;
+}
+
+function isGitAuthError(raw: string) {
+  const s = String(raw || '');
+  return (
+    /Authentication failed/i.test(s) ||
+    /terminal prompts disabled/i.test(s) ||
+    /could not read Username/i.test(s) ||
+    /fatal: Authentication failed/i.test(s) ||
+    /Missing GitHub token/i.test(s) ||
+    /Bad credentials/i.test(s) ||
+    /\b401\b/.test(s) ||
+    /\b403\b/.test(s)
+  );
+}
+
+function isGithubAuthError(raw: string) {
+  const s = String(raw || '');
+  return (
+    /Missing GitHub token/i.test(s) ||
+    /Bad credentials/i.test(s) ||
+    /Requires authentication/i.test(s) ||
+    /\b401\b/.test(s) ||
+    /\b403\b/.test(s)
+  );
+}
 
 // Create Session
 router.post('/', authenticate as any, async (req: Request, res: Response) => {
@@ -56,7 +134,8 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch {}
   }
 
-  broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${pending.name}`, input: pending.input } });
+  const redactedPendingInput = redactToolInputForStorage(pending.name, pending.input);
+  broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${pending.name}`, input: redactedPendingInput } });
   const result = await executeTool(pending.name, pending.input);
   broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: pending.runId, data: { name: `execute:${pending.name}`, result } });
 
@@ -100,14 +179,14 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   broadcast({ type: 'text', runId: pending.runId, data: assistantText });
 
   if (useMock) {
-    store.addExec(pending.runId, pending.name, pending.input, result.output, result.ok, result.logs);
+    store.addExec(pending.runId, pending.name, redactedPendingInput, result.output, result.ok, result.logs);
     store.addMessage(sessionId, 'assistant', assistantText, pending.runId);
   } else {
     try {
       await ToolExecution.create({
         runId: pending.runId,
         name: pending.name || 'unknown',
-        input: pending.input,
+        input: redactedPendingInput,
         output: result.output,
         ok: result.ok,
         logs: result.logs,
@@ -118,13 +197,305 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     } catch {}
   }
 
-  if (useMock) {
-    store.updateRun(pending.runId, { status: result.ok ? 'done' : 'failed' });
-  } else {
-    try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch {}
+  const runCfg = getSessionRunConfig(sessionId);
+  let kind: 'chat' | 'agent' = runCfg?.kind === 'agent' ? 'agent' : 'chat';
+  if (!useMock) {
+    try {
+      const s = await Session.findById(sessionId).select({ kind: 1 }).lean();
+      if (s?.kind === 'agent') kind = 'agent';
+    } catch {}
   }
 
-  broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: result.ok } });
+  const provider = typeof runCfg?.provider === 'string' ? runCfg.provider : undefined;
+  const apiKey = typeof runCfg?.apiKey === 'string' ? runCfg.apiKey : undefined;
+  const baseUrl = typeof runCfg?.baseUrl === 'string' ? runCfg.baseUrl : undefined;
+  const model = typeof runCfg?.model === 'string' ? runCfg.model : undefined;
+  let browserSessionId = typeof runCfg?.browserSessionId === 'string' ? runCfg.browserSessionId : undefined;
+
+  const continueAgent = async () => {
+    const MAX_STEPS = 25;
+    const providerKey = String(provider || 'llm').trim().toLowerCase();
+    const plannerMock = providerKey === 'llm' || (useMock && !apiKey);
+
+    const loadHistory = async () => {
+      if (useMock) {
+        const msgs = store
+          .listMessages(sessionId)
+          .filter((m) => m.role !== 'system')
+          .slice(-20)
+          .map((m) => ({ role: m.role as any, content: m.content }));
+        return msgs as Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>;
+      }
+      const docs = await Message.find({ sessionId, role: { $ne: 'system' } })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean();
+      return docs
+        .reverse()
+        .map((d: any) => ({ role: d.role as any, content: d.content })) as Array<{
+        role: 'user' | 'assistant' | 'system';
+        content: string | any[];
+      }>;
+    };
+
+    const history = await loadHistory();
+    history.push({
+      role: 'assistant',
+      content: `Tool Call: ${pending.name}\nInput: ${JSON.stringify(redactedPendingInput)}\nOutput: ${JSON.stringify(
+        result.output || result.error || 'Done'
+      )}`,
+    });
+
+    let steps = 0;
+    let lastResult: any = null;
+    let forcedText: string | null = null;
+    let assistantTextEmitted = false;
+    let finalOk = true;
+
+    while (steps < MAX_STEPS) {
+      broadcast({ type: 'step_started', runId: pending.runId, data: { name: `thinking_step_${steps + 1}` } });
+      let plan: { name: string; input: any } | null = null;
+      try {
+        plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: false, mock: plannerMock });
+      } catch (e: any) {
+        const msg = safeErrorMessage(e);
+        broadcast({ type: 'text', runId: pending.runId, data: `⚠️ تعذّر التخطيط للخطوة التالية: ${msg}` });
+        forcedText = `⚠️ تعذّر التخطيط للخطوة التالية: ${msg}`;
+        assistantTextEmitted = true;
+        finalOk = false;
+        break;
+      }
+
+      if (!plan) break;
+
+      const planName = String(plan?.name || '');
+      if (planName === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
+        const url = String((plan as any)?.input?.url || 'https://www.google.com').trim() || 'https://www.google.com';
+        plan = {
+          name: 'browser_run',
+          input: {
+            sessionId: browserSessionId.trim(),
+            actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
+          },
+        } as any;
+      }
+
+      if (
+        typeof browserSessionId === 'string' &&
+        browserSessionId.trim() &&
+        ['browser_run', 'browser_get_state', 'browser_extract'].includes(String(plan?.name || ''))
+      ) {
+        const input = (plan as any).input;
+        if (!input || typeof input !== 'object') (plan as any).input = {};
+        if (!(plan as any).input.sessionId) (plan as any).input.sessionId = browserSessionId.trim();
+      }
+
+      if (String(plan?.name || '') === 'git_ops') {
+        const input = (plan as any).input;
+        if (!input || typeof input !== 'object') (plan as any).input = {};
+        if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+      }
+      if (String(plan?.name || '') === 'http_fetch') {
+        const input = (plan as any).input;
+        if (!input || typeof input !== 'object') (plan as any).input = {};
+        if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+      }
+
+      broadcast({ type: 'step_done', runId: pending.runId, data: { name: `thinking_step_${steps + 1}`, plan } });
+
+      if (String(plan?.name || '') === 'browser_run') {
+        const acts = Array.isArray((plan as any).input?.actions) ? (plan as any).input.actions : [];
+        let sensitive = false;
+        for (const a of acts) {
+          const t = String(a?.type || '').toLowerCase();
+          if (t === 'uploadfile') sensitive = true;
+          if (t === 'fillform') {
+            const fields = Array.isArray(a?.fields) ? a.fields : [];
+            for (const f of fields) {
+              const s = (String(f?.label || '') + ' ' + String(f?.selector || '')).toLowerCase();
+              if (/(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(s)) {
+                sensitive = true;
+                break;
+              }
+            }
+          }
+          if (t === 'click') {
+            const s = (String(a?.roleName || '') + ' ' + String(a?.selector || '')).toLowerCase();
+            if (/(delete|pay|submit|login|حذف|دفع|ارسال|تسجيل دخول)/.test(s)) sensitive = true;
+          }
+          if (sensitive) break;
+        }
+        if (sensitive) {
+          const { planContext } = await import('../approvals/context');
+          const { Approval } = await import('../models/approval');
+          const actionText = 'browser_run';
+          const risk = 'high';
+          if (useMock) {
+            const ap = store.createApproval(
+              pending.runId,
+              actionText,
+              risk,
+              plan?.name || '',
+              redactToolInputForStorage(plan?.name || '', plan?.input)
+            );
+            broadcast({ type: 'approval_required', runId: pending.runId, data: { id: ap.id, runId: pending.runId, risk, action: actionText } });
+            store.updateRun(pending.runId, { status: 'blocked' as any });
+            planContext.set(ap.id, { runId: pending.runId, name: plan?.name || '', input: plan?.input });
+            return { blocked: true, approvalId: ap.id };
+          }
+          const ap = await Approval.create({ runId: pending.runId, action: actionText, risk, status: 'pending' });
+          broadcast({ type: 'approval_required', runId: pending.runId, data: { id: ap._id.toString(), runId: pending.runId, risk, action: actionText } });
+          try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          planContext.set(ap._id.toString(), { runId: pending.runId, name: plan?.name || '', input: plan?.input });
+          return { blocked: true, approvalId: ap._id.toString() };
+        }
+      }
+
+      const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
+      broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${plan?.name}`, input: persistedInput } });
+      const stepResult = await executeTool(plan?.name || '', plan?.input);
+
+      if (stepResult?.ok && plan?.name === 'browser_open') {
+        const sid = String(stepResult?.output?.sessionId || '').trim();
+        if (sid) browserSessionId = sid;
+      }
+
+      if (stepResult.ok && String(plan?.name || '') === 'http_fetch') {
+        const status = Number((stepResult as any)?.output?.status);
+        if (status === 401 || status === 403) {
+          const urlStr = String((plan as any)?.input?.url || '').trim();
+          const msg = [
+            `⚠️ الوصول لهذا الرابط يحتاج تسجيل دخول أو توكن.`,
+            urlStr ? `- الرابط: ${urlStr}` : ``,
+            `- اكتب Bearer Token هنا في المحادثة وأرسله كرسالة واحدة.`,
+            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+          ]
+            .filter(Boolean)
+            .join('\n');
+          broadcast({ type: 'text', runId: pending.runId, data: msg });
+          broadcast({
+            type: 'secret_required',
+            runId: pending.runId,
+            data: { sessionId, runId: pending.runId, provider: 'generic', key: 'HTTP_BEARER_TOKEN', label: 'Bearer Token', reason: `HTTP ${status}` },
+          });
+          setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
+          if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          return { blocked: true, secretRequired: true, secret: { provider: 'generic', key: 'HTTP_BEARER_TOKEN', label: 'Bearer Token' } };
+        }
+      }
+
+      broadcast({ type: stepResult.ok ? 'step_done' : 'step_failed', runId: pending.runId, data: { name: `execute:${plan?.name}`, result: stepResult } });
+
+      if (useMock) {
+        store.addExec(pending.runId, plan?.name || 'unknown', persistedInput, stepResult.output, stepResult.ok, stepResult.logs || []);
+      } else {
+        try {
+          await ToolExecution.create({
+            runId: pending.runId,
+            name: plan?.name || 'unknown',
+            input: persistedInput,
+            output: stepResult.output,
+            ok: stepResult.ok,
+            logs: stepResult.logs || [],
+          });
+        } catch {}
+      }
+
+      const toolCallSummary = `Tool Call: ${plan?.name}\nInput: ${JSON.stringify(persistedInput)}\nOutput: ${JSON.stringify(
+        stepResult.output || stepResult.error || 'Done'
+      )}`;
+      history.push({ role: 'assistant', content: toolCallSummary });
+      lastResult = stepResult;
+
+      if (!stepResult.ok) {
+        const errorMsg = safeErrorMessage(stepResult.error || (stepResult.logs ? stepResult.logs.join('\n') : 'Unknown error'));
+        if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
+          const msg = [
+            `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
+            `- اكتب توكن GitHub (Personal Access Token) هنا في المحادثة وأرسله كرسالة واحدة.`,
+            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+          ].join('\n');
+          broadcast({ type: 'text', runId: pending.runId, data: msg });
+          broadcast({
+            type: 'secret_required',
+            runId: pending.runId,
+            data: { sessionId, runId: pending.runId, provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token', reason: 'git push يحتاج مصادقة' },
+          });
+          setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
+          if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          return { blocked: true, secretRequired: true, secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' } };
+        }
+        if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
+          const msg = [
+            `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
+            `- اكتب GitHub Personal Access Token هنا في المحادثة وأرسله كرسالة واحدة.`,
+            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+          ].join('\n');
+          broadcast({ type: 'text', runId: pending.runId, data: msg });
+          broadcast({
+            type: 'secret_required',
+            runId: pending.runId,
+            data: { sessionId, runId: pending.runId, provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token', reason: 'إنشاء ريبو يحتاج مصادقة' },
+          });
+          setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
+          if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          return { blocked: true, secretRequired: true, secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' } };
+        }
+        forcedText = `فشل التنفيذ: ${errorMsg}`;
+        finalOk = false;
+        break;
+      }
+
+      steps++;
+
+      if (plan?.name === 'echo') {
+        forcedText = String((plan as any)?.input?.text || '');
+        break;
+      }
+    }
+
+    const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : 'No output');
+    if (!assistantTextEmitted) broadcast({ type: 'text', runId: pending.runId, data: finalContent });
+
+    if (useMock) {
+      store.addMessage(sessionId, 'assistant', finalContent, pending.runId);
+      store.updateRun(pending.runId, { status: finalOk ? ('done' as any) : ('failed' as any) });
+    } else {
+      try { await Message.create({ sessionId, role: 'assistant', content: finalContent, runId: pending.runId }); } catch {}
+      try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: finalOk ? 'done' : 'failed' } }); } catch {}
+    }
+    broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: finalOk } });
+    return { done: true, ok: finalOk };
+  };
+
+  if (!result.ok) {
+    if (useMock) store.updateRun(pending.runId, { status: 'failed' as any });
+    else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'failed' } }); } catch {}
+    broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: false } });
+    return res.json({ ok: true, resumed: true, result });
+  }
+
+  if (kind === 'agent') {
+    try {
+      const out = await continueAgent();
+      if (out?.blocked) return res.json({ ok: true, resumed: true, continued: true, ...out });
+      return res.json({ ok: true, resumed: true, continued: true, result });
+    } catch (e: any) {
+      const msg = safeErrorMessage(e);
+      if (useMock) store.updateRun(pending.runId, { status: 'failed' as any });
+      else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'failed' } }); } catch {}
+      broadcast({ type: 'text', runId: pending.runId, data: `❌ توقف الاستكمال بعد التوكن: ${msg}` });
+      broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: false } });
+      return res.json({ ok: true, resumed: true, continued: false, error: msg });
+    }
+  }
+
+  if (useMock) store.updateRun(pending.runId, { status: 'done' as any });
+  else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'done' } }); } catch {}
+  broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: true } });
   return res.json({ ok: true, resumed: true, result });
 });
 
