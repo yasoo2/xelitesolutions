@@ -1575,11 +1575,15 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const headers = (typeof input?.headers === 'object' && input?.headers) ? input.headers : {};
       const reqHeaders: Record<string, string> = { ...headers };
       const sessionId = typeof (input as any)?.sessionId === 'string' ? String((input as any).sessionId).trim() : '';
-      if (sessionId) {
+      const userId = typeof (input as any)?.userId === 'string' ? String((input as any).userId).trim() : '';
+      if (sessionId || userId) {
         try {
-          const { getSessionSecret } = await import('../services/secrets');
+          const { getSessionSecret, getUserSecret } = await import('../services/secrets');
           if (!reqHeaders.Authorization && !reqHeaders.authorization) {
-            const token = getSessionSecret(sessionId, 'HTTP_BEARER_TOKEN') || '';
+            const token =
+              (userId ? (await getUserSecret(userId, 'generic', 'HTTP_BEARER_TOKEN')) : null) ||
+              getSessionSecret(sessionId, 'HTTP_BEARER_TOKEN') ||
+              '';
             if (token) reqHeaders.Authorization = `Bearer ${token}`;
           }
         } catch {}
@@ -2702,12 +2706,16 @@ Instructions:
 
             const env: Record<string, string> = {};
             const sessionId = typeof (input as any)?.sessionId === 'string' ? String((input as any).sessionId).trim() : '';
+            const userId = typeof (input as any)?.userId === 'string' ? String((input as any).userId).trim() : '';
             const wantsAuth = ['push', 'fetch', 'pull', 'clone'].includes(op);
             let askpassPath = '';
-            if (wantsAuth && sessionId) {
+            if (wantsAuth && (sessionId || userId)) {
               try {
-                const { getSessionSecret } = await import('../services/secrets');
-                const token = getSessionSecret(sessionId, 'GITHUB_TOKEN') || '';
+                const { getSessionSecret, getUserSecret } = await import('../services/secrets');
+                const token =
+                  (userId ? (await getUserSecret(userId, 'github', 'GITHUB_TOKEN')) : null) ||
+                  getSessionSecret(sessionId, 'GITHUB_TOKEN') ||
+                  '';
                 if (token) {
                   const fs = await import('fs');
                   const os = await import('os');
@@ -2751,11 +2759,16 @@ Instructions:
         const isPrivate = Boolean(input?.private);
         const description = typeof input?.description === 'string' ? input.description : undefined;
         const sessionId = typeof (input as any)?.sessionId === 'string' ? String((input as any).sessionId).trim() : '';
+        const userId = typeof (input as any)?.userId === 'string' ? String((input as any).userId).trim() : '';
         if (!repoName) return { ok: false, error: 'Missing repo name', logs };
         if (!sessionId) return { ok: false, error: 'Missing sessionId', logs };
 
-        const { getSessionSecret } = await import('../services/secrets');
-        const token = (getSessionSecret(sessionId, 'GITHUB_TOKEN') || '').trim();
+        const { getSessionSecret, getUserSecret } = await import('../services/secrets');
+        const token = (
+          (userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null) ||
+          getSessionSecret(sessionId, 'GITHUB_TOKEN') ||
+          ''
+        ).trim();
         if (!token) return { ok: false, error: 'Missing GitHub token', logs };
 
         const payload: any = { name: repoName, private: isPrivate };

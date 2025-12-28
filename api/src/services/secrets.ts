@@ -67,6 +67,60 @@ function decrypt(entry: SecretEntry): string | null {
   return Buffer.concat([c1, c2]).toString('utf8');
 }
 
+export async function setUserSecretEncrypted(
+  userId: string,
+  provider: string,
+  key: string,
+  value: string
+) {
+  const uid = String(userId || '').trim();
+  const p = String(provider || '').trim();
+  const k = String(key || '').trim();
+  if (!uid || !p || !k) return;
+
+  const { UserSecret } = await import('../models/userSecret');
+  const enc = encrypt(String(value ?? ''));
+  const doc: any = {
+    userId: uid,
+    provider: p,
+    key: k,
+  };
+  if (enc) {
+    doc.value = enc.value;
+    doc.enc = { alg: 'aes-256-gcm', ivB64: enc.ivB64, tagB64: enc.tagB64 };
+  } else {
+    doc.value = String(value ?? '');
+    doc.enc = undefined;
+  }
+  await UserSecret.findOneAndUpdate({ userId: uid, provider: p, key: k }, { $set: doc }, { upsert: true, new: true });
+}
+
+export async function getUserSecret(
+  userId: string,
+  provider: string,
+  key: string
+): Promise<string | null> {
+  const uid = String(userId || '').trim();
+  const p = String(provider || '').trim();
+  const k = String(key || '').trim();
+  if (!uid || !p || !k) return null;
+  const { UserSecret } = await import('../models/userSecret');
+  const doc: any = await UserSecret.findOne({ userId: uid, provider: p, key: k })
+    .select({ value: 1, enc: 1 })
+    .lean();
+  if (!doc || typeof doc.value !== 'string') return null;
+  const entry: any = { value: doc.value };
+  if (doc.enc && typeof doc.enc === 'object') {
+    entry.enc = {
+      alg: doc.enc.alg,
+      ivB64: doc.enc.ivB64,
+      tagB64: doc.enc.tagB64,
+    };
+  }
+  const plain = decrypt(entry);
+  return plain ?? null;
+}
+
 function purgeExpired(bucket: Map<string, SecretEntry>) {
   const now = nowMs();
   for (const [k, v] of bucket.entries()) {

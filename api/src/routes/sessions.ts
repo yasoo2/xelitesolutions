@@ -12,7 +12,7 @@ import { generateSummary, SYSTEM_PROMPT, planNextStep } from '../llm';
 import { MemoryItem } from '../models/memoryItem';
 import { broadcast } from '../ws';
 import { executeTool } from '../tools/registry';
-import { getSessionRunConfig, popPendingTool, setPendingTool, setSessionSecret } from '../services/secrets';
+import { getSessionRunConfig, popPendingTool, setPendingTool, setSessionSecret, setUserSecretEncrypted } from '../services/secrets';
 
 const router = Router();
 
@@ -117,6 +117,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   const key = String(req.body?.key || '').trim();
   const value = typeof req.body?.value === 'string' ? req.body.value : String(req.body?.value ?? '');
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  const userId = (req as any).auth?.sub;
 
   if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
   if (!key) return res.status(400).json({ error: 'Missing key' });
@@ -124,6 +125,16 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   if (value.length > 8000) return res.status(400).json({ error: 'Value too large' });
 
   setSessionSecret(sessionId, key, value);
+
+  if (!useMock && userId) {
+    const providerRaw = typeof req.body?.provider === 'string' ? req.body.provider : '';
+    const provider =
+      providerRaw.trim() ||
+      (key === 'GITHUB_TOKEN' ? 'github' : key === 'HTTP_BEARER_TOKEN' ? 'generic' : 'generic');
+    try {
+      await setUserSecretEncrypted(String(userId), provider, key, value);
+    } catch {}
+  }
 
   const pending = popPendingTool(sessionId);
   if (!pending) return res.json({ ok: true });
@@ -136,7 +147,9 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
 
   const redactedPendingInput = redactToolInputForStorage(pending.name, pending.input);
   broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${pending.name}`, input: redactedPendingInput } });
-  const result = await executeTool(pending.name, pending.input);
+  const callPendingInput =
+    userId && pending.input && typeof pending.input === 'object' ? { ...(pending.input as any), userId: String(userId) } : pending.input;
+  const result = await executeTool(pending.name, callPendingInput);
   broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: pending.runId, data: { name: `execute:${pending.name}`, result } });
 
   const toText = (r: any) => {
@@ -353,7 +366,9 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
 
       const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
       broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${plan?.name}`, input: persistedInput } });
-      const stepResult = await executeTool(plan?.name || '', plan?.input);
+      const callInput =
+        userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
+      const stepResult = await executeTool(plan?.name || '', callInput);
 
       if (stepResult?.ok && plan?.name === 'browser_open') {
         const sid = String(stepResult?.output?.sessionId || '').trim();
@@ -367,8 +382,8 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           const msg = [
             `⚠️ الوصول لهذا الرابط يحتاج تسجيل دخول أو توكن.`,
             urlStr ? `- الرابط: ${urlStr}` : ``,
-            `- اكتب Bearer Token هنا في المحادثة وأرسله كرسالة واحدة.`,
-            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+            `- أدخل Bearer Token في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
           ]
             .filter(Boolean)
             .join('\n');
@@ -413,8 +428,8 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
           const msg = [
             `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
-            `- اكتب توكن GitHub (Personal Access Token) هنا في المحادثة وأرسله كرسالة واحدة.`,
-            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+            `- أدخل توكن GitHub (Personal Access Token) في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
           ].join('\n');
           broadcast({ type: 'text', runId: pending.runId, data: msg });
           broadcast({
@@ -430,8 +445,8 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
           const msg = [
             `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
-            `- اكتب GitHub Personal Access Token هنا في المحادثة وأرسله كرسالة واحدة.`,
-            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+            `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
           ].join('\n');
           broadcast({ type: 'text', runId: pending.runId, data: msg });
           broadcast({

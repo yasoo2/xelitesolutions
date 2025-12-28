@@ -853,7 +853,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
     const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
     ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
-    const result = await executeTool(plan?.name || '', plan?.input);
+    const callInput =
+      userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
+    const result = await executeTool(plan?.name || '', callInput);
     if (result?.ok && plan?.name === 'browser_open') {
       const sid = String(result?.output?.sessionId || '').trim();
       if (sid) browserSessionId = sid;
@@ -1054,8 +1056,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const msg = [
           `⚠️ الوصول لهذا الرابط يحتاج تسجيل دخول أو توكن.`,
           urlStr ? `- الرابط: ${urlStr}` : ``,
-          `- اكتب Bearer Token هنا في المحادثة وأرسله كرسالة واحدة.`,
-          `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+          `- أدخل Bearer Token في نافذة التوكن وأرسله.`,
+          `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
         ].filter(Boolean).join('\n');
 
         ev({ type: 'text', data: msg });
@@ -1097,8 +1099,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
           const msg = [
             `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
-            `- اكتب توكن GitHub (Personal Access Token) هنا في المحادثة وأرسله كرسالة واحدة.`,
-            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+            `- أدخل توكن GitHub (Personal Access Token) في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
           ].join('\n');
 
           ev({ type: 'text', data: msg });
@@ -1136,8 +1138,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
           const msg = [
             `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
-            `- اكتب GitHub Personal Access Token هنا في المحادثة وأرسله كرسالة واحدة.`,
-            `- لن يتم حفظ التوكن في المحادثة أو قاعدة البيانات.`,
+            `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
           ].join('\n');
 
           ev({ type: 'text', data: msg });
