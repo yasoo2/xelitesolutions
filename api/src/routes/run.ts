@@ -154,12 +154,13 @@ function redactToolInputForStorage(name: string, input: any) {
 router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
   const { provider, apiKey, baseUrl, model } = req.body || {};
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  const llmMock = useMock && !apiKey && !process.env.OPENAI_API_KEY;
   
   if (provider === 'llm') {
       return res.status(400).json({ error: 'Local intelligence is disabled. Please provide an API key.' });
   }
 
-  if (useMock && !apiKey && !process.env.OPENAI_API_KEY) {
+  if (llmMock) {
     return res.json({ status: 'ok', message: 'MOCK mode is enabled (no external provider call).', mock: true });
   }
 
@@ -175,7 +176,7 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
     // Try a simple planning step
     const result = await planNextStep(
         [{ role: 'user', content: 'hello' }], 
-        { provider, apiKey, baseUrl, model, throwOnError: true, mock: useMock }
+        { provider, apiKey, baseUrl, model, throwOnError: true, mock: llmMock }
     );
     
     if (result) {
@@ -238,6 +239,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
+  const llmMock = useMock && !apiKey && !process.env.OPENAI_API_KEY;
   const kind = sessionKind === 'agent' ? 'agent' : 'chat';
   const providerKey = String(provider || 'llm').trim().toLowerCase();
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
@@ -549,7 +551,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             const isSystemConfigured = !!process.env.OPENAI_API_KEY;
             const throwOnError = !!apiKey || (provider && provider !== 'llm') || isSystemConfigured;
 
-            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: useMock });
+            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: llmMock });
         } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
             console.warn('LLM planning error:', lastPlanError);
@@ -559,7 +561,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                  assistantTextEmitted = true;
                  break;
             }
-            plan = null;
+            if (!apiKey) {
+              try {
+                plan = await planNextStep(history, { provider: 'llm', throwOnError: false, mock: true });
+              } catch {}
+            }
+            if (!plan) plan = null;
         }
     }
 
@@ -586,9 +593,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           }
         }
       }
-      else break; // Stop if we can't plan anymore
       
       if (!plan) {
+          if (!apiKey) {
+            try {
+              plan = await planNextStep(history, { provider: 'llm', throwOnError: false, mock: true });
+            } catch {}
+          }
+      }
+
+      if (!plan) {
+          if (steps !== 0) break;
           // If heuristics also failed (returned null), we have no way to handle this request.
           // This ensures we rely on AI Keys or specific hardcoded tools (browser, etc) only.
           const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';

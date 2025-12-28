@@ -165,10 +165,11 @@ export async function planNextStep(
   }
 
   // 0. Mock Mode (for local testing without API Key)
+  const forceMock = options?.mock === true;
+  const envMock = process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true';
   const shouldMock =
-    !options?.apiKey &&
-    !process.env.OPENAI_API_KEY &&
-    (options?.mock === true || process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true');
+    forceMock ||
+    (!options?.apiKey && !process.env.OPENAI_API_KEY && envMock);
   if (shouldMock) {
       console.info('[LLM] Using Mock Planner');
       const lastMsg = messages[messages.length - 1];
