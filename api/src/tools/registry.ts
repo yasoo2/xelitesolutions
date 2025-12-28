@@ -2007,6 +2007,100 @@ Instructions:
 
       const q = query;
       const norm = q.toLowerCase();
+      const hasArabic = /[\u0600-\u06FF]/.test(q);
+
+      const looksLikeWeather =
+        /(?:\bweather\b|الطقس|حالة\s+الطقس|درجة\s+الحرارة)/i.test(q) &&
+        /(?:\btoday\b|اليوم|\bnow\b|الآن|\bcurrent\b|حالي(?:اً|ا)?)/i.test(q);
+
+      if (looksLikeWeather) {
+        const city =
+          /(?:istanbul|إسطنبول|اسطنبول)/i.test(q)
+            ? 'Istanbul'
+            : (() => {
+                const m =
+                  q.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
+                  q.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس)/i);
+                return String(m?.[1] || 'Istanbul').trim();
+              })();
+
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          try {
+            const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=${hasArabic ? 'ar' : 'en'}&format=json`;
+            const geoResp = await fetch(geoUrl, { signal: controller.signal });
+            if (!geoResp.ok) throw new Error(`geocode_http_${geoResp.status}`);
+            const geo: any = await geoResp.json().catch(() => null);
+            const hit = Array.isArray(geo?.results) ? geo.results[0] : null;
+            const lat = typeof hit?.latitude === 'number' ? hit.latitude : null;
+            const lon = typeof hit?.longitude === 'number' ? hit.longitude : null;
+            const placeName = String(hit?.name || city).trim() || city;
+            const country = String(hit?.country || '').trim();
+            const label = hasArabic
+              ? `${placeName}${country ? `، ${country}` : ''}`
+              : `${placeName}${country ? `, ${country}` : ''}`;
+            if (typeof lat !== 'number' || typeof lon !== 'number') throw new Error('geocode_no_results');
+
+            const fcUrl =
+              `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(String(lat))}&longitude=${encodeURIComponent(String(lon))}` +
+              `&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m` +
+              `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum` +
+              `&timezone=auto`;
+            const fcResp = await fetch(fcUrl, { signal: controller.signal });
+            if (!fcResp.ok) throw new Error(`forecast_http_${fcResp.status}`);
+            const fc: any = await fcResp.json().catch(() => null);
+
+            const current = fc?.current || {};
+            const daily = fc?.daily || {};
+            const t = current?.temperature_2m;
+            const feels = current?.apparent_temperature;
+            const wind = current?.wind_speed_10m;
+            const precip = current?.precipitation;
+            const time = String(current?.time || '');
+            const tz = String(fc?.timezone || '');
+
+            const tMax = Array.isArray(daily?.temperature_2m_max) ? daily.temperature_2m_max[0] : undefined;
+            const tMin = Array.isArray(daily?.temperature_2m_min) ? daily.temperature_2m_min[0] : undefined;
+            const pSum = Array.isArray(daily?.precipitation_sum) ? daily.precipitation_sum[0] : undefined;
+
+            const partsAr: string[] = [];
+            if (typeof t === 'number') partsAr.push(`الحرارة: ${t}°C`);
+            if (typeof feels === 'number') partsAr.push(`المحسوسة: ${feels}°C`);
+            if (typeof wind === 'number') partsAr.push(`الرياح: ${wind} كم/س`);
+            if (typeof precip === 'number') partsAr.push(`هطول الآن: ${precip} مم`);
+            if (typeof tMax === 'number' && typeof tMin === 'number') partsAr.push(`أعلى/أدنى اليوم: ${tMax}°/${tMin}°`);
+            if (typeof pSum === 'number') partsAr.push(`إجمالي هطول اليوم: ${pSum} مم`);
+            if (time) partsAr.push(`الوقت: ${time}${tz ? ` (${tz})` : ''}`);
+
+            const partsEn: string[] = [];
+            if (typeof t === 'number') partsEn.push(`Temp: ${t}°C`);
+            if (typeof feels === 'number') partsEn.push(`Feels: ${feels}°C`);
+            if (typeof wind === 'number') partsEn.push(`Wind: ${wind} km/h`);
+            if (typeof precip === 'number') partsEn.push(`Precip now: ${precip} mm`);
+            if (typeof tMax === 'number' && typeof tMin === 'number') partsEn.push(`High/Low: ${tMax}°/${tMin}°`);
+            if (typeof pSum === 'number') partsEn.push(`Daily precip: ${pSum} mm`);
+            if (time) partsEn.push(`Time: ${time}${tz ? ` (${tz})` : ''}`);
+
+            const desc = hasArabic
+              ? `**ANSWER**: طقس ${label} اليوم.\n${partsAr.join('، ')}`
+              : `**ANSWER**: Weather in ${label} today.\n${partsEn.join(', ')}`;
+
+            results.push({
+              title: hasArabic ? 'الطقس (Open-Meteo)' : 'Weather (Open-Meteo)',
+              url: `https://open-meteo.com/`,
+              description: desc,
+            });
+            logs.push(`weather.open_meteo=1 city=${city}`);
+            logs.push(`search.final_count=${results.length}`);
+            return { ok: true, output: { results }, logs };
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        } catch (e: any) {
+          logs.push(`weather.open_meteo_failed=${String(e?.message || e)}`);
+        }
+      }
       const candidates: Array<{ code: string; idx: number }> = [];
       const pushCandidate = (code: string, idx: number) => {
         if (idx < 0) return;

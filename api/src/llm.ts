@@ -253,8 +253,9 @@ export async function planNextStep(
   if (shouldMock) {
       console.info('[LLM] Using Mock Planner');
       const lastMsg = messages[messages.length - 1];
+      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user') || lastMsg;
       const rawText =
-        typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content || '');
+        typeof lastUserMsg.content === 'string' ? lastUserMsg.content : JSON.stringify(lastUserMsg.content || '');
       const content = rawText.toLowerCase();
       
       // Check history for actions
@@ -262,6 +263,68 @@ export async function planNextStep(
         .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
         .join('\n');
       const historyStr = historyTextRaw.toLowerCase();
+      const extractLatestToolOutput = (toolName: string) => {
+        const marker = `tool call: ${toolName}`.toLowerCase();
+        const idx = historyStr.lastIndexOf(marker);
+        if (idx < 0) return null;
+        const tail = historyTextRaw.slice(idx);
+        const m = tail.match(/Output:\s*(.+)/i);
+        const raw = String(m?.[1] || '').trim();
+        if (!raw) return null;
+        try { return JSON.parse(raw); } catch { return raw; }
+      };
+
+      const wantsWeather =
+        /(?:\bweather\b|الطقس|حالة\s+الطقس)/i.test(rawText) &&
+        /(?:today|اليوم)/i.test(rawText);
+      const isArabicInput = /[\u0600-\u06FF]/.test(rawText);
+      const hasWebSearch =
+        historyStr.includes('tool call: web_search') ||
+        historyStr.includes(`tool 'web_search' executed`) ||
+        historyStr.includes('"name":"web_search"');
+
+      if (wantsWeather) {
+        const city =
+          /(?:istanbul|إسطنبول|اسطنبول)/i.test(rawText)
+            ? 'Istanbul'
+            : (() => {
+                const m =
+                  rawText.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
+                  rawText.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس)/i);
+                return String(m?.[1] || 'Istanbul').trim();
+              })();
+
+        if (!hasWebSearch) {
+          const cityQuery =
+            /istanbul/i.test(city) ? (isArabicInput ? 'إسطنبول' : 'Istanbul') : city;
+          const q = isArabicInput
+            ? `حالة الطقس اليوم في ${cityQuery}`
+            : `current weather ${cityQuery} today`;
+          return { name: 'web_search', input: { query: q } };
+        }
+
+        const out: any = extractLatestToolOutput('web_search');
+        const results = Array.isArray(out?.results) ? out.results : [];
+        const top = results[0];
+        if (top?.description && top?.url) {
+          const desc = String(top.description).replace(/^\s*\*\*ANSWER\*\*:\s*/i, '').trim();
+          return {
+            name: 'echo',
+            input: {
+              text: `حالة الطقس اليوم في ${/istanbul/i.test(city) ? 'إسطنبول' : city} بحسب ${String(top.title || 'المصدر')}:\n${desc}\nالمصدر: ${String(top.url)}`
+            }
+          };
+        }
+        if (top?.url) {
+          return {
+            name: 'echo',
+            input: {
+              text: `لم أستطع استخراج تفاصيل دقيقة من النتائج، لكن هذه أفضل نتيجة متاحة الآن:\n${String(top.title || '')}\n${String(top.url)}`
+            }
+          };
+        }
+        return { name: 'echo', input: { text: 'تعذّر الحصول على نتائج طقس حالياً.' } };
+      }
       const hasOpened =
         historyStr.includes('tool call: browser_open') ||
         historyStr.includes(`tool 'browser_open' executed`) ||

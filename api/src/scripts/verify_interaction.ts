@@ -14,6 +14,21 @@ const headers = {
     'Authorization': `Bearer ${token}` 
 };
 
+async function waitForApi(timeoutMs: number) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+        try {
+            const res = await fetch(`${API_URL}/health`);
+            if (res.ok) {
+                const data: any = await res.json().catch(() => null);
+                if (data?.status === 'OK') return;
+            }
+        } catch {}
+        await new Promise(r => setTimeout(r, 250));
+    }
+    throw new Error('API health check timeout');
+}
+
 async function runInteraction(testName: string, provider: string | undefined, apiKey: string | undefined, message: string) {
     console.log(`\n\n🔹 TEST: ${testName}`);
     console.log(`   Provider: ${provider || 'DEFAULT (Joe)'}`);
@@ -72,6 +87,7 @@ async function runInteraction(testName: string, provider: string | undefined, ap
                 const event = JSON.parse(data.toString());
                 
                 if (event.type === 'text') {
+                    if (typeof event.id === 'string' && event.id.startsWith('system_prompt:')) return;
                     console.log(`   🤖 Agent says: "${event.data.replace(/\n/g, ' ')}"`);
                     // Success!
                     clearTimeout(timeout);
@@ -95,9 +111,13 @@ async function runInteraction(testName: string, provider: string | undefined, ap
 
 async function main() {
     console.log('🚀 STARTING INTERACTION TESTS');
+    await waitForApi(15000);
 
     // 1. Test Joe (Local/Heuristic)
     await runInteraction('Joe (Local) - Greeting', 'llm', undefined, 'مرحبا يا جو');
+
+    // 1b. Test Joe (Local/Heuristic) - Weather (Tool Use)
+    await runInteraction('Joe (Local) - Weather', 'llm', undefined, 'ما حالة الطقس اليوم في اسطنبول؟');
 
     // 2. Test Joe (Local/Heuristic) - Command
     await runInteraction('Joe (Local) - Command', 'llm', undefined, 'status');
