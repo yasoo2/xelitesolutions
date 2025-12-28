@@ -133,7 +133,7 @@ export default function Joe() {
   const [selected, setSelected] = useState<string | null>(null);
   const [agentSelected, setAgentSelected] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [mode, setMode] = useState<'agent' | 'chat'>('agent');
+  const [mode, setMode] = useState<'agent' | 'chat'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<any>>([]);
