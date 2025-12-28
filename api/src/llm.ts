@@ -156,10 +156,11 @@ export async function planNextStep(
 ) : Promise<{ name: string; input: any } | null> {
   // Determine client to use
   let client = openai;
-  if (options?.apiKey) {
+  if (options?.apiKey || options?.baseUrl) {
+    const keyToUse = options?.apiKey || process.env.OPENAI_API_KEY || 'dummy';
     client = new OpenAI({
-      apiKey: options.apiKey,
-      baseURL: options.baseUrl || process.env.OPENAI_BASE_URL,
+      apiKey: keyToUse,
+      baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL,
     });
   }
 

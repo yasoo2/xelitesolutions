@@ -35,6 +35,50 @@ function safeErrorMessage(err: any): string {
   return redactSecretsFromString(raw);
 }
 
+function hostFromUrlMaybe(raw: any): string | null {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return null;
+  try {
+    return new URL(s).host;
+  } catch {
+    return s;
+  }
+}
+
+function formatProviderConnectHint(errMsg: string, provider: any, model: any, baseUrl: any): string {
+  const msg = String(errMsg || '');
+  const s = msg.toLowerCase();
+  const p = typeof provider === 'string' ? provider : '';
+  const m = typeof model === 'string' ? model : '';
+  const host = hostFromUrlMaybe(baseUrl);
+
+  const parts: string[] = [];
+  if (p) parts.push(`provider=${p}`);
+  if (m) parts.push(`model=${m}`);
+  if (host) parts.push(`baseUrl=${host}`);
+
+  let hint = '';
+  if (s.includes('model') && (s.includes('not found') || s.includes('does not exist') || s.includes('model_not_found'))) {
+    hint = 'The selected model may be invalid for this provider or base URL.';
+  } else if (s.includes('invalid url') || s.includes('only absolute urls') || s.includes('failed to parse url')) {
+    hint = 'Base URL looks invalid. Try a full URL like https://api.openai.com/v1.';
+  } else if (s.includes('enotfound') || s.includes('getaddrinfo') || s.includes('dns')) {
+    hint = 'DNS/host is unreachable. Verify base URL and network access.';
+  } else if (s.includes('timeout') || s.includes('timed out')) {
+    hint = 'Provider request timed out. Verify network and try again.';
+  } else if (s.includes('certificate') || s.includes('self signed') || s.includes('ssl')) {
+    hint = 'TLS/SSL handshake failed. Check proxy/certificates or use a correct HTTPS endpoint.';
+  } else if (s.includes('rate limit') || s.includes('429')) {
+    hint = 'Rate limited by provider. Wait and retry, or use another key/model.';
+  } else if (s.includes('401') || s.includes('unauthorized')) {
+    hint = 'Authentication failed. Verify the API key and the provider endpoint.';
+  }
+
+  const context = parts.length ? `\nContext: ${parts.join(' | ')}` : '';
+  const hintLine = hint ? `\nHint: ${hint}` : '';
+  return `${context}${hintLine}`.trim();
+}
+
 function isGitAuthError(raw: string) {
   const s = String(raw || '');
   return (
@@ -109,16 +153,29 @@ function redactToolInputForStorage(name: string, input: any) {
 // Connection verification endpoint
 router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
   const { provider, apiKey, baseUrl, model } = req.body || {};
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   
   if (provider === 'llm') {
       return res.status(400).json({ error: 'Local intelligence is disabled. Please provide an API key.' });
+  }
+
+  if (useMock && !apiKey && !process.env.OPENAI_API_KEY) {
+    return res.json({ status: 'ok', message: 'MOCK mode is enabled (no external provider call).', mock: true });
+  }
+
+  const providerKey = String(provider || '').trim().toLowerCase();
+  const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
+  if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
+    return res.status(400).json({
+      error: `Provider "${providerKey}" requires an OpenAI-compatible Base URL (or select OpenAI).`,
+    });
   }
 
   try {
     // Try a simple planning step
     const result = await planNextStep(
         [{ role: 'user', content: 'hello' }], 
-        { provider, apiKey, baseUrl, model, throwOnError: true }
+        { provider, apiKey, baseUrl, model, throwOnError: true, mock: useMock }
     );
     
     if (result) {
@@ -182,6 +239,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
   const kind = sessionKind === 'agent' ? 'agent' : 'chat';
+  const providerKey = String(provider || 'llm').trim().toLowerCase();
+  const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
 
   // 1. Process Attachments
   let attachedText = '';
@@ -460,6 +519,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   let assistantTextEmitted = false;
   let plan: { name: string, input: any } | null = null;
   let pendingPlan: { name: string, input: any } | null = null;
+  let lastPlanError: string | null = null;
 
   while (steps < MAX_STEPS) {
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
@@ -474,6 +534,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     } else {
         // Plan next step with history
         try {
+            if (!useMock && providerKey && providerKey !== 'llm' && providerKey !== 'openai' && !hasBaseUrl) {
+              const msg = `⚠️ **Provider Not Configured**\nProvider "${providerKey}" requires an OpenAI-compatible Base URL (or select OpenAI).`;
+              ev({ type: 'text', data: msg });
+              forcedText = msg;
+              assistantTextEmitted = true;
+              break;
+            }
+
             // If default provider and no API key, do not throw (allow heuristic fallback)
             // If custom provider or API key provided, throw on error to notify user
             const shouldThrow = Boolean(apiKey || (provider !== 'llm' && provider));
@@ -483,7 +551,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
             plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: useMock });
         } catch (err: any) {
-            console.warn('LLM planning error:', safeErrorMessage(err));
+            lastPlanError = safeErrorMessage(err);
+            console.warn('LLM planning error:', lastPlanError);
             if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
                  ev({ type: 'text', data: '⚠️ **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu.' });
                  forcedText = 'Authentication Failed';
@@ -522,9 +591,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (!plan) {
           // If heuristics also failed (returned null), we have no way to handle this request.
           // This ensures we rely on AI Keys or specific hardcoded tools (browser, etc) only.
+          const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+          const extra = lastPlanError ? `\n\nDetails: ${lastPlanError}${hint ? `\n${hint}` : ''}` : '';
           const msg = !process.env.OPENAI_API_KEY && !apiKey 
               ? "⚠️ **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI."
-              : "⚠️ **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.";
+              : `⚠️ **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.${extra}`;
           
           ev({ type: 'text', data: msg });
           forcedText = msg;
