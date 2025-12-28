@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { tools } from './tools/registry';
+import path from 'path';
 
 // Initialize OpenAI client
 const apiKey = process.env.OPENAI_API_KEY;
@@ -175,12 +176,27 @@ export async function planNextStep(
       const content = rawText.toLowerCase();
       
       // Check history for actions
-      const historyStr = JSON.stringify(messages).toLowerCase();
+      const historyTextRaw = messages
+        .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
+        .join('\n');
+      const historyStr = historyTextRaw.toLowerCase();
       const hasOpened =
-        historyStr.includes('tool call: browser_open') || historyStr.includes('tool call: browser_run');
-      const hasClicked = historyStr.includes('tool call: browser_run') && historyStr.includes('click');
-      const hasAnalyzed = historyStr.includes('tool call: browser_get_state');
-      const sessionIdMatch = JSON.stringify(messages).match(/"sessionId"\s*:\s*"([^"]+)"/);
+        historyStr.includes('tool call: browser_open') ||
+        historyStr.includes(`tool 'browser_open' executed`) ||
+        historyStr.includes('tool call: browser_run') ||
+        historyStr.includes(`tool 'browser_run' executed`) ||
+        historyStr.includes('"name":"browser_open"') ||
+        historyStr.includes('"name":"browser_run"');
+      const hasClicked =
+        (historyStr.includes('tool call: browser_run') || historyStr.includes(`tool 'browser_run' executed`) || historyStr.includes('"name":"browser_run"')) &&
+        historyStr.includes('click');
+      const hasAnalyzed =
+        historyStr.includes('tool call: browser_get_state') ||
+        historyStr.includes(`tool 'browser_get_state' executed`) ||
+        historyStr.includes('"name":"browser_get_state"');
+      const sessionIdMatch =
+        historyTextRaw.match(/"sessionId"\s*:\s*"([^"]+)"/) ||
+        historyTextRaw.match(/\bsessionId\b\s*[:=]\s*["']([^"']+)["']/i);
       const sessionId = sessionIdMatch?.[1];
 
       const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
@@ -211,6 +227,122 @@ export async function planNextStep(
       if (read) {
         const filename = String(read[1] || '').trim();
         if (filename) return { name: 'file_read', input: { filename } };
+      }
+
+      const saveAs =
+        rawText.match(/save\s+(?:it\s+)?as\s+["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i) ||
+        rawText.match(/(?:احفظ|حفظ|قم\s+بحفظ)(?:ه|ها|هذا)?\s*(?:باسم|اسم)\s*["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i);
+      if (saveAs) {
+        const filename = String(saveAs[1] || '').trim();
+        if (filename) {
+          const wantsHtml =
+            /\.html?$/i.test(filename) ||
+            /single-file\s+html|landing\s+page|<html/i.test(rawText);
+          const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+          const full = path.isAbsolute(filename) ? filename : path.join(artifactDir, filename);
+          if (wantsHtml) {
+            const html = [
+              '<!doctype html>',
+              '<html lang="en">',
+              '<head>',
+              '  <meta charset="utf-8" />',
+              '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+              '  <title>Xelite Coffee</title>',
+              '  <style>',
+              '    :root {',
+              '      --bg: #0b0e14;',
+              '      --panel: #121827;',
+              '      --text: #e6e9ef;',
+              '      --muted: #aab3c5;',
+              '      --accent: #7c5cff;',
+              '      --accent2: #20c997;',
+              '      --border: rgba(255,255,255,0.10);',
+              '      --shadow: 0 20px 60px rgba(0,0,0,0.45);',
+              '    }',
+              '    * { box-sizing: border-box; }',
+              '    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, Noto Sans, sans-serif; background: radial-gradient(1000px 600px at 20% -10%, rgba(124,92,255,0.35), transparent 60%), radial-gradient(900px 600px at 100% 0%, rgba(32,201,151,0.18), transparent 55%), var(--bg); color: var(--text); }',
+              '    a { color: inherit; }',
+              '    .container { max-width: 1100px; margin: 0 auto; padding: 28px 18px 56px; }',
+              '    .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border: 1px solid var(--border); background: rgba(18,24,39,0.6); backdrop-filter: blur(10px); border-radius: 16px; }',
+              '    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; }',
+              '    .dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 0 6px rgba(124,92,255,0.12); }',
+              '    .nav a { text-decoration: none; padding: 10px 12px; border-radius: 12px; color: var(--muted); }',
+              '    .nav a:hover { background: rgba(255,255,255,0.06); color: var(--text); }',
+              '    .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; margin-top: 18px; }',
+              '    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }',
+              '    .card { border: 1px solid var(--border); background: rgba(18,24,39,0.62); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); }',
+              '    .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 13px; }',
+              '    h1 { margin: 14px 0 8px; font-size: clamp(34px, 4.3vw, 54px); line-height: 1.06; letter-spacing: -0.6px; }',
+              '    .subtitle { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 62ch; }',
+              '    .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }',
+              '    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); text-decoration: none; font-weight: 600; }',
+              '    .btn.primary { background: linear-gradient(135deg, rgba(124,92,255,0.95), rgba(32,201,151,0.75)); border-color: rgba(255,255,255,0.14); }',
+              '    .btn:hover { filter: brightness(1.05); }',
+              '    .panel { display: grid; gap: 12px; }',
+              '    .stat { border: 1px solid var(--border); background: rgba(11,14,20,0.35); border-radius: 18px; padding: 14px; }',
+              '    .stat b { display: block; font-size: 14px; }',
+              '    .stat span { color: var(--muted); font-size: 13px; }',
+              '    .features { margin-top: 18px; }',
+              '    .features h2 { margin: 0 0 10px; font-size: 20px; }',
+              '    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }',
+              '    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }',
+              '    .feature { border: 1px solid var(--border); background: rgba(11,14,20,0.32); border-radius: 18px; padding: 16px; }',
+              '    .feature h3 { margin: 0 0 6px; font-size: 15px; }',
+              '    .feature p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }',
+              '    footer { margin-top: 18px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }',
+              '    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace; }',
+              '  </style>',
+              '</head>',
+              '<body>',
+              '  <div class="container">',
+              '    <div class="nav">',
+              '      <div class="brand"><span class="dot"></span><span>Xelite Coffee</span></div>',
+              '      <div style="display:flex; gap:6px; flex-wrap:wrap;">',
+              '        <a href="#features">Features</a>',
+              '        <a href="#menu">Menu</a>',
+              '        <a href="#visit">Visit</a>',
+              '      </div>',
+              '    </div>',
+              '',
+              '    <section class="hero">',
+              '      <div class="card">',
+              '        <div class="kicker"><span class="mono">☕</span><span>Dark roast. Bright ideas.</span></div>',
+              '        <h1>Code &amp; Caffeine</h1>',
+              '        <p class="subtitle">A modern coffee experience designed for builders. Rich espresso, calm ambience, fast Wi‑Fi, and a space that respects focus.</p>',
+              '        <div class="cta">',
+              '          <a class="btn primary" href="#visit">Get your first cup</a>',
+              '          <a class="btn" href="#features">Explore features</a>',
+              '        </div>',
+              '      </div>',
+              '      <div class="card panel">',
+              '        <div class="stat"><b>Signature</b><span>Espresso + oat + cocoa, perfectly balanced.</span></div>',
+              '        <div class="stat"><b>Speed</b><span>Order ahead and pick up in under 2 minutes.</span></div>',
+              '        <div class="stat"><b>Vibe</b><span>Low-noise seating, warm lighting, and power at every table.</span></div>',
+              '      </div>',
+              '    </section>',
+              '',
+              '    <section id="features" class="features card">',
+              '      <h2>Features</h2>',
+              '      <div class="grid">',
+              '        <div class="feature"><h3>Developer-Friendly</h3><p>Comfortable seating, outlets everywhere, and a layout built for deep work.</p></div>',
+              '        <div class="feature"><h3>Quality Beans</h3><p>Small-batch roasts with consistent flavor—every cup is crafted, not rushed.</p></div>',
+              '        <div class="feature"><h3>Fast Service</h3><p>Clean, efficient workflows so you get coffee quickly and keep momentum.</p></div>',
+              '      </div>',
+              '    </section>',
+              '',
+              '    <footer class="card" id="visit">',
+              '      <div>© <span id="y"></span> Xelite Coffee. All rights reserved.</div>',
+              '      <div class="mono">Open daily • 7:00–22:00 • Downtown</div>',
+              '    </footer>',
+              '  </div>',
+              '  <script>document.getElementById(\"y\").textContent=String(new Date().getFullYear());</script>',
+              '</body>',
+              '</html>',
+              '',
+            ].join('\\n');
+            return { name: 'file_write', input: { filename: full, content: html } };
+          }
+        }
       }
 
       const wantsLs =
@@ -363,8 +495,12 @@ export async function planNextStep(
       
       // Yahoo flow (Mock)
       if (content.includes('yahoo') || historyStr.includes('yahoo')) {
-          const hasYahooOpen = historyStr.includes('tool call: browser_open') && historyStr.includes('yahoo.com');
-          const hasYahooExtract = historyStr.includes('tool call: html_extract') && historyStr.includes('yahoo.com');
+          const hasYahooOpen =
+            (historyStr.includes('tool call: browser_open') || historyStr.includes(`tool 'browser_open' executed`) || historyStr.includes('"name":"browser_open"')) &&
+            historyStr.includes('yahoo.com');
+          const hasYahooExtract =
+            (historyStr.includes('tool call: html_extract') || historyStr.includes(`tool 'html_extract' executed`) || historyStr.includes('"name":"html_extract"')) &&
+            historyStr.includes('yahoo.com');
           if (!hasYahooOpen) {
               return {
                   name: 'browser_open',

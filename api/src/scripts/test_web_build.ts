@@ -3,10 +3,11 @@ import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 import puppeteer from 'puppeteer';
+import { config } from '../config';
 
 const API_URL = 'http://localhost:8080';
 const WS_URL = 'ws://localhost:8080/ws';
-const JWT_SECRET = 'change-me'; 
+const JWT_SECRET = process.env.JWT_SECRET || config.jwtSecret;
 const WEB_URL = process.env.WEB_URL || 'http://127.0.0.1:5173';
 
 const token = jwt.sign({ sub: 'test-user', role: 'OWNER' }, JWT_SECRET);
@@ -34,7 +35,7 @@ async function runUiE2e() {
   await page.goto(`${WEB_URL}/joe`, { waitUntil: 'networkidle2' });
   await page.waitForSelector('textarea', { visible: true });
 
-  const prompt = 'Read file web/package.json and list scripts only.';
+  const prompt = 'Write a 600-word overview of what npm scripts are and how they are used in modern web projects.';
   await page.focus('textarea');
   await page.keyboard.type(prompt, { delay: 5 });
   await page.keyboard.press('Enter');
@@ -87,6 +88,28 @@ async function runUiE2e() {
     {},
     aiCountBefore
   );
+
+  const draftSelector = '[data-joe-draft="1"] .chat-bubble-content';
+  const hasDraft = await page.waitForSelector(draftSelector, { timeout: 15000 }).then(() => true).catch(() => false);
+  if (hasDraft) {
+    const initialLen = await page.$eval(draftSelector, (el) => (el.textContent || '').trim().length).catch(() => 0);
+    const grew = await page.waitForFunction(
+      (sel, minLen) => {
+        const el = document.querySelector(sel);
+        if (!el) return false;
+        const len = (el.textContent || '').trim().length;
+        return len > minLen + 10;
+      },
+      { timeout: 15000 },
+      draftSelector,
+      initialLen
+    ).then(() => true).catch(() => false);
+
+    if (!grew) {
+      const sample = await page.$eval(draftSelector, (el) => (el.textContent || '').trim().slice(0, 160)).catch(() => '');
+      throw new Error(`Draft did not stream (initialLen=${initialLen}, sample="${sample}")`);
+    }
+  }
 
   const secretGateNow = await page.evaluate(() => {
     const txt = document.body ? document.body.innerText : '';

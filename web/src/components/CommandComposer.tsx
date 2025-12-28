@@ -341,6 +341,8 @@ export default function CommandComposer({
   const [toolVisible, setToolVisible] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [thinkingGlimpse, setThinkingGlimpse] = useState('');
+  const [draftText, setDraftText] = useState('');
+  const [draftActive, setDraftActive] = useState(false);
   
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -365,6 +367,7 @@ export default function CommandComposer({
   const statusRef = useRef<typeof status>(status);
   const thinkingGlimpseTimerRef = useRef<number | null>(null);
   const thinkingGlimpseIndexRef = useRef<number>(0);
+  const draftTimerRef = useRef<number | null>(null);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
 
   // AI Provider State
@@ -736,6 +739,19 @@ export default function CommandComposer({
     }
   };
 
+  const clearDraftTimer = () => {
+    if (draftTimerRef.current != null) {
+      window.clearInterval(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
+  };
+
+  const stopDraft = () => {
+    clearDraftTimer();
+    setDraftActive(false);
+    setDraftText('');
+  };
+
   useEffect(() => {
     isThinkingRef.current = isThinking;
   }, [isThinking]);
@@ -834,6 +850,7 @@ export default function CommandComposer({
       if (wsRef.current) wsRef.current.close();
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
       clearToolTimers();
+      clearDraftTimer();
     };
   }, []);
 
@@ -996,6 +1013,7 @@ export default function CommandComposer({
 
             const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
             clearToolTimers();
+            clearDraftTimer();
             if (hadTool) {
               setToolVisible(false);
               setActiveToolName(null);
@@ -1005,26 +1023,72 @@ export default function CommandComposer({
             setIsThinking(true);
 
             const delay = hadTool ? 220 : 0;
-            const draftDelay = 600;
             window.setTimeout(() => {
-              setEvents((prev) => {
-                if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                return [...prev, msg];
-              });
+              let content: any = msg.data;
               try {
-                let content = msg.data;
                 if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
                   const p = JSON.parse(content);
                   content = p.text || p.output || content;
                 }
-                speak(String(content));
               } catch {}
-              window.setTimeout(() => {
+
+              const cleaned = cleanAssistantText(content);
+              const finalText = String(cleaned || content || '').trimEnd();
+
+              if (!finalText) {
+                setEvents((prev) => {
+                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                  return [...prev, msg];
+                });
                 setIsThinking(false);
                 setStatus('idle');
                 setThinkingGlimpse('');
-              }, 120);
-            }, delay + draftDelay);
+                stopDraft();
+                return;
+              }
+
+              setDraftActive(true);
+              setDraftText('');
+
+              const parts =
+                finalText.length <= 220
+                  ? finalText.split('')
+                  : finalText.split(/(\s+)/).filter((p) => p.length > 0);
+
+              const minDurationMs = 1200;
+              const maxDurationMs = 6500;
+              let intervalMs = 18;
+              if (parts.length * intervalMs < minDurationMs) {
+                intervalMs = Math.min(60, Math.max(12, Math.ceil(minDurationMs / Math.max(1, parts.length))));
+              }
+              const maxTicks = Math.max(1, Math.floor(maxDurationMs / intervalMs));
+              const desiredTicks = Math.min(parts.length, maxTicks);
+              const perTick = Math.max(1, Math.ceil(parts.length / Math.max(1, desiredTicks)));
+              let idx = 0;
+
+              draftTimerRef.current = window.setInterval(() => {
+                idx = Math.min(parts.length, idx + perTick);
+                const next = parts.slice(0, idx).join('');
+                setDraftText(next);
+                if (idx >= parts.length) {
+                  clearDraftTimer();
+                  setDraftActive(false);
+                  setDraftText('');
+                  setEvents((prev) => {
+                    if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                    return [...prev, msg];
+                  });
+                  try {
+                    speak(finalText);
+                  } catch {}
+                  window.setTimeout(() => {
+                    setIsThinking(false);
+                    setStatus('idle');
+                    setThinkingGlimpse('');
+                  }, 120);
+                }
+              }, intervalMs);
+            }, delay);
             return;
           }
 
@@ -1272,7 +1336,9 @@ export default function CommandComposer({
 
     clearToolTimers();
     setStatus('thinking');
+    setIsThinking(true);
     setActiveToolName(null);
+    setToolVisible(false);
     setThinkingSteps([]);
 
     const needsBrowserForText = (raw: string) => {
@@ -1436,8 +1502,15 @@ export default function CommandComposer({
       setEvents(prev => [...prev, { type: 'error', data: finalMsg }]);
       if (!overrideText) setText(inputText);
       clearToolTimers();
+      clearDraftTimer();
+      setDraftActive(false);
+      setDraftText('');
       setStatus('idle');
+      setIsThinking(false);
       setActiveToolName(null);
+      setToolVisible(false);
+      setThinkingSteps([]);
+      setThinkingGlimpse('');
     }
   }
 
@@ -2102,6 +2175,11 @@ export default function CommandComposer({
 
           return null;
         })}
+        {status === 'answering' && draftActive && draftText ? (
+          <div data-joe-draft="1">
+            <ChatBubble key="draft:typing" event={{ data: { text: draftText } }} isUser={false} />
+          </div>
+        ) : null}
         </AnimatePresence>
 
         {isThinking && (
