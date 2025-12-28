@@ -143,6 +143,34 @@ function isGithubAuthError(raw: string) {
   );
 }
 
+function isArabicText(raw: string): boolean {
+  return /[\u0600-\u06FF]/.test(String(raw || ''));
+}
+
+function normalizeToWords(raw: string): string {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  return s
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isGreetingOnly(raw: string): boolean {
+  const s = normalizeToWords(raw);
+  if (!s) return false;
+  if (s.length > 80) return false;
+  const lower = s.toLowerCase();
+  const re =
+    /^(?:(?:hi|hello|hey|yo|sup)(?:\s+(?:joe|jo|ai))?|good\s+(?:morning|evening)|how\s+are\s+you|مرحبا|اهلا|أهلا|هلا|السلام\s+عليكم|صباح\s+الخير|مساء\s+الخير|كيف\s+حال(?:ك|كم)|شلون(?:ك|كم))(?:\s+(?:joe|jo|ai|جو|جوي))?$/i;
+  return re.test(lower);
+}
+
+function greetingReply(raw: string): string {
+  if (isArabicText(raw)) return 'أهلًا! كيف أقدر أساعدك اليوم؟';
+  return 'Hi! How can I help you today?';
+}
+
 function extractRequestedRepoName(raw: string): string | null {
   const s = String(raw || '');
   const m1 = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه)\s+([A-Za-z0-9._-]{1,100})/i);
@@ -502,11 +530,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
   let initialPlan = null;
   try {
-      // Use full history for planning to ensure context awareness
-      initialPlan = await planNextStep(
-        history,
-        { provider, apiKey, baseUrl, model, mock: plannerMock }
-      );
+      const rawUserText = String(text || '');
+      const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
+      if (isGreetingOnly(rawUserText) && !hasAttachments) {
+        initialPlan = { name: 'echo', input: { text: greetingReply(rawUserText) } };
+      } else {
+        // Use full history for planning to ensure context awareness
+        initialPlan = await planNextStep(
+          history,
+          { provider, apiKey, baseUrl, model, mock: plannerMock }
+        );
+      }
   } catch (err) {
       console.warn('LLM planning error:', safeErrorMessage(err));
   }
@@ -676,21 +710,28 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     const planName = String(plan?.name || '');
     const isBrowserTool = /^browser_/.test(planName);
     const userTextForOverrides = String(text || '');
+    const requestedRepoName = extractRequestedRepoName(userTextForOverrides);
     const wantsGithubRepo =
       /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
       /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
       /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
     if (wantsGithubRepo) {
-      const requested = extractRequestedRepoName(userTextForOverrides);
-      if (requested) {
+      if (requestedRepoName) {
         plan = {
           name: 'github_create_repo',
           input: {
-            name: requested,
+            name: requestedRepoName,
             private: /(private|خاص)/i.test(userTextForOverrides),
             sessionId: String(sessionId),
           },
         } as any;
+      }
+    }
+    if (String(plan?.name || '') === 'github_create_repo') {
+      if (!wantsGithubRepo) {
+        plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
+      } else if (!requestedRepoName) {
+        plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
       }
     }
     if (isBrowserTool) {
