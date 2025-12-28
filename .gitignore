@@ -4,6 +4,9 @@ node_modules/
 # build output
 build/
 dashboard-x/dist/
+api/dist/
+web/dist/
+services/**/dist/
 
 # env files
 .env

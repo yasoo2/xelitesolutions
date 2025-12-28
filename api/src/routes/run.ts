@@ -79,6 +79,47 @@ function formatProviderConnectHint(errMsg: string, provider: any, model: any, ba
   return `${context}${hintLine}`.trim();
 }
 
+function errorStatusCode(err: any): number | null {
+  const candidates = [
+    err?.status,
+    err?.statusCode,
+    err?.response?.status,
+    err?.response?.statusCode,
+  ];
+  for (const v of candidates) {
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+    if (Number.isFinite(n) && n >= 100 && n <= 599) return n;
+  }
+  return null;
+}
+
+function isProviderAuthError(err: any, errMsg?: string): boolean {
+  const status = errorStatusCode(err);
+  if (status === 401 || status === 403) return true;
+  const s = String(errMsg ?? safeErrorMessage(err) ?? '').toLowerCase();
+  return (
+    s.includes('invalid_api_key') ||
+    s.includes('invalid api key') ||
+    s.includes('incorrect api key') ||
+    (s.includes('api key') && (s.includes('unauthorized') || s.includes('forbidden') || s.includes('401') || s.includes('403'))) ||
+    (s.includes('authentication') && s.includes('fail')) ||
+    s.includes('unauthorized')
+  );
+}
+
+function isProviderRateLimitError(err: any, errMsg?: string): boolean {
+  const status = errorStatusCode(err);
+  if (status === 429) return true;
+  const s = String(errMsg ?? safeErrorMessage(err) ?? '').toLowerCase();
+  return s.includes('rate limit') || s.includes('too many requests') || s.includes('429');
+}
+
+function isProviderTimeoutError(err: any, errMsg?: string): boolean {
+  const s = String(errMsg ?? safeErrorMessage(err) ?? '').toLowerCase();
+  const status = errorStatusCode(err);
+  return status === 408 || s.includes('timeout') || s.includes('timed out') || s.includes('etimedout');
+}
+
 function isGitAuthError(raw: string) {
   const s = String(raw || '');
   return (
@@ -179,8 +220,15 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
         return res.status(500).json({ error: 'No response from provider' });
     }
   } catch (err: any) {
-    console.error('Verify error:', safeErrorMessage(err));
-    return res.status(401).json({ error: safeErrorMessage(err) || 'Connection failed' });
+    const msg = safeErrorMessage(err);
+    const hint = msg ? formatProviderConnectHint(msg, provider, model, baseUrl) : '';
+    const out = msg && hint ? `${msg}\n${hint}` : (msg || hint || 'Connection failed');
+    console.error('Verify error:', msg);
+
+    if (isProviderAuthError(err, msg)) return res.status(401).json({ error: out });
+    if (isProviderRateLimitError(err, msg)) return res.status(429).json({ error: out });
+    if (isProviderTimeoutError(err, msg)) return res.status(408).json({ error: out });
+    return res.status(502).json({ error: out });
   }
 });
 
@@ -234,6 +282,15 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
   const kind = sessionKind === 'agent' ? 'agent' : 'chat';
+
+  if (typeof provider === 'string') provider = provider.trim();
+  if (typeof apiKey === 'string') apiKey = apiKey.trim();
+  if (typeof baseUrl === 'string') baseUrl = baseUrl.trim();
+  if (typeof model === 'string') model = model.trim();
+  if (apiKey === '') apiKey = undefined;
+  if (baseUrl === '') baseUrl = undefined;
+  if (model === '') model = undefined;
+
   const providerKey = String(provider || 'llm').trim().toLowerCase();
   const plannerMock = providerKey === 'llm' || (useMock && !apiKey);
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
@@ -448,7 +505,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       // Use full history for planning to ensure context awareness
       initialPlan = await planNextStep(
         history,
-        { provider, apiKey, baseUrl, model, mock: useMock }
+        { provider, apiKey, baseUrl, model, mock: plannerMock }
       );
   } catch (err) {
       console.warn('LLM planning error:', safeErrorMessage(err));
@@ -549,11 +606,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
             console.warn('LLM planning error:', lastPlanError);
-            if (err?.status === 401 || err?.code === 'invalid_api_key' || (err?.error?.code === 'invalid_api_key')) {
-                 ev({ type: 'text', data: '⚠️ **Authentication Failed**: The AI provider rejected the API Key. Please check your settings in the provider menu.' });
-                 forcedText = 'Authentication Failed';
-                 assistantTextEmitted = true;
-                 break;
+            if (isProviderAuthError(err, lastPlanError)) {
+              const msg = '⚠️ **Authentication Failed**\nThe AI provider rejected the API key. Please verify the key and provider endpoint in the settings.';
+              ev({ type: 'text', data: msg });
+              forcedText = msg;
+              assistantTextEmitted = true;
+              break;
             }
             if (plannerMock || !apiKey) {
               try {
@@ -602,9 +660,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           // This ensures we rely on AI Keys or specific hardcoded tools (browser, etc) only.
           const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
           const extra = lastPlanError ? `\n\nDetails: ${lastPlanError}${hint ? `\n${hint}` : ''}` : '';
-          const msg = !process.env.OPENAI_API_KEY && !apiKey 
-              ? "⚠️ **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI."
-              : `⚠️ **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.${extra}`;
+          const msg = lastPlanError && isProviderAuthError(null, lastPlanError)
+              ? `⚠️ **Authentication Failed**\nThe AI provider rejected the API key. Please verify the key and provider endpoint in the settings.${extra}`
+              : (!process.env.OPENAI_API_KEY && !apiKey 
+                  ? "⚠️ **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI."
+                  : `⚠️ **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.${extra}`);
           
           ev({ type: 'text', data: msg });
           forcedText = msg;

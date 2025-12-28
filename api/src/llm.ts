@@ -232,6 +232,8 @@ export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
 ) : Promise<{ name: string; input: any } | null> {
+  const providerKey = String(options?.provider || '').trim().toLowerCase();
+
   // Determine client to use
   let client = openai;
   if (options?.apiKey || options?.baseUrl) {
@@ -243,7 +245,7 @@ export async function planNextStep(
   }
 
   // 0. Mock Mode (for local testing without API Key)
-  const forceMock = options?.mock === true;
+  const forceMock = options?.mock === true || providerKey === 'llm';
   const envMock = process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true';
   const shouldMock =
     forceMock ||
