@@ -18,6 +18,84 @@ const openai = new OpenAI({
 // Filter out noop tools to save tokens and confusion
 const activeTools = tools.filter(t => !t.name.startsWith('noop_'));
 
+const MAX_PROVIDER_TOOLS = 128;
+const PRIORITY_TOOL_NAMES: string[] = [
+  'echo',
+  'file_read',
+  'file_write',
+  'file_edit',
+  'read_file_tree',
+  'ls',
+  'grep_search',
+  'fs_glob',
+  'shell_execute',
+  'web_search',
+  'knowledge_search',
+  'html_extract',
+  'browser_open',
+  'browser_run',
+  'browser_extract',
+  'github_create_repo',
+  'image_generate',
+  'deep_research',
+];
+
+function selectToolDefsForProvider(all: typeof activeTools, limit: number) {
+  const byName = new Map(all.map(t => [t.name, t] as const));
+  const selected: (typeof activeTools)[number][] = [];
+  const seen = new Set<string>();
+
+  for (const name of PRIORITY_TOOL_NAMES) {
+    const t = byName.get(name);
+    if (!t) continue;
+    selected.push(t);
+    seen.add(t.name);
+    if (selected.length >= limit) return selected;
+  }
+
+  const isGeneratedName = (name: string) =>
+    name.startsWith('code_find_') ||
+    name.startsWith('code_search_') ||
+    name.startsWith('noop_');
+
+  const scoreTool = (t: any) => {
+    const tags = Array.isArray(t?.tags) ? t.tags : [];
+    let score = 0;
+    if (tags.includes('agent')) score += 50;
+    if (tags.includes('browser')) score += 45;
+    if (tags.includes('fs')) score += 35;
+    if (tags.includes('shell')) score += 35;
+    if (tags.includes('search')) score += 25;
+    if (tags.includes('knowledge')) score += 20;
+    if (tags.includes('code')) score += 10;
+    return score;
+  };
+
+  const preferred = all
+    .filter(t => !seen.has(t.name) && !isGeneratedName(t.name))
+    .slice()
+    .sort((a: any, b: any) => {
+      const ds = scoreTool(b) - scoreTool(a);
+      if (ds) return ds;
+      return String(a.name).localeCompare(String(b.name));
+    });
+
+  for (const t of preferred) {
+    if (selected.length >= limit) return selected;
+    selected.push(t);
+    seen.add(t.name);
+  }
+
+  for (const t of all) {
+    if (selected.length >= limit) return selected;
+    if (seen.has(t.name)) continue;
+    selected.push(t);
+    seen.add(t.name);
+  }
+
+  return selected.slice(0, limit);
+}
+
 export interface PlanOptions {
   provider?: string;
   apiKey?: string;
@@ -529,7 +607,8 @@ export async function planNextStep(
   }
 
   // 1. Prepare tools for OpenAI
-  const aiTools: OpenAI.Chat.Completions.ChatCompletionTool[] = activeTools.map(t => ({
+  const selectedToolDefs = selectToolDefsForProvider(activeTools, MAX_PROVIDER_TOOLS);
+  const aiTools: OpenAI.Chat.Completions.ChatCompletionTool[] = selectedToolDefs.map(t => ({
     type: 'function',
     function: {
       name: t.name,
