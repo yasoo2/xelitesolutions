@@ -61,6 +61,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: pending.runId, data: { name: `execute:${pending.name}`, result } });
 
   const toText = (r: any) => {
+    const toolName = String(pending?.name || '');
     const outStr =
       typeof r?.output?.output === 'string'
         ? r.output.output
@@ -69,8 +70,29 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           : r?.output != null
             ? JSON.stringify(r.output)
             : '';
-    if (r?.ok) return outStr || 'تم التنفيذ بنجاح.';
+    if (r?.ok) {
+      if (toolName === 'github_create_repo') {
+        const fullName = typeof r?.output?.fullName === 'string' ? r.output.fullName : '';
+        const htmlUrl = typeof r?.output?.htmlUrl === 'string' ? r.output.htmlUrl : '';
+        const parts = ['✅ تم إنشاء المستودع على GitHub.'];
+        if (fullName) parts.push(`- الاسم: ${fullName}`);
+        if (htmlUrl) parts.push(`- الرابط: ${htmlUrl}`);
+        return parts.join('\n');
+      }
+      return outStr || 'تم التنفيذ بنجاح.';
+    }
     const errStr = typeof r?.error === 'string' ? r.error : Array.isArray(r?.logs) ? r.logs.join('\n') : 'فشل التنفيذ.';
+    if (toolName === 'github_create_repo') {
+      const repoName = typeof pending?.input?.name === 'string' ? pending.input.name : '';
+      const already = /already exists/i.test(errStr);
+      const parts = [`❌ فشل إنشاء المستودع على GitHub.${repoName ? ` (الاسم المطلوب: ${repoName})` : ''}`, `- السبب: ${errStr}`];
+      if (already) {
+        parts.push('- الاسم موجود مسبقاً على الحساب. جرّب اسم مختلف (مثال: vivos-app أو vivos-2).');
+      } else if (/422\b/.test(errStr)) {
+        parts.push('- هذا عادةً يعني أن الاسم غير متاح/غير صالح. جرّب اسم مختلف أو تحقق من صلاحيات التوكن.');
+      }
+      return parts.join('\n');
+    }
     return `فشل التنفيذ: ${errStr}`;
   };
 

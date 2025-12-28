@@ -340,7 +340,19 @@ export default function CommandComposer({
   onMessagesUpdate?: (msgs: any[]) => void;
 }) {
   const { t } = useTranslation();
+  const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const [text, setText] = useState('');
+  const [taskBarByRunId, setTaskBarByRunId] = useState<
+    Record<
+      string,
+      {
+        visible: boolean;
+        analyzing: boolean;
+        items: Array<{ id: string; tool: string; label: string; status: 'pending' | 'running' | 'done' | 'failed' }>;
+      }
+    >
+  >({});
+  const taskOccRef = useRef<Record<string, Record<string, number>>>({});
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
@@ -397,6 +409,92 @@ export default function CommandComposer({
   const [activeProvider, setActiveProvider] = useState('llm');
   const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+
+  const getToolLabel = (tool: string, input: any) => {
+    const tname = String(tool || '').trim();
+    const lower = tname.toLowerCase();
+
+    if (tname === 'github_create_repo') {
+      const name = typeof input?.name === 'string' ? input.name.trim() : '';
+      return name ? `إنشاء مستودع على GitHub: ${name}` : 'إنشاء مستودع على GitHub';
+    }
+    if (lower.startsWith('browser_')) return 'تشغيل مهام داخل المتصفح';
+    if (tname === 'file_write') {
+      const filename = typeof input?.filename === 'string' ? input.filename.trim() : '';
+      return filename ? `إنشاء/تعديل ملف: ${filename}` : 'إنشاء/تعديل ملف';
+    }
+    if (tname === 'file_edit') return 'تعديل ملف';
+    if (tname === 'file_read') return 'قراءة ملف';
+    if (tname === 'read_file_tree') return 'استعراض ملفات المشروع';
+    if (tname === 'grep_search') return 'بحث داخل الملفات';
+    if (tname === 'shell_execute') return 'تنفيذ أوامر';
+    if (tname === 'git_ops') return 'عمليات Git';
+    if (tname === 'http_fetch') return 'جلب بيانات من الإنترنت';
+    if (tname === 'quality_run') return 'تشغيل فحوصات الجودة';
+
+    return tname ? `تنفيذ: ${tname}` : 'تنفيذ مهمة';
+  };
+
+  const bumpToolOcc = (rid: string, tool: string) => {
+    const key = tool || 'unknown';
+    if (!taskOccRef.current[rid]) taskOccRef.current[rid] = {};
+    const next = (taskOccRef.current[rid][key] || 0) + 1;
+    taskOccRef.current[rid][key] = next;
+    return next;
+  };
+
+  const ensureTaskBar = (rid: string, patch: Partial<{ visible: boolean; analyzing: boolean }>) => {
+    setTaskBarByRunId((prev) => {
+      const cur = prev[rid];
+      const next = cur
+        ? { ...cur, ...patch }
+        : { visible: true, analyzing: true, items: [], ...patch };
+      return { ...prev, [rid]: next };
+    });
+  };
+
+  const addPlannedTask = (rid: string, plan: any) => {
+    const tool = String(plan?.name || '').trim();
+    if (!tool) return;
+    const occ = bumpToolOcc(rid, tool);
+    const id = `${rid}::${tool}::${occ}`;
+    const label = getToolLabel(tool, plan?.input);
+
+    setTaskBarByRunId((prev) => {
+      const cur = prev[rid] || { visible: true, analyzing: true, items: [] as any[] };
+      if (cur.items.some((x) => x.id === id)) return prev;
+      const next = {
+        ...cur,
+        visible: true,
+        analyzing: false,
+        items: [...cur.items, { id, tool, label, status: 'pending' as const }],
+      };
+      return { ...prev, [rid]: next };
+    });
+  };
+
+  const setTaskStatusByExecuteEvent = (rid: string, tool: string, kind: 'start' | 'done' | 'failed') => {
+    const normalized = String(tool || '').trim();
+    if (!normalized) return;
+
+    setTaskBarByRunId((prev) => {
+      const cur = prev[rid];
+      if (!cur || !cur.items.length) return prev;
+
+      const items = [...cur.items];
+      const idx = (() => {
+        if (kind === 'start') return items.findIndex((t) => t.tool === normalized && t.status === 'pending');
+        if (kind === 'done') return items.findIndex((t) => t.tool === normalized && t.status === 'running');
+        if (kind === 'failed') return items.findIndex((t) => t.tool === normalized && t.status === 'running');
+        return -1;
+      })();
+      if (idx < 0) return prev;
+
+      const nextStatus = kind === 'start' ? 'running' : kind === 'done' ? 'done' : 'failed';
+      items[idx] = { ...items[idx], status: nextStatus as any };
+      return { ...prev, [rid]: { ...cur, items } };
+    });
+  };
 
   const derived = useMemo(() => {
     const stepsByKey = new Map<string, any>();
@@ -905,6 +1003,22 @@ export default function CommandComposer({
             setThinkingSteps([]);
           }
 
+          if (msg.type === 'step_done' && String(msg?.data?.name || '').startsWith('thinking_step_') && msg?.data?.plan?.name) {
+            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
+            if (rid) addPlannedTask(rid, msg.data.plan);
+          }
+
+          if ((msg.type === 'step_started' || msg.type === 'step_done' || msg.type === 'step_failed') && typeof msg?.data?.name === 'string') {
+            const name = String(msg.data.name);
+            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
+            if (rid && name.startsWith('execute:')) {
+              const tool = name.slice('execute:'.length).trim();
+              if (msg.type === 'step_started') setTaskStatusByExecuteEvent(rid, tool, 'start');
+              else if (msg.type === 'step_done') setTaskStatusByExecuteEvent(rid, tool, 'done');
+              else setTaskStatusByExecuteEvent(rid, tool, 'failed');
+            }
+          }
+
           if (msg.type === 'artifact_created') {
             const kind = msg.data?.kind;
             const href = msg.data?.href;
@@ -1120,7 +1234,7 @@ export default function CommandComposer({
             if (statusRef.current !== 'answering') hideToolSoon();
           }
 
-          if (!DEBUG_TOOL_UI && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
+          if (!showToolUi && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
           if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed', 'user_input'].includes(msg.type)) {
             setEvents(prev => {
               const id = typeof msg?.id === 'string' ? msg.id : '';
@@ -1479,7 +1593,9 @@ export default function CommandComposer({
       }
 
       if (typeof data?.runId === 'string' && data.runId.trim()) {
-        setActiveRunId(data.runId.trim());
+        const rid = data.runId.trim();
+        setActiveRunId(rid);
+        ensureTaskBar(rid, { visible: true, analyzing: true });
       }
       if (data.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
@@ -1867,6 +1983,31 @@ export default function CommandComposer({
     return out;
   }, [sortedEvents]);
 
+  const activeTaskBar = useMemo(() => {
+    const rid = activeRunId ? activeRunId.trim() : '';
+    if (!rid) return null;
+    return taskBarByRunId[rid] || null;
+  }, [activeRunId, taskBarByRunId]);
+
+  useEffect(() => {
+    const rid = activeRunId ? activeRunId.trim() : '';
+    if (!rid) return;
+    const bar = taskBarByRunId[rid];
+    if (!bar?.visible) return;
+    if (!bar.items.length) return;
+    const allDone = bar.items.every((x) => x.status === 'done');
+    if (!allDone) return;
+    const timer = window.setTimeout(() => {
+      setTaskBarByRunId((prev) => {
+        const cur = prev[rid];
+        if (!cur) return prev;
+        if (!cur.items.length || !cur.items.every((x) => x.status === 'done')) return prev;
+        return { ...prev, [rid]: { ...cur, visible: false } };
+      });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [activeRunId, taskBarByRunId]);
+
   return (
     <div className="composer">
       <div className="events" ref={eventsScrollRef}>
@@ -1903,7 +2044,7 @@ export default function CommandComposer({
         <AnimatePresence mode="popLayout">
         {renderItems.map((item) => {
           if (item.kind === 'activity') {
-            if (!DEBUG_TOOL_UI) return null;
+            if (!showToolUi) return null;
             const rid = item.runId || 'no-run';
             const steps = stepsByRunId.get(rid) || [];
             const logs = logsByRunId.get(rid) || [];
@@ -2427,6 +2568,47 @@ export default function CommandComposer({
       )}
 
       <div className="input-area">
+        <AnimatePresence>
+          {activeTaskBar?.visible ? (
+            <motion.div
+              key="taskbar"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ duration: 0.18 }}
+              className="taskbar"
+              dir="auto"
+            >
+              <div className="taskbar-title">المهام</div>
+              <div className="taskbar-items">
+                {activeTaskBar.analyzing && activeTaskBar.items.length === 0 ? (
+                  <div className="task-chip running">
+                    <Loader2 size={14} className="spin" />
+                    <span>جارٍ تحليل التعليمات…</span>
+                  </div>
+                ) : null}
+                {activeTaskBar.items.map((it) => (
+                  <div
+                    key={it.id}
+                    className={`task-chip ${it.status}`}
+                    title={it.label}
+                  >
+                    {it.status === 'done' ? (
+                      <CheckCircle2 size={14} />
+                    ) : it.status === 'failed' ? (
+                      <XCircle size={14} />
+                    ) : it.status === 'running' ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Clock size={14} />
+                    )}
+                    <span className="task-chip-text">{it.label}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
     <textarea 
       value={text} 
       onChange={(e) => setText(e.target.value)} 

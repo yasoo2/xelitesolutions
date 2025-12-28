@@ -2779,7 +2779,45 @@ Instructions:
 
           if (!resp.ok) {
             const msg = typeof json?.message === 'string' ? json.message : text.slice(0, 300);
-            return { ok: false, error: `GitHub API ${resp.status}: ${msg}`, logs };
+            const errs = Array.isArray(json?.errors) ? json.errors : [];
+            const errMsg = errs
+              .map((e: any) => (typeof e?.message === 'string' ? e.message : typeof e === 'string' ? e : ''))
+              .filter(Boolean)
+              .slice(0, 3)
+              .join(' | ');
+
+            if (resp.status === 422) {
+              try {
+                const meResp = await fetch('https://api.github.com/user', {
+                  method: 'GET',
+                  headers: {
+                    'Accept': 'application/vnd.github+json',
+                    'User-Agent': 'JOE AI',
+                    'Authorization': `Bearer ${token}`,
+                  },
+                });
+                const meText = await meResp.text();
+                let meJson: any = null;
+                try { meJson = JSON.parse(meText); } catch {}
+                const login = typeof meJson?.login === 'string' ? meJson.login.trim() : '';
+                if (login) {
+                  const checkResp = await fetch(`https://api.github.com/repos/${encodeURIComponent(login)}/${encodeURIComponent(repoName)}`, {
+                    method: 'GET',
+                    headers: {
+                      'Accept': 'application/vnd.github+json',
+                      'User-Agent': 'JOE AI',
+                      'Authorization': `Bearer ${token}`,
+                    },
+                  });
+                  if (checkResp.ok) {
+                    return { ok: false, error: `GitHub API 422: Repository "${login}/${repoName}" already exists.`, logs };
+                  }
+                }
+              } catch {}
+            }
+
+            const details = errMsg ? ` (${errMsg})` : '';
+            return { ok: false, error: `GitHub API ${resp.status}: ${msg}${details}`, logs };
           }
 
           return {
