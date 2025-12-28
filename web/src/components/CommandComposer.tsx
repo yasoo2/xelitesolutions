@@ -340,6 +340,7 @@ export default function CommandComposer({
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [toolVisible, setToolVisible] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
+  const [thinkingGlimpse, setThinkingGlimpse] = useState('');
   
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -357,9 +358,13 @@ export default function CommandComposer({
   const prevSessionIdRef = useRef<string | undefined>(undefined);
   const lastToolShownAtRef = useRef<number>(0);
   const toolHideTimerRef = useRef<number | null>(null);
+  const toolFinalizeTimerRef = useRef<number | null>(null);
   const isThinkingRef = useRef<boolean>(isThinking);
   const toolVisibleRef = useRef<boolean>(toolVisible);
   const activeToolNameRef = useRef<string | null>(activeToolName);
+  const statusRef = useRef<typeof status>(status);
+  const thinkingGlimpseTimerRef = useRef<number | null>(null);
+  const thinkingGlimpseIndexRef = useRef<number>(0);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
 
   // AI Provider State
@@ -725,11 +730,19 @@ export default function CommandComposer({
       window.clearTimeout(toolHideTimerRef.current);
       toolHideTimerRef.current = null;
     }
+    if (toolFinalizeTimerRef.current != null) {
+      window.clearTimeout(toolFinalizeTimerRef.current);
+      toolFinalizeTimerRef.current = null;
+    }
   };
 
   useEffect(() => {
     isThinkingRef.current = isThinking;
   }, [isThinking]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   useEffect(() => {
     toolVisibleRef.current = toolVisible;
@@ -738,6 +751,47 @@ export default function CommandComposer({
   useEffect(() => {
     activeToolNameRef.current = activeToolName;
   }, [activeToolName]);
+
+  useEffect(() => {
+    if (!isThinking && status !== 'answering') {
+      if (thinkingGlimpseTimerRef.current != null) {
+        window.clearInterval(thinkingGlimpseTimerRef.current);
+        thinkingGlimpseTimerRef.current = null;
+      }
+      thinkingGlimpseIndexRef.current = 0;
+      setThinkingGlimpse('');
+      return;
+    }
+
+    const compute = () => {
+      const idx = thinkingGlimpseIndexRef.current++;
+      if (status === 'answering') {
+        return idx % 2 === 0 ? t('thinkingDraftIntro', 'Working on it now…') : t('thinkingDraftRefine', 'Refining and organizing the answer…');
+      }
+      if (toolVisible && activeToolName) {
+        return t('thinkingGlimpseTool', { tool: activeToolName });
+      }
+      if (thinkingSteps.length) {
+        return idx % 2 === 0 ? t('thinkingGlimpsePlan', 'Planning the best approach…') : t('thinkingGlimpseUnderstand', 'Understanding your request…');
+      }
+      return idx % 2 === 0 ? t('thinkingGlimpseUnderstand', 'Understanding your request…') : t('thinkingGlimpsePlan', 'Planning the best approach…');
+    };
+
+    setThinkingGlimpse(compute());
+
+    if (thinkingGlimpseTimerRef.current != null) {
+      window.clearInterval(thinkingGlimpseTimerRef.current);
+      thinkingGlimpseTimerRef.current = null;
+    }
+    thinkingGlimpseTimerRef.current = window.setInterval(() => setThinkingGlimpse(compute()), 1100);
+
+    return () => {
+      if (thinkingGlimpseTimerRef.current != null) {
+        window.clearInterval(thinkingGlimpseTimerRef.current);
+        thinkingGlimpseTimerRef.current = null;
+      }
+    };
+  }, [activeToolName, isThinking, status, t, thinkingSteps.length, toolVisible]);
 
   const showTool = (name: string) => {
     const next = String(name || '').trim();
@@ -757,15 +811,18 @@ export default function CommandComposer({
     const elapsed = Date.now() - lastToolShownAtRef.current;
     const wait = Math.max(250 - elapsed, 0);
     if (toolHideTimerRef.current != null) window.clearTimeout(toolHideTimerRef.current);
+    if (toolFinalizeTimerRef.current != null) window.clearTimeout(toolFinalizeTimerRef.current);
     const totalDelay = wait + 250;
     toolHideTimerRef.current = window.setTimeout(() => {
       toolHideTimerRef.current = null;
       setToolVisible(false);
-      window.setTimeout(() => {
+      toolFinalizeTimerRef.current = window.setTimeout(() => {
+        toolFinalizeTimerRef.current = null;
         setActiveToolName(null);
         setIsThinking(false);
         setStatus('idle');
         setThinkingSteps([]);
+        setThinkingGlimpse('');
       }, 250);
     }, wait);
     return totalDelay;
@@ -800,6 +857,7 @@ export default function CommandComposer({
           }
           if (msg.type === 'user_input') {
             clearToolTimers();
+            setStatus('thinking');
             setIsThinking(true);
             setActiveToolName(null);
             setToolVisible(false);
@@ -936,7 +994,18 @@ export default function CommandComposer({
             const isSystemPrompt = id.startsWith('system_prompt:');
             if (isSystemPrompt) return;
 
-            const delay = isThinkingRef.current || toolVisibleRef.current || activeToolNameRef.current != null ? hideToolSoon() : 0;
+            const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
+            clearToolTimers();
+            if (hadTool) {
+              setToolVisible(false);
+              setActiveToolName(null);
+            }
+            setThinkingSteps([]);
+            setStatus('answering');
+            setIsThinking(true);
+
+            const delay = hadTool ? 220 : 0;
+            const draftDelay = 600;
             window.setTimeout(() => {
               setEvents((prev) => {
                 if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
@@ -950,12 +1019,17 @@ export default function CommandComposer({
                 }
                 speak(String(content));
               } catch {}
-            }, delay);
+              window.setTimeout(() => {
+                setIsThinking(false);
+                setStatus('idle');
+                setThinkingGlimpse('');
+              }, 120);
+            }, delay + draftDelay);
             return;
           }
 
           if (msg.type === 'run_finished') {
-            hideToolSoon();
+            if (statusRef.current !== 'answering') hideToolSoon();
           }
 
           if (!DEBUG_TOOL_UI && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
@@ -2038,9 +2112,13 @@ export default function CommandComposer({
             className="message-row joe"
           >
             <div className="px-3 py-2" dir="auto">
-              <div className="text-[10px] leading-3 font-light text-zinc-400/65">يفكّر…</div>
-              <ToolTicker isThinking={isThinking} toolVisible={toolVisible} activeToolName={activeToolName} />
-              {thinkingSteps.length ? (
+              <div className="text-[10px] leading-3 font-light text-zinc-400/65">
+                {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Understanding your request…')}
+              </div>
+              {status !== 'answering' ? (
+                <ToolTicker isThinking={isThinking} toolVisible={toolVisible} activeToolName={activeToolName} />
+              ) : null}
+              {status !== 'answering' && thinkingSteps.length ? (
                 <div className="mt-0.5 text-[10px] leading-3 font-light text-zinc-500/60">
                   {thinkingSteps.join(' › ')}
                 </div>

@@ -2,10 +2,12 @@ import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
+import puppeteer from 'puppeteer';
 
 const API_URL = 'http://localhost:8080';
 const WS_URL = 'ws://localhost:8080/ws';
 const JWT_SECRET = 'change-me'; 
+const WEB_URL = process.env.WEB_URL || 'http://127.0.0.1:5173';
 
 const token = jwt.sign({ sub: 'test-user', role: 'OWNER' }, JWT_SECRET);
 const authHeaders = { 
@@ -13,7 +15,131 @@ const authHeaders = {
     'Authorization': `Bearer ${token}` 
 };
 
-async function main() {
+async function runUiE2e() {
+  console.log('\n🧪 Starting UI E2E Test (Thinking Glimpse + Draft)...\n');
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+  });
+
+  const page = await browser.newPage();
+  page.setDefaultTimeout(60000);
+
+  await page.evaluateOnNewDocument((t) => {
+    localStorage.setItem('token', t);
+    localStorage.setItem('lang', 'en');
+  }, token);
+
+  await page.goto(`${WEB_URL}/joe`, { waitUntil: 'networkidle2' });
+  await page.waitForSelector('textarea', { visible: true });
+
+  const prompt = 'Read file web/package.json and list scripts only.';
+  await page.focus('textarea');
+  await page.keyboard.type(prompt, { delay: 5 });
+  await page.keyboard.press('Enter');
+
+  const needles = [
+    'Understanding your request',
+    'Planning the best approach',
+    'Running:',
+    'Working on it now',
+    'Refining and organizing',
+  ];
+
+  await page.waitForFunction(
+    (arr) => arr.some((s) => document.body && document.body.innerText.includes(s)),
+    {},
+    needles
+  );
+
+  const glimpse1 = await page.evaluate((arr) => {
+    const txt = document.body ? document.body.innerText : '';
+    return arr.find((s) => txt.includes(s)) || null;
+  }, needles);
+
+  await new Promise((r) => setTimeout(r, 1200));
+
+  const glimpse2 = await page.evaluate((arr) => {
+    const txt = document.body ? document.body.innerText : '';
+    return arr.find((s) => txt.includes(s)) || null;
+  }, needles);
+
+  const needsSecret = await page.evaluate(() => {
+    const txt = document.body ? document.body.innerText : '';
+    return txt.includes('A token/key is required to continue.');
+  });
+  if (needsSecret) {
+    await page.focus('textarea');
+    await page.keyboard.type('dummy-token', { delay: 5 });
+    await page.keyboard.press('Enter');
+  }
+
+  const aiCountBefore = await page.$$eval('.chat-bubble-wrapper.ai', (els) => els.length);
+  await page.waitForFunction(
+    (before) => {
+      const aiInc = document.querySelectorAll('.chat-bubble-wrapper.ai').length > before;
+      const err = !!document.querySelector('.message-bubble.error');
+      const txt = document.body ? document.body.innerText : '';
+      const gate = txt.includes('A token/key is required to continue.');
+      return aiInc || err || gate;
+    },
+    {},
+    aiCountBefore
+  );
+
+  const secretGateNow = await page.evaluate(() => {
+    const txt = document.body ? document.body.innerText : '';
+    return txt.includes('A token/key is required to continue.');
+  });
+  if (secretGateNow) {
+    await page.focus('textarea');
+    await page.keyboard.type('dummy-token', { delay: 5 });
+    await page.keyboard.press('Enter');
+
+    const afterSecretAiCount = await page.$$eval('.chat-bubble-wrapper.ai', (els) => els.length);
+    await page.waitForFunction(
+      (before) => {
+        const aiInc = document.querySelectorAll('.chat-bubble-wrapper.ai').length > before;
+        const err = !!document.querySelector('.message-bubble.error');
+        return aiInc || err;
+      },
+      {},
+      afterSecretAiCount
+    );
+  }
+
+  const aiText = await page.$$eval('.chat-bubble-wrapper.ai .chat-bubble-content', (els) => {
+    const last = els[els.length - 1];
+    return last ? (last.textContent || '') : '';
+  });
+  const errText = await page.$eval('.message-bubble.error', (el) => (el.textContent || '').trim()).catch(() => '');
+
+  await page.waitForFunction(
+    (arr) => !arr.some((s) => document.body && document.body.innerText.includes(s)),
+    { timeout: 30000 },
+    needles
+  );
+
+  await browser.close();
+
+  console.log('✅ UI E2E PASSED');
+  console.log(
+    JSON.stringify(
+      {
+        webUrl: WEB_URL,
+        glimpse1,
+        glimpse2,
+        aiReplySample: String(aiText || '').trim().slice(0, 220),
+        errorSample: String(errText || '').trim().slice(0, 220),
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function runCapabilitiesTest() {
   console.log('\n🚀 Starting Joe Capabilities Test (Web Build)...\n');
 
   try {
@@ -103,6 +229,14 @@ async function main() {
     console.error('\n❌ TEST FAILED:', err);
     process.exit(1);
   }
+}
+
+async function main() {
+  if (process.env.UI_E2E === '1') {
+    await runUiE2e();
+    return;
+  }
+  await runCapabilitiesTest();
 }
 
 main();
