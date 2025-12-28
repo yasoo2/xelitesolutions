@@ -688,9 +688,15 @@ async function runActions(session: Session, actions: Action[]) {
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
+app.get('/', (_req, res) => {
+  res.json({ status: 'OK', service: 'joe-browser-worker' });
+});
+app.get('/up', (_req, res) => {
+  res.json({ status: 'UP' });
+});
 app.get('/health', (_req, res) => {
-  if (startupError) return res.status(503).json({ status: 'ERROR', error: startupError, help: 'If on Render, ensure Service Type is set to Docker' });
-  if (!browserHealthy) return res.status(503).json({ status: 'STARTING' });
+  if (startupError) return res.json({ status: 'ERROR', error: startupError, help: 'If on Render, ensure Service Type is set to Docker' });
+  if (!browserHealthy) return res.json({ status: 'STARTING' });
   res.json({ status: 'OK' });
 });
 app.use('/downloads', express.static(path.join(STORAGE_DIR, 'downloads')));
@@ -762,6 +768,15 @@ app.post('/session/:id/extract', auth, async (req, res) => {
   const outputs = await runActions(s, [{ type: 'extract', schema }]);
   const out = outputs.find(o => o.type === 'extract');
   res.json({ json: out?.json, confidence: out?.confidence ?? 0.7 });
+});
+
+app.use((_req, res) => {
+  res.status(404).json({ error: 'not_found' });
+});
+
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const message = String(err?.message || 'internal_error');
+  res.status(500).json({ error: message });
 });
 
 // Cleanup stale sessions

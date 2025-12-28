@@ -268,7 +268,7 @@ async function runActions(session, actions) {
           outputs.push({ type: "goto", url: a.url });
           try {
             const u = new URL(a.url);
-            if (/(^|\\.)google\\./i.test(u.hostname)) {
+            if (/(^|\.)google\./i.test(u.hostname)) {
               const selectors = [
                 "#L2AGLb",
                 'button[aria-label*="Agree"]',
@@ -334,7 +334,7 @@ async function runActions(session, actions) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
                 notifySession(session, "cursor_move", { x: cx, y: cy });
-                await new Promise((r) => setTimeout(r, 150));
+                await new Promise((r) => setTimeout(r, 400));
                 notifySession(session, "cursor_click", { x: cx, y: cy });
               }
               await loc.click();
@@ -349,7 +349,7 @@ async function runActions(session, actions) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
                 notifySession(session, "cursor_move", { x: cx, y: cy });
-                await new Promise((r) => setTimeout(r, 150));
+                await new Promise((r) => setTimeout(r, 400));
                 notifySession(session, "cursor_click", { x: cx, y: cy });
               }
               await loc.click();
@@ -410,6 +410,11 @@ async function runActions(session, actions) {
           outputs.push({ type: "waitForLoad", state: a.state });
           break;
         }
+        case "goBack": {
+          await session.page.goBack();
+          outputs.push({ type: "goBack" });
+          break;
+        }
         case "screenshot": {
           const buf = await session.page.screenshot({ type: "jpeg", quality: a.quality || 60, fullPage: a.fullPage || false });
           const name = `s-${Date.now()}.jpg`;
@@ -428,8 +433,9 @@ async function runActions(session, actions) {
           break;
         }
         case "snapshot.a11y": {
-          const snap = await session.page.accessibility.snapshot();
-          outputs.push({ type: "snapshot.a11y", nodes: (snap?.children || []).length });
+          const accessibility = session.page.accessibility;
+          const snap = accessibility?.snapshot ? await accessibility.snapshot().catch(() => null) : null;
+          outputs.push({ type: "snapshot.a11y", nodes: Array.isArray(snap?.children) ? snap.children.length : 0 });
           break;
         }
         case "extract": {
@@ -486,7 +492,8 @@ async function runActions(session, actions) {
                   const cx = box.x + box.width / 2;
                   const cy = box.y + box.height / 2;
                   notifySession(session, "cursor_move", { x: cx, y: cy });
-                  await new Promise((r) => setTimeout(r, 150));
+                  await new Promise((r) => setTimeout(r, 400));
+                  notifySession(session, "cursor_click", { x: cx, y: cy });
                 }
               }
             } catch {
@@ -650,9 +657,15 @@ async function runActions(session, actions) {
 }
 var app = (0, import_express.default)();
 app.use(import_express.default.json({ limit: "10mb" }));
+app.get("/", (_req, res) => {
+  res.json({ status: "OK", service: "joe-browser-worker" });
+});
+app.get("/up", (_req, res) => {
+  res.json({ status: "UP" });
+});
 app.get("/health", (_req, res) => {
-  if (startupError) return res.status(503).json({ status: "ERROR", error: startupError, help: "If on Render, ensure Service Type is set to Docker" });
-  if (!browserHealthy) return res.status(503).json({ status: "STARTING" });
+  if (startupError) return res.json({ status: "ERROR", error: startupError, help: "If on Render, ensure Service Type is set to Docker" });
+  if (!browserHealthy) return res.json({ status: "STARTING" });
   res.json({ status: "OK" });
 });
 app.use("/downloads", import_express.default.static(import_path.default.join(STORAGE_DIR, "downloads")));
@@ -699,7 +712,7 @@ app.post("/session/:id/snapshot", auth, async (req, res) => {
   if (!s) return res.status(404).json({ error: "session_not_found" });
   const [html, a11ySnap, buf] = await Promise.all([
     s.page.content(),
-    s.page.accessibility ? s.page.accessibility.snapshot().catch(() => null) : Promise.resolve(null),
+    s.page.accessibility?.snapshot ? s.page.accessibility.snapshot().catch(() => null) : Promise.resolve(null),
     s.page.screenshot({ type: "jpeg", quality: 60 })
   ]);
   const name = `snap-${Date.now()}.jpg`;
@@ -717,6 +730,13 @@ app.post("/session/:id/extract", auth, async (req, res) => {
   const outputs2 = await runActions(s, [{ type: "extract", schema }]);
   const out = outputs2.find((o) => o.type === "extract");
   res.json({ json: out?.json, confidence: out?.confidence ?? 0.7 });
+});
+app.use((_req, res) => {
+  res.status(404).json({ error: "not_found" });
+});
+app.use((err, _req, res, _next) => {
+  const message = String(err?.message || "internal_error");
+  res.status(500).json({ error: message });
 });
 setInterval(() => {
   const now = Date.now();

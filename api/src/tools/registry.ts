@@ -43,7 +43,17 @@ async function waitForWorkerHealth(base: string, timeoutMs: number) {
   while (Date.now() - start < timeoutMs) {
     try {
       const r = await fetch(`${base}/health`, { method: 'GET' });
-      if (r.ok) return true;
+      if (r.ok) {
+        const contentType = String(r.headers.get('content-type') || '').toLowerCase();
+        if (!contentType.includes('application/json')) {
+          await r.text().catch(() => '');
+        } else {
+          const j: any = await r.json().catch(() => null);
+          if (j && String(j.status || '').toUpperCase() === 'OK') return true;
+        }
+      } else {
+        await r.text().catch(() => '');
+      }
     } catch {}
     await new Promise(r => setTimeout(r, 250));
   }

@@ -36,10 +36,8 @@ services:
     plan: starter
     dockerContext: services/joe-browser-worker
     dockerfilePath: services/joe-browser-worker/Dockerfile
+    healthCheckPath: /up
     autoDeploy: true
     envVars:
-      - key: PORT
-        value: "8080"
       - key: WORKER_API_KEY
         generateValue: true
-
