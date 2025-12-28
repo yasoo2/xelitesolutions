@@ -138,6 +138,8 @@ export default function Joe() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<any>>([]);
   const [isNarrow, setIsNarrow] = useState(false);
+  const [agentSessionsOpen, setAgentSessionsOpen] = useState(false);
+  const [agentComposerOpen, setAgentComposerOpen] = useState(false);
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
 
@@ -242,6 +244,12 @@ export default function Joe() {
       else (mql as any).removeListener?.(onChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isNarrow) return;
+    setAgentSessionsOpen(false);
+    setAgentComposerOpen(false);
+  }, [isNarrow]);
 
   async function createFolder() {
     const name = prompt('اسم المجلد الجديد:');
@@ -631,8 +639,9 @@ export default function Joe() {
             <div
               style={{
                 width: isNarrow ? '100%' : 280,
-                flex: '0 0 auto',
-                minHeight: isNarrow ? 180 : 0,
+                flex: isNarrow ? `0 0 ${agentSessionsOpen ? '35%' : '44px'}` : '0 0 auto',
+                height: isNarrow && !agentSessionsOpen ? 44 : undefined,
+                minHeight: 0,
                 overflow: 'hidden',
                 borderRight: isNarrow ? undefined : '1px solid var(--border-color)',
                 borderBottom: isNarrow ? '1px solid var(--border-color)' : undefined,
@@ -643,30 +652,42 @@ export default function Joe() {
             >
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>جلسات الوكيل</div>
-                <button
-                  onClick={() => setAgentSelected(null)}
-                  style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                >
-                  جلسة جديدة
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {isNarrow ? (
+                    <button
+                      onClick={() => setAgentSessionsOpen(v => !v)}
+                      style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                    >
+                      {agentSessionsOpen ? 'إخفاء' : 'إظهار'}
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => setAgentSelected(null)}
+                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                  >
+                    جلسة جديدة
+                  </button>
+                </div>
               </div>
-              <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
-                {agentSessions.length === 0 ? (
-                  <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 13 }}>لا توجد جلسات بعد</div>
-                ) : (
-                  agentSessions.map((s) => (
-                    <SessionItem
-                      key={s.id}
-                      session={s}
-                      isActive={agentSelected === s.id}
-                      onSelect={() => setAgentSelected(s.id)}
-                      onDelete={() => deleteAgentSession(s.id)}
-                      onPin={() => toggleAgentPin(s.id, !!s.isPinned)}
-                      onShare={() => shareSession(s.id)}
-                    />
-                  ))
-                )}
-              </div>
+              {(!isNarrow || agentSessionsOpen) ? (
+                <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
+                  {agentSessions.length === 0 ? (
+                    <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 13 }}>لا توجد جلسات بعد</div>
+                  ) : (
+                    agentSessions.map((s) => (
+                      <SessionItem
+                        key={s.id}
+                        session={s}
+                        isActive={agentSelected === s.id}
+                        onSelect={() => setAgentSelected(s.id)}
+                        onDelete={() => deleteAgentSession(s.id)}
+                        onPin={() => toggleAgentPin(s.id, !!s.isPinned)}
+                        onShare={() => shareSession(s.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              ) : null}
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
@@ -681,26 +702,39 @@ export default function Joe() {
             <div
               style={{
                 width: isNarrow ? '100%' : 420,
-                flex: '0 0 auto',
-                minHeight: isNarrow ? 340 : 0,
+                flex: isNarrow ? `0 0 ${agentComposerOpen ? '45%' : '44px'}` : '0 0 auto',
+                height: isNarrow ? (agentComposerOpen ? undefined : 44) : '100%',
+                minHeight: 0,
                 overflow: 'hidden',
                 borderLeft: isNarrow ? undefined : '1px solid var(--border-color)',
                 borderTop: isNarrow ? '1px solid var(--border-color)' : undefined,
                 background: 'var(--bg-secondary)',
                 display: 'flex',
                 flexDirection: 'column',
-                height: '100%',
               }}
             >
-              <CommandComposer
-                sessionId={agentSelected || undefined}
-                sessionKind="agent"
-                browserSessionId={agentBrowserSessionId}
-                onSessionCreated={async (id) => {
-                  await loadAgentSessions();
-                  setAgentSelected(id);
-                }}
-              />
+              {isNarrow ? (
+                <div style={{ padding: '10px 12px', borderBottom: agentComposerOpen ? '1px solid var(--border-color)' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>الأوامر</div>
+                  <button
+                    onClick={() => setAgentComposerOpen(v => !v)}
+                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                  >
+                    {agentComposerOpen ? 'إخفاء' : 'إظهار'}
+                  </button>
+                </div>
+              ) : null}
+              {(!isNarrow || agentComposerOpen) ? (
+                <CommandComposer
+                  sessionId={agentSelected || undefined}
+                  sessionKind="agent"
+                  browserSessionId={agentBrowserSessionId}
+                  onSessionCreated={async (id) => {
+                    await loadAgentSessions();
+                    setAgentSelected(id);
+                  }}
+                />
+              ) : null}
             </div>
           </div>
         )}
