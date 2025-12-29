@@ -1342,8 +1342,8 @@ function addBulkToolPackToReach200() {
   }
 
   const npmSimple: Array<{ name: string; command: string }> = [
-    { name: 'npm_install', command: 'npm install' },
-    { name: 'npm_ci', command: 'npm ci' },
+    { name: 'npm_install', command: 'npm install --no-audit --no-fund --quiet' },
+    { name: 'npm_ci', command: 'npm ci --no-audit --no-fund --quiet' },
     { name: 'npm_lint', command: 'npm run lint --if-present' },
     { name: 'npm_typecheck', command: 'npm run typecheck --if-present' },
     { name: 'npm_test', command: 'npm test --if-present' },
@@ -2562,7 +2562,7 @@ Instructions:
       }
 
       try {
-        const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal });
+        const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal, maxBuffer: 20 * 1024 * 1024 });
         
         // Update CWD if command was a cd
         // Note: 'cd' in child_process doesn't affect parent, but we can try to guess where the user wanted to go
