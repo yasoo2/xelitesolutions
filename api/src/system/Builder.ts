@@ -30,7 +30,7 @@ export class Builder {
       workspaces: ["apps/*"],
       scripts: {
         "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
-        "build": "npm run build --workspaces"
+        "build": "npm install --include=dev && npm run build --workspaces"
       },
       devDependencies: { "concurrently": "^8.0.0" }
     }, null, 2));
@@ -45,7 +45,7 @@ export class Builder {
     fs.writeFileSync(path.join(apiRoot, 'package.json'), JSON.stringify({
       name: "api",
       version: "1.0.0",
-      scripts: { "dev": "nodemon src/index.js" },
+      scripts: { "dev": "nodemon src/index.js", "build": "echo \"API build skipped\"" },
       dependencies: { 
         "express": "^4.18.2", 
         "mongoose": "^7.4.0", 
