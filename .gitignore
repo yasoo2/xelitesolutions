@@ -26,3 +26,6 @@ coverage/
 ms-playwright
 ms-playwright/
 **/ms-playwright/
+
+# Generated artifacts
+factory_books_api/
