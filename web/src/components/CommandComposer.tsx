@@ -2581,6 +2581,82 @@ export default function CommandComposer({
         </div>
       )}
 
+      {secretPrompt && (
+        <div className="modal">
+          <div className="panel" style={{ width: 400, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ padding: 10, borderRadius: 12, background: 'rgba(234, 179, 8, 0.1)', color: '#eab308' }}>
+                <Lock size={24} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('secretGateTitle', 'Authentication Required')}</h3>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GitHub / Service Token</div>
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 8, lineHeight: 1.5 }}>
+                {t('secretGateInstruction', 'Please enter your Personal Access Token to continue.')}
+              </p>
+              {secretPrompt.reason && (
+                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-card)', padding: 8, borderRadius: 6, marginBottom: 12 }}>
+                    {secretPrompt.reason}
+                 </div>
+              )}
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="password"
+                  autoFocus
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                        const val = (e.target as HTMLInputElement).value;
+                        if (val) {
+                             const sid = secretPrompt.sessionId;
+                             const key = secretPrompt.key;
+                             setSecretPrompt(null);
+                             setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
+                             
+                             const token = localStorage.getItem('token');
+                             try {
+                                await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                                  body: JSON.stringify({ key, value: val }),
+                                });
+                                setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
+                             } catch (err) {
+                                setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
+                             }
+                        }
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '12px', paddingLeft: 40, borderRadius: 8,
+                    background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
+                    color: '#fff', outline: 'none', fontSize: 14, fontFamily: 'monospace'
+                  }}
+                />
+                <Key size={16} style={{ position: 'absolute', left: 12, top: 14, color: 'var(--text-secondary)' }} />
+              </div>
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                 <ShieldCheck size={12} />
+                 <span>Your token is sent securely and not stored permanently.</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button 
+                onClick={() => setSecretPrompt(null)}
+                style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {attachedFiles.length > 0 && (
         <div className="attached-files">
           {attachedFiles.map((file, i) => (
