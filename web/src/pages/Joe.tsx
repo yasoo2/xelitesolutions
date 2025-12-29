@@ -603,19 +603,23 @@ export default function Joe() {
            </div>
         )}
 
-        <div className="mode-bar">
-           <button 
-             onClick={() => setMode('agent')}
-             className={`mode-btn ${mode === 'agent' ? 'active' : ''}`}
-           >
-             <Bot size={16} /> الوكيل (Agent)
-           </button>
-           <button 
-             onClick={() => setMode('chat')}
-             className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
-           >
-             <MessageSquare size={16} /> محادثة (Chat)
-           </button>
+        <div className="mode-switch">
+          <div className="segmented">
+            <button 
+              onClick={() => setMode('agent')}
+              className={`seg-btn ${mode === 'agent' ? 'active' : ''}`}
+              title="Agent Mode"
+            >
+              <Bot size={18} /> الوكيل
+            </button>
+            <button 
+              onClick={() => setMode('chat')}
+              className={`seg-btn ${mode === 'chat' ? 'active' : ''}`}
+              title="Chat Mode"
+            >
+              <MessageSquare size={18} /> المحادثة
+            </button>
+          </div>
         </div>
         
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
