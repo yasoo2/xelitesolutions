@@ -2097,38 +2097,72 @@ Instructions:
       const hasArabic = /[\u0600-\u06FF]/.test(q);
 
       const looksLikeWeather =
-        /(?:\bweather\b|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حرارة)/i.test(q) &&
-        /(?:\btoday\b|اليوم|\bnow\b|الآن|الان|\bcurrent\b|حالي(?:اً|ا)?)/i.test(q);
+        /(?:\bweather\b|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حرارة)/i.test(q);
 
       if (looksLikeWeather) {
-        const city =
-          /(?:istanbul|إسطنبول|اسطنبول)/i.test(q)
-            ? 'Istanbul'
-            : (() => {
-                const m =
-                  q.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
-                  q.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس|درجة\s+الحرارة)/i);
-                // Default to Riyadh if no city found (more relevant for Arabic users than Istanbul)
-                const found = String(m?.[1] || '').trim();
-                return found || 'Riyadh';
-              })();
+        // Known cities cache to speed up common queries
+        const CITY_COORDS: Record<string, { lat: number; lon: number; name: string; country: string }> = {
+            'istanbul': { lat: 41.0082, lon: 28.9784, name: 'Istanbul', country: 'Turkey' },
+            'إسطنبول': { lat: 41.0082, lon: 28.9784, name: 'إسطنبول', country: 'تركيا' },
+            'اسطنبول': { lat: 41.0082, lon: 28.9784, name: 'إسطنبول', country: 'تركيا' },
+            'riyadh': { lat: 24.7136, lon: 46.6753, name: 'Riyadh', country: 'Saudi Arabia' },
+            'الرياض': { lat: 24.7136, lon: 46.6753, name: 'الرياض', country: 'السعودية' },
+            'cairo': { lat: 30.0444, lon: 31.2357, name: 'Cairo', country: 'Egypt' },
+            'القاهرة': { lat: 30.0444, lon: 31.2357, name: 'القاهرة', country: 'مصر' },
+            'dubai': { lat: 25.2048, lon: 55.2708, name: 'Dubai', country: 'UAE' },
+            'دبي': { lat: 25.2048, lon: 55.2708, name: 'دبي', country: 'الإمارات' },
+            'jeddah': { lat: 21.4858, lon: 39.1925, name: 'Jeddah', country: 'Saudi Arabia' },
+            'جدة': { lat: 21.4858, lon: 39.1925, name: 'جدة', country: 'السعودية' },
+            'mecca': { lat: 21.3891, lon: 39.8579, name: 'Mecca', country: 'Saudi Arabia' },
+            'مكة': { lat: 21.3891, lon: 39.8579, name: 'مكة', country: 'السعودية' },
+            'london': { lat: 51.5074, lon: -0.1278, name: 'London', country: 'UK' },
+            'لندن': { lat: 51.5074, lon: -0.1278, name: 'لندن', country: 'بريطانيا' }
+        };
+
+        const extractCity = () => {
+            // Check hardcoded first
+            for (const key of Object.keys(CITY_COORDS)) {
+                if (q.toLowerCase().includes(key)) return key;
+            }
+            // Regex fallback
+            const m =
+              q.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
+              q.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حرارة)/i);
+            return String(m?.[1] || '').trim();
+        };
+
+        const cityKey = extractCity();
+        // Default to Riyadh if absolutely nothing found
+        const citySearch = cityKey || 'Riyadh';
+        const cached = CITY_COORDS[citySearch.toLowerCase()];
 
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
           try {
-            const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=${hasArabic ? 'ar' : 'en'}&format=json`;
-            const geoResp = await fetch(geoUrl, { signal: controller.signal });
-            if (!geoResp.ok) throw new Error(`geocode_http_${geoResp.status}`);
-            const geo: any = await geoResp.json().catch(() => null);
-            const hit = Array.isArray(geo?.results) ? geo.results[0] : null;
-            const lat = typeof hit?.latitude === 'number' ? hit.latitude : null;
-            const lon = typeof hit?.longitude === 'number' ? hit.longitude : null;
-            const placeName = String(hit?.name || city).trim() || city;
-            const country = String(hit?.country || '').trim();
+            let lat, lon, placeName, country;
+
+            if (cached) {
+                lat = cached.lat;
+                lon = cached.lon;
+                placeName = cached.name;
+                country = cached.country;
+            } else {
+                const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(citySearch)}&count=1&language=${hasArabic ? 'ar' : 'en'}&format=json`;
+                const geoResp = await fetch(geoUrl, { signal: controller.signal });
+                if (!geoResp.ok) throw new Error(`geocode_http_${geoResp.status}`);
+                const geo: any = await geoResp.json().catch(() => null);
+                const hit = Array.isArray(geo?.results) ? geo.results[0] : null;
+                lat = typeof hit?.latitude === 'number' ? hit.latitude : null;
+                lon = typeof hit?.longitude === 'number' ? hit.longitude : null;
+                placeName = String(hit?.name || citySearch).trim() || citySearch;
+                country = String(hit?.country || '').trim();
+            }
+
             const label = hasArabic
               ? `${placeName}${country ? `، ${country}` : ''}`
               : `${placeName}${country ? `, ${country}` : ''}`;
+            
             if (typeof lat !== 'number' || typeof lon !== 'number') throw new Error('geocode_no_results');
 
             const fcUrl =
