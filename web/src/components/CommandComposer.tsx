@@ -342,6 +342,28 @@ export default function CommandComposer({
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const [text, setText] = useState('');
+  const [currentThought, setCurrentThought] = useState('');
+  const [displayedThought, setDisplayedThought] = useState('');
+
+  useEffect(() => {
+    if (!currentThought) {
+      setDisplayedThought('');
+      return;
+    }
+    let i = 0;
+    setDisplayedThought('');
+    const interval = setInterval(() => {
+        setDisplayedThought(prev => {
+            if (prev.length >= currentThought.length) {
+                clearInterval(interval);
+                return prev;
+            }
+            return currentThought.slice(0, prev.length + 1);
+        });
+    }, 15);
+    return () => clearInterval(interval);
+  }, [currentThought]);
+
   const [taskBarByRunId, setTaskBarByRunId] = useState<
     Record<
       string,
@@ -987,6 +1009,8 @@ export default function CommandComposer({
         setStatus('idle');
         setThinkingSteps([]);
         setThinkingGlimpse('');
+        setCurrentThought('');
+        setDisplayedThought('');
       }, 250);
     }, wait);
     return totalDelay;
@@ -1151,6 +1175,11 @@ export default function CommandComposer({
           if (msg.type === 'step_done') {
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
+            const thought = msg?.data?.plan?.thought;
+            if (thought) {
+               setCurrentThought(thought);
+            }
+
             const start = stepStartTimes.current[`${rid}:${name}`];
             if (start) {
               msg.duration = Date.now() - start;
@@ -2386,17 +2415,38 @@ export default function CommandComposer({
             className="message-row joe"
           >
             <div className="px-3 py-2" dir="auto">
-              <div className="text-[10px] leading-3 font-light text-zinc-400/65">
-                {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Understanding your request…')}
+              {/* Thinking Header with Glow */}
+              <div className="flex items-center gap-2 mb-1">
+                 <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.6)]"></div>
+                 <div className="text-[11px] font-medium text-blue-300/90 tracking-wide" style={{ textShadow: '0 0 10px rgba(96,165,250,0.3)' }}>
+                    {activeToolName ? (
+                      activeToolName.startsWith('خطة #') ? activeToolName : t('thinkingGlimpsePlan', 'Planning...')
+                    ) : (
+                      thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Thinking...')
+                    )}
+                 </div>
               </div>
-              {status !== 'answering' ? (
-                <ToolTicker isThinking={isThinking} toolVisible={toolVisible} activeToolName={activeToolName} />
-              ) : null}
-              {status !== 'answering' && thinkingSteps.length ? (
-                <div className="mt-0.5 text-[10px] leading-3 font-light text-zinc-500/60">
-                  {thinkingSteps.join(' › ')}
+
+              {/* Animated Thought Text */}
+              {displayedThought && (
+                <div className="mb-2 pl-3.5 border-r-2 border-blue-500/20 pr-2">
+                   <div className="text-[10px] leading-4 font-mono text-zinc-300/80 whitespace-pre-wrap break-words" style={{ textShadow: '0 0 5px rgba(255,255,255,0.1)' }}>
+                      {displayedThought}
+                      <span className="inline-block w-1 h-3 ml-0.5 align-middle bg-blue-400/50 animate-pulse"/>
+                   </div>
                 </div>
-              ) : null}
+              )}
+
+              {/* Steps Progress */}
+              {status !== 'answering' && thinkingSteps.length > 0 && (
+                <div className="pl-3.5 flex flex-wrap gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                   {thinkingSteps.map((step, idx) => (
+                      <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">
+                        {step}
+                      </span>
+                   ))}
+                </div>
+              )}
             </div>
           </motion.div>
         )}

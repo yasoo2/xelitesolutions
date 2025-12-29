@@ -724,6 +724,7 @@ export async function planNextStep(
       return {
         name: toolCall.function.name,
         input: JSON.parse(toolCall.function.arguments),
+        thought: choice.message.content // Capture thought
       };
     }
 
@@ -731,6 +732,7 @@ export async function planNextStep(
     return {
       name: 'echo',
       input: { text: choice.message.content || "I'm not sure what to do." },
+      thought: choice.message.content // Capture thought
     };
 
   } catch (error) {
