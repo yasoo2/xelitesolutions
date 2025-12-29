@@ -1162,16 +1162,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const projName = nameMatch ? nameMatch[1] : 'vivos-store';
 
       if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
-        const md = [
-          `### 🚀 خطة البناء الذكي (Smart Build Plan)`,
-          `سأقوم باستخدام المصنع البرمجي \`scaffold_full_stack\` لبناء النظام بالكامل في خطوة واحدة:`,
-          `- **Frontend**: React + Vite + Tailwind`,
-          `- **Backend**: Express + MongoDB + Docker`,
-          `- **Database**: MongoDB Container`,
-          ``,
-          `جاري التنفيذ...`
-        ].join('\n');
-        ev({ type: 'text', data: md });
+        // Silent execution - no text emitted to chat
+        // ev({ type: 'text', data: md }); 
         history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
         
         // Force the smart tool
