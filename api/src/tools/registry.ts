@@ -230,7 +230,10 @@ export const tools: ToolDefinition[] = [
           headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
           body: JSON.stringify({ actions: [{ type: 'goto', url: String(input?.url || 'https://www.google.com'), waitUntil: 'domcontentloaded' }] })
         });
-        if (!nav.ok) logs.push(`nav_error=${nav.status}`);
+        if (!nav.ok) {
+          logs.push(`nav_error=${nav.status}`);
+          return { ok: false, error: `Browser navigation failed with status ${nav.status}`, logs };
+        }
         const artifacts = [
           { name: 'Agent Browser Stream', href: wsUrl, kind: 'browser_stream' }
         ];
@@ -368,8 +371,10 @@ export const tools: ToolDefinition[] = [
         return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
       const j = await resp.json();
-      const artifacts = [{ name: 'snapshot.jpg', href: `${base}/shots/${path.basename(j.screenshot)}` }];
-      return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs, artifacts };
+      // User requested to hide screenshots from chat. We keep the data in output for internal use (or potential future use),
+      // but we do NOT emit an artifact so the UI doesn't show a large image.
+      // const artifacts = [{ name: 'snapshot.jpg', href: `${base}/shots/${path.basename(j.screenshot)}` }];
+      return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs };
     }
   },
   {
