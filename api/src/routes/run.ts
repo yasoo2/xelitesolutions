@@ -1169,7 +1169,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         // Force the smart tool
         plan = { 
             name: 'scaffold_full_stack', 
-            input: { name: projName, type: 'ecommerce' } 
+            input: { 
+                name: projName, 
+                type: 'ecommerce',
+                features: ['auth', 'products', 'cart'] // Smart default features
+            } 
         } as any;
         planName = 'scaffold_full_stack';
       }
