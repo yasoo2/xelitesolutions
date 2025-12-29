@@ -14,12 +14,12 @@ const categories = [
 ];
 
 const products = [
-  { id: 'p1', name: 'Smartphone Pro', price: 499, image: 'https://via.placeholder.com/200', category: 'Electronics', rating: 4.7 },
-  { id: 'p2', name: 'Wireless Earbuds', price: 69, image: 'https://via.placeholder.com/200', category: 'Electronics', rating: 4.4 },
-  { id: 'p3', name: 'Running Shoes', price: 89, image: 'https://via.placeholder.com/200', category: 'Sports', rating: 4.2 },
-  { id: 'p4', name: 'Makeup Kit', price: 39, image: 'https://via.placeholder.com/200', category: 'Beauty', rating: 4.5 },
-  { id: 'p5', name: 'Winter Jacket', price: 129, image: 'https://via.placeholder.com/200', category: 'Fashion', rating: 4.1 },
-  { id: 'p6', name: 'Vacuum Cleaner', price: 149, image: 'https://via.placeholder.com/200', category: 'Home', rating: 4.3 }
+  { id: 'p1', name: 'Smartphone Pro', price: 499, image: 'https://placehold.co/200', category: 'Electronics', rating: 4.7 },
+  { id: 'p2', name: 'Wireless Earbuds', price: 69, image: 'https://placehold.co/200', category: 'Electronics', rating: 4.4 },
+  { id: 'p3', name: 'Running Shoes', price: 89, image: 'https://placehold.co/200', category: 'Sports', rating: 4.2 },
+  { id: 'p4', name: 'Makeup Kit', price: 39, image: 'https://placehold.co/200', category: 'Beauty', rating: 4.5 },
+  { id: 'p5', name: 'Winter Jacket', price: 129, image: 'https://placehold.co/200', category: 'Fashion', rating: 4.1 },
+  { id: 'p6', name: 'Vacuum Cleaner', price: 149, image: 'https://placehold.co/200', category: 'Home', rating: 4.3 }
 ];
 
 let carts = {}; // { sessionId: [{ productId, qty }] }

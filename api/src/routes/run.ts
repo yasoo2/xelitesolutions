@@ -225,10 +225,10 @@ function buildEcommerceScaffold(root: string) {
     "app.use(express.json());\n" +
     "const categories=[{id:'electronics',name:'Electronics'},{id:'fashion',name:'Fashion'},{id:'home',name:'Home'}];\n" +
     "const products=[\n" +
-    " {id:'p1',name:'Wireless Earbuds',price:29.99,category:'electronics',image:'/images/earbuds.jpg'},\n" +
-    " {id:'p2',name:'Smart Watch',price:49.99,category:'electronics',image:'/images/watch.jpg'},\n" +
-    " {id:'p3',name:'Classic T-Shirt',price:12.5,category:'fashion',image:'/images/tshirt.jpg'},\n" +
-    " {id:'p4',name:'Coffee Maker',price:39.0,category:'home',image:'/images/coffee.jpg'}\n" +
+    " {id:'p1',name:'Wireless Earbuds',price:29.99,category:'electronics',image:'https://placehold.co/200'},\n" +
+    " {id:'p2',name:'Smart Watch',price:49.99,category:'electronics',image:'https://placehold.co/200'},\n" +
+    " {id:'p3',name:'Classic T-Shirt',price:12.5,category:'fashion',image:'https://placehold.co/200'},\n" +
+    " {id:'p4',name:'Coffee Maker',price:39.0,category:'home',image:'https://placehold.co/200'}\n" +
     "];\n" +
     "const carts={};\n" +
     "app.get('/api/categories',(req,res)=>{res.json({ok:true,categories})});\n" +
@@ -391,10 +391,13 @@ function extractRootFromText(raw: string, fallback: string): string {
   const s = String(raw || '');
   const mV = s.match(/\b(vivos)\b/i);
   if (mV && mV[1]) return mV[1].trim();
-  const mNamed = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه|named|name it|call it)\s+([A-Za-z0-9._-]{1,100})/i);
+  
+  const mNamed = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه|named|name it|call it)(?:\s+(?:the|a|an))?(?:\s+(?:project|app|api|site))?\s+(?:['"]?)([A-Za-z0-9._-]{1,100})(?:['"]?)/i);
   if (mNamed && mNamed[1]) return mNamed[1].trim();
-  const mIn = s.match(/(?:in|into|inside|within|داخل)\s+([A-Za-z0-9._-]{1,100})/i);
+  
+  const mIn = s.match(/(?:in|into|inside|within|داخل)(?:\s+(?:the|a|an))?(?:\s+(?:folder|directory|dir|مجلد))?\s+(?:['"]?)([A-Za-z0-9._-]{1,100})(?:['"]?)/i);
   if (mIn && mIn[1]) return mIn[1].trim();
+  
   const mFi = s.match(/(?:في)\s+([A-Za-z0-9._-]{1,100})/i);
   if (mFi && mFi[1]) return mFi[1].trim();
   return fallback;
