@@ -107,6 +107,18 @@ function isProviderAuthError(err: any, errMsg?: string): boolean {
   );
 }
 
+function isProviderConfigError(err: any, errMsg?: string): boolean {
+  const status = errorStatusCode(err);
+  const s = String(errMsg ?? safeErrorMessage(err) ?? '').toLowerCase();
+  return (
+    status === 400 ||
+    status === 404 ||
+    s.includes('model not found') ||
+    s.includes('deployment not found') ||
+    s.includes('bad request')
+  );
+}
+
 function isProviderRateLimitError(err: any, errMsg?: string): boolean {
   const status = errorStatusCode(err);
   if (status === 429) return true;
@@ -997,13 +1009,22 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: plannerMock });
         } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
-            console.warn('LLM planning error:', lastPlanError);
+            const status = errorStatusCode(err);
+            console.warn(`LLM planning error (status=${status}):`, lastPlanError);
+            
             if (isProviderAuthError(err, lastPlanError)) {
               const msg = '⚠️ **Authentication Failed**\nThe AI provider rejected the API key. Please verify the key and provider endpoint in the settings.';
               ev({ type: 'text', data: msg });
               forcedText = msg;
               assistantTextEmitted = true;
               break;
+            }
+            if (isProviderConfigError(err, lastPlanError)) {
+               const msg = `⚠️ **Configuration Error**\nThe AI provider returned an error (Status: ${status}). This usually means the Model Name is invalid or not available for your API Key.\nDetails: ${lastPlanError}`;
+               ev({ type: 'text', data: msg });
+               forcedText = msg;
+               assistantTextEmitted = true;
+               break;
             }
             if (plannerMock || !apiKey) {
               try {
