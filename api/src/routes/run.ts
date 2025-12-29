@@ -1157,60 +1157,36 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
     const wantsShop = isEcommerceRequest(userTextForOverrides);
     if (wantsShop) {
-      const root = extractTargetProjectRoot(userTextForOverrides);
+      // Extract project name if provided, else default
+      const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
+      const projName = nameMatch ? nameMatch[1] : 'vivos-store';
 
       if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
         const md = [
-          `### خطة بناء المتجر (5 خطوات)`,
-          `- 1) project_detect: فحص هيكل المشروع والمسارات`,
-          `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
-          `- 3) scaffold_project: إنشاء هيكل المتجر (backend + frontend)`,
-          `- 4) npm_install: تثبيت اعتمادات الـ backend`,
-          `- 5) quality_run: تشغيل lint/test/build إن كانت موجودة`,
+          `### 🚀 خطة البناء الذكي (Smart Build Plan)`,
+          `سأقوم باستخدام المصنع البرمجي \`scaffold_full_stack\` لبناء النظام بالكامل في خطوة واحدة:`,
+          `- **Frontend**: React + Vite + Tailwind`,
+          `- **Backend**: Express + MongoDB + Docker`,
+          `- **Database**: MongoDB Container`,
           ``,
-          `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`
+          `جاري التنفيذ...`
         ].join('\n');
         ev({ type: 'text', data: md });
         history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
-        // Inject directive for the AI
-        history.push({ 
-          role: 'system', 
-          content: `BUILD DIRECTIVE: You are building an E-Commerce Store. 
-          Follow this plan strictly:
-          1. project_detect (if not done)
-          2. analyze_codebase (if not done)
-          3. scaffold_project (if not done - use structure: {} and I will inject the template)
-          4. npm_install (backend only)
-          5. quality_run (backend only)
-          
-          Check the history to see what has been done. Do not repeat steps. If a step is done, move to the next.` 
-        } as any);
-
-        // Persist marker to prevent repetition on restart
-        try {
-           await Message.create({ sessionId, role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED', runId });
-           // Persist directive so LLM remembers the plan on retry
-           await Message.create({ 
-             sessionId, 
-             role: 'system', 
-             content: `BUILD DIRECTIVE: You are building an E-Commerce Store. 
-          Follow this plan strictly:
-          1. project_detect (if not done)
-          2. analyze_codebase (if not done)
-          3. scaffold_project (if not done - use structure: {} and I will inject the template)
-          4. npm_install (backend only)
-          5. quality_run (backend only)
-          
-          Check the history to see what has been done. Do not repeat steps. If a step is done, move to the next.`, 
-             runId 
-           });
-        } catch {}
+        
+        // Force the smart tool
+        plan = { 
+            name: 'scaffold_full_stack', 
+            input: { name: projName, type: 'ecommerce' } 
+        } as any;
+        planName = 'scaffold_full_stack';
       }
       
-      // Builder Mode: If the planner returned a thought-only step (echo) or empty, force execution start
+      // If planner tries to echo, force it back to track progress or finish
       if (!planName || planName === 'echo') {
-        plan = { name: 'project_detect', input: { path: '.' } } as any;
-        planName = 'project_detect';
+          // If we just scaffolded, maybe we should install dependencies?
+          // Actually, let the user (or next turn) handle npm install to avoid long timeouts.
+          // We just report success.
       }
     }
 
