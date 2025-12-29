@@ -765,7 +765,8 @@ app.post('/session/:id/snapshot', auth, async (req, res) => {
   const dir = path.dirname(p);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(p, buf);
-  res.json({ dom: html.slice(0, 100000), a11y: a11ySnap, screenshot: `/shots/${name}` });
+  // Increase DOM limit to 2MB to avoid cutting off body content in large pages
+  res.json({ dom: html.slice(0, 2000000), a11y: a11ySnap, screenshot: `/shots/${name}` });
 });
 
 app.post('/session/:id/extract', auth, async (req, res) => {

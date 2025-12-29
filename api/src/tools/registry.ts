@@ -375,6 +375,12 @@ export const tools: ToolDefinition[] = [
       // User requested to hide screenshots from chat. We keep the data in output for internal use (or potential future use),
       // but we do NOT emit an artifact so the UI doesn't show a large image.
       // const artifacts = [{ name: 'snapshot.jpg', href: `${base}/shots/${path.basename(j.screenshot)}` }];
+      const domLen = (j.dom || '').length;
+      const a11yNodes = j.a11y ? JSON.stringify(j.a11y).length : 0;
+      logs.push(`dom_len=${domLen} a11y_len=${a11yNodes} shot=${j.screenshot}`);
+      if (domLen < 500) {
+        logs.push(`warn_empty_dom: DOM is very short (${domLen} chars). Page might be empty or loading.`);
+      }
       return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs };
     }
   },
