@@ -1254,7 +1254,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         } as any);
       }
       
-      // We no longer force the plan here. We let the LLM decide.
+      // Builder Mode: Start execution if the planner returned echo or empty
+      plan = { name: 'project_detect', input: { path: '.' } } as any;
+      planName = 'project_detect';
     }
 
     if (String(plan?.name || '') === 'github_create_repo') {
