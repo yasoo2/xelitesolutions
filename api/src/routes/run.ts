@@ -182,6 +182,116 @@ function extractRequestedRepoName(raw: string): string | null {
   return null;
 }
 
+function isEcommerceRequest(raw: string): boolean {
+  const s = String(raw || '');
+  const hasEn = /(e[-\s]?commerce|online\s+store|web\s+shop|marketplace|ali\s*express)/i.test(s);
+  const t = normalizeArabicQuery(s);
+  const hasAr =
+    /(متجر|سوق|متجر\s+الكتروني|متجر\s+إلكتروني|موقع\s+متجر|علي\s*اكسبريس|علي\s*إكسبريس|اكسبرس)/.test(t);
+  return hasEn || hasAr;
+}
+
+function extractTargetProjectRoot(raw: string): string {
+  const s = String(raw || '');
+  const m1 = s.match(/\b(vivos)\b/i);
+  if (m1 && m1[1]) return m1[1].trim();
+  const m2 = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه|named|name it|call it)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (m2 && m2[1]) return m2[1].trim();
+  return 'ecommerce-store';
+}
+
+function buildEcommerceScaffold(root: string) {
+  const backendPkg = {
+    name: `${root}-backend`,
+    version: '1.0.0',
+    private: true,
+    type: 'module',
+    scripts: {
+      start: 'node src/index.js',
+      dev: 'node src/index.js'
+    },
+    dependencies: {
+      express: '^4.18.2',
+      cors: '^2.8.5'
+    }
+  };
+  const beIndexJs =
+    "import express from 'express';\n" +
+    "import cors from 'cors';\n" +
+    "const app = express();\n" +
+    "app.use(cors());\n" +
+    "app.use(express.json());\n" +
+    "const categories=[{id:'electronics',name:'Electronics'},{id:'fashion',name:'Fashion'},{id:'home',name:'Home'}];\n" +
+    "const products=[\n" +
+    " {id:'p1',name:'Wireless Earbuds',price:29.99,category:'electronics',image:'/images/earbuds.jpg'},\n" +
+    " {id:'p2',name:'Smart Watch',price:49.99,category:'electronics',image:'/images/watch.jpg'},\n" +
+    " {id:'p3',name:'Classic T-Shirt',price:12.5,category:'fashion',image:'/images/tshirt.jpg'},\n" +
+    " {id:'p4',name:'Coffee Maker',price:39.0,category:'home',image:'/images/coffee.jpg'}\n" +
+    "];\n" +
+    "const carts={};\n" +
+    "app.get('/api/categories',(req,res)=>{res.json({ok:true,categories})});\n" +
+    "app.get('/api/products',(req,res)=>{const c=req.query.category;const list=typeof c==='string'?products.filter(p=>p.category===c):products;res.json({ok:true,products:list})});\n" +
+    "app.post('/api/cart',(req,res)=>{const {sessionId,productId,qty}=req.body||{};if(!sessionId||!productId||!qty)return res.status(400).json({error:'bad_request'});const cur=carts[sessionId]||[];const idx=cur.findIndex(i=>i.productId===productId);if(idx>=0){cur[idx].qty+=qty}else{cur.push({productId,qty})}carts[sessionId]=cur;res.json({ok:true,cart:cur})});\n" +
+    "app.get('/api/cart',(req,res)=>{const sid=String(req.query.sessionId||'').trim();res.json({ok:true,cart:carts[sid]||[]})});\n" +
+    "app.post('/api/orders',(req,res)=>{const {sessionId,address}=req.body||{};const cur=carts[sessionId]||[];if(!cur.length)return res.status(400).json({error:'empty_cart'});const total=cur.reduce((sum,i)=>{const p=products.find(p=>p.id===i.productId);return sum+(p?p.price*i.qty:0)},0);carts[sessionId]=[];res.json({ok:true,orderId:'order-'+Date.now(),total,address})});\n" +
+    "const port=process.env.PORT||4000;\n" +
+    "app.listen(port,()=>{console.log('E-commerce API running on',port)});\n";
+  const feIndexHtml =
+    "<!DOCTYPE html>\n" +
+    "<html lang=\"en\">\n" +
+    "<meta charset=\"UTF-8\" />\n" +
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n" +
+    "<title>Vivos Shop</title>\n" +
+    "<link rel=\"stylesheet\" href=\"styles.css\" />\n" +
+    "<body>\n" +
+    "<header><h1>Vivos Shop</h1></header>\n" +
+    "<main>\n" +
+    "<section id=\"filters\"><select id=\"category\"></select></section>\n" +
+    "<section id=\"products\" class=\"grid\"></section>\n" +
+    "<aside id=\"cart\"></aside>\n" +
+    "</main>\n" +
+    "<script src=\"app.js\"></script>\n" +
+    "</body>\n" +
+    "</html>\n";
+  const feStyles =
+    "body{font-family:system-ui,Arial,sans-serif;margin:0;padding:0;background:#f6f7f9;color:#111}\n" +
+    "header{background:#1f2937;color:#fff;padding:16px}\n" +
+    "main{display:grid;grid-template-columns:1fr 300px;gap:16px;padding:16px}\n" +
+    ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}\n" +
+    ".card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px;display:flex;flex-direction:column}\n" +
+    ".card img{width:100%;height:120px;object-fit:cover;border-radius:6px}\n" +
+    ".card .name{font-weight:600;margin:8px 0}\n" +
+    ".card .price{color:#16a34a}\n" +
+    "#cart{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px}\n";
+  const feAppJs =
+    "const API=location.hostname==='localhost'||location.hostname==='127.0.0.1'? 'http://localhost:4000' : '';\n" +
+    "const sid=localStorage.getItem('sid')||('sid-'+Math.random().toString(36).slice(2));localStorage.setItem('sid',sid);\n" +
+    "const catSel=document.getElementById('category');const grid=document.getElementById('products');const cart=document.getElementById('cart');\n" +
+    "async function loadCats(){const r=await fetch(API+'/api/categories');const j=await r.json();catSel.innerHTML='<option value=\"\">All</option>'+j.categories.map(c=>`<option value=\"${c.id}\">${c.name}</option>`).join('');}\n" +
+    "async function loadProducts(){const c=catSel.value;const url=c?API+'/api/products?category='+encodeURIComponent(c):API+'/api/products';const r=await fetch(url);const j=await r.json();grid.innerHTML=j.products.map(p=>`\n" +
+    "<div class=\"card\">\n" +
+    "<img src=\"${p.image}\" alt=\"${p.name}\" />\n" +
+    "<div class=\"name\">${p.name}</div>\n" +
+    "<div class=\"price\">$${p.price.toFixed(2)}</div>\n" +
+    "<button data-id=\"${p.id}\">Add to Cart</button>\n" +
+    "</div>`).join('');Array.from(grid.querySelectorAll('button')).forEach(b=>b.onclick=()=>addToCart(b.dataset.id));}\n" +
+    "async function addToCart(id){await fetch(API+'/api/cart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:sid,productId:id,qty:1})});renderCart();}\n" +
+    "async function renderCart(){const r=await fetch(API+'/api/cart?sessionId='+encodeURIComponent(sid));const j=await r.json();cart.innerHTML='<h3>Cart</h3>'+(j.cart||[]).map(i=>`<div>${i.productId} × ${i.qty}</div>`).join('')+`<button id=\"checkout\">Checkout</button>`;const btn=document.getElementById('checkout');if(btn)btn.onclick=checkout;}\n" +
+    "async function checkout(){const r=await fetch(API+'/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:sid,address:'N/A'})});const j=await r.json();alert('Order '+j.orderId+' Total $'+j.total.toFixed(2));renderCart();}\n" +
+    "catSel.onchange=loadProducts;loadCats().then(loadProducts).then(renderCart);\n";
+  const structure: Record<string, string | null> = {};
+  structure[`${root}`] = null;
+  structure[`${root}/backend`] = null;
+  structure[`${root}/backend/package.json`] = JSON.stringify(backendPkg, null, 2) + '\n';
+  structure[`${root}/backend/src`] = null;
+  structure[`${root}/backend/src/index.js`] = beIndexJs;
+  structure[`${root}/frontend`] = null;
+  structure[`${root}/frontend/index.html`] = feIndexHtml;
+  structure[`${root}/frontend/styles.css`] = feStyles;
+  structure[`${root}/frontend/app.js`] = feAppJs;
+  return structure;
+}
+
 function redactToolInputForStorage(name: string, input: any) {
   if (!input || typeof input !== 'object') return input;
   if (name === 'browser_run') {
@@ -690,6 +800,19 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             } as any;
           }
         }
+        if (!plan) {
+          const wantsShop = isEcommerceRequest(userTextForOverrides);
+          if (wantsShop) {
+            const root = extractTargetProjectRoot(userTextForOverrides);
+            plan = {
+              name: 'scaffold_project',
+              input: {
+                structure: buildEcommerceScaffold(root),
+                baseDir: '.',
+              },
+            } as any;
+          }
+        }
       }
       
       if (!plan) {
@@ -735,6 +858,19 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             name: requestedRepoName,
             private: /(private|خاص)/i.test(userTextForOverrides),
             sessionId: String(sessionId),
+          },
+        } as any;
+      }
+    }
+    const wantsShop = isEcommerceRequest(userTextForOverrides);
+    if (wantsShop) {
+      const root = extractTargetProjectRoot(userTextForOverrides);
+      if (!planName || planName === 'echo') {
+        plan = {
+          name: 'scaffold_project',
+          input: {
+            structure: buildEcommerceScaffold(root),
+            baseDir: '.',
           },
         } as any;
       }
