@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const app = express();
 app.use(cors());
@@ -134,6 +136,13 @@ app.get('/api/orders/history', (req, res) => {
 app.post('/api/auth/login', (_req, res) => {
   res.json({ ok: true, token: 'mock-token' });
 });
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDir = path.resolve(__dirname, '../../frontend');
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(frontendDir, 'index.html'));
+});
+app.use('/', express.static(frontendDir));
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

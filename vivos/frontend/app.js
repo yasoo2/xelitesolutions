@@ -1,4 +1,4 @@
-const API = 'http://localhost:4000/api';
+const API = location.origin + '/api';
 const sessionId = 'sess-' + Math.random().toString(16).slice(2);
 
 const state = { products: [], categories: [], cart: [] };
