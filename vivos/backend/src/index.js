@@ -27,9 +27,16 @@ const products = [
 ];
 
 let carts = {}; // { sessionId: [{ productId, qty }] }
+let cartMeta = {}; // { sessionId: { coupon: string | null } }
 let reviews = {}; // { productId: [{ sessionId, rating, comment, ts }] }
 let wishlists = {}; // { sessionId: [productId, ...] }
 let orders = {}; // { sessionId: [{ orderId, total, address, items, ts }] }
+
+const COUPONS = {
+  'WELCOME10': 0.10, // 10% off
+  'SAVE20': 0.20,    // 20% off
+  'VIVOS50': 0.50    // 50% off
+};
 
 app.get('/api/categories', (_req, res) => {
   res.json({ categories });
@@ -81,14 +88,39 @@ app.post('/api/cart', (req, res) => {
   res.json({ ok: true, cart: cur });
 });
 
+app.post('/api/cart/coupon', (req, res) => {
+  const { sessionId, code } = req.body || {};
+  if (!sessionId) return res.status(400).json({ error: 'missing_session' });
+  
+  const cleanCode = String(code || '').trim().toUpperCase();
+  if (!cleanCode) {
+    // Remove coupon
+    if (cartMeta[sessionId]) cartMeta[sessionId].coupon = null;
+    return res.json({ ok: true, message: 'Coupon removed' });
+  }
+
+  if (COUPONS[cleanCode]) {
+    if (!cartMeta[sessionId]) cartMeta[sessionId] = {};
+    cartMeta[sessionId].coupon = cleanCode;
+    return res.json({ ok: true, discount: COUPONS[cleanCode], message: 'Coupon applied!' });
+  }
+
+  return res.status(400).json({ error: 'invalid_coupon' });
+});
+
 app.get('/api/cart', (req, res) => {
   const sessionId = String(req.query.sessionId || '');
   const cur = carts[sessionId] || [];
+  const meta = cartMeta[sessionId] || {};
+  const couponCode = meta.coupon;
+  const discountRate = couponCode ? (COUPONS[couponCode] || 0) : 0;
+
   const detailed = cur.map(i => ({
     ...i,
     product: products.find(p => p.id === i.productId)
   }));
-  res.json({ cart: detailed });
+  
+  res.json({ cart: detailed, coupon: couponCode, discountRate });
 });
 
 app.post('/api/wishlist', (req, res) => {
@@ -120,12 +152,30 @@ app.post('/api/orders', (req, res) => {
     const p = products.find(p => p.id === i.productId);
     return sum + (p ? p.price * i.qty : 0);
   }, 0);
-  const order = { orderId: 'order-' + Date.now(), total, address, items: cur.map(i => ({ ...i })), ts: Date.now() };
+  
+  // Apply Discount
+  const meta = cartMeta[sessionId] || {};
+  const discountRate = meta.coupon ? (COUPONS[meta.coupon] || 0) : 0;
+  const finalTotal = total * (1 - discountRate);
+
+  const order = { 
+    orderId: 'order-' + Date.now(), 
+    total: Number(finalTotal.toFixed(2)), 
+    subtotal: total,
+    discount: discountRate,
+    coupon: meta.coupon,
+    address, 
+    items: cur.map(i => ({ ...i })), 
+    ts: Date.now() 
+  };
+  
   carts[sessionId] = [];
+  if (cartMeta[sessionId]) cartMeta[sessionId] = {}; // Reset meta
+
   const userOrders = orders[sessionId] || [];
   userOrders.push(order);
   orders[sessionId] = userOrders;
-  res.json({ ok: true, orderId: order.orderId, total, address });
+  res.json({ ok: true, orderId: order.orderId, total: order.total, address });
 });
 
 app.get('/api/orders/history', (req, res) => {

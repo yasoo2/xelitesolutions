@@ -1,7 +1,7 @@
 const API = location.origin + '/api';
 const sessionId = 'sess-' + Math.random().toString(16).slice(2);
 
-const state = { products: [], categories: [], cart: [] };
+const state = { products: [], categories: [], cart: [], coupon: null, discountRate: 0 };
 
 function debounce(func, wait) {
   let timeout;
@@ -37,7 +37,25 @@ async function loadProducts() {
 async function loadCart() {
   const data = await fetchJSON(API + '/cart?sessionId=' + encodeURIComponent(sessionId));
   state.cart = data.cart || [];
+  state.coupon = data.coupon || null;
+  state.discountRate = data.discountRate || 0;
   renderCart();
+}
+
+async function applyCoupon() {
+  const code = document.getElementById('couponCode').value.trim();
+  const r = await fetch(API + '/cart/coupon', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, code })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    if (d.message) alert(d.message);
+    loadCart();
+  } else {
+    alert('فشل تطبيق الكوبون: ' + (d.error || 'رمز غير صالح'));
+  }
 }
 
 function renderProducts() {
@@ -103,8 +121,13 @@ async function loadWishlist() {
 function renderCart() {
   const items = document.getElementById('cartItems');
   const count = state.cart.reduce((n, i) => n + i.qty, 0);
+  const subtotal = state.cart.reduce((s, i) => s + (i.product?.price || 0) * i.qty, 0);
+  const discount = subtotal * state.discountRate;
+  const total = subtotal - discount;
+
   document.getElementById('cartCount').textContent = count;
-  items.innerHTML = state.cart.map(i => {
+  
+  let html = state.cart.map(i => {
     const p = i.product;
     return `<div class="cart-item">
       <span>${p?.name || i.productId}</span>
@@ -115,6 +138,25 @@ function renderCart() {
       <button onclick="removeItem('${i.productId}')">إزالة</button>
     </div>`;
   }).join('');
+
+  if (state.cart.length > 0) {
+      html += `
+        <div class="cart-summary" style="margin-top:16px; padding-top:16px; border-top:1px solid #ddd;">
+            <div>المجموع الفرعي: $${subtotal.toFixed(2)}</div>
+            ${state.discountRate > 0 ? `<div style="color:green">الخصم (${state.discountRate * 100}%): -$${discount.toFixed(2)}</div>` : ''}
+            <div style="font-weight:bold; font-size:1.1em; margin-top:4px;">الإجمالي: $${total.toFixed(2)}</div>
+            
+            <div style="margin-top:12px; display:flex; gap:6px;">
+                <input id="couponCode" placeholder="كود الخصم" value="${state.coupon || ''}" style="width:100px; padding:4px;" />
+                <button onclick="applyCoupon()">تطبيق</button>
+            </div>
+        </div>
+      `;
+  } else {
+      html = '<div style="padding:20px; text-align:center; color:#888">السلة فارغة</div>';
+  }
+
+  items.innerHTML = html;
 }
 
 async function openProduct(id) {
