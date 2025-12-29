@@ -2096,8 +2096,8 @@ Instructions:
       const hasArabic = /[\u0600-\u06FF]/.test(q);
 
       const looksLikeWeather =
-        /(?:\bweather\b|الطقس|حالة\s+الطقس|درجة\s+الحرارة)/i.test(q) &&
-        /(?:\btoday\b|اليوم|\bnow\b|الآن|\bcurrent\b|حالي(?:اً|ا)?)/i.test(q);
+        /(?:\bweather\b|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حرارة)/i.test(q) &&
+        /(?:\btoday\b|اليوم|\bnow\b|الآن|الان|\bcurrent\b|حالي(?:اً|ا)?)/i.test(q);
 
       if (looksLikeWeather) {
         const city =
@@ -2106,8 +2106,9 @@ Instructions:
             : (() => {
                 const m =
                   q.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
-                  q.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس)/i);
-                return String(m?.[1] || 'Istanbul').trim();
+                  q.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس|درجة\s+الحرارة)/i);
+                // Default to Riyadh if no city found (more relevant for Arabic users than Istanbul)
+                return String(m?.[1] || 'Riyadh').trim();
               })();
 
         try {
