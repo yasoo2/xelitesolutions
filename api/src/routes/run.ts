@@ -1138,8 +1138,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         } catch {}
       }
       
-      // We no longer force the plan here. We let the LLM decide based on history.
-      // The scaffold_project structure will be injected below if the LLM chooses it.
+      // Builder Mode: If the planner returned a thought-only step (echo) or empty, force execution start
+      if (!planName || planName === 'echo') {
+        plan = { name: 'project_detect', input: { path: '.' } } as any;
+        planName = 'project_detect';
+      }
     }
 
     const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
