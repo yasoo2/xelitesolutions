@@ -352,7 +352,6 @@ export default function CommandComposer({
       }
     >
   >({});
-  const taskOccRef = useRef<Record<string, Record<string, number>>>({});
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
@@ -396,6 +395,7 @@ export default function CommandComposer({
   const thinkingGlimpseIndexRef = useRef<number>(0);
   const draftTimerRef = useRef<number | null>(null);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
+  const lastExecTaskIdRef = useRef<Record<string, Record<string, string>>>({});
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -435,12 +435,11 @@ export default function CommandComposer({
     return tname ? `تنفيذ: ${tname}` : 'تنفيذ مهمة';
   };
 
-  const bumpToolOcc = (rid: string, tool: string) => {
-    const key = tool || 'unknown';
-    if (!taskOccRef.current[rid]) taskOccRef.current[rid] = {};
-    const next = (taskOccRef.current[rid][key] || 0) + 1;
-    taskOccRef.current[rid][key] = next;
-    return next;
+  const getTaskId = (rid: string, tool: string, input: any) => {
+    const normalizedTool = String(tool || '').trim();
+    const label = getToolLabel(normalizedTool, input);
+    const stable = `${normalizedTool}::${label}`;
+    return { id: `${rid}::${stable}`, tool: normalizedTool, label };
   };
 
   const ensureTaskBar = (rid: string, patch: Partial<{ visible: boolean; analyzing: boolean }>) => {
@@ -456,41 +455,68 @@ export default function CommandComposer({
   const addPlannedTask = (rid: string, plan: any) => {
     const tool = String(plan?.name || '').trim();
     if (!tool) return;
-    const occ = bumpToolOcc(rid, tool);
-    const id = `${rid}::${tool}::${occ}`;
-    const label = getToolLabel(tool, plan?.input);
+    const { id, label } = getTaskId(rid, tool, plan?.input);
 
     setTaskBarByRunId((prev) => {
       const cur = prev[rid] || { visible: true, analyzing: true, items: [] as any[] };
-      if (cur.items.some((x) => x.id === id)) return prev;
+      const items = [...cur.items];
+      const idx = items.findIndex((x) => x.id === id);
+      if (idx >= 0) {
+        const existing = items[idx];
+        const nextStatus = existing.status === 'failed' ? 'pending' : existing.status;
+        items[idx] = { ...existing, label, status: nextStatus };
+        return { ...prev, [rid]: { ...cur, visible: true, analyzing: false, items } };
+      }
       const next = {
         ...cur,
         visible: true,
         analyzing: false,
-        items: [...cur.items, { id, tool, label, status: 'pending' as const }],
+        items: [...items, { id, tool, label, status: 'pending' as const }],
       };
       return { ...prev, [rid]: next };
     });
   };
 
-  const setTaskStatusByExecuteEvent = (rid: string, tool: string, kind: 'start' | 'done' | 'failed') => {
+  const setTaskStatusByExecuteEvent = (
+    rid: string,
+    tool: string,
+    kind: 'start' | 'done' | 'failed',
+    input?: any
+  ) => {
     const normalized = String(tool || '').trim();
     if (!normalized) return;
 
     setTaskBarByRunId((prev) => {
       const cur = prev[rid];
-      if (!cur || !cur.items.length) return prev;
+      if (!cur) return prev;
 
       const items = [...cur.items];
-      const idx = (() => {
-        if (kind === 'start') return items.findIndex((t) => t.tool === normalized && t.status === 'pending');
-        if (kind === 'done') return items.findIndex((t) => t.tool === normalized && t.status === 'running');
-        if (kind === 'failed') return items.findIndex((t) => t.tool === normalized && t.status === 'running');
-        return -1;
-      })();
+      const byId = (id: string) => items.findIndex((t) => t.id === id);
+      const byToolStatus = (status: 'pending' | 'running') => items.findIndex((t) => t.tool === normalized && t.status === status);
+
+      const derivedId = input != null ? getTaskId(rid, normalized, input).id : '';
+      if (kind === 'start') {
+        const id = derivedId || (lastExecTaskIdRef.current[rid]?.[normalized] ?? '');
+        const idx = id ? byId(id) : byToolStatus('pending');
+        const taskId = idx >= 0 ? items[idx].id : derivedId || getTaskId(rid, normalized, null).id;
+        if (!lastExecTaskIdRef.current[rid]) lastExecTaskIdRef.current[rid] = {};
+        lastExecTaskIdRef.current[rid][normalized] = taskId;
+
+        const i2 = byId(taskId);
+        if (i2 >= 0) {
+          items[i2] = { ...items[i2], status: 'running' };
+        } else {
+          const created = getTaskId(rid, normalized, input ?? null);
+          items.push({ id: created.id, tool: created.tool, label: created.label, status: 'running' });
+        }
+        return { ...prev, [rid]: { ...cur, visible: true, analyzing: false, items } };
+      }
+
+      const remembered = lastExecTaskIdRef.current[rid]?.[normalized] ?? '';
+      const idx = remembered ? byId(remembered) : byToolStatus('running');
       if (idx < 0) return prev;
 
-      const nextStatus = kind === 'start' ? 'running' : kind === 'done' ? 'done' : 'failed';
+      const nextStatus = kind === 'done' ? 'done' : 'failed';
       items[idx] = { ...items[idx], status: nextStatus as any };
       return { ...prev, [rid]: { ...cur, items } };
     });
@@ -1013,7 +1039,7 @@ export default function CommandComposer({
             const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
             if (rid && name.startsWith('execute:')) {
               const tool = name.slice('execute:'.length).trim();
-              if (msg.type === 'step_started') setTaskStatusByExecuteEvent(rid, tool, 'start');
+              if (msg.type === 'step_started') setTaskStatusByExecuteEvent(rid, tool, 'start', msg?.data?.input);
               else if (msg.type === 'step_done') setTaskStatusByExecuteEvent(rid, tool, 'done');
               else setTaskStatusByExecuteEvent(rid, tool, 'failed');
             }

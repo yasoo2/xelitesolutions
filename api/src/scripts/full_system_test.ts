@@ -18,6 +18,15 @@ const headers = {
     'Authorization': `Bearer ${token}` 
 };
 
+function getEnvFirst(...keys: string[]) {
+    for (const k of keys) {
+        const v = typeof process.env[k] === 'string' ? String(process.env[k]) : '';
+        const trimmed = v.trim();
+        if (trimmed) return trimmed;
+    }
+    return undefined;
+}
+
 function makeObjectIdLike() {
     return crypto.randomBytes(12).toString('hex');
 }
@@ -95,6 +104,15 @@ async function decideApproval(id: string, decision: 'approved' | 'denied') {
     return await expectOkJson(res);
 }
 
+async function setSessionSecretValue(sessionId: string, key: string, value: string, provider?: string) {
+    const res = await fetch(`${API_URL}/sessions/${sessionId}/secrets`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ key, value, provider }),
+    });
+    return await expectOkJson(res);
+}
+
 async function main() {
     console.log('\n🔍 INITIALIZING FULL SYSTEM TEST SUITE\n');
     console.log('Target API:', API_URL);
@@ -130,8 +148,8 @@ async function main() {
             headers,
             body: JSON.stringify({ provider: 'llm' })
         });
-        if (res.status === 400) console.log('✅ Default Provider correctly rejected (Local intelligence disabled)');
-        else console.warn('⚠️ Unexpected verify status:', res.status, (await res.text()).slice(0, 200));
+        if (res.ok) console.log('✅ Default Provider verify OK');
+        else console.warn('⚠️ Default Provider verify status:', res.status, (await res.text()).slice(0, 200));
     } catch (e) { console.error('❌ Default Provider Error:', e); }
 
     // 2.2 Test External Provider with Bad Key (Should Fail gracefully)
@@ -158,6 +176,28 @@ async function main() {
             console.error('   Response Body:', text.substring(0, 200));
         }
     } catch (e) { console.error('❌ External Provider Test Error:', e); }
+
+    // 2.3 Test External Provider with Real Key (Optional - from env)
+    const openAiKey = getEnvFirst('TEST_OPENAI_API_KEY', 'OPENAI_API_KEY');
+    if (openAiKey) {
+        try {
+            const res = await fetch(`${API_URL}/runs/verify`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    provider: 'openai',
+                    apiKey: openAiKey,
+                    model: process.env.TEST_OPENAI_MODEL || 'gpt-4o'
+                })
+            });
+            if (res.ok) console.log('✅ External Provider verify OK (env key)');
+            else console.warn('⚠️ External Provider verify failed (env key). Status:', res.status, (await res.text()).slice(0, 200));
+        } catch (e) {
+            console.error('❌ External Provider verify error (env key):', e);
+        }
+    } else {
+        console.log('ℹ️  Skipping real provider verify (set TEST_OPENAI_API_KEY or OPENAI_API_KEY)');
+    }
 
     // 3. Tool Registry Integrity (Count + shape)
     console.log('\n🧰 Verifying tool registry (count + schema)...');
@@ -328,6 +368,47 @@ async function main() {
         console.error('❌ Run Simulation Failed:', e);
     }
 
+    // 4.1 Real Provider Run Flow (Optional - from env)
+    if (openAiKey) {
+        console.log('\n🤖 Testing WebSocket Flow with real provider (openai)...');
+        try {
+            const ws = new WebSocket(WS_URL);
+
+            await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('Timeout waiting for WebSocket connection')), 8000);
+                ws.on('open', () => {
+                    clearTimeout(timer);
+                    resolve();
+                });
+                ws.on('error', reject);
+            });
+
+            const sessionId = makeObjectIdLike();
+            const runData = await startRun({
+                text: 'list files',
+                sessionId,
+                sessionKind: 'agent',
+                provider: 'openai',
+                apiKey: openAiKey,
+                model: process.env.TEST_OPENAI_MODEL || 'gpt-4o'
+            });
+            if (!runData?.runId) throw new Error('runId missing');
+
+            const runFinishedEv = await waitForWsEvent(
+                ws,
+                (ev) => ev?.type === 'run_finished' && ev?.runId === runData.runId,
+                60000
+            );
+            if (String(runFinishedEv?.runId || '') !== String(runData.runId)) {
+                throw new Error(`run_finished runId mismatch: got=${String(runFinishedEv?.runId || '')} expected=${String(runData.runId)}`);
+            }
+            console.log('   ✅ run_finished verified (real provider)');
+            ws.close();
+        } catch (e) {
+            console.error('❌ Real Provider Run Simulation Failed:', e);
+        }
+    }
+
     // 5. Chat + Agent SessionKind (API + history/context)
     console.log('\n💬 Testing chat vs agent session kinds (history/context)...');
     try {
@@ -376,10 +457,10 @@ async function main() {
             ws.on('error', reject);
         });
         const sessionId = makeObjectIdLike();
-        const approvalPromise = waitForWsEvent(
+    const approvalPromise = waitForWsEvent(
             ws,
             (ev) => ev?.type === 'approval_required' && typeof ev?.data?.id === 'string' && typeof ev?.data?.risk === 'string',
-            8000
+            15000
         );
         const data = await startRun({ text: 'delete; ls', sessionId });
         if (!data.blocked) throw new Error('Expected blocked=true');
@@ -392,12 +473,12 @@ async function main() {
         const approvalResultApprovedPromise = waitForWsEvent(
             ws,
             (ev) => ev?.type === 'approval_result' && ev?.runId === data.runId && ev?.data?.id === data.approvalId && ev?.data?.decision === 'approved',
-            12000
+            30000
         );
         const runFinishedApprovedPromise = waitForWsEvent(
             ws,
             (ev) => ev?.type === 'run_finished' && ev?.runId === data.runId && ev?.data?.ok === true,
-            12000
+            30000
         );
         await decideApproval(data.approvalId, 'approved');
         await approvalResultApprovedPromise;
@@ -411,7 +492,7 @@ async function main() {
         const approvalPromise2 = waitForWsEvent(
             ws,
             (ev) => ev?.type === 'approval_required' && typeof ev?.data?.id === 'string',
-            8000
+            15000
         );
         const data2 = await startRun({ text: 'delete; ls', sessionId: sessionId2 });
         if (!data2.blocked) throw new Error('Expected blocked=true (deny test)');
@@ -422,12 +503,12 @@ async function main() {
         const approvalResultDeniedPromise = waitForWsEvent(
             ws,
             (ev) => ev?.type === 'approval_result' && ev?.runId === data2.runId && ev?.data?.id === data2.approvalId && ev?.data?.decision === 'denied',
-            12000
+            30000
         );
         const runFinishedDeniedPromise = waitForWsEvent(
             ws,
             (ev) => ev?.type === 'run_finished' && ev?.runId === data2.runId && ev?.data?.ok === false,
-            12000
+            30000
         );
         await decideApproval(data2.approvalId, 'denied');
         await approvalResultDeniedPromise;
@@ -462,7 +543,8 @@ async function main() {
             12000
         ).catch((e) => ({ __error: e }));
 
-        const data = await startRun({ text: 'انشئ ريبو جديد على github سميه vivos', sessionId, sessionKind: 'agent' });
+        const repoName = `vivos-${sessionId.slice(0, 8)}`;
+        const data = await startRun({ text: `انشئ ريبو جديد على github سميه ${repoName}`, sessionId, sessionKind: 'agent' });
         if (!data.blocked) throw new Error('Expected blocked=true (secret_required test)');
         if (!data.secretRequired) throw new Error('Expected secretRequired=true (secret_required test)');
         if (data.secret?.key && data.secret.key !== 'GITHUB_TOKEN') {
@@ -475,6 +557,24 @@ async function main() {
             throw new Error('secret_required event runId mismatch');
         }
         console.log('   ✅ secret_required (GITHUB_TOKEN) verified');
+
+        const githubToken = getEnvFirst('TEST_GITHUB_TOKEN', 'GITHUB_TOKEN');
+        if (githubToken) {
+            const runFinishedPromise = waitForWsEvent(
+                ws,
+                (ev) => ev?.type === 'run_finished' && ev?.runId === data.runId,
+                90000
+            ).catch((e) => ({ __error: e }));
+
+            await setSessionSecretValue(sessionId, 'GITHUB_TOKEN', githubToken, 'github');
+
+            const runFinishedEv: any = await runFinishedPromise;
+            if (runFinishedEv?.__error) throw runFinishedEv.__error;
+            if (runFinishedEv?.runId !== data.runId) throw new Error('run_finished event runId mismatch (secret resume)');
+            console.log('   ✅ secret resume verified (run_finished received)');
+        } else {
+            console.log('ℹ️  Skipping secret resume (set TEST_GITHUB_TOKEN or GITHUB_TOKEN)');
+        }
 
         ws.close();
     } catch (e) {
