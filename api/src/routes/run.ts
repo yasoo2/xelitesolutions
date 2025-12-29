@@ -200,6 +200,8 @@ function extractTargetProjectRoot(raw: string): string {
   return 'ecommerce-store';
 }
 
+type WorkflowKind = 'ecommerce' | 'static_site' | 'node_api' | 'fullstack' | 'tool_shell';
+
 function buildEcommerceScaffold(root: string) {
   const backendPkg = {
     name: `${root}-backend`,
@@ -290,6 +292,188 @@ function buildEcommerceScaffold(root: string) {
   structure[`${root}/frontend/styles.css`] = feStyles;
   structure[`${root}/frontend/app.js`] = feAppJs;
   return structure;
+}
+
+function buildStaticSiteScaffold(root: string) {
+  const indexHtml =
+    "<!DOCTYPE html>\n" +
+    "<html lang=\"en\">\n" +
+    "<meta charset=\"UTF-8\" />\n" +
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n" +
+    "<title>Website</title>\n" +
+    "<link rel=\"stylesheet\" href=\"styles.css\" />\n" +
+    "<body>\n" +
+    "<header class=\"top\">\n" +
+    "<h1>Website</h1>\n" +
+    "<nav class=\"nav\">\n" +
+    "<a href=\"#features\">Features</a>\n" +
+    "<a href=\"#contact\">Contact</a>\n" +
+    "</nav>\n" +
+    "</header>\n" +
+    "<main class=\"container\">\n" +
+    "<section class=\"hero\">\n" +
+    "<h2>Build fast. Ship faster.</h2>\n" +
+    "<p>Minimal landing page scaffold ready for customization.</p>\n" +
+    "<button id=\"cta\">Get Started</button>\n" +
+    "</section>\n" +
+    "<section id=\"features\" class=\"grid\"></section>\n" +
+    "<section id=\"contact\" class=\"card\">\n" +
+    "<h3>Contact</h3>\n" +
+    "<p>Replace this with your contact form or links.</p>\n" +
+    "</section>\n" +
+    "</main>\n" +
+    "<script src=\"app.js\"></script>\n" +
+    "</body>\n" +
+    "</html>\n";
+  const styles =
+    "body{font-family:system-ui,Arial,sans-serif;margin:0;background:#0b1220;color:#e5e7eb}\n" +
+    ".top{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1f2937}\n" +
+    ".nav a{color:#e5e7eb;margin-left:12px;text-decoration:none;opacity:.85}\n" +
+    ".nav a:hover{opacity:1}\n" +
+    ".container{max-width:1000px;margin:0 auto;padding:20px}\n" +
+    ".hero{padding:24px;border:1px solid #1f2937;border-radius:12px;background:#0f172a}\n" +
+    ".hero button{margin-top:12px;padding:10px 14px;border:0;border-radius:10px;background:#22c55e;color:#052e16;font-weight:700;cursor:pointer}\n" +
+    ".grid{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}\n" +
+    ".card{padding:14px;border:1px solid #1f2937;border-radius:12px;background:#0f172a}\n";
+  const appJs =
+    "const features=[\n" +
+    " {t:'Fast scaffold',d:'Start with a clean structure.'},\n" +
+    " {t:'Tool-driven',d:'Built via Joe tools step-by-step.'},\n" +
+    " {t:'Customizable',d:'Swap content and styles easily.'}\n" +
+    "];\n" +
+    "const grid=document.getElementById('features');\n" +
+    "grid.innerHTML=features.map(f=>`<div class=\"card\"><h3>${f.t}</h3><p>${f.d}</p></div>`).join('');\n" +
+    "document.getElementById('cta').onclick=()=>alert('Ready. Customize this scaffold.');\n";
+  const structure: Record<string, string | null> = {};
+  structure[`${root}`] = null;
+  structure[`${root}/index.html`] = indexHtml;
+  structure[`${root}/styles.css`] = styles;
+  structure[`${root}/app.js`] = appJs;
+  return structure;
+}
+
+function buildNodeApiScaffold(root: string) {
+  const pkg = {
+    name: `${root}-api`,
+    version: '1.0.0',
+    private: true,
+    type: 'module',
+    scripts: { start: 'node src/index.js' },
+    dependencies: { express: '^4.18.2', cors: '^2.8.5' },
+  };
+  const indexJs =
+    "import express from 'express';\n" +
+    "import cors from 'cors';\n" +
+    "const app=express();\n" +
+    "app.use(cors());\n" +
+    "app.use(express.json());\n" +
+    "app.get('/health',(req,res)=>res.json({ok:true,ts:Date.now()}));\n" +
+    "app.get('/api/hello',(req,res)=>res.json({ok:true,message:'hello'}));\n" +
+    "const port=process.env.PORT||4000;\n" +
+    "app.listen(port,()=>console.log('API listening on http://localhost:'+port));\n";
+  const structure: Record<string, string | null> = {};
+  structure[`${root}`] = null;
+  structure[`${root}/package.json`] = JSON.stringify(pkg, null, 2) + '\n';
+  structure[`${root}/src`] = null;
+  structure[`${root}/src/index.js`] = indexJs;
+  return structure;
+}
+
+function buildFullstackScaffold(root: string) {
+  const structure: Record<string, string | null> = {};
+  structure[`${root}`] = null;
+  for (const [k, v] of Object.entries(buildNodeApiScaffold(`${root}/backend`))) structure[k] = v;
+  for (const [k, v] of Object.entries(buildStaticSiteScaffold(`${root}/frontend`))) structure[k] = v;
+  return structure;
+}
+
+function extractRootFromText(raw: string, fallback: string): string {
+  const s = String(raw || '');
+  const mV = s.match(/\b(vivos)\b/i);
+  if (mV && mV[1]) return mV[1].trim();
+  const mNamed = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه|named|name it|call it)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (mNamed && mNamed[1]) return mNamed[1].trim();
+  const mIn = s.match(/(?:in|into|inside|within|داخل)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (mIn && mIn[1]) return mIn[1].trim();
+  const mFi = s.match(/(?:في)\s+([A-Za-z0-9._-]{1,100})/i);
+  if (mFi && mFi[1]) return mFi[1].trim();
+  return fallback;
+}
+
+function extractToolSpec(raw: string): { name: string; command: string } | null {
+  const s = String(raw || '').trim();
+  const mEn = s.match(/create\s+tool\s+([A-Za-z][A-Za-z0-9_-]{1,50})[\s\S]*?(?:runs?|command)\s*[:：]?\s*([^\n]+)$/i);
+  if (mEn && mEn[1] && mEn[2]) return { name: mEn[1].trim(), command: mEn[2].trim() };
+  const mAr =
+    s.match(/(?:انشئ|أنشئ|سوي|سوِّ|قم\s+ب(?:إنشاء|انشاء))\s+(?:اداة|أداة)\s*(?:باسم|اسمها|اسم)\s*([A-Za-z][A-Za-z0-9_-]{1,50})[\s\S]*?(?:ت(?:نفذ|شغل)|تشغل)\s*[:：]?\s*([^\n]+)$/i);
+  if (mAr && mAr[1] && mAr[2]) return { name: mAr[1].trim(), command: mAr[2].trim() };
+  return null;
+}
+
+function isUnsafeShellCommand(cmd: string): boolean {
+  const s = String(cmd || '');
+  return /(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(s);
+}
+
+function detectWorkflow(raw: string): { kind: WorkflowKind; root: string; tool?: { name: string; command: string } } | null {
+  const s = String(raw || '');
+  if (!s.trim()) return null;
+  if (isEcommerceRequest(s)) return { kind: 'ecommerce', root: extractTargetProjectRoot(s) };
+
+  const tool = extractToolSpec(s);
+  if (tool) return { kind: 'tool_shell', root: 'api', tool };
+
+  const t = normalizeArabicQuery(s);
+  const wantsWebsite = /(website|site|landing|webpage|page)/i.test(s) || /(موقع|صفحه|صفحة|واجهه|واجهة)/.test(t);
+  const wantsApi = /(api|backend|server)/i.test(s) || /(باك|خلفي|خلفيه|خلفية|سيرفر|خادم|واجهه\s+برمجه|واجهة\s+برمجه)/.test(t);
+  const wantsApp = /(app|application|system)/i.test(s) || /(تطبيق|نظام|منصه|منصة)/.test(t);
+  if (!wantsWebsite && !wantsApi && !wantsApp) return null;
+
+  const kind: WorkflowKind =
+    wantsWebsite && wantsApi ? 'fullstack' : wantsApi ? 'node_api' : wantsWebsite ? 'static_site' : 'fullstack';
+  const root =
+    kind === 'static_site'
+      ? extractRootFromText(s, 'website')
+      : kind === 'node_api'
+        ? extractRootFromText(s, 'api-service')
+        : extractRootFromText(s, 'app');
+  return { kind, root };
+}
+
+function repoBaseDirForTools(): string {
+  return path.basename(process.cwd()) === 'api' ? '..' : '.';
+}
+
+function historyHasToolCall(history: Array<{ role: string; content: any }>, toolName: string): boolean {
+  const needle = String(toolName || '').trim();
+  if (!needle) return false;
+  try {
+    const s = JSON.stringify(history).toLowerCase();
+    return s.includes(`tool call: ${needle}`.toLowerCase()) || s.includes(`execute:${needle}`.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function historyHasMarker(history: Array<{ role: string; content: any }>, marker: string): boolean {
+  const needle = String(marker || '').trim();
+  if (!needle) return false;
+  try {
+    return JSON.stringify(history).includes(needle);
+  } catch {
+    return false;
+  }
+}
+
+function historyAfterMarker(history: Array<{ role: string; content: any }>, marker: string) {
+  const needle = String(marker || '').trim();
+  if (!needle) return history;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const h = history[i];
+    const c = typeof h?.content === 'string' ? h.content : '';
+    if (c === needle) return history.slice(i + 1);
+  }
+  return history;
 }
 
 function redactToolInputForStorage(name: string, input: any) {
@@ -801,15 +985,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           }
         }
         if (!plan) {
-          const wantsShop = isEcommerceRequest(userTextForOverrides);
-          if (wantsShop) {
-            const root = extractTargetProjectRoot(userTextForOverrides);
+          const wf = detectWorkflow(userTextForOverrides);
+          if (wf) {
             plan = {
-              name: 'scaffold_project',
-              input: {
-                structure: buildEcommerceScaffold(root),
-                baseDir: '.',
-              },
+              name: 'project_detect',
+              input: { path: '.' },
             } as any;
           }
         }
@@ -865,16 +1045,163 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     const wantsShop = isEcommerceRequest(userTextForOverrides);
     if (wantsShop) {
       const root = extractTargetProjectRoot(userTextForOverrides);
-      if (!planName || planName === 'echo') {
+
+      if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
+        const md = [
+          `### خطة بناء المتجر (5 خطوات)`,
+          `- 1) project_detect: فحص هيكل المشروع والمسارات`,
+          `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
+          `- 3) scaffold_project: إنشاء هيكل المتجر (backend + frontend)`,
+          `- 4) npm_install: تثبيت اعتمادات الـ backend`,
+          `- 5) quality_run: تشغيل lint/test/build إن كانت موجودة`,
+          ``,
+          `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`
+        ].join('\n');
+        ev({ type: 'text', data: md });
+        history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
+      }
+
+      const didDetect = historyHasToolCall(history as any, 'project_detect');
+      const didAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
+      const didScaffold = historyHasToolCall(history as any, 'scaffold_project');
+      const didInstall = historyHasToolCall(history as any, 'npm_install');
+      const didQuality = historyHasToolCall(history as any, 'quality_run');
+      const baseDir = repoBaseDirForTools();
+      const absBackend = path.resolve(process.cwd(), baseDir, root, 'backend');
+
+      if (!didDetect) {
+        plan = { name: 'project_detect', input: { path: '.' } } as any;
+      } else if (!didAnalyze) {
+        plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+      } else if (!didScaffold) {
         plan = {
           name: 'scaffold_project',
           input: {
             structure: buildEcommerceScaffold(root),
-            baseDir: '.',
+            baseDir,
           },
         } as any;
+      } else if (!didInstall) {
+        plan = { name: 'npm_install', input: { cwd: absBackend } } as any;
+      } else if (!didQuality) {
+        plan = { name: 'quality_run', input: { path: absBackend, tasks: ['lint', 'test', 'build'] } } as any;
+      } else {
+        const doneMsg = isArabicText(userTextForOverrides)
+          ? `تم تجهيز هيكل المتجر داخل مجلد "${root}". أخبرني إن تريد إضافة (تسجيل مستخدم/دفع/قاعدة بيانات/نشر).`
+          : `Store scaffold is ready under "${root}". Tell me what to add next (auth/payments/db/deploy).`;
+        plan = { name: 'echo', input: { text: doneMsg } } as any;
       }
     }
+
+    const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
+    if (wf && wf.kind !== 'ecommerce' && (!planName || planName === 'echo')) {
+      const marker =
+        wf.kind === 'tool_shell' && wf.tool
+          ? `WF_START:${wf.kind}:${wf.tool.name}`
+          : `WF_START:${wf.kind}:${wf.root}`;
+
+      if (steps === 0 && !historyHasMarker(history as any, marker)) {
+        const title =
+          wf.kind === 'tool_shell'
+            ? `### خطة إنشاء أداة (Shell Tool)`
+            : wf.kind === 'static_site'
+              ? `### خطة بناء موقع (Static Website)`
+              : wf.kind === 'node_api'
+                ? `### خطة بناء API (Node/Express)`
+                : `### خطة بناء تطبيق (Fullstack)`;
+        const stepList =
+          wf.kind === 'tool_shell'
+            ? [
+                `- 1) project_detect: فحص المشروع والمسارات`,
+                `- 2) command_policy_check: فحص أمان الأمر`,
+                `- 3) tool_create_shell: إنشاء الأداة داخل المصنع (Runtime)`,
+                `- 4) quality_run: تشغيل lint للتأكد`,
+                `- 5) echo: إنهاء`,
+              ]
+            : [
+                `- 1) project_detect: فحص هيكل المشروع والمسارات`,
+                `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
+                `- 3) scaffold_project: إنشاء هيكل المشروع`,
+                wf.kind === 'static_site' ? `- 4) echo: إنهاء` : `- 4) npm_install: تثبيت الاعتمادات`,
+                wf.kind === 'static_site' ? `- 5) echo: إنهاء` : `- 5) quality_run: lint/test/build إن وجدت`,
+              ];
+
+        const contextLine =
+          wf.kind === 'tool_shell' && wf.tool
+            ? `- الاسم: ${wf.tool.name}\n- الأمر: ${wf.tool.command}`
+            : `- المجلد: ${wf.root}`;
+
+        const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
+        ev({ type: 'text', data: md });
+        history.push({ role: 'assistant', content: marker } as any);
+      }
+
+      const scoped = historyAfterMarker(history as any, marker);
+      const didDetect = historyHasToolCall(scoped as any, 'project_detect');
+      const didAnalyze = historyHasToolCall(scoped as any, 'analyze_codebase');
+      const didScaffold = historyHasToolCall(scoped as any, 'scaffold_project');
+      const didInstall = historyHasToolCall(scoped as any, 'npm_install');
+      const didQuality = historyHasToolCall(scoped as any, 'quality_run');
+      const didPolicy = historyHasToolCall(scoped as any, 'command_policy_check');
+      const didCreateTool = historyHasToolCall(scoped as any, 'tool_create_shell');
+
+      const baseDir = repoBaseDirForTools();
+      const absRoot = path.resolve(process.cwd(), baseDir, wf.root);
+      const absBackend = path.resolve(process.cwd(), baseDir, wf.root, 'backend');
+
+      if (!didDetect) {
+        plan = { name: 'project_detect', input: { path: '.' } } as any;
+      } else if (wf.kind !== 'tool_shell' && !didAnalyze) {
+        plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+      } else if (wf.kind === 'tool_shell' && wf.tool) {
+        if (isUnsafeShellCommand(wf.tool.command)) {
+          plan = { name: 'echo', input: { text: 'لا يمكن إنشاء أداة لأمر غير آمن (يحتوي على نمط تدميري أو sudo).' } } as any;
+        } else if (!didPolicy) {
+          plan = {
+            name: 'command_policy_check',
+            input: { tool: 'shell_execute', input: { command: wf.tool.command }, userText: userTextForOverrides },
+          } as any;
+        } else if (!didCreateTool) {
+          plan = {
+            name: 'tool_create_shell',
+            input: { name: wf.tool.name, command: wf.tool.command },
+          } as any;
+        } else if (!didQuality) {
+          plan = { name: 'quality_run', input: { path: 'api', tasks: ['lint'] } } as any;
+        } else {
+          plan = {
+            name: 'echo',
+            input: { text: `تم إنشاء الأداة "${wf.tool.name}". يمكنك الآن طلبها مباشرة باسمها.` },
+          } as any;
+        }
+      } else if (!didScaffold) {
+        const structure =
+          wf.kind === 'static_site'
+            ? buildStaticSiteScaffold(wf.root)
+            : wf.kind === 'node_api'
+              ? buildNodeApiScaffold(wf.root)
+              : buildFullstackScaffold(wf.root);
+        plan = {
+          name: 'scaffold_project',
+          input: {
+            structure,
+            baseDir,
+          },
+        } as any;
+      } else if (wf.kind === 'static_site') {
+        plan = { name: 'echo', input: { text: `تم تجهيز موقع ثابت داخل مجلد "${wf.root}".` } } as any;
+      } else if (wf.kind === 'node_api' && !didInstall) {
+        plan = { name: 'npm_install', input: { cwd: absRoot } } as any;
+      } else if (wf.kind === 'fullstack' && !didInstall) {
+        plan = { name: 'npm_install', input: { cwd: absBackend } } as any;
+      } else if (!didQuality) {
+        const qp = wf.kind === 'fullstack' ? absBackend : absRoot;
+        plan = { name: 'quality_run', input: { path: qp, tasks: ['lint', 'test', 'build'] } } as any;
+      } else {
+        plan = { name: 'echo', input: { text: `تم تجهيز المشروع داخل "${wf.root}". أخبرني ما الميزة التالية.` } } as any;
+      }
+    }
+
     if (String(plan?.name || '') === 'github_create_repo') {
       if (!wantsGithubRepo) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
@@ -1071,6 +1398,36 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       ev({ type: 'text', data: msg });
       assistantTextEmitted = true;
       break;
+    }
+
+    const wfForProgress = detectWorkflow(String(text || ''));
+    if (result.ok && wfForProgress) {
+      if (plan?.name === 'project_detect') ev({ type: 'text', data: `- تم فحص المشروع (project_detect)` });
+      if (plan?.name === 'analyze_codebase') ev({ type: 'text', data: `- تم تحليل هيكل الملفات (analyze_codebase)` });
+      if (plan?.name === 'command_policy_check') ev({ type: 'text', data: `- تم فحص سياسة الأوامر (command_policy_check)` });
+      if (plan?.name === 'grep_search') ev({ type: 'text', data: `- تم البحث في الكود (grep_search)` });
+      if (plan?.name === 'file_edit') ev({ type: 'text', data: `- تم تعديل ملف (file_edit)` });
+      if (plan?.name === 'scaffold_project') {
+        const created = Array.isArray(result.output?.created) ? result.output.created : [];
+        const label =
+          wfForProgress.kind === 'ecommerce'
+            ? 'المتجر'
+            : wfForProgress.kind === 'static_site'
+              ? 'الموقع'
+              : wfForProgress.kind === 'node_api'
+                ? 'الـ API'
+                : wfForProgress.kind === 'fullstack'
+                  ? 'التطبيق'
+                  : 'المشروع';
+        ev({ type: 'text', data: `- تم إنشاء هيكل ${label} (scaffold_project): ${created.length} عنصر` });
+      }
+      if (plan?.name === 'npm_install') ev({ type: 'text', data: `- تم تثبيت الحزم (npm_install)` });
+      if (plan?.name === 'quality_run') {
+        const results = Array.isArray(result.output?.results) ? result.output.results : [];
+        const ok = results.filter((r: any) => r && r.ok).length;
+        const skipped = results.filter((r: any) => r && r.skipped).length;
+        ev({ type: 'text', data: `- تم تشغيل فحوص الجودة (quality_run): ناجح ${ok} / متجاوز ${skipped}` });
+      }
     }
 
     if (result.ok && plan?.name === 'http_fetch') {

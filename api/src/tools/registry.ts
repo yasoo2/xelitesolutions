@@ -919,6 +919,69 @@ function addPhase2AndCoreDevTools() {
   });
 
   addGeneratedTool({
+    name: 'tool_create_shell',
+    version: '1.0.0',
+    tags: ['dev', 'tools', 'shell'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        command: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+        allowArgs: { type: 'boolean' },
+      },
+      required: ['name', 'command'],
+    },
+    outputSchema: { type: 'object', properties: { ok: { type: 'boolean' }, name: { type: 'string' } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['name'],
+    mockSupported: true,
+    async execute(input) {
+      const name = String(input?.name || '').trim();
+      const command = String(input?.command || '').trim();
+      const tags = Array.isArray(input?.tags) ? input.tags.map((x: any) => String(x)).filter(Boolean) : [];
+      const allowArgs = input?.allowArgs !== false;
+      if (!name || !command) return { ok: false, error: 'missing_name_or_command', logs: [] };
+      if (!/^[A-Za-z][A-Za-z0-9_-]{2,60}$/.test(name)) return { ok: false, error: 'invalid_tool_name', logs: [] };
+      if (hasToolName(name)) return { ok: false, error: 'tool_already_exists', logs: [] };
+      if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(command)) {
+        return { ok: false, error: 'unsafe_command', logs: [] };
+      }
+
+      const toolTags = tags.length ? tags : ['dev', 'shell', 'runtime'];
+      tools.push({
+        name,
+        version: '1.0.0',
+        tags: toolTags,
+        description: `Runtime shell tool: ${name}`,
+        inputSchema: allowArgs
+          ? { type: 'object', properties: { args: { type: 'array', items: { type: 'string' } }, cwd: { type: 'string' }, timeout: { type: 'number' } }, required: [] }
+          : { type: 'object', properties: { cwd: { type: 'string' }, timeout: { type: 'number' } }, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: { stdout: { type: 'string' }, stderr: { type: 'string' }, exitCode: { type: 'number' }, cwd: { type: 'string' } },
+        },
+        permissions: ['read', 'execute'],
+        sideEffects: ['execute'],
+        rateLimitPerMinute: 60,
+        auditFields: [],
+        mockSupported: true,
+        async execute(toolInput: any) {
+          const args = allowArgs && Array.isArray(toolInput?.args) ? toolInput.args.map((x: any) => String(x)) : [];
+          const cwd = typeof toolInput?.cwd === 'string' && toolInput.cwd.trim() ? String(toolInput.cwd).trim() : repoRoot();
+          const timeout = Number(toolInput?.timeout ?? 30000);
+          const cmd = `${command}${args.length ? ` ${args.join(' ')}` : ''}`.trim();
+          return executeTool('shell_execute', { command: cmd, cwd, timeout });
+        },
+      });
+
+      return { ok: true, output: { ok: true, name }, logs: [`tool.created=${name}`] };
+    },
+  });
+
+  addGeneratedTool({
     name: 'secrets_store_encrypted',
     version: '1.0.0',
     tags: ['dev', 'secrets', 'security'],

@@ -21,13 +21,20 @@ const activeTools = tools.filter(t => !t.name.startsWith('noop_'));
 const MAX_PROVIDER_TOOLS = 128;
 const PRIORITY_TOOL_NAMES: string[] = [
   'echo',
+  'project_detect',
+  'analyze_codebase',
   'file_read',
   'file_write',
   'file_edit',
+  'scaffold_project',
   'read_file_tree',
   'ls',
   'grep_search',
   'fs_glob',
+  'quality_run',
+  'git_ops',
+  'command_policy_check',
+  'tool_create_shell',
   'shell_execute',
   'web_search',
   'knowledge_search',
@@ -131,6 +138,17 @@ Before *every* single tool call, you must go through this internal cycle:
    - Always map the territory before coding. Read \`package.json\`, structure, and relevant files first.
 - **browser_open**:
    - Use strictly for verification, live testing, or up-to-date documentation.
+
+## ENGINEERING FACTORY MODE (MANDATORY FOR BUILD REQUESTS):
+- If the user asks you to **build** something (system/app/API/website/pages/tools), you must **use tools** and produce real outputs.
+- Do NOT reply with advice-only checklists. Start by emitting a short plan in **echo** (3–7 steps) and then execute tools step-by-step.
+- Default build pipeline:
+  1) project_detect + analyze_codebase
+  2) scaffold_project and/or file_write/file_edit
+  3) npm_install when a Node project is created/changed
+  4) quality_run (lint/typecheck/test/build when available)
+- Tool creation:
+  - Prefer tool_create_shell to add a runtime tool when the user asks to “create a tool”.
 
 ## CRITICAL INSTRUCTIONS:
 1. **Direct & Concise Answers**:
