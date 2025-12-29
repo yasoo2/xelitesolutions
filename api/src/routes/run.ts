@@ -184,10 +184,10 @@ function extractRequestedRepoName(raw: string): string | null {
 
 function isEcommerceRequest(raw: string): boolean {
   const s = String(raw || '');
-  const hasEn = /(e[-\s]?commerce|online\s+store|web\s+shop|marketplace|ali\s*express)/i.test(s);
+  const hasEn = /(e[-\s]?commerce|online\s+store|web\s+shop|marketplace|ali\s*express|build\s+(a\s+)?store)/i.test(s);
   const t = normalizeArabicQuery(s);
   const hasAr =
-    /(متجر|سوق|متجر\s+الكتروني|متجر\s+إلكتروني|موقع\s+متجر|علي\s*اكسبريس|علي\s*إكسبريس|اكسبرس)/.test(t);
+    /(متجر|سوق|متجر\s+الكتروني|متجر\s+إلكتروني|موقع\s+متجر|علي\s*اكسبريس|علي\s*إكسبريس|اكسبرس|ابن|ابني|بناء)/.test(t);
   return hasEn || hasAr;
 }
 
@@ -1176,6 +1176,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             } 
         } as any;
         planName = 'scaffold_full_stack';
+        pendingPlan = plan; // ensure immediate execution on first loop
       }
       
       // Force execution even if AI tries to think
@@ -1284,11 +1285,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
       if (wantsAccess) {
          plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
-      } else if (!wantsGithubRepo) {
+    } else if (!wantsGithubRepo && (!planName || planName === 'echo')) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
-      } else if (!requestedRepoName) {
+    } else if (!requestedRepoName) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
-      }
+    }
     }
     if (isBrowserTool) {
       const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
