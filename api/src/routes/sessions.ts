@@ -34,6 +34,17 @@ function safeErrorMessage(err: any): string {
 
 function redactToolInputForStorage(name: string, input: any) {
   if (!input || typeof input !== 'object') return input;
+
+  if (name === 'scaffold_project' && input.structure) {
+    const s = input.structure;
+    const keys = Object.keys(s);
+    const redactedStructure: Record<string, string> = {};
+    for (const k of keys) {
+      redactedStructure[k] = '[Content Redacted]';
+    }
+    return { ...input, structure: redactedStructure, _fileCount: keys.length };
+  }
+
   if (name === 'browser_run') {
     const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
     const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
