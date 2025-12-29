@@ -48,7 +48,9 @@ import {
   Search,
   User,
   Sparkles,
-  MicOff
+  MicOff,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 
 const DEBUG_TOOL_UI = false;
