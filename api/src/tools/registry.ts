@@ -2216,7 +2216,7 @@ Instructions:
               url: `https://open-meteo.com/`,
               description: desc,
             });
-            logs.push(`weather.open_meteo=1 city=${city}`);
+            logs.push(`weather.open_meteo=1 city=${citySearch}`);
             logs.push(`search.final_count=${results.length}`);
             return { ok: true, output: { results }, logs };
           } finally {
@@ -3152,10 +3152,21 @@ Instructions:
         const projectName = String(input?.name || 'my-app').trim();
         const type = String(input?.type || 'ecommerce') as any;
         const features = Array.isArray(input?.features) ? input.features : [];
+        const preferredBase = String(input?.baseDir || '').trim();
+        
+        // Determine base directory: respect explicit baseDir, else repo root; if user requested "vivos", use it
+        const root = repoRoot();
+        const baseDir = (() => {
+            if (preferredBase) return resolveToolPath(preferredBase);
+            // Heuristic: if project name mentioned alongside 'vivos' repository, create inside that folder
+            const vivosDir = path.join(root, 'vivos');
+            try { if (fs.existsSync(vivosDir) && fs.lstatSync(vivosDir).isDirectory()) return vivosDir; } catch {}
+            return root;
+        })();
         
         try {
-            const result = Builder.scaffold(projectName, type, features);
-            logs.push(`builder.scaffold.success=${projectName}`);
+            const result = Builder.scaffold(projectName, type, features, baseDir);
+            logs.push(`builder.scaffold.success=${projectName} base=${baseDir}`);
             return { ok: true, output: result, logs };
         } catch (e: any) {
             return { ok: false, error: e.message, logs };

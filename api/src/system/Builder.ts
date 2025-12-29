@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 
 export class Builder {
-  static scaffold(name: string, type: 'ecommerce' | 'saas' | 'blog', features: string[] = []) {
-    const root = path.resolve(process.cwd(), name);
+  static scaffold(name: string, type: 'ecommerce' | 'saas' | 'blog', features: string[] = [], baseDir?: string) {
+    const root = path.resolve(baseDir || process.cwd(), name);
     if (fs.existsSync(root)) throw new Error(`Project ${name} already exists`);
 
     fs.mkdirSync(root, { recursive: true });
