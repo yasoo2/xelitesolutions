@@ -2131,178 +2131,122 @@ export default function CommandComposer({
             return (
               <motion.div
                 key={item.key}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
                 className="message-row joe"
               >
-                <div
-                  className="message-bubble"
-                  dir="auto"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid var(--border-color)',
-                    maxWidth: 760,
-                    padding: '10px 12px',
-                    cursor: 'pointer',
-                  }}
-                  onClick={toggleRun}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                      <Cpu size={16} color="var(--text-secondary)" />
-                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', flexShrink: 0 }}>سرد الأدوات</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {steps.length ? `${steps.length} خطوة` : 'جارٍ التحضير'}
-                          </div>
-                        </div>
-                        {steps.length ? (
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                            {failedCount ? `فشل ${failedCount}` : doneCount ? `اكتمل ${doneCount}` : '...'} {totalDuration ? `• ${(totalDuration / 1000).toFixed(1)}s` : ''}
-                          </div>
-                        ) : null}
-                      </div>
+                <div className="activity-card" onClick={toggleRun}>
+                  <div className="activity-header">
+                    <div className="activity-title">
+                      <Cpu size={18} className="text-accent" />
+                      <span>{steps.length ? 'Agent Activity' : 'Initializing...'}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                      {status === 'running' ? <Loader2 size={14} className="spin" /> : status === 'failed' ? <XCircle size={14} color="#ef4444" /> : status === 'done' ? <CheckCircle2 size={14} color="#22c55e" /> : null}
-                      {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <div className="activity-meta">
+                      {status === 'running' && <Loader2 size={14} className="spin text-accent" />}
+                      {status === 'done' && <CheckCircle2 size={14} className="text-success" />}
+                      {status === 'failed' && <XCircle size={14} className="text-danger" />}
+                      <span>{steps.length} Steps</span>
+                      {totalDuration > 0 && <span>• {(totalDuration / 1000).toFixed(1)}s</span>}
+                      {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </div>
                   </div>
 
-                  {expanded ? (
-                    <div style={{ marginTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {steps.map((s: any) => {
-                        const stepName = String(s?.name || '');
-                        const toolName = getToolNameFromStep(stepName);
-                        const meta = toolName
-                          ? toolUi(toolName)
-                          : { label: 'خطوة', Icon: Sparkles, color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.08)' };
-                        const isExpandedStep = !!expandedStepKeys[s.key];
-                        const toggleStep = (ev: any) => {
-                          ev.stopPropagation();
-                          setExpandedStepKeys((prev) => ({ ...prev, [s.key]: !prev[s.key] }));
-                        };
+                  <AnimatePresence>
+                    {expanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="activity-body"
+                      >
+                        {steps.map((s: any) => {
+                          const stepName = String(s?.name || '');
+                          const toolName = getToolNameFromStep(stepName);
+                          const meta = toolName
+                            ? toolUi(toolName)
+                            : { label: 'Step', Icon: Sparkles, color: 'var(--text-secondary)' };
+                          const isExpandedStep = !!expandedStepKeys[s.key];
+                          const toggleStep = (ev: any) => {
+                            ev.stopPropagation();
+                            setExpandedStepKeys((prev) => ({ ...prev, [s.key]: !prev[s.key] }));
+                          };
 
-                        const ok = s.status === 'done';
-                        const failed = s.status === 'failed';
-                        const running = s.status === 'running';
-                        const dur = typeof s.duration === 'number' ? s.duration : undefined;
-                        const title = toolName ? toolName : s.displayName || formatStepDisplayName(stepName);
-                        const input = s.input;
-                        const result = s.result;
-                        const output = result?.output;
-                        const href = typeof output?.href === 'string' ? output.href : undefined;
-                        const errorText = String(s.error || result?.error || result?.message || '');
+                          const ok = s.status === 'done';
+                          const failed = s.status === 'failed';
+                          const running = s.status === 'running';
+                          const dur = typeof s.duration === 'number' ? s.duration : undefined;
+                          const title = toolName || s.displayName || formatStepDisplayName(stepName);
+                          const input = s.input;
+                          const result = s.result;
+                          const output = result?.output;
+                          const logs = logsByRunId.get(rid) || []; // We might want step-specific logs if available
 
-                        const badgeBg = failed ? 'rgba(239,68,68,0.10)' : ok ? 'rgba(34,197,94,0.10)' : 'rgba(255,255,255,0.02)';
-                        const badgeBorder = failed ? 'rgba(239,68,68,0.35)' : ok ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.10)';
-
-                        return (
-                          <div
-                            key={s.key}
-                            style={{
-                              border: `1px solid ${meta.border}`,
-                              background: meta.bg,
-                              borderRadius: 10,
-                              padding: '8px 10px',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                                <meta.Icon size={14} color={meta.color as any} />
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          return (
+                            <div key={s.key} className="step-item">
+                              <div className="step-header" onClick={toggleStep}>
+                                <div className="step-title">
+                                  <meta.Icon size={16} style={{ color: meta.color }} />
+                                  <span style={{ color: ok ? 'var(--text-primary)' : failed ? 'var(--danger)' : 'var(--accent)' }}>
                                     {title}
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                                    <div style={{ fontSize: 10.5, color: meta.color, background: 'rgba(0,0,0,0.12)', padding: '2px 6px', borderRadius: 999 }}>
-                                      {meta.label}
-                                    </div>
-                                    <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', background: badgeBg, border: `1px solid ${badgeBorder}`, padding: '2px 6px', borderRadius: 999 }}>
-                                      {running ? 'جارٍ التنفيذ' : ok ? 'اكتملت' : 'فشلت'}
-                                    </div>
-                                    {typeof dur === 'number' && !running ? (
-                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--text-secondary)' }}>
-                                        <Clock size={11} /> {(dur / 1000).toFixed(1)}s
-                                      </div>
-                                    ) : null}
-                                  </div>
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span className={`step-badge ${ok ? 'success' : failed ? 'danger' : 'running'}`}>
+                                    {running ? 'Running' : ok ? 'Done' : 'Failed'}
+                                  </span>
+                                  {dur && <span className="text-xs text-muted">{(dur / 1000).toFixed(1)}s</span>}
+                                  {isExpandedStep ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                 </div>
                               </div>
-                              <button
-                                type="button"
-                                onClick={toggleStep}
-                                style={{
-                                  background: 'rgba(255,255,255,0.04)',
-                                  border: '1px solid var(--border-color)',
-                                  color: 'var(--text-secondary)',
-                                  borderRadius: 8,
-                                  padding: '4px 8px',
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {isExpandedStep ? <ChevronDown size={14} /> : <ChevronRight size={14} />} التفاصيل
-                              </button>
+
+                              <AnimatePresence>
+                                {isExpandedStep && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="step-details"
+                                  >
+                                    {input && (
+                                      <div className="mb-2">
+                                        <div className="text-xs font-bold text-muted mb-1">INPUT</div>
+                                        <div className="text-xs text-secondary whitespace-pre-wrap">{formatValue(input)}</div>
+                                      </div>
+                                    )}
+                                    {output && (
+                                      <div>
+                                        <div className="text-xs font-bold text-muted mb-1">OUTPUT</div>
+                                        <div className="text-xs text-secondary whitespace-pre-wrap">{formatValue(output)}</div>
+                                      </div>
+                                    )}
+                                    {s.error && (
+                                      <div className="mt-2 text-danger text-xs whitespace-pre-wrap">
+                                        Error: {String(s.error)}
+                                      </div>
+                                    )}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
                             </div>
-
-                            {isExpandedStep ? (
-                              <div style={{ marginTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
-                                {input != null ? (
-                                  <>
-                                    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6 }}>المدخلات</div>
-                                    <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                      {formatValue(input)}
-                                    </pre>
-                                  </>
-                                ) : null}
-
-                                {href ? (
-                                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: input != null ? 10 : 0, marginBottom: 8 }}>
-                                    <a href={href} target="_blank" rel="noopener noreferrer" className="artifact-link" onClick={(ev) => ev.stopPropagation()}>
-                                      <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
-                                    </a>
-                                  </div>
-                                ) : null}
-
-                                {output != null ? (
-                                  <>
-                                    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', marginTop: input != null ? 10 : 0, marginBottom: 6 }}>المخرجات</div>
-                                    <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                      {formatValue(output)}
-                                    </pre>
-                                  </>
-                                ) : null}
-
-                                {errorText ? (
-                                  <div style={{ marginTop: 10, fontSize: 12, color: '#f87171', whiteSpace: 'pre-wrap' }}>
-                                    {errorText}
-                                  </div>
-                                ) : null}
+                          );
+                        })}
+                        
+                        {logs.length > 0 && (
+                           <div className="step-item">
+                              <div className="step-header">
+                                 <div className="step-title">
+                                    <Terminal size={16} />
+                                    <span>System Logs</span>
+                                 </div>
                               </div>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-
-                      {logs.length ? (
-                        <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 10px', background: 'rgba(0,0,0,0.08)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                            <Terminal size={14} />
-                            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)' }}>Log</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{logs.length}</div>
-                          </div>
-                          <pre style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                            {formatValue(logs.slice(-20).join('\n'), 4000)}
-                          </pre>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                              <div className="log-viewer">
+                                 {logs.join('\n')}
+                              </div>
+                           </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </motion.div>
             );

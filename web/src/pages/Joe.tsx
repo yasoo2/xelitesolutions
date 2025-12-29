@@ -586,50 +586,18 @@ export default function Joe() {
       )}
 
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        <div className="joe-modebar" style={{ 
-          height: 48, 
-          borderBottom: '1px solid var(--border-color)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          padding: '0 16px',
-          gap: 8,
-          background: 'var(--bg-secondary)',
-          flexShrink: 0,
-          overflowX: 'auto',
-          WebkitOverflowScrolling: 'touch',
-          whiteSpace: 'nowrap',
-        }}>
+        <div className="mode-bar">
            <button 
              onClick={() => setMode('agent')}
-             style={{ 
-               background: 'none', 
-               border: 'none', 
-               color: mode === 'agent' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-               fontWeight: mode === 'agent' ? 600 : 400,
-               cursor: 'pointer',
-               display: 'flex', alignItems: 'center', gap: 6,
-               padding: '6px 12px',
-               borderRadius: 6,
-               backgroundColor: mode === 'agent' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
-             }}
+             className={`mode-btn ${mode === 'agent' ? 'active' : ''}`}
            >
-             <Bot size={16} /> الوكيل
+             <Bot size={16} /> الوكيل (Agent)
            </button>
            <button 
              onClick={() => setMode('chat')}
-             style={{ 
-               background: 'none', 
-               border: 'none', 
-               color: mode === 'chat' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-               fontWeight: mode === 'chat' ? 600 : 400,
-               cursor: 'pointer',
-               display: 'flex', alignItems: 'center', gap: 6,
-               padding: '6px 12px',
-               borderRadius: 6,
-               backgroundColor: mode === 'chat' ? 'rgba(37, 99, 235, 0.1)' : 'transparent'
-             }}
+             className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
            >
-             <MessageSquare size={16} /> Chat
+             <MessageSquare size={16} /> محادثة (Chat)
            </button>
         </div>
         
