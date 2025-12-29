@@ -63,6 +63,7 @@ async function waitForWorkerHealth(base: string, timeoutMs: number) {
 }
 
 async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
+  // Performance: Reduce health check timeout and frequency
   const autoSetting = String(process.env.AUTO_START_BROWSER_WORKER ?? '').trim().toLowerCase();
   const auto =
     autoSetting === ''
@@ -70,8 +71,11 @@ async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
       : autoSetting === '1' || autoSetting === 'true' || autoSetting === 'yes';
 
   if (!auto || process.env.NODE_ENV === 'production' || !isLocalWorkerUrl(base)) return;
-  const healthy = await waitForWorkerHealth(base, 250);
+  
+  // Quick check first (50ms)
+  const healthy = await waitForWorkerHealth(base, 50);
   if (healthy) return;
+
 
   if (!browserWorkerBoot) {
     browserWorkerBoot = (async () => {

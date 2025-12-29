@@ -991,8 +991,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     } else {
         // Plan next step with history
         try {
+            // Performance: Skip validation for default provider to save ms
             if (!useMock && providerKey && providerKey !== 'llm' && providerKey !== 'openai' && !hasBaseUrl) {
               const msg = `⚠️ **Provider Not Configured**\nProvider "${providerKey}" requires an OpenAI-compatible Base URL (or select OpenAI).`;
+
               ev({ type: 'text', data: msg });
               forcedText = msg;
               assistantTextEmitted = true;
