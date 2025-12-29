@@ -1064,38 +1064,23 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         ].join('\n');
         ev({ type: 'text', data: md });
         history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
+        // Inject directive for the AI
+        history.push({ 
+          role: 'system', 
+          content: `BUILD DIRECTIVE: You are building an E-Commerce Store. 
+          Follow this plan strictly:
+          1. project_detect (if not done)
+          2. analyze_codebase (if not done)
+          3. scaffold_project (if not done - use structure: {} and I will inject the template)
+          4. npm_install (backend only)
+          5. quality_run (backend only)
+          
+          Check the history to see what has been done. Do not repeat steps. If a step is done, move to the next.` 
+        } as any);
       }
-
-      const didDetect = historyHasToolCall(history as any, 'project_detect');
-      const didAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
-      const didScaffold = historyHasToolCall(history as any, 'scaffold_project');
-      const didInstall = historyHasToolCall(history as any, 'npm_install');
-      const didQuality = historyHasToolCall(history as any, 'quality_run');
-      const baseDir = repoBaseDirForTools();
-      const absBackend = path.resolve(process.cwd(), baseDir, root, 'backend');
-
-      if (!didDetect) {
-        plan = { name: 'project_detect', input: { path: '.' } } as any;
-      } else if (!didAnalyze) {
-        plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-      } else if (!didScaffold) {
-        plan = {
-          name: 'scaffold_project',
-          input: {
-            structure: buildEcommerceScaffold(root),
-            baseDir,
-          },
-        } as any;
-      } else if (!didInstall) {
-        plan = { name: 'npm_install', input: { cwd: absBackend } } as any;
-      } else if (!didQuality) {
-        plan = { name: 'quality_run', input: { path: absBackend, tasks: ['lint', 'test', 'build'] } } as any;
-      } else {
-        const doneMsg = isArabicText(userTextForOverrides)
-          ? `تم تجهيز هيكل المتجر داخل مجلد "${root}". أخبرني إن تريد إضافة (تسجيل مستخدم/دفع/قاعدة بيانات/نشر).`
-          : `Store scaffold is ready under "${root}". Tell me what to add next (auth/payments/db/deploy).`;
-        plan = { name: 'echo', input: { text: doneMsg } } as any;
-      }
+      
+      // We no longer force the plan here. We let the LLM decide based on history.
+      // The scaffold_project structure will be injected below if the LLM chooses it.
     }
 
     const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
@@ -1139,72 +1124,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
         ev({ type: 'text', data: md });
         history.push({ role: 'assistant', content: marker } as any);
+        
+        // Inject directive for the AI
+        history.push({ 
+          role: 'system', 
+          content: `BUILD DIRECTIVE: You are executing a workflow (${wf.kind}).
+          Follow the plan shown above. Check history for completed steps.
+          For scaffolding, use structure: {} and the system will inject the template.`
+        } as any);
       }
-
-      const scoped = historyAfterMarker(history as any, marker);
-      const didDetect = historyHasToolCall(scoped as any, 'project_detect');
-      const didAnalyze = historyHasToolCall(scoped as any, 'analyze_codebase');
-      const didScaffold = historyHasToolCall(scoped as any, 'scaffold_project');
-      const didInstall = historyHasToolCall(scoped as any, 'npm_install');
-      const didQuality = historyHasToolCall(scoped as any, 'quality_run');
-      const didPolicy = historyHasToolCall(scoped as any, 'command_policy_check');
-      const didCreateTool = historyHasToolCall(scoped as any, 'tool_create_shell');
-
-      const baseDir = repoBaseDirForTools();
-      const absRoot = path.resolve(process.cwd(), baseDir, wf.root);
-      const absBackend = path.resolve(process.cwd(), baseDir, wf.root, 'backend');
-
-      if (!didDetect) {
-        plan = { name: 'project_detect', input: { path: '.' } } as any;
-      } else if (wf.kind !== 'tool_shell' && !didAnalyze) {
-        plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-      } else if (wf.kind === 'tool_shell' && wf.tool) {
-        if (isUnsafeShellCommand(wf.tool.command)) {
-          plan = { name: 'echo', input: { text: 'لا يمكن إنشاء أداة لأمر غير آمن (يحتوي على نمط تدميري أو sudo).' } } as any;
-        } else if (!didPolicy) {
-          plan = {
-            name: 'command_policy_check',
-            input: { tool: 'shell_execute', input: { command: wf.tool.command }, userText: userTextForOverrides },
-          } as any;
-        } else if (!didCreateTool) {
-          plan = {
-            name: 'tool_create_shell',
-            input: { name: wf.tool.name, command: wf.tool.command },
-          } as any;
-        } else if (!didQuality) {
-          plan = { name: 'quality_run', input: { path: 'api', tasks: ['lint'] } } as any;
-        } else {
-          plan = {
-            name: 'echo',
-            input: { text: `تم إنشاء الأداة "${wf.tool.name}". يمكنك الآن طلبها مباشرة باسمها.` },
-          } as any;
-        }
-      } else if (!didScaffold) {
-        const structure =
-          wf.kind === 'static_site'
-            ? buildStaticSiteScaffold(wf.root)
-            : wf.kind === 'node_api'
-              ? buildNodeApiScaffold(wf.root)
-              : buildFullstackScaffold(wf.root);
-        plan = {
-          name: 'scaffold_project',
-          input: {
-            structure,
-            baseDir,
-          },
-        } as any;
-      } else if (wf.kind === 'static_site') {
-        plan = { name: 'echo', input: { text: `تم تجهيز موقع ثابت داخل مجلد "${wf.root}".` } } as any;
-      } else if (wf.kind === 'node_api' && !didInstall) {
-        plan = { name: 'npm_install', input: { cwd: absRoot } } as any;
-      } else if (wf.kind === 'fullstack' && !didInstall) {
-        plan = { name: 'npm_install', input: { cwd: absBackend } } as any;
-      } else if (!didQuality) {
-        const qp = wf.kind === 'fullstack' ? absBackend : absRoot;
-        plan = { name: 'quality_run', input: { path: qp, tasks: ['lint', 'test', 'build'] } } as any;
-      } else {
-        plan = { name: 'echo', input: { text: `تم تجهيز المشروع داخل "${wf.root}". أخبرني ما الميزة التالية.` } } as any;
-      }
+      
+      // We no longer force the plan here. We let the LLM decide.
     }
 
     if (String(plan?.name || '') === 'github_create_repo') {
@@ -1317,6 +1247,27 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const input = (plan as any).input;
       if (!input || typeof input !== 'object') (plan as any).input = {};
       if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+    }
+
+    // Intercept scaffold_project to inject templates if structure is missing/empty
+    if (plan?.name === 'scaffold_project') {
+       const inp = (plan.input as any) || {};
+       if (!inp.structure || Object.keys(inp.structure).length === 0) {
+           const root = extractTargetProjectRoot(userTextForOverrides) || '.';
+           const baseDir = repoBaseDirForTools();
+           if (wantsShop) {
+               (plan as any).input = { structure: buildEcommerceScaffold(root), baseDir };
+               ev({ type: 'text', data: `ℹ️ Injecting E-Commerce scaffold template into empty scaffold_project call.` });
+           } else if (wf) {
+               const structure = wf.kind === 'static_site' ? buildStaticSiteScaffold(wf.root) :
+                                 wf.kind === 'node_api' ? buildNodeApiScaffold(wf.root) :
+                                 wf.kind === 'fullstack' ? buildFullstackScaffold(wf.root) : {};
+               if (Object.keys(structure).length > 0) {
+                   (plan as any).input = { structure, baseDir };
+                   ev({ type: 'text', data: `ℹ️ Injecting ${wf.kind} scaffold template into empty scaffold_project call.` });
+               }
+           }
+       }
     }
 
     const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
