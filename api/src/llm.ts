@@ -651,13 +651,54 @@ export async function planNextStep(
   }));
 
   // 2. Add a system prompt if not present
-  const msgs = [
+  let msgs = [
     { 
       role: 'system', 
       content: getSystemPrompt() 
     },
     ...messages
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+  // Token Optimization Logic:
+  // Estimate total characters to prevent 429 Rate Limit errors (approx 4 chars/token).
+  // If we exceed ~80,000 chars (approx 20k tokens), we must truncate older messages.
+  const CHAR_LIMIT = 80000;
+  
+  let currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
+
+  if (currentChars > CHAR_LIMIT) {
+     console.warn(`[LLM] Context too large (${currentChars} chars). Truncating history...`);
+     
+     // Strategy 1: Truncate very long individual messages (likely tool outputs)
+     msgs = msgs.map(m => {
+       if (m.role === 'system') return m; // Keep system prompt intact
+       
+       let content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+       if (content.length > 10000) {
+          // Keep start and end to preserve some context
+          content = content.slice(0, 5000) + `\n\n...[Content Truncated (${content.length - 10000} chars removed) to save tokens]...\n\n` + content.slice(-5000);
+       }
+       return { ...m, content };
+     });
+
+     // Recalculate
+     currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
+
+     // Strategy 2: If still too large, remove middle messages (sliding window)
+     if (currentChars > CHAR_LIMIT) {
+       const keepCount = 6; // Keep first system + last 5 messages
+       if (msgs.length > keepCount) {
+         const removedCount = msgs.length - keepCount;
+         const system = msgs[0];
+         const recent = msgs.slice(-5);
+         msgs = [
+           system,
+           { role: 'system', content: `(System Note: ${removedCount} previous messages were removed from context to fit within token limits.)` },
+           ...recent
+         ];
+       }
+     }
+  }
 
   try {
     const completion = await client.chat.completions.create({

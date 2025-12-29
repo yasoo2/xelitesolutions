@@ -380,10 +380,10 @@ export const tools: ToolDefinition[] = [
       logs.push(`dom_len=${domLen} a11y_len=${a11yNodes} shot=${j.screenshot}`);
       
       let finalDom = j.dom || '';
-      // Truncate DOM to prevent 429 Rate Limit errors (keep under ~15k tokens)
-      if (finalDom.length > 50000) {
-        logs.push(`warn_dom_truncated: DOM length ${domLen} > 50000. Truncating.`);
-        finalDom = finalDom.slice(0, 50000) + '\n...[DOM Truncated due to size limits]...';
+      // Truncate DOM to prevent 429 Rate Limit errors (keep under ~4k tokens = ~16k chars)
+      if (finalDom.length > 15000) {
+        logs.push(`warn_dom_truncated: DOM length ${domLen} > 15000. Truncating aggressively.`);
+        finalDom = finalDom.slice(0, 15000) + '\n...[DOM Truncated due to strict size limits]...';
       }
 
       if (domLen < 500) {
