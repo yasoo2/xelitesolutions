@@ -1255,12 +1255,53 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
       
       // Builder Mode: Start execution if the planner returned echo or empty
-      plan = { name: 'project_detect', input: { path: '.' } } as any;
-      planName = 'project_detect';
+      if (!planName || planName === 'echo') {
+        const textLower = userTextForOverrides.toLowerCase();
+        
+        // Handle "Access/Open GitHub" or generic website access requests
+        const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
+        if (wantsAccess) {
+             plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
+             planName = 'browser_open';
+        } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(google|جوجل)/i.test(userTextForOverrides)) {
+             plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
+             planName = 'browser_open';
+        } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(youtube|يوتيوب)/i.test(userTextForOverrides)) {
+             plan = { name: 'browser_open', input: { url: 'https://www.youtube.com' } } as any;
+             planName = 'browser_open';
+        } else if (/(list|سرد|قائمة)\s*(tools|الأدوات|الادوات)/i.test(userTextForOverrides)) {
+             plan = { name: 'http_fetch', input: { url: 'http://localhost:' + (process.env.PORT || 4000) + '/tools' } } as any;
+             planName = 'http_fetch';
+        } else if (/(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userTextForOverrides) || /^ls$/.test(textLower)) {
+             plan = { name: 'ls', input: { path: '.' } } as any;
+             planName = 'ls';
+        } else if (/(project|file)\s*(structure|tree|هيكل|شجرة)/i.test(userTextForOverrides)) {
+             plan = { name: 'read_file_tree', input: { path: '.', depth: 3 } } as any;
+             planName = 'read_file_tree';
+        } else if (/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i.test(userTextForOverrides)) {
+             const m = userTextForOverrides.match(/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i);
+             if (m && m[3]) {
+                 plan = { name: 'file_read', input: { filePath: m[3].trim() } } as any;
+                 planName = 'file_read';
+             }
+        } else if (/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i.test(userTextForOverrides)) {
+             const m = userTextForOverrides.match(/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i);
+             if (m && m[4]) {
+                 plan = { name: 'grep_search', input: { pattern: m[4].trim(), path: '.' } } as any;
+                 planName = 'grep_search';
+             }
+        } else {
+             plan = { name: 'project_detect', input: { path: '.' } } as any;
+             planName = 'project_detect';
+        }
+      }
     }
 
     if (String(plan?.name || '') === 'github_create_repo') {
-      if (!wantsGithubRepo) {
+      const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
+      if (wantsAccess) {
+         plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
+      } else if (!wantsGithubRepo) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
       } else if (!requestedRepoName) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
