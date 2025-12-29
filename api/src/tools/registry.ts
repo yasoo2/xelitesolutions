@@ -2278,14 +2278,28 @@ Instructions:
                 '--disable-dev-shm-usage', 
                 '--disable-gpu',
                 '--disable-features=site-per-process', // Faster loading
-                '--window-size=1280,800'
-            ]
+                '--window-size=1280,800',
+                '--disable-blink-features=AutomationControlled', // Prevent webdriver detection
+                '--disable-infobars',
+                '--hide-scrollbars',
+                '--mute-audio',
+            ],
+            ignoreDefaultArgs: ['--enable-automation'], // Important to hide "Chrome is being controlled..."
         });
         
         const page = await browser.newPage();
         
+        // Anti-detection: Delete navigator.webdriver
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            // Fake plugins
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+            // Fake languages
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ar'] });
+        });
+        
         // Use Desktop User Agent for better structure
-        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
         // Block heavy resources
         await page.setRequestInterception(true);
@@ -2297,7 +2311,24 @@ Instructions:
 
         // Search Google (force English for consistency or Arabic if preferred? Let's use auto but maybe add hl=ar if query is arabic?)
         // Actually, let's just use the query as is.
-        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ar`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        // Try DuckDuckGo if Google is blocking, or try to be stealthy on Google.
+        // Let's stick to Google for now but handle CAPTCHA.
+        
+        const response = await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ar`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        
+        // Check for Cloudflare/CAPTCHA
+        const pageTitle = await page.title();
+        const content = await page.content();
+        
+        if (pageTitle.includes('Just a moment') || content.includes('challenge-platform') || content.includes('I am not a robot')) {
+            logs.push('google.blocked=captcha_detected');
+            await browser.close();
+            // Fallback to DuckDuckGo HTML (lighter and less blocking)
+            // But we don't have a fetch fallback implemented here fully. 
+            // Let's throw error to trigger other mechanisms or return empty.
+            // Actually, let's try a backup search engine immediately if blocked.
+            return { ok: false, error: 'Google Bot Detection (CAPTCHA)', logs };
+        }
         
         // Wait briefly for content
         try { await page.waitForSelector('#search', { timeout: 3000 }); } catch {}
