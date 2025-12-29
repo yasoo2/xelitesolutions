@@ -144,6 +144,10 @@ app.get('/', (_req, res) => {
 });
 app.use('/', express.static(frontendDir));
 
+app.get('/health', (_req, res) => {
+  res.json({ status: 'OK' });
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log('Vivos backend listening on http://localhost:' + PORT);
