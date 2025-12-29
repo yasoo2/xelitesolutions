@@ -378,10 +378,18 @@ export const tools: ToolDefinition[] = [
       const domLen = (j.dom || '').length;
       const a11yNodes = j.a11y ? JSON.stringify(j.a11y).length : 0;
       logs.push(`dom_len=${domLen} a11y_len=${a11yNodes} shot=${j.screenshot}`);
+      
+      let finalDom = j.dom || '';
+      // Truncate DOM to prevent 429 Rate Limit errors (keep under ~15k tokens)
+      if (finalDom.length > 50000) {
+        logs.push(`warn_dom_truncated: DOM length ${domLen} > 50000. Truncating.`);
+        finalDom = finalDom.slice(0, 50000) + '\n...[DOM Truncated due to size limits]...';
+      }
+
       if (domLen < 500) {
         logs.push(`warn_empty_dom: DOM is very short (${domLen} chars). Page might be empty or loading.`);
       }
-      return { ok: true, output: { dom: j.dom, a11y: j.a11y, screenshot: j.screenshot }, logs };
+      return { ok: true, output: { dom: finalDom, a11y: j.a11y, screenshot: j.screenshot }, logs };
     }
   },
   {
