@@ -354,6 +354,7 @@ body {
   min-height: 0;
   overflow: hidden;
   background: var(--composer-bg);
+  position: relative;
 }
 
 .events {
@@ -987,4 +988,54 @@ body {
     width: 100%;
     flex: 1 1 100%;
   }
+}
+
+/* Floating taskbar above input */
+.taskbar-floating {
+  position: absolute;
+  right: 16px;
+  bottom: 96px; /* above input area */
+  max-width: 60vw;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.taskbar-floating .taskbar-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-inline-end: 6px;
+}
+
+.taskbar-floating .taskbar-items {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.taskbar-floating .task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-color);
+}
+
+.taskbar-floating .task-chip.running { color: var(--text-secondary); }
+.taskbar-floating .task-chip.success { color: var(--accent-success); }
+.taskbar-floating .task-chip.failed { color: var(--accent-danger); }
+.taskbar-floating .task-chip .task-chip-text { opacity: 0.9; }
+
+@media (max-width: 900px) {
+  .taskbar-floating { bottom: 116px; right: 12px; max-width: 86vw; }
 }
