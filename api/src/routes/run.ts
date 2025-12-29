@@ -1492,6 +1492,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+    // After browser actions, capture page state for accurate reading/sync
+    if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
+      const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
+      if (sidNext) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
+    }
     // Auto post-scaffold steps: install and build
     if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
       const rootCreated = String((result as any)?.output?.path || '').trim();
