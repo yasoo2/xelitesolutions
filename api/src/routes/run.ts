@@ -266,7 +266,7 @@ function buildEcommerceScaffold(root: string) {
     ".card .price{color:#16a34a}\n" +
     "#cart{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px}\n";
   const feAppJs =
-    "const API=location.hostname==='localhost'||location.hostname==='127.0.0.1'? 'http://localhost:4000' : '';\n" +
+    "const API=location.hostname==='localhost'||location.hostname==='127.0.0.1'? 'http://localhost:8080' : '';\n" +
     "const sid=localStorage.getItem('sid')||('sid-'+Math.random().toString(36).slice(2));localStorage.setItem('sid',sid);\n" +
     "const catSel=document.getElementById('category');const grid=document.getElementById('products');const cart=document.getElementById('cart');\n" +
     "async function loadCats(){const r=await fetch(API+'/api/categories');const j=await r.json();catSel.innerHTML='<option value=\"\">All</option>'+j.categories.map(c=>`<option value=\"${c.id}\">${c.name}</option>`).join('');}\n" +
