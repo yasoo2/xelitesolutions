@@ -1486,6 +1486,18 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+    // Auto post-scaffold steps: install and build
+    if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
+      const rootCreated = String((result as any)?.output?.path || '').trim();
+      if (rootCreated) {
+        pendingPlan = { name: 'npm_install', input: { cwd: rootCreated } } as any;
+      }
+    } else if (result.ok && String(plan?.name || '') === 'npm_install') {
+      const cwd = String((plan as any)?.input?.cwd || '').trim();
+      if (cwd) {
+        pendingPlan = { name: 'npm_build', input: { cwd } } as any;
+      }
+    }
     
     // Stop on fatal errors (403, verification, etc.)
     if (!result.ok && plan?.name === 'image_generate') {
