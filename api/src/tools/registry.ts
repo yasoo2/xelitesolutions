@@ -232,7 +232,8 @@ export const tools: ToolDefinition[] = [
         });
         if (!nav.ok) {
           logs.push(`nav_error=${nav.status}`);
-          return { ok: false, error: `Browser navigation failed with status ${nav.status}`, logs };
+          const errDetail = await formatWorkerHttpError(nav, base);
+          return { ok: false, error: `Browser navigation failed: ${errDetail}`, logs };
         }
         const artifacts = [
           { name: 'Agent Browser Stream', href: wsUrl, kind: 'browser_stream' }
