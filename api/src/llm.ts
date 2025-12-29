@@ -249,7 +249,7 @@ export async function callLLM(prompt: string, context: any[] = []): Promise<stri
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
-) : Promise<{ name: string; input: any } | null> {
+) : Promise<{ name: string; input: any; thought?: string | null } | null> {
   const providerKey = String(options?.provider || '').trim().toLowerCase();
 
   // Determine client to use
