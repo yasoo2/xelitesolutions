@@ -256,6 +256,56 @@ body {
   font-size: 14px;
 }
 
+/* Mode Bar & Buttons (Luxury Style) */
+.mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(20px);
+}
+
+.mode-btn {
+  position: relative;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  padding: 10px 24px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-family: var(--font-primary);
+  font-weight: 500;
+  font-size: 15px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.mode-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.mode-btn.active {
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 700;
+  box-shadow: 0 0 20px var(--accent-glow), inset 0 0 10px var(--accent-glow);
+  text-shadow: 0 0 10px var(--accent-glow);
+}
+
+.mode-btn.active svg {
+  filter: drop-shadow(0 0 5px var(--accent-primary));
+}
+
 /* Chat Area */
 .composer {
   flex: 1;

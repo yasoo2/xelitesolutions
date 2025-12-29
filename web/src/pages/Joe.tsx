@@ -596,10 +596,10 @@ export default function Joe() {
               boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 50,
               maxWidth: '90%', width: 'fit-content'
            }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></div>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>Joe Agent Active</span>
-              <span style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)' }}></span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>Ready for complex tasks</span>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-primary)', boxShadow: '0 0 8px var(--accent-primary)' }}></div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Joe Agent Active</span>
+              <span style={{ width: 1, height: 16, background: 'var(--border-color)' }}></span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Ready for complex tasks</span>
            </div>
         )}
 
