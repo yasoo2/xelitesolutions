@@ -350,17 +350,24 @@ export default function CommandComposer({
       setDisplayedThought('');
       return;
     }
-    let i = 0;
     setDisplayedThought('');
+    const words = currentThought.split(' ');
+    let count = 0;
+    
     const interval = setInterval(() => {
-        setDisplayedThought(prev => {
-            if (prev.length >= currentThought.length) {
-                clearInterval(interval);
-                return prev;
-            }
-            return currentThought.slice(0, prev.length + 1);
-        });
-    }, 15);
+        if (count >= words.length) {
+            clearInterval(interval);
+            // Disappear immediately after forming (1.5s delay)
+            setTimeout(() => {
+                setDisplayedThought('');
+                // We don't clear currentThought here to avoid fighting with upstream updates, 
+                // but visually it disappears.
+            }, 1500);
+            return;
+        }
+        count++;
+        setDisplayedThought(words.slice(0, count).join(' '));
+    }, 40); // Fast word appearance
     return () => clearInterval(interval);
   }, [currentThought]);
 
@@ -2430,7 +2437,7 @@ export default function CommandComposer({
               {/* Animated Thought Text */}
               {displayedThought && (
                 <div className="mb-2 pl-3.5 border-r-2 border-blue-500/20 pr-2">
-                   <div className="text-[10px] leading-4 font-mono text-zinc-300/80 whitespace-pre-wrap break-words" style={{ textShadow: '0 0 5px rgba(255,255,255,0.1)' }}>
+                   <div className="text-[10px] leading-4 font-mono text-zinc-300/90 whitespace-pre-wrap break-words font-thin tracking-wide" style={{ textShadow: '0 0 5px rgba(255,255,255,0.15)' }}>
                       {displayedThought}
                       <span className="inline-block w-1 h-3 ml-0.5 align-middle bg-blue-400/50 animate-pulse"/>
                    </div>
