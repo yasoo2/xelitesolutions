@@ -10,3 +10,6 @@ main{display:grid;grid-template-columns:1fr 320px;gap:16px;padding:16px}
 .price{color:#e60023;font-weight:bold}
 .cart{background:#fff;border:1px solid #eee;border-radius:8px;padding:12px;height:max-content}
 .cart-indicator{margin-right:auto;background:#e60023;color:#fff;border-radius:999px;padding:4px 10px}
+.cart-item{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid #eee;padding:6px 0}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center}
+.modal .panel{background:#fff;border-radius:8px;max-width:600px;width:90%;padding:16px}
