@@ -452,7 +452,13 @@ function historyHasToolCall(history: Array<{ role: string; content: any }>, tool
   if (!needle) return false;
   try {
     const s = JSON.stringify(history).toLowerCase();
-    return s.includes(`tool call: ${needle}`.toLowerCase()) || s.includes(`execute:${needle}`.toLowerCase());
+    const n = needle.toLowerCase();
+    return (
+      s.includes(`tool call: ${n}`) ||
+      s.includes(`execute:${n}`) ||
+      s.includes(`tool '${n}' executed`) ||
+      s.includes(`tool "${n}" executed`)
+    );
   } catch {
     return false;
   }
@@ -1678,7 +1684,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.` 
         });
     } else {
-        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. Result: ${JSON.stringify(result.output)}` });
+        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${JSON.stringify(result.output)}` });
     }
     
     steps++;
