@@ -893,26 +893,45 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       // store plan context for continuation
       const { planContext } = await import('../approvals/context');
       planContext.set(ap.id, { runId, name: initialPlan.name, input: initialPlan.input });
-      return res.json({
-        runId,
-        sessionId,
-        blocked: true,
-        approvalId: ap.id,
-        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
-      });
+      const auto = process.env.AUTO_APPROVE_SAFE === '1';
+      const safe = !/HIGH|CRITICAL/i.test(String(risk));
+      if (auto && safe) {
+        ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
+        const result = await executeTool(initialPlan.name, initialPlan.input);
+        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
+        if (result.artifacts) {
+          for (const a of result.artifacts) {
+            store.addArtifact(runId, a.name, a.href);
+            ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
+          }
+        }
+        store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+        ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+        planContext.delete(ap.id);
+        return res.json({ ok: true, runId, result });
+      }
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap.id, ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}) });
     } else {
       const ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
       ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
       await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, name: initialPlan.name, input: initialPlan.input });
-      return res.json({
-        runId,
-        sessionId,
-        blocked: true,
-        approvalId: ap._id.toString(),
-        ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {})
-      });
+      const auto = process.env.AUTO_APPROVE_SAFE === '1';
+      const safe = !/HIGH|CRITICAL/i.test(String(risk));
+      if (auto && safe) {
+        ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
+        const result = await executeTool(initialPlan.name, initialPlan.input);
+        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
+        if (result.artifacts) {
+          // Persist artifacts in DB using Artifact model if needed
+        }
+        await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+        planContext.delete(ap._id.toString());
+        return res.json({ ok: true, runId, result });
+      }
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString(), ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}) });
     }
   }
 
@@ -1288,6 +1307,23 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           store.updateRun(runId, { status: 'blocked' });
           const { planContext } = await import('../approvals/context');
           planContext.set(ap.id, { runId, name: plan?.name || '', input: plan?.input });
+          const auto = process.env.AUTO_APPROVE_SAFE === '1';
+          const safe = !/HIGH|CRITICAL/i.test(String(risk));
+          if (auto && safe) {
+            ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
+            const result = await executeTool(plan?.name || '', plan?.input);
+            ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+            if (result.artifacts) {
+              for (const a of result.artifacts) {
+                store.addArtifact(runId, a.name, a.href);
+                ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
+              }
+            }
+            store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+            ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+            planContext.delete(ap.id);
+            return res.json({ ok: true, runId, result });
+          }
           return res.json({ runId, blocked: true, approvalId: ap.id });
         } else {
           const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
@@ -1295,6 +1331,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
           const { planContext } = await import('../approvals/context');
           planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
+          const auto = process.env.AUTO_APPROVE_SAFE === '1';
+          const safe = !/HIGH|CRITICAL/i.test(String(risk));
+          if (auto && safe) {
+            ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
+            const result = await executeTool(plan?.name || '', plan?.input);
+            ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+            await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+            ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+            planContext.delete(ap._id.toString());
+            return res.json({ ok: true, runId, result });
+          }
           return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
         }
       }
