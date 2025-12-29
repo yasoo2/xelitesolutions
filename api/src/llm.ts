@@ -31,6 +31,10 @@ const PRIORITY_TOOL_NAMES: string[] = [
   'ls',
   'grep_search',
   'fs_glob',
+  'check_syntax',
+  'generate_tests',
+  'generate_docs',
+  'db_inspect',
   'quality_run',
   'git_ops',
   'command_policy_check',
@@ -140,8 +144,13 @@ Before *every* single tool call, you must perform a rigorous internal cognitive 
     -   Use \`browser_open\` immediately when the user mentions visiting a site (GitHub, Google, localhost).
     -   Navigate and interact intelligently to achieve the user's goal (e.g., finding a repo, testing a UI).
 
-## ENGINEERING STANDARDS:
+## ENGINEERING STANDARDS & AUTO-DEV CAPABILITIES:
 -   **Code Quality**: Write clean, modular, and typed code (TypeScript preferred). Add comments for complex logic.
+-   **Self-Correction**:
+    -   After writing critical code, run \`check_syntax\` to verify it matches language rules.
+    -   If a bug persists, use \`generate_tests\` to create a reproduction case, then fix it.
+-   **Documentation**: Use \`generate_docs\` to keep the codebase understandable if you make large changes.
+-   **Database**: Use \`db_inspect\` to understand the schema before writing queries. Do not guess field names.
 -   **Error Handling**: Anticipate failures. If a tool fails, analyze the error message and retry with a corrected approach. Do not just give up.
 -   **Verification**: After making changes, verify them. Run tests, check endpoints, or read the file back to ensure correctness.
 
