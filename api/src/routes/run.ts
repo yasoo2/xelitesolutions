@@ -1116,6 +1116,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           
           Check the history to see what has been done. Do not repeat steps. If a step is done, move to the next.` 
         } as any);
+
+        // Persist marker to prevent repetition on restart
+        try {
+           await Message.create({ sessionId, role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED', runId });
+        } catch {}
       }
       
       // We no longer force the plan here. We let the LLM decide based on history.
