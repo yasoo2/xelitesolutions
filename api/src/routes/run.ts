@@ -1088,6 +1088,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
     const isBrowserTool = /^browser_/.test(planName);
     const userTextForOverrides = String(text || '');
+    const userTextNorm = normalizeArabicQuery(userTextForOverrides);
     const requestedRepoName = extractRequestedRepoName(userTextForOverrides);
     const wantsGithubRepo =
       /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
@@ -1104,6 +1105,15 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           },
         } as any;
       }
+    }
+    // Special: List tools command
+    const wantsToolsList =
+      /(list\s+tools|tools\s+list|show\s+tools)/i.test(userTextForOverrides) ||
+      /(سرد|عرض|قائمه|قائمة)\s+الادوات/.test(userTextNorm);
+    if (wantsToolsList && (!planName || planName === 'echo')) {
+      const base = `${req.protocol}://${req.get('host')}`;
+      plan = { name: 'http_fetch', input: { url: `${base}/tools` } } as any;
+      planName = 'http_fetch';
     }
     const wantsShop = isEcommerceRequest(userTextForOverrides);
     if (wantsShop) {
@@ -1503,6 +1513,24 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       try {
         const urlStr = String(plan?.input?.url || '');
         const u = new URL(urlStr);
+        // Tools listing formatting
+        if (u.pathname === '/tools') {
+          const j = (result as any)?.output?.json || null;
+          const total = Number(j?.count || 0);
+          const real = Number(j?.realCount || 0);
+          const noop = Number(j?.noopCount || 0);
+          const names = Array.isArray(j?.tools) ? j.tools.slice(0, 10).map((t: any) => String(t?.name || '')).filter(Boolean) : [];
+          const md = [
+            `### سرد الأدوات`,
+            `- العدد الكلي: ${total}`,
+            `- الفعلية: ${real}`,
+            `- الوهمية (noop): ${noop}`,
+            names.length ? `- أمثلة: ${names.join(', ')}` : ''
+          ].filter(Boolean).join('\n');
+          forcedText = md;
+          ev({ type: 'text', data: md });
+          assistantTextEmitted = true;
+        }
         let base = (u.searchParams.get('base') || '').toUpperCase();
         let sym = (u.searchParams.get('symbols') || u.searchParams.get('sym') || '').toUpperCase();
         if (!base) {
