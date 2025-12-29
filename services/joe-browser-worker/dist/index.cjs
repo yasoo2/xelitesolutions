@@ -40,8 +40,15 @@ var TTL_MS = Number(process.env.SESSION_TTL_MS || 30 * 60 * 1e3);
 var API_KEY = process.env.WORKER_API_KEY || "change-me";
 var STORAGE_DIR = process.env.WORKER_STORAGE_DIR || "/tmp/joe-browser-worker";
 var PORT = Number(process.env.PORT || 7070);
+var SHARED_BROWSER = null;
 var browserHealthy = false;
 var startupError = null;
+async function getSharedBrowser() {
+  if (SHARED_BROWSER && SHARED_BROWSER.isConnected()) return SHARED_BROWSER;
+  console.log("Launching new shared browser instance...");
+  SHARED_BROWSER = await launchChromium();
+  return SHARED_BROWSER;
+}
 if (!import_fs.default.existsSync(STORAGE_DIR)) {
   try {
     import_fs.default.mkdirSync(STORAGE_DIR, { recursive: true });
@@ -165,7 +172,7 @@ function setupPageHooks(session2, page, tabId) {
   });
 }
 async function createSession(opts) {
-  const browser = await launchChromium();
+  const browser = await getSharedBrowser();
   const context = await browser.newContext({
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
@@ -213,10 +220,6 @@ async function closeSession(id) {
   }
   try {
     await s.context.close();
-  } catch {
-  }
-  try {
-    await s.browser.close();
   } catch {
   }
   SESSIONS.delete(id);
@@ -676,8 +679,7 @@ app.post("/session/create", auth, async (req, res) => {
     const s = await createSession({ viewport, userAgent, locale });
     if (device && import_playwright.devices[device]) {
       await s.context.close();
-      await s.browser.close();
-      const browser = await launchChromium();
+      const browser = await getSharedBrowser();
       const ctx = await browser.newContext({ ...import_playwright.devices[device], acceptDownloads: true, recordVideo: { dir: import_path.default.join(STORAGE_DIR, "videos") } });
       const page = await ctx.newPage();
       s.browser = browser;
@@ -754,8 +756,7 @@ var server = app.listen(PORT, "0.0.0.0", () => {
   (async () => {
     try {
       logger.info("Running startup browser dependency check...");
-      const browser = await launchChromium();
-      await browser.close();
+      await getSharedBrowser();
       browserHealthy = true;
       logger.info("Startup browser dependency check PASSED");
     } catch (err) {

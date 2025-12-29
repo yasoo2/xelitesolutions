@@ -41,8 +41,16 @@ const API_KEY = process.env.WORKER_API_KEY || 'change-me';
 const STORAGE_DIR = process.env.WORKER_STORAGE_DIR || '/tmp/joe-browser-worker';
 const PORT = Number(process.env.PORT || 7070);
 
+let SHARED_BROWSER: Browser | null = null;
 let browserHealthy = false;
 let startupError: string | null = null;
+
+async function getSharedBrowser() {
+  if (SHARED_BROWSER && SHARED_BROWSER.isConnected()) return SHARED_BROWSER;
+  console.log('Launching new shared browser instance...');
+  SHARED_BROWSER = await launchChromium();
+  return SHARED_BROWSER;
+}
 
 if (!fs.existsSync(STORAGE_DIR)) {
   try { fs.mkdirSync(STORAGE_DIR, { recursive: true }); } catch {}
@@ -170,7 +178,7 @@ function setupPageHooks(session: Session, page: Page, tabId: string) {
 }
 
 async function createSession(opts: { viewport?: { width: number; height: number }, userAgent?: string, locale?: string }) {
-  const browser = await launchChromium();
+  const browser = await getSharedBrowser();
   const context = await browser.newContext({
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
@@ -212,7 +220,7 @@ async function closeSession(id: string) {
     try { await t.page.close(); } catch {}
   }
   try { await s.context.close(); } catch {}
-  try { await s.browser.close(); } catch {}
+  // Do not close the shared browser
   SESSIONS.delete(id);
 }
 
@@ -707,11 +715,11 @@ app.post('/session/create', auth, async (req, res) => {
     const { viewport, userAgent, locale, device } = req.body || {};
     const s = await createSession({ viewport, userAgent, locale });
     if (device && devices[device]) {
-      // Close the default context and browser created in createSession
+      // Close the default context created in createSession
       await s.context.close();
-      await s.browser.close();
+      // Do NOT close s.browser as it is shared
       
-      const browser = await launchChromium();
+      const browser = await getSharedBrowser();
       const ctx = await browser.newContext({ ...devices[device], acceptDownloads: true, recordVideo: { dir: path.join(STORAGE_DIR, 'videos') } });
       const page = await ctx.newPage();
       s.browser = browser;
@@ -799,8 +807,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   (async () => {
     try {
       logger.info('Running startup browser dependency check...');
-      const browser = await launchChromium();
-      await browser.close();
+      await getSharedBrowser();
       browserHealthy = true;
       logger.info('Startup browser dependency check PASSED');
     } catch (err: any) {
