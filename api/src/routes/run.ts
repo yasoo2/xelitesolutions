@@ -954,7 +954,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
   // Track executed tools to prevent loops
   const executedTools = new Set<string>();
+  const executedToolSigs = new Set<string>();
   let consecutiveThoughtSteps = 0;
+  let postScaffoldScheduled = false;
+  let postInstallScheduled = false;
 
   let lastResult: any = null;
   let forcedText: string | null = null;
@@ -1074,14 +1077,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     let planName = String(plan?.name || '');
     
     // Safety: Prevent infinite loops of same tool execution
-    if (['project_detect', 'scaffold_project', 'npm_install', 'analyze_codebase'].includes(planName)) {
-        if (executedTools.has(planName)) {
+    if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase'].includes(planName)) {
+        const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
+        if (executedToolSigs.has(sig)) {
              console.log(`[Safety] Skipping repeated execution of ${planName}`);
              plan = {
                  name: 'echo',
                  input: { text: `(System) Skipped repeated step: ${planName}. Moving to next step.` }
              } as any;
              planName = 'echo';
+        } else {
+            executedToolSigs.add(sig);
         }
     }
     
@@ -1489,13 +1495,15 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // Auto post-scaffold steps: install and build
     if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
       const rootCreated = String((result as any)?.output?.path || '').trim();
-      if (rootCreated) {
+      if (rootCreated && !postScaffoldScheduled) {
         pendingPlan = { name: 'npm_install', input: { cwd: rootCreated } } as any;
+        postScaffoldScheduled = true;
       }
     } else if (result.ok && String(plan?.name || '') === 'npm_install') {
       const cwd = String((plan as any)?.input?.cwd || '').trim();
-      if (cwd) {
+      if (cwd && !postInstallScheduled) {
         pendingPlan = { name: 'npm_build', input: { cwd } } as any;
+        postInstallScheduled = true;
       }
     }
     
