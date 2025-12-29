@@ -3,6 +3,14 @@ const sessionId = 'sess-' + Math.random().toString(16).slice(2);
 
 const state = { products: [], categories: [], cart: [] };
 
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
 async function fetchJSON(url) {
   const r = await fetch(url);
   return r.json();
@@ -174,6 +182,19 @@ function setup() {
   document.getElementById('refresh').addEventListener('click', () => {
     loadProducts();
   });
+  
+  // Real-time search with debounce
+  const searchInput = document.getElementById('search');
+  if (searchInput) {
+    searchInput.addEventListener('input', debounce(() => loadProducts(), 300));
+  }
+
+  // Instant category filtering
+  const catSelect = document.getElementById('category');
+  if (catSelect) {
+    catSelect.addEventListener('change', () => loadProducts());
+  }
+
   document.getElementById('checkout').addEventListener('click', checkout);
   const ordersBtn = document.getElementById('ordersBtn');
   if (ordersBtn) ordersBtn.addEventListener('click', loadOrders);
