@@ -529,6 +529,25 @@ export const tools: ToolDefinition[] = [
     mockSupported: true,
   },
   {
+    name: 'scaffold_full_stack',
+    version: '1.0.0',
+    tags: ['fs', 'scaffold', 'stack'],
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        name: { type: 'string', description: 'Project name (e.g., "viva-store")' },
+        type: { type: 'string', enum: ['ecommerce', 'saas', 'blog'], default: 'ecommerce' }
+      },
+      required: ['name']
+    },
+    outputSchema: { type: 'object', properties: { path: { type: 'string' }, info: { type: 'string' } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 5,
+    auditFields: ['name'],
+    mockSupported: true,
+  },
+  {
     name: 'analyze_codebase',
     version: '1.0.0',
     tags: ['analysis', 'system'],
@@ -3050,6 +3069,146 @@ Instructions:
           output: { created, errors }, 
           logs 
       };
+    }
+
+    if (name === 'scaffold_full_stack') {
+        const projectName = String(input?.name || 'my-app').trim();
+        const type = String(input?.type || 'ecommerce');
+        const root = path.resolve(process.cwd(), projectName);
+        
+        if (fs.existsSync(root)) {
+            return { ok: false, error: `Directory "${projectName}" already exists. Please choose a new name.`, logs };
+        }
+
+        try {
+            fs.mkdirSync(root, { recursive: true });
+            
+            // Generate Template Files
+            const files: Record<string, string> = {};
+            
+            // 1. Root
+            files['package.json'] = JSON.stringify({
+                name: projectName,
+                private: true,
+                workspaces: ["apps/*", "packages/*"],
+                scripts: {
+                    "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+                    "build": "npm run build --workspaces",
+                    "start": "npm start --workspaces"
+                },
+                devDependencies: {
+                    "concurrently": "^8.0.0",
+                    "typescript": "^5.0.0"
+                }
+            }, null, 2);
+            
+            files['docker-compose.yml'] = `
+version: '3.8'
+services:
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+volumes:
+  mongo-data:
+`;
+
+            // 2. API (Backend)
+            files['apps/api/package.json'] = JSON.stringify({
+                name: "api",
+                version: "0.1.0",
+                scripts: { "dev": "nodemon src/index.ts", "build": "tsc", "start": "node dist/index.js" },
+                dependencies: { "express": "^4.18.0", "mongoose": "^7.0.0", "cors": "^2.8.5", "dotenv": "^16.0.0" },
+                devDependencies: { "nodemon": "^2.0.0", "@types/express": "^4.17.0", "ts-node": "^10.0.0" }
+            }, null, 2);
+            
+            files['apps/api/src/index.ts'] = `
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PORT = process.env.PORT || 4000;
+
+app.get('/', (req, res) => res.json({ status: 'API Online', service: '${projectName}' }));
+
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/${projectName}')
+  .then(() => console.log('DB Connected'))
+  .catch(err => console.error('DB Error', err));
+
+app.listen(PORT, () => console.log(\`API running on http://localhost:\${PORT}\`));
+`;
+            
+            files['apps/api/tsconfig.json'] = JSON.stringify({ compilerOptions: { target: "es2020", module: "commonjs", outDir: "./dist", rootDir: "./src", strict: true, esModuleInterop: true } }, null, 2);
+
+            // 3. Web (Frontend)
+            files['apps/web/package.json'] = JSON.stringify({
+                name: "web",
+                version: "0.1.0",
+                scripts: { "dev": "vite", "build": "vite build", "preview": "vite preview" },
+                dependencies: { "react": "^18.2.0", "react-dom": "^18.2.0", "axios": "^1.4.0", "lucide-react": "^0.260.0" },
+                devDependencies: { "@vitejs/plugin-react": "^4.0.0", "vite": "^4.4.0", "tailwindcss": "^3.3.0", "autoprefixer": "^10.0.0", "postcss": "^8.0.0" }
+            }, null, 2);
+
+            files['apps/web/vite.config.js'] = `import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()], server: { proxy: { '/api': 'http://localhost:4000' } } });`;
+            
+            files['apps/web/index.html'] = `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>${projectName}</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>`;
+            
+            files['apps/web/src/main.jsx'] = `import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; import './index.css'; ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);`;
+            
+            files['apps/web/src/App.jsx'] = `
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+
+function App() {
+  const [status, setStatus] = useState('Loading...');
+
+  useEffect(() => {
+    axios.get('/api').then(r => setStatus(r.data.status)).catch(e => setStatus('API Error'));
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="bg-white p-8 rounded-lg shadow-xl text-center">
+        <h1 className="text-4xl font-bold text-blue-600 mb-4">${projectName}</h1>
+        <p className="text-gray-600 text-lg">System Status: <span className="font-mono font-bold">{status}</span></p>
+        <p className="mt-4 text-sm text-gray-400">Built by Joe AI Factory</p>
+      </div>
+    </div>
+  );
+}
+export default App;
+`;
+            files['apps/web/src/index.css'] = `@tailwind base; @tailwind components; @tailwind utilities;`;
+            files['apps/web/postcss.config.js'] = `export default { plugins: { tailwindcss: {}, autoprefixer: {}, }, }`;
+            files['apps/web/tailwind.config.js'] = `export default { content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"], theme: { extend: {}, }, plugins: [], }`;
+
+            // Create files
+            for (const [relativePath, content] of Object.entries(files)) {
+                const fullPath = path.join(root, relativePath);
+                const dir = path.dirname(fullPath);
+                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(fullPath, content.trim());
+            }
+
+            logs.push(`scaffold_full_stack.created=${projectName} files=${Object.keys(files).length}`);
+            return { 
+                ok: true, 
+                output: { 
+                    path: root, 
+                    info: `Created fullstack project "${projectName}" with React, Express, and Docker. Run "npm install" in the root to start.` 
+                }, 
+                logs 
+            };
+
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs };
+        }
     }
     if (name === 'analyze_codebase') {
        const p = String(input?.path || '.');

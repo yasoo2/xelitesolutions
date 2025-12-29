@@ -27,6 +27,7 @@ const PRIORITY_TOOL_NAMES: string[] = [
   'file_write',
   'file_edit',
   'scaffold_project',
+  'scaffold_full_stack',
   'read_file_tree',
   'ls',
   'grep_search',
