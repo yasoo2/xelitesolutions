@@ -1182,11 +1182,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         planName = 'scaffold_full_stack';
       }
       
-      // If planner tries to echo, force it back to track progress or finish
-      if (!planName || planName === 'echo') {
-          // If we just scaffolded, maybe we should install dependencies?
-          // Actually, let the user (or next turn) handle npm install to avoid long timeouts.
-          // We just report success.
+      // Force execution even if AI tries to think
+      if (planName === 'echo' || !planName) {
+          // If we haven't scaffolded yet (and steps > 0), maybe AI missed it?
+          // But if steps=0 we forced it above.
+          // If steps > 0, we assume scaffolding is done.
       }
     }
 
