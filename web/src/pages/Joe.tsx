@@ -586,22 +586,7 @@ export default function Joe() {
       )}
 
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        {/* Status Bar Overlay for Agent Mode */}
-        {mode === 'agent' && (
-           <div style={{
-              position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)',
-              background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
-              border: '1px solid var(--border-color)', borderRadius: 99,
-              padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 50,
-              maxWidth: '90%', width: 'fit-content'
-           }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-primary)', boxShadow: '0 0 8px var(--accent-primary)' }}></div>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Joe Agent Active</span>
-              <span style={{ width: 1, height: 16, background: 'var(--border-color)' }}></span>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Ready for complex tasks</span>
-           </div>
-        )}
+        
 
         <div className="mode-switch">
           <div className="segmented">
