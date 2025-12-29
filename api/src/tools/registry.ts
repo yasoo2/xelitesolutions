@@ -2108,7 +2108,8 @@ Instructions:
                   q.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
                   q.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس|درجة\s+الحرارة)/i);
                 // Default to Riyadh if no city found (more relevant for Arabic users than Istanbul)
-                return String(m?.[1] || 'Riyadh').trim();
+                const found = String(m?.[1] || '').trim();
+                return found || 'Riyadh';
               })();
 
         try {
@@ -2271,7 +2272,14 @@ Instructions:
         // Launch standard headless browser
         const browser = await puppeteer.launch({
             headless: true, // Use boolean true for stability
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage', 
+                '--disable-gpu',
+                '--disable-features=site-per-process', // Faster loading
+                '--window-size=1280,800'
+            ]
         });
         
         const page = await browser.newPage();
@@ -2283,7 +2291,7 @@ Instructions:
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const type = req.resourceType();
-            if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
+            if (['image', 'stylesheet', 'font', 'media', 'other'].includes(type)) req.abort();
             else req.continue();
         });
 
