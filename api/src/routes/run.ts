@@ -1516,6 +1516,45 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
        }
     }
 
+    if (result.ok && plan?.name === 'project_detect') {
+       const out = result.output as any;
+       // Smart Context: If we found Node projects, try to read the root package.json immediately
+       // to give the AI context about dependencies without wasting a turn.
+       if (out && Array.isArray(out.nodeProjects) && out.nodeProjects.length > 0) {
+           const rootNode = out.nodeProjects[0]; // Usually the first one is relevant
+           const pkgPath = `${rootNode}/package.json`;
+           // Execute file_read silently and inject into history
+           console.log(`[Smart Context] Auto-reading ${pkgPath}`);
+           const subResult = await executeTool('file_read', { filePath: pkgPath });
+           if (subResult.ok) {
+               ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Read] Read ${pkgPath} for context.` } });
+               history.push({ 
+                   role: 'assistant', 
+                   content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${JSON.stringify(subResult.output)}` 
+               });
+           }
+       }
+    }
+
+    if (!result.ok && plan?.name === 'file_read') {
+       const err = String(result.error || '');
+       if (err.includes('ENOENT') || err.includes('not found')) {
+           // Auto-Correction: File not found? List the directory to help user see what's there.
+           const fpath = String(plan?.input?.filePath || '.');
+           const dir = fpath.includes('/') ? fpath.split('/').slice(0, -1).join('/') || '.' : '.';
+           console.log(`[Auto-Correction] file_read failed for ${fpath}. Listing ${dir}`);
+           const subResult = await executeTool('ls', { path: dir });
+           if (subResult.ok) {
+               ev({ type: 'text', data: `⚠️ لم أجد الملف "${fpath}". إليك محتويات المجلد "${dir}" للمساعدة:` });
+               ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Correction] ls ${dir}: ${JSON.stringify(subResult.output)}` } });
+               history.push({ 
+                   role: 'assistant', 
+                   content: `Tool Call: ls\nInput: {"path":"${dir}"}\nOutput: ${JSON.stringify(subResult.output)}` 
+               });
+           }
+       }
+    }
+
     if (result.ok && plan?.name === 'echo') {
       const text = result.output?.text;
       if (text) {
