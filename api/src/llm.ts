@@ -37,6 +37,7 @@ const PRIORITY_TOOL_NAMES: string[] = [
   'tool_create_shell',
   'shell_execute',
   'web_search',
+  'http_fetch',
   'knowledge_search',
   'html_extract',
   'browser_open',
@@ -131,6 +132,9 @@ Before *every* single tool call, you must go through this internal cycle:
    - **Do not** search for generic terms like "error" or "help". 
    - **Do** construct "Targeted Queries" combining: [Technology Name] + [Error Message] + [Context].
    - **Iterate**: If the first search fails, refine the query and try again.
+- **http_fetch**:
+   - Use this to inspect external APIs or raw content when \`browser_open\` is too heavy.
+   - Use this when the user asks to "list tools" (\`http://localhost:PORT/tools\`).
 - **deep_research**: 
    - Use this for ANY request involving "analysis", "report", "learning", or "comprehensive view".
    - It is your "Heavy Lifter" for information gathering.
@@ -138,6 +142,7 @@ Before *every* single tool call, you must go through this internal cycle:
    - Always map the territory before coding. Read \`package.json\`, structure, and relevant files first.
 - **browser_open**:
    - Use strictly for verification, live testing, or up-to-date documentation.
+   - **MANDATORY**: If the user asks to "open", "visit", "browse", or "go to" a website (e.g., "Open GitHub", "Visit Google"), you MUST use \`browser_open\` immediately. Do NOT reply with text asking "what URL?". Infer the URL (e.g., https://github.com) and execute.
 
 ## ENGINEERING FACTORY MODE (MANDATORY FOR BUILD REQUESTS):
 - If the user asks you to **build** something (system/app/API/website/pages/tools), you must **use tools** and produce real outputs.
