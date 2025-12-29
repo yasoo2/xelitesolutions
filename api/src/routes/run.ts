@@ -832,19 +832,30 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
            // Store adds it to memory. We want all *previous* interactions.
            // Store.listMessages returns all. 
            // We filter out current run messages to avoid duplication with 'initialContent' which is added to history array manually.
-           // And we take the last 20.
-           previousMessages = hist.filter(m => m.runId !== runId && m.role !== 'system').slice(-20).map(m => ({ role: m.role as any, content: m.content }));
+           // And we take the last 50 to ensure context retention.
+           previousMessages = hist.filter(m => m.runId !== runId && m.role !== 'system').slice(-50).map(m => ({ role: m.role as any, content: m.content }));
        } else {
            const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: 'system' } })
                .sort({ createdAt: -1 }) // Get newest first
-               .limit(20); // Last 20 messages
+               .limit(50); // Last 50 messages
            // Reverse to chronological order (Old -> New)
            previousMessages = docs.reverse().map(d => ({ role: d.role as any, content: d.content }));
        }
    }
 
+  // Merge consecutive user messages to avoid context fragmentation
+  const mergedHistory: typeof previousMessages = [];
+  for (const msg of previousMessages) {
+      const last = mergedHistory[mergedHistory.length - 1];
+      if (last && last.role === 'user' && msg.role === 'user') {
+          last.content += `\n\n[Follow-up]: ${msg.content}`;
+      } else {
+          mergedHistory.push(msg);
+      }
+  }
+
   const history: { role: 'user' | 'assistant' | 'system', content: string | any[] }[] = [
-    ...previousMessages,
+    ...mergedHistory,
     { role: 'user', content: initialContent }
   ];
 
