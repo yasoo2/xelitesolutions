@@ -448,30 +448,26 @@ function repoBaseDirForTools(): string {
 }
 
 function historyHasToolCall(history: Array<{ role: string; content: any }>, toolName: string): boolean {
-  const needle = String(toolName || '').trim();
+  const needle = String(toolName || '').trim().toLowerCase();
   if (!needle) return false;
-  try {
-    const s = JSON.stringify(history).toLowerCase();
-    const n = needle.toLowerCase();
+  return history.some(h => {
+    const c = (typeof h?.content === 'string' ? h.content : JSON.stringify(h?.content || '')).toLowerCase();
     return (
-      s.includes(`tool call: ${n}`) ||
-      s.includes(`execute:${n}`) ||
-      s.includes(`tool '${n}' executed`) ||
-      s.includes(`tool "${n}" executed`)
+      c.includes(`tool call: ${needle}`) ||
+      c.includes(`execute:${needle}`) ||
+      c.includes(`tool '${needle}' executed`) ||
+      c.includes(`tool "${needle}" executed`)
     );
-  } catch {
-    return false;
-  }
+  });
 }
 
 function historyHasMarker(history: Array<{ role: string; content: any }>, marker: string): boolean {
   const needle = String(marker || '').trim();
   if (!needle) return false;
-  try {
-    return JSON.stringify(history).includes(needle);
-  } catch {
-    return false;
-  }
+  return history.some(h => {
+    const c = typeof h?.content === 'string' ? h.content : JSON.stringify(h?.content || '');
+    return c.includes(needle);
+  });
 }
 
 function historyAfterMarker(history: Array<{ role: string; content: any }>, marker: string) {
@@ -1334,9 +1330,13 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
     
     // Add result to history to prevent infinite loops
+    const safeOutput = (obj: any) => {
+        try { return JSON.stringify(obj); } catch { return '"[Result too large or circular]"'; }
+    };
+
     history.push({ 
         role: 'assistant', 
-        content: `Tool Call: ${plan?.name}\nInput: ${JSON.stringify(persistedInput)}\nOutput: ${JSON.stringify(result.output || result.error || 'Done')}` 
+        content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(persistedInput)}\nOutput: ${safeOutput(result.output || result.error || 'Done')}` 
     });
 
     lastResult = result;
@@ -1684,7 +1684,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.` 
         });
     } else {
-        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${JSON.stringify(result.output)}` });
+        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(result.output)}` });
     }
     
     steps++;
@@ -1696,7 +1696,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
   }
 
-  const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : 'No output');
+  const finalContent = forcedText || (lastResult?.output ? (() => { try { return JSON.stringify(lastResult.output); } catch { return 'Output too large'; } })() : 'No output');
 
   if (!assistantTextEmitted) {
     ev({ type: 'text', data: finalContent });
