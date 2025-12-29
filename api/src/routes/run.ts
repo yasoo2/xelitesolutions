@@ -1115,6 +1115,35 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       plan = { name: 'http_fetch', input: { url: `${base}/tools` } } as any;
       planName = 'http_fetch';
     }
+    // Quick actions: files and code
+    const wantsListFiles =
+      /\bls\b/i.test(userTextForOverrides) ||
+      /(عرض|اظهر|اعرض)\s+(الملفات|مجلد|مجلدات)/.test(userTextNorm) ||
+      /(list\s+files|show\s+files)/i.test(userTextForOverrides);
+    if (wantsListFiles && (!planName || planName === 'echo')) {
+      plan = { name: 'ls', input: { path: '.' } } as any;
+      planName = 'ls';
+    }
+    const wantsFileTree =
+      /(هيكل|شجره|شجرة|بنيه|structure|tree)/.test(userTextNorm) &&
+      /(المشروع|الملفات|code|files)/.test(userTextNorm);
+    if (wantsFileTree && (!planName || planName === 'echo')) {
+      plan = { name: 'read_file_tree', input: { path: '.', depth: 3 } } as any;
+      planName = 'read_file_tree';
+    }
+    const readFileMatch = userTextForOverrides.match(/(?:read\s+file|اقرأ\s+ملف)\s+([^\s'"]+)/i);
+    if (readFileMatch && (!planName || planName === 'echo')) {
+      const filename = readFileMatch[1];
+      plan = { name: 'file_read', input: { filename } } as any;
+      planName = 'file_read';
+    }
+    const grepMatchAr = userTextNorm.match(/ابحث\s+في\s+الكود\s+عن\s+(.+)/);
+    const grepMatchEn = userTextForOverrides.match(/(?:grep|search\s+code\s+for)\s+(.+)/i);
+    const grepQuery = (grepMatchAr && grepMatchAr[1]) || (grepMatchEn && grepMatchEn[1]);
+    if (grepQuery && (!planName || planName === 'echo')) {
+      plan = { name: 'grep_search', input: { query: String(grepQuery).trim(), path: '.' } } as any;
+      planName = 'grep_search';
+    }
     const wantsShop = isEcommerceRequest(userTextForOverrides);
     if (wantsShop) {
       const root = extractTargetProjectRoot(userTextForOverrides);
