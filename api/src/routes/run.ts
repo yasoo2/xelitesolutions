@@ -922,6 +922,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   
   // History already loaded above
 
+  // Track executed tools to prevent loops
+  const executedTools = new Set<string>();
+  let consecutiveThoughtSteps = 0;
 
   let lastResult: any = null;
   let forcedText: string | null = null;
@@ -1038,7 +1041,32 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
     
-    const planName = String(plan?.name || '');
+    let planName = String(plan?.name || '');
+    
+    // Safety: Prevent infinite loops of same tool execution
+    if (['project_detect', 'scaffold_project', 'npm_install', 'analyze_codebase'].includes(planName)) {
+        if (executedTools.has(planName)) {
+             console.log(`[Safety] Skipping repeated execution of ${planName}`);
+             plan = {
+                 name: 'echo',
+                 input: { text: `(System) Skipped repeated step: ${planName}. Moving to next step.` }
+             } as any;
+             planName = 'echo';
+        }
+    }
+    
+    // Safety: Prevent infinite thought loops
+    if (planName === 'echo' || !planName) {
+        consecutiveThoughtSteps++;
+        if (consecutiveThoughtSteps > 3) {
+             ev({ type: 'text', data: '⚠️ **System Pause**: The AI seems to be stuck in a thought loop. Stopping to prevent resource exhaustion.' });
+             break;
+        }
+    } else {
+        consecutiveThoughtSteps = 0;
+        executedTools.add(planName);
+    }
+
     const isBrowserTool = /^browser_/.test(planName);
     const userTextForOverrides = String(text || '');
     const requestedRepoName = extractRequestedRepoName(userTextForOverrides);
