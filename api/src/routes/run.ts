@@ -1120,6 +1120,21 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         // Persist marker to prevent repetition on restart
         try {
            await Message.create({ sessionId, role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED', runId });
+           // Persist directive so LLM remembers the plan on retry
+           await Message.create({ 
+             sessionId, 
+             role: 'system', 
+             content: `BUILD DIRECTIVE: You are building an E-Commerce Store. 
+          Follow this plan strictly:
+          1. project_detect (if not done)
+          2. analyze_codebase (if not done)
+          3. scaffold_project (if not done - use structure: {} and I will inject the template)
+          4. npm_install (backend only)
+          5. quality_run (backend only)
+          
+          Check the history to see what has been done. Do not repeat steps. If a step is done, move to the next.`, 
+             runId 
+           });
         } catch {}
       }
       
