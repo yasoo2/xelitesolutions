@@ -731,6 +731,97 @@ export const tools: ToolDefinition[] = [
     description: 'Perform a standard web search (like Google/DuckDuckGo). Best for quick facts, current events, or checking if a library exists. Returns a list of titles and snippets. Use deep_research for complex topics.',
   },
   {
+    name: 'central_answer',
+    version: '1.0.0',
+    tags: ['ai', 'answer', 'research'],
+    inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
+    outputSchema: { type: 'object', properties: { answer: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['read', 'internet'],
+    sideEffects: [],
+    rateLimitPerMinute: 10,
+    auditFields: ['question'],
+    mockSupported: false,
+    async execute(input) {
+      const question = String(input?.question || '').trim();
+      const logs: string[] = [];
+      const searchRes = await executeTool('web_search', { query: question });
+      let items: Array<{ title: string; url: string; description: string }> = Array.isArray(searchRes.output?.results) ? searchRes.output.results.slice(0, 10) : [];
+      if (!items.length) {
+        const langA = /[\u0600-\u06FF]/.test(question) ? 'ar' : 'en';
+        const langB = langA === 'ar' ? 'en' : 'ar';
+        const urls = [
+          `https://${langA}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(question)}&format=json&srlimit=5`,
+          `https://${langB}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(question)}&format=json&srlimit=5`
+        ];
+        try {
+          const resps = await Promise.all(urls.map(u => fetch(u)));
+          const jsons = await Promise.all(resps.map(r => r.json().catch(() => ({ query: { search: [] } }))));
+          const mapped: Array<{ title: string; url: string; description: string }> = [];
+          for (let i = 0; i < jsons.length; i++) {
+            const lang = i === 0 ? langA : langB;
+            const arr = (jsons[i].query?.search || []).slice(0, 5);
+            for (const it of arr) {
+              const title = String(it.title || '');
+              const url = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
+              const description = String(it.snippet || '').replace(/<[^>]+>/g, '');
+              mapped.push({ title, url, description });
+            }
+          }
+          items = mapped.slice(0, 10);
+        } catch {}
+      }
+      const extractsSettled = await Promise.allSettled(
+        items.map(async (it: { title: string; url: string; description: string }) => {
+          const ext = await executeTool('html_extract', { url: it.url });
+          const text = String(ext.output?.textSnippet || it.description || '').trim();
+          return `TITLE: ${it.title}\nURL: ${it.url}\n${text}`;
+        })
+      );
+      const context = extractsSettled.filter(x => x.status === 'fulfilled').map((x: any) => x.value).join('\n---\n').slice(0, 20000);
+      const sources = items.map((it: { url: string }) => it.url).slice(0, 10);
+      const oai = String(process.env.OPENAI_API_KEY || '').trim();
+      const gkey = String(process.env.GOOGLE_API_KEY || '').trim();
+      if (oai) {
+        try {
+          const { default: OpenAI } = await import('openai');
+          const client = new OpenAI({ apiKey: oai, baseURL: process.env.OPENAI_BASE_URL });
+          const c = await client.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: 'Answer concisely. 3–6 lines direct answer, then up to 3 bullets. End with Sources.' },
+              { role: 'user', content: `Question: ${question}\n\nContext:\n${context}` }
+            ]
+          });
+          const answer = c.choices[0].message.content || '';
+          return { ok: true, output: { answer, sources }, logs };
+        } catch (e: any) {
+          logs.push(`openai.fail=${e.message}`);
+        }
+      }
+      if (gkey) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(gkey)}`;
+          const body = {
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `Answer concisely. Question: ${question}\n\nContext:\n${context}` }]
+              }
+            ]
+          };
+          const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const j: any = await r.json().catch(() => null);
+          const answer = String(j?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          if (answer) return { ok: true, output: { answer, sources }, logs };
+        } catch (e: any) {
+          logs.push(`gemini.fail=${e.message}`);
+        }
+      }
+      const fallback = (context || '').split('\n').slice(0, 8).join('\n');
+      return { ok: true, output: { answer: fallback, sources }, logs };
+    },
+  },
+  {
     name: 'file_read',
     version: '1.0.0',
     tags: ['fs', 'utility'],
