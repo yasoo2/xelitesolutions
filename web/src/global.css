@@ -1022,7 +1022,6 @@ body {
   .topbar {
     justify-content: space-between;
   }
-}
 
   .joe-layout.sidebar-open::before {
     content: none;
