@@ -63,8 +63,8 @@ async function main() {
             }
             if (msg.type === 'step_done') {
                 console.log(`   ✅ Step Done: ${msg.data?.name}`);
-                if (msg.data?.name === 'central_answer' || msg.data?.name === 'web_search') {
-                     // console.log('      Result snippet:', JSON.stringify(msg.data?.result).slice(0, 200));
+                if (msg.data?.name && (msg.data.name.includes('central_answer') || msg.data.name.includes('web_search'))) {
+                     console.log('      Result snippet:', JSON.stringify(msg.data?.result).slice(0, 1000));
                 }
             }
             if (msg.type === 'run_finished') {

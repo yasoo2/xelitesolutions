@@ -8,6 +8,7 @@ import { config } from '../config';
 import { spawn } from 'child_process';
 import os from 'os';
 import { JSDOM } from 'jsdom';
+import { search as ddgSearch } from 'duck-duck-scrape';
 import { Readability } from '@mozilla/readability';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
@@ -804,112 +805,323 @@ export const tools: ToolDefinition[] = [
     async execute(input) {
       const query = String(input?.query || '').trim();
       const logs: string[] = [];
-      const debug = String(process.env.DEBUG_TOOLS || '').trim() === '1';
+      const debug = true; // Force debug for now
+      let allResults: any[] = [];
 
-      if (debug) console.log(`[DEBUG] web_search called with query: ${query}`);
+      console.log(`[web_search] called with query: ${query}`);
 
-      // Try DuckDuckGo HTML (easier to scrape)
-      try {
-        const dUrl = 'https://html.duckduckgo.com/html/';
-        if (debug) console.log(`[DEBUG] fetching DDG: ${dUrl}`);
+      // Helper for parallel execution
+      const searchTasks: Promise<void>[] = [];
 
-        const params = new URLSearchParams();
-        params.append('q', query);
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+      // 1. DuckDuckGo (via library)
+      searchTasks.push((async () => {
         try {
-          const r = await fetch(dUrl, {
-            method: 'POST',
-            body: params,
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            },
-            signal: controller.signal,
-          });
+          console.log(`[web_search] fetching DDG (lib): ${query}`);
+          const searchRes = await ddgSearch(query); 
+          
+          if (searchRes.results && searchRes.results.length) {
+            const mapped = searchRes.results.map((r: any) => ({
+              title: r.title || '',
+              url: r.url || '',
+              description: r.description || '', 
+              source: 'duckduckgo'
+            })).filter((x: any) => x.url && x.title);
 
-          if (r.ok) {
-            const html = await r.text();
-            const dom = new JSDOM(html);
-            const doc = dom.window.document;
-            const items = Array.from(doc.querySelectorAll('.result'));
-            const results = items
-              .map((div) => {
-                const h2 = div.querySelector('.result__a');
-                const p = div.querySelector('.result__snippet');
-                return {
-                  title: h2?.textContent?.trim() || '',
-                  url: h2?.getAttribute('href') || '',
-                  description: p?.textContent?.trim() || '',
-                };
-              })
-              .filter((x) => x.url && x.title);
-
-            if (results.length) {
-              logs.push(`ddg_results=${results.length}`);
-              return { ok: true, output: { results }, logs };
-            }
+            logs.push(`ddg_results=${mapped.length}`);
+            allResults.push(...mapped);
           }
-        } finally {
-          clearTimeout(timeoutId);
+        } catch (e) {
+          console.error(`[DEBUG] DDG failed: ${e}`);
         }
-      } catch (e) {
-        if (debug) console.log(`[DEBUG] DDG failed: ${e}`);
+      })());
+
+      // 2. Google Search (Scraping)
+      searchTasks.push((async () => {
+        try {
+           const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
+           const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&gl=sa&hl=${lang}&num=10`;
+           if (debug) console.log(`[DEBUG] fetching Google: ${gUrl}`);
+
+           const controller = new AbortController();
+           const timeoutId = setTimeout(() => controller.abort(), 6000);
+           try {
+             const r = await fetch(gUrl, {
+               headers: {
+                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                 'Accept-Language': lang,
+                 'Cookie': 'CONSENT=YES+Cb.20210328-17-p0.en+FX+410;'
+               },
+               signal: controller.signal
+             });
+             
+             if (r.ok) {
+               const html = await r.text();
+               if (debug) console.log(`[DEBUG] Google html snippet: ${html.slice(0, 500)}`);
+               const dom = new JSDOM(html);
+               const doc = dom.window.document;
+               
+               // Debug selectors
+               const h3s = doc.querySelectorAll('h3');
+               if (debug) console.log(`[DEBUG] Google h3 count: ${h3s.length}`);
+
+               // Generic Google selectors
+               let items = Array.from(doc.querySelectorAll('.g'));
+               if (!items.length) items = Array.from(doc.querySelectorAll('div[data-hveid]'));
+               
+               if (debug) console.log(`[DEBUG] Google items found: ${items.length}`);
+               const results = items.map(div => {
+                  const h3 = div.querySelector('h3');
+                  const a = div.querySelector('a');
+                  const snippet = div.querySelector('.VwiC3b, .IsZvec, .aCOpRe') || div.querySelector('div[style*="-webkit-line-clamp"]');
+                  
+                  return {
+                    title: h3?.textContent?.trim() || '',
+                    url: a?.getAttribute('href') || '',
+                    description: snippet?.textContent?.trim() || '',
+                    source: 'google'
+                  };
+               }).filter(x => x.url && x.url.startsWith('http') && x.title);
+               
+               if (results.length) {
+                  logs.push(`google_results=${results.length}`);
+                  allResults.push(...results);
+               }
+             }
+           } finally {
+             clearTimeout(timeoutId);
+           }
+        } catch (e) {
+           if (debug) console.log(`[DEBUG] Google failed: ${e}`);
+        }
+      })());
+
+      // Wait for both DDG and Google (parallel)
+      await Promise.allSettled(searchTasks);
+
+      // 3. Fallback to Bing if we have few results (< 3)
+      if (allResults.length < 3) {
+        try {
+          const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
+          const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=${lang}`;
+          // ... Bing logic ...
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          try {
+             const r2 = await fetch(bUrl, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                  'Accept-Language': lang,
+                },
+                signal: controller.signal,
+             });
+             if (r2.ok) {
+               const html = await r2.text();
+               const dom = new JSDOM(html);
+               const doc = dom.window.document;
+               let items = Array.from(doc.querySelectorAll('li.b_algo'));
+               if (!items.length) items = Array.from(doc.querySelectorAll('.b_algo'));
+               const results = items.map(li => {
+                  const h2 = li.querySelector('h2 a');
+                  const p = li.querySelector('p');
+                  return {
+                    title: h2?.textContent?.trim() || '',
+                    url: h2?.getAttribute('href') || '',
+                    description: p?.textContent?.trim() || '',
+                    source: 'bing'
+                  };
+               }).filter(x => x.url && x.title);
+               if (results.length) {
+                 logs.push(`bing_results=${results.length}`);
+                 allResults.push(...results);
+               }
+             }
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        } catch(e) {}
       }
 
-      try {
-        // Fallback to Bing
-        const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
-        const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=${lang}`;
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+      // 4. Fallback to Browser Worker if no results
+      if (allResults.length === 0) {
         try {
-          const r2 = await fetch(bUrl, {
-            headers: {
-              'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': lang,
-            },
-            signal: controller.signal,
-          });
+           console.log('[web_search] No results from fetch, falling back to browser worker...');
+           await ensureBrowserWorker(config.browserWorkerUrl, config.browserWorkerKey, logs);
+           console.log('[web_search] Worker ensured');
+           
+           const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
+           const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&gl=sa&hl=${lang}&num=10`;
+           
+           console.log(`[web_search] Worker creating session...`);
+           const createRes = await fetch(`${config.browserWorkerUrl}/session/create`, {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+               body: JSON.stringify({ viewport: { width: 1280, height: 800 } })
+           });
 
-          if (!r2.ok) {
-            logs.push(`bing_error=${r2.status}`);
-            return { ok: false, error: `Bing returned ${r2.status}`, logs };
-          }
+           if (!createRes.ok) {
+               const txt = await createRes.text();
+               throw new Error(`Session create failed: ${createRes.status} ${txt}`);
+           }
 
-          const html = await r2.text();
-          if (html.length < 2000) logs.push(`html_preview=${html.slice(0, 500).replace(/\s+/g, ' ')}`);
+           const { sessionId } = await createRes.json();
+           console.log(`[web_search] Worker session: ${sessionId}`);
 
-          const dom = new JSDOM(html);
-          const doc = dom.window.document;
-          let items = Array.from(doc.querySelectorAll('li.b_algo'));
-          if (!items.length) items = Array.from(doc.querySelectorAll('.b_algo'));
+           try {
+               console.log(`[web_search] Worker navigating: ${gUrl}`);
+               const runRes = await fetch(`${config.browserWorkerUrl}/session/${sessionId}/job/run`, {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+                   body: JSON.stringify({
+                       actions: [
+                           { type: 'goto', url: gUrl, waitUntil: 'domcontentloaded' },
+                           { type: 'wait', ms: 2000 }
+                       ]
+                   })
+               });
 
-          const results = items
-            .map((li) => {
-              const h2 = li.querySelector('h2 a');
-              const p = li.querySelector('p');
-              return {
-                title: h2?.textContent || '',
-                url: h2?.getAttribute('href') || '',
-                description: p?.textContent || '',
-              };
-            })
-            .filter((x) => x.url && x.title);
+               if (!runRes.ok) {
+                   console.error(`[web_search] Worker run failed: ${runRes.status}`);
+               }
 
-          logs.push(`bing_results=${results.length}`);
-          return { ok: true, output: { results }, logs };
-        } finally {
-          clearTimeout(timeoutId);
+               console.log(`[web_search] Worker snapshotting...`);
+               const snapRes = await fetch(`${config.browserWorkerUrl}/session/${sessionId}/snapshot`, {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+                   body: JSON.stringify({})
+               });
+
+               if (snapRes.ok) {
+                   const json: any = await snapRes.json();
+                   const html = json.dom || '';
+                   console.log(`[web_search] Worker HTML len: ${html.length}`);
+                   if (html.length < 10000) {
+                       console.log(`[web_search] Worker HTML snippet: ${html.slice(0, 500)}`);
+                   }
+                   
+                   const dom = new JSDOM(html);
+                   const doc = dom.window.document;
+                   
+                   let items = Array.from(doc.querySelectorAll('.g'));
+                   if (!items.length) items = Array.from(doc.querySelectorAll('div[data-hveid]'));
+                   console.log(`[web_search] Worker items found: ${items.length}`);
+                   
+                   const results = items.map(div => {
+                       const h3 = div.querySelector('h3');
+                       const a = div.querySelector('a');
+                       const snippet = div.querySelector('.VwiC3b, .IsZvec, .aCOpRe') || div.querySelector('div[style*="-webkit-line-clamp"]');
+                       
+                       return {
+                         title: h3?.textContent?.trim() || '',
+                         url: a?.getAttribute('href') || '',
+                         description: snippet?.textContent?.trim() || '',
+                         source: 'google_browser'
+                       };
+                    }).filter(x => x.url && x.url.startsWith('http') && x.title);
+                    
+                    if (results.length) {
+                       logs.push(`google_browser_results=${results.length}`);
+                       allResults.push(...results);
+                    } else {
+                        // Try DuckDuckGo in worker if Google failed
+                        console.log('[web_search] Worker Google failed (0 items), trying DuckDuckGo...');
+                        const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&t=h_`;
+                        
+                        await fetch(`${config.browserWorkerUrl}/session/${sessionId}/job/run`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+                            body: JSON.stringify({
+                                actions: [
+                                    { type: 'goto', url: ddgUrl, waitUntil: 'domcontentloaded' },
+                                    { type: 'wait', ms: 3000 }
+                                ]
+                            })
+                        });
+                        
+                        const ddgSnapRes = await fetch(`${config.browserWorkerUrl}/session/${sessionId}/snapshot`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+                            body: JSON.stringify({})
+                        });
+                        
+                        if (ddgSnapRes.ok) {
+                            const dJson: any = await ddgSnapRes.json();
+                            const dHtml = dJson.dom || '';
+                            console.log(`[web_search] Worker DDG HTML len: ${dHtml.length}`);
+                            
+                            const dDom = new JSDOM(dHtml);
+                            const dDoc = dDom.window.document;
+                            
+                            // Try multiple DDG selectors
+                            let dItems = Array.from(dDoc.querySelectorAll('article'));
+                            if (!dItems.length) dItems = Array.from(dDoc.querySelectorAll('.result'));
+                            if (!dItems.length) dItems = Array.from(dDoc.querySelectorAll('[data-testid="result"]'));
+                             
+                            console.log(`[web_search] Worker DDG items found: ${dItems.length}`);
+                            
+                            const dResults = dItems.map(div => {
+                                const h2 = div.querySelector('h2') || div.querySelector('a[data-testid="result-title-a"]');
+                                const a = div.querySelector('a[data-testid="result-title-a"]') || div.querySelector('a');
+                                const snippet = div.querySelector('.result__snippet') || div.querySelector('[data-testid="result-snippet"]');
+                                
+                                const title = h2?.textContent?.trim() || '';
+                                const url = a?.getAttribute('href') || '';
+                                const description = snippet?.textContent?.trim() || '';
+
+                                if (!title || !url) {
+                                   // console.log(`[web_search] Debug filtered item: t=${title} u=${url}`);
+                                }
+
+                                return {
+                                    title,
+                                    url,
+                                    description,
+                                    source: 'duckduckgo_browser'
+                                };
+                            }).filter(x => x.url && x.url.startsWith('http') && x.title);
+                            
+                            console.log(`[web_search] Worker DDG valid results: ${dResults.length}`);
+
+                            if (dResults.length) {
+                                logs.push(`ddg_browser_results=${dResults.length}`);
+                                allResults.push(...dResults);
+                            }
+                        }
+                    }
+                } else {
+                   const txt = await snapRes.text();
+                   console.error(`[web_search] Worker snapshot error: ${txt}`);
+               }
+           } finally {
+               // Cleanup
+               await fetch(`${config.browserWorkerUrl}/session/${sessionId}/close`, {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+                   body: JSON.stringify({})
+               }).catch(() => {});
+           }
+
+        } catch (e: any) {
+           console.error(`[web_search] Browser fallback failed: ${e.message}`);
         }
-      } catch (e: any) {
-        return { ok: false, error: e.message, logs };
       }
+      
+      if (allResults.length) {
+         // Deduplicate
+         const seen = new Set();
+         const unique = [];
+         for (const item of allResults) {
+           if (!seen.has(item.url)) {
+             seen.add(item.url);
+             unique.push(item);
+           }
+         }
+         return { ok: true, output: { results: unique }, logs };
+      }
+      
+      return { ok: false, error: 'No results found', logs };
+
     }
   },
   {
@@ -991,15 +1203,20 @@ export const tools: ToolDefinition[] = [
       
       // Process in batches of 3 to avoid overloading with Puppeteer
       const BATCH_SIZE = 3;
+      console.log(`[central_answer] Processing ${items.length} items in batches of ${BATCH_SIZE}`);
       for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        console.log(`[central_answer] Processing batch ${i / BATCH_SIZE + 1}/${Math.ceil(items.length / BATCH_SIZE)}`);
         const batch = items.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(
             batch.map(async (it: { title: string; url: string; description: string }) => {
                 try {
+                    console.log(`[central_answer] Extracting: ${it.url}`);
                     const ext = await executeTool('html_extract', { url: it.url });
+                    console.log(`[central_answer] Extracted: ${it.url} (${ext.output?.textSnippet?.length || 0} chars)`);
                     const text = String(ext.output?.textSnippet || it.description || '').trim();
                     return { title: it.title, url: it.url, text };
-                } catch (e) {
+                } catch (e: any) {
+                    console.error(`[central_answer] Failed to extract ${it.url}:`, e.message);
                     return null;
                 }
             })

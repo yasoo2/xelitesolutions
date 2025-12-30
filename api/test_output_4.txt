@@ -1,0 +1,24 @@
+[dotenv@17.2.3] injecting env (6) from .env -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+🚀 STARTING SEARCH TEST: iPhone 15 Pro Max
+   Env Check: {
+  hasKey: true,
+  keyLen: 164,
+  cwd: '/Users/younissowadi/xelitesolutions/api',
+  envPath: '/Users/younissowadi/xelitesolutions/api/.env'
+}
+WS Error: Error: connect ECONNREFUSED 127.0.0.1:8080
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8080
+}
+Error: connect ECONNREFUSED 127.0.0.1:8080
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8080
+}
