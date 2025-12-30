@@ -781,6 +781,30 @@ export const tools: ToolDefinition[] = [
       const sources = items.map((it: { url: string }) => it.url).slice(0, 10);
       const oai = String(process.env.OPENAI_API_KEY || '').trim();
       const gkey = String(process.env.GOOGLE_API_KEY || '').trim();
+      if (!items.length) {
+        try {
+          const lang = /[\u0600-\u06FF]/.test(question) ? 'ar' : 'en';
+          const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(question)}&setlang=${lang}`;
+          const r = await fetch(bUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': lang
+            }
+          });
+          if (r.ok) {
+            const html = await r.text();
+            const found: Array<{ title: string; url: string; description: string }> = [];
+            const regex = /<li class="b_algo"><h2><a href="([^"]+)"[^>]*>([^<]+)<\/a><\/h2>.*?<p[^>]*>(.*?)<\/p>/g;
+            let m;
+            while ((m = regex.exec(html)) !== null) {
+              if (found.length >= 5) break;
+              found.push({ title: m[2].replace(/<[^>]+>/g, ''), url: m[1], description: m[3].replace(/<[^>]+>/g, '') });
+            }
+            if (found.length) items = found;
+          }
+        } catch {}
+      }
       if (oai) {
         try {
           const { default: OpenAI } = await import('openai');
@@ -817,7 +841,9 @@ export const tools: ToolDefinition[] = [
           logs.push(`gemini.fail=${e.message}`);
         }
       }
-      const fallback = (context || '').split('\n').slice(0, 8).join('\n');
+      const fallback = context
+        ? `الخلاصة المختصرة:\n${(context.split('\n').slice(0, 6).join('\n')).slice(0, 600)}\n\nالمصادر:\n${sources.join('\n')}`
+        : 'إجابة مختصرة: تعذر استخدام نماذج الذكاء لعدم توفر مفاتيح OpenAI/Gemini حالياً. تم تفعيل أدوات بحث متعددة ومعالجة متوازية، لكن يوصى بإضافة المفاتيح للحصول على إجابة فورية ذكية مدعومة بالمصادر.';
       return { ok: true, output: { answer: fallback, sources }, logs };
     },
   },
