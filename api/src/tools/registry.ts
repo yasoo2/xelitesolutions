@@ -2049,10 +2049,8 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       logs.push(`research.topic=${topic}`);
 
       const apiKey = process.env.OPENAI_API_KEY;
-      
-      // Configuration for "Lethal" Research
-      const MAX_DEPTH = 2; // Iterations (Initial + 1 recursive step)
-      const QUERIES_PER_STEP = 4; // Breadth
+      const MAX_DEPTH = 1;
+      const QUERIES_PER_STEP = 4;
       
       const uniqueUrls = new Set<string>();
       const collectedContext: string[] = [];
@@ -2060,9 +2058,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
 
       // Helper to run a tool safely
       const runTool = async (toolName: string, toolInput: any) => {
-          const t = tools.find(x => x.name === toolName);
-          if (!t) return { ok: false, error: `Tool ${toolName} not found` };
-          try { return await (t as any).execute(toolInput); } 
+          try { return await executeTool(toolName, toolInput); } 
           catch (e: any) { return { ok: false, error: e.message }; }
       };
 
@@ -2089,9 +2085,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
               }
           }
           
-          // Sort candidates by relevance heuristic (title match) or just take top
-          // For now, take top 6 new unique URLs per step to avoid overload
-          const targets = candidates.slice(0, 6);
+          const targets = candidates.slice(0, 10);
           if (targets.length === 0) {
               logs.push('research.stop=no_new_targets');
               if (step === 0) return { ok: false, error: 'No search results found', logs };
@@ -2099,17 +2093,17 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           }
 
           // 3. Extract Content (Parallel with limit)
-          const extractions = await Promise.all(
+          const extractionsSettled = await Promise.allSettled(
               targets.map(async (t) => {
                   const ext = await runTool('html_extract', { url: t.url }) as any;
                   if (ext.ok && ext.output?.textSnippet) {
                       return `SOURCE: ${t.title}\nURL: ${t.url}\nCONTENT: ${ext.output.textSnippet}\n---\n`;
                   } else {
-                      // Fallback to description
                       return `SOURCE: ${t.title}\nURL: ${t.url}\nSUMMARY: ${t.description}\n---\n`;
                   }
               })
           );
+          const extractions = extractionsSettled.filter(x => x.status === 'fulfilled').map((x: any) => x.value);
           
           collectedContext.push(...extractions);
 
@@ -2159,7 +2153,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           return { 
               ok: true, 
               output: { 
-                  report: `## Research Results for ${topic}\n\n${collectedContext.join('\n\n')}`, 
+                  report: collectedContext.slice(0, 6).map(s => s.slice(0, 500)).join('\n\n'), 
                   sources 
               }, 
               logs 
@@ -2171,18 +2165,11 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
         const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
         
         const completion = await client.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-4o-mini',
           messages: [
             { 
               role: 'system', 
-              content: `You are an Elite Intelligence Analyst. Write a definitive, high-velocity answer.
-Rules:
-1. **Direct & Lethal**: Start with the answer immediately. No "Here is the report".
-2. **Comprehensive**: Cover all angles found in the research.
-3. **Structured**: Use clear headers.
-4. **Citations**: Use [1], [2] referencing the URL list.
-5. **Language**: Match the user's language (Arabic if topic is Arabic).
-6. **No Fluff**: Every sentence must add value.` 
+              content: `Answer concisely and accurately. Start with a 3–6 line direct answer, then up to 3 bullet points for key facts. Add a short Sources section with top URLs. Match the user's language.` 
             },
             {
               role: 'user',
@@ -2495,7 +2482,7 @@ Rules:
           (async () => {
              const lang = hasArabic ? 'ar' : 'en';
              try {
-                const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
+                const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=10`;
                 const r = await fetch(wurl);
                 if (!r.ok) return [];
                 const j = await r.json();
@@ -2525,7 +2512,7 @@ Rules:
                   const regex = /<li class="b_algo"><h2><a href="([^"]+)"[^>]*>([^<]+)<\/a><\/h2>.*?<p[^>]*>(.*?)<\/p>/g;
                   let match;
                   while ((match = regex.exec(html)) !== null) {
-                      if (items.length >= 5) break;
+                      if (items.length >= 10) break;
                       items.push({
                           title: match[2].replace(/<[^>]+>/g, ''),
                           url: match[1],
