@@ -938,6 +938,7 @@ export const tools: ToolDefinition[] = [
       const oai = String(process.env.OPENAI_API_KEY || process.env.AI_GATEWAY_API_KEY || process.env.OPEN_ROUTER_API_KEY || '').trim();
       const baseUrl = String(process.env.OPENAI_BASE_URL || (process.env.OPEN_ROUTER_API_KEY ? 'https://openrouter.ai/api/v1' : '') || '').trim();
       const gkey = String(process.env.GOOGLE_API_KEY || '').trim();
+      
       if (!items.length) {
         try {
           const lang = /[\u0600-\u06FF]/.test(question) ? 'ar' : 'en';
