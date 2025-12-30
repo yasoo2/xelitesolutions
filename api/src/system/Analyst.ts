@@ -12,7 +12,7 @@ export class Analyst {
     const hasDocker = fs.existsSync(path.join(rootPath, 'Dockerfile')) || fs.existsSync(path.join(rootPath, 'docker-compose.yml'));
     
     let techStack = [];
-    let dependencies = {};
+    let dependencies: Record<string, string> = {};
     
     if (isNode) {
       try {

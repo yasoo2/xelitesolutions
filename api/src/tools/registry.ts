@@ -716,6 +716,78 @@ export const tools: ToolDefinition[] = [
     auditFields: ['topic'],
     mockSupported: false,
     description: 'Perform a comprehensive deep dive into a topic. Uses recursive search, browsing, and synthesis to generate a detailed report. Best for "analyze", "research", or complex questions requiring multiple sources.',
+    async execute(input) {
+      const topic = String(input?.topic || '').trim();
+      const logs: string[] = [];
+      logs.push(`start_deep_research topic=${topic}`);
+      
+      try {
+          // 1. Initial Search
+          const searchRes = await executeTool('web_search', { query: topic });
+          const items = searchRes.output?.results || [];
+          if (!items.length) {
+              return { ok: false, error: 'No initial search results found', logs };
+          }
+          
+          // 2. Select top 5 for deep reading
+          const toRead = items.slice(0, 5);
+          logs.push(`reading_count=${toRead.length}`);
+          
+          // 3. Read pages in parallel
+          const contents = await Promise.all(toRead.map(async (item: any) => {
+              const ext = await executeTool('html_extract', { url: item.url });
+              return {
+                  title: item.title,
+                  url: item.url,
+                  content: ext.output?.textSnippet || item.description || ''
+              };
+          }));
+          
+          // 4. Synthesize Report using LLM
+          const context = contents.map((c, i) => `[${i+1}] ${c.title} (${c.url})\n${c.content}\n---`).join('\n');
+          
+          const oai = String(process.env.OPENAI_API_KEY || process.env.AI_GATEWAY_API_KEY || process.env.OPEN_ROUTER_API_KEY || '').trim();
+          const baseUrl = String(process.env.OPENAI_BASE_URL || (process.env.OPEN_ROUTER_API_KEY ? 'https://openrouter.ai/api/v1' : '') || '').trim();
+          const gkey = String(process.env.GOOGLE_API_KEY || '').trim();
+          
+          let report = '';
+          
+          if (oai) {
+             try {
+                 const { default: OpenAI } = await import('openai');
+                 const client = new OpenAI({ apiKey: oai, baseURL: baseUrl || undefined });
+                 const completion = await client.chat.completions.create({
+                     model: 'gpt-4o', // Use strong model
+                     messages: [
+                         { role: 'system', content: 'You are a deep research assistant. Write a comprehensive, detailed report based on the provided sources. Structure with headings. Cite sources inline like [1].' },
+                         { role: 'user', content: `Topic: ${topic}\n\nSources:\n${context}` }
+                     ]
+                 });
+                 report = completion.choices[0].message.content || '';
+             } catch (e: any) { logs.push(`openai_err=${e.message}`); }
+          }
+          
+          if (!report && gkey) {
+             try {
+                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(gkey)}`;
+                 const body = {
+                    contents: [{ role: 'user', parts: [{ text: `Write a comprehensive research report on: ${topic}\n\nSources:\n${context}` }] }]
+                 };
+                 const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                 const j: any = await r.json().catch(() => null);
+                 report = String(j?.candidates?.[0]?.content?.parts?.[0]?.text || '');
+             } catch (e: any) { logs.push(`gemini_err=${e.message}`); }
+          }
+          
+          if (!report) {
+             report = 'Unable to generate report (AI keys missing or failed). Here is the raw data:\n\n' + context.slice(0, 2000);
+          }
+          
+          return { ok: true, output: { report, sources: toRead.map((x: any) => x.url) }, logs };
+      } catch (e: any) {
+          return { ok: false, error: e.message, logs };
+      }
+    }
   },
   {
     name: 'web_search',
@@ -729,6 +801,84 @@ export const tools: ToolDefinition[] = [
     auditFields: ['query'],
     mockSupported: false,
     description: 'Perform a standard web search (like Google/DuckDuckGo). Best for quick facts, current events, or checking if a library exists. Returns a list of titles and snippets. Use deep_research for complex topics.',
+    async execute(input) {
+      const query = String(input?.query || '').trim();
+      const logs: string[] = [];
+      try {
+        // Try DuckDuckGo HTML (easier to scrape)
+        const dUrl = 'https://html.duckduckgo.com/html/';
+        const params = new URLSearchParams();
+        params.append('q', query);
+        
+        const r = await fetch(dUrl, {
+            method: 'POST',
+            body: params,
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        if (r.ok) {
+            const html = await r.text();
+            const dom = new JSDOM(html);
+            const doc = dom.window.document;
+            const items = Array.from(doc.querySelectorAll('.result'));
+            const results = items.map(div => {
+                const h2 = div.querySelector('.result__a');
+                const p = div.querySelector('.result__snippet');
+                return {
+                    title: h2?.textContent?.trim() || '',
+                    url: h2?.getAttribute('href') || '',
+                    description: p?.textContent?.trim() || ''
+                };
+            }).filter(x => x.url && x.title);
+            
+            if (results.length) {
+                logs.push(`ddg_results=${results.length}`);
+                return { ok: true, output: { results }, logs };
+            }
+        }
+
+        // Fallback to Bing
+        const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
+        const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=${lang}`;
+        const r2 = await fetch(bUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': lang
+          }
+        });
+        if (!r2.ok) {
+           logs.push(`bing_error=${r2.status}`);
+           return { ok: false, error: `Bing returned ${r2.status}`, logs };
+        }
+        const html = await r2.text();
+        // Debug small HTML
+        if (html.length < 2000) logs.push(`html_preview=${html.slice(0, 500).replace(/\s+/g, ' ')}`);
+        
+        const dom = new JSDOM(html);
+        const doc = dom.window.document;
+        let items = Array.from(doc.querySelectorAll('li.b_algo'));
+        if (!items.length) items = Array.from(doc.querySelectorAll('.b_algo'));
+        
+        const results = items.map(li => {
+            const h2 = li.querySelector('h2 a');
+            const p = li.querySelector('p');
+            return {
+                title: h2?.textContent || '',
+                url: h2?.getAttribute('href') || '',
+                description: p?.textContent || ''
+            };
+        }).filter(x => x.url && x.title);
+        
+        logs.push(`bing_results=${results.length}`);
+        return { ok: true, output: { results }, logs };
+      } catch (e: any) {
+        return { ok: false, error: e.message, logs };
+      }
+    }
   },
   {
     name: 'central_answer',
@@ -745,55 +895,10 @@ export const tools: ToolDefinition[] = [
       const question = String(input?.question || '').trim();
       const logs: string[] = [];
       const searchRes = await executeTool('web_search', { query: question });
+      logs.push(`web_search.results=${searchRes.output?.results?.length || 0}`);
       let items: Array<{ title: string; url: string; description: string }> = Array.isArray(searchRes.output?.results) ? searchRes.output.results.slice(0, 10) : [];
-      if (!items.length) {
-        const langA = /[\u0600-\u06FF]/.test(question) ? 'ar' : 'en';
-        const langB = langA === 'ar' ? 'en' : 'ar';
-        const urls = [
-          `https://${langA}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(question)}&format=json&srlimit=5`,
-          `https://${langB}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(question)}&format=json&srlimit=5`
-        ];
-        try {
-          const resps = await Promise.all(urls.map(u => fetch(u)));
-          const jsons = await Promise.all(resps.map(r => r.json().catch(() => ({ query: { search: [] } }))));
-          const mapped: Array<{ title: string; url: string; description: string }> = [];
-          for (let i = 0; i < jsons.length; i++) {
-            const lang = i === 0 ? langA : langB;
-            const arr = (jsons[i].query?.search || []).slice(0, 5);
-            for (const it of arr) {
-              const title = String(it.title || '');
-              const url = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
-              const description = String(it.snippet || '').replace(/<[^>]+>/g, '');
-              mapped.push({ title, url, description });
-            }
-          }
-          items = mapped.slice(0, 10);
-        } catch {}
-        if (!items.length) {
-          try {
-            const lang = /[\u0600-\u06FF]/.test(question) ? 'ar' : 'en';
-            const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(question)}&setlang=${lang}`;
-            const r = await fetch(bUrl, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': lang
-              }
-            });
-            if (r.ok) {
-              const html = await r.text();
-              const found: Array<{ title: string; url: string; description: string }> = [];
-              const regex = /<li class="b_algo"><h2><a href="([^"]+)"[^>]*>([^<]+)<\/a><\/h2>.*?<p[^>]*>(.*?)<\/p>/g;
-              let m;
-              while ((m = regex.exec(html)) !== null) {
-                if (found.length >= 8) break;
-                found.push({ title: m[2].replace(/<[^>]+>/g, ''), url: m[1], description: m[3].replace(/<[^>]+>/g, '') });
-              }
-              if (found.length) items = found;
-            }
-          } catch {}
-        }
-      }
+      if (items.length) logs.push(`top_url=${items[0].url}`);
+      
       const extractsSettled = await Promise.allSettled(
         items.map(async (it: { title: string; url: string; description: string }) => {
           const ext = await executeTool('html_extract', { url: it.url });
