@@ -804,77 +804,109 @@ export const tools: ToolDefinition[] = [
     async execute(input) {
       const query = String(input?.query || '').trim();
       const logs: string[] = [];
+      const debug = String(process.env.DEBUG_TOOLS || '').trim() === '1';
+
+      if (debug) console.log(`[DEBUG] web_search called with query: ${query}`);
+
+      // Try DuckDuckGo HTML (easier to scrape)
       try {
-        // Try DuckDuckGo HTML (easier to scrape)
         const dUrl = 'https://html.duckduckgo.com/html/';
+        if (debug) console.log(`[DEBUG] fetching DDG: ${dUrl}`);
+
         const params = new URLSearchParams();
         params.append('q', query);
-        
-        const r = await fetch(dUrl, {
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        try {
+          const r = await fetch(dUrl, {
             method: 'POST',
             body: params,
-            headers: { 
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            signal: controller.signal,
+          });
 
-        if (r.ok) {
+          if (r.ok) {
             const html = await r.text();
             const dom = new JSDOM(html);
             const doc = dom.window.document;
             const items = Array.from(doc.querySelectorAll('.result'));
-            const results = items.map(div => {
+            const results = items
+              .map((div) => {
                 const h2 = div.querySelector('.result__a');
                 const p = div.querySelector('.result__snippet');
                 return {
-                    title: h2?.textContent?.trim() || '',
-                    url: h2?.getAttribute('href') || '',
-                    description: p?.textContent?.trim() || ''
+                  title: h2?.textContent?.trim() || '',
+                  url: h2?.getAttribute('href') || '',
+                  description: p?.textContent?.trim() || '',
                 };
-            }).filter(x => x.url && x.title);
-            
-            if (results.length) {
-                logs.push(`ddg_results=${results.length}`);
-                return { ok: true, output: { results }, logs };
-            }
-        }
+              })
+              .filter((x) => x.url && x.title);
 
+            if (results.length) {
+              logs.push(`ddg_results=${results.length}`);
+              return { ok: true, output: { results }, logs };
+            }
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } catch (e) {
+        if (debug) console.log(`[DEBUG] DDG failed: ${e}`);
+      }
+
+      try {
         // Fallback to Bing
         const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
         const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=${lang}`;
-        const r2 = await fetch(bUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': lang
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        try {
+          const r2 = await fetch(bUrl, {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': lang,
+            },
+            signal: controller.signal,
+          });
+
+          if (!r2.ok) {
+            logs.push(`bing_error=${r2.status}`);
+            return { ok: false, error: `Bing returned ${r2.status}`, logs };
           }
-        });
-        if (!r2.ok) {
-           logs.push(`bing_error=${r2.status}`);
-           return { ok: false, error: `Bing returned ${r2.status}`, logs };
-        }
-        const html = await r2.text();
-        // Debug small HTML
-        if (html.length < 2000) logs.push(`html_preview=${html.slice(0, 500).replace(/\s+/g, ' ')}`);
-        
-        const dom = new JSDOM(html);
-        const doc = dom.window.document;
-        let items = Array.from(doc.querySelectorAll('li.b_algo'));
-        if (!items.length) items = Array.from(doc.querySelectorAll('.b_algo'));
-        
-        const results = items.map(li => {
-            const h2 = li.querySelector('h2 a');
-            const p = li.querySelector('p');
-            return {
+
+          const html = await r2.text();
+          if (html.length < 2000) logs.push(`html_preview=${html.slice(0, 500).replace(/\s+/g, ' ')}`);
+
+          const dom = new JSDOM(html);
+          const doc = dom.window.document;
+          let items = Array.from(doc.querySelectorAll('li.b_algo'));
+          if (!items.length) items = Array.from(doc.querySelectorAll('.b_algo'));
+
+          const results = items
+            .map((li) => {
+              const h2 = li.querySelector('h2 a');
+              const p = li.querySelector('p');
+              return {
                 title: h2?.textContent || '',
                 url: h2?.getAttribute('href') || '',
-                description: p?.textContent || ''
-            };
-        }).filter(x => x.url && x.title);
-        
-        logs.push(`bing_results=${results.length}`);
-        return { ok: true, output: { results }, logs };
+                description: p?.textContent || '',
+              };
+            })
+            .filter((x) => x.url && x.title);
+
+          logs.push(`bing_results=${results.length}`);
+          return { ok: true, output: { results }, logs };
+        } finally {
+          clearTimeout(timeoutId);
+        }
       } catch (e: any) {
         return { ok: false, error: e.message, logs };
       }
@@ -955,17 +987,31 @@ export const tools: ToolDefinition[] = [
       logs.push(`web_search.total_results=${items.length}`);
       if (items.length) logs.push(`top_url=${items[0].url}`);
       
-      const extractsSettled = await Promise.allSettled(
-        items.map(async (it: { title: string; url: string; description: string }) => {
-          const ext = await executeTool('html_extract', { url: it.url });
-          const text = String(ext.output?.textSnippet || it.description || '').trim();
-          return { title: it.title, url: it.url, text };
-        })
-      );
-      let segments: Array<{ title: string; url: string; text: string }> = extractsSettled
-        .filter(x => x.status === 'fulfilled')
-        .map((x: any) => x.value)
-        .filter((s: any) => s && s.text);
+      let segments: Array<{ title: string; url: string; text: string }> = [];
+      
+      // Process in batches of 3 to avoid overloading with Puppeteer
+      const BATCH_SIZE = 3;
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+            batch.map(async (it: { title: string; url: string; description: string }) => {
+                try {
+                    const ext = await executeTool('html_extract', { url: it.url });
+                    const text = String(ext.output?.textSnippet || it.description || '').trim();
+                    return { title: it.title, url: it.url, text };
+                } catch (e) {
+                    return null;
+                }
+            })
+        );
+        
+        for (const res of results) {
+            if (res.status === 'fulfilled' && res.value) {
+                segments.push(res.value);
+            }
+        }
+      }
+      
       if (!segments.length && items.length) {
         segments = items.map(it => ({ title: it.title, url: it.url, text: String(it.description || it.title) }));
       }

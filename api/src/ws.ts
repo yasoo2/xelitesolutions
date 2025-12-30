@@ -35,6 +35,7 @@ export function attachWebSocket(server: Server) {
   browserProxyWssRef = new WebSocketServer({ noServer: true });
 
   liveWssRef.on('connection', (ws) => {
+    console.log('[WS] Client connected to liveWss');
     ws.on('message', () => {});
   });
 
@@ -99,7 +100,9 @@ export function attachWebSocket(server: Server) {
     }
 
     if (url.pathname === '/ws') {
+      console.log('[WS] Upgrading /ws connection');
       liveWssRef?.handleUpgrade(req, socket, head, (ws) => {
+        console.log('[WS] Connection established');
         liveWssRef?.emit('connection', ws, req);
       });
       return;

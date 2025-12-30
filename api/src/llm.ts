@@ -201,6 +201,16 @@ export async function planNextStep(
   const shouldMock =
     forceMock ||
     (!options?.apiKey && !process.env.OPENAI_API_KEY && envMock);
+
+  console.log('[DEBUG LLM] planNextStep:', {
+      providerKey,
+      forceMock,
+      envMock,
+      shouldMock,
+      hasApiKey: !!options?.apiKey,
+      hasEnvKey: !!process.env.OPENAI_API_KEY
+  });
+
   if (shouldMock) {
       console.info('[LLM] Using Mock Planner');
       const lastMsg = messages[messages.length - 1];
