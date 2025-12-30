@@ -669,6 +669,33 @@ export async function planNextStep(
   // If we exceed ~80,000 chars (approx 20k tokens), we must truncate older messages.
   const CHAR_LIMIT = 80000;
   
+  // Strategy 0: Aggressively prune OLD tool outputs (keep only the last 2 tool outputs full)
+  // This is critical for "Chat" speed where old file reads are irrelevant.
+  const toolOutputIndices: number[] = [];
+  msgs.forEach((m, idx) => {
+      // In OpenAI format, tool output has role 'tool'
+      if (m.role === 'tool' || (m.role === 'function' as any)) {
+          toolOutputIndices.push(idx);
+      }
+  });
+
+  // Keep the last 3 tool outputs intact, truncate older ones
+  const KEEP_TOOL_OUTPUTS = 3;
+  if (toolOutputIndices.length > KEEP_TOOL_OUTPUTS) {
+      const indicesToTruncate = toolOutputIndices.slice(0, toolOutputIndices.length - KEEP_TOOL_OUTPUTS);
+      const truncateSet = new Set(indicesToTruncate);
+      
+      msgs = msgs.map((m, idx) => {
+          if (truncateSet.has(idx)) {
+               return { 
+                   ...m, 
+                   content: '(Tool output suppressed to save context)' 
+               };
+          }
+          return m;
+      });
+  }
+
   let currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
 
   if (currentChars > CHAR_LIMIT) {
