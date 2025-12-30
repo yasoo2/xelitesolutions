@@ -1177,6 +1177,7 @@ export default function CommandComposer({
               const label = n ? `خطة #${n}` : 'خطة';
               showTool(label);
               setThinkingSteps((prev) => [...prev, label].slice(-4));
+              setCurrentThought(n ? `أفكر الآن في الخطوة ${n} من الخطة...` : 'أقوم بوضع خطة العمل...');
             } else if (name.startsWith('execute:')) {
               showTool(name.slice('execute:'.length));
             } else if (name) {
@@ -2433,24 +2434,13 @@ export default function CommandComposer({
                   exit={{ opacity: 0, height: 0 }}
                   className="mb-2 pl-3.5 border-l-2 border-blue-500/20 pr-2 overflow-hidden"
                 >
-                   <div className="text-[11px] leading-relaxed font-sans text-blue-100/90 whitespace-pre-wrap break-words font-light tracking-wide" style={{ textShadow: '0 0 8px rgba(96,165,250,0.2)' }}>
+                   <div dir="auto" className="text-[11px] leading-relaxed font-sans text-blue-100/90 whitespace-pre-wrap break-words font-light tracking-wide" style={{ textShadow: '0 0 8px rgba(96,165,250,0.2)' }}>
                       {displayedThought}
                       <span className="inline-block w-1 h-3 ml-1 align-middle bg-blue-400/60 animate-pulse rounded-sm"/>
                    </div>
                 </motion.div>
               )}
               </AnimatePresence>
-
-              {/* Steps Progress */}
-              {status !== 'answering' && thinkingSteps.length > 0 && (
-                <div className="pl-3.5 flex flex-wrap gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
-                   {thinkingSteps.map((step, idx) => (
-                      <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">
-                        {step}
-                      </span>
-                   ))}
-                </div>
-              )}
             </div>
           </motion.div>
         )}
