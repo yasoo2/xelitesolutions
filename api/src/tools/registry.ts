@@ -1184,14 +1184,18 @@ export const tools: ToolDefinition[] = [
           }
       }
       
-      // Sort: Store URLs first to prioritize pricing
-      items.sort((a, b) => {
-         const aStore = /jarir|noon|amazon|extra|temu|aliexpress/.test(a.url);
-         const bStore = /jarir|noon|amazon|extra|temu|aliexpress/.test(b.url);
-         if (aStore && !bStore) return -1;
-         if (!aStore && bStore) return 1;
-         return 0;
-      });
+      // Sort: Store URLs first to prioritize pricing ONLY if shopping intent is detected
+      const isShopping = /(buy|price|cost|shop|store|سعر|شراء|متجر|تسوق|بيع|عرض|خصم|sale|discount)/i.test(question);
+      
+      if (isShopping) {
+          items.sort((a, b) => {
+             const aStore = /jarir|noon|amazon|extra|temu|aliexpress/.test(a.url);
+             const bStore = /jarir|noon|amazon|extra|temu|aliexpress/.test(b.url);
+             if (aStore && !bStore) return -1;
+             if (!aStore && bStore) return 1;
+             return 0;
+          });
+      }
       
       // Slice top 10 (reduced from 15 to prevent timeout)
       items = items.slice(0, 10);
