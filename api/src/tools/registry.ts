@@ -2327,235 +2327,156 @@ Instructions:
         }
       }
       
-      // 1. Try Puppeteer (Google)
+      // 1. Try DuckDuckGo + Wikipedia (Fast & Lightweight)
       try {
-        const puppeteer = await import('puppeteer');
-        // Launch standard headless browser
-        const browser = await puppeteer.launch({
-            headless: true, // Use boolean true for stability
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox', 
-                '--disable-dev-shm-usage', 
-                '--disable-gpu',
-                '--disable-features=site-per-process', // Faster loading
-                '--window-size=1280,800',
-                '--disable-blink-features=AutomationControlled', // Prevent webdriver detection
-                '--disable-infobars',
-                '--hide-scrollbars',
-                '--mute-audio',
-            ],
-            ignoreDefaultArgs: ['--enable-automation'], // Important to hide "Chrome is being controlled..."
-        });
-        
-        const page = await browser.newPage();
-        
-        // Anti-detection: Delete navigator.webdriver
-        await page.evaluateOnNewDocument(() => {
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            // Fake plugins
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-            // Fake languages
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ar'] });
-        });
-        
-        // Use Desktop User Agent for better structure
-        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        
-        // Block heavy resources
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            const type = req.resourceType();
-            if (['image', 'stylesheet', 'font', 'media', 'other'].includes(type)) req.abort();
-            else req.continue();
-        });
-
-        // Search Google (force English for consistency or Arabic if preferred? Let's use auto but maybe add hl=ar if query is arabic?)
-        // Actually, let's just use the query as is.
-        // Try DuckDuckGo if Google is blocking, or try to be stealthy on Google.
-        // Let's stick to Google for now but handle CAPTCHA.
-        
-        const response = await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ar`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-        
-        // Check for Cloudflare/CAPTCHA
-        const pageTitle = await page.title();
-        const content = await page.content();
-        
-        if (pageTitle.includes('Just a moment') || content.includes('challenge-platform') || content.includes('I am not a robot')) {
-            logs.push('google.blocked=captcha_detected');
-            await browser.close();
-            // Fallback to DuckDuckGo HTML (lighter and less blocking)
-            // But we don't have a fetch fallback implemented here fully. 
-            // Let's throw error to trigger other mechanisms or return empty.
-            // Actually, let's try a backup search engine immediately if blocked.
-            return { ok: false, error: 'Google Bot Detection (CAPTCHA)', logs };
-        }
-        
-        // Wait briefly for content
-        try { await page.waitForSelector('#search', { timeout: 3000 }); } catch {}
-
-        // Check for Consent Page
-        const title = await page.title();
-        logs.push(`google.title=${title}`);
-        
-        if (title.includes('Consent') || title.includes('Before you continue') || title.includes('Google') && !title.includes(' - ')) {
-             // Try to find and click "Reject all" or "Accept all"
-             // Buttons usually have class "QS5gu sy4vM"
+        const [ddgRes, wikiRes] = await Promise.allSettled([
+          (async () => {
              try {
-                const buttons = await page.$$('button');
-                for (const btn of buttons) {
-                    const text = await page.evaluate(el => el.textContent, btn);
-                    if (text && (text.includes('Reject all') || text.includes('رفض الكل') || text.includes('I agree') || text.includes('أوافق'))) {
-                        await btn.click();
-                        await page.waitForNavigation({ waitUntil: 'domcontentloaded' });
-                        break;
-                    }
+                const { search } = await import('duck-duck-scrape');
+                const locale = hasArabic ? 'ar-sa' : 'en-us';
+                const ddgResp = await search(query, { locale, safeSearch: 1 });
+                if (ddgResp.results?.length) {
+                    return ddgResp.results.map(r => ({
+                        title: r.title,
+                        url: r.url,
+                        description: r.description ? r.description.replace(/<[^>]+>/g, '') : ''
+                    }));
                 }
-             } catch {}
-        }
+             } catch (e: any) {
+                logs.push(`ddg.error=${e.message}`);
+             }
+             return [];
+          })(),
+          (async () => {
+             const lang = hasArabic ? 'ar' : 'en';
+             try {
+                const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
+                const r = await fetch(wurl);
+                if (!r.ok) return [];
+                const j = await r.json();
+                return (j.query?.search || []).map((it: any) => ({
+                   title: String(it.title),
+                   url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
+                   description: String(it.snippet).replace(/<[^>]+>/g, '')
+                }));
+             } catch { return []; }
+          })()
+        ]);
 
-        const googleResults = await page.evaluate(() => {
-            const items: any[] = [];
-            
-            // Desktop Selectors
-            
-            // 1. Currency Converter Specifics (often has class DFlfde SwHCTb for value)
-            const currencyValue = document.querySelector('.DFlfde.SwHCTb');
-            const currencySource = document.querySelector('.vLqKYe'); // "1 Jordanian Dinar equals"
-            const currencyTarget = document.querySelector('.MWvIVe'); // "New Israeli Shekel"
-            
-            if (currencyValue && currencySource) {
-                 items.push({
-                    title: 'Currency Rate (Direct)',
-                    url: 'https://www.google.com',
-                    description: `**ANSWER**: ${currencySource.textContent} ${currencyValue.textContent} ${currencyTarget?.textContent || ''}`
-                });
-            }
+        if (ddgRes.status === 'fulfilled') results.push(...ddgRes.value);
+        if (wikiRes.status === 'fulfilled') results.push(...wikiRes.value);
+        
+        logs.push(`search.fast_results=${results.length}`);
 
-            // 2. Featured Snippet / Direct Answer
-            const snippetEl = document.querySelector('.hgKElc') || document.querySelector('.kno-rdesc span');
-            if (snippetEl && snippetEl.textContent) {
-                 items.push({
-                    title: 'Direct Answer',
-                    url: 'https://www.google.com',
-                    description: `**ANSWER**: ${snippetEl.textContent.trim()}`
-                });
-            }
+      } catch (e: any) {
+        logs.push(`search.fast_failed=${e.message}`);
+      }
+
+      // 2. Fallback to Puppeteer (Google) if results are weak
+      if (results.length < 2) {
+          logs.push('search.low_results_triggering_google');
+          try {
+            const puppeteer = await import('puppeteer');
+            // Launch standard headless browser
+            const browser = await puppeteer.launch({
+                headless: true,
+                args: [
+                    '--no-sandbox', 
+                    '--disable-setuid-sandbox', 
+                    '--disable-dev-shm-usage', 
+                    '--disable-gpu',
+                    '--disable-features=site-per-process',
+                    '--window-size=1280,800',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-infobars',
+                    '--hide-scrollbars',
+                    '--mute-audio',
+                ],
+                ignoreDefaultArgs: ['--enable-automation'],
+            });
             
-            // 3. Standard Results (.g)
-            const results = document.querySelectorAll('#search .g');
-            results.forEach(div => {
-                const titleEl = div.querySelector('h3');
-                const linkEl = div.querySelector('a');
-                const descEl = div.querySelector('.VwiC3b') || div.querySelector('.IsZvec') || div.querySelector('.st'); 
-                
-                if (titleEl && linkEl) {
-                     items.push({
-                        title: titleEl.textContent?.trim(),
-                        url: linkEl.href,
-                        description: descEl?.textContent?.trim() || ''
-                    });
-                }
+            const page = await browser.newPage();
+            
+            await page.evaluateOnNewDocument(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ar'] });
+            });
+            
+            await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                const type = req.resourceType();
+                if (['image', 'stylesheet', 'font', 'media', 'other'].includes(type)) req.abort();
+                else req.continue();
             });
 
-            if (items.length < 3) {
-              const h3s = Array.from(document.querySelectorAll('#search a h3'));
-              for (const h3 of h3s) {
-                const a = h3.closest('a') as HTMLAnchorElement | null;
-                if (!a?.href) continue;
-                const title = (h3.textContent || '').trim();
-                if (!title) continue;
-                let desc = '';
-                const container = a.closest('div');
-                if (container) {
-                  const t = container.textContent || '';
-                  desc = t.replace(title, '').replace(/\s+/g, ' ').trim().slice(0, 220);
-                }
-                items.push({ title, url: a.href, description: desc });
-                if (items.length >= 10) break;
-              }
-            }
+            // Search Google
+            const response = await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ar`, { waitUntil: 'domcontentloaded', timeout: 15000 });
             
-            return items;
-        });
+            const pageTitle = await page.title();
+            const content = await page.content();
+            
+            if (pageTitle.includes('Just a moment') || content.includes('challenge-platform') || content.includes('I am not a robot')) {
+                logs.push('google.blocked=captcha_detected');
+                await browser.close();
+            } else {
+                try { await page.waitForSelector('#search', { timeout: 3000 }); } catch {}
 
-        await browser.close();
-        
-        if (googleResults.length > 0) {
-            results.push(...googleResults);
-            logs.push(`google.success=${googleResults.length}`);
-        } else {
-            throw new Error('No Google results found');
-        }
-
-      } catch (err: any) {
-         logs.push(`google.failed=${err.message}. Switching to fallback...`);
-         
-         // 2. Fallback: DuckDuckGo + Wiki (The Old Reliable Method)
-         try {
-             // 2a. DDG API (Fastest)
-             const officialUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-             try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 2000);
-                const resp = await fetch(officialUrl, { signal: controller.signal });
-                clearTimeout(timeout);
-                if (resp.ok) {
-                    const body = await resp.text();
-                    let json: any = null;
-                    try { json = JSON.parse(body); } catch {}
-                    const topics = Array.isArray(json?.RelatedTopics) ? json.RelatedTopics : [];
-                    const items = topics.map((t: any) => ({
-                        title: String(t?.Text || '').slice(0, 120),
-                        url: String(t?.FirstURL || ''),
-                        description: String(t?.Text || '')
-                    })).filter((x: any) => x.url && x.title).slice(0, 5);
-                    results.push(...items);
+                // Consent check
+                const title = await page.title();
+                if (title.includes('Consent') || title.includes('Before you continue') || (title.includes('Google') && !title.includes(' - '))) {
+                    try {
+                        const buttons = await page.$$('button');
+                        for (const btn of buttons) {
+                            const text = await page.evaluate(el => el.textContent, btn);
+                            if (text && (text.includes('Reject all') || text.includes('رفض الكل') || text.includes('I agree') || text.includes('أوافق'))) {
+                                await btn.click();
+                                await page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+                                break;
+                            }
+                        }
+                    } catch {}
                 }
-             } catch {}
 
-             // 2b. Scraper + Wiki
-             if (results.length < 2) {
-                 const [scrapeRes, wikiRes] = await Promise.allSettled([
-                   (async () => {
-                      const ddg = await import('duck-duck-scrape');
-                      try {
-                         const timeout = new Promise<any>((_, reject) => setTimeout(() => reject(new Error('DDG Timeout')), 5000));
-                         const search = ddg.search(query);
-                         const res = await Promise.race([search, timeout]);
-                         return (res.results || []).map((r: any) => ({
-                           title: String(r.title).slice(0, 120),
-                           url: String(r.url),
-                           description: String(r.description)
-                         })).filter((x: any) => x.url && x.title);
-                      } catch (e) { return []; }
-                   })(),
-                   (async () => {
-                      const hasArabic = /[\u0600-\u06FF]/.test(query);
-                      const lang = hasArabic ? 'ar' : 'en';
-                      const trySearch = async (q: string) => {
-                          try {
-                             const wurl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=5`;
-                             const r = await fetch(wurl);
-                             if (!r.ok) return [];
-                             const j = await r.json();
-                             return (j.query?.search || []).map((it: any) => ({
-                               title: String(it.title),
-                               url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`,
-                               description: String(it.snippet).replace(/<[^>]+>/g, '')
-                             }));
-                          } catch { return []; }
-                      };
-                      return await trySearch(query);
-                   })()
-                 ]);
+                const googleResults = await page.evaluate(() => {
+                    const items: any[] = [];
+                    // Featured Snippet
+                    const snippetEl = document.querySelector('.hgKElc') || document.querySelector('.kno-rdesc span');
+                    if (snippetEl && snippetEl.textContent) {
+                        items.push({
+                            title: 'Direct Answer',
+                            url: 'https://www.google.com',
+                            description: `**ANSWER**: ${snippetEl.textContent.trim()}`
+                        });
+                    }
+                    // Standard Results
+                    const results = document.querySelectorAll('#search .g');
+                    results.forEach(div => {
+                        const titleEl = div.querySelector('h3');
+                        const linkEl = div.querySelector('a');
+                        const descEl = div.querySelector('.VwiC3b') || div.querySelector('.IsZvec') || div.querySelector('.st'); 
+                        if (titleEl && linkEl) {
+                            items.push({
+                                title: titleEl.textContent?.trim(),
+                                url: linkEl.href,
+                                description: descEl?.textContent?.trim() || ''
+                            });
+                        }
+                    });
+                    return items;
+                });
 
-                 if (scrapeRes.status === 'fulfilled') results.push(...scrapeRes.value);
-                 if (wikiRes.status === 'fulfilled') results.push(...wikiRes.value);
-             }
-         } catch (fallbackErr: any) {
-             logs.push(`fallback.failed=${fallbackErr.message}`);
-         }
+                await browser.close();
+                if (googleResults.length > 0) {
+                    results.push(...googleResults);
+                    logs.push(`google.success=${googleResults.length}`);
+                }
+            }
+          } catch (err: any) {
+             logs.push(`google.failed=${err.message}`);
+          }
       }
 
       // Final Deduplication & Return
@@ -2564,7 +2485,9 @@ Instructions:
           if (r.title.includes('Direct Answer')) {
               unique.set('direct_' + Math.random(), r);
           } else {
-              if (!unique.has(r.url)) unique.set(r.url, r);
+              // Normalize URL
+              const u = r.url.replace(/\/$/, '');
+              if (!unique.has(u)) unique.set(u, r);
           }
       }
       
@@ -2572,7 +2495,7 @@ Instructions:
       logs.push(`search.final_count=${final.length}`);
       
       if (final.length === 0) {
-           return { ok: false, error: 'No results found in Google or Fallbacks', logs };
+           return { ok: false, error: 'No results found in Web or Google Fallback', logs };
       }
       
       return { ok: true, output: { results: final }, logs };

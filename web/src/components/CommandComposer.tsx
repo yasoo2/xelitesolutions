@@ -964,6 +964,9 @@ export default function CommandComposer({
         return idx % 2 === 0 ? t('thinkingDraftIntro', 'Working on it now…') : t('thinkingDraftRefine', 'Refining and organizing the answer…');
       }
       if (toolVisible && activeToolName) {
+        if (activeToolName === 'web_search') return t('thinking.searching', 'Searching the web...');
+        if (activeToolName === 'deep_research') return t('thinking.researching', 'Conducting deep research...');
+        if (activeToolName === 'code_search') return t('thinking.searching_code', 'Searching codebase...');
         return t('thinkingGlimpseTool', { tool: activeToolName });
       }
       if (thinkingSteps.length) {
