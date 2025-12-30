@@ -894,9 +894,65 @@ export const tools: ToolDefinition[] = [
     async execute(input) {
       const question = String(input?.question || '').trim();
       const logs: string[] = [];
-      const searchRes = await executeTool('web_search', { query: question });
-      logs.push(`web_search.results=${searchRes.output?.results?.length || 0}`);
-      let items: Array<{ title: string; url: string; description: string }> = Array.isArray(searchRes.output?.results) ? searchRes.output.results.slice(0, 10) : [];
+      
+      // Detect store specific intent
+      const storeMap: Record<string, string> = {
+        'jarir': 'site:jarir.com',
+        'noon': 'site:noon.com',
+        'amazon': 'site:amazon.sa',
+        'extra': 'site:extra.com',
+        'جرير': 'site:jarir.com',
+        'نون': 'site:noon.com',
+        'امازون': 'site:amazon.sa',
+        'اكسترا': 'site:extra.com'
+      };
+      
+      const extraQueries: string[] = [];
+      const lowerQ = question.toLowerCase();
+      for (const [key, site] of Object.entries(storeMap)) {
+        if (lowerQ.includes(key)) {
+           extraQueries.push(`${question} ${site}`);
+        }
+      }
+      
+      // Execute main search + extra searches in parallel
+      const searchProms = [executeTool('web_search', { query: question })];
+      for (const eq of extraQueries) {
+         searchProms.push(executeTool('web_search', { query: eq }));
+      }
+      
+      const searchResults = await Promise.all(searchProms);
+      
+      let allItems: any[] = [];
+      for (const res of searchResults) {
+          if (res.output?.results && Array.isArray(res.output.results)) {
+              allItems.push(...res.output.results);
+          }
+      }
+      
+      // Deduplicate by URL
+      const seenUrls = new Set();
+      let items: Array<{ title: string; url: string; description: string }> = [];
+      for (const it of allItems) {
+          if (!seenUrls.has(it.url)) {
+              seenUrls.add(it.url);
+              items.push(it);
+          }
+      }
+      
+      // Sort: Store URLs first to prioritize pricing
+      items.sort((a, b) => {
+         const aStore = /jarir|noon|amazon|extra|temu|aliexpress/.test(a.url);
+         const bStore = /jarir|noon|amazon|extra|temu|aliexpress/.test(b.url);
+         if (aStore && !bStore) return -1;
+         if (!aStore && bStore) return 1;
+         return 0;
+      });
+      
+      // Slice top 10 (reduced from 15 to prevent timeout)
+      items = items.slice(0, 10);
+
+      logs.push(`web_search.total_results=${items.length}`);
       if (items.length) logs.push(`top_url=${items[0].url}`);
       
       const extractsSettled = await Promise.allSettled(
@@ -963,14 +1019,34 @@ export const tools: ToolDefinition[] = [
           }
         } catch {}
       }
+      
+      // Smart Synthesis Strategy
       if (oai) {
         try {
           const { default: OpenAI } = await import('openai');
           const client = new OpenAI({ apiKey: oai, baseURL: baseUrl || undefined });
+          
+          // Use GPT-4o for "Lethal" intelligence
+          const model = process.env.OPENAI_MODEL || 'gpt-4o'; 
+          
           const c = await client.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: model,
             messages: [
-              { role: 'system', content: 'Answer concisely. 3–6 lines direct answer, then up to 3 bullets. End with Sources.' },
+              { 
+                role: 'system', 
+                content: `You are an elite, comprehensive AI research engine. 
+                Your goal is to provide a "Lethal Answer" - one that is 100% accurate, deep, and leaves no room for ambiguity.
+                
+                Protocol:
+                1. Analyze the user's question and the provided context.
+                2. If the user asks for a price/number, find the EXACT current value from the context.
+                3. If the context is missing specific details, state clearly what is missing but provide the best approximation.
+                4. Do NOT be concise. Be comprehensive. Explain the "Why" and "How" if relevant.
+                5. Structure your answer with clear headings, bullet points, and bold text for key facts.
+                6. End with a "Sources" section listing the URLs used.
+                
+                Language: Matches the user's question language (Arabic/English).` 
+              },
               { role: 'user', content: `Question: ${question}\n\nContext:\n${context}` }
             ]
           });
@@ -987,7 +1063,7 @@ export const tools: ToolDefinition[] = [
             contents: [
               {
                 role: 'user',
-                parts: [{ text: `Answer concisely. Question: ${question}\n\nContext:\n${context}` }]
+                parts: [{ text: `You are an elite research engine. Provide a comprehensive, detailed answer. Question: ${question}\n\nContext:\n${context}` }]
               }
             ]
           };
@@ -999,9 +1075,10 @@ export const tools: ToolDefinition[] = [
           logs.push(`gemini.fail=${e.message}`);
         }
       }
-      const fallback = segments.length ? makeConcise(question, segments) : 'لم تتوفر سياقات كافية للإجابة بدقة. يُفضّل تفعيل مفاتيح الذكاء (OpenAI/Gemini) للحصول على توليف ذكي فوري.';
+      const fallback = segments.length ? makeConcise(question, segments) : 'لم تتوفر سياقات كافية للإجابة بدقة. يرجى المحاولة مرة أخرى.';
       return { ok: true, output: { answer: fallback, sources }, logs };
     },
+
   },
   {
     name: 'file_read',
@@ -2103,12 +2180,10 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       let finalUrl = url;
       let rendered = false;
 
-      // Smart Logic: If it's a dynamic site (like Twitter/X, SPA), force render
+      // Smart Logic: If it's a dynamic site (like Twitter/X, SPA) or e-commerce, force render
       const needsRender = renderRequested || 
-                          url.includes('twitter.com') || 
-                          url.includes('x.com') || 
-                          url.includes('youtube.com') ||
-                          url.includes('linkedin.com');
+                          /twitter\.com|x\.com|youtube\.com|linkedin\.com|instagram\.com|tiktok\.com|facebook\.com/.test(url) ||
+                          /amazon\.|noon\.|jarir\.|extra\.|temu\.|aliexpress\.|shein\.|ebay\.|walmart\./.test(url);
 
       if (needsRender) {
         try {
