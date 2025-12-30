@@ -2425,14 +2425,21 @@ export default function CommandComposer({
               </div>
 
               {/* Animated Thought Text */}
+              <AnimatePresence mode="wait">
               {displayedThought && (
-                <div className="mb-2 pl-3.5 border-r-2 border-blue-500/20 pr-2">
-                   <div className="text-[10px] leading-4 font-mono text-zinc-300/90 whitespace-pre-wrap break-words font-thin tracking-wide" style={{ textShadow: '0 0 5px rgba(255,255,255,0.15)' }}>
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-2 pl-3.5 border-l-2 border-blue-500/20 pr-2 overflow-hidden"
+                >
+                   <div className="text-[11px] leading-relaxed font-sans text-blue-100/90 whitespace-pre-wrap break-words font-light tracking-wide" style={{ textShadow: '0 0 8px rgba(96,165,250,0.2)' }}>
                       {displayedThought}
-                      <span className="inline-block w-1 h-3 ml-0.5 align-middle bg-blue-400/50 animate-pulse"/>
+                      <span className="inline-block w-1 h-3 ml-1 align-middle bg-blue-400/60 animate-pulse rounded-sm"/>
                    </div>
-                </div>
+                </motion.div>
               )}
+              </AnimatePresence>
 
               {/* Steps Progress */}
               {status !== 'answering' && thinkingSteps.length > 0 && (

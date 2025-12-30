@@ -1749,11 +1749,14 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
           .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+          // Improve formatting by converting block tags to newlines
+          .replace(/<\/(p|div|section|article|h[1-6]|li|tr)>/gi, '\n')
+          .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<[^>]+>/g, ' ')
           .replace(/\s+/g, ' ')
           .trim()
-          .slice(0, 1200);
-        return { title, metaDescription, headings: headings.slice(0, 12), links: links.slice(0, 12), textSnippet };
+          .slice(0, 25000); // Increased limit for deep research
+        return { title, metaDescription, headings: headings.slice(0, 20), links: links.slice(0, 20), textSnippet };
       };
 
       const renderWithPuppeteer = async (targetUrl: string) => {
@@ -2017,6 +2020,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
 
       // 2. SEARCH: Execute searches in parallel
       const allResults: any[] = [];
+      // Increase concurrency but keep it safe
       const searchPromises = searchQueries.map(q => executeTool('web_search', { query: q }));
       const searchOutcomes = await Promise.all(searchPromises);
       
@@ -2035,25 +2039,27 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       for (const r of allResults) {
         if (!uniqueResults.has(r.url)) uniqueResults.set(r.url, r);
       }
-      const topResults = Array.from(uniqueResults.values()).slice(0, 8); // Increase from 3 to 8
+      const topResults = Array.from(uniqueResults.values()).slice(0, 12); // Increased to 12
       logs.push(`research.sources_found=${topResults.length}`);
       
       const contents: string[] = [];
       
       // 3. EXTRACT: Fetch content (sequential to be nice to rate limits/network, or parallel with limit)
-      // Let's do parallel with a limit of 4 at a time
-      const chunkSize = 4;
+      // Parallel with limit of 5
+      const chunkSize = 5;
       for (let i = 0; i < topResults.length; i += chunkSize) {
           const chunk = topResults.slice(i, i + chunkSize);
           await Promise.all(chunk.map(async (res: any) => {
             try {
-                // logs.push(`fetching=${res.url}`); // Reduce log spam
                 const ext = await executeTool('html_extract', { url: res.url });
-                if (ext.ok && ext.output?.textSnippet) {
+                if (ext.ok && ext.output?.textSnippet && ext.output.textSnippet.length > 200) {
                     contents.push(`Source: ${res.title} (${res.url})\nContent: ${ext.output.textSnippet}\n`);
+                } else {
+                    // Fallback to description if extraction failed or was too short
+                    contents.push(`Source: ${res.title} (${res.url})\nSummary: ${res.description}\n(Content extraction failed or limited)\n`);
                 }
             } catch (e) {
-                // Ignore
+                contents.push(`Source: ${res.title} (${res.url})\nSummary: ${res.description}\n`);
             }
           }));
       }
@@ -2327,9 +2333,9 @@ Instructions:
         }
       }
       
-      // 1. Try DuckDuckGo + Wikipedia (Fast & Lightweight)
+      // 1. Try DuckDuckGo + Wikipedia + Bing (Fast & Lightweight)
       try {
-        const [ddgRes, wikiRes] = await Promise.allSettled([
+        const [ddgRes, wikiRes, bingRes] = await Promise.allSettled([
           (async () => {
              try {
                 const { search } = await import('duck-duck-scrape');
@@ -2360,11 +2366,44 @@ Instructions:
                    description: String(it.snippet).replace(/<[^>]+>/g, '')
                 }));
              } catch { return []; }
+          })(),
+          (async () => {
+              // Simple Bing Scrape (HTML)
+              try {
+                  const lang = hasArabic ? 'ar' : 'en';
+                  const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=${lang}`;
+                  const r = await fetch(bUrl, {
+                      headers: {
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                          'Accept-Language': lang
+                      }
+                  });
+                  if (!r.ok) return [];
+                  const html = await r.text();
+                  // Basic Regex Extraction for Bing (fragile but fast)
+                  const items: any[] = [];
+                  const regex = /<li class="b_algo"><h2><a href="([^"]+)"[^>]*>([^<]+)<\/a><\/h2>.*?<p[^>]*>(.*?)<\/p>/g;
+                  let match;
+                  while ((match = regex.exec(html)) !== null) {
+                      if (items.length >= 5) break;
+                      items.push({
+                          title: match[2].replace(/<[^>]+>/g, ''),
+                          url: match[1],
+                          description: match[3].replace(/<[^>]+>/g, '')
+                      });
+                  }
+                  return items;
+              } catch (e: any) {
+                  logs.push(`bing.error=${e.message}`);
+                  return [];
+              }
           })()
         ]);
 
         if (ddgRes.status === 'fulfilled') results.push(...ddgRes.value);
         if (wikiRes.status === 'fulfilled') results.push(...wikiRes.value);
+        if (bingRes.status === 'fulfilled') results.push(...bingRes.value);
         
         logs.push(`search.fast_results=${results.length}`);
 
