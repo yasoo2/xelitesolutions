@@ -1733,7 +1733,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
                     metaDescription: article.excerpt,
                     headings: [], // Readability abstracts this
                     links: [], // We could extract, but text is king
-                    textSnippet: `TITLE: ${article.title}\nBYLINE: ${article.byline || 'Unknown'}\n\n${article.textContent.trim().slice(0, 40000)}`,
+                    textSnippet: `TITLE: ${article.title}\nBYLINE: ${article.byline || 'Unknown'}\n\n${(article.textContent || '').trim().slice(0, 40000)}`,
                     isArticle: true
                 };
             }
@@ -2062,7 +2062,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const runTool = async (toolName: string, toolInput: any) => {
           const t = tools.find(x => x.name === toolName);
           if (!t) return { ok: false, error: `Tool ${toolName} not found` };
-          try { return await t.execute(toolInput); } 
+          try { return await (t as any).execute(toolInput); } 
           catch (e: any) { return { ok: false, error: e.message }; }
       };
 
@@ -2078,8 +2078,9 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           // 2. Aggregate Results
           const candidates: any[] = [];
           for (const res of searchResults) {
-              if (res.ok && Array.isArray(res.output?.results)) {
-                  for (const item of res.output.results) {
+              const r = res as any;
+              if (r.ok && Array.isArray(r.output?.results)) {
+                  for (const item of r.output.results) {
                       if (!uniqueUrls.has(item.url)) {
                           uniqueUrls.add(item.url);
                           candidates.push(item);
@@ -2100,7 +2101,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           // 3. Extract Content (Parallel with limit)
           const extractions = await Promise.all(
               targets.map(async (t) => {
-                  const ext = await runTool('html_extract', { url: t.url });
+                  const ext = await runTool('html_extract', { url: t.url }) as any;
                   if (ext.ok && ext.output?.textSnippet) {
                       return `SOURCE: ${t.title}\nURL: ${t.url}\nCONTENT: ${ext.output.textSnippet}\n---\n`;
                   } else {
@@ -2476,9 +2477,9 @@ Rules:
         const [ddgRes, wikiRes, bingRes] = await Promise.allSettled([
           (async () => {
              try {
-                const { search } = await import('duck-duck-scrape');
+                const { search, SafeSearchType } = await import('duck-duck-scrape');
                 const locale = hasArabic ? 'ar-sa' : 'en-us';
-                const ddgResp = await search(query, { locale, safeSearch: 1 });
+                const ddgResp = await search(query, { locale, safeSearch: SafeSearchType.STRICT });
                 if (ddgResp.results?.length) {
                     return ddgResp.results.map(r => ({
                         title: r.title,
