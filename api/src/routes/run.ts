@@ -856,7 +856,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
    }
 
   // Merge consecutive user messages to avoid context fragmentation
-  const mergedHistory: typeof previousMessages = [];
+  // And limit total history size to prevent slow LLM responses
+  const MAX_HISTORY_CHARS = 15000; // Approx 4-5k tokens
+  let mergedHistory: typeof previousMessages = [];
+  
   for (const msg of previousMessages) {
       const last = mergedHistory[mergedHistory.length - 1];
       if (last && last.role === 'user' && msg.role === 'user') {
@@ -865,6 +868,20 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           mergedHistory.push(msg);
       }
   }
+
+  // Truncate history if too long, keeping the most recent messages
+  let totalChars = 0;
+  const truncatedHistory: typeof mergedHistory = [];
+  for (let i = mergedHistory.length - 1; i >= 0; i--) {
+      const msg = mergedHistory[i];
+      const contentLen = typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length;
+      if (totalChars + contentLen > MAX_HISTORY_CHARS) {
+          break;
+      }
+      totalChars += contentLen;
+      truncatedHistory.unshift(msg);
+  }
+  mergedHistory = truncatedHistory;
 
   const history: { role: 'user' | 'assistant' | 'system', content: string | any[] }[] = [
     ...mergedHistory,

@@ -205,11 +205,16 @@ export async function planNextStep(
   // Determine client to use
   let client = openai;
   if (options?.apiKey || options?.baseUrl) {
-    const keyToUse = options?.apiKey || process.env.OPENAI_API_KEY || 'dummy';
-    client = new OpenAI({
-      apiKey: keyToUse,
-      baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL,
-    });
+    const isDefaultKey = !options.apiKey || options.apiKey === process.env.OPENAI_API_KEY;
+    const isDefaultBaseUrl = !options.baseUrl || options.baseUrl === process.env.OPENAI_BASE_URL;
+
+    if (!isDefaultKey || !isDefaultBaseUrl) {
+      const keyToUse = options?.apiKey || process.env.OPENAI_API_KEY || 'dummy';
+      client = new OpenAI({
+        apiKey: keyToUse,
+        baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL,
+      });
+    }
   }
 
   // 0. Mock Mode (for local testing without API Key)
