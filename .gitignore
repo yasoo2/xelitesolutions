@@ -3,6 +3,7 @@ node_modules/
 
 # build output
 build/
+dist/
 dashboard-x/dist/
 api/dist/
 web/dist/
