@@ -769,17 +769,69 @@ export const tools: ToolDefinition[] = [
           }
           items = mapped.slice(0, 10);
         } catch {}
+        if (!items.length) {
+          try {
+            const lang = /[\u0600-\u06FF]/.test(question) ? 'ar' : 'en';
+            const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(question)}&setlang=${lang}`;
+            const r = await fetch(bUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': lang
+              }
+            });
+            if (r.ok) {
+              const html = await r.text();
+              const found: Array<{ title: string; url: string; description: string }> = [];
+              const regex = /<li class="b_algo"><h2><a href="([^"]+)"[^>]*>([^<]+)<\/a><\/h2>.*?<p[^>]*>(.*?)<\/p>/g;
+              let m;
+              while ((m = regex.exec(html)) !== null) {
+                if (found.length >= 8) break;
+                found.push({ title: m[2].replace(/<[^>]+>/g, ''), url: m[1], description: m[3].replace(/<[^>]+>/g, '') });
+              }
+              if (found.length) items = found;
+            }
+          } catch {}
+        }
       }
       const extractsSettled = await Promise.allSettled(
         items.map(async (it: { title: string; url: string; description: string }) => {
           const ext = await executeTool('html_extract', { url: it.url });
           const text = String(ext.output?.textSnippet || it.description || '').trim();
-          return `TITLE: ${it.title}\nURL: ${it.url}\n${text}`;
+          return { title: it.title, url: it.url, text };
         })
       );
-      const context = extractsSettled.filter(x => x.status === 'fulfilled').map((x: any) => x.value).join('\n---\n').slice(0, 20000);
-      const sources = items.map((it: { url: string }) => it.url).slice(0, 10);
-      const oai = String(process.env.OPENAI_API_KEY || '').trim();
+      let segments: Array<{ title: string; url: string; text: string }> = extractsSettled
+        .filter(x => x.status === 'fulfilled')
+        .map((x: any) => x.value)
+        .filter((s: any) => s && s.text);
+      if (!segments.length && items.length) {
+        segments = items.map(it => ({ title: it.title, url: it.url, text: String(it.description || it.title) }));
+      }
+      const context = segments.map(s => `TITLE: ${s.title}\nURL: ${s.url}\n${s.text}`).join('\n---\n').slice(0, 20000);
+      const sources = segments.map(s => s.url).slice(0, 10);
+      const makeConcise = (q: string, segs: Array<{ title: string; url: string; text: string }>) => {
+        const qTokens = q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(t => t && t.length >= 3);
+        let best: { title: string; url: string; text: string } | null = null;
+        let bestScore = -1;
+        for (const s of segs) {
+          const t = s.text.toLowerCase();
+          let sc = 0;
+          for (const k of qTokens) sc += (t.match(new RegExp(k, 'g')) || []).length;
+          if (sc > bestScore) { bestScore = sc; best = s; }
+        }
+        const target = best || segs[0];
+        const chunks = String(target.text).split(/(?<=[\.\!\?\u061F])/).map(x => x.trim()).filter(Boolean).slice(0, 6);
+        const head = chunks.slice(0, 3).join(' ');
+        const bullets = chunks.slice(3, 6).map(x => `- ${x}`).join('\n');
+        const srcs = sources.slice(0, 3).join('\n');
+        const langAr = /[\u0600-\u06FF]/.test(q);
+        const title = langAr ? 'الجواب المختصر:' : 'Direct Answer:';
+        const srcTitle = langAr ? 'المصادر:' : 'Sources:';
+        return `${title}\n${head}${bullets ? `\n\n${bullets}` : ''}\n\n${srcTitle}\n${srcs}`.trim();
+      };
+      const oai = String(process.env.OPENAI_API_KEY || process.env.AI_GATEWAY_API_KEY || process.env.OPEN_ROUTER_API_KEY || '').trim();
+      const baseUrl = String(process.env.OPENAI_BASE_URL || (process.env.OPEN_ROUTER_API_KEY ? 'https://openrouter.ai/api/v1' : '') || '').trim();
       const gkey = String(process.env.GOOGLE_API_KEY || '').trim();
       if (!items.length) {
         try {
@@ -808,7 +860,7 @@ export const tools: ToolDefinition[] = [
       if (oai) {
         try {
           const { default: OpenAI } = await import('openai');
-          const client = new OpenAI({ apiKey: oai, baseURL: process.env.OPENAI_BASE_URL });
+          const client = new OpenAI({ apiKey: oai, baseURL: baseUrl || undefined });
           const c = await client.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [
@@ -841,9 +893,7 @@ export const tools: ToolDefinition[] = [
           logs.push(`gemini.fail=${e.message}`);
         }
       }
-      const fallback = context
-        ? `الخلاصة المختصرة:\n${(context.split('\n').slice(0, 6).join('\n')).slice(0, 600)}\n\nالمصادر:\n${sources.join('\n')}`
-        : 'إجابة مختصرة: تعذر استخدام نماذج الذكاء لعدم توفر مفاتيح OpenAI/Gemini حالياً. تم تفعيل أدوات بحث متعددة ومعالجة متوازية، لكن يوصى بإضافة المفاتيح للحصول على إجابة فورية ذكية مدعومة بالمصادر.';
+      const fallback = segments.length ? makeConcise(question, segments) : 'لم تتوفر سياقات كافية للإجابة بدقة. يُفضّل تفعيل مفاتيح الذكاء (OpenAI/Gemini) للحصول على توليف ذكي فوري.';
       return { ok: true, output: { answer: fallback, sources }, logs };
     },
   },
@@ -2165,7 +2215,8 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const logs: string[] = [];
       logs.push(`research.topic=${topic}`);
 
-      const apiKey = process.env.OPENAI_API_KEY;
+      const apiKey = String(process.env.OPENAI_API_KEY || process.env.AI_GATEWAY_API_KEY || process.env.OPEN_ROUTER_API_KEY || '').trim();
+      const baseUrl = String(process.env.OPENAI_BASE_URL || (process.env.OPEN_ROUTER_API_KEY ? 'https://openrouter.ai/api/v1' : '') || '').trim();
       const MAX_DEPTH = 1;
       const QUERIES_PER_STEP = 4;
       
@@ -2229,7 +2280,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
 
           try {
               const { default: OpenAI } = await import('openai');
-              const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+              const client = new OpenAI({ apiKey, baseURL: baseUrl || undefined });
               
               const analysis = await client.chat.completions.create({
                   model: 'gpt-4o',
@@ -2279,7 +2330,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
 
       try {
         const { default: OpenAI } = await import('openai');
-        const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+        const client = new OpenAI({ apiKey, baseURL: baseUrl || undefined });
         
         const completion = await client.chat.completions.create({
           model: 'gpt-4o-mini',
