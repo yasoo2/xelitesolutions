@@ -1985,99 +1985,120 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       logs.push(`research.topic=${topic}`);
 
       const apiKey = process.env.OPENAI_API_KEY;
-      let searchQueries = [topic];
+      
+      // Configuration for "Lethal" Research
+      const MAX_DEPTH = 2; // Iterations (Initial + 1 recursive step)
+      const QUERIES_PER_STEP = 4; // Breadth
+      
+      const uniqueUrls = new Set<string>();
+      const collectedContext: string[] = [];
+      let currentQueries = [topic];
 
-      // 1. PLAN: Generate search queries if we have an LLM
-      if (apiKey) {
-        try {
-          const { default: OpenAI } = await import('openai');
-          const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+      // Helper to run a tool safely
+      const runTool = async (toolName: string, toolInput: any) => {
+          const t = tools.find(x => x.name === toolName);
+          if (!t) return { ok: false, error: `Tool ${toolName} not found` };
+          try { return await t.execute(toolInput); } 
+          catch (e: any) { return { ok: false, error: e.message }; }
+      };
+
+      // --- ITERATIVE RESEARCH LOOP ---
+      for (let step = 0; step < MAX_DEPTH; step++) {
+          logs.push(`research.step=${step + 1} queries=${currentQueries.length}`);
           
-          const planCompletion = await client.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-              { 
-                role: 'system', 
-                content: 'You are a Senior Research Planner. Breakdown the user topic into 3-5 distinct, targeted web search queries to gather comprehensive information. Return ONLY a JSON array of strings, e.g. ["query1", "query2"].' 
-              },
-              { role: 'user', content: `Topic: ${topic}` }
-            ],
-            response_format: { type: 'json_object' }
-          });
-          
-          const planText = planCompletion.choices[0].message.content || '{}';
-          const planJson = JSON.parse(planText);
-          if (Array.isArray(planJson.queries)) {
-            searchQueries = planJson.queries.slice(0, 5);
-          } else if (Array.isArray(planJson)) {
-             searchQueries = planJson.slice(0, 5);
+          // 1. Parallel Search
+          const searchResults = await Promise.all(
+              currentQueries.map(q => runTool('web_search', { query: q }))
+          );
+
+          // 2. Aggregate Results
+          const candidates: any[] = [];
+          for (const res of searchResults) {
+              if (res.ok && Array.isArray(res.output?.results)) {
+                  for (const item of res.output.results) {
+                      if (!uniqueUrls.has(item.url)) {
+                          uniqueUrls.add(item.url);
+                          candidates.push(item);
+                      }
+                  }
+              }
           }
-          logs.push(`research.plan=${searchQueries.join('|')}`);
-        } catch (e: any) {
-          logs.push(`planning_failed=${e.message}`);
-        }
+          
+          // Sort candidates by relevance heuristic (title match) or just take top
+          // For now, take top 6 new unique URLs per step to avoid overload
+          const targets = candidates.slice(0, 6);
+          if (targets.length === 0) {
+              logs.push('research.stop=no_new_targets');
+              if (step === 0) return { ok: false, error: 'No search results found', logs };
+              break;
+          }
+
+          // 3. Extract Content (Parallel with limit)
+          const extractions = await Promise.all(
+              targets.map(async (t) => {
+                  const ext = await runTool('html_extract', { url: t.url });
+                  if (ext.ok && ext.output?.textSnippet) {
+                      return `SOURCE: ${t.title}\nURL: ${t.url}\nCONTENT: ${ext.output.textSnippet}\n---\n`;
+                  } else {
+                      // Fallback to description
+                      return `SOURCE: ${t.title}\nURL: ${t.url}\nSUMMARY: ${t.description}\n---\n`;
+                  }
+              })
+          );
+          
+          collectedContext.push(...extractions);
+
+          // 4. Analyze & Plan Next Step (if AI available and not last step)
+          if (!apiKey || step === MAX_DEPTH - 1) break;
+
+          try {
+              const { default: OpenAI } = await import('openai');
+              const client = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
+              
+              const analysis = await client.chat.completions.create({
+                  model: 'gpt-4o',
+                  messages: [
+                      { 
+                          role: 'system', 
+                          content: 'You are a Research Director. Analyze the gathered info. Return JSON: { "sufficient": boolean, "newQueries": string[] }. If missing info, generate 2-3 targeted queries.' 
+                      },
+                      { 
+                          role: 'user', 
+                          content: `Topic: ${topic}\n\nCollected Info (Last 15k chars):\n${collectedContext.join('\n').slice(-15000)}` 
+                      }
+                  ],
+                  response_format: { type: 'json_object' }
+              });
+              
+              const analysisJson = JSON.parse(analysis.choices[0].message.content || '{}');
+              if (analysisJson.sufficient) {
+                  logs.push('research.stop=sufficient_info');
+                  break;
+              }
+              if (Array.isArray(analysisJson.newQueries) && analysisJson.newQueries.length > 0) {
+                  currentQueries = analysisJson.newQueries.slice(0, QUERIES_PER_STEP);
+                  logs.push(`research.next_plan=${currentQueries.join('|')}`);
+              } else {
+                  break;
+              }
+          } catch (e: any) {
+              logs.push(`research.planning_failed=${e.message}`);
+              break;
+          }
       }
 
-      // 2. SEARCH: Execute searches in parallel
-      const allResults: any[] = [];
-      // Increase concurrency but keep it safe
-      const searchPromises = searchQueries.map(q => executeTool('web_search', { query: q }));
-      const searchOutcomes = await Promise.all(searchPromises);
+      // --- FINAL SYNTHESIS ---
+      const sources = Array.from(uniqueUrls).slice(0, 20); // List all found sources
       
-      for (const res of searchOutcomes) {
-        if (res.ok && Array.isArray(res.output?.results)) {
-          allResults.push(...res.output.results);
-        }
-      }
-
-      if (allResults.length === 0) {
-        return { ok: false, error: 'No search results found for any query', logs };
-      }
-      
-      // Dedup results by URL
-      const uniqueResults = new Map();
-      for (const r of allResults) {
-        if (!uniqueResults.has(r.url)) uniqueResults.set(r.url, r);
-      }
-      const topResults = Array.from(uniqueResults.values()).slice(0, 12); // Increased to 12
-      logs.push(`research.sources_found=${topResults.length}`);
-      
-      const contents: string[] = [];
-      
-      // 3. EXTRACT: Fetch content (sequential to be nice to rate limits/network, or parallel with limit)
-      // Parallel with limit of 5
-      const chunkSize = 5;
-      for (let i = 0; i < topResults.length; i += chunkSize) {
-          const chunk = topResults.slice(i, i + chunkSize);
-          await Promise.all(chunk.map(async (res: any) => {
-            try {
-                const ext = await executeTool('html_extract', { url: res.url });
-                if (ext.ok && ext.output?.textSnippet && ext.output.textSnippet.length > 200) {
-                    contents.push(`Source: ${res.title} (${res.url})\nContent: ${ext.output.textSnippet}\n`);
-                } else {
-                    // Fallback to description if extraction failed or was too short
-                    contents.push(`Source: ${res.title} (${res.url})\nSummary: ${res.description}\n(Content extraction failed or limited)\n`);
-                }
-            } catch (e) {
-                contents.push(`Source: ${res.title} (${res.url})\nSummary: ${res.description}\n`);
-            }
-          }));
-      }
-      
-      if (contents.length === 0) {
-        return { ok: false, error: 'Failed to extract content from sources', logs };
-      }
-
-      // 4. SYNTHESIZE
       if (!apiKey) {
-        return { 
-          ok: true, 
-          output: { 
-            report: `## Research Results for ${topic}\n\n${contents.join('\n\n')}`, 
-            sources: topResults.map(r => r.url) 
-          }, 
-          logs 
-        };
+          return { 
+              ok: true, 
+              output: { 
+                  report: `## Research Results for ${topic}\n\n${collectedContext.join('\n\n')}`, 
+                  sources 
+              }, 
+              logs 
+          };
       }
 
       try {
@@ -2089,18 +2110,18 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           messages: [
             { 
               role: 'system', 
-              content: `You are an Elite Research Assistant. Your goal is to produce a definitive, comprehensive report on the topic.
-Instructions:
-1. Synthesize information from multiple sources.
-2. Resolve conflicts if any.
-3. Structure with clear headings, bullet points, and sections.
-4. Cite sources using [1], [2] notation and provide a reference list at the end.
-5. If the topic or sources are in Arabic, write the report in Arabic.
-6. Be objective, detailed, and professional.` 
+              content: `You are an Elite Intelligence Analyst. Write a definitive, high-velocity answer.
+Rules:
+1. **Direct & Lethal**: Start with the answer immediately. No "Here is the report".
+2. **Comprehensive**: Cover all angles found in the research.
+3. **Structured**: Use clear headers.
+4. **Citations**: Use [1], [2] referencing the URL list.
+5. **Language**: Match the user's language (Arabic if topic is Arabic).
+6. **No Fluff**: Every sentence must add value.` 
             },
             {
               role: 'user',
-              content: `Topic: ${topic}\n\nSources:\n${contents.join('\n---\n')}`
+              content: `Topic: ${topic}\n\nResearch Data:\n${collectedContext.join('\n')}`
             }
           ]
         });
@@ -2110,7 +2131,7 @@ Instructions:
           ok: true,
           output: {
             report,
-            sources: topResults.map(r => r.url)
+            sources
           },
           logs
         };
@@ -2130,6 +2151,59 @@ Instructions:
 
       const looksLikeWeather =
         /(?:\bweather\b|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حرارة)/i.test(q);
+
+      // --- 0. Special Handlers: Time, Date, Math ---
+      
+      // Time/Date
+      const looksLikeTime = /(?:time|date|الساعة|التاريخ|وقت|توقيت)\s+(?:in|في)?\s*([a-zA-Z\u0600-\u06FF\s]+)?/i.test(q);
+      if (looksLikeTime) {
+          try {
+             const m = q.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i);
+             const location = m ? m[1].trim() : null;
+             
+             let timeString = '';
+             if (location) {
+                // Simple heuristics for major cities (expand as needed or use a library if available)
+                // For now, we will rely on a quick lookup or just return server time if unknown
+                // But to be "lethal", let's try to be smart.
+                // actually, let's just use the search for this if it's a specific city we don't know,
+                // BUT if it's just "time" or "date", return server time.
+                if (!location) {
+                    timeString = new Date().toLocaleString(hasArabic ? 'ar-SA' : 'en-US');
+                }
+             } else {
+                 timeString = new Date().toLocaleString(hasArabic ? 'ar-SA' : 'en-US');
+             }
+
+             if (timeString) {
+                 results.push({
+                     title: 'Current Time/Date',
+                     url: 'local',
+                     description: `**ANSWER**: ${timeString}`
+                 });
+                 if (!location) return { ok: true, output: { results }, logs };
+             }
+          } catch {}
+      }
+
+      // Math / Calculator
+      if (/^[\d\s\+\-\*\/\(\)\.]+$/.test(q) && /\d/.test(q)) {
+          try {
+              // Safety check: only allow digits and operators
+              if (!/[^\d\s\+\-\*\/\(\)\.]/.test(q)) {
+                  // eslint-disable-next-line no-new-func
+                  const res = new Function(`return ${q}`)();
+                  if (typeof res === 'number' && isFinite(res)) {
+                      results.push({
+                          title: 'Calculator',
+                          url: 'calculator',
+                          description: `**ANSWER**: ${q} = ${res}`
+                      });
+                      return { ok: true, output: { results }, logs };
+                  }
+              }
+          } catch {}
+      }
 
       if (looksLikeWeather) {
         // Known cities cache to speed up common queries
@@ -2401,10 +2475,34 @@ Instructions:
           })()
         ]);
 
-        if (ddgRes.status === 'fulfilled') results.push(...ddgRes.value);
-        if (wikiRes.status === 'fulfilled') results.push(...wikiRes.value);
-        if (bingRes.status === 'fulfilled') results.push(...bingRes.value);
+        let raw: any[] = [];
+        if (ddgRes.status === 'fulfilled') raw.push(...ddgRes.value);
+        if (wikiRes.status === 'fulfilled') raw.push(...wikiRes.value);
+        if (bingRes.status === 'fulfilled') raw.push(...bingRes.value);
         
+        // Deduplicate & Rank
+        const seen = new Set<string>();
+        // Normalize helper
+        const normUrl = (u: string) => u.toLowerCase().replace(/\/$/, '');
+        
+        for (const r of raw) {
+            const n = normUrl(r.url);
+            if (!seen.has(n)) {
+                seen.add(n);
+                results.push(r);
+            }
+        }
+
+        // Smart Ranking: Float "Wikipedia" or "Definition" to top for definition queries
+        const isDefinition = /^(what is|define|ما هو|تعريف|معنى|من هو)/i.test(q);
+        if (isDefinition) {
+            results.sort((a, b) => {
+                const aWiki = a.url.includes('wikipedia') ? 1 : 0;
+                const bWiki = b.url.includes('wikipedia') ? 1 : 0;
+                return bWiki - aWiki;
+            });
+        }
+
         logs.push(`search.fast_results=${results.length}`);
 
       } catch (e: any) {
