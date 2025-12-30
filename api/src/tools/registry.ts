@@ -7,6 +7,8 @@ import { Buffer } from 'buffer';
 import { config } from '../config';
 import { spawn } from 'child_process';
 import os from 'os';
+import { JSDOM } from 'jsdom';
+import { Readability } from '@mozilla/readability';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -1720,6 +1722,26 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const renderRequested = input?.render === true;
 
       const parseHtml = (rawHtml: string, baseUrl: string) => {
+        // 1. Try Mozilla Readability (The "Smart" Way)
+        try {
+            const dom = new JSDOM(rawHtml, { url: baseUrl });
+            const reader = new Readability(dom.window.document);
+            const article = reader.parse();
+            if (article) {
+                return {
+                    title: article.title,
+                    metaDescription: article.excerpt,
+                    headings: [], // Readability abstracts this
+                    links: [], // We could extract, but text is king
+                    textSnippet: `TITLE: ${article.title}\nBYLINE: ${article.byline || 'Unknown'}\n\n${article.textContent.trim().slice(0, 40000)}`,
+                    isArticle: true
+                };
+            }
+        } catch (e) {
+            // Fallback
+        }
+
+        // 2. Fallback to Regex (The "Dumb" Way - but sometimes necessary for non-articles)
         const html = String(rawHtml || '');
         const tMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
         const title = tMatch ? String(tMatch[1]).trim() : '';
@@ -1749,14 +1771,13 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
           .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
-          // Improve formatting by converting block tags to newlines
           .replace(/<\/(p|div|section|article|h[1-6]|li|tr)>/gi, '\n')
           .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<[^>]+>/g, ' ')
           .replace(/\s+/g, ' ')
           .trim()
-          .slice(0, 25000); // Increased limit for deep research
-        return { title, metaDescription, headings: headings.slice(0, 20), links: links.slice(0, 20), textSnippet };
+          .slice(0, 25000); 
+        return { title, metaDescription, headings: headings.slice(0, 20), links: links.slice(0, 20), textSnippet, isArticle: false };
       };
 
       const renderWithPuppeteer = async (targetUrl: string) => {
@@ -1773,7 +1794,30 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
             if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
             else req.continue();
           });
-          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          // Fake a good User Agent
+          await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+          
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+          
+          // Try to scroll to load lazy content
+          try {
+              await page.evaluate(async () => {
+                  await new Promise<void>((resolve) => {
+                      let totalHeight = 0;
+                      const distance = 100;
+                      const timer = setInterval(() => {
+                          const scrollHeight = document.body.scrollHeight;
+                          window.scrollBy(0, distance);
+                          totalHeight += distance;
+                          if (totalHeight >= scrollHeight || totalHeight > 5000) {
+                              clearInterval(timer);
+                              resolve();
+                          }
+                      }, 50);
+                  });
+              });
+          } catch {}
+
           const finalUrl = page.url();
           const html = await page.content();
           return { html, finalUrl };
@@ -1786,25 +1830,45 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       let finalUrl = url;
       let rendered = false;
 
-      if (renderRequested) {
-        const out = await renderWithPuppeteer(url);
-        html = out.html;
-        finalUrl = out.finalUrl;
-        rendered = true;
-        logs.push('html_extract.rendered=1');
+      // Smart Logic: If it's a dynamic site (like Twitter/X, SPA), force render
+      const needsRender = renderRequested || 
+                          url.includes('twitter.com') || 
+                          url.includes('x.com') || 
+                          url.includes('youtube.com') ||
+                          url.includes('linkedin.com');
+
+      if (needsRender) {
+        try {
+            const out = await renderWithPuppeteer(url);
+            html = out.html;
+            finalUrl = out.finalUrl;
+            rendered = true;
+            logs.push('html_extract.rendered=1');
+        } catch (e: any) {
+            // Fallback to fetch if puppeteer fails
+            logs.push(`html_extract.puppeteer_failed=${e.message}`);
+            const resp = await fetch(url);
+            finalUrl = (resp as any)?.url ? String((resp as any).url) : url;
+            html = await resp.text();
+        }
       } else {
-        const resp = await fetch(url);
+        const resp = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
         finalUrl = (resp as any)?.url ? String((resp as any).url) : url;
         logs.push(`fetch.status=${resp.status}`);
         html = await resp.text();
       }
 
       let parsed = parseHtml(html, finalUrl);
+      
+      // Auto-Upgrade to Puppeteer if fetch yielded garbage
       const weak =
         !rendered &&
-        String(parsed.title || '').trim().length === 0 &&
-        String(parsed.textSnippet || '').trim().length < 80 &&
-        (parsed.headings?.length || 0) === 0;
+        !parsed.isArticle &&
+        String(parsed.textSnippet || '').trim().length < 200; // Stricter threshold
 
       if (weak) {
         try {
