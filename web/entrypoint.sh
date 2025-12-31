@@ -10,5 +10,6 @@ echo "window.JOE_CONFIG = {
   WS_URL: \"$WS_URL\"
 };" > /usr/share/nginx/html/config.js
 
-# Execute the passed command (nginx)
-exec "$@"
+# Note: We do NOT use 'exec "$@"' here because this script is intended
+# to be run by Nginx's internal entrypoint system (in /docker-entrypoint.d/),
+# which will handle the final execution of nginx.
