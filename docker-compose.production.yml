@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:latest
+    container_name: joe_mongo
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - joe-network
+
+  api:
+    build: ./api
+    container_name: joe_api
+    restart: always
+    env_file:
+      - /opt/joe/env/api.env
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/joe
+      - BROWSER_WORKER_URL=http://joe-browser-worker:8080
+      - PORT=3000
+    networks:
+      - joe-network
+    depends_on:
+      - mongo
+      - joe-browser-worker
+
+  web:
+    build: ./web
+    container_name: joe_web
+    restart: always
+    env_file:
+      - /opt/joe/env/web.env
+    networks:
+      - joe-network
+
+  joe-browser-worker:
+    build: ./services/joe-browser-worker
+    container_name: joe_browser_worker
+    restart: always
+    env_file:
+      - /opt/joe/env/worker.env
+    environment:
+      - PORT=8080
+      - HEADLESS=true
+    networks:
+      - joe-network
+    shm_size: '2gb'
+
+  nginx:
+    image: nginx:alpine
+    container_name: joe_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    networks:
+      - joe-network
+    depends_on:
+      - api
+      - web
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  certbot:
+    image: certbot/certbot
+    container_name: joe_certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - joe-network
+
+volumes:
+  mongo_data:
+
+networks:
+  joe-network:
+    driver: bridge
