@@ -387,10 +387,24 @@ export const tools: ToolDefinition[] = [
       logs.push(`dom_len=${domLen} a11y_len=${a11yNodes} shot=${j.screenshot}`);
       
       let finalDom = j.dom || '';
-      // Truncate DOM to prevent 429 Rate Limit errors (keep under ~4k tokens = ~16k chars)
-      if (finalDom.length > 15000) {
-        logs.push(`warn_dom_truncated: DOM length ${domLen} > 15000. Truncating aggressively.`);
-        finalDom = finalDom.slice(0, 15000) + '\n...[DOM Truncated due to strict size limits]...';
+      
+      // Clean DOM: Remove scripts and styles to save tokens
+      finalDom = finalDom.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "");
+      finalDom = finalDom.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gim, "");
+      finalDom = finalDom.replace(/<!--[\s\S]*?-->/g, ""); // Remove comments
+      finalDom = finalDom.replace(/\s+/g, " ").trim(); // Collapse whitespace
+
+      const MAX_DOM_LEN = 50000;
+      if (finalDom.length > MAX_DOM_LEN) {
+        logs.push(`warn_dom_truncated: DOM length ${finalDom.length} > ${MAX_DOM_LEN}. Truncating.`);
+        // Try to keep the body content if possible
+        const bodyMatch = finalDom.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        if (bodyMatch && bodyMatch[1]) {
+            finalDom = bodyMatch[1].slice(0, MAX_DOM_LEN);
+        } else {
+            finalDom = finalDom.slice(0, MAX_DOM_LEN);
+        }
+        finalDom += '\n...[DOM Truncated]...';
       }
 
       if (domLen < 500) {

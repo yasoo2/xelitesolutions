@@ -1080,19 +1080,21 @@ body {
 
 /* Floating taskbar above input */
 .taskbar-floating {
-  position: absolute;
-  right: 16px;
-  bottom: 96px; /* above input area */
-  max-width: 60vw;
+  position: relative;
+  margin-inline-start: auto;
+  margin-inline-end: 16px;
+  margin-bottom: 8px;
+  width: fit-content;
+  max-width: 90%;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
   padding: 10px 12px;
   display: flex;
   align-items: center;
   gap: 8px;
-  z-index: 200;
+  z-index: 20;
 }
 
 .taskbar-floating .taskbar-title {
@@ -1126,7 +1128,7 @@ body {
 .taskbar-floating .task-chip .task-chip-text { opacity: 0.9; }
 
 @media (max-width: 900px) {
-  .taskbar-floating { bottom: 116px; right: 12px; max-width: 86vw; }
+  .taskbar-floating { margin-inline-end: 12px; max-width: calc(100% - 24px); }
 }
 
 /* Additional Mobile Refinements */

@@ -696,9 +696,10 @@ export async function planNextStep(
        if (m.role === 'system') return m; // Keep system prompt intact
        
        let content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-       if (content.length > 10000) {
+       const MAX_MSG_LEN = 60000;
+       if (content.length > MAX_MSG_LEN) {
           // Keep start and end to preserve some context
-          content = content.slice(0, 5000) + `\n\n...[Content Truncated (${content.length - 10000} chars removed) to save tokens]...\n\n` + content.slice(-5000);
+          content = content.slice(0, 25000) + `\n\n...[Content Truncated (${content.length - MAX_MSG_LEN} chars removed) to save tokens]...\n\n` + content.slice(-25000);
        }
        return { ...m, content };
      });

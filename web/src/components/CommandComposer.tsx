@@ -2072,47 +2072,6 @@ export default function CommandComposer({
 
   return (
     <div className="composer">
-      <AnimatePresence>
-        {activeTaskBar?.visible ? (
-          <motion.div
-            key="taskbar-floating"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            transition={{ duration: 0.18 }}
-            className="taskbar-floating"
-            dir="auto"
-          >
-            <div className="taskbar-title">المهام</div>
-            <div className="taskbar-items">
-              {activeTaskBar.analyzing && activeTaskBar.items.length === 0 ? (
-                <div className="task-chip running">
-                  <Loader2 size={14} className="spin" />
-                  <span>جارٍ تحليل التعليمات…</span>
-                </div>
-              ) : null}
-              {activeTaskBar.items.map((it) => (
-                <div
-                  key={it.id}
-                  className={`task-chip ${it.status}`}
-                  title={it.label}
-                >
-                  {it.status === 'done' ? (
-                    <CheckCircle2 size={14} />
-                  ) : it.status === 'failed' ? (
-                    <XCircle size={14} />
-                  ) : it.status === 'running' ? (
-                    <Loader2 size={14} className="spin" />
-                  ) : (
-                    <Clock size={14} />
-                  )}
-                  <span className="task-chip-text">{it.label}</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
       <div className="events" ref={eventsScrollRef}>
         <div className="events-content" ref={eventsContentRef}>
         {events.length === 0 && (
@@ -2707,6 +2666,47 @@ export default function CommandComposer({
         </div>
       )}
 
+      <AnimatePresence>
+        {activeTaskBar?.visible ? (
+          <motion.div
+            key="taskbar-floating"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.18 }}
+            className="taskbar-floating"
+            dir="auto"
+          >
+            <div className="taskbar-title">المهام</div>
+            <div className="taskbar-items">
+              {activeTaskBar.analyzing && activeTaskBar.items.length === 0 ? (
+                <div className="task-chip running">
+                  <Loader2 size={14} className="spin" />
+                  <span>جارٍ تحليل التعليمات…</span>
+                </div>
+              ) : null}
+              {activeTaskBar.items.map((it) => (
+                <div
+                  key={it.id}
+                  className={`task-chip ${it.status}`}
+                  title={it.label}
+                >
+                  {it.status === 'done' ? (
+                    <CheckCircle2 size={14} />
+                  ) : it.status === 'failed' ? (
+                    <XCircle size={14} />
+                  ) : it.status === 'running' ? (
+                    <Loader2 size={14} className="spin" />
+                  ) : (
+                    <Clock size={14} />
+                  )}
+                  <span className="task-chip-text">{it.label}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
       <div className="input-area">
     <textarea 
       value={text} 
