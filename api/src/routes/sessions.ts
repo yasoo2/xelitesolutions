@@ -278,7 +278,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
 
     while (steps < MAX_STEPS) {
       broadcast({ type: 'step_started', runId: pending.runId, data: { name: `thinking_step_${steps + 1}` } });
-      let plan: { name: string; input: any } | null = null;
+      let plan: { name: string; input: any; thought?: string | null } | null = null;
       try {
         plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: false, mock: plannerMock });
       } catch (e: any) {
@@ -326,6 +326,12 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       }
 
       broadcast({ type: 'step_done', runId: pending.runId, data: { name: `thinking_step_${steps + 1}`, plan } });
+      if (plan?.thought) {
+          console.log('[DEBUG] Thought broadcasted:', plan.thought);
+      } else {
+          console.log('[DEBUG] No thought in plan');
+      }
+
 
       if (String(plan?.name || '') === 'browser_run') {
         const acts = Array.isArray((plan as any).input?.actions) ? (plan as any).input.actions : [];

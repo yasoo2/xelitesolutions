@@ -359,12 +359,6 @@ export default function CommandComposer({
     const interval = setInterval(() => {
         if (count >= words.length) {
             clearInterval(interval);
-            // Disappear immediately after forming (1.5s delay)
-            setTimeout(() => {
-                setDisplayedThought('');
-                // We don't clear currentThought here to avoid fighting with upstream updates, 
-                // but visually it disappears.
-            }, 1500);
             return;
         }
         count++;

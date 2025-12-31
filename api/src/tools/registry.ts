@@ -839,7 +839,7 @@ export const tools: ToolDefinition[] = [
       searchTasks.push((async () => {
         try {
            const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
-           const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&gl=sa&hl=${lang}&num=10`;
+           const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=${lang}&num=10`;
            if (debug) console.log(`[DEBUG] fetching Google: ${gUrl}`);
 
            const controller = new AbortController();
@@ -951,7 +951,7 @@ export const tools: ToolDefinition[] = [
            console.log('[web_search] Worker ensured');
            
            const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
-           const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&gl=sa&hl=${lang}&num=10`;
+           const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=${lang}&num=10`;
            
            console.log(`[web_search] Worker creating session...`);
            const createRes = await fetch(`${config.browserWorkerUrl}/session/create`, {

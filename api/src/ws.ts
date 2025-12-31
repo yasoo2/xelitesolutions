@@ -36,7 +36,15 @@ export function attachWebSocket(server: Server) {
 
   liveWssRef.on('connection', (ws) => {
     console.log('[WS] Client connected to liveWss');
-    ws.on('message', () => {});
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        console.log('[WS] Received message:', msg);
+        if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
+      } catch (e) {
+        // ignore non-json
+      }
+    });
   });
 
   browserProxyWssRef.on('connection', (clientWs, req) => {
