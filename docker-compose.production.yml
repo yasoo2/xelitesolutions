@@ -32,6 +32,8 @@ services:
     restart: always
     env_file:
       - /opt/joe/env/web.env
+    environment:
+      - VITE_API_URL=https://api.xelitesolutions.com
     networks:
       - joe-network
 
