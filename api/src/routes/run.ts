@@ -820,7 +820,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         store.addMessage(sessionId, 'system', currentSystemPrompt, runId);
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
-        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
+        // System prompt is internal, do not emit to UI
+        // ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     } else {
       const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
@@ -828,7 +829,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         await Message.create({ sessionId, role: 'system', content: currentSystemPrompt, runId });
         systemPromptCreated = true;
         systemPromptText = currentSystemPrompt;
-        ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
+        // System prompt is internal, do not emit to UI
+        // ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
     }
   } catch (e) {
