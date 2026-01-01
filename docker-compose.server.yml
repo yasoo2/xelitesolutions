@@ -1,0 +1,89 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: joe_mongo
+    restart: unless-stopped
+    volumes:
+      - ./data/mongo:/data/db
+    networks: [joe_net]
+
+  api:
+    image: node:20-alpine
+    container_name: joe_api
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGO_URI=mongodb://mongo:27017/joe
+      - BROWSER_WORKER_URL=http://joe_browser_worker:8080
+    command: sh -lc "npm ci && npm --prefix api run build && npm --prefix api run start"
+    depends_on: [mongo]
+    ports:
+      - "3000:3000"
+    networks: [joe_net]
+
+  web:
+    build:
+      context: ./backend/web
+      dockerfile: Dockerfile
+    image: joe-web:latest
+    container_name: joe_web
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "8080:80"
+    networks: [joe_net]
+    env_file:
+      - ./env/web.env
+
+  browser_worker:
+    build:
+      context: ./backend/services/joe-browser-worker
+      dockerfile: Dockerfile
+    image: joe-browser-worker:latest
+    container_name: joe_browser_worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - WORKER_API_KEY=younessowady2011
+      - HEADLESS=true
+    networks: [joe_net]
+    depends_on:
+      - api
+
+  nginx:
+    image: nginx:alpine
+    container_name: joe_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    networks:
+      - joe_net
+    depends_on:
+      - api
+      - web
+      - browser_worker
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  certbot:
+    image: certbot/certbot
+    container_name: joe_certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - joe_net
+
+networks:
+  joe_net:
+    driver: bridge

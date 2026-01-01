@@ -86,7 +86,7 @@ function ToolTicker({
   );
 }
 
-const ChatBubble = forwardRef(({ event, isUser, onOptionClick }: { event: any, isUser: boolean, onOptionClick?: (text: string) => void }, ref: any) => {
+const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { event: any, isUser: boolean, onOptionClick?: (text: string) => void, isTyping?: boolean }, ref: any) => {
   const { t } = useTranslation();
   
   let content = event.data.text || event.data;
@@ -1250,42 +1250,57 @@ export default function CommandComposer({
               setDraftActive(true);
               setDraftText('');
 
-              const parts =
-                finalText.length <= 220
-                  ? finalText.split('')
-                  : finalText.split(/(\s+)/).filter((p) => p.length > 0);
+              // Smooth Streaming Logic (Enhanced)
+              const chars = finalText.split('');
+              const totalChars = chars.length;
+              
+              // Dynamic speed based on length: faster for longer text
+              // Base speed: 10ms per char (~6000 chars/min) -> Very fast
+              // Long text (>500 chars) -> Speed up
+              let intervalMs = 12; 
+              if (totalChars > 200) intervalMs = 8;
+              if (totalChars > 500) intervalMs = 5;
+              
+              // Add some randomness to mimic human-like bursts? No, users prefer consistent fast stream.
+              // But we can process multiple chars per tick if it's really long.
+              let charsPerTick = 1;
+              if (totalChars > 800) charsPerTick = 2;
+              if (totalChars > 1500) charsPerTick = 4;
 
-              const minDurationMs = 1200;
-              const maxDurationMs = 6500;
-              let intervalMs = 18;
-              if (parts.length * intervalMs < minDurationMs) {
-                intervalMs = Math.min(60, Math.max(12, Math.ceil(minDurationMs / Math.max(1, parts.length))));
-              }
-              const maxTicks = Math.max(1, Math.floor(maxDurationMs / intervalMs));
-              const desiredTicks = Math.min(parts.length, maxTicks);
-              const perTick = Math.max(1, Math.ceil(parts.length / Math.max(1, desiredTicks)));
               let idx = 0;
 
               draftTimerRef.current = window.setInterval(() => {
-                idx = Math.min(parts.length, idx + perTick);
-                const next = parts.slice(0, idx).join('');
-                setDraftText(next);
-                if (idx >= parts.length) {
+                const nextBatch = Math.min(totalChars - idx, charsPerTick);
+                idx += nextBatch;
+                
+                const currentStr = finalText.substring(0, idx);
+                setDraftText(currentStr);
+                
+                // Auto-scroll logic could be triggered here if needed, but the effect handles it via deps
+
+                if (idx >= totalChars) {
                   clearDraftTimer();
-                  setDraftActive(false);
-                  setDraftText('');
-                  setEvents((prev) => {
-                    if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                    return [...prev, msg];
-                  });
-                  try {
-                    speak(finalText);
-                  } catch {}
-                  window.setTimeout(() => {
-                    setIsThinking(false);
-                    setStatus('idle');
-                    setThinkingGlimpse('');
-                  }, 120);
+                  // Keep the draft visible for a moment to let the user finish reading the last bit? 
+                  // No, swap to final message immediately but smoothly.
+                  
+                  // Small delay before finalizing to ensure render catches up
+                  setTimeout(() => {
+                    setDraftActive(false);
+                    setDraftText('');
+                    setEvents((prev) => {
+                      if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                      return [...prev, msg];
+                    });
+                    try {
+                      speak(finalText);
+                    } catch {}
+                    
+                    window.setTimeout(() => {
+                      setIsThinking(false);
+                      setStatus('idle');
+                      setThinkingGlimpse('');
+                    }, 100);
+                  }, 50);
                 }
               }, intervalMs);
             }, delay);
@@ -2075,29 +2090,54 @@ export default function CommandComposer({
       <div className="events" ref={eventsScrollRef}>
         <div className="events-content" ref={eventsContentRef}>
         {events.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-state-logo-ring">
-              <span className="empty-state-logo-text">J</span>
+          <div className="empty-state-hero">
+            <div className="hero-logo-container">
+              <div className="hero-logo-glow"></div>
+              <div className="hero-logo-content">
+                <span className="hero-logo-text">JOE</span>
+              </div>
             </div>
-            <h2 className="empty-state-title">
-              {t('welcomeTitle', 'How can I help you today?')}
-            </h2>
-            <div className="empty-state-suggestions">
-              <button className="suggestion-card" onClick={() => setText('Write a React component for a login form')}>
-                <div className="suggestion-icon"><FileCode size={20} /></div>
-                <div className="suggestion-text">Create a Login Form</div>
+            
+            <h1 className="hero-title">
+              <span className="hero-title-main">Build Faster.</span>
+              <span className="hero-title-sub">Think Deeper.</span>
+            </h1>
+            
+            <p className="hero-subtitle">
+              Your elite autonomous pair programmer is ready to engineer the future.
+            </p>
+
+            <div className="hero-suggestions">
+              <button className="hero-card" onClick={() => setText('Create a full-stack React & Node.js application with authentication')}>
+                <div className="hero-card-icon"><Zap size={24} /></div>
+                <div className="hero-card-content">
+                  <h3>Full Stack App</h3>
+                  <p>React, Node.js, Auth, & DB</p>
+                </div>
               </button>
-              <button className="suggestion-card" onClick={() => setText('Explain how useEffect works')}>
-                <div className="suggestion-icon"><Zap size={20} /></div>
-                <div className="suggestion-text">Explain React Hooks</div>
+              
+              <button className="hero-card" onClick={() => setText('Analyze this codebase and suggest architectural improvements')}>
+                <div className="hero-card-icon"><Search size={24} /></div>
+                <div className="hero-card-content">
+                  <h3>Deep Analysis</h3>
+                  <p>Architecture & Performance</p>
+                </div>
               </button>
-              <button className="suggestion-card" onClick={() => setText('Analyze this project structure')}>
-                <div className="suggestion-icon"><Search size={20} /></div>
-                <div className="suggestion-text">Analyze Project</div>
+              
+              <button className="hero-card" onClick={() => setText('Write a Python script to automate data scraping')}>
+                <div className="hero-card-icon"><Terminal size={24} /></div>
+                <div className="hero-card-content">
+                  <h3>Automation</h3>
+                  <p>Python Scripts & Tools</p>
+                </div>
               </button>
-              <button className="suggestion-card" onClick={() => setText('Write a Python script to scrape a website')}>
-                <div className="suggestion-icon"><Terminal size={20} /></div>
-                <div className="suggestion-text">Python Scripting</div>
+              
+              <button className="hero-card" onClick={() => setText('Debug the current error in the console')}>
+                <div className="hero-card-icon"><Cpu size={24} /></div>
+                <div className="hero-card-content">
+                  <h3>Smart Debug</h3>
+                  <p>Fix errors instantly</p>
+                </div>
               </button>
             </div>
           </div>
