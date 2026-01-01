@@ -67,12 +67,15 @@ SECTION 1 — DEPLOYMENT TARGETS (MUST)
 - Frontend: Nginx in Docker on Hetzner VPS.
 - Backend: Node.js in Docker on Hetzner VPS.
 - Database: MongoDB in Docker on Hetzner VPS.
+- Browser Worker: Puppeteer in Docker on Hetzner VPS.
 
 1.3 CORS & WebSockets
 - Backend must allow CORS for:
   - https://xelitesolutions.com
   - https://www.xelitesolutions.com
-  - plus any approved preview domains (optional).
+  - https://api.xelitesolutions.com
+  - https://ws.xelitesolutions.com
+  - https://browser.xelitesolutions.com
 - WebSocket must function in production on Hetzner and survive restarts.
 - Ensure correct preflight handling, credentials policy, and consistent Allow-Origin matching.
 

@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const allowedOriginsDefault = [
-  'https://xelitesolutions.com',
+ 'https://xelitesolutions.com',
   'https://www.xelitesolutions.com',
   'https://api.xelitesolutions.com',
   'https://ws.xelitesolutions.com',
