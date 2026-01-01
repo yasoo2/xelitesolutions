@@ -10,7 +10,7 @@ else
   exit 1
 fi
 
-domains=(xelitesolutions.com)
+domains=(xelitesolutions.com api.xelitesolutions.com)
 rsa_key_size=4096
 data_path="./certbot"
 email="admin@xelitesolutions.com" # Change this to your email
