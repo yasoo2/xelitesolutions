@@ -5,6 +5,9 @@ dotenv.config();
 const allowedOriginsDefault = [
   'https://xelitesolutions.com',
   'https://www.xelitesolutions.com',
+  'https://api.xelitesolutions.com',
+  'https://ws.xelitesolutions.com',
+  'https://browser.xelitesolutions.com',
   'https://infinity-x-platform.onrender.com',
   'http://localhost:5173',
   'http://localhost:3000',
