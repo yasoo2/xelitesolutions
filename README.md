@@ -5,9 +5,9 @@ content = r"""JOE MASTER SPEC (XElite Solutions) — v1.0
 =================================================
 Owner: Jonas (XElite Solutions)
 Primary Domain: xelitesolutions.com
-Backend: Render
-Frontend: Cloudflare
-Database: MongoDB
+Backend: Docker (Hetzner)
+Frontend: Docker (Hetzner)
+Database: MongoDB (Docker)
 Timezone: Europe/Istanbul
 
 PURPOSE
@@ -55,25 +55,25 @@ SECTION 0 — NON-NEGOTIABLE RULES (MUST)
 SECTION 1 — DEPLOYMENT TARGETS (MUST)
 -------------------------------------
 1.1 Domains
-- Frontend (Cloudflare): https://xelitesolutions.com
-- Backend API (Render): https://api.xelitesolutions.com
-- WebSocket endpoint: wss://api.xelitesolutions.com/ws
+- Frontend: https://xelitesolutions.com
+- Backend API: https://api.xelitesolutions.com
+- WebSocket endpoint: wss://ws.xelitesolutions.com/ws
 - Optional recommended (if needed):
   - https://admin.xelitesolutions.com (internal admin)
   - https://joe.xelitesolutions.com (console)
   (If not used, keep console under https://xelitesolutions.com/joe while API stays on api.xelitesolutions.com.)
 
 1.2 Hosting requirements
-- Frontend: Cloudflare Pages (or Cloudflare hosting) serving a SPA with routing.
-- Backend: Render Web Service (Node.js/Express recommended).
-- Database: MongoDB (Atlas recommended).
+- Frontend: Nginx in Docker on Hetzner VPS.
+- Backend: Node.js in Docker on Hetzner VPS.
+- Database: MongoDB in Docker on Hetzner VPS.
 
 1.3 CORS & WebSockets
 - Backend must allow CORS for:
   - https://xelitesolutions.com
   - https://www.xelitesolutions.com
   - plus any approved preview domains (optional).
-- WebSocket must function in production on Render and survive deploys.
+- WebSocket must function in production on Hetzner and survive restarts.
 - Ensure correct preflight handling, credentials policy, and consistent Allow-Origin matching.
 
 1.4 Environment separation (recommended)
@@ -81,9 +81,9 @@ SECTION 1 — DEPLOYMENT TARGETS (MUST)
 - Staging can use Mock Layer; Prod must not.
 
 ACCEPTANCE TESTS (Section 1)
-- Visiting https://xelitesolutions.com loads Cloudflare hosted frontend.
-- https://api.xelitesolutions.com returns /health OK from Render.
-- WebSocket connects successfully to wss://api.xelitesolutions.com/ws and streams events.
+- Visiting https://xelitesolutions.com loads the frontend.
+- https://api.xelitesolutions.com returns /health OK.
+- WebSocket connects successfully to wss://ws.xelitesolutions.com/ws and streams events.
 - MongoDB persists chats, sessions, and runs across refresh/login/logout.
 
 
@@ -545,9 +545,9 @@ All must be persisted in MongoDB and tied to tenant/project boundaries.
 SECTION 17 — DELIVERY PACKAGE (BUILDER MUST PROVIDE)
 ----------------------------------------------------
 17.1 Working production
-- Frontend deployed on Cloudflare to xelitesolutions.com
-- Backend deployed on Render to api.xelitesolutions.com
-- MongoDB connected (Atlas recommended)
+- Frontend deployed on Hetzner to xelitesolutions.com
+- Backend deployed on Hetzner to api.xelitesolutions.com
+- MongoDB connected (Docker)
 
 17.2 Proof of “real system”
 Provide demos/logs showing:
@@ -564,7 +564,7 @@ Provide demos/logs showing:
 17.3 Documentation
 - Architecture overview + module boundaries
 - Threat model + permissions policy
-- Deployment guide (Cloudflare + Render + domains + env vars)
+- Deployment guide (Docker + Hetzner + domains + env vars)
 - Runbooks + incident playbooks
 - Tool catalog documentation
 - List of required secrets/keys (with clear separation what builder can see vs owner-only)
@@ -599,10 +599,9 @@ str(out_path)
 - API: `MOCK_DB=1 npm run dev`
 - Web: `npm run dev`
 
-## Cloudflare Pages Deploy
-- Build command: `npm ci && npm run build`
-- Output directory: `dashboard-x/dist`
-- Functions (optional): add `/functions` for Pages Functions if needed
-- Environment: set `VITE_API_URL` and `VITE_WS_URL`
+## Deployment
+- Use Docker Compose to deploy all services.
+- `docker compose -f docker-compose.production.yml up -d`
+
 
  
