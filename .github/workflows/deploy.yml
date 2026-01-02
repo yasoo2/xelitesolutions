@@ -117,11 +117,18 @@ jobs:
             git reset --hard "origin/$BRANCH"
             echo "Deployed commit: $(git rev-parse --short HEAD)"
 
-            if command -v docker-compose >/dev/null 2>&1; then
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
               COMPOSE="docker-compose"
             else
-              COMPOSE="docker compose"
+              echo "Neither 'docker compose' nor 'docker-compose' is available." && exit 1
             fi
+
+            echo "Docker version:"
+            docker version || true
+            echo "Compose version:"
+            $COMPOSE version || true
 
             if [ -f docker-compose.production.yml ] && [ -f /opt/joe/env/web.env ] && [ -f /opt/joe/env/api.env ] && [ -f /opt/joe/env/worker.env ]; then
               COMPOSE_FILE="docker-compose.production.yml"

@@ -10,6 +10,19 @@ echo "Deployed commit: $(git rev-parse --short HEAD)"
 echo "2. Rebuilding and restarting web container..."
 # Check if docker command exists
 if command -v docker &> /dev/null; then
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE="docker compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE="docker-compose"
+    else
+        echo "Neither 'docker compose' nor 'docker-compose' is available." && exit 1
+    fi
+
+    echo "Docker version:"
+    docker version || true
+    echo "Compose version:"
+    $COMPOSE version || true
+
     if [ -f docker-compose.production.yml ] && [ -f /opt/joe/env/web.env ] && [ -f /opt/joe/env/api.env ] && [ -f /opt/joe/env/worker.env ]; then
         COMPOSE_FILE="docker-compose.production.yml"
     elif [ -f docker-compose.server.yml ] && [ -f ./env/web.env ]; then
@@ -26,9 +39,9 @@ if command -v docker &> /dev/null; then
         echo "No docker-compose file found in $(pwd)" && exit 1
     fi
 
-    docker compose -f "$COMPOSE_FILE" build --pull --no-cache web
-    docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web nginx
-    WEB_CID="$(docker compose -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
+    $COMPOSE -f "$COMPOSE_FILE" build --pull --no-cache web
+    $COMPOSE -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web nginx
+    WEB_CID="$($COMPOSE -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
     if [ -n "$WEB_CID" ]; then
         echo "Web container: $WEB_CID"
         docker inspect -f 'Image={{.Image}} Created={{.Created}}' "$WEB_CID" || true
