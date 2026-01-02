@@ -447,16 +447,15 @@ export default function Joe() {
               >
                 <div 
                   className="folder-header" 
-                  style={{ display: 'flex', alignItems: 'center', padding: '8px', cursor: 'pointer', color: 'var(--text-secondary)' }}
                   onClick={() => setExpandedFolders(p => ({ ...p, [folder._id]: !p[folder._id] }))}
                 >
                   {expandedFolders[folder._id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <Folder size={14} style={{ margin: '0 8px', color: 'var(--accent-primary)' }} />
-                  <span style={{ fontSize: 13, flex: 1 }}>{folder.name}</span>
+                  <Folder size={14} className="folder-icon" />
+                  <span className="folder-name">{folder.name}</span>
                   <button 
                      onClick={(e) => { e.stopPropagation(); deleteFolder(folder._id); }}
-                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', opacity: 0.5 }}
                      className="folder-delete-btn"
+                     title="حذف المجلد"
                   >
                     <Trash2 size={12} />
                   </button>
