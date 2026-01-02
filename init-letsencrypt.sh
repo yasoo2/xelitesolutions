@@ -17,10 +17,11 @@ email="admin@xelitesolutions.com" # Change this to your email
 staging=0 # Set to 1 if you're testing your setup to avoid hitting request limits
 
 if [ -d "$data_path" ]; then
-  read -p "Existing data found for $domains. Continue and replace existing certificate? (y/N) " decision
-  if [ "$decision" != "Y" ] && [ "$decision" != "y" ]; then
-    exit
-  fi
+#  read -p "Existing data found for $domains. Continue and replace existing certificate? (y/N) " decision
+#  if [ "$decision" != "Y" ] && [ "$decision" != "y" ]; then
+#    exit
+#  fi
+   echo "Existing data found. Proceeding automatically..."
 fi
 
 if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/ssl-dhparams.pem" ]; then
@@ -34,7 +35,7 @@ fi
 echo "### Creating dummy certificate for $domains ..."
 path="/etc/letsencrypt/live/$domains"
 mkdir -p "$data_path/conf/live/$domains"
-$COMPOSE -f docker-compose.production.yml run --rm --entrypoint "\
+$COMPOSE -f docker-compose.server.yml run --rm --entrypoint "\
   openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
     -keyout '$path/privkey.pem' \
     -out '$path/fullchain.pem' \
@@ -43,11 +44,11 @@ echo
 
 
 echo "### Starting nginx ..."
-$COMPOSE -f docker-compose.production.yml up --force-recreate -d nginx
+$COMPOSE -f docker-compose.server.yml up --force-recreate -d nginx
 echo
 
 echo "### Deleting dummy certificate for $domains ..."
-$COMPOSE -f docker-compose.production.yml run --rm --entrypoint "\
+$COMPOSE -f docker-compose.server.yml run --rm --entrypoint "\
   rm -Rf /etc/letsencrypt/live/$domains && \
   rm -Rf /etc/letsencrypt/archive/$domains && \
   rm -Rf /etc/letsencrypt/renewal/$domains.conf" certbot
@@ -70,7 +71,7 @@ esac
 # Enable staging mode if needed
 if [ $staging != "0" ]; then staging_arg="--staging"; fi
 
-$COMPOSE -f docker-compose.production.yml run --rm --entrypoint "\
+$COMPOSE -f docker-compose.server.yml run --rm --entrypoint "\
   certbot certonly --webroot -w /var/www/certbot \
     $staging_arg \
     $email_arg \
@@ -81,4 +82,4 @@ $COMPOSE -f docker-compose.production.yml run --rm --entrypoint "\
 echo
 
 echo "### Reloading nginx ..."
-$COMPOSE -f docker-compose.production.yml exec nginx nginx -s reload
+$COMPOSE -f docker-compose.server.yml exec nginx nginx -s reload
