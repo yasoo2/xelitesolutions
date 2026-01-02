@@ -42,11 +42,16 @@ export const useSessionStore = create<SessionState>((set) => ({
   setAgentSelected: (id: string | null) => set({ agentSelected: id }),
   loadAllSessions: async () => {
     const token = localStorage.getItem('token');
+    if (!token) {
+      set({ sessions: [], agentSessions: [] });
+      return;
+    }
     try {
-      const res = await fetch(`${API}/sessions?kind=chat,agent`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+      const res = await fetch(`${API}/sessions?kind=chat,agent`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.status === 401) {
         localStorage.removeItem('token');
         set({ sessions: [], agentSessions: [] });
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
         return;
       }
       const data = await res.json();
@@ -68,8 +73,18 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
   loadFolders: async () => {
     const token = localStorage.getItem('token');
+    if (!token) {
+      set({ folders: [] });
+      return;
+    }
     try {
-      const res = await fetch(`${API}/folders`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+      const res = await fetch(`${API}/folders`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        set({ folders: [] });
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         set({ folders: data });
@@ -81,9 +96,14 @@ export const useSessionStore = create<SessionState>((set) => ({
   createFolder: async (name: string) => {
     set(state => ({ loadingStates: { ...state.loadingStates, creatingFolder: true } }));
     const token = localStorage.getItem('token');
+    if (!token) {
+      set(state => ({ loadingStates: { ...state.loadingStates, creatingFolder: false } }));
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     const res = await fetch(`${API}/folders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name }),
     });
     if (res.ok) {
@@ -94,9 +114,14 @@ export const useSessionStore = create<SessionState>((set) => ({
   deleteFolder: async (id: string) => {
     set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-folder-${id}`]: true } }));
     const token = localStorage.getItem('token');
+    if (!token) {
+      set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-folder-${id}`]: false } }));
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     await fetch(`${API}/folders/${id}`, {
       method: 'DELETE',
-      headers: { Authorization: token ? `Bearer ${token}` : '' },
+      headers: { Authorization: `Bearer ${token}` },
     });
     await useSessionStore.getState().loadFolders();
     await useSessionStore.getState().loadAllSessions();
@@ -105,9 +130,14 @@ export const useSessionStore = create<SessionState>((set) => ({
   deleteSession: async (id: string) => {
     set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-session-${id}`]: true } }));
     const token = localStorage.getItem('token');
+    if (!token) {
+      set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-session-${id}`]: false } }));
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     await fetch(`${API}/sessions/${id}`, {
       method: 'DELETE',
-      headers: { Authorization: token ? `Bearer ${token}` : '' },
+      headers: { Authorization: `Bearer ${token}` },
     });
     await useSessionStore.getState().loadAllSessions();
     set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-session-${id}`]: false } }));

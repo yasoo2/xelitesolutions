@@ -103,11 +103,22 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
 
     const fetchTree = async () => {
         setLoading(true);
+        const token = localStorage.getItem('token');
+        if (!token) {
+            setTree([]);
+            setLoading(false);
+            return;
+        }
         try {
-            const token = localStorage.getItem('token');
             const res = await fetch(`${API}/project/tree`, {
-                headers: { Authorization: token ? `Bearer ${token}` : '' }
+                headers: { Authorization: `Bearer ${token}` }
             });
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                setTree([]);
+                return;
+            }
             const data = await res.json();
             if (data.tree) {
                 setTree(data.tree);
@@ -131,9 +142,19 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         
         try {
             const token = localStorage.getItem('token');
+            if (!token) {
+                setLoadingContent(false);
+                window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                return;
+            }
             const res = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
-                headers: { Authorization: token ? `Bearer ${token}` : '' }
+                headers: { Authorization: `Bearer ${token}` }
             });
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                return;
+            }
             
             if (res.ok) {
                 const json = await res.json();
@@ -151,11 +172,15 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         setIsSaving(true);
         try {
             const token = localStorage.getItem('token');
+            if (!token) {
+                window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                return;
+            }
             await fetch(`${API}/project/content`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    Authorization: token ? `Bearer ${token}` : '' 
+                    Authorization: `Bearer ${token}` 
                 },
                 body: JSON.stringify({ path: selectedFile.node.path, content: selectedFile.content })
             });

@@ -171,6 +171,17 @@ export default function Joe() {
     return () => window.removeEventListener('joe:browser_attached', handler as any);
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      nav('/login');
+      return;
+    }
+    const onUnauthorized = () => nav('/login');
+    window.addEventListener('auth:unauthorized', onUnauthorized as any);
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized as any);
+  }, []);
+
   function createSession() {
     setSelected(null);
     setSearchQuery('');
@@ -178,7 +189,9 @@ export default function Joe() {
   }
 
   useEffect(() => { 
-    loadAllSessions(); 
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    loadAllSessions();
     loadFolders();
   }, []);
 
@@ -222,11 +235,20 @@ export default function Joe() {
 
   async function moveSessionToFolder(sessionId: string, folderId: string | null) {
     const token = localStorage.getItem('token');
-    await fetch(`${API}/sessions/${sessionId}/move`, {
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
+    const res = await fetch(`${API}/sessions/${sessionId}/move`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ folderId }),
     });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     await loadAllSessions();
   }
 
@@ -236,14 +258,23 @@ export default function Joe() {
     if (!confirm('Are you sure you want to merge these sessions? This cannot be undone.')) return;
     
     const token = localStorage.getItem('token');
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     const res = await fetch(`${API}/sessions/merge`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ sourceId, targetId }),
     });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     
     if (res.ok) {
       await loadAllSessions();
@@ -258,31 +289,58 @@ export default function Joe() {
   async function deleteAllSessions() {
     if (!confirm('هل أنت متأكد من حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) return;
     const token = localStorage.getItem('token');
-    await fetch(`${API}/sessions`, {
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
+    const res = await fetch(`${API}/sessions`, {
       method: 'DELETE',
-      headers: { Authorization: token ? `Bearer ${token}` : '' },
+      headers: { Authorization: `Bearer ${token}` },
     });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     await loadAllSessions();
     setSelected(null);
   }
 
   async function togglePin(id: string, currentPinned: boolean) {
     const token = localStorage.getItem('token');
-    await fetch(`${API}/sessions/${id}/pin`, {
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
+    const res = await fetch(`${API}/sessions/${id}/pin`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ isPinned: !currentPinned }),
     });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     await loadAllSessions();
   }
 
   async function toggleAgentPin(id: string, currentPinned: boolean) {
     const token = localStorage.getItem('token');
-    await fetch(`${API}/sessions/${id}/pin`, {
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
+    const res = await fetch(`${API}/sessions/${id}/pin`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ isPinned: !currentPinned }),
     });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
     await loadAllSessions();
   }
 
@@ -299,10 +357,23 @@ export default function Joe() {
     const timer = setTimeout(async () => {
       setIsSearching(true);
       const token = localStorage.getItem('token');
+      if (!token) {
+        setIsSearching(false);
+        setSearchResults([]);
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        return;
+      }
       try {
         const res = await fetch(`${API}/sessions/search?q=${encodeURIComponent(searchQuery)}&kind=chat`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: { Authorization: `Bearer ${token}` },
         });
+        if (res.status === 401) {
+          localStorage.removeItem('token');
+          setIsSearching(false);
+          setSearchResults([]);
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          return;
+        }
         const data = await res.json();
         setSearchResults(data.results || []);
       } catch (e) {

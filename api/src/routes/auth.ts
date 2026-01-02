@@ -81,8 +81,15 @@ router.post('/login', async (req: Request, res: Response) => {
 
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
-    const user = mockDb.findUserByEmail(email);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    const isProd = process.env.NODE_ENV === 'production';
+    let user = mockDb.findUserByEmail(email);
+    if (!user && !isProd && mockDb.countUsers() === 0) {
+      const passwordHash = await bcrypt.hash(password, 10);
+      user = mockDb.createUser(email, passwordHash, 'OWNER');
+    }
+    if (!user) {
+      return res.status(401).json({ error: isProd ? 'Invalid credentials' : 'No account found. Click Register to create one.' });
+    }
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
     const token = jwt.sign({ sub: user.id.toString(), role: user.role }, config.jwtSecret, { expiresIn: '7d' });
