@@ -22,12 +22,33 @@ jobs:
           port: ${{ secrets.PORT || 22 }}
           script: |
             cd /opt/joe
-            echo "Git pulling..."
-            git pull origin main
+            echo "Git syncing..."
+            git fetch origin main
+            git reset --hard origin/main
+            echo "Deployed commit: $(git rev-parse --short HEAD)"
+
+            if command -v docker-compose >/dev/null 2>&1; then
+              COMPOSE="docker-compose"
+            else
+              COMPOSE="docker compose"
+            fi
+
+            if [ -f docker-compose.yml ]; then
+              COMPOSE_FILE="docker-compose.yml"
+            elif [ -f docker-compose.server.yml ]; then
+              COMPOSE_FILE="docker-compose.server.yml"
+            elif [ -f docker-compose.production.yml ]; then
+              COMPOSE_FILE="docker-compose.production.yml"
+            else
+              echo "No docker-compose file found in /opt/joe" && exit 1
+            fi
+
+            echo "Using compose: $COMPOSE -f $COMPOSE_FILE"
             echo "Docker building..."
-            docker-compose -f docker-compose.production.yml build web
+            $COMPOSE -f "$COMPOSE_FILE" build web api || $COMPOSE -f "$COMPOSE_FILE" build web
             echo "Docker restarting..."
-            docker-compose -f docker-compose.production.yml up -d --force-recreate web
+            $COMPOSE -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web api nginx || $COMPOSE -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web
+            $COMPOSE -f "$COMPOSE_FILE" ps
             echo "Deployment finished!"
 
       - name: Verify Deployment
