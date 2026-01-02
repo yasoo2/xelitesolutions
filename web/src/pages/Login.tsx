@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { LogIn, UserPlus, Mail, Lock, Eye, EyeOff, Sparkles, Cpu, X } from 'lucide-react';
+import { LogIn, UserPlus, Mail, Lock, Eye, EyeOff, Sparkles, X } from 'lucide-react';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -60,7 +60,10 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-card" style={{ position: 'relative' }}>
+      <div className="login-bg-glow-1" />
+      <div className="login-bg-glow-2" />
+
+      <div className="login-card">
         <button 
           className="login-close-btn" 
           onClick={() => nav('/')}
@@ -68,6 +71,7 @@ export default function Login() {
         >
           <X size={24} />
         </button>
+        
         <div className="login-header">
           <div className="login-logo-wrapper">
             <div className="login-logo">
@@ -76,9 +80,9 @@ export default function Login() {
           </div>
           <div className="login-title">JOE AI</div>
           <div className="login-subtitle">
-            <Sparkles size={14} style={{ display: 'inline', marginInlineEnd: 6, color: 'var(--accent-primary)' }} />
+            <Sparkles size={14} className="text-accent-primary" />
             {t('login_subtitle', 'Welcome back to your workspace')}
-            <Sparkles size={14} style={{ display: 'inline', marginInlineStart: 6, color: 'var(--accent-primary)' }} />
+            <Sparkles size={14} className="text-accent-primary" />
           </div>
         </div>
 
@@ -87,20 +91,20 @@ export default function Login() {
           
           <div className="login-input-group">
             <label className="login-label">{t('email')}</label>
-            <div style={{ position: 'relative' }}>
+            <div className="login-input-wrapper">
               <input 
                 className="login-input" 
                 value={email} 
                 onChange={e => setEmail(e.target.value)} 
                 placeholder="you@example.com"
               />
-              <Mail size={18} style={{ position: 'absolute', top: 16, left: 16, color: 'var(--text-muted)' }} className="input-icon-start" />
+              <Mail size={18} className="input-icon-start" />
             </div>
           </div>
 
           <div className="login-input-group">
             <label className="login-label">{t('password')}</label>
-            <div style={{ position: 'relative' }}>
+            <div className="login-input-wrapper">
               <input 
                 className="login-input" 
                 value={password} 
@@ -109,19 +113,10 @@ export default function Login() {
                 placeholder="••••••••"
                 onKeyDown={e => e.key === 'Enter' && login()}
               />
-              <Lock size={18} style={{ position: 'absolute', top: 16, left: 16, color: 'var(--text-muted)' }} className="input-icon-start" />
+              <Lock size={18} className="input-icon-start" />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{ 
-                  position: 'absolute', 
-                  top: 14, 
-                  right: 16, 
-                  background: 'none', 
-                  border: 'none', 
-                  cursor: 'pointer',
-                  color: 'var(--text-muted)'
-                }}
                 className="input-icon-end"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -132,41 +127,17 @@ export default function Login() {
           <div className="login-actions">
             <button className="login-submit-btn" onClick={login} disabled={loading}>
               {loading ? '...' : (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <LogIn size={20} /> {t('login')}
-                </span>
+                <>
+                  <LogIn size={20} style={{ marginInlineEnd: 8 }} /> {t('login')}
+                </>
               )}
             </button>
             <button className="login-register-btn" onClick={register} disabled={loading}>
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <UserPlus size={18} /> {t('register')}
-              </span>
+              <UserPlus size={18} style={{ marginInlineEnd: 8 }} /> {t('register')}
             </button>
           </div>
         </div>
       </div>
-      
-      {/* Decorative Background Elements */}
-      <div style={{
-        position: 'absolute',
-        top: '10%',
-        left: '10%',
-        width: '300px',
-        height: '300px',
-        background: 'radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%)',
-        filter: 'blur(40px)',
-        zIndex: 0
-      }} />
-      <div style={{
-        position: 'absolute',
-        bottom: '10%',
-        right: '10%',
-        width: '400px',
-        height: '400px',
-        background: 'radial-gradient(circle, rgba(96, 165, 250, 0.1) 0%, transparent 70%)',
-        filter: 'blur(60px)',
-        zIndex: 0
-      }} />
     </div>
   );
 }
