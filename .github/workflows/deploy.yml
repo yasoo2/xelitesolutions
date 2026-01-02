@@ -146,13 +146,23 @@ jobs:
               echo "No docker-compose file found in $(pwd)" && exit 1
             fi
 
-            echo "Using compose: $COMPOSE -f $COMPOSE_FILE"
-            echo "Docker building..."
-            $COMPOSE -f "$COMPOSE_FILE" build --pull --no-cache web
-            echo "Docker restarting..."
-            $COMPOSE -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web nginx
+            PROJECT_NAME="joe"
+            echo "Using compose: $COMPOSE -p $PROJECT_NAME -f $COMPOSE_FILE"
 
-            NGINX_CID="$($COMPOSE -f "$COMPOSE_FILE" ps -q nginx 2>/dev/null || true)"
+            echo "Pre-clean potential name conflicts..."
+            for n in joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
+              ids="$(docker ps -aq --filter "name=$n" 2>/dev/null || true)"
+              if [ -n "${ids:-}" ]; then
+                docker rm -f $ids || true
+              fi
+            done
+
+            echo "Docker building..."
+            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache web
+            echo "Docker restarting..."
+            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web nginx
+
+            NGINX_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q nginx 2>/dev/null || true)"
             if [ -n "$NGINX_CID" ]; then
               echo "Nginx container: $NGINX_CID"
               docker inspect -f 'Image={{.Image}} Created={{.Created}}' "$NGINX_CID" || true
@@ -162,7 +172,7 @@ jobs:
               echo "Warning: nginx container not found after deploy."
             fi
 
-            WEB_CID="$($COMPOSE -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
+            WEB_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
             if [ -n "$WEB_CID" ]; then
               echo "Web container: $WEB_CID"
               docker inspect -f 'Image={{.Image}} Created={{.Created}}' "$WEB_CID" || true
@@ -178,7 +188,7 @@ jobs:
               docker logs --tail 200 "$WEB_CID" || true
             fi
 
-            $COMPOSE -f "$COMPOSE_FILE" ps
+            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
             echo "Deployment finished!"
 
       - name: Verify Deployment
