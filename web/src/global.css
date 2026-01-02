@@ -4,32 +4,32 @@
   /* Typography */
   --font-primary: 'Tajawal', 'Inter', system-ui, -apple-system, sans-serif;
   
-  /* Color Palette - Modern Dark Theme (Default) */
+  /* Color Palette - Modern Dark Theme (Black & Yellow) */
   --bg-dark: #000000;
-  --bg-card: #121212;
-  --bg-card-hover: #1e1e1e;
-  --bg-hover: #1e1e1e;
-  --bg-input: #1e1e1e;
-  --bg-secondary: #18181b;
-  --surface-1: #0a0a0a;
-  --surface-2: #141414;
+  --bg-card: #0a0a0a;
+  --bg-card-hover: #141414;
+  --bg-hover: #1a1a1a;
+  --bg-input: #111111;
+  --bg-secondary: #050505;
+  --surface-1: #000000;
+  --surface-2: #0f0f0f;
   
   --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
+  --text-secondary: #e4e4e7;
+  --text-muted: #a1a1aa;
   
   /* Gold/Yellow Theme */
   --accent-primary: #FFD700; /* Gold */
   --accent-hover: #E6C200;
   --accent-secondary: #FDB931; /* Golden Rod */
-  --accent-glow: rgba(255, 215, 0, 0.15);
+  --accent-glow: rgba(255, 215, 0, 0.2);
   
-  --user-msg-bg: #2A2A2A;
-  --joe-msg-bg: #111111;
+  --user-msg-bg: #1a1a1a;
+  --joe-msg-bg: #000000;
   
-  --border-color: #333333;
-  --border-light: #444444;
-  --topbar-bg: rgba(0, 0, 0, 0.85);
+  --border-color: #27272a;
+  --border-light: #3f3f46;
+  --topbar-bg: rgba(0, 0, 0, 0.9);
 
   /* Spacing & Layout */
   --radius-sm: 8px;
@@ -41,13 +41,13 @@
   --sidebar-width: 280px;
   --right-panel-width: 380px;
   
-  --bg-gradient: linear-gradient(135deg, #050505 0%, #1a1a1a 100%);
-  --card-gradient: linear-gradient(145deg, #151515 0%, #0d0d0d 100%);
+  --bg-gradient: linear-gradient(135deg, #000000 0%, #111111 100%);
+  --card-gradient: linear-gradient(145deg, #0a0a0a 0%, #000000 100%);
   
   --transition-fast: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.2);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
 
   /* Custom Button Colors (Yellow/Blue LED) */
   --btn-gradient-yellow: linear-gradient(135deg, #FFD700 0%, #FDB931 100%);
@@ -58,18 +58,18 @@
   --btn-led-color: var(--btn-led-yellow);
   --btn-text-custom: var(--btn-text-yellow);
 
-  --composer-bg: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 100%);
+  --composer-bg: radial-gradient(circle at 50% 50%, #111111 0%, #000000 100%);
 
-  --neon-pink: #ff1ea8;
-  --neon-cyan: #00e5ff;
-  --neon-purple: #7c3aed;
+  --neon-pink: #FFD700;
+  --neon-cyan: #FDB931;
+  --neon-purple: #E6C200;
   --neon-gold: #ffd700;
-  --btn-gradient: linear-gradient(135deg, var(--neon-pink) 0%, var(--neon-purple) 50%, var(--neon-cyan) 100%);
-  --btn-gradient-hover: linear-gradient(135deg, #ff64c3 0%, #a78bfa 50%, #4deaff 100%);
+  --btn-gradient: linear-gradient(135deg, #FFD700 0%, #FDB931 50%, #E6C200 100%);
+  --btn-gradient-hover: linear-gradient(135deg, #ffe033 0%, #ffc44d 50%, #ffd700 100%);
 
   /* Glassmorphism Variables (Default Dark) */
-  --glass-bg: rgba(10, 10, 10, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(0, 0, 0, 0.7);
+  --glass-border: rgba(255, 215, 0, 0.1);
   
   /* Brand Gradient (Default Gold) */
   --brand-gradient: linear-gradient(to right, #FFD700, #FDB931);
@@ -118,41 +118,42 @@
 
 [data-theme="light"] {
   /* Strict White & Beautiful Blue Theme */
-  --bg-dark: #f0f9ff; /* Very light AliceBlue/Sky */
-  --bg-card: #ffffff;
-  --bg-card-hover: #e0f2fe; /* Light sky blue */
-  --bg-hover: #e0f2fe;
-  --bg-input: #ffffff;
+  --bg-dark: #ffffff; /* Pure White */
+  --bg-card: #f8fafc; /* Very light slate for cards */
+  --bg-card-hover: #eff6ff; /* Light blue tint */
+  --bg-hover: #eff6ff;
+  --bg-input: #f1f5f9;
+  --bg-secondary: #f8fafc;
   --surface-1: #ffffff;
-  --surface-2: #eff6ff;
+  --surface-2: #f1f5f9;
   
   --text-primary: #0f172a; /* Slate-900 */
   --text-secondary: #334155; /* Slate-700 */
   --text-muted: #64748b; /* Slate-500 */
   
-  --accent-primary: #3b82f6; /* Blue-500 (Vibrant) */
-  --accent-hover: #2563eb; /* Blue-600 */
-  --accent-secondary: #60a5fa; /* Blue-400 */
-  --accent-glow: rgba(59, 130, 246, 0.4);
+  --accent-primary: #2563eb; /* Blue-600 (Stronger Blue) */
+  --accent-hover: #1d4ed8; /* Blue-700 */
+  --accent-secondary: #3b82f6; /* Blue-500 */
+  --accent-glow: rgba(37, 99, 235, 0.2);
   
-  --user-msg-bg: #3b82f6;
-  --joe-msg-bg: #ffffff;
+  --user-msg-bg: #2563eb;
+  --joe-msg-bg: #f1f5f9;
   
-  --border-color: #bfdbfe; /* Blue-200 */
-  --border-light: #dbeafe; /* Blue-100 */
-  --topbar-bg: rgba(255, 255, 255, 0.85);
+  --border-color: #e2e8f0; /* Slate-200 */
+  --border-light: #f1f5f9; /* Slate-100 */
+  --topbar-bg: rgba(255, 255, 255, 0.9);
 
-  --shadow-sm: 0 1px 3px rgba(59, 130, 246, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06);
-  --shadow-lg: 0 10px 25px -5px rgba(59, 130, 246, 0.15), 0 8px 10px -6px rgba(59, 130, 246, 0.1);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1);
   
-  --composer-bg: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
+  --composer-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 
   --current-btn-color: var(--btn-icon-color-light);
   
   /* Light Glass Overrides */
-  --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(59, 130, 246, 0.2);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(37, 99, 235, 0.1);
   
   /* Light Brand Gradient */
   --brand-gradient: linear-gradient(to right, #2563eb, #3b82f6);
@@ -172,12 +173,12 @@
   --current-btn-bg: var(--btn-icon-bg-light);
   --current-btn-glow: var(--btn-icon-glow-light);
 
-  --neon-pink: #d946ef;
-  --neon-cyan: #22d3ee;
-  --neon-purple: #6366f1;
-  --neon-gold: #f59e0b;
-  --btn-gradient: linear-gradient(135deg, var(--neon-pink) 0%, var(--neon-purple) 50%, var(--neon-cyan) 100%);
-  --btn-gradient-hover: linear-gradient(135deg, #e879f9 0%, #818cf8 50%, #67e8f9 100%);
+  --neon-pink: #3b82f6;
+  --neon-cyan: #0ea5e9;
+  --neon-purple: #2563eb;
+  --neon-gold: #3b82f6;
+  --btn-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #0ea5e9 100%);
+  --btn-gradient-hover: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #0284c7 100%);
 }
 
 
