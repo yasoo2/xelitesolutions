@@ -22,6 +22,13 @@ interface SessionState {
   selected: string | null;
   agentSelected: string | null;
   loadingStates: Record<string, boolean>;
+  loadAllSessions: () => Promise<void>;
+  loadFolders: () => Promise<void>;
+  createFolder: (name: string) => Promise<void>;
+  deleteFolder: (id: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  setSelected: (id: string | null) => void;
+  setAgentSelected: (id: string | null) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -31,6 +38,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   selected: null,
   agentSelected: null,
   loadingStates: {},
+  setSelected: (id: string | null) => set({ selected: id }),
+  setAgentSelected: (id: string | null) => set({ agentSelected: id }),
   loadAllSessions: async () => {
     const token = localStorage.getItem('token');
     try {

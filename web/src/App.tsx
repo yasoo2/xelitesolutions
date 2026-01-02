@@ -1,13 +1,16 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import TopBar from './components/TopBar';
 import { LiveBackground } from './components/LiveBackground';
 import './rtl-overrides.css';
 
 export default function App() {
+  const location = useLocation();
+  const isLogin = location.pathname === '/login';
+
   return (
     <div className="app">
       <LiveBackground />
-      <TopBar />
+      {!isLogin && <TopBar />}
       <div className="content">
         <Outlet />
       </div>
