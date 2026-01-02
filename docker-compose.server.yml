@@ -63,8 +63,8 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
+      - /opt/joe/certbot/conf:/etc/letsencrypt
+      - /opt/joe/certbot/www:/var/www/certbot
     networks:
       - joe_net
     depends_on:
@@ -77,8 +77,8 @@ services:
     image: certbot/certbot
     container_name: joe_certbot
     volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
+      - /opt/joe/certbot/conf:/etc/letsencrypt
+      - /opt/joe/certbot/www:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     networks:
       - joe_net

@@ -149,6 +149,12 @@ jobs:
             PROJECT_NAME="joe"
             echo "Using compose: $COMPOSE -p $PROJECT_NAME -f $COMPOSE_FILE"
 
+            mkdir -p /opt/joe/certbot/conf /opt/joe/certbot/www
+            if [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/fullchain.pem ] || [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/privkey.pem ]; then
+              echo "TLS certificate not found. Bootstrapping Let's Encrypt..."
+              COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" ./init-letsencrypt.sh
+            fi
+
             echo "Pre-clean potential name conflicts..."
             for n in joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
               ids="$(docker ps -aq --filter "name=$n" 2>/dev/null || true)"
