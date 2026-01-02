@@ -416,7 +416,7 @@ export default function Joe() {
           {!searchQuery ? (
           <>
           <div className="section-header-container">
-            <div className="section-title" style={{ margin: 0 }}>المجلدات</div>
+            <div className="section-title">المجلدات</div>
             <button 
               onClick={createFolder}
               className="action-icon-btn"
@@ -492,8 +492,7 @@ export default function Joe() {
             ))}
 
             <div 
-              className="section-title" 
-              style={{ marginTop: 16 }}
+              className="section-header-container"
               onDragOver={(e) => {
                  e.preventDefault();
                  e.dataTransfer.dropEffect = 'move';
@@ -504,7 +503,7 @@ export default function Joe() {
                  if (sessionId) moveSessionToFolder(sessionId, null);
               }}
             >
-              جلسات أخرى
+              <div className="section-title">جلسات أخرى</div>
             </div>
             {sessions.filter(s => !s.folderId).map(s => (
               <div 
@@ -712,14 +711,29 @@ export default function Joe() {
           </div>
         )}
         {mode === 'chat' && (
-          <CommandComposer
-            sessionId={selected || undefined}
-            sessionKind="chat"
-            onSessionCreated={async (id) => {
-              await loadSessions();
-              setSelected(id);
-            }}
-          />
+          <div className="chat-view">
+            {!selected ? (
+              <div className="welcome-view">
+                <div className="welcome-logo-wrapper">
+                  <div className="welcome-logo">J</div>
+                </div>
+                <div className="welcome-title">JOE AI</div>
+                <div className="welcome-subtitle">
+                  ابدأ محادثة جديدة أو اختر واحدة من القائمة للبدء.
+                </div>
+              </div>
+            ) : (
+              <CommandComposer
+                key={selected}
+                sessionId={selected}
+                sessionKind="chat"
+                onSessionCreated={async (id) => {
+                  await loadSessions();
+                  setSelected(id);
+                }}
+              />
+            )}
+          </div>
         )}
         </div>
       </main>

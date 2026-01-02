@@ -191,14 +191,9 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { eve
           <Sparkles size={18} />
         </div>
       )}
-      <div className="chat-bubble backdrop-blur-md shadow-lg" style={{ 
-        background: isUser ? 'var(--user-msg-bg)' : 'var(--joe-msg-bg)',
-        color: isUser ? '#ffffff' : 'var(--text-primary)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid var(--border-color)'
-      }}>
+      <div className={`chat-bubble ${isUser ? 'user' : 'ai'}`}>
         <div className="chat-bubble-header">
-          <span className="chat-bubble-sender" dir={isUser ? 'auto' : 'ltr'} style={!isUser ? { unicodeBidi: 'isolate' as any } : undefined}>
+          <span className="chat-bubble-sender">
             {isUser ? t('you', 'You') : 'JOE AI'}
           </span>
           {!isUser && (
@@ -212,39 +207,23 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { eve
             </div>
           )}
         </div>
-        <div className="chat-bubble-content" dir="auto" style={{ unicodeBidi: 'plaintext' as any }}>
+        <div className="chat-bubble-content" dir="auto">
           {isUser ? (
-            <div style={{ whiteSpace: 'pre-wrap', unicodeBidi: 'plaintext' as any }} dir="auto">{content}</div>
+            <div>{content}</div>
           ) : (
              <>
              <ReactMarkdown
                components={{
-                  h1: ({node, ...props}: any) => <h1 className="text-[var(--accent-secondary)] text-2xl mb-2 mt-2 border-b border-[var(--border-color)] pb-1" dir="auto" style={{ unicodeBidi: 'plaintext' as any }} {...props} />,
-                  h2: ({node, ...props}: any) => <h2 className="text-[var(--accent-primary)] text-xl mb-2 mt-4" dir="auto" style={{ unicodeBidi: 'plaintext' as any }} {...props} />,
-                  h3: ({node, ...props}: any) => <h3 className="text-[var(--neon-purple)] text-lg mb-2 mt-4" dir="auto" style={{ unicodeBidi: 'plaintext' as any }} {...props} />,
-                  ul: ({node, ...props}: any) => <ul className="list-disc pl-6 mb-4" dir="auto" style={{ unicodeBidi: 'plaintext' as any }} {...props} />,
-                  ol: ({node, ...props}: any) => <ol className="list-decimal pl-6 mb-4" dir="auto" style={{ unicodeBidi: 'plaintext' as any }} {...props} />,
-                  li: ({node, ...props}: any) => <li className="mb-1 leading-relaxed" dir="auto" style={{ unicodeBidi: 'plaintext' as any }} {...props} />,
-                  p: ({node, ...props}: any) => <p className="mb-4 leading-relaxed" dir="auto" style={{ unicodeBidi: 'plaintext' as any }} {...props} />,
-                  blockquote: ({node, ...props}: any) => (
-                    <blockquote 
-                      className="border-l-4 border-[var(--accent-secondary)] bg-[var(--bg-secondary)] my-4 py-2 px-4 rounded"
-                      dir="auto"
-                      style={{ unicodeBidi: 'plaintext' as any }}
-                      {...props} 
-                    />
-                  ),
-                  a: ({node, ...props}: any) => (
-                    <a 
-                      {...props} 
-                      target="_blank" 
-                       rel="noopener noreferrer" 
-                       className="text-[var(--accent-primary)] underline"
-                       dir="ltr"
-                       style={{ unicodeBidi: 'isolate' as any }}
-                     />
-                   ),
-                  code({node, inline, className, children, ...props}: any) {
+                  h1: ({node, ...props}) => <h1 {...props} />,
+                  h2: ({node, ...props}) => <h2 {...props} />,
+                  h3: ({node, ...props}) => <h3 {...props} />,
+                  ul: ({node, ...props}) => <ul {...props} />,
+                  ol: ({node, ...props}) => <ol {...props} />,
+                  li: ({node, ...props}) => <li {...props} />,
+                  p: ({node, ...props}) => <p {...props} />,
+                  blockquote: ({node, ...props}) => <blockquote {...props} />,
+                  a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                  code({node, inline, className, children, ...props}) {
                    const match = /language-(\w+)/.exec(className || '');
                    return !inline && match ? (
                      <SyntaxHighlighter
@@ -257,15 +236,7 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { eve
                        {String(children).replace(/\n$/, '')}
                      </SyntaxHighlighter>
                    ) : (
-                     <code
-                       className={className}
-                       {...props}
-                       dir={inline ? 'ltr' : 'auto'}
-                       style={{
-                         ...(!inline ? { display: 'block', padding: '10px', background: '#1e1e1e', borderRadius: '4px', overflowX: 'auto' } : { background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '3px' }),
-                         unicodeBidi: (inline ? 'isolate' : 'plaintext') as any,
-                       }}
-                     >
+                     <code className={className} {...props}>
                        {children}
                      </code>
                    );
