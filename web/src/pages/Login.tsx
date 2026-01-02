@@ -63,7 +63,7 @@ export default function Login() {
       <div className="login-bg-glow-1" />
       <div className="login-bg-glow-2" />
 
-      <div className="login-card">
+      <div className="login-container">
         <button 
           className="login-close-btn" 
           onClick={() => nav('/')}
