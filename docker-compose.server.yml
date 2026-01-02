@@ -19,6 +19,7 @@ services:
       - PORT=3000
       - MONGO_URI=mongodb://mongo:27017/joe
       - BROWSER_WORKER_URL=http://joe_browser_worker:8080
+      - BROWSER_WORKER_KEY=younessowady2011
     command: sh -lc "npm ci --include=dev && npm run build && npm run start"
     depends_on: [mongo]
     ports:
