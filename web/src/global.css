@@ -58,6 +58,17 @@
   --btn-led-color: var(--btn-led-yellow);
   --btn-text-custom: var(--btn-text-yellow);
 
+  /* Unified LED Button Variables (Dark Mode Default) */
+  --btn-led-text: #FFD700;
+  --btn-led-bg: rgba(255, 215, 0, 0.05);
+  --btn-led-border: rgba(255, 215, 0, 0.2);
+  --btn-led-glow: 0 0 10px rgba(255, 215, 0, 0.15);
+  --btn-led-hover-bg: rgba(255, 215, 0, 0.15);
+  --btn-led-hover-glow: 0 0 15px rgba(255, 215, 0, 0.3);
+  --btn-led-primary-bg: #FFD700;
+  --btn-led-primary-text: #000000;
+  --btn-led-primary-glow: 0 0 20px rgba(255, 215, 0, 0.4);
+
   --composer-bg: radial-gradient(circle at 50% 50%, #111111 0%, #000000 100%);
 
   --neon-pink: #FFD700;
@@ -179,6 +190,17 @@
   --neon-gold: #3b82f6;
   --btn-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #0ea5e9 100%);
   --btn-gradient-hover: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #0284c7 100%);
+
+  /* Unified LED Button Variables (Light Mode) */
+  --btn-led-text: #2563eb;
+  --btn-led-bg: rgba(37, 99, 235, 0.05);
+  --btn-led-border: rgba(37, 99, 235, 0.2);
+  --btn-led-glow: 0 0 10px rgba(37, 99, 235, 0.15);
+  --btn-led-hover-bg: rgba(37, 99, 235, 0.15);
+  --btn-led-hover-glow: 0 0 15px rgba(37, 99, 235, 0.3);
+  --btn-led-primary-bg: #2563eb;
+  --btn-led-primary-text: #ffffff;
+  --btn-led-primary-glow: 0 0 20px rgba(37, 99, 235, 0.4);
 }
 
 
@@ -194,6 +216,260 @@ body {
   min-height: 100vh;
   height: 100dvh;
   overflow: hidden;
+}
+
+/* --- Hero Card Button --- */
+.hero-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+  width: 100%;
+}
+
+.hero-card:hover {
+  background: var(--btn-led-hover-bg);
+  border-color: var(--btn-led-text);
+  box-shadow: var(--btn-led-hover-glow);
+  transform: translateY(-2px);
+}
+
+.hero-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--btn-led-bg);
+  color: var(--btn-led-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--btn-led-border);
+  box-shadow: var(--btn-led-glow);
+}
+
+/* --- Session Item Buttons --- */
+.session-item {
+    position: relative;
+}
+
+.session-btn {
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+}
+
+.menu-trigger {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.session-item:hover .menu-trigger {
+    opacity: 1;
+}
+
+.menu-trigger:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.session-menu {
+    position: absolute;
+    right: 32px;
+    top: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    z-index: 50;
+    min-width: 140px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.session-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    text-align: left;
+}
+
+.session-menu button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.session-menu button.delete:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+/* --- Option Buttons in Chat --- */
+.option-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 6px 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.option-btn:hover {
+  background: var(--btn-led-hover-bg);
+  border-color: var(--btn-led-text);
+  color: var(--btn-led-text);
+  box-shadow: var(--btn-led-glow);
+}
+
+/* --- Provider Modal Buttons --- */
+.provider-item-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    transition: all 0.2s;
+}
+
+.provider-item-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.provider-item-btn.active {
+    background: var(--btn-led-bg);
+    color: var(--btn-led-text);
+    border-color: var(--btn-led-border);
+    box-shadow: var(--btn-led-glow);
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s;
+}
+
+.modal-close-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    color: var(--text-primary);
+    padding: 4px;
+}
+
+.icon-btn:hover {
+    opacity: 1;
+}
+
+.delete-key-btn {
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: #ef4444;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.delete-key-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+}
+
+.verify-btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent-primary);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.verify-btn:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+.verify-btn.connected {
+    background: #22c55e;
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+}
+
+/* --- Secret Prompt Buttons --- */
+.cancel-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--text-primary);
 }
 
 /* Layout Components */
@@ -308,33 +584,23 @@ body {
 }
 
 .mode-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
+  /* Inherits from .btn-led */
   padding: 8px 16px;
   border-radius: 99px;
   font-weight: 600;
   font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
   gap: 8px;
 }
 
-.mode-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
-}
-
 .mode-btn.active {
-  background: var(--bg-hover);
-  color: var(--accent-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: var(--btn-led-primary-bg);
+  color: var(--btn-led-primary-text);
+  box-shadow: var(--btn-led-primary-glow);
+  border-color: transparent;
 }
 
 .mode-btn.active svg {
-  color: var(--accent-primary);
+  color: var(--btn-led-primary-text);
 }
 
 /* Chat Styles */
@@ -434,20 +700,18 @@ body {
 }
 
 .chat-action-btn {
+  /* Inherits from .btn-led */
+  padding: 6px 8px;
+  border-radius: 8px;
+  border-color: transparent; /* Subtle by default */
   background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  padding: 4px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
 }
 
 .chat-action-btn:hover {
-  background: var(--bg-card-hover);
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 12px var(--accent-glow);
+  background: var(--btn-led-hover-bg);
+  border-color: var(--btn-led-border);
+  color: var(--btn-led-color);
+  box-shadow: var(--btn-led-hover-glow);
 }
 
 /* Empty State */
@@ -633,48 +897,69 @@ body {
   gap: 8px;
 }
 
-.action-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  padding: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
+/* Unified LED Button System */
+.btn-led, .action-btn, .mode-btn, .chat-action-btn, .new-chat-btn, .close-sidebar-btn, .folder-delete-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--btn-led-border);
+  background: var(--btn-led-bg);
+  color: var(--btn-led-text);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--btn-led-glow);
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-.action-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
+.btn-led:hover, .action-btn:hover, .mode-btn:hover, .chat-action-btn:hover, .new-chat-btn:hover, .close-sidebar-btn:hover, .folder-delete-btn:hover {
+  background: var(--btn-led-hover-bg);
+  box-shadow: var(--btn-led-hover-glow);
+  transform: translateY(-1px) scale(1.02);
+  color: var(--btn-led-text);
+  border-color: var(--btn-led-text);
+}
+
+.btn-led:active, .action-btn:active, .mode-btn:active, .chat-action-btn:active, .new-chat-btn:active, .close-sidebar-btn:active, .folder-delete-btn:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: none;
+}
+
+.action-btn {
+  padding: 8px;
+  width: 40px;
+  height: 40px;
 }
 
 .action-btn.active {
-  color: var(--accent-primary);
-  background: rgba(255, 215, 0, 0.1);
+  background: var(--btn-led-primary-bg);
+  color: var(--btn-led-primary-text);
+  box-shadow: var(--btn-led-primary-glow);
+  border-color: transparent;
 }
 
 .send-btn {
-  background: var(--accent-primary);
-  color: #000;
+  background: var(--btn-led-primary-bg);
+  color: var(--btn-led-primary-text);
   border: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 10px var(--accent-glow);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--btn-led-primary-glow);
 }
 
 .send-btn:hover {
-  background: var(--accent-hover);
-  transform: scale(1.05);
-  box-shadow: 0 4px 15px var(--accent-glow);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 0 25px var(--btn-led-primary-bg);
+  filter: brightness(1.1);
 }
 
 .send-btn:disabled {
@@ -683,6 +968,44 @@ body {
   transform: none;
   box-shadow: none;
   opacity: 0.5;
+  filter: grayscale(1);
+}
+
+/* Sidebar Specific Buttons */
+.new-chat-btn {
+  width: 100%;
+  height: 44px;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  font-size: 15px;
+}
+
+.close-sidebar-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.folder-delete-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.folder-header:hover .folder-delete-btn {
+  opacity: 1;
 }
 
 /* Connection Status Dot */
@@ -725,18 +1048,15 @@ body {
   height: 50px;
   border-radius: 50%;
   border: none;
-  background: var(--accent-primary);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s;
+  background: var(--btn-led-primary-bg);
+  color: var(--btn-led-primary-text);
+  box-shadow: var(--btn-led-primary-glow);
 }
 
 .voice-record-btn.listening {
   background: #ef4444;
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
+  animation: pulse-ring 2s infinite;
 }
 
 .voice-info {
@@ -1115,4 +1435,57 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* --- New Button & UI Classes --- */
+
+.search-box-container {
+  padding: 0 4px;
+  margin-bottom: 16px;
+}
+
+.section-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  margin-bottom: 8px;
+}
+
+.action-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.action-icon-btn:hover {
+  color: var(--accent-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.folder-empty-msg {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 8px 8px;
+}
+
+.section-title-mt {
+  margin-top: 16px;
+}
+
+.options-container {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+}
+
+.option-icon {
+  opacity: 0.7;
 }

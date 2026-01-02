@@ -400,7 +400,7 @@ export default function Joe() {
             </button>
           </div>
           
-          <div className="search-box-container" style={{ padding: '0 4px', marginBottom: 16 }}>
+          <div className="search-box-container">
             <div className="search-input-wrapper">
                <Search size={14} className="search-icon" />
                <input 
@@ -415,11 +415,11 @@ export default function Joe() {
 
           {!searchQuery ? (
           <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', marginBottom: 8 }}>
+          <div className="section-header-container">
             <div className="section-title" style={{ margin: 0 }}>المجلدات</div>
             <button 
               onClick={createFolder}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              className="action-icon-btn"
               title="مجلد جديد"
             >
               <FolderPlus size={16} />

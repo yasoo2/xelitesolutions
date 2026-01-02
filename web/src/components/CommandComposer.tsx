@@ -276,30 +276,18 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { eve
              </ReactMarkdown>
              
              {options.length > 0 && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
-                  {options.map((opt: any, idx: number) => (
-                    <button 
-                      key={idx}
-                      onClick={() => onOptionClick?.(opt.query)}
-                      style={{
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 20,
-                        padding: '6px 14px',
-                        color: 'var(--text-secondary)',
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        display: 'flex', alignItems: 'center', gap: 6
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                    >
-                      <span style={{opacity:0.7}}>✨</span> {opt.label}
-                    </button>
-                  ))}
-                </div>
-             )}
+               <div className="options-container">
+                 {options.map((opt: any, idx: number) => (
+                   <button 
+                     key={idx}
+                     onClick={() => onOptionClick?.(opt.query)}
+                     className="option-btn"
+                   >
+                     <span className="option-icon">✨</span> {opt.label}
+                   </button>
+                 ))}
+               </div>
+            )}
              </>
           )}
         </div>
