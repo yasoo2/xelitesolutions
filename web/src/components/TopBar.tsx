@@ -23,6 +23,11 @@ export default function TopBar() {
   useEffect(() => {
     localStorage.setItem('theme', theme);
     document.documentElement.dataset.theme = theme;
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
   }, [theme]);
 
   useEffect(() => {

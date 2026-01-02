@@ -2748,73 +2748,76 @@ export default function CommandComposer({
         ) : null}
       </AnimatePresence>
       <div className="input-area">
-    <textarea 
-      value={text} 
-      onChange={(e) => setText(e.target.value)} 
-      placeholder={t('inputPlaceholder')}
-      dir="auto"
-      disabled={!!approval}
-      onKeyDown={e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          run();
-        }
-      }}
-    />
-        <div className="input-actions">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ 
-                width: 8, height: 8, 
-                borderRadius: '50%', 
-                backgroundColor: isConnected ? '#22c55e' : '#ef4444',
-                boxShadow: isConnected ? '0 0 6px #22c55e' : 'none',
-                transition: 'all 0.3s'
-            }} title={isConnected ? t('connected') : t('connecting')} />
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              {isConnected ? t('connected') : t('connecting')}
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
-               <button
-                 className="provider-btn"
-                 onClick={() => setShowProviders(true)}
-                 title="AI Providers"
-               >
-                 <Cpu size={20} />
-               </button>
+        <div className="input-container">
+          <textarea 
+            className="main-input"
+            value={text} 
+            onChange={(e) => setText(e.target.value)} 
+            placeholder={t('inputPlaceholder')}
+            dir="auto"
+            disabled={!!approval}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                run();
+              }
+            }}
+          />
+          <div className="input-actions">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ 
+                  width: 8, height: 8, 
+                  borderRadius: '50%', 
+                  backgroundColor: isConnected ? '#22c55e' : '#ef4444',
+                  boxShadow: isConnected ? '0 0 6px #22c55e' : 'none',
+                  transition: 'all 0.3s'
+              }} title={isConnected ? t('connected') : t('connecting')} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {isConnected ? t('connected') : t('connecting')}
+              </span>
             </div>
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              style={{ display: 'none' }}
-            />
-            <button 
-              className="mic-button"
-              onClick={() => fileInputRef.current?.click()}
-              title={t('attachFile') || "Attach file"}
-              disabled={isUploading}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: isUploading ? 0.5 : 1 }}
-            >
-              {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
-            </button>
-            <button 
-              className={`mic-button ${isVoiceMode ? 'active' : ''}`}
-              onClick={() => setIsVoiceMode(!isVoiceMode)}
-              title="Voice Mode"
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isVoiceMode ? 'var(--accent-primary)' : 'inherit', position: 'relative' }}
-            >
-              {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
-            </button>
-            <button 
-              className="send-button" 
-              onClick={() => run()}
-              disabled={!text.trim() || !!approval}
-              title={t('send')}
-            >
-              <ArrowUp size={20} />
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ position: 'relative' }}>
+                 <button
+                   className="provider-btn"
+                   onClick={() => setShowProviders(true)}
+                   title="AI Providers"
+                 >
+                   <Cpu size={20} />
+                 </button>
+              </div>
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+              <button 
+                className="mic-button"
+                onClick={() => fileInputRef.current?.click()}
+                title={t('attachFile') || "Attach file"}
+                disabled={isUploading}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: isUploading ? 0.5 : 1 }}
+              >
+                {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
+              </button>
+              <button 
+                className={`mic-button ${isVoiceMode ? 'active' : ''}`}
+                onClick={() => setIsVoiceMode(!isVoiceMode)}
+                title="Voice Mode"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isVoiceMode ? 'var(--accent-primary)' : 'inherit', position: 'relative' }}
+              >
+                {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
+              </button>
+              <button 
+                className="send-button" 
+                onClick={() => run()}
+                disabled={!text.trim() || !!approval}
+                title={t('send')}
+              >
+                <ArrowUp size={20} />
+              </button>
+            </div>
           </div>
         </div>
 
