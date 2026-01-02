@@ -21,7 +21,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.PORT || 22 }}
           script: |
-            set -u
+            set -ue
 
             REPO_URL="https://github.com/yasoo2/xelitesolutions.git"
             REPO_HINT="yasoo2/xelitesolutions"
@@ -144,6 +144,17 @@ jobs:
             $COMPOSE -f "$COMPOSE_FILE" build --pull --no-cache web
             echo "Docker restarting..."
             $COMPOSE -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web nginx
+
+            NGINX_CID="$($COMPOSE -f "$COMPOSE_FILE" ps -q nginx 2>/dev/null || true)"
+            if [ -n "$NGINX_CID" ]; then
+              echo "Nginx container: $NGINX_CID"
+              docker inspect -f 'Image={{.Image}} Created={{.Created}}' "$NGINX_CID" || true
+              docker exec "$NGINX_CID" sh -lc 'nginx -t' || true
+              docker exec "$NGINX_CID" sh -lc 'wget -qO- http://web:80/ 2>/dev/null | head -n 5' || true
+            else
+              echo "Warning: nginx container not found after deploy."
+            fi
+
             WEB_CID="$($COMPOSE -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
             if [ -n "$WEB_CID" ]; then
               echo "Web container: $WEB_CID"
@@ -152,6 +163,14 @@ jobs:
             else
               echo "Warning: web container not found after deploy."
             fi
+
+            if [ -n "$NGINX_CID" ] && [ -n "$WEB_CID" ]; then
+              echo "Nginx last logs:"
+              docker logs --tail 200 "$NGINX_CID" || true
+              echo "Web last logs:"
+              docker logs --tail 200 "$WEB_CID" || true
+            fi
+
             $COMPOSE -f "$COMPOSE_FILE" ps
             echo "Deployment finished!"
 
