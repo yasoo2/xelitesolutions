@@ -188,6 +188,28 @@ jobs:
               docker logs --tail 200 "$WEB_CID" || true
             fi
 
+            echo "Waiting for ports 80/443 to become available..."
+            ok80=0
+            ok443=0
+            for i in $(seq 1 30); do
+              if curl -fsS -o /dev/null --max-time 2 http://127.0.0.1/ 2>/dev/null; then ok80=1; fi
+              if curl -fkfsS -o /dev/null --max-time 2 https://127.0.0.1/ 2>/dev/null; then ok443=1; fi
+              if [ "$ok80" -eq 1 ] && [ "$ok443" -eq 1 ]; then
+                echo "Ports are ready."
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$ok443" -ne 1 ]; then
+              echo "HTTPS port 443 still not reachable on localhost."
+              if [ -n "${NGINX_CID:-}" ]; then
+                docker logs --tail 200 "$NGINX_CID" || true
+              fi
+              $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps || true
+              exit 1
+            fi
+
             $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
             echo "Deployment finished!"
 
@@ -195,5 +217,5 @@ jobs:
         uses: jtalk/url-health-check-action@v4
         with:
           url: https://xelitesolutions.com/
-          max-attempts: 3
-          retry-delay: 5s
+          max-attempts: 12
+          retry-delay: 10s
