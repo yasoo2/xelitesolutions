@@ -50,8 +50,8 @@ if command -v docker &> /dev/null; then
         fi
     done
 
-    $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache web
-    $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web nginx
+    $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache
+    $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
     WEB_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
     if [ -n "$WEB_CID" ]; then
         echo "Web container: $WEB_CID"

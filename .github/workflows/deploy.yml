@@ -162,11 +162,11 @@ jobs:
                 docker rm -f $ids || true
               fi
             done
-
+            
             echo "Docker building..."
-            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache web
+            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache
             echo "Docker restarting..."
-            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans web nginx
+            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
             NGINX_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q nginx 2>/dev/null || true)"
             if [ -n "$NGINX_CID" ]; then

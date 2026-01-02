@@ -3,6 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import mongoose from 'mongoose';
 import pino from 'pino';
+import bcrypt from 'bcrypt';
 import { config } from './config';
 import authRoutes from './routes/auth';
 import toolsRoutes from './routes/tools';
@@ -24,6 +25,7 @@ import http from 'http';
 import { attachWebSocket } from './ws';
 import path from 'path';
 import fs from 'fs';
+import { User } from './models/user';
 
 const logger =
   process.env.NODE_ENV === 'production'
@@ -34,6 +36,40 @@ const logger =
           options: { translateTime: 'SYS:standard', colorize: true },
         },
   });
+
+function escapeRegExp(input: string) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function ensureOwnerFromEnv() {
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminEmail || !adminPassword) return;
+  if (mongoose.connection.readyState !== 1) return;
+
+  let user = await User.findOne({ email: adminEmail });
+  if (!user) {
+    user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegExp(adminEmail)}$`, 'i') } });
+  }
+
+  if (!user) {
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+    await User.create({ email: adminEmail, passwordHash, role: 'OWNER' });
+    return;
+  }
+
+  let ok = false;
+  if (user.passwordHash) {
+    ok = await bcrypt.compare(adminPassword, user.passwordHash);
+  }
+  if (!ok || user.role !== 'OWNER' || user.email !== adminEmail) {
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+    user.email = adminEmail;
+    user.passwordHash = passwordHash;
+    user.role = 'OWNER';
+    await user.save();
+  }
+}
 
 async function main() {
   const app = express();
@@ -82,6 +118,11 @@ async function main() {
   try {
     await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
     logger.info('MongoDB connected');
+    try {
+      await ensureOwnerFromEnv();
+    } catch (e) {
+      logger.error(e, 'Owner bootstrap failed');
+    }
   } catch (e) {
     logger.error(e, 'MongoDB connection failed (continuing without DB)');
   }
