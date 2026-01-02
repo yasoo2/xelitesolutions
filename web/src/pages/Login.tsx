@@ -59,7 +59,7 @@ export default function Login() {
   }
 
   return (
-    <div className="login-page">
+    <div className="login-page-wrapper">
       <div className="login-bg-glow-1" />
       <div className="login-bg-glow-2" />
 
