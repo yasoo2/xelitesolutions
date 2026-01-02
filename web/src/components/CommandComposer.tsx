@@ -2764,28 +2764,20 @@ export default function CommandComposer({
             }}
           />
           <div className="input-actions">
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ 
-                  width: 8, height: 8, 
-                  borderRadius: '50%', 
-                  backgroundColor: isConnected ? '#22c55e' : '#ef4444',
-                  boxShadow: isConnected ? '0 0 6px #22c55e' : 'none',
-                  transition: 'all 0.3s'
-              }} title={isConnected ? t('connected') : t('connecting')} />
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <div className="connection-status" title={isConnected ? t('connected') : t('connecting')}>
+              <div className={`status-dot ${isConnected ? 'connected' : ''}`} />
+              <span className="status-text">
                 {isConnected ? t('connected') : t('connecting')}
               </span>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ position: 'relative' }}>
-                 <button
-                   className="provider-btn"
-                   onClick={() => setShowProviders(true)}
-                   title="AI Providers"
-                 >
-                   <Cpu size={20} />
-                 </button>
-              </div>
+            <div className="right-actions">
+               <button
+                 className="action-btn"
+                 onClick={() => setShowProviders(true)}
+                 title="AI Providers"
+               >
+                 <Cpu size={20} />
+               </button>
               <input 
                 type="file" 
                 ref={fileInputRef}
@@ -2793,24 +2785,22 @@ export default function CommandComposer({
                 style={{ display: 'none' }}
               />
               <button 
-                className="mic-button"
+                className="action-btn"
                 onClick={() => fileInputRef.current?.click()}
                 title={t('attachFile') || "Attach file"}
                 disabled={isUploading}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: isUploading ? 0.5 : 1 }}
               >
                 {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
               </button>
               <button 
-                className={`mic-button ${isVoiceMode ? 'active' : ''}`}
+                className={`action-btn ${isVoiceMode ? 'active' : ''}`}
                 onClick={() => setIsVoiceMode(!isVoiceMode)}
                 title="Voice Mode"
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isVoiceMode ? 'var(--accent-primary)' : 'inherit', position: 'relative' }}
               >
                 {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
               </button>
               <button 
-                className="send-button" 
+                className="send-btn" 
                 onClick={() => run()}
                 disabled={!text.trim() || !!approval}
                 title={t('send')}
@@ -2822,27 +2812,19 @@ export default function CommandComposer({
         </div>
 
         {isVoiceMode && (
-             <div style={{ padding: 10, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+             <div className="voice-controls">
                  <button 
-                     className={`voice-btn ${isListening ? 'listening' : ''}`}
+                     className={`voice-record-btn ${isListening ? 'listening' : ''}`}
                      onClick={toggleListening}
-                     style={{ 
-                         width: 50, height: 50, borderRadius: '50%', border: 'none', 
-                         background: isListening ? '#ef4444' : 'var(--accent-primary)',
-                         color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                         boxShadow: isListening ? '0 0 15px rgba(239, 68, 68, 0.5)' : 'none',
-                         transition: 'all 0.3s'
-                     }}
                  >
                      {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
                  </button>
-                 <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                     <span>{isListening ? 'Listening...' : 'Tap to Speak'}</span>
-                     <span style={{ fontSize: 10, opacity: 0.7 }}>Arabic (SA) / English (US)</span>
+                 <div className="voice-info">
+                     <span className="voice-status">{isListening ? 'Listening...' : 'Tap to Speak'}</span>
+                     <span className="voice-lang">Arabic (SA) / English (US)</span>
                  </div>
-
                  
-                 <button className="icon-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
+                 <button className="action-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
                      <Volume2 size={18} />
                  </button>
              </div>
