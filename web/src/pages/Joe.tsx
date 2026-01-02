@@ -3,7 +3,7 @@ import SessionItem from '../components/SessionItem';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader } from 'lucide-react';
 import BrowserView from '../components/BrowserView';
 
 // const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
@@ -125,13 +125,25 @@ function BrowserApp({
   );
 }
 
+import { useSessionStore } from '../store/sessionStore';
+
 export default function Joe() {
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean; folderId?: string; terminalState?: string }>>([]);
-  const [agentSessions, setAgentSessions] = useState<Array<{ id: string; title: string; lastSnippet?: string; isPinned?: boolean }>>([]);
-  const [folders, setFolders] = useState<Array<{ _id: string; name: string }>>([]);
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
-  const [selected, setSelected] = useState<string | null>(null);
-  const [agentSelected, setAgentSelected] = useState<string | null>(null);
+  const {
+    sessions,
+    agentSessions,
+    folders,
+    selected,
+    agentSelected,
+    loadingStates,
+    loadAllSessions,
+    loadFolders,
+    createFolder: createFolderAction,
+    deleteFolder,
+    deleteSession,
+    setSelected,
+    setAgentSelected,
+  } = useSessionStore();
+
   const [showSidebar, setShowSidebar] = useState(true);
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
@@ -142,6 +154,7 @@ export default function Joe() {
   const [agentComposerOpen, setAgentComposerOpen] = useState(false);
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
   const nav = useNavigate();
 
@@ -164,68 +177,18 @@ export default function Joe() {
     setSearchResults([]);
   }
 
-  async function loadSessions() {
-    const token = localStorage.getItem('token');
-    try {
-      const res = await fetch(`${API}/sessions?kind=chat`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        nav('/login');
-        return;
-      }
-      const data = await res.json();
-      const mapped = (data.sessions || []).map((s: any) => ({ ...s, id: s.id || s._id }));
-      setSessions(mapped);
-      if (!selected && mapped[0]) setSelected(mapped[0].id);
-    } catch (e) {
-      console.error('Failed to load sessions', e);
-    }
-  }
-
-  async function loadAgentSessions() {
-    const token = localStorage.getItem('token');
-    try {
-      const res = await fetch(`${API}/sessions?kind=agent`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        nav('/login');
-        return;
-      }
-      const data = await res.json();
-      const mapped = (data.sessions || []).map((s: any) => ({ ...s, id: s.id || s._id }));
-      setAgentSessions(mapped);
-      if (!agentSelected && mapped[0]) setAgentSelected(mapped[0].id);
-    } catch (e) {
-      console.error('Failed to load agent sessions', e);
-    }
-  }
-
-  async function loadFolders() {
-    const token = localStorage.getItem('token');
-    try {
-      const res = await fetch(`${API}/folders`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
-      if (res.ok) {
-        const data = await res.json();
-        setFolders(data);
-      }
-    } catch (e) {
-      console.error('Failed to load folders', e);
-    }
-  }
-
   useEffect(() => { 
-    loadSessions(); 
-    loadAgentSessions();
+    loadAllSessions(); 
     loadFolders();
   }, []);
 
   useEffect(() => {
     if (mode === 'agent') {
       setShowSidebar(false);
-      if (agentSessions.length === 0) loadAgentSessions();
+      if (agentSessions.length === 0) loadAllSessions();
     } else {
       setShowSidebar(!isNarrow);
-      if (sessions.length === 0) loadSessions();
+      if (sessions.length === 0) loadAllSessions();
     }
   }, [mode]);
 
@@ -254,26 +217,7 @@ export default function Joe() {
   async function createFolder() {
     const name = prompt('اسم المجلد الجديد:');
     if (!name) return;
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${API}/folders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
-      body: JSON.stringify({ name }),
-    });
-    if (res.ok) {
-      await loadFolders();
-    }
-  }
-
-  async function deleteFolder(id: string) {
-    if (!confirm('هل أنت متأكد من حذف هذا المجلد؟ سيتم نقل الجلسات إلى القائمة الرئيسية.')) return;
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/folders/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: token ? `Bearer ${token}` : '' },
-    });
-    await loadFolders();
-    await loadSessions(); // Refresh sessions as they might have moved
+    await createFolderAction(name);
   }
 
   async function moveSessionToFolder(sessionId: string, folderId: string | null) {
@@ -283,7 +227,7 @@ export default function Joe() {
       headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
       body: JSON.stringify({ folderId }),
     });
-    await loadSessions();
+    await loadAllSessions();
   }
 
 
@@ -302,32 +246,14 @@ export default function Joe() {
     });
     
     if (res.ok) {
-      await loadSessions();
+      await loadAllSessions();
       if (selected === sourceId) setSelected(targetId);
     }
   }
 
-  async function deleteSession(id: string) {
-    if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/sessions/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: token ? `Bearer ${token}` : '' },
-    });
-    await loadSessions();
-    if (selected === id) setSelected(null);
-  }
+  
 
-  async function deleteAgentSession(id: string) {
-    if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/sessions/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: token ? `Bearer ${token}` : '' },
-    });
-    await loadAgentSessions();
-    if (agentSelected === id) setAgentSelected(null);
-  }
+
 
   async function deleteAllSessions() {
     if (!confirm('هل أنت متأكد من حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) return;
@@ -336,7 +262,7 @@ export default function Joe() {
       method: 'DELETE',
       headers: { Authorization: token ? `Bearer ${token}` : '' },
     });
-    await loadSessions();
+    await loadAllSessions();
     setSelected(null);
   }
 
@@ -347,7 +273,7 @@ export default function Joe() {
       headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
       body: JSON.stringify({ isPinned: !currentPinned }),
     });
-    await loadSessions();
+    await loadAllSessions();
   }
 
   async function toggleAgentPin(id: string, currentPinned: boolean) {
@@ -357,7 +283,7 @@ export default function Joe() {
       headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
       body: JSON.stringify({ isPinned: !currentPinned }),
     });
-    await loadAgentSessions();
+    await loadAllSessions();
   }
 
   function shareSession(id: string) {
@@ -421,8 +347,9 @@ export default function Joe() {
               onClick={createFolder}
               className="action-icon-btn"
               title="مجلد جديد"
+              disabled={loadingStates.creatingFolder}
             >
-              <FolderPlus size={16} />
+              {loadingStates.creatingFolder ? 'جاري...' : <FolderPlus size={16} />}
             </button>
           </div>
 
@@ -454,11 +381,12 @@ export default function Joe() {
                   <Folder size={16} className="folder-icon" />
                   <span className="folder-name">{folder.name}</span>
                   <button 
-                     onClick={(e) => { e.stopPropagation(); deleteFolder(folder._id); }}
+                     onClick={(e) => { e.stopPropagation(); if (confirm('هل أنت متأكد من حذف هذا المجلد؟')) deleteFolder(folder._id); }}
                      className="action-icon-btn folder-delete-btn"
                      title="حذف المجلد"
+                     disabled={loadingStates[`deleting-folder-${folder._id}`]}
                   >
-                    <Trash2 size={14} />
+                    {loadingStates[`deleting-folder-${folder._id}`] ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
                   </button>
                 </div>
                 {expandedFolders[folder._id] && (
@@ -474,11 +402,17 @@ export default function Joe() {
                          <SessionItem 
                            session={s}
                            isActive={selected === s.id}
+                           isLoading={loadingStates[`deleting-session-${s.id}`]}
                            onSelect={() => {
                              setSelected(s.id);
+                             setSearchQuery('');
                              if (isNarrow) setShowSidebar(false);
                            }}
-                           onDelete={() => deleteSession(s.id)}
+                           onDelete={() => {
+                             if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+                             deleteSession(s.id);
+                             if (selected === s.id) setSelected(null);
+                           }}
                            onPin={() => togglePin(s.id, !!s.isPinned)}
                            onShare={() => shareSession(s.id)}
                          />
@@ -537,7 +471,11 @@ export default function Joe() {
                     setSelected(s.id);
                     if (isNarrow) setShowSidebar(false);
                   }}
-                  onDelete={() => deleteSession(s.id)}
+                  onDelete={() => {
+                    if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+                    deleteSession(s.id);
+                    if (selected === s.id) setSelected(null);
+                  }}
                   onPin={() => togglePin(s.id, !!s.isPinned)}
                   onShare={() => shareSession(s.id)}
                 />
@@ -652,8 +590,15 @@ export default function Joe() {
                         key={s.id}
                         session={s}
                         isActive={agentSelected === s.id}
-                        onSelect={() => setAgentSelected(s.id)}
-                        onDelete={() => deleteAgentSession(s.id)}
+                        onSelect={() => {
+                          setAgentSelected(s.id);
+                          if (isNarrow) setAgentSessionsOpen(false);
+                        }}
+                        onDelete={() => {
+                          if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+                          deleteSession(s.id);
+                          if (agentSelected === s.id) setAgentSelected(null);
+                        }}
                         onPin={() => toggleAgentPin(s.id, !!s.isPinned)}
                         onShare={() => shareSession(s.id)}
                       />
@@ -703,9 +648,9 @@ export default function Joe() {
                   sessionKind="agent"
                   browserSessionId={agentBrowserSessionId}
                   onSessionCreated={async (id) => {
-                    await loadAgentSessions();
-                    setAgentSelected(id);
-                  }}
+                      await loadAllSessions();
+                      setAgentSelected(id);
+                    }}
                 />
               ) : null}
             </div>
@@ -729,9 +674,9 @@ export default function Joe() {
                 sessionId={selected}
                 sessionKind="chat"
                 onSessionCreated={async (id) => {
-                  await loadSessions();
-                  setSelected(id);
-                }}
+                    await loadAllSessions();
+                    setSelected(id);
+                  }}
               />
             )}
           </div>

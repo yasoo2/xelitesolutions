@@ -8,6 +8,8 @@ import { mockDb } from '../mock/db';
 
 const router = Router();
 
+// Corresponds to Section 2 of the JOE MASTER SPEC
+// Handles user registration and login.
 router.post('/register', async (req: Request, res: Response) => {
   const { email, password, role } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Missing email/password' });
@@ -21,9 +23,13 @@ router.post('/register', async (req: Request, res: Response) => {
   } else {
     const exists = await User.findOne({ email }).lean();
     if (exists) return res.status(409).json({ error: 'Email already exists' });
-    // Block registration for non-admin users temporarily
-    if (email.toLowerCase() !== 'info.auraaluxury@gmail.com') {
-      return res.status(403).json({ error: 'Registration is currently closed' });
+    // Block registration if it's not open
+    const registrationOpen = process.env.REGISTRATION_OPEN === 'true';
+    if (!registrationOpen) {
+      const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+      if (!adminEmail || email.toLowerCase() !== adminEmail) {
+        return res.status(403).json({ error: 'Registration is currently closed' });
+      }
     }
     const user = await User.create({ email, passwordHash, role: role || 'USER' });
     return res.status(201).json({ id: user._id, email: user.email, role: user.role });
@@ -34,8 +40,11 @@ router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Missing email/password' });
 
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
   // Auto-provision specific admin user if they don't exist
-  if (email.toLowerCase() === 'info.auraaluxury@gmail.com' && password === 'younes2025') {
+  if (adminEmail && adminPassword && email.toLowerCase() === adminEmail && password === adminPassword) {
     const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
     if (!useMock) {
       let user = await User.findOne({ email });

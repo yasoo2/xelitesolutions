@@ -1,16 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { MoreVertical, Trash2, Pin, Share2, MessageSquare } from 'lucide-react';
+import { MoreVertical, Trash2, Pin, Share2, MessageSquare, Loader } from 'lucide-react';
 
 interface SessionItemProps {
   session: { id: string; title: string; lastSnippet?: string; isPinned?: boolean };
   isActive: boolean;
+  isLoading?: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onPin: () => void;
   onShare: () => void;
 }
 
-export default function SessionItem({ session, isActive, onSelect, onDelete, onPin, onShare }: SessionItemProps) {
+export default function SessionItem({ session, isActive, isLoading, onSelect, onDelete, onPin, onShare }: SessionItemProps) {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -52,9 +53,15 @@ export default function SessionItem({ session, isActive, onSelect, onDelete, onP
             <Share2 size={14} /> مشاركة
           </button>
           <div className="divider"></div>
-          <button className="delete" onClick={(e) => { e.stopPropagation(); onDelete(); setShowMenu(false); }}>
-            <Trash2 size={14} /> حذف
-          </button>
+          {isLoading ? (
+            <button className="delete" disabled>
+              <Loader size={14} className="animate-spin" /> جاري الحذف...
+            </button>
+          ) : (
+            <button className="delete" onClick={(e) => { e.stopPropagation(); onDelete(); setShowMenu(false); }}>
+              <Trash2 size={14} /> حذف
+            </button>
+          )}
         </div>
       )}
     </div>

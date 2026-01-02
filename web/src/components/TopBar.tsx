@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Sun, Moon, LogIn, LogOut, Globe, ChevronDown } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -12,11 +13,14 @@ const LANGUAGES = [
   { code: 'es', label: 'Español' }
 ];
 
+// Corresponds to Section 3 (Core Product) and Section 4 (Internationalization) of the JOE MASTER SPEC
+// Provides global navigation, theme switching, and language selection.
 export default function TopBar() {
   const { i18n, t } = useTranslation();
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('theme') as any) || 'dark');
   const [lang, setLang] = useState<string>(() => localStorage.getItem('lang') || 'en');
   const [isLangOpen, setIsLangOpen] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const langMenuRef = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
 
@@ -54,20 +58,21 @@ export default function TopBar() {
       <div className="brand" onClick={() => nav('/')}>JOE</div>
       <div className="spacer" />
       
-      <div className="topbar-actions" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginInlineStart: 'auto' }}>
+      <div className="topbar-actions">
         
         {/* Language Dropdown */}
-        <div className="lang-dropdown" ref={langMenuRef} style={{ position: 'relative' }}>
+        <div className="lang-dropdown" ref={langMenuRef}>
           <button 
             className={`lang-btn ${isLangOpen ? 'active' : ''}`}
             onClick={() => setIsLangOpen(!isLangOpen)}
-            title={currentLangLabel}
           >
             <Globe size={20} />
+            <span className="lang-label">{currentLangLabel}</span>
+            <ChevronDown size={16} className={`chevron ${isLangOpen ? 'open' : ''}`} />
           </button>
           
           {isLangOpen && (
-            <div className="lang-menu" style={{ position: 'absolute', top: '100%', right: '0', zIndex: 1000, marginTop: '8px' }}>
+            <div className="lang-menu">
               {LANGUAGES.map((l) => (
                 <button
                   key={l.code}
@@ -90,12 +95,8 @@ export default function TopBar() {
           aria-label={t('toggleTheme')}
           title={t('toggleTheme')}
           onClick={() => {
-            document.documentElement.classList.add('theme-switching');
             const next = theme === 'dark' ? 'light' : 'dark';
             setTheme(next);
-            window.setTimeout(() => {
-              document.documentElement.classList.remove('theme-switching');
-            }, 300);
           }}
         >
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
@@ -103,13 +104,10 @@ export default function TopBar() {
 
         {/* Login/Logout Button */}
         <button 
-          className={localStorage.getItem('token') ? "logout-btn" : "login-btn"}
+          className="action-btn"
           onClick={() => {
             if (localStorage.getItem('token')) {
-                if(confirm(t('confirmLogout', 'Are you sure you want to logout?'))) {
-                    localStorage.removeItem('token');
-                    nav('/login');
-                }
+              setIsConfirmOpen(true);
             } else {
                 nav('/login');
             }
@@ -119,6 +117,17 @@ export default function TopBar() {
           {localStorage.getItem('token') ? <LogOut size={20} /> : <LogIn size={20} />}
         </button>
       </div>
+      <ConfirmDialog
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={() => {
+          localStorage.removeItem('token');
+          setIsConfirmOpen(false);
+          nav('/login');
+        }}
+        title={t('confirmLogout', 'Confirm Logout')}
+        message={t('areYouSureLogout', 'Are you sure you want to logout?')}
+      />
     </div>
   );
 }

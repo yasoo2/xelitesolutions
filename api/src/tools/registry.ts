@@ -1387,39 +1387,150 @@ export const tools: ToolDefinition[] = [
   },
   {
     name: 'read_file_tree',
-    version: '1.0.0',
+    version: '1.0.1',
     tags: ['fs', 'utility'],
-    inputSchema: { type: 'object', properties: { path: { type: 'string' }, depth: { type: 'number' } }, required: [] },
-    outputSchema: { type: 'object', properties: { tree: { type: 'string' } } },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        maxDepth: { type: 'number', description: 'Maximum depth to traverse. Default is 3.' },
+        maxEntries: { type: 'number', description: 'Maximum number of entries to return. Default is 1000.' },
+        ignore: { type: 'array', items: { type: 'string' }, description: 'List of glob patterns to ignore. Default is [node_modules, .git, .DS_Store]' }
+      }
+    },
+    outputSchema: { type: 'object', properties: { entries: { type: 'array', items: { type: 'string' } } } },
     permissions: ['read'],
     sideEffects: [],
     rateLimitPerMinute: 60,
     auditFields: ['path'],
     mockSupported: false,
+    async execute(input) {
+      const logs: string[] = [];
+      const p = resolveToolPath(input?.path);
+      const maxDepth = typeof input?.maxDepth === 'number' ? input.maxDepth : 3;
+      const maxEntries = typeof input?.maxEntries === 'number' ? input.maxEntries : 1000;
+      const ignorePatterns = Array.isArray(input?.ignore) ? input.ignore : ['node_modules', '.git', '.DS_Store'];
+      
+      const entries: string[] = [];
+      let count = 0;
+
+      const { minimatch } = await import('minimatch');
+
+      function traverse(currentPath: string, depth: number) {
+        if (depth > maxDepth || count >= maxEntries) return;
+
+        const currentRelativePath = path.relative(p, currentPath);
+        if (currentRelativePath && ignorePatterns.some(pattern => minimatch(currentRelativePath, pattern, { dot: true }))) {
+          return;
+        }
+
+        try {
+          const files = fs.readdirSync(currentPath, { withFileTypes: true });
+          
+          for (const file of files) {
+            if (count >= maxEntries) return;
+
+            const fullPath = path.join(currentPath, file.name);
+            const relativePath = path.relative(p, fullPath);
+
+            if (ignorePatterns.some(pattern => minimatch(relativePath, pattern, { dot: true }))) {
+              continue;
+            }
+            
+            count++;
+            
+            if (file.isDirectory()) {
+              entries.push(relativePath + '/');
+              traverse(fullPath, depth + 1);
+            } else if (file.isSymbolicLink()) {
+              try {
+                const realPath = fs.realpathSync(fullPath);
+                const stat = fs.statSync(realPath);
+                if (stat.isDirectory()) {
+                  entries.push(relativePath + '/');
+                  traverse(realPath, depth + 1);
+                } else {
+                  entries.push(relativePath);
+                }
+              } catch (e: any) {
+                logs.push(`symlink.error=${e.message}`);
+              }
+            } else {
+              entries.push(relativePath);
+            }
+          }
+        } catch (e: any) {
+          logs.push(`readdir.error=${e.message}`);
+        }
+      }
+
+      traverse(p, 0);
+      
+      if (count >= maxEntries) {
+        logs.push(`warn_max_entries: Reached max entries limit of ${maxEntries}.`);
+      }
+      
+      return { ok: true, output: { entries: entries.slice(0, maxEntries) }, logs };
+    }
   },
-  {
-    name: 'shell_execute',
-    version: '1.0.0',
-    tags: ['system', 'shell'],
-    inputSchema: { type: 'object', properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeout: { type: 'number' } }, required: ['command'] },
-    outputSchema: { type: 'object', properties: { stdout: { type: 'string' }, stderr: { type: 'string' }, exitCode: { type: 'number' } } },
-    permissions: ['execute'],
-    sideEffects: ['execute'],
-    rateLimitPerMinute: 30,
-    auditFields: ['command'],
-    mockSupported: false,
-  },
+
   {
     name: 'file_edit',
-    version: '1.0.0',
+    version: '1.0.1',
     tags: ['fs', 'utility'],
-    inputSchema: { type: 'object', properties: { filename: { type: 'string' }, find: { type: 'string' }, replace: { type: 'string' } }, required: ['filename', 'find', 'replace'] },
-    outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
+    inputSchema: { 
+      type: 'object', 
+      properties: { 
+        filename: { type: 'string' }, 
+        find: { type: 'string' }, 
+        replace: { type: 'string' },
+        dryRun: { type: 'boolean', description: 'If true, returns the potential changes without writing to disk.' }
+      }, 
+      required: ['filename', 'find', 'replace'] 
+    },
+    outputSchema: { 
+      type: 'object', 
+      properties: { 
+        success: { type: 'boolean' },
+        changes: { type: 'string', description: 'The proposed changes if dryRun is true.' },
+        originalContent: { type: 'string' },
+        newContent: { type: 'string' }
+      } 
+    },
     permissions: ['write'],
     sideEffects: ['write'],
     rateLimitPerMinute: 60,
     auditFields: ['filename'],
     mockSupported: false,
+    async execute(input) {
+      const p = resolveToolPath(String(input?.filename));
+      const find = String(input?.find || '');
+      const replace = String(input?.replace || '');
+      const dryRun = input?.dryRun === true;
+
+      if (!fs.existsSync(p)) {
+        return { ok: false, error: 'file_not_found', logs: [`edit.fail file=${p}`] };
+      }
+
+      const originalContent = fs.readFileSync(p, 'utf-8');
+      const newContent = originalContent.replace(find, replace);
+
+      if (dryRun) {
+        const changes = `--- a/${path.basename(p)}\n+++ b/${path.basename(p)}\n... (diff preview not implemented, showing full content) ...\n\n- ${originalContent}\n+ ${newContent}`;
+        return { ok: true, output: { success: true, changes, originalContent, newContent }, logs: [`edit.dryrun file=${p}`] };
+      }
+
+      if (originalContent === newContent) {
+        return { ok: true, output: { success: false, changes: 'no_change_needed' }, logs: [`edit.nochange file=${p}`] };
+      }
+
+      try {
+        fs.writeFileSync(p, newContent, 'utf-8');
+        return { ok: true, output: { success: true }, logs: [`edit.success file=${p}`] };
+      } catch (e: any) {
+        return { ok: false, error: e.message, logs: [`edit.fail file=${p} err=${e.message}`] };
+      }
+    }
   },
   {
     name: 'knowledge_search',
@@ -1480,7 +1591,7 @@ function makeShellTool(opts: {
     version: '1.0.0',
     tags: opts.tags,
     description: opts.description,
-    inputSchema: opts.inputSchema,
+    inputSchema: { ...opts.inputSchema, properties: { ...opts.inputSchema.properties, dryRun: { type: 'boolean' } } },
     outputSchema: {
       type: 'object',
       properties: {
@@ -1488,6 +1599,8 @@ function makeShellTool(opts: {
         stderr: { type: 'string' },
         exitCode: { type: 'number' },
         cwd: { type: 'string' },
+        dryRun: { type: 'boolean' },
+        command: { type: 'string' },
       },
     },
     permissions: opts.permissions,
@@ -1497,6 +1610,9 @@ function makeShellTool(opts: {
     mockSupported: false,
     async execute(input) {
       const { command, cwd, timeout } = opts.buildCommand(input);
+      if (input?.dryRun) {
+        return { ok: true, output: { dryRun: true, command, cwd, exitCode: 0, stdout: `[dry run] command: ${command}`, stderr: '' }, logs: [`dryRun: ${command}`] };
+      }
       return executeTool('shell_execute', { command, cwd, timeout });
     },
   });
@@ -2873,7 +2989,6 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
           try {
               // Safety check: only allow digits and operators
               if (!/[^\d\s\+\-\*\/\(\)\.]/.test(q)) {
-                  // eslint-disable-next-line no-new-func
                   const res = new Function(`return ${q}`)();
                   if (typeof res === 'number' && isFinite(res)) {
                       results.push({
@@ -3395,6 +3510,11 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const command = String(input?.command ?? '');
       let cwdInput = String(input?.cwd ?? '');
       const timeoutVal = Number(input?.timeout ?? 30000);
+      const dryRun = !!input?.dryRun;
+
+      if (dryRun) {
+        return { ok: true, output: { dryRun: true, command, cwd: cwdInput, exitCode: 0, stdout: `[dry run] command: ${command}`, stderr: '' }, logs: [`dryRun: ${command}`] };
+      }
 
       // Safety: simplistic check
       if (command.includes('rm -rf /') || command.includes('sudo')) {
@@ -3427,10 +3547,6 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
         const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal, maxBuffer: 20 * 1024 * 1024 });
         
         // Update CWD if command was a cd
-        // Note: 'cd' in child_process doesn't affect parent, but we can try to guess where the user wanted to go
-        // Actually, since it's a separate process, 'cd' does nothing for the next command unless we chain it.
-        // But if the user runs "mkdir foo && cd foo", we can't easily know they want to stay in foo.
-        // However, if the command is JUST "cd path", we can simulate it.
         if (command.trim().startsWith('cd ')) {
             const target = command.trim().split(/\s+/)[1];
             if (target) {
