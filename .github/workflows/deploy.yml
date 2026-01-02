@@ -21,26 +21,60 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.PORT || 22 }}
           script: |
+            set -u
+
+            REPO_URL="https://github.com/yasoo2/xelitesolutions.git"
+            REPO_HINT="yasoo2/xelitesolutions"
+            BRANCH="main"
+
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
-            if [ -n "$DEPLOY_DIR" ]; then
-              cd "$DEPLOY_DIR"
+
+            if [ -n "${DEPLOY_DIR:-}" ] && [ -d "$DEPLOY_DIR/.git" ]; then
+              :
             else
+              DEPLOY_DIR=""
+            fi
+
+            if [ -z "${DEPLOY_DIR:-}" ]; then
               for d in /opt/joe /opt/xelitesolutions /var/www/joe /var/www/xelitesolutions /root/joe /root/xelitesolutions; do
                 if [ -d "$d/.git" ]; then
-                  cd "$d"
+                  DEPLOY_DIR="$d"
                   break
                 fi
               done
             fi
 
+            if [ -z "${DEPLOY_DIR:-}" ]; then
+              for gitdir in $(find /opt /var/www /root -maxdepth 4 -type d -name .git 2>/dev/null); do
+                parent_dir="$(dirname "$gitdir")"
+                origin_url="$(git -C "$parent_dir" remote get-url origin 2>/dev/null || true)"
+                if echo "$origin_url" | grep -q "$REPO_HINT"; then
+                  DEPLOY_DIR="$parent_dir"
+                  break
+                fi
+              done
+            fi
+
+            if [ -z "${DEPLOY_DIR:-}" ]; then
+              DEPLOY_DIR="/opt/joe"
+              mkdir -p "$DEPLOY_DIR"
+              if [ ! -d "$DEPLOY_DIR/.git" ]; then
+                echo "Repo not found on server. Cloning into $DEPLOY_DIR ..."
+                git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$DEPLOY_DIR" || {
+                  echo "Clone failed. Set secrets.DEPLOY_PATH to an existing repo path on the server." && exit 1
+                }
+              fi
+            fi
+
+            cd "$DEPLOY_DIR"
             if [ ! -d ".git" ]; then
-              echo "Repo directory not found. Set secrets.DEPLOY_PATH to the correct path." && exit 1
+              echo "Repo directory not found at: $DEPLOY_DIR. Set secrets.DEPLOY_PATH to the correct path." && exit 1
             fi
 
             echo "Working directory: $(pwd)"
             echo "Git syncing..."
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin "$BRANCH"
+            git reset --hard "origin/$BRANCH"
             echo "Deployed commit: $(git rev-parse --short HEAD)"
 
             if command -v docker-compose >/dev/null 2>&1; then
