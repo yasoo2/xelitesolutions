@@ -25,9 +25,9 @@ jobs:
             echo "Git pulling..."
             git pull origin main
             echo "Docker building..."
-            docker-compose build web
+            docker-compose -f docker-compose.production.yml build web
             echo "Docker restarting..."
-            docker-compose up -d --force-recreate web
+            docker-compose -f docker-compose.production.yml up -d --force-recreate web
             echo "Deployment finished!"
 
       - name: Verify Deployment
