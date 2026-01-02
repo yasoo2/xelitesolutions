@@ -430,10 +430,11 @@ export default function Joe() {
             {folders.map(folder => (
               <div 
                 key={folder._id}
+                className="folder-container"
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'move';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,215,0,0.1)';
+                  (e.currentTarget as HTMLElement).style.background = 'var(--accent-glow)';
                 }}
                 onDragLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.background = 'transparent';
@@ -449,19 +450,19 @@ export default function Joe() {
                   className="folder-header" 
                   onClick={() => setExpandedFolders(p => ({ ...p, [folder._id]: !p[folder._id] }))}
                 >
-                  {expandedFolders[folder._id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <Folder size={14} className="folder-icon" />
+                  {expandedFolders[folder._id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <Folder size={16} className="folder-icon" />
                   <span className="folder-name">{folder.name}</span>
                   <button 
                      onClick={(e) => { e.stopPropagation(); deleteFolder(folder._id); }}
-                     className="folder-delete-btn"
+                     className="action-icon-btn folder-delete-btn"
                      title="حذف المجلد"
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
                 {expandedFolders[folder._id] && (
-                  <div style={{ paddingRight: 16 }}>
+                  <div className="folder-content">
                     {sessions.filter(s => s.folderId === folder._id).map(s => (
                        <div 
                          key={s.id}
@@ -484,7 +485,7 @@ export default function Joe() {
                        </div>
                     ))}
                     {sessions.filter(s => s.folderId === folder._id).length === 0 && (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 8px' }}>مجلد فارغ</div>
+                      <div className="empty-folder-msg">مجلد فارغ</div>
                     )}
                   </div>
                 )}

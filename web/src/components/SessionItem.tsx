@@ -29,7 +29,7 @@ export default function SessionItem({ session, isActive, onSelect, onDelete, onP
       <button className="session-btn" onClick={onSelect}>
         <div className="session-info">
           <div className="session-title">
-             {session.isPinned && <Pin size={12} className="pin-icon" fill="currentColor" />}
+             {session.isPinned && <Pin size={12} className="pin-icon" />}
              <span>{session.title}</span>
           </div>
           {session.lastSnippet && <div className="session-snippet">{session.lastSnippet}</div>}
@@ -38,6 +38,7 @@ export default function SessionItem({ session, isActive, onSelect, onDelete, onP
       <button 
         className="menu-trigger" 
         onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+        title="المزيد من الخيارات"
       >
         <MoreVertical size={16} />
       </button>
