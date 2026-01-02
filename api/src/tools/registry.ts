@@ -1420,7 +1420,7 @@ export const tools: ToolDefinition[] = [
         if (depth > maxDepth || count >= maxEntries) return;
 
         const currentRelativePath = path.relative(p, currentPath);
-        if (currentRelativePath && ignorePatterns.some(pattern => minimatch(currentRelativePath, pattern, { dot: true }))) {
+        if (currentRelativePath && ignorePatterns.some((pattern: string) => minimatch(currentRelativePath, pattern, { dot: true }))) {
           return;
         }
 
@@ -1433,7 +1433,7 @@ export const tools: ToolDefinition[] = [
             const fullPath = path.join(currentPath, file.name);
             const relativePath = path.relative(p, fullPath);
 
-            if (ignorePatterns.some(pattern => minimatch(relativePath, pattern, { dot: true }))) {
+            if (ignorePatterns.some((pattern: string) => minimatch(relativePath, pattern, { dot: true }))) {
               continue;
             }
             
