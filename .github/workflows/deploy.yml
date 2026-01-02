@@ -21,7 +21,23 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.PORT || 22 }}
           script: |
-            cd /opt/joe
+            DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
+            if [ -n "$DEPLOY_DIR" ]; then
+              cd "$DEPLOY_DIR"
+            else
+              for d in /opt/joe /opt/xelitesolutions /var/www/joe /var/www/xelitesolutions /root/joe /root/xelitesolutions; do
+                if [ -d "$d/.git" ]; then
+                  cd "$d"
+                  break
+                fi
+              done
+            fi
+
+            if [ ! -d ".git" ]; then
+              echo "Repo directory not found. Set secrets.DEPLOY_PATH to the correct path." && exit 1
+            fi
+
+            echo "Working directory: $(pwd)"
             echo "Git syncing..."
             git fetch origin main
             git reset --hard origin/main
