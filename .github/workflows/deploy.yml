@@ -27,10 +27,37 @@ jobs:
             REPO_HINT="yasoo2/xelitesolutions"
             BRANCH="main"
 
+            bootstrap_repo_dir() {
+              target_dir="$1"
+              if [ ! -d "$target_dir" ]; then
+                return 1
+              fi
+              cd "$target_dir" || return 1
+              if [ -d ".git" ]; then
+                return 0
+              fi
+              if [ -f "docker-compose.production.yml" ] || [ -f "docker-compose.server.yml" ] || [ -d "api" ] || [ -d "web" ]; then
+                git init >/dev/null 2>&1 || return 1
+                if git remote get-url origin >/dev/null 2>&1; then
+                  git remote set-url origin "$REPO_URL" >/dev/null 2>&1 || true
+                else
+                  git remote add origin "$REPO_URL" >/dev/null 2>&1 || true
+                fi
+                git fetch --depth 1 origin "$BRANCH" || return 1
+                git reset --hard "origin/$BRANCH" || return 1
+                return 0
+              fi
+              return 1
+            }
+
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
 
-            if [ -n "${DEPLOY_DIR:-}" ] && [ -d "$DEPLOY_DIR/.git" ]; then
-              :
+            if [ -n "${DEPLOY_DIR:-}" ] && [ -d "$DEPLOY_DIR" ]; then
+              if [ ! -d "$DEPLOY_DIR/.git" ]; then
+                if ! bootstrap_repo_dir "$DEPLOY_DIR"; then
+                  DEPLOY_DIR=""
+                fi
+              fi
             else
               DEPLOY_DIR=""
             fi
@@ -56,13 +83,26 @@ jobs:
             fi
 
             if [ -z "${DEPLOY_DIR:-}" ]; then
-              DEPLOY_DIR="/opt/joe"
-              mkdir -p "$DEPLOY_DIR"
-              if [ ! -d "$DEPLOY_DIR/.git" ]; then
-                echo "Repo not found on server. Cloning into $DEPLOY_DIR ..."
-                git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$DEPLOY_DIR" || {
+              BASE_DIR="/opt/joe"
+              mkdir -p "$BASE_DIR"
+              CLONE_DIR="$BASE_DIR"
+              if [ -n "$(ls -A "$BASE_DIR" 2>/dev/null || true)" ] && [ ! -d "$BASE_DIR/.git" ]; then
+                CLONE_DIR="$BASE_DIR/xelitesolutions"
+                mkdir -p "$CLONE_DIR"
+              fi
+
+              if [ -d "$CLONE_DIR/.git" ]; then
+                DEPLOY_DIR="$CLONE_DIR"
+              elif bootstrap_repo_dir "$CLONE_DIR"; then
+                DEPLOY_DIR="$CLONE_DIR"
+              elif [ -z "$(ls -A "$CLONE_DIR" 2>/dev/null || true)" ]; then
+                echo "Repo not found on server. Cloning into $CLONE_DIR ..."
+                git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR" || {
                   echo "Clone failed. Set secrets.DEPLOY_PATH to an existing repo path on the server." && exit 1
                 }
+                DEPLOY_DIR="$CLONE_DIR"
+              else
+                echo "Repo not found and target dir is not empty: $CLONE_DIR" && ls -la "$CLONE_DIR" && exit 1
               fi
             fi
 
