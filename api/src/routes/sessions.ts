@@ -239,7 +239,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   const continueAgent = async () => {
     const MAX_STEPS = 25;
     const providerKey = String(provider || 'llm').trim().toLowerCase();
-    const plannerMock = providerKey === 'llm' || (useMock && !apiKey);
+    const plannerMock = !apiKey && !process.env.OPENAI_API_KEY;
 
     const loadHistory = async () => {
       if (useMock) {

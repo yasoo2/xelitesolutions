@@ -197,17 +197,13 @@ export async function planNextStep(
     }
   }
 
-  // 0. Mock Mode (for local testing without API Key)
-  const forceMock = options?.mock === true || providerKey === 'llm';
-  const envMock = process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true';
-  const shouldMock =
-    forceMock ||
-    (!options?.apiKey && !process.env.OPENAI_API_KEY && envMock);
+  // 0. Mock Mode (for local testing or when no API key exists)
+  const forceMock = options?.mock === true;
+  const shouldMock = forceMock || (!options?.apiKey && !process.env.OPENAI_API_KEY);
 
   console.log('[DEBUG LLM] planNextStep:', {
       providerKey,
       forceMock,
-      envMock,
       shouldMock,
       hasApiKey: !!options?.apiKey,
       hasEnvKey: !!process.env.OPENAI_API_KEY

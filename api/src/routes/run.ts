@@ -642,7 +642,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   if (model === '') model = undefined;
 
   const providerKey = String(provider || 'llm').trim().toLowerCase();
-  const plannerMock = providerKey === 'llm' || (useMock && !apiKey);
+  const plannerMock = !apiKey && !process.env.OPENAI_API_KEY;
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
 
   // 1. Process Attachments
