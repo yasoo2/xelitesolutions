@@ -1528,15 +1528,6 @@ export default function CommandComposer({
         throw new Error(String(msg).slice(0, 500));
       }
 
-      if (typeof data?.systemPrompt === 'string' && data.systemPrompt.trim() && typeof data?.systemPromptId === 'string' && data.systemPromptId.trim()) {
-        const sid = data.systemPromptId.trim();
-        const content = data.systemPrompt;
-        setEvents(prev => {
-          if (prev.some((e: any) => typeof e?.id === 'string' && e.id === sid)) return prev;
-          return [...prev, { type: 'text', id: sid, data: content, ts: Date.now() }];
-        });
-      }
-
       if (typeof data?.runId === 'string' && data.runId.trim()) {
         const rid = data.runId.trim();
         setActiveRunId(rid);
