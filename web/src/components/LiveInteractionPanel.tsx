@@ -207,7 +207,7 @@ export function LiveInteractionPanel({
           flex: 1, 
           overflowY: 'auto', 
           padding: 12, 
-          fontFamily: 'monospace', 
+          fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', 
           fontSize: 12,
           color: 'var(--text-secondary)',
           direction: activeTab === 'THOUGHTS' ? 'inherit' : 'ltr'

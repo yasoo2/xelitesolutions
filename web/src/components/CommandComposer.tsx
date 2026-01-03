@@ -2652,7 +2652,7 @@ export default function CommandComposer({
                   style={{
                     width: '100%', padding: '12px', paddingLeft: 40, borderRadius: 8,
                     background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
-                    color: '#fff', outline: 'none', fontSize: 14, fontFamily: 'monospace'
+                    color: '#fff', outline: 'none', fontSize: 14, fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
                   }}
                 />
                 <Key size={16} style={{ position: 'absolute', left: 12, top: 14, color: 'var(--text-secondary)' }} />
