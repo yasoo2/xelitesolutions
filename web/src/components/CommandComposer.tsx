@@ -228,7 +228,6 @@ interface ProviderConfig {
 }
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
-  llm: { name: 'Joe (Local)', apiKey: '', isConnected: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
   gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
@@ -331,16 +330,14 @@ export default function CommandComposer({
 
     const pickFirstKeyedProvider = () => {
       for (const [k, p] of Object.entries(baseProviders)) {
-        if (k === 'llm') continue;
         if (String(p?.apiKey || '').trim()) return k;
       }
-      return 'llm';
+      return 'openai';
     };
 
     try {
       const savedActive = localStorage.getItem('active_provider');
       if (savedActive && baseProviders[savedActive]) {
-        if (savedActive === 'llm') return { providers: baseProviders, activeProvider: 'llm' };
         if (String(baseProviders[savedActive]?.apiKey || '').trim()) return { providers: baseProviders, activeProvider: savedActive };
         return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
       }
@@ -1509,6 +1506,39 @@ export default function CommandComposer({
         effectiveBrowserSessionId = opened.sessionId;
       }
 
+      const pickFirstKeyedProvider = () => {
+        for (const [k, p] of Object.entries(providers)) {
+          if (String(p?.apiKey || '').trim()) return k;
+        }
+        return 'openai';
+      };
+
+      let providerToSend = activeProvider;
+      let providerCfgToSend = providers[providerToSend];
+      if (!String(providerCfgToSend?.apiKey || '').trim()) {
+        const keyed = pickFirstKeyedProvider();
+        providerToSend = keyed;
+        providerCfgToSend = providers[keyed];
+      }
+
+      if (!String(providerCfgToSend?.apiKey || '').trim()) {
+        setShowProviders(true);
+        setEvents((prev) => [
+          ...prev,
+          { type: 'text', data: '⚠️ يلزم إدخال API Key في إعدادات المزودين قبل التشغيل.', ts: Date.now() },
+        ]);
+        clearToolTimers();
+        clearDraftTimer();
+        setDraftActive(false);
+        setDraftText('');
+        setStatus('idle');
+        setIsThinking(false);
+        setActiveToolName(null);
+        setToolVisible(false);
+        setThinkingGlimpse('');
+        return;
+      }
+
       const res = await fetch(`${API}/runs/start`, {
         method: 'POST',
         headers: {
@@ -1521,10 +1551,10 @@ export default function CommandComposer({
           sessionKind,
           ...(sessionKind === 'agent' && effectiveBrowserSessionId ? { browserSessionId: effectiveBrowserSessionId } : {}),
           fileIds: attachedFiles.map(f => f.id),
-          provider: activeProvider,
-          apiKey: providers[activeProvider]?.apiKey,
-          baseUrl: providers[activeProvider]?.baseUrl,
-          model: providers[activeProvider]?.model
+          provider: providerToSend,
+          apiKey: providerCfgToSend?.apiKey,
+          baseUrl: providerCfgToSend?.baseUrl,
+          model: providerCfgToSend?.model
         }),
       });
       const raw = await res.text();
@@ -1624,11 +1654,6 @@ export default function CommandComposer({
   }
 
   const checkConnection = async (key: string) => {
-    if (key === 'llm') {
-      setProviders(prev => ({ ...prev, llm: { ...prev.llm, isConnected: true, isVerifying: false, lastError: undefined } }));
-      setActiveProvider('llm');
-      return;
-    }
     const p = providers[key];
     setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, lastError: undefined } }));
     
@@ -1677,7 +1702,7 @@ export default function CommandComposer({
             ...prev, 
             [key]: { ...prev[key], apiKey: '', isConnected: false } 
         }));
-        if (key !== 'llm') setActiveProvider('llm');
+        setActiveProvider('openai');
     }
   };
 

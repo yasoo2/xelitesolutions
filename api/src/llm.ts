@@ -159,6 +159,9 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
 export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
+    if (!String(process.env.OPENAI_API_KEY || '').trim()) {
+        throw new Error('NO_API_KEY_CONFIGURED');
+    }
     const msgs = [
         { role: 'system', content: 'You are a helpful assistant.' },
         ...context,
@@ -181,6 +184,10 @@ export async function planNextStep(
   options?: PlanOptions
 ) : Promise<{ name: string; input: any; thought?: string | null } | null> {
   const providerKey = String(options?.provider || '').trim().toLowerCase();
+  const optKey = String(options?.apiKey || '').trim();
+  const envKey = String(process.env.OPENAI_API_KEY || '').trim();
+  if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
+  if (!optKey && !envKey) throw new Error('NO_API_KEY_CONFIGURED');
 
   // Determine client to use
   let client = openai;
@@ -189,7 +196,7 @@ export async function planNextStep(
     const isDefaultBaseUrl = !options.baseUrl || options.baseUrl === process.env.OPENAI_BASE_URL;
 
     if (!isDefaultKey || !isDefaultBaseUrl) {
-      const keyToUse = options?.apiKey || process.env.OPENAI_API_KEY || 'dummy';
+      const keyToUse = optKey || envKey;
       client = new OpenAI({
         apiKey: keyToUse,
         baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL,
@@ -197,9 +204,8 @@ export async function planNextStep(
     }
   }
 
-  // 0. Mock Mode (for local testing or when no API key exists)
-  const forceMock = options?.mock === true;
-  const shouldMock = forceMock || (!options?.apiKey && !process.env.OPENAI_API_KEY);
+  const forceMock = false;
+  const shouldMock = false;
 
   console.log('[DEBUG LLM] planNextStep:', {
       providerKey,

@@ -548,7 +548,7 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
   const providerKey = String(provider || '').trim().toLowerCase();
   
   if (!providerKey || providerKey === 'llm') {
-    return res.json({ status: 'ok', message: 'Local mode is available.', mock: useMock });
+    return res.status(400).json({ error: 'مزود llm المحلي مُعطّل. اختر مزودًا وأدخل API Key.' });
   }
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
@@ -641,9 +641,25 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   if (baseUrl === '') baseUrl = undefined;
   if (model === '') model = undefined;
 
-  const providerKey = String(provider || 'llm').trim().toLowerCase();
-  const plannerMock = !apiKey && !process.env.OPENAI_API_KEY;
+  const providerKey = String(provider || 'openai').trim().toLowerCase();
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
+  const hasAnyKey = Boolean((typeof apiKey === 'string' && apiKey.trim()) || (typeof process.env.OPENAI_API_KEY === 'string' && process.env.OPENAI_API_KEY.trim()));
+
+  if (providerKey === 'llm') {
+    return res.status(400).json({
+      error: '⚠️ مزوّد llm المحلي مُعطّل. اختر مزوّدًا من زر المزودين وأدخل API Key.',
+    });
+  }
+  if (!hasAnyKey) {
+    return res.status(400).json({
+      error: '⚠️ لا يوجد API Key. أدخل مفتاح المزود من زر المزودين قبل التشغيل.',
+    });
+  }
+  if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
+    return res.status(400).json({
+      error: `⚠️ المزوّد "${providerKey}" يحتاج Base URL متوافق مع OpenAI (أو اختر OpenAI).`,
+    });
+  }
 
   // 1. Process Attachments
   let attachedText = '';
@@ -902,7 +918,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         // Use full history for planning to ensure context awareness
         initialPlan = await planNextStep(
           history,
-          { provider, apiKey, baseUrl, model, mock: plannerMock }
+          { provider, apiKey, baseUrl, model, throwOnError: true }
         );
       }
   } catch (err) {
@@ -1011,24 +1027,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     } else {
         // Plan next step with history
         try {
-            // Performance: Skip validation for default provider to save ms
-            if (!useMock && providerKey && providerKey !== 'llm' && providerKey !== 'openai' && !hasBaseUrl) {
-              const msg = `⚠️ **Provider Not Configured**\nProvider "${providerKey}" requires an OpenAI-compatible Base URL (or select OpenAI).`;
-
-              ev({ type: 'text', data: msg });
-              forcedText = msg;
-              assistantTextEmitted = true;
-              break;
-            }
-
-            // If default provider and no API key, do not throw (allow heuristic fallback)
-            // If custom provider or API key provided, throw on error to notify user
-            const shouldThrow = Boolean(apiKey || (provider !== 'llm' && provider));
-            
-            const isSystemConfigured = !!process.env.OPENAI_API_KEY;
-            const throwOnError = !!apiKey || (provider && provider !== 'llm') || isSystemConfigured;
-
-            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError, mock: plannerMock });
+            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
         } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
             const status = errorStatusCode(err);
@@ -1048,73 +1047,20 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                assistantTextEmitted = true;
                break;
             }
-            if (plannerMock || !apiKey) {
-              try {
-                plan = await planNextStep(history, { provider: 'llm', throwOnError: false, mock: true });
-              } catch {}
-            }
             if (!plan) plan = null;
         }
     }
 
     if (!plan) {
-      // Fallback if LLM fails
-      if (steps === 0) {
-        const userTextForOverrides = String(text || '');
-        const wantsGithubRepo =
-          /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
-          /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
-          /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
-
-        if (wantsGithubRepo) {
-          const requested = extractRequestedRepoName(userTextForOverrides);
-          if (requested) {
-            plan = {
-              name: 'github_create_repo',
-              input: {
-                name: requested,
-                private: /(private|خاص)/i.test(userTextForOverrides),
-                sessionId: String(sessionId),
-              },
-            } as any;
-          }
-        }
-        if (!plan) {
-          const wf = detectWorkflow(userTextForOverrides);
-          if (wf) {
-            plan = {
-              name: 'project_detect',
-              input: { path: '.' },
-            } as any;
-          }
-        }
-      }
-      
-      if (!plan) {
-          if (!apiKey) {
-            try {
-              plan = await planNextStep(history, { provider: 'llm', throwOnError: false, mock: true });
-            } catch {}
-          }
-      }
-
-      if (!plan) {
-          if (steps !== 0) break;
-          // If heuristics also failed (returned null), we have no way to handle this request.
-          // This ensures we rely on AI Keys or specific hardcoded tools (browser, etc) only.
-          const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
-          const extra = lastPlanError ? `\n\nDetails: ${lastPlanError}${hint ? `\n${hint}` : ''}` : '';
-          const msg = lastPlanError && isProviderAuthError(null, lastPlanError)
-              ? `⚠️ **Authentication Failed**\nThe AI provider rejected the API key. Please verify the key and provider endpoint in the settings.${extra}`
-              : (!process.env.OPENAI_API_KEY && !apiKey 
-                  ? "⚠️ **No Intelligence Found**\nPlease add your OpenAI or Anthropic API Key in the settings menu to enable Joe AI."
-                  : `⚠️ **Connection Error**\nFailed to connect to the AI provider. Please check your internet connection or API key settings.${extra}`);
-          
-          ev({ type: 'text', data: msg });
-          forcedText = msg;
-          assistantTextEmitted = true;
-          break;
-      }
+      const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+      const extra = lastPlanError ? `\n\nDetails: ${lastPlanError}${hint ? `\n${hint}` : ''}` : '';
+      const msg = lastPlanError && isProviderAuthError(null, lastPlanError)
+        ? `⚠️ فشل التحقق من المفتاح\nالمزوّد رفض الـ API Key. تحقق من المفتاح وإعدادات المزود.${extra}`
+        : `⚠️ تعذّر التخطيط للخطوة التالية عبر المزود.\nتحقق من المزوّد/الموديل/الـ Base URL ثم أعد المحاولة.${extra}`;
+      ev({ type: 'text', data: msg });
+      forcedText = msg;
+      assistantTextEmitted = true;
+      break;
     }
     
     let planName = String(plan?.name || '');
@@ -1141,8 +1087,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
              if (!thoughtLoopPauseEmitted) {
                  const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
                  const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+                 const providerLabel = String(providerKey || 'llm').trim() || 'llm';
+                 const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
+                 const keyLabel = apiKey ? 'موجود' : (process.env.OPENAI_API_KEY ? 'موجود (System)' : 'غير موجود');
+                 const baseHost = hostFromUrlMaybe(baseUrl);
                  const msg = [
                    `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
+                   `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
+                   `- المفتاح: ${keyLabel}`,
                    needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
                    hint ? `${hint}` : ``,
                  ].filter(Boolean).join('\n');
@@ -1630,9 +1582,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     if (result.ok && plan?.name === 'echo') {
       const text = result.output?.text;
       if (text) {
-        forcedText = text;
-        ev({ type: 'text', data: text });
+        const s = String(text).trim();
+        forcedText = s;
+        ev({ type: 'text', data: s });
         assistantTextEmitted = true;
+        if (s && !/^\(system\)/i.test(s)) break;
       }
     }
 
