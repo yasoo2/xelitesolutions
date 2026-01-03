@@ -303,6 +303,10 @@ export default function CommandComposer({
 }) {
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
+  const handleUnauthorized = () => {
+    localStorage.removeItem('token');
+    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+  };
   const [text, setText] = useState('');
   const [currentThought, setCurrentThought] = useState('');
   const [displayedThought, setDisplayedThought] = useState('');
@@ -782,6 +786,11 @@ export default function CommandComposer({
             body: JSON.stringify({ text, voice: 'onyx' })
          });
          
+         if (res.status === 401) {
+            handleUnauthorized();
+            setIsSpeaking(false);
+            return;
+         }
          if (res.ok) {
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
@@ -1365,6 +1374,10 @@ export default function CommandComposer({
       const res = await fetch(`${API}/sessions/${id}/history`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.events)) {
@@ -1395,6 +1408,10 @@ export default function CommandComposer({
         body: formData,
       });
 
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setAttachedFiles(prev => [...prev, { id: data.file.id, name: data.file.originalName }]);
@@ -1471,7 +1488,7 @@ export default function CommandComposer({
 
       const token = localStorage.getItem('token');
       try {
-        await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
+        const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1479,6 +1496,11 @@ export default function CommandComposer({
           },
           body: JSON.stringify({ key, value: val }),
         });
+        if (res.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         setSecretPrompt(null);
         lastGateSigRef.current.secret = undefined;
         setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
@@ -1615,6 +1637,10 @@ export default function CommandComposer({
       } catch {
         data = null;
       }
+      if (res.status === 401) {
+        handleUnauthorized();
+        throw new Error(t('unauthorized', 'Unauthorized'));
+      }
       if (!res.ok) {
         const msg = data?.error || raw || `HTTP ${res.status}`;
         throw new Error(String(msg).slice(0, 500));
@@ -1694,7 +1720,7 @@ export default function CommandComposer({
   async function approve(decision: 'approved' | 'denied') {
     if (!approval) return;
     const token = localStorage.getItem('token');
-    await fetch(`${API}/approvals/${approval.id}/decision`, {
+    const res = await fetch(`${API}/approvals/${approval.id}/decision`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1702,6 +1728,11 @@ export default function CommandComposer({
       },
       body: JSON.stringify({ decision }),
     });
+    if (res.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     setApproval(null);
   }
 
@@ -1730,6 +1761,10 @@ export default function CommandComposer({
             })
         });
         
+        if (res.status === 401) {
+            handleUnauthorized();
+            throw new Error(t('unauthorized', 'Unauthorized'));
+        }
         const data = await res.json();
         
         if (res.ok) {
@@ -2612,14 +2647,19 @@ export default function CommandComposer({
                              const key = secretPrompt.key;
                              setSecretPrompt(null);
                              setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
-                             
+                            
                              const token = localStorage.getItem('token');
                              try {
-                                await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
+                                const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                                   body: JSON.stringify({ key, value: val }),
                                 });
+                                if (res.status === 401) {
+                                  handleUnauthorized();
+                                  return;
+                                }
+                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                                 setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
                              } catch (err) {
                                 setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);

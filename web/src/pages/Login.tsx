@@ -13,18 +13,27 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
+
   async function register() {
     setError(null);
     setLoading(true);
     try {
+      const emailNormalized = email.trim();
       const res = await fetch(`${API}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, role: 'OWNER' }),
+        body: JSON.stringify({ email: emailNormalized, password }),
       });
       if (!res.ok) {
-        const text = await res.text();
-        setError(text);
+        const raw = await res.text();
+        let data: any = null;
+        try {
+          data = raw ? JSON.parse(raw) : null;
+        } catch {
+          data = null;
+        }
+        setError(data?.error || raw || t('registration_failed', 'Registration failed'));
         return;
       }
       await login();
@@ -39,14 +48,21 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
+      const emailNormalized = email.trim();
       const res = await fetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: emailNormalized, password }),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data: any = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = null;
+      }
       if (!res.ok) {
-        setError(data?.error || 'Login failed');
+        setError(data?.error || raw || t('login_failed', 'Login failed'));
         return;
       }
       localStorage.setItem('token', data.token);
@@ -86,7 +102,13 @@ export default function Login() {
           </div>
         </div>
 
-        <div className="login-form">
+        <form
+          className="login-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            login();
+          }}
+        >
           {error && <div className="login-error">{error}</div>}
           
           <div className="login-input-group">
@@ -96,6 +118,11 @@ export default function Login() {
                 className="login-input" 
                 value={email} 
                 onChange={e => setEmail(e.target.value)} 
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="you@example.com"
               />
               <Mail size={18} className="input-icon-start" />
@@ -110,14 +137,15 @@ export default function Login() {
                 value={password} 
                 onChange={e => setPassword(e.target.value)} 
                 type={showPassword ? 'text' : 'password'} 
+                autoComplete="current-password"
                 placeholder="••••••••"
-                onKeyDown={e => e.key === 'Enter' && login()}
               />
               <Lock size={18} className="input-icon-start" />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="input-icon-end"
+                aria-label={showPassword ? t('hide_password', 'Hide password') : t('show_password', 'Show password')}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -125,18 +153,18 @@ export default function Login() {
           </div>
 
           <div className="login-actions">
-            <button className="login-submit-btn" onClick={login} disabled={loading}>
+            <button className="login-submit-btn" type="submit" disabled={!canSubmit}>
               {loading ? '...' : (
                 <>
                   <LogIn size={20} style={{ marginInlineEnd: 8 }} /> {t('login')}
                 </>
               )}
             </button>
-            <button className="login-register-btn" onClick={register} disabled={loading}>
+            <button className="login-register-btn" type="button" onClick={register} disabled={!canSubmit}>
               <UserPlus size={18} style={{ marginInlineEnd: 8 }} /> {t('register')}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );
