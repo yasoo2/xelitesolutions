@@ -621,18 +621,22 @@ export default function CommandComposer({
     const steps = order.map((key) => stepsByKey.get(key)).filter(Boolean);
 
     const formatStepName = (name: string) => {
+      if (name === 'plan') return t('tools.plan');
       if (name.startsWith('thinking_step_')) {
         const n = name.replace('thinking_step_', '');
-        return `Plan #${n}`;
+        return t('planNumber', { n });
       }
-      if (name.startsWith('execute:')) return `Execute: ${name.slice('execute:'.length)}`;
+      if (name.startsWith('execute:')) {
+        const tool = name.slice('execute:'.length).trim();
+        return t('executePrefix', { tool: tool || t('toolCategoryGeneric') });
+      }
       return name;
     };
 
     const displaySteps = steps.map((s: any) => ({ ...s, displayName: formatStepName(String(s.name || '')) }));
 
     return { steps: displaySteps, logs, artifacts, timeline };
-  }, [events]);
+  }, [events, t]);
 
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -1771,11 +1775,15 @@ export default function CommandComposer({
   };
 
   const formatStepDisplayName = (name: string) => {
+    if (name === 'plan') return t('tools.plan');
     if (name.startsWith('thinking_step_')) {
       const n = name.replace('thinking_step_', '');
-      return `Plan #${n}`;
+      return t('planNumber', { n });
     }
-    if (name.startsWith('execute:')) return `Execute: ${name.slice('execute:'.length)}`;
+    if (name.startsWith('execute:')) {
+      const tool = name.slice('execute:'.length).trim();
+      return t('executePrefix', { tool: tool || t('toolCategoryGeneric') });
+    }
     return name;
   };
 
@@ -1803,26 +1811,26 @@ export default function CommandComposer({
   };
 
   const toolUi = (toolName: string) => {
-    const t = toolName.toLowerCase();
-    if (t.includes('web_search') || t.includes('knowledge_search') || t.includes('deep_research')) {
-      return { label: 'بحث', Icon: Search, color: 'var(--accent-primary)', bg: 'rgba(var(--accent-primary-rgb),0.08)', border: 'rgba(var(--accent-primary-rgb),0.35)' };
+    const lowerTool = toolName.toLowerCase();
+    if (lowerTool.includes('web_search') || lowerTool.includes('knowledge_search') || lowerTool.includes('deep_research')) {
+      return { label: t('toolCategorySearch'), Icon: Search, color: 'var(--accent-primary)', bg: 'rgba(var(--accent-primary-rgb),0.08)', border: 'rgba(var(--accent-primary-rgb),0.35)' };
     }
-    if (t.includes('file_read') || t.includes('read_file_tree') || t === 'ls' || t.includes('grep_search')) {
-      return { label: 'قراءة ملف', Icon: FileText, color: 'var(--accent-secondary)', bg: 'rgba(var(--accent-secondary-rgb),0.08)', border: 'rgba(var(--accent-secondary-rgb),0.35)' };
+    if (lowerTool.includes('file_read') || lowerTool.includes('read_file_tree') || lowerTool === 'ls' || lowerTool.includes('grep_search')) {
+      return { label: t('toolCategoryRead'), Icon: FileText, color: 'var(--accent-secondary)', bg: 'rgba(var(--accent-secondary-rgb),0.08)', border: 'rgba(var(--accent-secondary-rgb),0.35)' };
     }
-    if (t.includes('file_edit') || t.includes('file_write') || t.includes('scaffold_project')) {
-      return { label: 'تعديل/كتابة ملف', Icon: FileCode, color: '#22c55e', bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.35)' };
+    if (lowerTool.includes('file_edit') || lowerTool.includes('file_write') || lowerTool.includes('scaffold_project')) {
+      return { label: t('toolCategoryWrite'), Icon: FileCode, color: '#22c55e', bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.35)' };
     }
-    if (t.includes('shell_execute') || t.includes('install_dependencies') || t.includes('check_syntax')) {
-      return { label: 'تنفيذ أوامر', Icon: Terminal, color: 'var(--accent-secondary)', bg: 'rgba(var(--accent-secondary-rgb),0.08)', border: 'rgba(var(--accent-secondary-rgb),0.35)' };
+    if (lowerTool.includes('shell_execute') || lowerTool.includes('install_dependencies') || lowerTool.includes('check_syntax')) {
+      return { label: t('toolCategoryShell'), Icon: Terminal, color: 'var(--accent-secondary)', bg: 'rgba(var(--accent-secondary-rgb),0.08)', border: 'rgba(var(--accent-secondary-rgb),0.35)' };
     }
-    if (t.includes('browser_')) {
-      return { label: 'تصفح/معاينة', Icon: Eye, color: 'var(--accent-primary)', bg: 'rgba(var(--accent-primary-rgb),0.08)', border: 'rgba(var(--accent-primary-rgb),0.35)' };
+    if (lowerTool.includes('browser_')) {
+      return { label: t('toolCategoryBrowse'), Icon: Eye, color: 'var(--accent-primary)', bg: 'rgba(var(--accent-primary-rgb),0.08)', border: 'rgba(var(--accent-primary-rgb),0.35)' };
     }
-    if (t.includes('image_generate')) {
-      return { label: 'توليد صورة', Icon: ImageIcon, color: '#eab308', bg: 'rgba(234,179,8,0.08)', border: 'rgba(234,179,8,0.35)' };
+    if (lowerTool.includes('image_generate')) {
+      return { label: t('toolCategoryImage'), Icon: ImageIcon, color: '#eab308', bg: 'rgba(234,179,8,0.08)', border: 'rgba(234,179,8,0.35)' };
     }
-    return { label: 'أداة', Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
+    return { label: t('toolCategoryGeneric'), Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
   };
 
   const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
@@ -2155,13 +2163,13 @@ export default function CommandComposer({
                   <div className="activity-header">
                     <div className="activity-title">
                       <Cpu size={18} className="text-accent" />
-                      <span>{steps.length ? 'Agent Activity' : 'Initializing...'}</span>
+                      <span>{steps.length ? t('agentActivity') : t('initializing')}</span>
                     </div>
                     <div className="activity-meta">
                       {status === 'running' && <Loader2 size={14} className="spin text-accent" />}
                       {status === 'done' && <CheckCircle2 size={14} className="text-success" />}
                       {status === 'failed' && <XCircle size={14} className="text-danger" />}
-                      <span>{steps.length} Steps</span>
+                      <span>{steps.length} {t('stepsLabel')}</span>
                       {totalDuration > 0 && <span>• {(totalDuration / 1000).toFixed(1)}s</span>}
                       {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </div>
@@ -2180,7 +2188,7 @@ export default function CommandComposer({
                           const toolName = getToolNameFromStep(stepName);
                           const meta = toolName
                             ? toolUi(toolName)
-                            : { label: 'Step', Icon: Sparkles, color: 'var(--text-secondary)' };
+                            : { label: t('stepLabel'), Icon: Sparkles, color: 'var(--text-secondary)' };
                           const isExpandedStep = !!expandedStepKeys[s.key];
                           const toggleStep = (ev: any) => {
                             ev.stopPropagation();
@@ -2191,24 +2199,36 @@ export default function CommandComposer({
                           const failed = s.status === 'failed';
                           const running = s.status === 'running';
                           const dur = typeof s.duration === 'number' ? s.duration : undefined;
-                          const title = toolName || s.displayName || formatStepDisplayName(stepName);
+                          const title = (() => {
+                            if (stepName === 'plan') return t('tools.plan');
+                            if (stepName.startsWith('thinking_step_')) {
+                              const n = stepName.replace('thinking_step_', '');
+                              return t('planNumber', { n });
+                            }
+                            if (toolName) {
+                              const generic = t('toolCategoryGeneric');
+                              const toolLabel = meta.label === generic ? toolName : meta.label;
+                              return t('executePrefix', { tool: toolLabel });
+                            }
+                            return s.displayName || formatStepDisplayName(stepName);
+                          })();
                           const input = s.input;
                           const result = s.result;
                           const output = result?.output;
-                          const logs = logsByRunId.get(rid) || []; // We might want step-specific logs if available
+                          const logs = logsByRunId.get(rid) || [];
 
                           return (
                             <div key={s.key} className="step-item">
                               <div className="step-header" onClick={toggleStep}>
                                 <div className="step-title">
                                   <meta.Icon size={16} style={{ color: meta.color }} />
-                                  <span style={{ color: ok ? 'var(--text-primary)' : failed ? 'var(--danger)' : 'var(--accent)' }}>
+                                  <span style={{ color: ok ? 'var(--text-primary)' : failed ? 'var(--accent-danger)' : 'var(--accent-primary)' }}>
                                     {title}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   <span className={`step-badge ${ok ? 'success' : failed ? 'danger' : 'running'}`}>
-                                    {running ? 'Running' : ok ? 'Done' : 'Failed'}
+                                    {running ? t('statusRunning') : ok ? t('statusDone') : t('statusFailed')}
                                   </span>
                                   {dur && <span className="text-xs text-muted">{(dur / 1000).toFixed(1)}s</span>}
                                   {isExpandedStep ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -2225,19 +2245,19 @@ export default function CommandComposer({
                                   >
                                     {input && (
                                       <div className="mb-2">
-                                        <div className="text-xs font-bold text-muted mb-1">INPUT</div>
+                                        <div className="text-xs font-bold text-muted mb-1">{t('inputs')}</div>
                                         <div className="text-xs text-secondary whitespace-pre-wrap">{formatValue(input)}</div>
                                       </div>
                                     )}
                                     {output && (
                                       <div>
-                                        <div className="text-xs font-bold text-muted mb-1">OUTPUT</div>
+                                        <div className="text-xs font-bold text-muted mb-1">{t('outputs')}</div>
                                         <div className="text-xs text-secondary whitespace-pre-wrap">{formatValue(output)}</div>
                                       </div>
                                     )}
                                     {s.error && (
                                       <div className="mt-2 text-danger text-xs whitespace-pre-wrap">
-                                        Error: {String(s.error)}
+                                        {t('errorPrefix')}: {String(s.error)}
                                       </div>
                                     )}
                                   </motion.div>
@@ -2247,19 +2267,17 @@ export default function CommandComposer({
                           );
                         })}
                         
-                        {logs.length > 0 && (
-                           <div className="step-item">
-                              <div className="step-header">
-                                 <div className="step-title">
-                                    <Terminal size={16} />
-                                    <span>System Logs</span>
-                                 </div>
-                              </div>
-                              <div className="log-viewer">
-                                 {logs.join('\n')}
-                              </div>
-                           </div>
-                        )}
+                        <div className="step-item">
+                          <div className="step-header" style={{ cursor: 'default' }}>
+                            <div className="step-title">
+                              <Terminal size={16} />
+                              <span>{t('systemLogs')}</span>
+                            </div>
+                          </div>
+                          <div className="log-viewer" dir="ltr">
+                            {logs.length ? logs.join('\n') : t('systemLogsEmpty')}
+                          </div>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
