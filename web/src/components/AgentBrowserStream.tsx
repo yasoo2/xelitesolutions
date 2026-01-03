@@ -82,13 +82,21 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [loginMode, setLoginMode] = useState<boolean>(false);
   const [timelineEnabled, setTimelineEnabled] = useState<boolean>(false);
   const [timeline, setTimeline] = useState<Array<{ ts: number; jpegBase64: string }>>([]);
+  const [timelineEvents, setTimelineEvents] = useState<Array<{ ts: number; kind: 'action' | 'error' | 'click' | 'url'; text: string }>>([]);
   const [replayMode, setReplayMode] = useState<boolean>(false);
   const [replayIndex, setReplayIndex] = useState<number>(0);
+  const [replayPlaying, setReplayPlaying] = useState<boolean>(false);
   const lastTimelinePushAtRef = useRef<number>(0);
+  const prevStreamPausedRef = useRef<boolean>(false);
   const pendingFrameRef = useRef<string | null>(null);
   const decodingFrameRef = useRef<boolean>(false);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const lastCanvasSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+  const MAX_TIMELINE_FRAMES = 90;
+  const MAX_TIMELINE_EVENTS = 140;
+
+  const [quickSearchQuery, setQuickSearchQuery] = useState<string>('');
+  const [quickClickText, setQuickClickText] = useState<string>('');
 
   useEffect(() => {
     if (!minimal) return;
@@ -166,7 +174,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!sessionId) return;
 
     // Check for WS optimization
-    const wsActions = ['mouseMove', 'click', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
+    const wsActions = ['mouseMove', 'click', 'clickText', 'fillByLabel', 'searchGoogle', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
     const canUseWs = wsRef.current && 
                      wsRef.current.readyState === WebSocket.OPEN && 
                      actions.every(a => wsActions.includes(a.type));
@@ -498,6 +506,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             }
             if (msg.type === 'cursor_click') {
               setCursor({ x: msg.x, y: msg.y });
+              if (timelineEnabled && !replayMode) {
+                const now = Date.now();
+                setTimelineEvents(prev => [...prev, { ts: now, kind: 'click' as const, text: `${Math.round(msg.x)},${Math.round(msg.y)}` }].slice(-MAX_TIMELINE_EVENTS));
+              }
               const clickEl = document.createElement('div');
               const s = sizeRef.current;
               clickEl.style.cssText = `
@@ -521,9 +533,16 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               if (a.type === 'goto') text = `Opening ${new URL(a.url).hostname}...`;
               if (a.type === 'type') text = `Typing...`;
               if (a.type === 'click') text = `Clicking...`;
+              if (a.type === 'clickText') text = `Clicking text...`;
+              if (a.type === 'fillByLabel') text = `Filling field...`;
+              if (a.type === 'searchGoogle') text = `Searching Google...`;
               if (a.type === 'scroll') text = `Scrolling...`;
               if (a.type === 'screenshot') text = `Capturing View...`;
               setOverlay(text);
+              if (timelineEnabled && !replayMode) {
+                const now = Date.now();
+                setTimelineEvents(prev => [...prev, { ts: now, kind: 'action' as const, text: String(text) }].slice(-MAX_TIMELINE_EVENTS));
+              }
             }
             if (msg.type === 'action_done') {
               setTimeout(() => setOverlay(''), 500);
@@ -531,14 +550,26 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             if (msg.type === 'action_error') {
               setOverlay(String(msg.error || 'Action error'));
               setTimeout(() => setOverlay(''), 1500);
+              if (timelineEnabled && !replayMode) {
+                const now = Date.now();
+                setTimelineEvents(prev => [...prev, { ts: now, kind: 'error' as const, text: String(msg.error || 'Action error') }].slice(-MAX_TIMELINE_EVENTS));
+              }
+            }
+            if (msg.type === 'url' && typeof msg.url === 'string') {
+              if (timelineEnabled && !replayMode) {
+                const now = Date.now();
+                let host = msg.url;
+                try { host = new URL(msg.url).hostname; } catch {}
+                setTimelineEvents(prev => [...prev, { ts: now, kind: 'url' as const, text: host }].slice(-MAX_TIMELINE_EVENTS));
+              }
             }
             if (msg.type === 'frame') {
-              if (timelineEnabled && typeof msg.jpegBase64 === 'string') {
+              if (timelineEnabled && !replayMode && typeof msg.jpegBase64 === 'string') {
                 const now = Date.now();
                 if (now - lastTimelinePushAtRef.current >= 800) {
                   lastTimelinePushAtRef.current = now;
                   setTimeline(prev => {
-                    const next = [...prev, { ts: Number(msg.ts || now), jpegBase64: msg.jpegBase64 }].slice(-30);
+                    const next = [...prev, { ts: Number(msg.ts || now), jpegBase64: msg.jpegBase64 }].slice(-MAX_TIMELINE_FRAMES);
                     return next;
                   });
                 }
@@ -573,6 +604,23 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       wsRef.current = null;
     };
   }, [wsUrl, reconnectNonce]);
+
+  useEffect(() => {
+    if (!replayMode) return;
+    if (!replayPlaying) return;
+    if (timeline.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setReplayIndex((i) => {
+        const last = Math.max(0, timeline.length - 1);
+        if (i >= last) {
+          setReplayPlaying(false);
+          return i;
+        }
+        return i + 1;
+      });
+    }, 800);
+    return () => window.clearInterval(timer);
+  }, [replayMode, replayPlaying, timeline.length]);
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!controlEnabled) return;
@@ -1400,8 +1448,18 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               </label>
               <button
                 onClick={() => {
-                  setReplayMode(v => !v);
-                  setStreamPaused(true);
+                  if (!replayMode) {
+                    prevStreamPausedRef.current = streamPaused;
+                    setStreamPaused(true);
+                    if (!timelineEnabled) setTimelineEnabled(true);
+                    setReplayMode(true);
+                    setReplayPlaying(false);
+                    setReplayIndex(i => Math.min(i, Math.max(0, timeline.length - 1)));
+                  } else {
+                    setReplayMode(false);
+                    setReplayPlaying(false);
+                    setStreamPaused(prevStreamPausedRef.current);
+                  }
                 }}
                 className="btn"
               >
@@ -1412,6 +1470,22 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
             {replayMode && timeline.length ? (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setReplayPlaying(v => !v)}
+                  className="btn"
+                  disabled={timeline.length <= 1}
+                  style={{ opacity: timeline.length <= 1 ? 0.6 : 1 }}
+                >
+                  {replayPlaying ? 'إيقاف' : 'تشغيل'}
+                </button>
+                <button
+                  onClick={() => { setReplayPlaying(false); setReplayIndex(0); }}
+                  className="btn"
+                  disabled={timeline.length <= 1}
+                  style={{ opacity: timeline.length <= 1 ? 0.6 : 1 }}
+                >
+                  بداية
+                </button>
                 <input
                   type="range"
                   min={0}
@@ -1425,6 +1499,95 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 </div>
               </div>
             ) : null}
+
+            {replayMode && timeline.length ? (
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }}>
+                {timeline.map((f, idx) => (
+                  <button
+                    key={`${f.ts}-${idx}`}
+                    onClick={() => { setReplayPlaying(false); setReplayIndex(idx); }}
+                    style={{
+                      border: idx === replayIndex ? '2px solid rgba(37, 99, 235, 0.9)' : '1px solid var(--border-color)',
+                      padding: 0,
+                      borderRadius: 8,
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      flex: '0 0 auto',
+                    }}
+                    title={new Date(f.ts).toLocaleTimeString()}
+                  >
+                    <img
+                      src={`data:image/jpeg;base64,${f.jpegBase64}`}
+                      alt=""
+                      style={{ display: 'block', width: 110, height: 70, objectFit: 'cover', borderRadius: 6 }}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {replayMode && timeline.length ? (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 240, flex: '1 1 240px' }} dir="auto">
+                  {(() => {
+                    const ts = timeline[replayIndex]?.ts;
+                    if (!ts) return null;
+                    const near = timelineEvents.filter(e => Math.abs(e.ts - ts) <= 1500).slice(-8);
+                    if (!near.length) return <div>لا توجد أحداث قريبة</div>;
+                    return near.map((e, i) => (
+                      <div key={`${e.ts}-${i}`} style={{ padding: '2px 0' }}>
+                        <span style={{ color: e.kind === 'error' ? 'var(--accent-danger)' : e.kind === 'action' ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>
+                          {e.kind === 'action' ? 'فعل' : e.kind === 'error' ? 'خطأ' : e.kind === 'click' ? 'نقر' : 'رابط'}
+                        </span>
+                        {' '}
+                        {e.text}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+            ) : null}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="text"
+                  value={quickSearchQuery}
+                  onChange={e => setQuickSearchQuery(e.target.value)}
+                  placeholder="بحث Google..."
+                  style={{ flex: 1, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                />
+                <button
+                  onClick={() => {
+                    const q = quickSearchQuery.trim();
+                    if (!q) return;
+                    runActions([{ type: 'searchGoogle', query: q, sensitive: loginMode }]);
+                  }}
+                  className="btn"
+                >
+                  ابحث
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="text"
+                  value={quickClickText}
+                  onChange={e => setQuickClickText(e.target.value)}
+                  placeholder="انقر على نص..."
+                  style={{ flex: 1, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                />
+                <button
+                  onClick={() => {
+                    const t = quickClickText.trim();
+                    if (!t) return;
+                    runActions([{ type: 'clickText', text: t, exact: false }]);
+                  }}
+                  className="btn"
+                >
+                  انقر
+                </button>
+              </div>
+            </div>
 
             {picked ? (
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">

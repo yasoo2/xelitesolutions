@@ -235,6 +235,7 @@ type Action =
   | { type: 'press', key: string }
   | { type: 'mouseMove', x: number, y: number, steps?: number }
   | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string }
+  | { type: 'clickText', text: string, exact?: boolean }
   | { type: 'locate', selector?: string, roleName?: string, role?: string }
   | { type: 'waitForRole', role: string, roleName: string, timeoutMs?: number }
   | { type: 'waitForSelector', selector: string, timeoutMs?: number }
@@ -250,6 +251,8 @@ type Action =
   | { type: 'goForward' }
   | { type: 'reload' }
   | { type: 'fillForm', fields: Array<{ label?: string, selector?: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date'|'file', sensitive?: boolean }>, sensitive?: boolean }
+  | { type: 'fillByLabel', label: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date', sensitive?: boolean }
+  | { type: 'searchGoogle', query: string, lang?: string, sensitive?: boolean }
   | { type: 'uploadFile', selector: string, fileUrl: string }
   | { type: 'evaluate', script: string, sensitive?: boolean }
   | { type: 'tab.new', url?: string, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }
@@ -267,6 +270,10 @@ function sanitizeAction(session: Session, a: Action) {
   if (a.type === 'type') {
     return { ...a, text: `[redacted:${a.text.length}]` } as any;
   }
+  if (a.type === 'searchGoogle' && a.sensitive) {
+    const q = a.query == null ? '' : String(a.query);
+    return { ...a, query: `[redacted:${q.length}]` } as any;
+  }
   if (a.type === 'fillForm') {
     const fields = a.fields.map(f => {
       const should = a.sensitive || f.sensitive;
@@ -275,6 +282,10 @@ function sanitizeAction(session: Session, a: Action) {
       return { ...f, value: `[redacted:${v.length}]` };
     });
     return { ...a, fields } as any;
+  }
+  if (a.type === 'fillByLabel' && a.sensitive) {
+    const v = a.value == null ? '' : String(a.value);
+    return { ...a, value: `[redacted:${v.length}]` } as any;
   }
   if (a.type === 'evaluate' && a.sensitive) return { ...a, script: '[redacted]' } as any;
   return a as any;
@@ -302,6 +313,48 @@ async function captureScreenshot(session: Session, opts?: { fullPage?: boolean; 
   return href;
 }
 
+async function maybeNotifyCursorForLocator(session: Session, locator: any) {
+  const box = await locator?.boundingBox?.({ timeout: 1000 }).catch(() => null);
+  if (!box) return null;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await session.page.mouse.move(x, y, { steps: 2 }).catch(() => {});
+  notifySession(session, 'cursor_move', { x, y });
+  await new Promise(r => setTimeout(r, 250));
+  return { x, y };
+}
+
+async function clickLocatorWithCursor(session: Session, locator: any) {
+  const pt = await maybeNotifyCursorForLocator(session, locator);
+  if (pt) notifySession(session, 'cursor_click', { x: pt.x, y: pt.y });
+  await locator.click();
+  return pt;
+}
+
+async function tryAcceptGoogleConsent(session: Session, outputs?: any[]) {
+  const selectors = [
+    '#L2AGLb',
+    'button[aria-label*="Agree"]',
+    'text=I agree',
+    'text=Agree',
+    'text=Accept all',
+    'text=Accept',
+    'text=أوافق',
+    'text=قبول الكل',
+    'text=موافق'
+  ];
+
+  for (const sel of selectors) {
+    const loc = session.page.locator(sel);
+    const c = await loc.count().catch(() => 0);
+    if (c > 0) {
+      await loc.first().click({ timeout: 1000 }).catch(() => null);
+      if (outputs) outputs.push({ type: 'cookie_consent_click', selector: sel });
+      break;
+    }
+  }
+}
+
 async function runActions(session: Session, actions: Action[]) {
   const outputs: any[] = [];
   const autoScreenshotsEnabled = process.env.WORKER_AUTO_SCREENSHOT !== '0' && process.env.WORKER_AUTO_SCREENSHOT !== 'false';
@@ -325,26 +378,7 @@ async function runActions(session: Session, actions: Action[]) {
           try {
             const u = new URL(a.url);
             if (/(^|\.)google\./i.test(u.hostname)) {
-              const selectors = [
-                '#L2AGLb',
-                'button[aria-label*="Agree"]',
-                'text=I agree',
-                'text=Agree',
-                'text=Accept all',
-                'text=Accept',
-                'text=أوافق',
-                'text=قبول الكل',
-                'text=موافق'
-              ];
-              for (const sel of selectors) {
-                const loc = session.page.locator(sel);
-                const c = await loc.count().catch(() => 0);
-                if (c > 0) {
-                  await loc.first().click({ timeout: 1000 });
-                  outputs.push({ type: 'cookie_consent_click', selector: sel });
-                  break;
-                }
-              }
+              await tryAcceptGoogleConsent(session, outputs);
             }
           } catch {}
           break;
@@ -384,32 +418,14 @@ async function runActions(session: Session, actions: Action[]) {
           if (a.selector) {
             const loc = session.page.locator(a.selector).first();
             try {
-              const box = await loc.boundingBox({ timeout: 1000 }).catch(() => null);
-              if (box) {
-                const cx = box.x + box.width / 2;
-                const cy = box.y + box.height / 2;
-                await session.page.mouse.move(cx, cy, { steps: 2 }).catch(() => {});
-                notifySession(session, 'cursor_move', { x: cx, y: cy });
-                await new Promise(r => setTimeout(r, 400));
-                notifySession(session, 'cursor_click', { x: cx, y: cy });
-              }
-              await loc.click();
+              await clickLocatorWithCursor(session, loc);
             } catch (e) {
               await session.page.click(a.selector);
             }
           } else if (a.roleName && a.role) {
             const loc = session.page.getByRole(a.role as any, { name: a.roleName }).first();
             try {
-              const box = await loc.boundingBox({ timeout: 1000 }).catch(() => null);
-              if (box) {
-                const cx = box.x + box.width / 2;
-                const cy = box.y + box.height / 2;
-                await session.page.mouse.move(cx, cy, { steps: 2 }).catch(() => {});
-                notifySession(session, 'cursor_move', { x: cx, y: cy });
-                await new Promise(r => setTimeout(r, 400));
-                notifySession(session, 'cursor_click', { x: cx, y: cy });
-              }
-              await loc.click();
+              await clickLocatorWithCursor(session, loc);
             } catch {
               await session.page.getByRole(a.role as any, { name: a.roleName }).click();
             }
@@ -421,6 +437,13 @@ async function runActions(session: Session, actions: Action[]) {
             notifySession(session, 'cursor_click', { x: a.x, y: a.y });
           }
           outputs.push({ type: 'click' });
+          break;
+        }
+        case 'clickText': {
+          const loc = session.page.getByText(a.text, { exact: a.exact ?? false }).first();
+          await loc.waitFor({ state: 'visible', timeout: 8000 });
+          await clickLocatorWithCursor(session, loc);
+          outputs.push({ type: 'clickText', text: a.text, exact: Boolean(a.exact) });
           break;
         }
         case 'locate': {
@@ -538,15 +561,8 @@ async function runActions(session: Session, actions: Action[]) {
               else if (f.label) loc = session.page.getByLabel(f.label).first();
               
               if (loc) {
-                const box = await loc.boundingBox({ timeout: 500 }).catch(() => null);
-                if (box) {
-                  const cx = box.x + box.width / 2;
-                  const cy = box.y + box.height / 2;
-                  await session.page.mouse.move(cx, cy, { steps: 2 }).catch(() => {});
-                  notifySession(session, 'cursor_move', { x: cx, y: cy });
-                  await new Promise(r => setTimeout(r, 400));
-                  notifySession(session, 'cursor_click', { x: cx, y: cy });
-                }
+                const pt = await maybeNotifyCursorForLocator(session, loc);
+                if (pt) notifySession(session, 'cursor_click', { x: pt.x, y: pt.y });
               }
             } catch {}
 
@@ -554,16 +570,64 @@ async function runActions(session: Session, actions: Action[]) {
               if (f.kind === 'file') {
                 // file handled via uploadFile
               } else {
-                await session.page.fill(f.selector, String(f.value ?? ''));
+                const v = String(f.value ?? '');
+                if (f.kind === 'checkbox') {
+                  if (f.value === false || f.value === 'false' || f.value === 0 || f.value === '0') await session.page.locator(f.selector).first().uncheck();
+                  else await session.page.locator(f.selector).first().check();
+                } else if (f.kind === 'radio') {
+                  await session.page.locator(f.selector).first().check();
+                } else if (f.kind === 'select') {
+                  await session.page.locator(f.selector).first().selectOption(v);
+                } else {
+                  await session.page.fill(f.selector, v);
+                }
               }
             } else if (f.label) {
               const locator = session.page.getByLabel(f.label);
-              if (f.kind === 'checkbox') await locator.check();
+              const v = String(f.value ?? '');
+              if (f.kind === 'checkbox') {
+                if (f.value === false || f.value === 'false' || f.value === 0 || f.value === '0') await locator.uncheck();
+                else await locator.check();
+              }
               else if (f.kind === 'radio') await locator.check();
-              else await locator.fill(String(f.value ?? ''));
+              else if (f.kind === 'select') await locator.selectOption(v);
+              else await locator.fill(v);
             }
           }
           outputs.push({ type: 'fillForm', count: a.fields.length });
+          break;
+        }
+        case 'fillByLabel': {
+          const locator = session.page.getByLabel(a.label).first();
+          await locator.waitFor({ state: 'visible', timeout: 8000 });
+          const pt = await maybeNotifyCursorForLocator(session, locator);
+          if (pt) notifySession(session, 'cursor_click', { x: pt.x, y: pt.y });
+          const v = String(a.value ?? '');
+          if (a.kind === 'checkbox') {
+            if (a.value === false || a.value === 'false' || a.value === 0 || a.value === '0') await locator.uncheck();
+            else await locator.check();
+          } else if (a.kind === 'radio') {
+            await locator.check();
+          } else if (a.kind === 'select') {
+            await locator.selectOption(v);
+          } else {
+            await locator.fill(v);
+          }
+          outputs.push({ type: 'fillByLabel', label: a.label });
+          break;
+        }
+        case 'searchGoogle': {
+          const q = String(a.query ?? '').trim();
+          const hl = String(a.lang || 'en').trim() || 'en';
+          await session.page.goto(`https://www.google.com/?hl=${encodeURIComponent(hl)}`, { waitUntil: 'domcontentloaded' });
+          await tryAcceptGoogleConsent(session, outputs);
+          const box = session.page.locator('textarea[name="q"], input[name="q"]:not([type="hidden"])').first();
+          await box.waitFor({ state: 'visible', timeout: 8000 });
+          await clickLocatorWithCursor(session, box);
+          await session.page.keyboard.type(q, { delay: 25 });
+          await session.page.keyboard.press('Enter');
+          await session.page.waitForLoadState('domcontentloaded');
+          outputs.push({ type: 'searchGoogle', queryLen: q.length, lang: hl });
           break;
         }
         case 'uploadFile': {
@@ -702,7 +766,10 @@ async function runActions(session: Session, actions: Action[]) {
         const should =
           a.type === 'goto' ||
           a.type === 'click' ||
+          a.type === 'clickText' ||
           a.type === 'fillForm' ||
+          a.type === 'fillByLabel' ||
+          a.type === 'searchGoogle' ||
           a.type === 'uploadFile' ||
           a.type === 'goBack' ||
           a.type === 'goForward' ||
