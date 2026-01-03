@@ -50,10 +50,10 @@ export function LiveInteractionPanel({
 
   const getStatusColor = () => {
     switch (status) {
-      case 'running': return '#3b82f6';
-      case 'error': return '#ef4444';
-      case 'paused': return '#f59e0b';
-      default: return '#10b981';
+      case 'running': return 'var(--accent-primary)';
+      case 'error': return 'var(--accent-danger)';
+      case 'paused': return 'var(--accent-secondary)';
+      default: return 'var(--accent-success)';
     }
   };
 
@@ -222,7 +222,7 @@ export function LiveInteractionPanel({
                 padding: '6px 8px', 
                 background: 'var(--bg-secondary)', 
                 borderRadius: 6,
-                borderLeft: `2px solid ${step.status === 'done' ? '#10b981' : step.status === 'failed' ? '#ef4444' : '#3b82f6'}`
+                borderLeft: `2px solid ${step.status === 'done' ? 'var(--accent-success)' : step.status === 'failed' ? 'var(--accent-danger)' : 'var(--accent-primary)'}`
               }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -235,7 +235,7 @@ export function LiveInteractionPanel({
                      </div>
                   )}
                   {step.error && (
-                    <div style={{ color: '#ef4444', marginTop: 4 }}>{step.error}</div>
+                    <div style={{ color: 'var(--accent-danger)', marginTop: 4 }}>{step.error}</div>
                   )}
                 </div>
               </div>

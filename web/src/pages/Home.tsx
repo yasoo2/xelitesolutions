@@ -19,7 +19,12 @@ export default function Home() {
         </div>
         
         <h1 className="home-title">
-          JOE <span className="home-title-accent">AI</span>
+          <span>
+            <span>J</span>
+            <span className="logo-letter-yellow">O</span>
+            <span>E</span>
+          </span>{' '}
+          <span className="home-title-accent">AI</span>
         </h1>
         
         <p className="home-subtitle">

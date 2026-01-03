@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { LogIn, UserPlus, Mail, Lock, Eye, EyeOff, Sparkles, X } from 'lucide-react';
+import { LogIn, UserPlus, Mail, Lock, Eye, EyeOff, Sparkles, X, Loader2 } from 'lucide-react';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -94,7 +94,14 @@ export default function Login() {
               <span className="login-logo-text">J</span>
             </div>
           </div>
-          <div className="login-title">JOE AI</div>
+          <div className="login-title">
+            <span>
+              <span>J</span>
+              <span className="logo-letter-yellow">O</span>
+              <span>E</span>
+            </span>{' '}
+            <span>AI</span>
+          </div>
           <div className="login-subtitle">
             <Sparkles size={14} className="text-accent-primary" />
             {t('login_subtitle', 'Welcome back to your workspace')}
@@ -154,14 +161,28 @@ export default function Login() {
 
           <div className="login-actions">
             <button className="login-submit-btn" type="submit" disabled={!canSubmit}>
-              {loading ? '...' : (
+              {loading ? (
+                <span className="login-loading">
+                  <Loader2 size={18} className="spin" />
+                  <span>{t('loading', 'Loading')}</span>
+                </span>
+              ) : (
                 <>
                   <LogIn size={20} style={{ marginInlineEnd: 8 }} /> {t('login')}
                 </>
               )}
             </button>
             <button className="login-register-btn" type="button" onClick={register} disabled={!canSubmit}>
-              <UserPlus size={18} style={{ marginInlineEnd: 8 }} /> {t('register')}
+              {loading ? (
+                <span className="login-loading">
+                  <Loader2 size={18} className="spin" />
+                  <span>{t('loading', 'Loading')}</span>
+                </span>
+              ) : (
+                <>
+                  <UserPlus size={18} style={{ marginInlineEnd: 8 }} /> {t('register')}
+                </>
+              )}
             </button>
           </div>
         </form>

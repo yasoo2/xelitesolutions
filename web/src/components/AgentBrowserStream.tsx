@@ -1179,7 +1179,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
         {overlay ? (
           <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-            <div style={{ padding: '4px 12px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: 999, color: '#60a5fa', fontSize: 12 }} dir="auto">
+            <div style={{ padding: '4px 12px', background: 'rgba(var(--accent-primary-rgb), 0.15)', border: '1px solid rgba(var(--accent-primary-rgb), 0.3)', borderRadius: 999, color: 'var(--accent-primary)', fontSize: 12 }} dir="auto">
               {overlay}
             </div>
           </div>
@@ -1312,7 +1312,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             {activeTab === 'downloads' ? (
               downloads.length ? downloads.map((d, i) => (
                 <div key={i} style={{ padding: '2px 0' }} dir="auto">
-                  <a href={d.href} target="_blank" rel="noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                  <a href={d.href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
                     {d.name}
                   </a>
                 </div>

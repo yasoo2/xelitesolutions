@@ -46,7 +46,6 @@ import {
   Copy,
   RotateCcw,
   Search,
-  User,
   Sparkles,
   MicOff,
   Lock,
@@ -87,8 +86,6 @@ function ToolTicker({
 }
 
 const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { event: any, isUser: boolean, onOptionClick?: (text: string) => void, isTyping?: boolean }, ref: any) => {
-  const { t } = useTranslation();
-  
   let content = event.data.text || event.data;
   let options: any[] = [];
 
@@ -186,27 +183,7 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { eve
       transition={{ duration: 0.4, ease: "easeOut" }}
       className={`chat-bubble-wrapper ${isUser ? 'user' : 'ai'}`}
     >
-      {!isUser && (
-        <div className="chat-avatar ai">
-          <Sparkles size={18} />
-        </div>
-      )}
       <div className={`chat-bubble ${isUser ? 'user' : 'ai'}`}>
-        <div className="chat-bubble-header">
-          <span className="chat-bubble-sender">
-            {isUser ? t('you', 'You') : 'JOE AI'}
-          </span>
-          {!isUser && (
-            <div className="chat-bubble-actions">
-              <button className="chat-action-btn" title={t('copy', 'Copy')} onClick={() => navigator.clipboard.writeText(content)}>
-                <Copy size={14} />
-              </button>
-              <button className="chat-action-btn" title={t('regenerate', 'Regenerate')}>
-                <RotateCcw size={14} />
-              </button>
-            </div>
-          )}
-        </div>
         <div className="chat-bubble-content" dir="auto">
           {isUser ? (
             <div>{content}</div>
@@ -264,11 +241,6 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { eve
           )}
         </div>
       </div>
-      {isUser && (
-        <div className="chat-avatar user">
-          <User size={18} />
-        </div>
-      )}
     </motion.div>
   );
 });
@@ -1828,19 +1800,19 @@ export default function CommandComposer({
   const toolUi = (toolName: string) => {
     const t = toolName.toLowerCase();
     if (t.includes('web_search') || t.includes('knowledge_search') || t.includes('deep_research')) {
-      return { label: 'بحث', Icon: Search, color: '#38bdf8', bg: 'rgba(56,189,248,0.08)', border: 'rgba(56,189,248,0.35)' };
+      return { label: 'بحث', Icon: Search, color: 'var(--accent-primary)', bg: 'rgba(var(--accent-primary-rgb),0.08)', border: 'rgba(var(--accent-primary-rgb),0.35)' };
     }
     if (t.includes('file_read') || t.includes('read_file_tree') || t === 'ls' || t.includes('grep_search')) {
-      return { label: 'قراءة ملف', Icon: FileText, color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.35)' };
+      return { label: 'قراءة ملف', Icon: FileText, color: 'var(--accent-secondary)', bg: 'rgba(var(--accent-secondary-rgb),0.08)', border: 'rgba(var(--accent-secondary-rgb),0.35)' };
     }
     if (t.includes('file_edit') || t.includes('file_write') || t.includes('scaffold_project')) {
       return { label: 'تعديل/كتابة ملف', Icon: FileCode, color: '#22c55e', bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.35)' };
     }
     if (t.includes('shell_execute') || t.includes('install_dependencies') || t.includes('check_syntax')) {
-      return { label: 'تنفيذ أوامر', Icon: Terminal, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.35)' };
+      return { label: 'تنفيذ أوامر', Icon: Terminal, color: 'var(--accent-secondary)', bg: 'rgba(var(--accent-secondary-rgb),0.08)', border: 'rgba(var(--accent-secondary-rgb),0.35)' };
     }
     if (t.includes('browser_')) {
-      return { label: 'تصفح/معاينة', Icon: Eye, color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.35)' };
+      return { label: 'تصفح/معاينة', Icon: Eye, color: 'var(--accent-primary)', bg: 'rgba(var(--accent-primary-rgb),0.08)', border: 'rgba(var(--accent-primary-rgb),0.35)' };
     }
     if (t.includes('image_generate')) {
       return { label: 'توليد صورة', Icon: ImageIcon, color: '#eab308', bg: 'rgba(234,179,8,0.08)', border: 'rgba(234,179,8,0.35)' };
@@ -2089,7 +2061,11 @@ export default function CommandComposer({
             <div className="hero-logo-container">
               <div className="hero-logo-glow"></div>
               <div className="hero-logo-content">
-                <span className="hero-logo-text">JOE</span>
+                <span className="hero-logo-text">
+                  <span>J</span>
+                  <span className="logo-letter-yellow">O</span>
+                  <span>E</span>
+                </span>
               </div>
             </div>
             
@@ -2403,8 +2379,8 @@ export default function CommandComposer({
             <div className="px-3 py-2" dir="auto">
               {/* Thinking Header with Glow */}
               <div className="flex items-center gap-2 mb-1">
-                 <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.6)]"></div>
-                 <div className="text-[11px] font-medium text-blue-300/90 tracking-wide" style={{ textShadow: '0 0 10px rgba(96,165,250,0.3)' }}>
+                 <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.6)' }}></div>
+                 <div className="text-[11px] font-medium tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 10px rgba(var(--accent-primary-rgb), 0.3)' }}>
                     {activeToolName ? (
                       activeToolName.startsWith('خطة #') ? activeToolName : t('thinkingGlimpsePlan', 'Planning...')
                     ) : (
@@ -2420,11 +2396,12 @@ export default function CommandComposer({
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="mb-2 pl-3.5 border-l-2 border-blue-500/20 pr-2 overflow-hidden"
+                  className="mb-2 pl-3.5 pr-2 overflow-hidden"
+                  style={{ borderLeft: '2px solid rgba(var(--accent-primary-rgb), 0.2)' }}
                 >
-                   <div dir="auto" className="text-[11px] leading-relaxed font-sans text-blue-100/90 whitespace-pre-wrap break-words font-light tracking-wide" style={{ textShadow: '0 0 8px rgba(96,165,250,0.2)' }}>
+                   <div dir="auto" className="text-[11px] leading-relaxed font-sans whitespace-pre-wrap break-words font-light tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.2)' }}>
                       {displayedThought}
-                      <span className="inline-block w-1 h-3 ml-1 align-middle bg-blue-400/60 animate-pulse rounded-sm"/>
+                      <span className="inline-block w-1 h-3 ml-1 align-middle animate-pulse rounded-sm" style={{ background: 'rgba(var(--accent-primary-rgb), 0.6)' }}/>
                    </div>
                 </motion.div>
               )}

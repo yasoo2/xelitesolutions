@@ -386,8 +386,8 @@ export default function Joe() {
   return (
     <div className={`joe-layout ${showSidebar ? 'sidebar-open' : 'sidebar-closed'}`}>
       {mode === 'chat' && showSidebar && isNarrow && <div className="sidebar-backdrop" onClick={() => setShowSidebar(false)} />}
-      {mode === 'chat' && showSidebar && (
-        <aside className="sidebar">
+      {mode === 'chat' && (
+        <aside className={`sidebar ${showSidebar ? 'open' : 'closed'}`} aria-hidden={!showSidebar}>
           <div className="sidebar-header">
             <button className="new-chat-btn" onClick={createSession}>
               <span>+</span> محادثة جديدة
@@ -596,26 +596,27 @@ export default function Joe() {
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
         
 
-        <div className="mode-switch">
-          <div className="segmented">
-            <button 
-              onClick={() => setMode('agent')}
-              className={`seg-btn ${mode === 'agent' ? 'active' : ''}`}
-              title="Agent Mode"
-            >
-              <Bot size={18} /> الوكيل
-            </button>
-            <button 
-              onClick={() => setMode('chat')}
-              className={`seg-btn ${mode === 'chat' ? 'active' : ''}`}
-              title="Chat Mode"
-            >
-              <MessageSquare size={18} /> المحادثة
-            </button>
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', paddingTop: 56 }}>
+          <div className="mode-switch mode-switch-floating">
+            <div className="mode-fabs">
+              <button 
+                onClick={() => setMode('agent')}
+                className={`mode-fab ${mode === 'agent' ? 'active' : ''}`}
+                title="Agent Mode"
+              >
+                <Bot size={16} />
+                <span className="mode-fab-label">الوكيل</span>
+              </button>
+              <button 
+                onClick={() => setMode('chat')}
+                className={`mode-fab ${mode === 'chat' ? 'active' : ''}`}
+                title="Chat Mode"
+              >
+                <MessageSquare size={16} />
+                <span className="mode-fab-label">المحادثة</span>
+              </button>
+            </div>
           </div>
-        </div>
-        
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {mode === 'agent' && (
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
             <div
@@ -729,27 +730,15 @@ export default function Joe() {
         )}
         {mode === 'chat' && (
           <div className="chat-view">
-            {!selected ? (
-              <div className="welcome-view">
-                <div className="welcome-logo-wrapper">
-                  <div className="welcome-logo">J</div>
-                </div>
-                <div className="welcome-title">JOE AI</div>
-                <div className="welcome-subtitle">
-                  ابدأ محادثة جديدة أو اختر واحدة من القائمة للبدء.
-                </div>
-              </div>
-            ) : (
-              <CommandComposer
-                key={selected}
-                sessionId={selected}
-                sessionKind="chat"
-                onSessionCreated={async (id) => {
-                    await loadAllSessions();
-                    setSelected(id);
-                  }}
-              />
-            )}
+            <CommandComposer
+              key={selected || 'new'}
+              sessionId={selected || undefined}
+              sessionKind="chat"
+              onSessionCreated={async (id) => {
+                  await loadAllSessions();
+                  setSelected(id);
+                }}
+            />
           </div>
         )}
         </div>

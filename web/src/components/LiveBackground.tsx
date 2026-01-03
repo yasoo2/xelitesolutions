@@ -23,7 +23,7 @@ export const LiveBackground = () => {
           width: '50vw',
           height: '50vw',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(37,99,235,0.15) 0%, rgba(37,99,235,0) 70%)',
+          background: 'radial-gradient(circle, rgba(var(--accent-primary-rgb),0.15) 0%, rgba(var(--accent-primary-rgb),0) 70%)',
           filter: 'blur(60px)',
         }}
         animate={{
@@ -47,7 +47,7 @@ export const LiveBackground = () => {
           width: '60vw',
           height: '60vw',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(147,51,234,0.15) 0%, rgba(147,51,234,0) 70%)',
+          background: 'radial-gradient(circle, rgba(var(--accent-secondary-rgb),0.15) 0%, rgba(var(--accent-secondary-rgb),0) 70%)',
           filter: 'blur(80px)',
         }}
         animate={{
@@ -71,7 +71,7 @@ export const LiveBackground = () => {
           width: '40vw',
           height: '40vw',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(56,189,248,0.1) 0%, rgba(56,189,248,0) 70%)',
+          background: 'radial-gradient(circle, rgba(var(--accent-primary-rgb),0.1) 0%, rgba(var(--accent-primary-rgb),0) 70%)',
           filter: 'blur(50px)',
         }}
         animate={{

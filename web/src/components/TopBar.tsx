@@ -55,7 +55,11 @@ export default function TopBar() {
 
   return (
     <div className="topbar">
-      <div className="brand" onClick={() => nav('/')}>JOE</div>
+      <div className="brand" onClick={() => nav('/')}>
+        <span>J</span>
+        <span className="logo-letter-yellow">O</span>
+        <span>E</span>
+      </div>
       <div className="spacer" />
       
       <div className="topbar-actions">
