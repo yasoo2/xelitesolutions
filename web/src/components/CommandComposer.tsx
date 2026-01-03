@@ -256,6 +256,14 @@ interface ProviderConfig {
   lastError?: string;
 }
 
+const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
+  llm: { name: 'Joe (Local)', apiKey: '', isConnected: true },
+  openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
+  anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
+  gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
+  grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
+};
+
 export default function CommandComposer({
   sessionId,
   sessionKind = 'chat',
@@ -360,14 +368,41 @@ export default function CommandComposer({
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
-  const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>({
-    llm: { name: 'Joe (Local)', apiKey: '', isConnected: true },
-    openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
-    anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
-    gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
-    grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
-  });
-  const [activeProvider, setActiveProvider] = useState('llm');
+  const initialProviderState = useMemo(() => {
+    const baseProviders = { ...DEFAULT_PROVIDERS };
+    try {
+      const saved = localStorage.getItem('ai_providers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        Object.keys(parsed).forEach((k) => {
+          if (baseProviders[k]) baseProviders[k] = { ...baseProviders[k], ...parsed[k] };
+        });
+      }
+    } catch {}
+
+    const pickFirstKeyedProvider = () => {
+      for (const [k, p] of Object.entries(baseProviders)) {
+        if (k === 'llm') continue;
+        if (String(p?.apiKey || '').trim()) return k;
+      }
+      return 'llm';
+    };
+
+    try {
+      const savedActive = localStorage.getItem('active_provider');
+      if (savedActive && baseProviders[savedActive]) {
+        if (savedActive === 'llm') return { providers: baseProviders, activeProvider: 'llm' };
+        if (String(baseProviders[savedActive]?.apiKey || '').trim()) return { providers: baseProviders, activeProvider: savedActive };
+        return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
+      }
+      return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
+    } catch {
+      return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
+    }
+  }, []);
+
+  const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
+  const [activeProvider, setActiveProvider] = useState(initialProviderState.activeProvider);
   const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
@@ -608,37 +643,6 @@ export default function CommandComposer({
     };
     window.addEventListener('joe:prefill', handler as any);
     return () => window.removeEventListener('joe:prefill', handler as any);
-  }, []);
-
-  // Load providers from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('ai_providers');
-      const baseProviders = { ...providers };
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        Object.keys(parsed).forEach(k => {
-          if (baseProviders[k]) {
-            baseProviders[k] = { ...baseProviders[k], ...parsed[k] };
-          }
-        });
-      }
-      const savedActive = localStorage.getItem('active_provider');
-      setProviders(baseProviders);
-      if (savedActive && baseProviders[savedActive]) {
-        if (savedActive === 'llm') {
-          setActiveProvider('llm');
-        } else if (String(baseProviders[savedActive]?.apiKey || '').trim()) {
-          setActiveProvider(savedActive);
-        } else {
-          setActiveProvider('llm');
-        }
-      } else {
-        setActiveProvider('llm');
-      }
-    } catch (e) {
-      console.error('Failed to load providers settings', e);
-    }
   }, []);
 
   // Save providers to localStorage on change
@@ -1762,6 +1766,7 @@ export default function CommandComposer({
             ...prev, 
             [key]: { ...prev[key], apiKey: '', isConnected: false } 
         }));
+        if (key !== 'llm') setActiveProvider('llm');
     }
   };
 

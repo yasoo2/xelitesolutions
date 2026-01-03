@@ -28,7 +28,19 @@ const rawWsUrl = import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
 if (!wsUrl) {
-  wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
+  try {
+    const api = new URL(API_URL);
+    api.protocol = api.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (api.hostname === 'api.xelitesolutions.com' || (api.hostname.startsWith('api.') && api.hostname.endsWith('.xelitesolutions.com'))) {
+      api.hostname = `ws.${api.hostname.slice('api.'.length)}`;
+    }
+    api.pathname = `${api.pathname.replace(/\/+$/, '')}/ws`;
+    api.search = '';
+    api.hash = '';
+    wsUrl = api.toString();
+  } catch {
+    wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
+  }
 }
 
 // Protocol safety: Ensure ws/wss instead of http/https
