@@ -1235,6 +1235,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       }
     }
 
+    const wantsWeather = isWeatherLikeQuery(userTextForOverrides);
+    if (wantsWeather && (!planName || planName === 'echo')) {
+      const city = extractWeatherCity(userTextForOverrides);
+      const q = isArabicText(userTextForOverrides)
+        ? `كم درجة الحرارة الآن في ${city}؟`
+        : `current temperature in ${city} now`;
+      plan = { name: 'central_answer', input: { question: q } } as any;
+      planName = 'central_answer';
+    }
+
     const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
     if (wf && wf.kind !== 'ecommerce' && (!planName || planName === 'echo')) {
       const marker =
@@ -1348,8 +1358,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         if (isWeatherLikeQuery(userText)) {
           const city = extractWeatherCity(userText);
           plan = {
-            name: 'http_fetch',
-            input: { url: `https://wttr.in/${encodeURIComponent(city)}?format=j1`, city },
+            name: 'central_answer',
+            input: { question: isArabicText(userText) ? `كم درجة الحرارة الآن في ${city}؟` : `current temperature in ${city} now` },
           } as any;
         } else {
           const urlMatch = userText.match(/https?:\/\/[^\s"'<>]+/i);
@@ -1799,6 +1809,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       store.addExec(runId, plan?.name || 'unknown', persistedInput, result.output, result.ok, result.logs);
     } else {
       await ToolExecution.create({ runId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
+    }
+
+    if (result.ok && plan?.name === 'central_answer') {
+      const ans = String(result.output?.answer || '').trim();
+      if (ans) {
+        forcedText = ans;
+        ev({ type: 'text', data: ans });
+        assistantTextEmitted = true;
+        break;
+      }
     }
 
     if (result.ok && String(plan?.name || '') === 'http_fetch') {

@@ -237,9 +237,9 @@ export async function planNextStep(
         try { return JSON.parse(raw); } catch { return raw; }
       };
 
-      const wantsWeather =
-        /(?:\bweather\b|الطقس|حالة\s+الطقس)/i.test(rawText) &&
-        /(?:today|اليوم)/i.test(rawText);
+      const wantsWeather = /(?:\bweather\b|forecast|temperature|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حراره|الحرارة|الجو|الأجواء|الاجواء)/i.test(rawText);
+      const wantsNow = /(?:\bnow\b|\bcurrent\b|الآن|الان|حاليا|حالياً)/i.test(rawText);
+      const wantsToday = /(?:\btoday\b|اليوم)/i.test(rawText);
       const isArabicInput = /[\u0600-\u06FF]/.test(rawText);
       const hasWebSearch =
         historyStr.includes('tool call: web_search') ||
@@ -261,8 +261,8 @@ export async function planNextStep(
           const cityQuery =
             /istanbul/i.test(city) ? (isArabicInput ? 'إسطنبول' : 'Istanbul') : city;
           const q = isArabicInput
-            ? `حالة الطقس اليوم في ${cityQuery}`
-            : `current weather ${cityQuery} today`;
+            ? `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${cityQuery}`
+            : `${wantsNow ? 'current temperature' : 'current weather'} ${cityQuery} ${wantsNow ? 'now' : wantsToday ? 'today' : 'today'}`;
           return { name: 'web_search', input: { query: q } };
         }
 
@@ -274,7 +274,7 @@ export async function planNextStep(
           return {
             name: 'echo',
             input: {
-              text: `حالة الطقس اليوم في ${/istanbul/i.test(city) ? 'إسطنبول' : city} بحسب ${String(top.title || 'المصدر')}:\n${desc}\nالمصدر: ${String(top.url)}`
+              text: `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${/istanbul/i.test(city) ? 'إسطنبول' : city} بحسب ${String(top.title || 'المصدر')}:\n${desc}\nالمصدر: ${String(top.url)}`
             }
           };
         }
