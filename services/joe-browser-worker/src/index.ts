@@ -29,6 +29,7 @@ type Session = {
   redactionEnabled: boolean;
   createdAt: number;
   lastActiveAt: number;
+  lastAutoShotAt?: number;
   downloads: Array<{ id: string; filename: string; href: string; size: number }>;
   logs: Array<{ level: string; text: string; ts: number }>;
   network: Array<{ stage: 'request' | 'response'; url: string; method: string; status?: number; resourceType?: string; ts: number }>;
@@ -289,8 +290,21 @@ function switchToTab(session: Session, tabId: string) {
   return true;
 }
 
+async function captureScreenshot(session: Session, opts?: { fullPage?: boolean; quality?: number }) {
+  const buf = await session.page.screenshot({ type: 'jpeg', quality: opts?.quality || 60, fullPage: opts?.fullPage || false });
+  const name = `s-${Date.now()}.jpg`;
+  const p = path.join(STORAGE_DIR, 'shots', name);
+  const dir = path.dirname(p);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(p, buf);
+  const href = `/shots/${name}`;
+  notifySession(session, 'screenshot', { href });
+  return href;
+}
+
 async function runActions(session: Session, actions: Action[]) {
   const outputs: any[] = [];
+  const autoScreenshotsEnabled = process.env.WORKER_AUTO_SCREENSHOT !== '0' && process.env.WORKER_AUTO_SCREENSHOT !== 'false';
 
   for (const a of actions) {
     session.lastActiveAt = Date.now();
@@ -368,12 +382,13 @@ async function runActions(session: Session, actions: Action[]) {
         }
         case 'click': {
           if (a.selector) {
+            const loc = session.page.locator(a.selector).first();
             try {
-              const loc = session.page.locator(a.selector).first();
               const box = await loc.boundingBox({ timeout: 1000 }).catch(() => null);
               if (box) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
+                await session.page.mouse.move(cx, cy, { steps: 2 }).catch(() => {});
                 notifySession(session, 'cursor_move', { x: cx, y: cy });
                 await new Promise(r => setTimeout(r, 400));
                 notifySession(session, 'cursor_click', { x: cx, y: cy });
@@ -383,12 +398,13 @@ async function runActions(session: Session, actions: Action[]) {
               await session.page.click(a.selector);
             }
           } else if (a.roleName && a.role) {
+            const loc = session.page.getByRole(a.role as any, { name: a.roleName }).first();
             try {
-              const loc = session.page.getByRole(a.role as any, { name: a.roleName }).first();
               const box = await loc.boundingBox({ timeout: 1000 }).catch(() => null);
               if (box) {
                 const cx = box.x + box.width / 2;
                 const cy = box.y + box.height / 2;
+                await session.page.mouse.move(cx, cy, { steps: 2 }).catch(() => {});
                 notifySession(session, 'cursor_move', { x: cx, y: cy });
                 await new Promise(r => setTimeout(r, 400));
                 notifySession(session, 'cursor_click', { x: cx, y: cy });
@@ -398,6 +414,9 @@ async function runActions(session: Session, actions: Action[]) {
               await session.page.getByRole(a.role as any, { name: a.roleName }).click();
             }
           } else if (typeof a.x === 'number' && typeof a.y === 'number') {
+            await session.page.mouse.move(a.x, a.y, { steps: 2 }).catch(() => {});
+            notifySession(session, 'cursor_move', { x: a.x, y: a.y });
+            await new Promise(r => setTimeout(r, 120));
             await session.page.mouse.click(a.x, a.y, { button: a.button || 'left' });
             notifySession(session, 'cursor_click', { x: a.x, y: a.y });
           }
@@ -457,15 +476,8 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'screenshot': {
-          const buf = await session.page.screenshot({ type: 'jpeg', quality: a.quality || 60, fullPage: a.fullPage || false });
-          const name = `s-${Date.now()}.jpg`;
-          const p = path.join(STORAGE_DIR, 'shots', name);
-          const dir = path.dirname(p);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(p, buf);
-          const href = `/shots/${name}`;
-          outputs.push({ type: 'screenshot', href });
-          notifySession(session, 'screenshot', { href });
+          const href = await captureScreenshot(session, { quality: a.quality || 60, fullPage: a.fullPage || false });
+          outputs.push({ type: 'screenshot', href, auto: false });
           break;
         }
         case 'snapshot.dom': {
@@ -530,6 +542,7 @@ async function runActions(session: Session, actions: Action[]) {
                 if (box) {
                   const cx = box.x + box.width / 2;
                   const cy = box.y + box.height / 2;
+                  await session.page.mouse.move(cx, cy, { steps: 2 }).catch(() => {});
                   notifySession(session, 'cursor_move', { x: cx, y: cy });
                   await new Promise(r => setTimeout(r, 400));
                   notifySession(session, 'cursor_click', { x: cx, y: cy });
@@ -684,6 +697,28 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
       }
+
+      if (autoScreenshotsEnabled) {
+        const should =
+          a.type === 'goto' ||
+          a.type === 'click' ||
+          a.type === 'fillForm' ||
+          a.type === 'uploadFile' ||
+          a.type === 'goBack' ||
+          a.type === 'goForward' ||
+          a.type === 'reload' ||
+          a.type === 'tab.new' ||
+          a.type === 'tab.switch' ||
+          a.type === 'tab.close';
+
+        const now = Date.now();
+        if (should && (session.lastAutoShotAt == null || now - session.lastAutoShotAt > 900)) {
+          session.lastAutoShotAt = now;
+          const href = await captureScreenshot(session, { quality: 55, fullPage: false });
+          outputs.push({ type: 'screenshot', href, auto: true, after: a.type });
+        }
+      }
+
       notifySession(session, 'action_done', { action: sanitizeAction(session, a) });
     } catch (err: any) {
       logger.warn({ action: a, error: err.message }, 'action_failed');
