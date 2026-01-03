@@ -44,6 +44,11 @@ const resources = {
       thinkingGlimpseDraft: 'Drafting the response…',
       thinkingDraftIntro: 'Working on it now…',
       thinkingDraftRefine: 'Refining and organizing the answer…',
+      thinking: {
+        searching: 'Searching the web…',
+        researching: 'Conducting research…',
+        searching_code: 'Searching the codebase…'
+      },
       tools: {
         file_write: 'Create File',
         file_read: 'Read File',
@@ -135,6 +140,11 @@ const resources = {
       thinkingGlimpseDraft: 'أجهّز الرد…',
       thinkingDraftIntro: 'جارٍ العمل الآن…',
       thinkingDraftRefine: 'أرتّب النتيجة وأصيغها بشكل واضح…',
+      thinking: {
+        searching: 'أبحث في الويب…',
+        researching: 'أتحقق من المعلومات…',
+        searching_code: 'أبحث داخل الكود…'
+      },
       tools: {
         file_write: 'إنشاء ملف',
         file_read: 'قراءة ملف',
@@ -209,6 +219,11 @@ const resources = {
       action: 'Action',
       deny: 'Refuser',
       approve: 'Approuver',
+      thinking: {
+        searching: 'Recherche sur le web…',
+        researching: 'Recherche en cours…',
+        searching_code: 'Recherche dans le code…'
+      },
       tools: {
         file_write: 'Créer un fichier',
         file_read: 'Lire un fichier',
@@ -283,6 +298,11 @@ const resources = {
       action: 'Aktion',
       deny: 'Ablehnen',
       approve: 'Genehmigen',
+      thinking: {
+        searching: 'Suche im Web…',
+        researching: 'Prüfe Informationen…',
+        searching_code: 'Suche im Code…'
+      },
       tools: {
         file_write: 'Datei erstellen',
         file_read: 'Datei lesen',
@@ -357,6 +377,11 @@ const resources = {
       action: 'Действие',
       deny: 'Отклонить',
       approve: 'Принять',
+      thinking: {
+        searching: 'Ищу в интернете…',
+        researching: 'Проверяю информацию…',
+        searching_code: 'Ищу в коде…'
+      },
       tools: {
         file_write: 'Создать файл',
         file_read: 'Читать файл',
@@ -403,6 +428,11 @@ const resources = {
       action: 'Acción',
       deny: 'Rechazar',
       approve: 'Aprobar',
+      thinking: {
+        searching: 'Buscando en la web…',
+        researching: 'Verificando información…',
+        searching_code: 'Buscando en el código…'
+      },
       tools: {
         file_write: 'Crear archivo',
         file_read: 'Leer archivo',

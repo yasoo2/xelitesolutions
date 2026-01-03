@@ -32,6 +32,10 @@ export function LiveInteractionPanel({
   const [isExpanded, setIsExpanded] = useState(expanded);
   const [activeTab, setActiveTab] = useState<'LOGS' | 'STEPS' | 'THOUGHTS'>('STEPS');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const visibleSteps = steps.filter((s) => {
+    const name = String((s as any)?.name || '');
+    return name !== 'plan' && !name.startsWith('thinking_step_');
+  });
 
   useEffect(() => {
     setIsExpanded(expanded);
@@ -145,10 +149,10 @@ export function LiveInteractionPanel({
           color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)'
         }}>
            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-             <Activity size={10} /> <span>Steps: {steps.length}</span>
+             <Activity size={10} /> <span>Steps: {visibleSteps.length}</span>
            </div>
            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-             <Cpu size={10} /> <span>Time: {steps.reduce((acc, s) => acc + (s.duration || 0), 0) / 1000}s</span>
+             <Cpu size={10} /> <span>Time: {visibleSteps.reduce((acc, s) => acc + ((s as any).duration || 0), 0) / 1000}s</span>
            </div>
            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
              <BookOpen size={10} /> <span>Ctx: {messages.length} msgs</span>
@@ -215,8 +219,8 @@ export function LiveInteractionPanel({
       >
         {activeTab === 'STEPS' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {steps.length === 0 && <div style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for activity...</div>}
-            {steps.map((step, i) => (
+            {visibleSteps.length === 0 && <div style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for activity...</div>}
+            {visibleSteps.map((step, i) => (
               <div key={i} style={{ 
                 display: 'flex', gap: 8, 
                 padding: '6px 8px', 
@@ -229,11 +233,6 @@ export function LiveInteractionPanel({
                     <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{step.name}</span>
                     <span style={{ opacity: 0.5, fontSize: 10 }}>{step.duration ? `${(step.duration/1000).toFixed(1)}s` : step.status}</span>
                   </div>
-                  {step.plan?.input && (
-                     <div style={{ marginTop: 4, opacity: 0.7, fontSize: 11, whiteSpace: 'pre-wrap', overflow: 'hidden', textOverflow: 'ellipsis', maxHeight: 40 }}>
-                       {JSON.stringify(step.plan.input)}
-                     </div>
-                  )}
                   {step.error && (
                     <div style={{ color: 'var(--accent-danger)', marginTop: 4 }}>{step.error}</div>
                   )}

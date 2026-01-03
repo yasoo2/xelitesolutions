@@ -56,35 +56,6 @@ const DEBUG_TOOL_UI = false;
 
 const AgentBrowserStreamLazy = lazy(() => import('./AgentBrowserStream'));
 
-function ToolTicker({
-  isThinking,
-  toolVisible,
-  activeToolName,
-}: {
-  isThinking: boolean;
-  toolVisible: boolean;
-  activeToolName: string | null;
-}) {
-  return (
-    <div className="mt-0.5">
-      <AnimatePresence>
-        {isThinking && toolVisible && activeToolName && (
-          <motion.div
-            key={activeToolName}
-            initial={{ opacity: 0, y: 2 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -2 }}
-            transition={{ duration: 0.18 }}
-            className="text-[10px] leading-3 font-light text-zinc-400/60"
-          >
-            {activeToolName}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { event: any, isUser: boolean, onOptionClick?: (text: string) => void, isTyping?: boolean }, ref: any) => {
   let content = event.data.text || event.data;
   let options: any[] = [];
@@ -288,28 +259,6 @@ export default function CommandComposer({
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
   };
   const [text, setText] = useState('');
-  const [currentThought, setCurrentThought] = useState('');
-  const [displayedThought, setDisplayedThought] = useState('');
-
-  useEffect(() => {
-    if (!currentThought) {
-      setDisplayedThought('');
-      return;
-    }
-    setDisplayedThought('');
-    const words = currentThought.split(' ');
-    let count = 0;
-    
-    const interval = setInterval(() => {
-        if (count >= words.length) {
-            clearInterval(interval);
-            return;
-        }
-        count++;
-        setDisplayedThought(words.slice(0, count).join(' '));
-    }, 40); // Fast word appearance
-    return () => clearInterval(interval);
-  }, [currentThought]);
 
   const [taskBarByRunId, setTaskBarByRunId] = useState<
     Record<
@@ -334,7 +283,6 @@ export default function CommandComposer({
   const [isThinking, setIsThinking] = useState(false);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [toolVisible, setToolVisible] = useState(false);
-  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [thinkingGlimpse, setThinkingGlimpse] = useState('');
   const [draftText, setDraftText] = useState('');
   const [draftActive, setDraftActive] = useState(false);
@@ -444,31 +392,6 @@ export default function CommandComposer({
       const next = cur
         ? { ...cur, ...patch }
         : { visible: true, analyzing: true, items: [], ...patch };
-      return { ...prev, [rid]: next };
-    });
-  };
-
-  const addPlannedTask = (rid: string, plan: any) => {
-    const tool = String(plan?.name || '').trim();
-    if (!tool) return;
-    const { id, label } = getTaskId(rid, tool, plan?.input);
-
-    setTaskBarByRunId((prev) => {
-      const cur = prev[rid] || { visible: true, analyzing: true, items: [] as any[] };
-      const items = [...cur.items];
-      const idx = items.findIndex((x) => x.id === id);
-      if (idx >= 0) {
-        const existing = items[idx];
-        const nextStatus = existing.status === 'failed' ? 'pending' : existing.status;
-        items[idx] = { ...existing, label, status: nextStatus };
-        return { ...prev, [rid]: { ...cur, visible: true, analyzing: false, items } };
-      }
-      const next = {
-        ...cur,
-        visible: true,
-        analyzing: false,
-        items: [...items, { id, tool, label, status: 'pending' as const }],
-      };
       return { ...prev, [rid]: next };
     });
   };
@@ -907,13 +830,12 @@ export default function CommandComposer({
         return idx % 2 === 0 ? t('thinkingDraftIntro', 'Working on it now…') : t('thinkingDraftRefine', 'Refining and organizing the answer…');
       }
       if (toolVisible && activeToolName) {
-        if (activeToolName === 'web_search') return t('thinking.searching', 'Searching the web...');
-        if (activeToolName === 'deep_research') return t('thinking.researching', 'Conducting deep research...');
-        if (activeToolName === 'code_search') return t('thinking.searching_code', 'Searching codebase...');
-        return t('thinkingGlimpseTool', { tool: activeToolName });
-      }
-      if (thinkingSteps.length) {
-        return idx % 2 === 0 ? t('thinkingGlimpsePlan', 'Planning the best approach…') : t('thinkingGlimpseUnderstand', 'Understanding your request…');
+        const toolKey = String(activeToolName).trim();
+        if (toolKey === 'web_search') return t('thinking.searching', 'Searching the web...');
+        if (toolKey === 'deep_research') return t('thinking.researching', 'Conducting deep research...');
+        if (toolKey === 'code_search') return t('thinking.searching_code', 'Searching codebase...');
+        if (toolKey === 'plan') return t('thinkingGlimpsePlan', 'Planning the best approach…');
+        return t('thinkingGlimpseTool', { tool: toolKey });
       }
       return idx % 2 === 0 ? t('thinkingGlimpseUnderstand', 'Understanding your request…') : t('thinkingGlimpsePlan', 'Planning the best approach…');
     };
@@ -932,7 +854,7 @@ export default function CommandComposer({
         thinkingGlimpseTimerRef.current = null;
       }
     };
-  }, [activeToolName, isThinking, status, t, thinkingSteps.length, toolVisible]);
+  }, [activeToolName, isThinking, status, t, toolVisible]);
 
   const showTool = (name: string) => {
     const next = String(name || '').trim();
@@ -962,10 +884,7 @@ export default function CommandComposer({
         setActiveToolName(null);
         setIsThinking(false);
         setStatus('idle');
-        setThinkingSteps([]);
         setThinkingGlimpse('');
-        setCurrentThought('');
-        setDisplayedThought('');
       }, 250);
     }, wait);
     return totalDelay;
@@ -1005,12 +924,6 @@ export default function CommandComposer({
             setIsThinking(true);
             setActiveToolName(null);
             setToolVisible(false);
-            setThinkingSteps([]);
-          }
-
-          if (msg.type === 'step_done' && String(msg?.data?.name || '').startsWith('thinking_step_') && msg?.data?.plan?.name) {
-            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
-            if (rid) addPlannedTask(rid, msg.data.plan);
           }
 
           if ((msg.type === 'step_started' || msg.type === 'step_done' || msg.type === 'step_failed') && typeof msg?.data?.name === 'string') {
@@ -1113,14 +1026,9 @@ export default function CommandComposer({
             const name = String(msg?.data?.name || '');
             if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
             if (name === 'plan') {
-              showTool('خطة');
-              setThinkingSteps((prev) => [...prev, 'خطة'].slice(-4));
+              showTool('plan');
             } else if (name.startsWith('thinking_step_')) {
-              const n = name.replace('thinking_step_', '').trim();
-              const label = n ? `خطة #${n}` : 'خطة';
-              showTool(label);
-              setThinkingSteps((prev) => [...prev, label].slice(-4));
-              setCurrentThought(n ? `أفكر الآن في الخطوة ${n} من الخطة...` : 'أقوم بوضع خطة العمل...');
+              showTool('plan');
             } else if (name.startsWith('execute:')) {
               showTool(name.slice('execute:'.length));
             } else if (name) {
@@ -1131,10 +1039,6 @@ export default function CommandComposer({
           if (msg.type === 'step_done') {
             const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
             const name = String(msg?.data?.name || '');
-            const thought = msg?.data?.plan?.thought;
-            if (thought) {
-               setCurrentThought(thought);
-            }
 
             const start = stepStartTimes.current[`${rid}:${name}`];
             if (start) {
@@ -1167,7 +1071,6 @@ export default function CommandComposer({
               setToolVisible(false);
               setActiveToolName(null);
             }
-            setThinkingSteps([]);
             setStatus('answering');
             setIsThinking(true);
 
@@ -1516,7 +1419,6 @@ export default function CommandComposer({
     setIsThinking(true);
     setActiveToolName(null);
     setToolVisible(false);
-    setThinkingSteps([]);
 
     const needsBrowserForText = (raw: string) => {
       const s = String(raw || '').trim();
@@ -1692,7 +1594,6 @@ export default function CommandComposer({
       setIsThinking(false);
       setActiveToolName(null);
       setToolVisible(false);
-      setThinkingSteps([]);
       setThinkingGlimpse('');
     }
   }
@@ -2133,12 +2034,16 @@ export default function CommandComposer({
             if (!showToolUi) return null;
             const rid = item.runId || 'no-run';
             const steps = stepsByRunId.get(rid) || [];
+            const visibleSteps = steps.filter((s: any) => {
+              const name = String(s?.name || '');
+              return name !== 'plan' && !name.startsWith('thinking_step_');
+            });
             const logs = logsByRunId.get(rid) || [];
 
             const status = (() => {
-              if (steps.some((s: any) => s?.status === 'running')) return 'running';
-              if (steps.some((s: any) => s?.status === 'failed')) return 'failed';
-              if (steps.length > 0) return 'done';
+              if (visibleSteps.some((s: any) => s?.status === 'running')) return 'running';
+              if (visibleSteps.some((s: any) => s?.status === 'failed')) return 'failed';
+              if (visibleSteps.length > 0) return 'done';
               return 'idle';
             })();
 
@@ -2148,9 +2053,9 @@ export default function CommandComposer({
               setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
             };
 
-            const totalDuration = steps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
-            const failedCount = steps.filter((s: any) => s?.status === 'failed').length;
-            const doneCount = steps.filter((s: any) => s?.status === 'done').length;
+            const totalDuration = visibleSteps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
+            const failedCount = visibleSteps.filter((s: any) => s?.status === 'failed').length;
+            const doneCount = visibleSteps.filter((s: any) => s?.status === 'done').length;
 
             return (
               <motion.div
@@ -2169,7 +2074,7 @@ export default function CommandComposer({
                       {status === 'running' && <Loader2 size={14} className="spin text-accent" />}
                       {status === 'done' && <CheckCircle2 size={14} className="text-success" />}
                       {status === 'failed' && <XCircle size={14} className="text-danger" />}
-                      <span>{steps.length} {t('stepsLabel')}</span>
+                      <span>{visibleSteps.length} {t('stepsLabel')}</span>
                       {totalDuration > 0 && <span>• {(totalDuration / 1000).toFixed(1)}s</span>}
                       {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </div>
@@ -2183,7 +2088,7 @@ export default function CommandComposer({
                         exit={{ height: 0, opacity: 0 }}
                         className="activity-body"
                       >
-                        {steps.map((s: any) => {
+                        {visibleSteps.map((s: any) => {
                           const stepName = String(s?.name || '');
                           const toolName = getToolNameFromStep(stepName);
                           const meta = toolName
@@ -2404,31 +2309,9 @@ export default function CommandComposer({
               <div className="flex items-center gap-2 mb-1">
                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.6)' }}></div>
                  <div className="text-[11px] font-medium tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 10px rgba(var(--accent-primary-rgb), 0.3)' }}>
-                    {activeToolName ? (
-                      activeToolName.startsWith('خطة #') ? activeToolName : t('thinkingGlimpsePlan', 'Planning...')
-                    ) : (
-                      thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Thinking...')
-                    )}
+                    {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Thinking…')}
                  </div>
               </div>
-
-              {/* Animated Thought Text */}
-              <AnimatePresence mode="wait">
-              {displayedThought && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mb-2 pl-3.5 pr-2 overflow-hidden"
-                  style={{ borderLeft: '2px solid rgba(var(--accent-primary-rgb), 0.2)' }}
-                >
-                   <div dir="auto" className="text-[11px] leading-relaxed font-sans whitespace-pre-wrap break-words font-light tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.2)' }}>
-                      {displayedThought}
-                      <span className="inline-block w-1 h-3 ml-1 align-middle animate-pulse rounded-sm" style={{ background: 'rgba(var(--accent-primary-rgb), 0.6)' }}/>
-                   </div>
-                </motion.div>
-              )}
-              </AnimatePresence>
             </div>
           </motion.div>
         )}
