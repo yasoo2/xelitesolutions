@@ -313,6 +313,7 @@ export default function CommandComposer({
   const draftTimerRef = useRef<number | null>(null);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
   const lastExecTaskIdRef = useRef<Record<string, Record<string, string>>>({});
+  const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -1063,6 +1064,20 @@ export default function CommandComposer({
             const id = typeof msg?.id === 'string' ? msg.id : '';
             const isSystemPrompt = id.startsWith('system_prompt:');
             if (isSystemPrompt) return;
+
+            const rid = typeof msg?.runId === 'string' ? msg.runId : '';
+            const rawSigPart =
+              typeof msg?.data === 'string'
+                ? msg.data
+                : msg?.data != null
+                  ? (() => {
+                      try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
+                    })()
+                  : '';
+            const sig = `${rid}:${rawSigPart}`;
+            const now = Date.now();
+            if (lastTextDedupRef.current && lastTextDedupRef.current.sig === sig && now - lastTextDedupRef.current.ts < 4000) return;
+            lastTextDedupRef.current = { sig, ts: now };
 
             const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
             clearToolTimers();

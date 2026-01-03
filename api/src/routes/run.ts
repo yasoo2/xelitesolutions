@@ -987,6 +987,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const executedTools = new Set<string>();
   const executedToolSigs = new Set<string>();
   let consecutiveThoughtSteps = 0;
+  let thoughtLoopPauseEmitted = false;
   let postScaffoldScheduled = false;
   let postInstallScheduled = false;
 
@@ -1137,7 +1138,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     if (planName === 'echo' || !planName) {
         consecutiveThoughtSteps++;
         if (consecutiveThoughtSteps > 3) {
-             ev({ type: 'text', data: '⚠️ **System Pause**: The AI seems to be stuck in a thought loop. Stopping to prevent resource exhaustion.' });
+             if (!thoughtLoopPauseEmitted) {
+                 const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
+                 const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+                 const msg = [
+                   `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
+                   needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
+                   hint ? `${hint}` : ``,
+                 ].filter(Boolean).join('\n');
+                 ev({ type: 'text', data: msg });
+                 thoughtLoopPauseEmitted = true;
+             }
              break;
         }
     } else {
