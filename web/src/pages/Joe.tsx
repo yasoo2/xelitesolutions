@@ -182,10 +182,40 @@ export default function Joe() {
     return () => window.removeEventListener('auth:unauthorized', onUnauthorized as any);
   }, []);
 
-  function createSession() {
-    setSelected(null);
+  const [isCreatingChatSession, setIsCreatingChatSession] = useState(false);
+
+  async function createSession() {
     setSearchQuery('');
     setSearchResults([]);
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      return;
+    }
+
+    setIsCreatingChatSession(true);
+    try {
+      const res = await fetch(`${API}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: 'محادثة جديدة' }),
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        return;
+      }
+      const data = await res.json();
+      const id = String(data?.id || data?._id || '').trim();
+      if (!id) return;
+
+      setSelected(id);
+      await loadAllSessions();
+      if (isNarrow) setShowSidebar(false);
+    } finally {
+      setIsCreatingChatSession(false);
+    }
   }
 
   useEffect(() => { 
@@ -389,7 +419,7 @@ export default function Joe() {
       {mode === 'chat' && (
         <aside className={`sidebar ${showSidebar ? 'open' : 'closed'}`} aria-hidden={!showSidebar}>
           <div className="sidebar-header">
-            <button className="new-chat-btn" onClick={createSession}>
+            <button className="new-chat-btn" onClick={createSession} disabled={isCreatingChatSession}>
               <span>+</span> محادثة جديدة
             </button>
             <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
