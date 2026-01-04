@@ -170,6 +170,7 @@ export default function Joe() {
   const [showLivePanel, setShowLivePanel] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   const [livePanelExpanded, setLivePanelExpanded] = useState(false);
+  const [livePanelAutoOpened, setLivePanelAutoOpened] = useState(false);
 
   const nav = useNavigate();
 
@@ -245,6 +246,20 @@ export default function Joe() {
     });
     return () => { release(); };
   }, []);
+
+  useEffect(() => {
+    if (liveStatus === 'running' || liveStatus === 'paused' || liveStatus === 'error') {
+      if (!showLivePanel) {
+        setShowLivePanel(true);
+        setLivePanelAutoOpened(true);
+      }
+    } else if (liveStatus === 'idle') {
+      if (livePanelAutoOpened && showLivePanel && !livePanelExpanded) {
+        setShowLivePanel(false);
+      }
+      setLivePanelAutoOpened(false);
+    }
+  }, [liveStatus]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -829,7 +844,7 @@ export default function Joe() {
                     </button>
                   ) : null}
                   <button
-                    onClick={() => setShowLivePanel(v => !v)}
+                    onClick={() => { setShowLivePanel(v => !v); setLivePanelAutoOpened(false); }}
                     style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
                     title="لوحة المتابعة"
                   >
@@ -877,7 +892,7 @@ export default function Joe() {
                 <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button
-                    onClick={() => setShowLivePanel(v => !v)}
+                    onClick={() => { setShowLivePanel(v => !v); setLivePanelAutoOpened(false); }}
                     style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
                     title="لوحة المتابعة"
                   >
