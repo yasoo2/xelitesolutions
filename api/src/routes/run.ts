@@ -34,7 +34,9 @@ function redactSecretsFromString(input: string): string {
 
 function safeErrorMessage(err: any): string {
   const raw = typeof err?.message === 'string' ? err.message : String(err);
-  return redactSecretsFromString(raw);
+  const cleaned = redactSecretsFromString(raw);
+  return cleaned
+    .replace(/https:\/\/platform\.openai\.com\/docs\/guides\/error-codes\/api-errors\.?\/?/gi, 'https://platform.openai.com/docs/guides/error-codes');
 }
 
 function hostFromUrlMaybe(raw: any): string | null {
@@ -1124,6 +1126,25 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                forcedText = msg;
                assistantTextEmitted = true;
                break;
+            }
+            if (isProviderRateLimitError(err, lastPlanError)) {
+              const userTextForOverrides = String(text || '');
+              const userTextNorm = normalizeArabicQuery(userTextForOverrides);
+              if (isLocationLikeQuery(userTextForOverrides)) {
+                plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+              } else if (isWeatherLikeQuery(userTextForOverrides)) {
+                const city = extractWeatherCity(userTextForOverrides);
+                const q = isArabicText(userTextForOverrides)
+                  ? `كم درجة الحرارة الآن في ${city}؟`
+                  : `current temperature in ${city} now`;
+                plan = { name: 'central_answer', input: { question: q } } as any;
+              } else if (/(ابحث|بحث|search|find|lookup|اعطني|اعطيني|معلومات|info)/.test(userTextNorm) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\b/.test(userTextNorm)) {
+                const qMatch = userTextForOverrides.match(/(?:عن|حول)\s+(.+)/i);
+                const query = qMatch ? qMatch[1] : userTextForOverrides;
+                plan = { name: 'web_search', input: { query } } as any;
+              } else {
+                plan = { name: 'project_detect', input: { path: '.' } } as any;
+              }
             }
             if (!plan) {
               const userTextForOverrides = String(text || '');
