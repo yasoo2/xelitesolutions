@@ -7,7 +7,7 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity } from 'lucide-react';
 
 const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
 
@@ -165,6 +165,7 @@ export default function Joe() {
   const [liveMessages, setLiveMessages] = useState<any[]>([]);
   const [liveStatus, setLiveStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle');
   const [showFiles, setShowFiles] = useState(false);
+  const [showLivePanel, setShowLivePanel] = useState(false);
 
   const nav = useNavigate();
 
@@ -691,15 +692,60 @@ export default function Joe() {
               </button>
             </div>
           </div>
-          <LiveInteractionPanel 
-            steps={liveSteps} 
-            logs={liveLogs} 
-            messages={liveMessages} 
-            status={liveStatus} 
-            onPause={() => setLiveStatus('paused')}
-            onResume={() => setLiveStatus('running')}
-            onStop={() => setLiveStatus('idle')}
-          />
+          {/* Live Panel Dock - bottom-right */}
+          <div style={{ position: 'absolute', right: 16, bottom: 16, zIndex: 200 }}>
+            {!showLivePanel ? (
+              <button
+                onClick={() => setShowLivePanel(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  height: 36,
+                  padding: '0 12px',
+                  borderRadius: 12,
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(8px)'
+                }}
+                title="لوحة المتابعة"
+              >
+                <Activity size={16} />
+                <span style={{ fontSize: 12 }}>{liveStatus === 'running' ? 'النشاط جارٍ' : 'لوحة المتابعة'}</span>
+              </button>
+            ) : (
+              <div style={{ width: isNarrow ? 'min(92vw, 520px)' : 480, maxWidth: '95vw' }}>
+                <LiveInteractionPanel 
+                  steps={liveSteps} 
+                  logs={liveLogs} 
+                  messages={liveMessages} 
+                  status={liveStatus} 
+                  onPause={() => setLiveStatus('paused')}
+                  onResume={() => setLiveStatus('running')}
+                  onStop={() => setLiveStatus('idle')}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                  <button
+                    onClick={() => setShowLivePanel(false)}
+                    style={{
+                      height: 28,
+                      padding: '0 10px',
+                      borderRadius: 10,
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: 12
+                    }}
+                  >
+                    إغلاق اللوحة
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         {mode === 'agent' && (
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
             <div
