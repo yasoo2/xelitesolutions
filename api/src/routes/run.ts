@@ -605,6 +605,16 @@ function normalizeArabicQuery(input: string) {
     .trim();
 }
 
+function containsBuilderPlanText(raw: string): boolean {
+  const s = normalizeArabicQuery(raw);
+  if (!s) return false;
+  if (/خطة\s+بناء\s+موقع/.test(s)) return true;
+  if (/plan\s+(to\s+)?build\s+(a\s+)?website/.test(s)) return true;
+  if (/سأبدأ\s+الان\s+بالتنفيذ/.test(s) || /سأبدأ\s+الان\s+بالتنفيذ/.test(s)) return true;
+  if (/سأبدأ\s+الان/.test(s)) return true;
+  return false;
+}
+
 function isWeatherLikeQuery(text: string) {
   const t = normalizeArabicQuery(text);
   if (!t) return false;
@@ -1231,7 +1241,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           ? `WF_START:${wf.kind}:${wf.tool.name}`
           : `WF_START:${wf.kind}:${wf.root}`;
 
-      if (steps === 0 && !historyHasMarker(history as any, marker)) {
+      const alreadyExecuted =
+        historyHasToolCall(history as any, 'project_detect') ||
+        historyHasToolCall(history as any, 'scaffold_project') ||
+        historyHasToolCall(history as any, 'analyze_codebase');
+
+      if (steps === 0 && !historyHasMarker(history as any, marker) && !alreadyExecuted) {
         const title =
           wf.kind === 'tool_shell'
             ? `### خطة إنشاء أداة (Shell Tool)`
@@ -1263,7 +1278,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             : `- المجلد: ${wf.root}`;
 
       const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
-      ev({ type: 'text', data: md });
+      if (!containsBuilderPlanText(userTextForOverrides)) {
+        ev({ type: 'text', data: md });
+      }
       history.push({ role: 'assistant', content: marker } as any);
       try {
         if (useMock) {
