@@ -18,6 +18,12 @@ services:
       - MONGO_URI=mongodb://mongo:27017/joe
       - BROWSER_WORKER_URL=http://joe-browser-worker:8080
       - PORT=3000
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     networks:
       - joe-network
     depends_on:
