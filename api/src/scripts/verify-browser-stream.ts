@@ -2,7 +2,6 @@
 import { tools } from '../tools/registry';
 import { config } from '../config';
 import WebSocket from 'ws';
-import jwt from 'jsonwebtoken';
 
 async function runTest() {
   console.log('🚀 Starting Browser Stream Verification...');
@@ -34,14 +33,12 @@ async function runTest() {
   console.log(`✅ WebSocket Path: ${wsUrlPath}`);
 
   // 2. Generate Token
-  const token = jwt.sign({ sub: 'test-user', role: 'admin' }, config.jwtSecret, { expiresIn: '1h' });
-  
-  // 3. Construct Absolute WebSocket URL
-  // Assuming API is running on localhost at config.port
-  const port = config.port;
-  const fullWsUrl = `ws://localhost:${port}${wsUrlPath}?token=${token}`;
-  
-  console.log(`✅ Full WebSocket URL: ${fullWsUrl}`);
+  // 3. Construct Worker WebSocket URL
+  const workerWs = new URL(`/ws/${encodeURIComponent(String(sessionId))}`, config.browserWorkerUrl);
+  workerWs.searchParams.set('key', config.browserWorkerKey);
+  workerWs.protocol = workerWs.protocol === 'https:' ? 'wss:' : 'ws:';
+  const fullWsUrl = workerWs.toString();
+  console.log(`✅ Worker WebSocket URL: ${fullWsUrl}`);
 
   // 4. Connect to WebSocket
   console.log('\nConnecting to WebSocket...');

@@ -1910,6 +1910,44 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
           });
         }
+        if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
+          const msg = [
+            `⚠️ مطلوب توكن GitHub لإنشاء/تعديل ملفات داخل المستودع عبر API.`,
+            `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+          ].join('\n');
+
+          ev({ type: 'text', data: msg });
+          ev({
+            type: 'secret_required',
+            data: {
+              sessionId,
+              runId,
+              provider: 'github',
+              key: 'GITHUB_TOKEN',
+              label: 'GitHub Token',
+              reason: 'تعديل ملفات الريبو يحتاج مصادقة',
+            },
+          });
+
+          const { setPendingTool } = await import('../services/secrets');
+          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+          if (useMock) {
+            store.updateRun(runId, { status: 'blocked' as any });
+          } else {
+            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
+          }
+
+          return res.json({
+            runId,
+            sessionId,
+            blocked: true,
+            secretRequired: true,
+            secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+          });
+        }
         
         // Self-Healing Notification
         ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });

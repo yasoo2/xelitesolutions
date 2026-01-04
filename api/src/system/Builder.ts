@@ -170,11 +170,24 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.once('finish', () => {
+    const ms = Date.now() - start;
+    console.log(req.method + ' ' + req.originalUrl + ' ' + res.statusCode + ' ' + ms + 'ms');
+  });
+  next();
+});
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/app')
   .then(() => console.log('✅ DB Connected'));
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/status', (req, res) => {
+  const state = mongoose.connection && mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.json({ ok: true, db: state, uptime: process.uptime(), ts: Date.now() });
+});
 `;
 
     if (features.includes('products')) {
@@ -338,5 +351,59 @@ volumes:
   mongo-data:
 `);
     fs.writeFileSync(path.join(root, '.gitignore'), `node_modules\ndist\n.env\n`);
+    const wfDir = path.join(root, '.github', 'workflows');
+    fs.mkdirSync(wfDir, { recursive: true });
+    fs.writeFileSync(path.join(wfDir, 'ci.yml'), `
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run lint --if-present
+      - run: npm run typecheck --if-present
+      - run: npm test --if-present
+      - run: npm run build --if-present
+  service-status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        run: npm ci
+      - name: Start API
+        run: |
+          node apps/api/src/index.js & echo $! > api.pid
+          sleep 2
+      - name: Wait for /api/status
+        run: |
+          ATTEMPTS=0
+          until curl -sSf http://localhost:4000/api/status >/tmp/status.json 2>/dev/null || [ $ATTEMPTS -ge 30 ]; do
+            ATTEMPTS=$((ATTEMPTS+1))
+            echo "waiting ($ATTEMPTS)..."
+            sleep 1
+          done
+          cat /tmp/status.json || true
+      - name: Print service status
+        run: |
+          echo "Service Status:"
+          cat /tmp/status.json || echo '{"ok":false}'
+      - name: Stop API
+        if: always()
+        run: |
+          PID="$(cat api.pid || echo '')"
+          if [ -n "$PID" ]; then
+            kill $PID || true
+          fi
+`.trim());
   }
 }

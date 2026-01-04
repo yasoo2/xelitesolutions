@@ -217,7 +217,8 @@ export const tools: ToolDefinition[] = [
         name: { type: 'string' },
         type: { type: 'string', enum: ['ecommerce', 'saas', 'blog'] },
         features: { type: 'array', items: { type: 'string' } },
-        baseDir: { type: 'string' }
+        baseDir: { type: 'string' },
+        skipDev: { type: 'boolean' }
       },
       required: ['name']
     },
@@ -234,6 +235,7 @@ export const tools: ToolDefinition[] = [
       const type = String(input?.type || 'ecommerce').trim();
       const features = Array.isArray(input?.features) ? input.features : [];
       const baseDir = String(input?.baseDir || '').trim();
+      const skipDev = input?.skipDev === true;
       logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
       const scRes = await executeTool('scaffold_full_stack', { name, type, features, baseDir });
       if (!scRes?.ok) {
@@ -251,10 +253,51 @@ export const tools: ToolDefinition[] = [
       steps.push({ step: 'ci_generate_pipeline', ok: ciRes.ok, output: ciRes.output });
       const analyzeRes = await executeTool('analyze_codebase', { path: projectPath });
       steps.push({ step: 'analyze_codebase', ok: analyzeRes.ok, output: analyzeRes.output });
+      if (!skipDev) {
+        const devRes = await executeTool('dev_server_start', { cwd: projectPath });
+        steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
+        if (devRes.ok) {
+          const url = String(devRes.output?.previewUrl || 'http://localhost:5173/').trim();
+          const openRes = await executeTool('browser_open', { url });
+          steps.push({ step: 'browser_open', ok: openRes.ok, output: openRes.output });
+        }
+      }
       logs.push(`pipeline.complete path=${projectPath}`);
       const allOk = steps.every(s => s.ok);
       return { ok: allOk, output: { path: projectPath, steps }, logs };
     },
+  },
+  {
+    name: 'dev_server_start',
+    version: '1.0.0',
+    tags: ['dev', 'server', 'preview'],
+    inputSchema: { type: 'object', properties: { cwd: { type: 'string' }, command: { type: 'string' } }, required: ['cwd'] },
+    outputSchema: { type: 'object', properties: { previewUrl: { type: 'string' } } },
+    permissions: ['execute'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 5,
+    auditFields: ['cwd'],
+    mockSupported: true,
+    async execute(input) {
+      const logs: string[] = [];
+      const cwd = resolveToolPath(String(input?.cwd || '').trim());
+      const command = String(input?.command || 'npm run dev').trim();
+      try {
+        const child = spawn(command.split(' ')[0], command.split(' ').slice(1), {
+          cwd,
+          env: process.env,
+          stdio: 'ignore',
+          detached: true,
+        });
+        child.unref();
+        logs.push(`dev_started cwd=${cwd} cmd=${command}`);
+        return { ok: true, output: { previewUrl: 'http://localhost:5173/' }, logs };
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        logs.push(`dev_error=${msg}`);
+        return { ok: false, error: msg, logs };
+      }
+    }
   },
   {
     name: 'browser_open',

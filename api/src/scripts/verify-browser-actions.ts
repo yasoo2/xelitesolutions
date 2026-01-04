@@ -1,7 +1,6 @@
 import { tools } from '../tools/registry';
 import { config } from '../config';
 import WebSocket from 'ws';
-import jwt from 'jsonwebtoken';
 
 async function runTest() {
   console.log('🚀 Starting Browser Action Verification (fillForm cursor check)...');
@@ -37,15 +36,21 @@ async function runTest() {
   }
 
   const sessionId = openResult.output?.sessionId;
-  const wsUrlPath = openResult.output?.wsUrl;
   console.log(`✅ SessionId: ${sessionId}`);
 
-  // 2. Connect WebSocket
-  const token = jwt.sign({ sub: 'test-user', role: 'admin' }, config.jwtSecret, { expiresIn: '1h' });
-  const fullWsUrl = `ws://localhost:${config.port}${wsUrlPath}?token=${token}`;
-  
-  console.log('\n2. Connecting to WebSocket to listen for cursor events...');
-  const ws = new WebSocket(fullWsUrl);
+  if (!sessionId) {
+    console.error('❌ Missing sessionId from browser_open output');
+    process.exit(1);
+  }
+
+  // 2. Connect directly to worker WebSocket (no API proxy required)
+  const workerWs = new URL(`/ws/${encodeURIComponent(String(sessionId))}`, config.browserWorkerUrl);
+  workerWs.searchParams.set('key', config.browserWorkerKey);
+  workerWs.protocol = workerWs.protocol === 'https:' ? 'wss:' : 'ws:';
+  const fullWorkerWsUrl = workerWs.toString();
+  console.log('\n2. Connecting to Worker WebSocket to listen for cursor events...');
+  console.log(`✅ Worker WS URL: ${fullWorkerWsUrl}`);
+  const ws = new WebSocket(fullWorkerWsUrl);
 
   let cursorMoved = false;
 

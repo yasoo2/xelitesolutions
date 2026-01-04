@@ -476,6 +476,23 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
           return { blocked: true, secretRequired: true, secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' } };
         }
+        if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
+          const msg = [
+            `⚠️ مطلوب توكن GitHub لإنشاء/تعديل ملفات داخل المستودع عبر API.`,
+            `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+          ].join('\n');
+          broadcast({ type: 'text', runId: pending.runId, data: msg });
+          broadcast({
+            type: 'secret_required',
+            runId: pending.runId,
+            data: { sessionId, runId: pending.runId, provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token', reason: 'تعديل ملفات الريبو يحتاج مصادقة' },
+          });
+          setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
+          if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          return { blocked: true, secretRequired: true, secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' } };
+        }
         forcedText = `فشل التنفيذ: ${errorMsg}`;
         finalOk = false;
         break;
