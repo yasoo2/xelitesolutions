@@ -19,6 +19,8 @@ import { MemoryItem } from '../models/memoryItem';
 
 const router = Router();
 
+const loopPauseThrottle = new Map<string, number>();
+
 function redactSecretsFromString(input: string): string {
   return input
     .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]')
@@ -1098,7 +1100,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                    needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
                    hint ? `${hint}` : ``,
                  ].filter(Boolean).join('\n');
-                 ev({ type: 'text', data: msg });
+                 forcedText = msg;
+                 const now = Date.now();
+                 const last = loopPauseThrottle.get(String(sessionId));
+                 if (!last || now - last > 6000) {
+                     ev({ type: 'text', data: msg });
+                     assistantTextEmitted = true;
+                     loopPauseThrottle.set(String(sessionId), now);
+                 }
                  thoughtLoopPauseEmitted = true;
              }
              break;
