@@ -935,6 +935,20 @@ export default function CommandComposer({
             }
           }
 
+          if (msg.type === 'run_finished' || msg.type === 'run_completed') {
+            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
+            if (rid) {
+              setTaskBarByRunId((prev) => {
+                const cur = prev[rid];
+                if (!cur) return prev;
+                if (!cur.items.length) {
+                  return { ...prev, [rid]: { ...cur, visible: false, analyzing: false } };
+                }
+                return prev;
+              });
+            }
+          }
+
           if (msg.type === 'artifact_created') {
             const kind = msg.data?.kind;
             const href = msg.data?.href;

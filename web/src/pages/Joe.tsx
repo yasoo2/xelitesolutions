@@ -187,17 +187,21 @@ export default function Joe() {
 
   useEffect(() => {
     const update = () => {
-      const nodes = document.querySelectorAll('.composer-footer');
-      const el = nodes[nodes.length - 1] as HTMLElement | null;
-      setComposerHeight(el?.offsetHeight || 0);
+      const nodes = Array.from(document.querySelectorAll('.composer-footer')) as HTMLElement[];
+      let maxH = 0;
+      for (const n of nodes) {
+        const rect = n.getBoundingClientRect();
+        const h = rect?.height || n.offsetHeight || 0;
+        if (h > maxH) maxH = h;
+      }
+      setComposerHeight(maxH);
     };
     update();
     let ro: ResizeObserver | null = null;
-    const nodes = document.querySelectorAll('.composer-footer');
-    const el = nodes[nodes.length - 1] as HTMLElement | null;
-    if (el && typeof ResizeObserver !== 'undefined') {
+    const nodes = Array.from(document.querySelectorAll('.composer-footer')) as HTMLElement[];
+    if (nodes.length && typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(() => update());
-      ro.observe(el);
+      for (const el of nodes) ro.observe(el);
     }
     const onResize = () => update();
     window.addEventListener('resize', onResize);
