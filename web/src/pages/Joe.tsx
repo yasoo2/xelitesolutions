@@ -171,6 +171,8 @@ export default function Joe() {
   const [composerHeight, setComposerHeight] = useState(0);
   const [livePanelExpanded, setLivePanelExpanded] = useState(false);
   const [livePanelAutoOpened, setLivePanelAutoOpened] = useState(false);
+  const showLivePanelRef = useRef(showLivePanel);
+  useEffect(() => { showLivePanelRef.current = showLivePanel; }, [showLivePanel]);
 
   const nav = useNavigate();
 
@@ -225,6 +227,10 @@ export default function Joe() {
     const release = SocketService.subscribe((event: any) => {
       const type = String(event?.type || '');
       if (type === 'text') {
+        if (!showLivePanelRef.current) {
+          setShowLivePanel(true);
+          setLivePanelAutoOpened(true);
+        }
         const txt = String(event?.data || '');
         if (!/^system_prompt:/.test(String(event?.id || ''))) {
           setLiveMessages(prev => [...prev, { role: 'assistant', content: txt }]);
@@ -866,7 +872,7 @@ export default function Joe() {
                     />
                   </div>
                   {showLivePanel ? (
-                    <div style={{ width: isNarrow ? '100%' : 320, minWidth: 280, maxWidth: 420 }}>
+                    <div style={{ width: isNarrow ? '100%' : 260, minWidth: 220, maxWidth: 340 }}>
                       <LiveInteractionPanel 
                         steps={liveSteps} 
                         logs={liveLogs} 
@@ -877,6 +883,7 @@ export default function Joe() {
                         onStop={() => setLiveStatus('idle')}
                         expanded={livePanelExpanded}
                         onExpand={(v) => setLivePanelExpanded(!!v)}
+                        compact
                       />
                     </div>
                   ) : null}
@@ -914,7 +921,7 @@ export default function Joe() {
                   />
                 </div>
                 {showLivePanel ? (
-                  <div style={{ width: isNarrow ? '100%' : 320, minWidth: 280, maxWidth: 420 }}>
+                  <div style={{ width: isNarrow ? '100%' : 260, minWidth: 220, maxWidth: 340 }}>
                     <LiveInteractionPanel 
                       steps={liveSteps} 
                       logs={liveLogs} 
@@ -925,6 +932,7 @@ export default function Joe() {
                       onStop={() => setLiveStatus('idle')}
                       expanded={livePanelExpanded}
                       onExpand={(v) => setLivePanelExpanded(!!v)}
+                      compact
                     />
                   </div>
                 ) : null}
