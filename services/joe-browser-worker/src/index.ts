@@ -805,7 +805,7 @@ app.get('/up', (_req, res) => {
   res.json({ status: 'UP' });
 });
 app.get('/health', (_req, res) => {
-  if (startupError) return res.json({ status: 'ERROR', error: startupError, help: 'If on Render, ensure Service Type is set to Docker' });
+  if (startupError) return res.json({ status: 'ERROR', error: startupError, help: 'Ensure service configuration is correct' });
   if (!browserHealthy) return res.json({ status: 'STARTING' });
   res.json({ status: 'OK' });
 });

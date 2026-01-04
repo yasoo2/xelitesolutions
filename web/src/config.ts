@@ -7,17 +7,7 @@ const isPrivateNetHost =
 const isLocal = isLocalHost || isPrivateNetHost;
 const apiEnv = (window as any).JOE_CONFIG?.API_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
-// IMPORTANT: Set this to your actual Backend URL on Render
-// If your frontend is infinity-x-platform.onrender.com, your backend is likely DIFFERENT (e.g. joe-api.onrender.com)
-// UNLESS you are serving the frontend FROM the backend (monolith).
-// Assuming separate backend for now based on 'api.xelitesolutions.com' errors.
-
 const defaultLocalApiUrl = `${window.location.protocol}//127.0.0.1:8080`;
-const isProbablyApiHost =
-  hostname.includes('joe-api') ||
-  hostname.startsWith('api.') ||
-  hostname === 'joe-api.onrender.com';
-
 const fallbackApiUrl = isLocal
   ? defaultLocalApiUrl
   : 'https://api.xelitesolutions.com';

@@ -377,7 +377,7 @@ SECTION 9 — TOOL REGISTRY (200+ REAL TOOLS) (MUST)
 - Repo/Git tools: GitHub read/write, PR creation, checks, diffs, issues.
 - Code generation/build tools: scaffolding, component generators, API scaffolding.
 - Testing tools: unit, e2e, lint, type checks, smoke tests.
-- Deploy tools: Render deploy controls, Cloudflare deployment integration, env sync checks.
+- Deploy tools: Cloudflare deployment integration, env sync checks.
 - Observability tools: logs, metrics, incident creation, rollback actions.
 - Browser tools: operator actions (Section 8).
 - Data tools: MongoDB migrations/backup/restore (restricted by policy).
