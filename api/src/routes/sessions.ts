@@ -13,6 +13,7 @@ import { MemoryItem } from '../models/memoryItem';
 import { broadcast } from '../ws';
 import { executeTool } from '../tools/registry';
 import { getSessionRunConfig, popPendingTool, setPendingTool, setSessionSecret, setUserSecretEncrypted } from '../services/secrets';
+import { Tenant } from '../models/tenant';
 
 const router = Router();
 
@@ -107,19 +108,77 @@ function isGithubAuthError(raw: string) {
 
 // Create Session
 router.post('/', authenticate as any, async (req: Request, res: Response) => {
-  const { title } = req.body;
+  const rawTitle = typeof req.body?.title === 'string' ? req.body.title : '';
+  const title = rawTitle && rawTitle.trim() ? rawTitle.trim() : 'New Session';
+  const kind: 'chat' | 'agent' = (typeof req.body?.kind === 'string' && req.body.kind === 'agent') ? 'agent' : 'chat';
+  const mode: 'ADVISOR' | 'BUILDER' | 'SAFE' | 'OWNER' = 'ADVISOR';
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  const userId = (req as any).auth?.sub;
 
   try {
     if (useMock) {
-      const session = store.createSession(title || 'New Session');
+      const session = store.createSession(title, mode, kind);
       return res.json(session);
     }
 
-    const session = await Session.create({ title: title || 'New Session' });
-    res.json(session);
+    const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
+    const tenantDoc = await Tenant.findOneAndUpdate(
+      { name: tenantName },
+      { $setOnInsert: { name: tenantName } },
+      { upsert: true, new: true }
+    );
+
+    try {
+      const session = await Session.create({ title, mode, kind, userId, tenantId: tenantDoc._id });
+      return res.json(session);
+    } catch (err: any) {
+      // Handle duplicate title per user gracefully
+      if (err && err.code === 11000) {
+        const uniqueTitle = `${title} - ${new Date().toLocaleString()}`;
+        const session = await Session.create({ title: uniqueTitle, mode, kind, userId, tenantId: tenantDoc._id });
+        return res.json(session);
+      }
+      throw err;
+    }
   } catch (e) {
-    res.status(500).json({ error: 'Failed to create session' });
+    return res.status(500).json({ error: 'Failed to create session' });
+  }
+});
+
+// Pin/unpin a session
+router.patch('/:id/pin', authenticate as any, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '').trim();
+  const isPinned = !!req.body?.isPinned;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  try {
+    if (useMock) {
+      const s = store.getSession(id);
+      if (s) (s as any).isPinned = isPinned;
+      return res.json({ ok: true });
+    }
+    await Session.findByIdAndUpdate(id, { $set: { isPinned, lastUpdatedAt: new Date() } });
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to update pin' });
+  }
+});
+
+// Move a session to a folder or root
+router.patch('/:id/move', authenticate as any, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '').trim();
+  const folderIdRaw = req.body?.folderId;
+  const folderId = typeof folderIdRaw === 'string' && folderIdRaw.trim() ? folderIdRaw.trim() : null;
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  try {
+    if (useMock) {
+      const s = store.getSession(id);
+      if (s) (s as any).folderId = folderId || undefined;
+      return res.json({ ok: true });
+    }
+    await Session.findByIdAndUpdate(id, { $set: { folderId: folderId || undefined, lastUpdatedAt: new Date() } });
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to move session' });
   }
 });
 
