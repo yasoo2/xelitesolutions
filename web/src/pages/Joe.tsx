@@ -93,6 +93,8 @@ function BrowserApp({
     return () => window.removeEventListener('joe:browser_open_request', handler as any);
   }, []);
 
+  
+
   useEffect(() => {
     const handler = (ev: Event) => {
       const detail = (ev as CustomEvent)?.detail || {};
@@ -166,6 +168,7 @@ export default function Joe() {
   const [liveStatus, setLiveStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle');
   const [showFiles, setShowFiles] = useState(false);
   const [showLivePanel, setShowLivePanel] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(0);
 
   const nav = useNavigate();
 
@@ -181,6 +184,33 @@ export default function Joe() {
     window.addEventListener('joe:browser_attached', handler as any);
     return () => window.removeEventListener('joe:browser_attached', handler as any);
   }, []);
+
+  useEffect(() => {
+    const update = () => {
+      const nodes = document.querySelectorAll('.composer-footer');
+      const el = nodes[nodes.length - 1] as HTMLElement | null;
+      setComposerHeight(el?.offsetHeight || 0);
+    };
+    update();
+    let ro: ResizeObserver | null = null;
+    const nodes = document.querySelectorAll('.composer-footer');
+    const el = nodes[nodes.length - 1] as HTMLElement | null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => update());
+      ro.observe(el);
+    }
+    const onResize = () => update();
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      ro?.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    const nodes = document.querySelectorAll('.composer-footer');
+    const el = nodes[nodes.length - 1] as HTMLElement | null;
+    setComposerHeight(el?.offsetHeight || 0);
+  }, [mode, showSidebar, agentComposerOpen, showFiles, selected]);
 
   useEffect(() => {
     const release = SocketService.subscribe((event: any) => {
@@ -693,7 +723,7 @@ export default function Joe() {
             </div>
           </div>
           {/* Live Panel Dock - bottom-right */}
-          <div style={{ position: 'absolute', right: 16, bottom: 16, zIndex: 200 }}>
+          <div style={{ position: 'fixed', right: 16, bottom: (composerHeight || 0) + 16, zIndex: 200 }}>
             {!showLivePanel ? (
               <button
                 onClick={() => setShowLivePanel(true)}
