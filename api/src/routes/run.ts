@@ -1086,6 +1086,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   let thoughtLoopPauseEmitted = false;
   let postScaffoldScheduled = false;
   let postInstallScheduled = false;
+  let lastExecutedToolSig: string | null = null;
+  let lastExecutedToolName: string | null = null;
 
   let lastResult: any = null;
   let forcedText: string | null = null;
@@ -1178,16 +1180,15 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       planName = 'http_fetch';
     }
     
-    // Safety: Prevent infinite loops of same tool execution
+    // Safety: Prevent immediate repeats of same tool execution
     if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch'].includes(planName)) {
         const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
-        if (executedToolSigs.has(sig)) {
-             console.log(`[Safety] Skipping repeated execution of ${planName}`);
-             plan = {
-                 name: 'echo',
-                 input: { text: `(System) Skipped repeated step: ${planName}. Moving to next step.` }
-             } as any;
-             planName = 'echo';
+        if (lastExecutedToolSig === sig) {
+            plan = {
+                name: 'echo',
+                input: { text: `(System) Skipped repeated step: ${planName}. Moving to next step.` }
+            } as any;
+            planName = 'echo';
         } else {
             executedToolSigs.add(sig);
         }
@@ -1610,6 +1611,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     const callInput =
       userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
     const result = await executeTool(plan?.name || '', callInput);
+    lastExecutedToolSig = `${String(plan?.name || '')}:${JSON.stringify((plan as any)?.input || {})}`;
+    lastExecutedToolName = String(plan?.name || '');
     if (result?.ok && plan?.name === 'browser_open') {
       const sid = String(result?.output?.sessionId || '').trim();
       if (sid) browserSessionId = sid;
