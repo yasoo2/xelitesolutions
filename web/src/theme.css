@@ -1,12 +1,12 @@
 :root {
-  --accent-primary: #f59e0b;
+  --accent-primary: #fbbf24;
   --accent-secondary: #f97316;
-  --accent-primary-rgb: 245, 158, 11;
+  --accent-primary-rgb: 251, 191, 36;
   --accent-secondary-rgb: 249, 115, 22;
-  --accent-rgb: 245, 158, 11;
-  --accent-glow: rgba(245, 158, 11, 0.78);
-  --brand-mark-yellow: #f59e0b;
-  --brand-mark-yellow-rgb: 245, 158, 11;
+  --accent-rgb: 251, 191, 36;
+  --accent-glow: rgba(251, 191, 36, 0.82);
+  --brand-mark-yellow: #fbbf24;
+  --brand-mark-yellow-rgb: 251, 191, 36;
   --accent-danger: #ef4444;
   --accent-success: #22c55e;
   --bg-dark: #080703;
@@ -33,12 +33,12 @@ html {
 }
 
 html[data-theme="light"] {
-  --accent-primary: #1d4ed8;
-  --accent-secondary: #0284c7;
-  --accent-primary-rgb: 29, 78, 216;
-  --accent-secondary-rgb: 2, 132, 199;
-  --accent-rgb: 29, 78, 216;
-  --accent-glow: rgba(29, 78, 216, 0.42);
+  --accent-primary: #3b82f6;
+  --accent-secondary: #0ea5e9;
+  --accent-primary-rgb: 59, 130, 246;
+  --accent-secondary-rgb: 14, 165, 233;
+  --accent-rgb: 59, 130, 246;
+  --accent-glow: rgba(59, 130, 246, 0.42);
   --brand-mark-yellow: #fde047;
   --brand-mark-yellow-rgb: 253, 224, 71;
   --bg-dark: #f6f8ff;
