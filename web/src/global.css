@@ -1748,6 +1748,11 @@ html[data-theme="light"] .chat-view {
   padding: 18px 16px 0;
 }
 
+html.live-panel-open .events-content {
+  padding-right: calc(var(--live-panel-width, 0px) + 24px);
+  padding-bottom: calc(var(--live-panel-height, 0px) + 24px);
+}
+
 .activity-card {
   width: 100%;
   border-radius: 18px;

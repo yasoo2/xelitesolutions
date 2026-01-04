@@ -169,6 +169,7 @@ export default function Joe() {
   const [showFiles, setShowFiles] = useState(false);
   const [showLivePanel, setShowLivePanel] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
+  const [livePanelExpanded, setLivePanelExpanded] = useState(false);
 
   const nav = useNavigate();
 
@@ -210,11 +211,35 @@ export default function Joe() {
       ro?.disconnect();
     };
   }, []);
+
   useEffect(() => {
     const nodes = document.querySelectorAll('.composer-footer');
     const el = nodes[nodes.length - 1] as HTMLElement | null;
     setComposerHeight(el?.offsetHeight || 0);
   }, [mode, showSidebar, agentComposerOpen, showFiles, selected]);
+
+  useEffect(() => {
+    const apply = () => {
+      if (showLivePanel) {
+        document.documentElement.classList.add('live-panel-open');
+        const width = isNarrow ? Math.min(window.innerWidth * 0.92, 520) : 480;
+        const height = livePanelExpanded
+          ? Math.min(window.innerHeight * 0.5, 420)
+          : Math.max(96, Math.min(window.innerHeight * 0.18, 140));
+        document.documentElement.style.setProperty('--live-panel-width', `${Math.round(width)}px`);
+        document.documentElement.style.setProperty('--live-panel-height', `${Math.round(height)}px`);
+        document.documentElement.style.setProperty('--composer-height', `${composerHeight}px`);
+      } else {
+        document.documentElement.classList.remove('live-panel-open');
+        document.documentElement.style.removeProperty('--live-panel-width');
+        document.documentElement.style.removeProperty('--live-panel-height');
+      }
+    };
+    apply();
+    const onResize = () => apply();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [showLivePanel, isNarrow, livePanelExpanded, composerHeight]);
 
   useEffect(() => {
     const release = SocketService.subscribe((event: any) => {
@@ -759,6 +784,8 @@ export default function Joe() {
                   onPause={() => setLiveStatus('paused')}
                   onResume={() => setLiveStatus('running')}
                   onStop={() => setLiveStatus('idle')}
+                  expanded={livePanelExpanded}
+                  onExpand={(v) => setLivePanelExpanded(!!v)}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
                   <button
