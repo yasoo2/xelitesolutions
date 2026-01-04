@@ -1,12 +1,15 @@
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
+import { LiveInteractionPanel } from '../components/LiveInteractionPanel';
+import FileExplorer from '../components/FileExplorer';
+import { ThinkingIndicator } from '../components/ThinkingIndicator';
+import { SocketService } from '../services/socket';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader } from 'lucide-react';
-import BrowserView from '../components/BrowserView';
 
-// const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
+const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
 
 function BrowserApp({
   onSession,
@@ -118,7 +121,9 @@ function BrowserApp({
             </div>
           </div>
         ) : (
-          <BrowserView sessionId={sessionId} wsUrl={wsUrl} />
+          <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading stream...</div>}>
+            <AgentBrowserStreamLazy wsUrl={wsUrl!} minimal />
+          </Suspense>
         )}
       </div>
     </div>
@@ -155,6 +160,11 @@ export default function Joe() {
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [liveSteps, setLiveSteps] = useState<any[]>([]);
+  const [liveLogs, setLiveLogs] = useState<string[]>([]);
+  const [liveMessages, setLiveMessages] = useState<any[]>([]);
+  const [liveStatus, setLiveStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle');
+  const [showFiles, setShowFiles] = useState(false);
 
   const nav = useNavigate();
 
@@ -169,6 +179,32 @@ export default function Joe() {
     };
     window.addEventListener('joe:browser_attached', handler as any);
     return () => window.removeEventListener('joe:browser_attached', handler as any);
+  }, []);
+
+  useEffect(() => {
+    const release = SocketService.subscribe((event: any) => {
+      const type = String(event?.type || '');
+      if (type === 'text') {
+        const txt = String(event?.data || '');
+        if (!/^system_prompt:/.test(String(event?.id || ''))) {
+          setLiveMessages(prev => [...prev, { role: 'assistant', content: txt }]);
+        }
+      } else if (type === 'step_started') {
+        setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'started', duration: 0 }]);
+        setLiveStatus('running');
+      } else if (type === 'step_done') {
+        setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'done', duration: event?.data?.duration || 0 }]);
+      } else if (type === 'step_failed') {
+        setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'failed', error: event?.data?.error || '' }]);
+        setLiveStatus('error');
+      } else {
+        try { setLiveLogs(prev => [...prev, JSON.stringify(event)]); } catch { /* noop */ }
+      }
+      if (type === 'run_finished' || type === 'run_completed') {
+        setLiveStatus('idle');
+      }
+    });
+    return () => { release(); };
   }, []);
 
   useEffect(() => {
@@ -645,8 +681,25 @@ export default function Joe() {
                 <MessageSquare size={16} />
                 <span className="mode-fab-label">المحادثة</span>
               </button>
+              <button 
+                onClick={() => setShowFiles(v => !v)}
+                className={`mode-fab ${showFiles ? 'active' : ''}`}
+                title="Files"
+              >
+                <Folder size={16} />
+                <span className="mode-fab-label">الملفات</span>
+              </button>
             </div>
           </div>
+          <LiveInteractionPanel 
+            steps={liveSteps} 
+            logs={liveLogs} 
+            messages={liveMessages} 
+            status={liveStatus} 
+            onPause={() => setLiveStatus('paused')}
+            onResume={() => setLiveStatus('running')}
+            onStop={() => setLiveStatus('idle')}
+          />
         {mode === 'agent' && (
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
             <div
@@ -759,16 +812,24 @@ export default function Joe() {
           </div>
         )}
         {mode === 'chat' && (
-          <div className="chat-view">
-            <CommandComposer
-              key={selected || 'new'}
-              sessionId={selected || undefined}
-              sessionKind="chat"
-              onSessionCreated={async (id) => {
-                  await loadAllSessions();
-                  setSelected(id);
-                }}
-            />
+          <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {liveStatus === 'running' ? <ThinkingIndicator stepName={(liveSteps[liveSteps.length - 1] || {}).name} /> : null}
+              <CommandComposer
+                key={selected || 'new'}
+                sessionId={selected || undefined}
+                sessionKind="chat"
+                onSessionCreated={async (id) => {
+                    await loadAllSessions();
+                    setSelected(id);
+                  }}
+              />
+            </div>
+            {showFiles ? (
+              <div style={{ width: 420, minWidth: 320, height: '100%', borderLeft: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                <FileExplorer />
+              </div>
+            ) : null}
           </div>
         )}
         </div>
