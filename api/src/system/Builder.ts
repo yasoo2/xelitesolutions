@@ -30,12 +30,117 @@ export class Builder {
       workspaces: ["apps/*"],
       scripts: {
         "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
-        "build": "npm install --include=dev && npm run build --workspaces"
+        "build": "npm install --include=dev && npm run build --workspaces",
+        "lint": "eslint .",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "npm run test -w apps/web && jest"
       },
-      devDependencies: { "concurrently": "^8.0.0" }
+      devDependencies: { 
+        "concurrently": "^8.0.0",
+        "eslint": "^9.39.2",
+        "typescript": "^5.9.3",
+        "jest": "^30.2.0",
+        "@eslint/js": "^9.0.0",
+        "eslint-plugin-react": "^7.34.0",
+        "eslint-plugin-react-hooks": "^4.6.0",
+        "@typescript-eslint/parser": "^8.11.0",
+        "@typescript-eslint/eslint-plugin": "^8.11.0"
+      }
     }, null, 2));
     
     fs.mkdirSync(path.join(root, 'apps'), { recursive: true });
+
+    // TypeScript config (JS-friendly)
+    fs.writeFileSync(path.join(root, 'tsconfig.json'), JSON.stringify({
+      compilerOptions: {
+        target: "ES2020",
+        moduleResolution: "node",
+        allowJs: true,
+        skipLibCheck: true,
+        jsx: "react-jsx",
+        noEmit: true
+      },
+      include: ["apps/**/*", "tests/**/*"]
+    }, null, 2));
+
+    fs.writeFileSync(path.join(root, 'eslint.config.cjs'), `
+const js = require('@eslint/js');
+const reactPlugin = require('eslint-plugin-react');
+const reactHooksPlugin = require('eslint-plugin-react-hooks');
+const tsParser = require('@typescript-eslint/parser');
+const tsPlugin = require('@typescript-eslint/eslint-plugin');
+module.exports = [
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/coverage/**', '**/.github/**'] },
+  js.configs.recommended,
+  {
+    files: ['apps/api/**/*.js'],
+    linterOptions: { reportUnusedDisableDirectives: true },
+    languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: { require: 'readonly', process: 'readonly', console: 'readonly' } },
+    rules: {}
+  },
+  {
+    files: ['jest.config.js'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: { module: 'readonly', require: 'readonly' } },
+    rules: {}
+  },
+  {
+    files: ['apps/web/**/*.{js,jsx}'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module', parserOptions: { ecmaFeatures: { jsx: true } }, globals: { console: 'readonly', window: 'readonly', document: 'readonly' } },
+    plugins: { react: reactPlugin, 'react-hooks': reactHooksPlugin },
+    rules: {
+      'no-unused-vars': ['warn', { varsIgnorePattern: '^React$' }],
+      'react/no-unknown-property': 'warn',
+      'react/jsx-no-duplicate-props': 'warn',
+      'react/react-in-jsx-scope': 'off',
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn'
+    },
+    settings: { react: { version: 'detect' } }
+  },
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser, ecmaVersion: 2022, sourceType: 'module', parserOptions: { ecmaFeatures: { jsx: true } } },
+    plugins: { '@typescript-eslint': tsPlugin, react: reactPlugin, 'react-hooks': reactHooksPlugin },
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-misused-promises': 'warn',
+      'react/no-unknown-property': 'warn',
+      'react/jsx-no-duplicate-props': 'warn',
+      'react/react-in-jsx-scope': 'off',
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn'
+    },
+    settings: { react: { version: 'detect' } }
+  },
+  {
+    files: ['apps/web/**/*.{test,spec}.{js,jsx}'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: { test: 'readonly', expect: 'readonly', describe: 'readonly', it: 'readonly', vi: 'readonly' } },
+    rules: {}
+  },
+  {
+    files: ['tests/**/*.js'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: { test: 'readonly', expect: 'readonly' } },
+    rules: {}
+  }
+];`.trim());
+
+    // Basic Jest test (smoke)
+    const testsDir = path.join(root, 'tests');
+    fs.mkdirSync(testsDir, { recursive: true });
+    fs.writeFileSync(path.join(testsDir, 'basic.test.js'), `
+const fs = require('fs');
+test('API index exists', () => {
+  expect(fs.existsSync('apps/api/src/index.js')).toBe(true);
+});
+test('Web App exists', () => {
+  expect(fs.existsSync('apps/web/src/App.jsx')).toBe(true);
+});
+`.trim());
+    fs.writeFileSync(path.join(root, 'jest.config.js'), `
+module.exports = {
+  testMatch: ["<rootDir>/tests/**/*.test.js"],
+  testEnvironment: "node"
+};`.trim());
   }
 
   private static createBackend(root: string, features: string[]) {
@@ -162,9 +267,10 @@ app.get('/api/orders', async (req, res) => {
     fs.writeFileSync(path.join(webRoot, 'package.json'), JSON.stringify({
       name: "web",
       version: "1.0.0",
-      scripts: { "dev": "vite", "build": "vite build" },
+      type: "module",
+      scripts: { "dev": "vite", "build": "vite build", "test": "vitest run" },
       dependencies: { "react": "^18.2.0", "react-dom": "^18.2.0", "axios": "^1.4.0", "lucide-react": "^0.263.1" },
-      devDependencies: { "@vitejs/plugin-react": "^4.0.3", "vite": "^4.4.5", "tailwindcss": "^3.3.3", "autoprefixer": "^10.4.14", "postcss": "^8.4.27" }
+      devDependencies: { "@vitejs/plugin-react": "^4.0.3", "vite": "^4.4.5", "vitest": "^2.1.3", "tailwindcss": "^3.3.3", "autoprefixer": "^10.4.14", "postcss": "^8.4.27" }
     }, null, 2));
 
     fs.writeFileSync(path.join(webRoot, 'vite.config.js'), `
@@ -172,7 +278,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { '/api': 'http://localhost:4000' } }
+  server: { proxy: { '/api': 'http://localhost:4000' } },
+  test: { environment: 'node' }
 });`);
 
     fs.writeFileSync(path.join(webRoot, 'index.html'), `
@@ -203,6 +310,16 @@ export default function App() {
   );
 }
 `);
+
+    fs.writeFileSync(path.join(webRoot, 'src/App.test.jsx'), `
+import { describe, it, expect } from 'vitest';
+import App from './App';
+describe('App', () => {
+  it('exports a component', () => {
+    expect(typeof App).toBe('function');
+  });
+});
+`.trim());
 
     fs.writeFileSync(path.join(webRoot, 'src/index.css'), `@tailwind base;\n@tailwind components;\n@tailwind utilities;`);
     fs.writeFileSync(path.join(webRoot, 'tailwind.config.js'), `export default { content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"], theme: { extend: {} }, plugins: [] }`);

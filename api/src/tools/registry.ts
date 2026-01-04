@@ -208,6 +208,55 @@ async function formatWorkerHttpError(resp: any, base: string) {
 
 export const tools: ToolDefinition[] = [
   {
+    name: 'website_full_pipeline',
+    version: '1.0.0',
+    tags: ['pipeline', 'web', 'scaffold', 'build', 'test'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        type: { type: 'string', enum: ['ecommerce', 'saas', 'blog'] },
+        features: { type: 'array', items: { type: 'string' } },
+        baseDir: { type: 'string' }
+      },
+      required: ['name']
+    },
+    outputSchema: { type: 'object', properties: { path: { type: 'string' }, steps: { type: 'array' } } },
+    permissions: ['write', 'execute'],
+    sideEffects: ['write', 'execute'],
+    rateLimitPerMinute: 3,
+    auditFields: ['name'],
+    mockSupported: true,
+    async execute(input) {
+      const logs: string[] = [];
+      const steps: any[] = [];
+      const name = String(input?.name || 'mega-web').trim();
+      const type = String(input?.type || 'ecommerce').trim();
+      const features = Array.isArray(input?.features) ? input.features : [];
+      const baseDir = String(input?.baseDir || '').trim();
+      logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
+      const scRes = await executeTool('scaffold_full_stack', { name, type, features, baseDir });
+      if (!scRes?.ok) {
+        steps.push({ step: 'scaffold_full_stack', ok: false, error: scRes?.error });
+        return { ok: false, output: { path: '', steps }, logs };
+      }
+      const projectPath = String(scRes.output?.path || '').trim();
+      steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });
+      let installRes = await executeTool('shell_execute', { command: `cd "${projectPath}" && npm install --include=dev --legacy-peer-deps --no-audit --no-fund --quiet`, timeout: 10 * 60 * 1000 });
+      if (!installRes.ok) installRes = await executeTool('shell_execute', { command: `cd "${projectPath}" && npm ci --legacy-peer-deps --no-audit --no-fund --quiet`, timeout: 10 * 60 * 1000 });
+      steps.push({ step: 'npm_install', ok: installRes.ok, output: installRes.output });
+      const qualityRes = await executeTool('quality_run', { path: projectPath, tasks: ['lint', 'typecheck', 'test', 'build'] });
+      steps.push({ step: 'quality_run', ok: qualityRes.ok, output: qualityRes.output });
+      const ciRes = await executeTool('ci_generate_pipeline', { path: projectPath, kind: 'node' });
+      steps.push({ step: 'ci_generate_pipeline', ok: ciRes.ok, output: ciRes.output });
+      const analyzeRes = await executeTool('analyze_codebase', { path: projectPath });
+      steps.push({ step: 'analyze_codebase', ok: analyzeRes.ok, output: analyzeRes.output });
+      logs.push(`pipeline.complete path=${projectPath}`);
+      const allOk = steps.every(s => s.ok);
+      return { ok: allOk, output: { path: projectPath, steps }, logs };
+    },
+  },
+  {
     name: 'browser_open',
     description: 'Opens a real browser session to a URL. Use this to view live websites, search Google/Bing, or debug UI. Returns a sessionId and a WebSocket URL for live streaming.',
     version: '1.0.0',
@@ -704,6 +753,39 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 20,
     auditFields: ['name'],
     mockSupported: true,
+  },
+  {
+    name: 'github_create_or_update_file',
+    version: '1.0.0',
+    tags: ['dev', 'github'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string' },
+        repo: { type: 'string' },
+        path: { type: 'string' },
+        content: { type: 'string' },
+        message: { type: 'string' },
+        branch: { type: 'string' },
+        sessionId: { type: 'string' },
+        userId: { type: 'string' },
+        sha: { type: 'string' }
+      },
+      required: ['owner', 'repo', 'path', 'content', 'message']
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        commitSha: { type: 'string' },
+        htmlUrl: { type: 'string' },
+        contentSha: { type: 'string' }
+      }
+    },
+    permissions: ['read', 'write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['owner', 'repo', 'path'],
+    mockSupported: true
   },
   {
     name: 'npm_manager',
@@ -1278,7 +1360,7 @@ export const tools: ToolDefinition[] = [
       const hasShoppingWord = /(price|buy|shop|سعر|شراء|متجر|تسوق|sale|discount)/i.test(queryRaw);
       const baseQ = hasShoppingWord ? queryRaw : `${queryRaw} ${shopHints}`;
       const hasSaHint = /(saudi|ksa|\bsa\b|السعودية|السعوديه|سعودي|ر\.?\s?س|SAR)/i.test(queryRaw);
-      const wantsSaHint = wantsSiteOnly && !!storeDomain && /(^|\.)noon\.com$|(^|\.)extra\.com$/i.test(storeDomain) && !hasSaHint;
+      const wantsSaHint = wantsSiteOnly && !!storeDomain && /(^|\.)noon\.com$|(^|\.)extra\.com$|(^|\.)jarir\.com$/i.test(storeDomain) && !hasSaHint;
       const baseQ2 = wantsSaHint ? `${baseQ} ${isArabic ? 'السعودية' : 'Saudi'}` : baseQ;
       const searchQ = wantsSiteOnly ? `${baseQ2} site:${storeDomain}` : baseQ2;
       logs.push(`search.query=${searchQ}`);
@@ -1461,7 +1543,7 @@ export const tools: ToolDefinition[] = [
 
       const extractJsonLdObjects = (html: string) => {
         const out: any[] = [];
-        const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+        const re = /<script[^>]*type=["']application\/ld\+json[^"']*["'][^>]*>([\s\S]*?)<\/script>/gi;
         let m: RegExpExecArray | null;
         while ((m = re.exec(html))) {
           const raw = String(m[1] || '').trim();
@@ -1812,10 +1894,12 @@ export const tools: ToolDefinition[] = [
         if (/(^|\.)noon\.com$/i.test(host)) {
           const matches: Array<{ price: number; currency: string; raw: string }> = [];
           const patterns: RegExp[] = [
-            /"priceCurrency"\s*:\s*"([A-Z]{3})"[\s\S]{0,250}?"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
-            /"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,250}?"priceCurrency"\s*:\s*"([A-Z]{3})"/gi,
-            /"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,120}?"currency"\s*:\s*"([A-Z]{3})"/gi,
-            /"currency"\s*:\s*"([A-Z]{3})"[\s\S]{0,120}?"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"priceCurrency"\s*:\s*"([A-Z]{3})"[\s\S]{0,500}?"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,500}?"priceCurrency"\s*:\s*"([A-Z]{3})"/gi,
+            /"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,250}?"currency"\s*:\s*"([A-Z]{3})"/gi,
+            /"currency"\s*:\s*"([A-Z]{3})"[\s\S]{0,250}?"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"currencyCode"\s*:\s*"([A-Z]{3})"[\s\S]{0,600}?"(?:amount|price|value)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"(?:amount|price|value)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,600}?"currencyCode"\s*:\s*"([A-Z]{3})"/gi,
           ];
           for (const re of patterns) {
             let m: RegExpExecArray | null;
@@ -1827,6 +1911,29 @@ export const tools: ToolDefinition[] = [
               const price = parsePriceNumber(priceRaw);
               if (price && currency && isReasonablePrice(price, currency)) matches.push({ price, currency, raw: String(m[0] || '') });
               if (matches.length >= 25) break;
+            }
+          }
+          if (!matches.length) {
+            const s = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)?.[1] || '';
+            if (s) {
+              try {
+                const j = JSON.parse(s);
+                const pushPair = (cur: string, price: number, raw: string) => {
+                  if (price && cur && isReasonablePrice(price, cur)) matches.push({ price, currency: cur, raw });
+                };
+                const visit = (node: any) => {
+                  if (!node) return;
+                  if (Array.isArray(node)) { for (const el of node) visit(el); return; }
+                  if (typeof node !== 'object') return;
+                  const curRaw = String((node as any)?.currency || (node as any)?.priceCurrency || (node as any)?.currencyCode || '').trim().toUpperCase();
+                  const priceRaw = String((node as any)?.price ?? (node as any)?.sellingPrice ?? (node as any)?.offerPrice ?? (node as any)?.nowPrice ?? (node as any)?.priceNow ?? (node as any)?.amount ?? (node as any)?.value ?? '').trim();
+                  const priceNum = parsePriceNumber(priceRaw);
+                  const rawStr = priceRaw || curRaw ? `${curRaw} ${priceRaw}` : '';
+                  if (priceNum && curRaw) pushPair(curRaw, priceNum, rawStr);
+                  for (const v of Object.values(node)) visit(v);
+                };
+                visit(j);
+              } catch {}
             }
           }
           matches.sort((a, b) => a.price - b.price);
@@ -1862,6 +1969,9 @@ export const tools: ToolDefinition[] = [
               const currency = currencyFromText(String(m[0] || '')) || 'SAR';
               const txt = String(m[0] || '').trim();
               if (/month|شهري|شهر|\/\s*mo/i.test(txt)) continue;
+              const idx = (m as any).index ?? html.indexOf(m[0] || '');
+              const ctx = idx >= 0 ? html.slice(Math.max(0, idx - 60), Math.min(html.length, idx + 120)) : txt;
+              if (/(وفر|وفّر|خصم|قسط|قسّط|استبدل|trade[\s-]?in|installment|discount|save|off|حتى)/i.test(ctx)) continue;
               if (price && currency && isReasonablePrice(price, currency)) {
                 const minByCur: Record<string, number> = { USD: 80, CAD: 100, EUR: 90, GBP: 70, SAR: 500, AED: 500, KWD: 20, QAR: 500, BHD: 20, OMR: 20, TRY: 1500, INR: 7000 };
                 const curKey = String(currency).toUpperCase();
@@ -2008,6 +2118,7 @@ export const tools: ToolDefinition[] = [
             const text = String(el.textContent || '').replace(/\s+/g, ' ').trim();
             if (!text) continue;
             if (/month|شهري|شهر|\/\s*mo/i.test(text)) continue;
+            if (/(وفر|وفّر|خصم|قسط|قسّط|استبدل|trade[\s-]?in|installment|discount|save|off|حتى)/i.test(text)) continue;
             const currency = currencyFromText(text) || 'SAR';
             const price = parsePriceNumber(text);
             if (price && isReasonablePrice(price, currency)) {
@@ -2044,10 +2155,12 @@ export const tools: ToolDefinition[] = [
         if (/(^|\.)noon\.com$/i.test(host)) {
           const matches: Array<{ price: number; currency: string; raw: string }> = [];
           const patterns: RegExp[] = [
-            /"priceCurrency"\s*:\s*"([A-Z]{3})"[\s\S]{0,250}?"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
-            /"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,250}?"priceCurrency"\s*:\s*"([A-Z]{3})"/gi,
-            /"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,120}?"currency"\s*:\s*"([A-Z]{3})"/gi,
-            /"currency"\s*:\s*"([A-Z]{3})"[\s\S]{0,120}?"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"priceCurrency"\s*:\s*"([A-Z]{3})"[\s\S]{0,500}?"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,500}?"priceCurrency"\s*:\s*"([A-Z]{3})"/gi,
+            /"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,250}?"currency"\s*:\s*"([A-Z]{3})"/gi,
+            /"currency"\s*:\s*"([A-Z]{3})"[\s\S]{0,250}?"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"currencyCode"\s*:\s*"([A-Z]{3})"[\s\S]{0,600}?"(?:amount|price|value)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"(?:amount|price|value)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,600}?"currencyCode"\s*:\s*"([A-Z]{3})"/gi,
           ];
           for (const re of patterns) {
             let m: RegExpExecArray | null;
@@ -2059,6 +2172,29 @@ export const tools: ToolDefinition[] = [
               const price = parsePriceNumber(priceRaw);
               if (price && currency && isReasonablePrice(price, currency)) matches.push({ price, currency, raw: String(m[0] || '') });
               if (matches.length >= 30) break;
+            }
+          }
+          if (!matches.length) {
+            const s = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)?.[1] || '';
+            if (s) {
+              try {
+                const j = JSON.parse(s);
+                const pushPair = (cur: string, price: number, raw: string) => {
+                  if (price && cur && isReasonablePrice(price, cur)) matches.push({ price, currency: cur, raw });
+                };
+                const visit = (node: any) => {
+                  if (!node) return;
+                  if (Array.isArray(node)) { for (const el of node) visit(el); return; }
+                  if (typeof node !== 'object') return;
+                  const curRaw = String((node as any)?.currency || (node as any)?.priceCurrency || (node as any)?.currencyCode || '').trim().toUpperCase();
+                  const priceRaw = String((node as any)?.price ?? (node as any)?.sellingPrice ?? (node as any)?.offerPrice ?? (node as any)?.nowPrice ?? (node as any)?.priceNow ?? (node as any)?.amount ?? (node as any)?.value ?? '').trim();
+                  const priceNum = parsePriceNumber(priceRaw);
+                  const rawStr = priceRaw || curRaw ? `${curRaw} ${priceRaw}` : '';
+                  if (priceNum && curRaw) pushPair(curRaw, priceNum, rawStr);
+                  for (const v of Object.values(node)) visit(v);
+                };
+                visit(j);
+              } catch {}
             }
           }
           matches.sort((a, b) => a.price - b.price);
@@ -4905,6 +5041,8 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
         const token = (
           (userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null) ||
           getSessionSecret(sessionId, 'GITHUB_TOKEN') ||
+          process.env.GITHUB_TOKEN ||
+          process.env.GH_TOKEN ||
           ''
         ).trim();
         if (!token) return { ok: false, error: 'Missing GitHub token', logs };
@@ -4980,6 +5118,80 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
             },
             logs,
           };
+        } catch (e: any) {
+          return { ok: false, error: e?.message || String(e), logs };
+        }
+    }
+    if (name === 'github_create_or_update_file') {
+        const owner = String(input?.owner || '').trim();
+        const repo = String(input?.repo || '').trim();
+        const filePath = String(input?.path || '').trim();
+        const contentStr = String(input?.content || '');
+        const message = String(input?.message || '').trim() || `Add ${filePath}`;
+        const branch = String(input?.branch || '').trim();
+        const sessionId = typeof (input as any)?.sessionId === 'string' ? String((input as any).sessionId).trim() : '';
+        const userId = typeof (input as any)?.userId === 'string' ? String((input as any).userId).trim() : '';
+        const shaInput = String(input?.sha || '').trim();
+        if (!owner || !repo || !filePath) return { ok: false, error: 'Missing owner/repo/path', logs };
+        const { getSessionSecret, getUserSecret } = await import('../services/secrets');
+        const token = (
+          (userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null) ||
+          getSessionSecret(sessionId, 'GITHUB_TOKEN') ||
+          process.env.GITHUB_TOKEN ||
+          process.env.GH_TOKEN ||
+          ''
+        ).trim();
+        if (!token) return { ok: false, error: 'Missing GitHub token', logs };
+        const payload: any = {
+          message,
+          content: Buffer.from(contentStr, 'utf8').toString('base64')
+        };
+        if (branch) payload.branch = branch;
+        let sha = shaInput;
+        if (!sha) {
+          try {
+            const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(filePath)}${branch ? `?ref=${encodeURIComponent(branch)}` : ''}`;
+            const r = await fetch(url, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'JOE AI',
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            if (r.ok) {
+              const txt = await r.text();
+              let j: any = null;
+              try { j = JSON.parse(txt); } catch {}
+              const curSha = typeof j?.sha === 'string' ? j.sha : '';
+              if (curSha) sha = curSha;
+            }
+          } catch {}
+        }
+        if (sha) payload.sha = sha;
+        const putUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(filePath)}`;
+        try {
+          const resp = await fetch(putUrl, {
+            method: 'PUT',
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'JOE AI',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+          });
+          const text = await resp.text();
+          let json: any = null;
+          try { json = JSON.parse(text); } catch {}
+          if (!resp.ok) {
+            const msg = typeof json?.message === 'string' ? json.message : text.slice(0, 300);
+            return { ok: false, error: `GitHub API ${resp.status}: ${msg}`, logs };
+          }
+          const commitSha = String(json?.commit?.sha || '');
+          const htmlUrl = String(json?.content?.html_url || '');
+          const contentSha = String(json?.content?.sha || '');
+          return { ok: true, output: { commitSha, htmlUrl, contentSha }, logs };
         } catch (e: any) {
           return { ok: false, error: e?.message || String(e), logs };
         }
