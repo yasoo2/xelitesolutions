@@ -1168,7 +1168,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       ev({ type: 'text', data: msg });
       forcedText = msg;
       assistantTextEmitted = true;
-      break;
+      plan = { name: 'project_detect', input: { path: '.' } } as any;
     }
     
     let planName = String(plan?.name || '');
@@ -1184,11 +1184,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch'].includes(planName)) {
         const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
         if (lastExecutedToolSig === sig) {
-            plan = {
-                name: 'echo',
-                input: { text: `(System) Skipped repeated step: ${planName}. Moving to next step.` }
-            } as any;
-            planName = 'echo';
+            if (planName === 'project_detect') {
+                plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+                planName = 'analyze_codebase';
+            } else {
+                plan = {
+                    name: 'echo',
+                    input: { text: `(System) Skipped repeated step: ${planName}. Moving to next step.` }
+                } as any;
+                planName = 'echo';
+            }
         } else {
             executedToolSigs.add(sig);
         }
