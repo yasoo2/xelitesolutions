@@ -1176,21 +1176,28 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       planName = 'grep_search';
     }
     const wantsShop = isEcommerceRequest(userTextForOverrides);
-    if (wantsShop) {
-      // Extract project name if provided, else default
-      const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
-      const projName = nameMatch ? nameMatch[1] : 'vivos-store';
+      if (wantsShop) {
+        // Extract project name if provided, else default
+        const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
+        const projName = nameMatch ? nameMatch[1] : 'vivos-store';
 
-      if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
-        // Silent execution - no text emitted to chat
-        // ev({ type: 'text', data: md }); 
-        history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
-        
-        // Force the smart tool
-        plan = { 
-            name: 'scaffold_full_stack', 
-            input: { 
-                name: projName, 
+        if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
+          // Silent execution - no text emitted to chat
+          // ev({ type: 'text', data: md }); 
+          history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
+          try {
+            if (useMock) {
+              store.addMessage(sessionId, 'assistant', 'ECOMMERCE_PLAN_EMITTED', runId);
+            } else {
+              await Message.create({ sessionId, role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED', runId });
+            }
+          } catch {}
+          
+          // Force the smart tool
+          plan = { 
+              name: 'scaffold_full_stack', 
+              input: { 
+                  name: projName, 
                 type: 'ecommerce',
                 features: ['auth', 'products', 'cart'] // Smart default features
             } 
@@ -1255,14 +1262,21 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             ? `- الاسم: ${wf.tool.name}\n- الأمر: ${wf.tool.command}`
             : `- المجلد: ${wf.root}`;
 
-        const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
-        ev({ type: 'text', data: md });
-        history.push({ role: 'assistant', content: marker } as any);
-        
-        // Inject directive for the AI
-        history.push({ 
-          role: 'system', 
-          content: `BUILD DIRECTIVE: You are executing a workflow (${wf.kind}).
+      const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
+      ev({ type: 'text', data: md });
+      history.push({ role: 'assistant', content: marker } as any);
+      try {
+        if (useMock) {
+          store.addMessage(sessionId, 'assistant', marker, runId);
+        } else {
+          await Message.create({ sessionId, role: 'assistant', content: marker, runId });
+        }
+      } catch {}
+      
+      // Inject directive for the AI
+      history.push({ 
+        role: 'system', 
+        content: `BUILD DIRECTIVE: You are executing a workflow (${wf.kind}).
           Follow the plan shown above. Check history for completed steps.
           For scaffolding, use structure: {} and the system will inject the template.`
         } as any);
