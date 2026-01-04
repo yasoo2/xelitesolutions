@@ -20,6 +20,7 @@ import { MemoryItem } from '../models/memoryItem';
 const router = Router();
 
 const loopPauseThrottle = new Map<string, number>();
+const rateLimitCooldown = new Map<string, number>();
 
 function redactSecretsFromString(input: string): string {
   return input
@@ -1107,6 +1108,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         plan = initialPlan;
         initialPlan = null; // Prevent reuse
     } else {
+        const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
+        if (Date.now() < coolUntil) {
+            plan = { name: 'project_detect', input: { path: '.' } } as any;
+        } else {
         // Plan next step with history
         try {
             plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
@@ -1130,6 +1135,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                break;
             }
             if (isProviderRateLimitError(err, lastPlanError)) {
+              rateLimitCooldown.set(String(sessionId), Date.now() + 3 * 60 * 1000);
               const userTextForOverrides = String(text || '');
               const userTextNorm = normalizeArabicQuery(userTextForOverrides);
               if (isLocationLikeQuery(userTextForOverrides)) {
@@ -1156,6 +1162,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                 plan = null;
               }
             }
+        }
         }
     }
 
