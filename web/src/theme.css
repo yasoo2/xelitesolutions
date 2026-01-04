@@ -1,12 +1,12 @@
 :root {
-  --accent-primary: #facc15;
+  --accent-primary: #f59e0b;
   --accent-secondary: #f97316;
-  --accent-primary-rgb: 250, 204, 21;
+  --accent-primary-rgb: 245, 158, 11;
   --accent-secondary-rgb: 249, 115, 22;
-  --accent-rgb: 250, 204, 21;
-  --accent-glow: rgba(250, 204, 21, 0.78);
-  --brand-mark-yellow: #facc15;
-  --brand-mark-yellow-rgb: 250, 204, 21;
+  --accent-rgb: 245, 158, 11;
+  --accent-glow: rgba(245, 158, 11, 0.78);
+  --brand-mark-yellow: #f59e0b;
+  --brand-mark-yellow-rgb: 245, 158, 11;
   --accent-danger: #ef4444;
   --accent-success: #22c55e;
   --bg-dark: #080703;
