@@ -5,7 +5,7 @@ import path from 'path';
 
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-const WS_URL = 'ws://localhost:8080/ws';
+const WS_URL = process.env.WS_URL || 'ws://localhost:3000/ws';
 const JWT_SECRET = 'change-me'; 
 const token = jwt.sign({ sub: 'test-user', role: 'OWNER' }, JWT_SECRET);
 

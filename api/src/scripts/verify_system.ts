@@ -2,8 +2,8 @@ import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
 // import fetch from 'node-fetch'; // Using native fetch
 
-const API_URL = 'http://localhost:8080';
-const WS_URL = 'ws://localhost:8080/ws';
+const API_URL = process.env.API_URL || 'http://localhost:3000';
+const WS_URL = process.env.WS_URL || `${API_URL.replace('http', 'ws')}/ws`;
 const JWT_SECRET = 'change-me'; // Default from config.ts
 
 const token = jwt.sign({ sub: 'test-user', role: 'OWNER' }, JWT_SECRET);
