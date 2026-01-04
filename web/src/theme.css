@@ -1,10 +1,10 @@
 :root {
   --accent-primary: #ffff00;
-  --accent-secondary: #f97316;
+  --accent-secondary: #fff200;
   --accent-primary-rgb: 255, 255, 0;
-  --accent-secondary-rgb: 249, 115, 22;
+  --accent-secondary-rgb: 255, 242, 0;
   --accent-rgb: 255, 255, 0;
-  --accent-glow: rgba(255, 255, 0, 0.88);
+  --accent-glow: rgba(255, 255, 0, 0.94);
   --brand-mark-yellow: #ffff00;
   --brand-mark-yellow-rgb: 255, 255, 0;
   --accent-danger: #ef4444;
