@@ -7,7 +7,7 @@ import { Buffer } from 'buffer';
 import { config } from '../config';
 import { spawn } from 'child_process';
 import os from 'os';
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 import { search as ddgSearch } from 'duck-duck-scrape';
 import { Readability } from '@mozilla/readability';
 
@@ -17,6 +17,12 @@ if (!fs.existsSync(ARTIFACT_DIR)) {
 }
 
 let browserWorkerBoot: Promise<void> | null = null;
+
+function createDom(rawHtml: string, url?: string) {
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', () => {});
+  return new JSDOM(rawHtml, url ? { url, virtualConsole: vc } : { virtualConsole: vc });
+}
 
 function repoRoot() {
   const cwd = process.cwd();
@@ -75,8 +81,8 @@ async function ensureBrowserWorker(base: string, key: string, logs: string[]) {
 
   if (!auto || process.env.NODE_ENV === 'production' || !isLocalWorkerUrl(base)) return;
   
-  // Quick check first (50ms)
-  const healthy = await waitForWorkerHealth(base, 50);
+  // Quick check first (800ms)
+  const healthy = await waitForWorkerHealth(base, 800);
   if (healthy) return;
 
 
@@ -819,106 +825,186 @@ export const tools: ToolDefinition[] = [
     async execute(input) {
       const query = String(input?.query || '').trim();
       const logs: string[] = [];
-      const debug = true; // Force debug for now
+      const debug = String(process.env.DEBUG_WEB_SEARCH || '').trim() === '1';
       let allResults: any[] = [];
-
-      console.log(`[web_search] called with query: ${query}`);
 
       // Helper for parallel execution
       const searchTasks: Promise<void>[] = [];
 
-      // 1. DuckDuckGo (via library)
+      const hasArabic = /[\u0600-\u06FF]/.test(query);
+      const lang = hasArabic ? 'ar' : 'en';
+
+      const scrapeDuckDuckGoHtml = async (q: string) => {
+        const urls = [`https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`, `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`];
+        for (const u of urls) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            try {
+              const r = await fetch(u, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                  'Accept-Language': lang,
+                },
+                signal: controller.signal,
+              });
+              if (!r.ok) continue;
+              const html = await r.text();
+              const dom = createDom(html, u);
+              const doc = dom.window.document;
+
+              const results: any[] = [];
+              const anchors = Array.from(doc.querySelectorAll('a.result__a, a[data-testid="result-title-a"], a[href][rel="nofollow"]'));
+              for (const a of anchors) {
+                const href = String(a.getAttribute('href') || '').trim();
+                const title = String(a.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!href || !title) continue;
+                let abs = href;
+                try {
+                  abs = new URL(href, u).toString();
+                } catch {}
+                if (!/^https?:\/\//i.test(abs)) continue;
+                const container = a.closest('.result, [data-testid="result"], article, tr') || a.parentElement;
+                const snippetEl =
+                  container?.querySelector('.result__snippet, [data-testid="result-snippet"], .result__body, .snippet') ||
+                  container?.querySelector('td:nth-child(2)') ||
+                  null;
+                const description = String(snippetEl?.textContent || '').replace(/\s+/g, ' ').trim();
+                results.push({ title, url: abs, description, source: 'duckduckgo_html' });
+                if (results.length >= 12) break;
+              }
+              if (results.length) return results;
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          } catch {}
+        }
+        return [];
+      };
+
+      const extractGoogleResultsFromHtml = (html: string) => {
+        const dom = createDom(html, 'https://www.google.com');
+        const doc = dom.window.document;
+
+        const blocked =
+          /enablejs|sorry|unusual traffic|consent/i.test(String(doc.title || '').toLowerCase()) ||
+          /httpservice\/retry\/enablejs/i.test(html) ||
+          /Our systems have detected unusual traffic/i.test(html);
+        if (blocked) return [];
+
+        const out: any[] = [];
+        const containers = Array.from(doc.querySelectorAll('.g, div[data-hveid], div.MjjYud'));
+        for (const div of containers) {
+          const h3 = div.querySelector('h3');
+          const a = h3?.closest('a') || div.querySelector('a');
+          const title = String(h3?.textContent || '').replace(/\s+/g, ' ').trim();
+          const url = String(a?.getAttribute('href') || '').trim();
+          if (!title || !url || !url.startsWith('http')) continue;
+          const snippet =
+            div.querySelector('.VwiC3b, .IsZvec, .aCOpRe, .BNeawe.s3v9rd.AP7Wnd') ||
+            div.querySelector('span.aCOpRe') ||
+            null;
+          const description = String(snippet?.textContent || '').replace(/\s+/g, ' ').trim();
+          out.push({ title, url, description, source: 'google' });
+          if (out.length >= 12) break;
+        }
+
+        if (out.length) return out;
+
+        const h3Anchors = Array.from(doc.querySelectorAll('a h3'));
+        for (const h3 of h3Anchors) {
+          const a = h3.closest('a');
+          const title = String(h3.textContent || '').replace(/\s+/g, ' ').trim();
+          const url = String(a?.getAttribute('href') || '').trim();
+          if (!title || !url || !url.startsWith('http')) continue;
+          const wrap = a?.parentElement?.parentElement || a?.parentElement || null;
+          const snippet = wrap?.querySelector('.VwiC3b, .IsZvec, .aCOpRe, .BNeawe.s3v9rd.AP7Wnd') || null;
+          const description = String(snippet?.textContent || '').replace(/\s+/g, ' ').trim();
+          out.push({ title, url, description, source: 'google' });
+          if (out.length >= 12) break;
+        }
+        return out;
+      };
+
+      const scrapeGoogle = async (q: string) => {
+        const gUrl = `https://www.google.com/search?q=${encodeURIComponent(q)}&hl=${lang}&num=10`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        try {
+          const r = await fetch(gUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': lang,
+              Cookie: 'CONSENT=YES+Cb.20210328-17-p0.en+FX+410;',
+            },
+            signal: controller.signal,
+          });
+          if (!r.ok) return [];
+          const html = await r.text();
+          if (debug) logs.push(`google.html.len=${html.length}`);
+          return extractGoogleResultsFromHtml(html);
+        } catch {
+          return [];
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
+
+      // 1. DuckDuckGo (via HTML scraping)
       searchTasks.push((async () => {
         try {
-          console.log(`[web_search] fetching DDG (lib): ${query}`);
-          const searchRes = await ddgSearch(query); 
-          
-          if (searchRes.results && searchRes.results.length) {
-            const mapped = searchRes.results.map((r: any) => ({
-              title: r.title || '',
-              url: r.url || '',
-              description: r.description || '', 
-              source: 'duckduckgo'
-            })).filter((x: any) => x.url && x.title);
-
-            logs.push(`ddg_results=${mapped.length}`);
-            allResults.push(...mapped);
+          const res = await scrapeDuckDuckGoHtml(query);
+          if (res.length) {
+            logs.push(`ddg_html_results=${res.length}`);
+            allResults.push(...res);
           }
-        } catch (e) {
-          console.error(`[DEBUG] DDG failed: ${e}`);
+        } catch {}
+      })());
+
+      // 2. Google Search (best-effort)
+      searchTasks.push((async () => {
+        const res = await scrapeGoogle(query);
+        if (res.length) {
+          logs.push(`google_results=${res.length}`);
+          allResults.push(...res);
         }
       })());
 
-      // 2. Google Search (Scraping)
+      // 3. DuckDuckGo (library fallback)
       searchTasks.push((async () => {
         try {
-           const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
-           const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=${lang}&num=10`;
-           if (debug) console.log(`[DEBUG] fetching Google: ${gUrl}`);
+          const searchRes = await Promise.race([
+            ddgSearch(query),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+          ]);
+          if (!searchRes) return;
+          if (searchRes.results && searchRes.results.length) {
+            const mapped = searchRes.results
+              .map((r: any) => ({
+                title: r.title || '',
+                url: r.url || '',
+                description: r.description || '',
+                source: 'duckduckgo',
+              }))
+              .filter((x: any) => x.url && x.title);
 
-           const controller = new AbortController();
-           const timeoutId = setTimeout(() => controller.abort(), 6000);
-           try {
-             const r = await fetch(gUrl, {
-               headers: {
-                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                 'Accept-Language': lang,
-                 'Cookie': 'CONSENT=YES+Cb.20210328-17-p0.en+FX+410;'
-               },
-               signal: controller.signal
-             });
-             
-             if (r.ok) {
-               const html = await r.text();
-               if (debug) console.log(`[DEBUG] Google html snippet: ${html.slice(0, 500)}`);
-               const dom = new JSDOM(html);
-               const doc = dom.window.document;
-               
-               // Debug selectors
-               const h3s = doc.querySelectorAll('h3');
-               if (debug) console.log(`[DEBUG] Google h3 count: ${h3s.length}`);
-
-               // Generic Google selectors
-               let items = Array.from(doc.querySelectorAll('.g'));
-               if (!items.length) items = Array.from(doc.querySelectorAll('div[data-hveid]'));
-               
-               if (debug) console.log(`[DEBUG] Google items found: ${items.length}`);
-               const results = items.map(div => {
-                  const h3 = div.querySelector('h3');
-                  const a = div.querySelector('a');
-                  const snippet = div.querySelector('.VwiC3b, .IsZvec, .aCOpRe') || div.querySelector('div[style*="-webkit-line-clamp"]');
-                  
-                  return {
-                    title: h3?.textContent?.trim() || '',
-                    url: a?.getAttribute('href') || '',
-                    description: snippet?.textContent?.trim() || '',
-                    source: 'google'
-                  };
-               }).filter(x => x.url && x.url.startsWith('http') && x.title);
-               
-               if (results.length) {
-                  logs.push(`google_results=${results.length}`);
-                  allResults.push(...results);
-               }
-             }
-           } finally {
-             clearTimeout(timeoutId);
-           }
-        } catch (e) {
-           if (debug) console.log(`[DEBUG] Google failed: ${e}`);
-        }
+            if (mapped.length) {
+              logs.push(`ddg_results=${mapped.length}`);
+              allResults.push(...mapped);
+            }
+          }
+        } catch {}
       })());
 
-      // Wait for both DDG and Google (parallel)
+      // Wait for parallel searches
       await Promise.allSettled(searchTasks);
 
-      // 3. Fallback to Bing if we have few results (< 3)
+      // 4. Fallback to Bing if we have few results (< 3)
       if (allResults.length < 3) {
         try {
-          const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
           const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=${lang}`;
-          // ... Bing logic ...
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 8000);
           try {
@@ -932,7 +1018,7 @@ export const tools: ToolDefinition[] = [
              });
              if (r2.ok) {
                const html = await r2.text();
-               const dom = new JSDOM(html);
+               const dom = createDom(html, bUrl);
                const doc = dom.window.document;
                let items = Array.from(doc.querySelectorAll('li.b_algo'));
                if (!items.length) items = Array.from(doc.querySelectorAll('.b_algo'));
@@ -945,11 +1031,11 @@ export const tools: ToolDefinition[] = [
                     description: p?.textContent?.trim() || '',
                     source: 'bing'
                   };
-               }).filter(x => x.url && x.title);
-               if (results.length) {
-                 logs.push(`bing_results=${results.length}`);
-                 allResults.push(...results);
-               }
+                }).filter(x => x.url && x.title);
+                if (results.length) {
+                  logs.push(`bing_results=${results.length}`);
+                  allResults.push(...results);
+                }
              }
           } finally {
             clearTimeout(timeoutId);
@@ -957,17 +1043,14 @@ export const tools: ToolDefinition[] = [
         } catch(e) {}
       }
 
-      // 4. Fallback to Browser Worker if no results
+      // 5. Fallback to Browser Worker if no results
       if (allResults.length === 0) {
         try {
-           console.log('[web_search] No results from fetch, falling back to browser worker...');
-           await ensureBrowserWorker(config.browserWorkerUrl, config.browserWorkerKey, logs);
-           console.log('[web_search] Worker ensured');
+           const healthy = await waitForWorkerHealth(config.browserWorkerUrl, 1200);
+           if (!healthy) throw new Error('browser_worker_unhealthy');
            
-           const lang = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
            const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=${lang}&num=10`;
            
-           console.log(`[web_search] Worker creating session...`);
            const createRes = await fetch(`${config.browserWorkerUrl}/session/create`, {
                method: 'POST',
                headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
@@ -980,10 +1063,9 @@ export const tools: ToolDefinition[] = [
            }
 
            const { sessionId } = await createRes.json();
-           console.log(`[web_search] Worker session: ${sessionId}`);
+           logs.push(`worker.session=${sessionId}`);
 
            try {
-               console.log(`[web_search] Worker navigating: ${gUrl}`);
                const runRes = await fetch(`${config.browserWorkerUrl}/session/${sessionId}/job/run`, {
                    method: 'POST',
                    headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
@@ -995,11 +1077,8 @@ export const tools: ToolDefinition[] = [
                    })
                });
 
-               if (!runRes.ok) {
-                   console.error(`[web_search] Worker run failed: ${runRes.status}`);
-               }
+               if (!runRes.ok) logs.push(`worker.run_failed=${runRes.status}`);
 
-               console.log(`[web_search] Worker snapshotting...`);
                const snapRes = await fetch(`${config.browserWorkerUrl}/session/${sessionId}/snapshot`, {
                    method: 'POST',
                    headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
@@ -1009,38 +1088,15 @@ export const tools: ToolDefinition[] = [
                if (snapRes.ok) {
                    const json: any = await snapRes.json();
                    const html = json.dom || '';
-                   console.log(`[web_search] Worker HTML len: ${html.length}`);
-                   if (html.length < 10000) {
-                       console.log(`[web_search] Worker HTML snippet: ${html.slice(0, 500)}`);
-                   }
-                   
-                   const dom = new JSDOM(html);
-                   const doc = dom.window.document;
-                   
-                   let items = Array.from(doc.querySelectorAll('.g'));
-                   if (!items.length) items = Array.from(doc.querySelectorAll('div[data-hveid]'));
-                   console.log(`[web_search] Worker items found: ${items.length}`);
-                   
-                   const results = items.map(div => {
-                       const h3 = div.querySelector('h3');
-                       const a = div.querySelector('a');
-                       const snippet = div.querySelector('.VwiC3b, .IsZvec, .aCOpRe') || div.querySelector('div[style*="-webkit-line-clamp"]');
-                       
-                       return {
-                         title: h3?.textContent?.trim() || '',
-                         url: a?.getAttribute('href') || '',
-                         description: snippet?.textContent?.trim() || '',
-                         source: 'google_browser'
-                       };
-                    }).filter(x => x.url && x.url.startsWith('http') && x.title);
+                   logs.push(`worker.html.len=${html.length}`);
+
+                   const googleResults = extractGoogleResultsFromHtml(html).map((x) => ({ ...x, source: 'google_browser' }));
                     
-                    if (results.length) {
-                       logs.push(`google_browser_results=${results.length}`);
-                       allResults.push(...results);
+                    if (googleResults.length) {
+                       logs.push(`google_browser_results=${googleResults.length}`);
+                       allResults.push(...googleResults);
                     } else {
-                        // Try DuckDuckGo in worker if Google failed
-                        console.log('[web_search] Worker Google failed (0 items), trying DuckDuckGo...');
-                        const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&t=h_`;
+                        const ddgUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
                         
                         await fetch(`${config.browserWorkerUrl}/session/${sessionId}/job/run`, {
                             method: 'POST',
@@ -1062,50 +1118,38 @@ export const tools: ToolDefinition[] = [
                         if (ddgSnapRes.ok) {
                             const dJson: any = await ddgSnapRes.json();
                             const dHtml = dJson.dom || '';
-                            console.log(`[web_search] Worker DDG HTML len: ${dHtml.length}`);
-                            
-                            const dDom = new JSDOM(dHtml);
-                            const dDoc = dDom.window.document;
-                            
-                            // Try multiple DDG selectors
-                            let dItems = Array.from(dDoc.querySelectorAll('article'));
-                            if (!dItems.length) dItems = Array.from(dDoc.querySelectorAll('.result'));
-                            if (!dItems.length) dItems = Array.from(dDoc.querySelectorAll('[data-testid="result"]'));
-                             
-                            console.log(`[web_search] Worker DDG items found: ${dItems.length}`);
-                            
-                            const dResults = dItems.map(div => {
-                                const h2 = div.querySelector('h2') || div.querySelector('a[data-testid="result-title-a"]');
-                                const a = div.querySelector('a[data-testid="result-title-a"]') || div.querySelector('a');
-                                const snippet = div.querySelector('.result__snippet') || div.querySelector('[data-testid="result-snippet"]');
-                                
-                                const title = h2?.textContent?.trim() || '';
-                                const url = a?.getAttribute('href') || '';
-                                const description = snippet?.textContent?.trim() || '';
+                            logs.push(`worker.ddg_html.len=${dHtml.length}`);
+                            const ddgDom = createDom(dHtml, ddgUrl);
+                            const dDoc = ddgDom.window.document;
 
-                                if (!title || !url) {
-                                   // console.log(`[web_search] Debug filtered item: t=${title} u=${url}`);
-                                }
-
-                                return {
-                                    title,
-                                    url,
-                                    description,
-                                    source: 'duckduckgo_browser'
-                                };
-                            }).filter(x => x.url && x.url.startsWith('http') && x.title);
-                            
-                            console.log(`[web_search] Worker DDG valid results: ${dResults.length}`);
+                            const dResults: any[] = [];
+                            const dAnchors = Array.from(dDoc.querySelectorAll('a.result__a, a[href][rel="nofollow"], a[data-testid="result-title-a"]'));
+                            for (const a of dAnchors) {
+                              const href = String(a.getAttribute('href') || '').trim();
+                              const title = String(a.textContent || '').replace(/\s+/g, ' ').trim();
+                              if (!href || !title) continue;
+                              let abs = href;
+                              try { abs = new URL(href, ddgUrl).toString(); } catch {}
+                              if (!/^https?:\/\//i.test(abs)) continue;
+                              const container = a.closest('.result, [data-testid="result"], article, tr') || a.parentElement;
+                              const snippetEl =
+                                container?.querySelector('.result__snippet, [data-testid="result-snippet"], .result__body, .snippet') ||
+                                container?.querySelector('td:nth-child(2)') ||
+                                null;
+                              const description = String(snippetEl?.textContent || '').replace(/\s+/g, ' ').trim();
+                              dResults.push({ title, url: abs, description, source: 'duckduckgo_browser' });
+                              if (dResults.length >= 10) break;
+                            }
 
                             if (dResults.length) {
-                                logs.push(`ddg_browser_results=${dResults.length}`);
-                                allResults.push(...dResults);
+                              logs.push(`ddg_browser_results=${dResults.length}`);
+                              allResults.push(...dResults);
                             }
                         }
                     }
                 } else {
                    const txt = await snapRes.text();
-                   console.error(`[web_search] Worker snapshot error: ${txt}`);
+                   logs.push(`worker.snapshot_error=${txt.slice(0, 200)}`);
                }
            } finally {
                // Cleanup
@@ -1116,9 +1160,7 @@ export const tools: ToolDefinition[] = [
                }).catch(() => {});
            }
 
-        } catch (e: any) {
-           console.error(`[web_search] Browser fallback failed: ${e.message}`);
-        }
+        } catch (e: any) { logs.push(`worker.fail=${String(e?.message || e)}`); }
       }
       
       if (allResults.length) {
@@ -1137,6 +1179,1061 @@ export const tools: ToolDefinition[] = [
       return { ok: false, error: 'No results found', logs };
 
     }
+  },
+  {
+    name: 'product_search',
+    version: '1.0.0',
+    tags: ['network', 'search', 'shopping'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        store: { type: 'string', description: 'Optional store name or domain (e.g. "amazon.sa", "noon", "jarir")' },
+        limit: { type: 'number', description: 'Max offers to return (default 10)' },
+        maxCandidates: { type: 'number', description: 'Max URLs to try extracting from (default 15)' },
+        render: { type: 'boolean', description: 'Force rendering with Puppeteer for extraction (default auto)' },
+      },
+      required: ['query'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        offers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              url: { type: 'string' },
+              store: { type: 'string' },
+              price: { type: 'number' },
+              currency: { type: 'string' },
+              priceText: { type: 'string' },
+              availability: { type: 'string' },
+              image: { type: 'string' },
+              source: { type: 'string' },
+              confidence: { type: 'number' },
+            },
+          },
+        },
+        byCurrency: { type: 'object' },
+        candidatesTried: { type: 'number' },
+      },
+    },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 8,
+    auditFields: ['query', 'store'],
+    mockSupported: false,
+    description:
+      'Searches the web for product pages and extracts multiple offers with prices, then returns a price-comparison-ready list. Prefer this for shopping/product requests.',
+    async execute(input) {
+      const queryRaw = String(input?.query || '').trim();
+      const storeRaw = String(input?.store || '').trim();
+      const limit = Math.max(1, Math.min(25, Number.isFinite(Number(input?.limit)) ? Number(input.limit) : 10));
+      const maxCandidates = Math.max(5, Math.min(40, Number.isFinite(Number(input?.maxCandidates)) ? Number(input.maxCandidates) : 15));
+      const forceRender = input?.render === true;
+      const logs: string[] = [];
+      const startedAt = Date.now();
+      const deadlineMs = startedAt + 120000;
+
+      if (!queryRaw) return { ok: false, error: 'query_required', logs };
+
+      const isArabic = /[\u0600-\u06FF]/.test(queryRaw);
+      const storeMap: Record<string, string> = {
+        amazon: 'amazon.',
+        'amazon.sa': 'amazon.sa',
+        'amazon.ae': 'amazon.ae',
+        noon: 'noon.com',
+        jarir: 'jarir.com',
+        extra: 'extra.com',
+        temu: 'temu.com',
+        aliexpress: 'aliexpress.com',
+        ebay: 'ebay.',
+        walmart: 'walmart.com',
+        'جرير': 'jarir.com',
+        'نون': 'noon.com',
+        'اكسترا': 'extra.com',
+        'أمازون': 'amazon.',
+        'امازون': 'amazon.',
+      };
+
+      const normalizeStoreToDomain = (s: string) => {
+        const t = String(s || '').trim();
+        if (!t) return '';
+        try {
+          if (/^https?:\/\//i.test(t)) return new URL(t).hostname;
+        } catch {}
+        const low = t.toLowerCase();
+        if (low.includes('.')) return low.replace(/^www\./, '');
+        if (storeMap[t]) return storeMap[t];
+        if (storeMap[low]) return storeMap[low];
+        return '';
+      };
+
+      const storeDomain = normalizeStoreToDomain(storeRaw);
+      const wantsSiteOnly = !!storeRaw && !!storeDomain;
+
+      const shopHints = isArabic ? 'سعر شراء' : 'price buy';
+      const hasShoppingWord = /(price|buy|shop|سعر|شراء|متجر|تسوق|sale|discount)/i.test(queryRaw);
+      const baseQ = hasShoppingWord ? queryRaw : `${queryRaw} ${shopHints}`;
+      const hasSaHint = /(saudi|ksa|\bsa\b|السعودية|السعوديه|سعودي|ر\.?\s?س|SAR)/i.test(queryRaw);
+      const wantsSaHint = wantsSiteOnly && !!storeDomain && /(^|\.)noon\.com$|(^|\.)extra\.com$/i.test(storeDomain) && !hasSaHint;
+      const baseQ2 = wantsSaHint ? `${baseQ} ${isArabic ? 'السعودية' : 'Saudi'}` : baseQ;
+      const searchQ = wantsSiteOnly ? `${baseQ2} site:${storeDomain}` : baseQ2;
+      logs.push(`search.query=${searchQ}`);
+
+      const searchRes = await executeTool('web_search', { query: searchQ });
+      const rawResults = Array.isArray(searchRes?.output?.results) ? searchRes.output.results : [];
+      logs.push(`search.results=${rawResults.length}`);
+      if (!rawResults.length) return { ok: false, error: 'no_search_results', logs };
+
+      const normalizeSearchResultUrl = (rawUrl: string) => {
+        const s = String(rawUrl || '').trim();
+        if (!s) return '';
+        try {
+          const u = new URL(s);
+          const host = u.hostname.replace(/^www\./, '').toLowerCase();
+
+          if ((host === 'google.com' || host.endsWith('.google.com')) && u.pathname === '/url') {
+            const q = u.searchParams.get('q') || u.searchParams.get('url');
+            if (q && /^https?:\/\//i.test(q)) return q;
+          }
+
+          if (host === 'duckduckgo.com' && u.pathname === '/l/') {
+            const uddg = u.searchParams.get('uddg');
+            if (uddg) {
+              try {
+                const decoded = decodeURIComponent(uddg);
+                if (/^https?:\/\//i.test(decoded)) return decoded;
+              } catch {
+                if (/^https?:\/\//i.test(uddg)) return uddg;
+              }
+            }
+          }
+
+          if ((host === 'bing.com' || host.endsWith('.bing.com')) && u.pathname.startsWith('/ck/')) {
+            const up = u.searchParams.get('u');
+            if (up) {
+              const b64 = up.replace(/^a1/i, '').replace(/-/g, '+').replace(/_/g, '/');
+              const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+              try {
+                const decoded = Buffer.from(b64 + pad, 'base64').toString('utf8');
+                if (/^https?:\/\//i.test(decoded)) return decoded;
+              } catch {}
+            }
+          }
+
+          return s;
+        } catch {
+          return s;
+        }
+      };
+
+      const results: Array<{ title: string; url: string; description: string }> = [];
+      const normSeen = new Set<string>();
+      for (const r of rawResults) {
+        const url = normalizeSearchResultUrl(String((r as any)?.url || ''));
+        const title = String((r as any)?.title || '').trim();
+        const description = String((r as any)?.description || '').trim();
+        if (!url || !/^https?:\/\//i.test(url)) continue;
+        if (normSeen.has(url)) continue;
+        normSeen.add(url);
+        results.push({ title, url, description });
+      }
+      logs.push(`search.results.normalized=${results.length}`);
+      if (!results.length) return { ok: false, error: 'no_search_results', logs };
+
+      const isBadSearchUrl = (u: string) =>
+        /(^|\.)google\./i.test(u) ||
+        /(^|\.)bing\./i.test(u) ||
+        /duckduckgo\.com/i.test(u) ||
+        /youtube\.com|youtu\.be/i.test(u) ||
+        /wikipedia\.org/i.test(u);
+
+      const wantsTradeInOrUsed =
+        /(trade[\s-]?in|sell|used|refurb|renewed|second\s*hand|مستعمل|تجديد|تجديده|تبادل|استبدال)/i.test(queryRaw);
+
+      const scoreCandidate = (u: string, title: string, desc: string) => {
+        let score = 0;
+        const t = `${title} ${desc}`.toLowerCase();
+        const urlLow = u.toLowerCase();
+        let host = '';
+        let path = '';
+        try {
+          const parsed = new URL(u);
+          host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+          path = `${parsed.pathname || ''}${parsed.search || ''}`.toLowerCase();
+        } catch {}
+
+        const knownStoreRe =
+          /amazon\.|noon\.com|jarir\.com|extra\.com|temu\.com|aliexpress\.com|shein\.com|ebay\.|walmart\.com/i;
+
+        if (knownStoreRe.test(host)) score += 60;
+        if (wantsSiteOnly && storeDomain && host.includes(storeDomain.toLowerCase())) score += 120;
+
+        if (/\/dp\/|\/gp\/product\/|\/products?\//i.test(path)) score += 30;
+        if (/\/p\//i.test(path)) score += 18;
+        if (/-\d+\.html(\?|$)/i.test(path)) score += 22;
+        if (/smartphones-\d+\.html(\?|$)/i.test(path)) score += 18;
+        if (/sku|product|item|pid|asin/i.test(path)) score += 10;
+
+        if (/price|buy|add to cart|checkout|سعر|شراء|أضف إلى السلة|اضف الى السلة|السلة/i.test(t)) score += 8;
+
+        if (!wantsTradeInOrUsed && /(trade[\s-]?in|sell|used|refurb|renewed|second\s*hand|مستعمل|تبادل|استبدال)/i.test(t)) score -= 80;
+        if (/(review|specs|vs\b|compare|comparison|best\b|top\b|guide|blog|news|wikipedia)/i.test(t)) score -= 35;
+        if (/\/blog\/|\/news\/|\/guide\/|\/compare\/|\/reviews?\//i.test(path)) score -= 25;
+
+        if (/utm_|gclid|fbclid|ref=|aff/i.test(urlLow)) score -= 2;
+        if (isBadSearchUrl(u)) score -= 200;
+
+        score += Math.min(20, Math.max(0, 220 - u.length) / 20);
+        return score;
+      };
+
+      const rankedCandidates: Array<{ url: string; title: string; description: string; score: number }> = [];
+      const seen = new Set<string>();
+      for (const r of results) {
+        const u = String(r?.url || '').trim();
+        if (!u || !/^https?:\/\//i.test(u)) continue;
+        if (seen.has(u)) continue;
+        seen.add(u);
+        if (isBadSearchUrl(u)) continue;
+        if (wantsSiteOnly) {
+          try {
+            const h = new URL(u).hostname.replace(/^www\./, '').toLowerCase();
+            if (!h.includes(storeDomain.toLowerCase())) continue;
+          } catch {
+            continue;
+          }
+        }
+        const title = String(r?.title || '').trim();
+        const description = String(r?.description || '').trim();
+        rankedCandidates.push({ url: u, title, description, score: scoreCandidate(u, title, description) });
+      }
+
+      rankedCandidates.sort((a, b) => b.score - a.score);
+      const dedupUrls = rankedCandidates.slice(0, maxCandidates).map(c => c.url);
+
+      const currencyFromText = (txt: string) => {
+        const t = String(txt || '');
+        if (/SAR|ر\.?\s?س|ريال/i.test(t)) return 'SAR';
+        if (/AED|د\.?\s?إ/i.test(t)) return 'AED';
+        if (/KWD|د\.?\s?ك/i.test(t)) return 'KWD';
+        if (/QAR|ر\.?\s?ق/i.test(t)) return 'QAR';
+        if (/BHD|د\.?\s?ب/i.test(t)) return 'BHD';
+        if (/OMR|ر\.?\s?ع/i.test(t)) return 'OMR';
+        if (/EGP|ج\.?\s?م|جنيه/i.test(t)) return 'EGP';
+        if (/USD|\$/i.test(t)) return 'USD';
+        if (/EUR|€/i.test(t)) return 'EUR';
+        if (/GBP|£/i.test(t)) return 'GBP';
+        if (/TRY|₺/i.test(t)) return 'TRY';
+        if (/INR|₹/i.test(t)) return 'INR';
+        if (/JPY|¥/i.test(t)) return 'JPY';
+        if (/CAD/i.test(t)) return 'CAD';
+        if (/AUD/i.test(t)) return 'AUD';
+        return '';
+      };
+
+      const parsePriceNumber = (raw: string) => {
+        const s0 = String(raw || '').replace(/\s+/g, ' ').trim();
+        if (!s0) return null;
+        const cleaned = s0.replace(/[^\d.,-]/g, '');
+        if (!/\d/.test(cleaned)) return null;
+        const lastDot = cleaned.lastIndexOf('.');
+        const lastComma = cleaned.lastIndexOf(',');
+        let normalized = cleaned;
+        if (lastDot >= 0 && lastComma >= 0) {
+          if (lastDot > lastComma) normalized = cleaned.replace(/,/g, '');
+          else normalized = cleaned.replace(/\./g, '').replace(/,/g, '.');
+        } else if (lastComma >= 0 && lastDot < 0) {
+          const parts = cleaned.split(',');
+          if (parts.length === 2 && parts[1].length <= 2) normalized = parts[0].replace(/\./g, '') + '.' + parts[1];
+          else normalized = cleaned.replace(/,/g, '');
+        } else {
+          normalized = cleaned.replace(/,/g, '');
+        }
+        const num = Number(normalized);
+        if (!Number.isFinite(num) || num <= 0) return null;
+        if (num > 10000000) return null;
+        return num;
+      };
+
+      const extractJsonLdObjects = (html: string) => {
+        const out: any[] = [];
+        const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(html))) {
+          const raw = String(m[1] || '').trim();
+          if (!raw) continue;
+          try {
+            const parsed = JSON.parse(raw);
+            out.push(parsed);
+          } catch {}
+        }
+        return out;
+      };
+
+      const collectProducts = (node: any, acc: any[]) => {
+        if (!node) return;
+        if (Array.isArray(node)) {
+          for (const x of node) collectProducts(x, acc);
+          return;
+        }
+        if (typeof node !== 'object') return;
+        const t = node['@type'];
+        const types = Array.isArray(t) ? t : t ? [t] : [];
+        if (types.some((x: any) => String(x).toLowerCase() === 'product')) {
+          acc.push(node);
+        }
+        if (node['@graph']) collectProducts(node['@graph'], acc);
+        for (const v of Object.values(node)) collectProducts(v as any, acc);
+      };
+
+      const pick = <T,>(v: T | undefined | null, fallback: T) => (typeof v === 'undefined' || v === null ? fallback : v);
+
+      let sharedBrowser: any | null = null;
+      let sharedBrowserPromise: Promise<any> | null = null;
+      let sharedWorkerSessionId: string | null = null;
+      let sharedWorkerSessionPromise: Promise<string> | null = null;
+      const getSharedBrowser = async () => {
+        if (sharedBrowser) return sharedBrowser;
+        if (!sharedBrowserPromise) {
+          sharedBrowserPromise = (async () => {
+            const puppeteer = await import('puppeteer');
+            return puppeteer.launch({
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+            });
+          })();
+        }
+        sharedBrowser = await sharedBrowserPromise;
+        return sharedBrowser;
+      };
+      const getSharedWorkerSessionId = async () => {
+        if (sharedWorkerSessionId) return sharedWorkerSessionId;
+        if (!config.browserWorkerUrl || !config.browserWorkerKey) throw new Error('browser_worker_not_configured');
+        if (!sharedWorkerSessionPromise) {
+          sharedWorkerSessionPromise = (async () => {
+            const healthy = await waitForWorkerHealth(config.browserWorkerUrl, 1200);
+            if (!healthy) throw new Error('browser_worker_unhealthy');
+            const createRes = await fetch(`${config.browserWorkerUrl}/session/create`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+              body: JSON.stringify({ viewport: { width: 1280, height: 800 } }),
+            });
+            if (!createRes.ok) {
+              const txt = await createRes.text().catch(() => '');
+              throw new Error(`worker_session_create_failed=${createRes.status} ${txt.slice(0, 120)}`);
+            }
+            const j: any = await createRes.json().catch(() => null);
+            const sid = String(j?.sessionId || '').trim();
+            if (!sid) throw new Error('worker_session_missing_id');
+            sharedWorkerSessionId = sid;
+            return sid;
+          })();
+        }
+        sharedWorkerSessionId = await sharedWorkerSessionPromise;
+        return sharedWorkerSessionId;
+      };
+      const closeSharedBrowser = async () => {
+        const b = sharedBrowser;
+        sharedBrowser = null;
+        sharedBrowserPromise = null;
+        const sid = sharedWorkerSessionId;
+        sharedWorkerSessionId = null;
+        sharedWorkerSessionPromise = null;
+        if (sid && config.browserWorkerUrl && config.browserWorkerKey) {
+          try {
+            await fetch(`${config.browserWorkerUrl}/session/${sid}/close`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+              body: JSON.stringify({}),
+            });
+          } catch {}
+        }
+        if (!b) return;
+        try {
+          await b.close();
+        } catch {}
+      };
+
+      const fetchHtml = async (u: string) => {
+        if (Date.now() >= deadlineMs) {
+          return { ok: false as const, error: 'deadline_exceeded', html: '', finalUrl: u, rendered: false };
+        }
+        const needsRender =
+          forceRender ||
+          /amazon\.|noon\.|jarir\.|extra\.|temu\.|aliexpress\.|shein\.|ebay\.|walmart\./i.test(u) ||
+          /\/dp\/|\/gp\/product\/|\/p\/|\/products?\//i.test(u);
+
+        try {
+          const controller = new AbortController();
+          const to = setTimeout(() => controller.abort(), 20000);
+          try {
+            const resp = await fetch(u, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': isArabic ? 'ar' : 'en',
+                Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              },
+              signal: controller.signal,
+            });
+            const status = Number(resp.status);
+            const ok = !!resp.ok;
+            const html = await resp.text();
+            const finalUrl = (resp as any)?.url ? String((resp as any).url) : u;
+
+            if (!ok) {
+              if (!needsRender) return { ok: false as const, error: `http_${status}`, html: '', finalUrl, rendered: false };
+            }
+
+            const htmlLower = html.toLowerCase();
+            const hasJsonLd = htmlLower.includes('application/ld+json');
+            const hasMetaPrice =
+              htmlLower.includes('product:price:amount') ||
+              htmlLower.includes('og:price:amount') ||
+              htmlLower.includes('pricecurrency') ||
+              htmlLower.includes('itemprop="price"') ||
+              htmlLower.includes('itemprop=price');
+            const hasMoneyText =
+              /(?:sar|aed|usd|eur|gbp|try|inr|jpy|cad|aud|ريال|ر\.?\s?س|د\.?\s?إ|€|\$|£|¥|₺|₹)[^\d]{0,3}\d[\d.,]{0,12}/i.test(
+                html
+              );
+
+            if (!needsRender || hasJsonLd || hasMetaPrice || hasMoneyText) {
+              return { ok: true as const, html, finalUrl, rendered: false };
+            }
+          } finally {
+            clearTimeout(to);
+          }
+        } catch (e: any) {
+          if (!needsRender) return { ok: false as const, error: String(e?.message || e), html: '', finalUrl: u, rendered: false };
+        }
+
+        if (needsRender) {
+          if (Date.now() > deadlineMs - 35000) {
+            return { ok: false as const, error: 'deadline_exceeded', html: '', finalUrl: u, rendered: false };
+          }
+          try {
+            const renderBudgetMs = Math.max(8000, Math.min(20000, deadlineMs - Date.now() - 5000));
+            const gotoTimeoutMs = Math.max(8000, Math.min(15000, renderBudgetMs - 2500));
+            if (config.browserWorkerUrl && config.browserWorkerKey) {
+              try {
+                const sessionId = await getSharedWorkerSessionId();
+                const runController = new AbortController();
+                const runTo = setTimeout(() => runController.abort(), Math.min(9000, renderBudgetMs - 500));
+                try {
+                  await fetch(`${config.browserWorkerUrl}/session/${sessionId}/job/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+                    body: JSON.stringify({
+                      actions: [
+                        { type: 'goto', url: u, waitUntil: 'domcontentloaded' },
+                        { type: 'wait', ms: 2000 },
+                      ],
+                    }),
+                    signal: runController.signal,
+                  }).catch(() => null);
+                } finally {
+                  clearTimeout(runTo);
+                }
+
+                const snapController = new AbortController();
+                const snapTo = setTimeout(() => snapController.abort(), Math.min(5000, renderBudgetMs - 500));
+                try {
+                  const snapRes = await fetch(`${config.browserWorkerUrl}/session/${sessionId}/snapshot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-worker-key': config.browserWorkerKey },
+                    body: JSON.stringify({}),
+                    signal: snapController.signal,
+                  });
+                  if (snapRes.ok) {
+                    const json: any = await snapRes.json().catch(() => null);
+                    const dom = String(json?.dom || '');
+                    if (dom && dom.length > 2000) return { ok: true as const, html: dom, finalUrl: u, rendered: true };
+                  }
+                } finally {
+                  clearTimeout(snapTo);
+                }
+              } catch (e: any) {
+                logs.push(`worker_render_failed=${String(e?.message || e)}`);
+              }
+            }
+            const browser = await getSharedBrowser();
+            const result = await new Promise<{ ok: boolean; html: string; finalUrl: string; rendered: boolean; error?: string }>(
+              (resolve) => {
+                let done = false;
+                const timer = setTimeout(() => {
+                  if (done) return;
+                  done = true;
+                  resolve({ ok: false, error: 'render_timeout', html: '', finalUrl: u, rendered: true });
+                }, renderBudgetMs);
+
+                (async () => {
+                  let page: any | null = null;
+                  try {
+                    page = await browser.newPage();
+                    await page.setRequestInterception(true);
+                    page.on('request', (req: any) => {
+                      const type = req.resourceType();
+                      if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
+                      else req.continue();
+                    });
+                    await page.setUserAgent(
+                      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    );
+                    await page.goto(u, { waitUntil: 'domcontentloaded', timeout: gotoTimeoutMs });
+                    await new Promise((r) => setTimeout(r, 1500));
+                    try {
+                      await page.evaluate(async () => {
+                        await new Promise<void>((resolve2) => {
+                          let totalHeight = 0;
+                          const distance = 160;
+                          const timer2 = setInterval(() => {
+                            const scrollHeight = document.body.scrollHeight || 0;
+                            window.scrollBy(0, distance);
+                            totalHeight += distance;
+                            if (totalHeight >= scrollHeight || totalHeight > 4000) {
+                              clearInterval(timer2);
+                              resolve2();
+                            }
+                          }, 60);
+                        });
+                      });
+                    } catch {}
+                    const finalUrl = page.url();
+                    const html = await page.content();
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    resolve({ ok: true, html, finalUrl, rendered: true });
+                  } catch (e: any) {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    resolve({ ok: false, error: String(e?.message || e), html: '', finalUrl: u, rendered: true });
+                  } finally {
+                    try {
+                      await page?.close();
+                    } catch {}
+                  }
+                })();
+              }
+            );
+
+            if (result.ok) return { ok: true as const, html: result.html, finalUrl: result.finalUrl, rendered: true };
+          } catch (e: any) {
+            logs.push(`render.failed=${String(e?.message || e)}`);
+          } finally {
+            // no-op
+          }
+        }
+
+        return { ok: false as const, error: 'fetch_failed', html: '', finalUrl: u, rendered: false };
+      };
+
+      const extractOfferFromHtml = (html: string, pageUrl: string, titleHint: string) => {
+        const host = (() => {
+          try {
+            return new URL(pageUrl).hostname.replace(/^www\./, '');
+          } catch {
+            return '';
+          }
+        })();
+        const path = (() => {
+          try {
+            return new URL(pageUrl).pathname.toLowerCase();
+          } catch {
+            return '';
+          }
+        })();
+
+        const decodeEntities = (s: string) =>
+          String(s || '')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/&quot;/gi, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>');
+
+        const extractMetaContent = (key: string) => {
+          const k = String(key || '').trim();
+          if (!k) return '';
+          const re = new RegExp(
+            `<meta[^>]+(?:property|name)=["']${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]+content=["']([^"']+)["']`,
+            'i'
+          );
+          const m = html.match(re);
+          return decodeEntities(String(m?.[1] || '')).trim();
+        };
+
+        const title =
+          extractMetaContent('og:title') ||
+          extractMetaContent('twitter:title') ||
+          decodeEntities(String(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || ''))
+            .replace(/\s+/g, ' ')
+            .trim() ||
+          String(titleHint || '').trim();
+
+        const image = extractMetaContent('og:image') || extractMetaContent('twitter:image');
+
+        const isMerchantLike =
+          /amazon\.|noon\.com|jarir\.com|extra\.com|temu\.com|aliexpress\.com|shein\.com|ebay\.|walmart\.com|bestbuy\.com|target\.com|bhphotovideo\.com|newegg\.com|microcenter\.com|fnac\.com|mediamarkt\.|saturn\.de/i.test(
+            host
+          ) ||
+          /shop|store|market|cart|checkout|product|item|sku|buy/i.test(host + ' ' + path) ||
+          /\/dp\/|\/gp\/product\/|\/products?\//i.test(path);
+
+        const maxByCurrency: Record<string, number> = {
+          SAR: 500000,
+          AED: 500000,
+          KWD: 500000,
+          QAR: 500000,
+          BHD: 500000,
+          OMR: 500000,
+          EGP: 5000000,
+          USD: 200000,
+          CAD: 200000,
+          EUR: 200000,
+          GBP: 200000,
+          TRY: 2000000,
+          INR: 20000000,
+          JPY: 30000000,
+          AUD: 200000,
+        };
+        const isReasonablePrice = (price: number, currency: string) => {
+          const cur = String(currency || '').toUpperCase();
+          const max = typeof maxByCurrency[cur] === 'number' ? maxByCurrency[cur] : 1000000;
+          return Number.isFinite(price) && price > 0 && price <= max;
+        };
+
+        if (/(^|\.)noon\.com$/i.test(host)) {
+          const matches: Array<{ price: number; currency: string; raw: string }> = [];
+          const patterns: RegExp[] = [
+            /"priceCurrency"\s*:\s*"([A-Z]{3})"[\s\S]{0,250}?"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,250}?"priceCurrency"\s*:\s*"([A-Z]{3})"/gi,
+            /"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,120}?"currency"\s*:\s*"([A-Z]{3})"/gi,
+            /"currency"\s*:\s*"([A-Z]{3})"[\s\S]{0,120}?"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+          ];
+          for (const re of patterns) {
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(html))) {
+              const a = String(m[1] || '');
+              const b = String(m[2] || '');
+              const currency = (/^[A-Z]{3}$/.test(a) ? a : /^[A-Z]{3}$/.test(b) ? b : '').toUpperCase();
+              const priceRaw = currency === a ? b : a;
+              const price = parsePriceNumber(priceRaw);
+              if (price && currency && isReasonablePrice(price, currency)) matches.push({ price, currency, raw: String(m[0] || '') });
+              if (matches.length >= 25) break;
+            }
+          }
+          matches.sort((a, b) => a.price - b.price);
+          const best = matches[0];
+          if (best) {
+            return {
+              ok: true as const,
+              offer: {
+                title,
+                url: pageUrl,
+                store: host,
+                price: best.price,
+                currency: best.currency,
+                priceText: best.raw.slice(0, 160),
+                availability: '',
+                image,
+                source: 'noon_json',
+                confidence: 0.65,
+              },
+            };
+          }
+        }
+
+        if (/(^|\.)jarir\.com$/i.test(host)) {
+          const candidates: Array<{ price: number; currency: string; text: string }> = [];
+          const re1 = /(?:SAR|ر\.?\s?س|ريال)\s*([0-9][0-9.,]{0,12})/gi;
+          const re2 = /([0-9][0-9.,]{0,12})\s*(?:SAR|ر\.?\s?س|ريال)/gi;
+          for (const re of [re1, re2]) {
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(html))) {
+              const raw = String(m[1] || '');
+              const price = parsePriceNumber(raw);
+              const currency = currencyFromText(String(m[0] || '')) || 'SAR';
+              const txt = String(m[0] || '').trim();
+              if (/month|شهري|شهر|\/\s*mo/i.test(txt)) continue;
+              if (price && currency && isReasonablePrice(price, currency)) {
+                const minByCur: Record<string, number> = { USD: 80, CAD: 100, EUR: 90, GBP: 70, SAR: 500, AED: 500, KWD: 20, QAR: 500, BHD: 20, OMR: 20, TRY: 1500, INR: 7000 };
+                const curKey = String(currency).toUpperCase();
+                const min = typeof minByCur[curKey] === 'number' ? minByCur[curKey] : 50;
+                const accessory = /(case|cover|cable|adapter|charger|protector|stand|جراب|غلاف|سلك|كيبل|شاحن|حماية|حافظ)/i.test(queryRaw);
+                if (!accessory && price < min) continue;
+                candidates.push({ price, currency, text: txt });
+              }
+              if (candidates.length >= 25) break;
+            }
+            if (candidates.length >= 25) break;
+          }
+          candidates.sort((a, b) => a.price - b.price);
+          const best = candidates[0];
+          if (best) {
+            return {
+              ok: true as const,
+              offer: {
+                title,
+                url: pageUrl,
+                store: host,
+                price: best.price,
+                currency: best.currency,
+                priceText: best.text,
+                availability: '',
+                image,
+                source: 'jarir_regex',
+                confidence: 0.6,
+              },
+            };
+          }
+        }
+
+        const dom = createDom(html, pageUrl);
+        const doc = dom.window.document;
+
+        const jsonlds = extractJsonLdObjects(html);
+        const products: any[] = [];
+        for (const j of jsonlds) collectProducts(j, products);
+
+        const offersFromJsonLd: Array<{ price: number; currency: string; availability: string; priceText: string }> = [];
+        for (const p of products) {
+          const offers = (p as any)?.offers;
+          const pushOffer = (o: any) => {
+            if (!o || typeof o !== 'object') return;
+            const currency = String(o?.priceCurrency || o?.pricecurrency || '').trim().toUpperCase();
+            const priceRaw = pick(o?.price, pick(o?.lowPrice, pick(o?.highPrice, '')));
+            const priceNum = parsePriceNumber(String(priceRaw));
+            const availabilityRaw = String(o?.availability || '').trim();
+            const availability = availabilityRaw ? availabilityRaw.split('/').pop() || availabilityRaw : '';
+            const cur = currency || currencyFromText(String(priceRaw)) || currencyFromText(availabilityRaw);
+            if (!priceNum || !cur) return;
+            if (!isReasonablePrice(priceNum, cur)) return;
+            offersFromJsonLd.push({ price: priceNum, currency: cur, availability, priceText: String(priceRaw) });
+          };
+          if (Array.isArray(offers)) offers.forEach(pushOffer);
+          else if (offers) pushOffer(offers);
+        }
+
+        const metaPriceAmount =
+          String(doc.querySelector('meta[property="product:price:amount"]')?.getAttribute('content') || '').trim() ||
+          String(doc.querySelector('meta[property="og:price:amount"]')?.getAttribute('content') || '').trim() ||
+          String(doc.querySelector('meta[name="twitter:data1"]')?.getAttribute('content') || '').trim() ||
+          String(doc.querySelector('[itemprop="price"]')?.getAttribute('content') || '').trim();
+
+        const metaCurrency =
+          String(doc.querySelector('meta[property="product:price:currency"]')?.getAttribute('content') || '').trim() ||
+          String(doc.querySelector('meta[property="og:price:currency"]')?.getAttribute('content') || '').trim() ||
+          String(doc.querySelector('[itemprop="priceCurrency"]')?.getAttribute('content') || '').trim();
+
+        const metaPriceNum = parsePriceNumber(metaPriceAmount);
+        const metaCur = String(metaCurrency || '').toUpperCase() || currencyFromText(metaPriceAmount);
+
+        const fallbackPriceText = (() => {
+          const txt = doc.body?.textContent ? String(doc.body.textContent) : '';
+          const compact = txt.replace(/\s+/g, ' ').trim();
+          const m =
+            compact.match(/(?:SAR|AED|USD|EUR|GBP|TRY|INR|JPY|CAD|AUD)\s?\d{1,7}(?:[.,]\d{1,3})?(?:[.,]\d{1,2})?/i) ||
+            compact.match(/\d{1,7}(?:[.,]\d{1,3})?(?:[.,]\d{1,2})?\s?(?:SAR|AED|USD|EUR|GBP|TRY|INR|JPY|CAD|AUD)\b/i) ||
+            compact.match(
+              /(?:ر\.?\s?س|ريال|د\.?\s?إ|درهم|د\.?\s?ك|دينار|ر\.?\s?ق|ر\.?\s?ع|د\.?\s?ب)\s?\d{1,7}(?:[.,]\d{1,3})?(?:[.,]\d{1,2})?/i
+            ) ||
+            compact.match(
+              /\d{1,7}(?:[.,]\d{1,3})?(?:[.,]\d{1,2})?\s?(?:ر\.?\s?س|ريال|د\.?\s?إ|درهم|د\.?\s?ك|دينار|ر\.?\s?ق|ر\.?\s?ع|د\.?\s?ب)/i
+            ) ||
+            compact.match(/[\$€£¥₺₹]\s?\d{1,7}(?:[.,]\d{1,3})?(?:[.,]\d{1,2})?/);
+          return String(m?.[0] || '').trim();
+        })();
+        const fallbackPriceNum = parsePriceNumber(fallbackPriceText);
+        const fallbackCur = currencyFromText(fallbackPriceText);
+
+        if (offersFromJsonLd.length) {
+          offersFromJsonLd.sort((a, b) => a.price - b.price);
+          const best = offersFromJsonLd[0];
+          if (!isMerchantLike && !wantsTradeInOrUsed && !wantsSiteOnly) {
+            return { ok: false as const, error: 'not_merchant' };
+          }
+          return {
+            ok: true as const,
+            offer: {
+              title,
+              url: pageUrl,
+              store: host,
+              price: best.price,
+              currency: best.currency,
+              priceText: best.priceText,
+              availability: best.availability,
+              image,
+              source: 'jsonld',
+              confidence: 0.9,
+            },
+          };
+        }
+
+        if (metaPriceNum && metaCur && isReasonablePrice(metaPriceNum, metaCur)) {
+          if (!isMerchantLike && !wantsTradeInOrUsed && !wantsSiteOnly) {
+            return { ok: false as const, error: 'not_merchant' };
+          }
+          return {
+            ok: true as const,
+            offer: {
+              title,
+              url: pageUrl,
+              store: host,
+              price: metaPriceNum,
+              currency: metaCur,
+              priceText: metaPriceAmount,
+              availability: '',
+              image,
+              source: 'meta',
+              confidence: 0.75,
+            },
+          };
+        }
+
+        if (/(^|\.)jarir\.com$/i.test(host)) {
+          const priceEls = Array.from(
+            doc.querySelectorAll(
+              '.fixed-product__price, .price-box__row, .product-view__price, [class*="price"], [data-testid*="price"], [data-qa*="price"]'
+            )
+          );
+          const candidates: Array<{ price: number; currency: string; text: string }> = [];
+          for (const el of priceEls) {
+            const text = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            if (/month|شهري|شهر|\/\s*mo/i.test(text)) continue;
+            const currency = currencyFromText(text) || 'SAR';
+            const price = parsePriceNumber(text);
+            if (price && isReasonablePrice(price, currency)) {
+              const minByCur: Record<string, number> = { USD: 80, CAD: 100, EUR: 90, GBP: 70, SAR: 500, AED: 500, KWD: 20, QAR: 500, BHD: 20, OMR: 20, TRY: 1500, INR: 7000 };
+              const curKey = String(currency).toUpperCase();
+              const min = typeof minByCur[curKey] === 'number' ? minByCur[curKey] : 50;
+              const accessory = /(case|cover|cable|adapter|charger|protector|stand|جراب|غلاف|سلك|كيبل|شاحن|حماية|حافظ)/i.test(queryRaw);
+              if (!accessory && price < min) continue;
+              candidates.push({ price, currency, text });
+            }
+            if (candidates.length >= 30) break;
+          }
+          candidates.sort((a, b) => a.price - b.price);
+          const best = candidates[0];
+          if (best) {
+            return {
+              ok: true as const,
+              offer: {
+                title,
+                url: pageUrl,
+                store: host,
+                price: best.price,
+                currency: best.currency,
+                priceText: best.text,
+                availability: '',
+                image,
+                source: 'jarir_dom',
+                confidence: 0.7,
+              },
+            };
+          }
+        }
+
+        if (/(^|\.)noon\.com$/i.test(host)) {
+          const matches: Array<{ price: number; currency: string; raw: string }> = [];
+          const patterns: RegExp[] = [
+            /"priceCurrency"\s*:\s*"([A-Z]{3})"[\s\S]{0,250}?"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+            /"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,250}?"priceCurrency"\s*:\s*"([A-Z]{3})"/gi,
+            /"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?[\s\S]{0,120}?"currency"\s*:\s*"([A-Z]{3})"/gi,
+            /"currency"\s*:\s*"([A-Z]{3})"[\s\S]{0,120}?"(?:offerPrice|salePrice|sellingPrice|nowPrice|priceNow)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/gi,
+          ];
+          for (const re of patterns) {
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(html))) {
+              const a = String(m[1] || '');
+              const b = String(m[2] || '');
+              const currency = (/^[A-Z]{3}$/.test(a) ? a : /^[A-Z]{3}$/.test(b) ? b : '').toUpperCase();
+              const priceRaw = currency === a ? b : a;
+              const price = parsePriceNumber(priceRaw);
+              if (price && currency && isReasonablePrice(price, currency)) matches.push({ price, currency, raw: String(m[0] || '') });
+              if (matches.length >= 30) break;
+            }
+          }
+          matches.sort((a, b) => a.price - b.price);
+          const best = matches[0];
+          if (best) {
+            return {
+              ok: true as const,
+              offer: {
+                title,
+                url: pageUrl,
+                store: host,
+                price: best.price,
+                currency: best.currency,
+                priceText: best.raw.slice(0, 160),
+                availability: '',
+                image,
+                source: 'noon_json',
+                confidence: 0.65,
+              },
+            };
+          }
+        }
+
+        if (fallbackPriceNum && fallbackCur && isReasonablePrice(fallbackPriceNum, fallbackCur)) {
+          if (!isMerchantLike) return { ok: false as const, error: 'not_merchant' };
+          const minByCur: Record<string, number> = { USD: 5, CAD: 5, EUR: 5, GBP: 5, SAR: 10, AED: 10, KWD: 2, QAR: 10, BHD: 2, OMR: 2, TRY: 50, INR: 100 };
+          const curKey = String(fallbackCur).toUpperCase();
+          const min = typeof minByCur[curKey] === 'number' ? minByCur[curKey] : 5;
+          const accessory =
+            /(case|cover|cable|adapter|charger|protector|stand|جراب|غلاف|سلك|كيبل|شاحن|حماية|حافظ)/i.test(queryRaw);
+          if (!accessory && fallbackPriceNum < min) return { ok: false as const, error: 'implausible_price' };
+          return {
+            ok: true as const,
+            offer: {
+              title,
+              url: pageUrl,
+              store: host,
+              price: fallbackPriceNum,
+              currency: fallbackCur,
+              priceText: fallbackPriceText,
+              availability: '',
+              image,
+              source: 'text',
+              confidence: 0.55,
+            },
+          };
+        }
+
+        if (/(^|\.)noon\.com$/i.test(host)) {
+          const localeCur = (() => {
+            try {
+              const p = new URL(pageUrl).pathname.toLowerCase();
+              if (p.includes('/saudi-')) return 'SAR';
+              if (p.includes('/uae-')) return 'AED';
+              if (p.includes('/egypt-')) return 'EGP';
+              if (p.includes('/kuwait-')) return 'KWD';
+              if (p.includes('/qatar-')) return 'QAR';
+              if (p.includes('/bahrain-')) return 'BHD';
+              if (p.includes('/oman-')) return 'OMR';
+            } catch {}
+            return '';
+          })();
+
+          const curCandidate = localeCur || 'SAR';
+          const priceNodes = Array.from(
+            doc.querySelectorAll(
+              'span[class*="priceNowText"], span[class*="priceNow"], div[class*="priceNow"], [data-qa*="price"], [data-testid*="price"]'
+            )
+          );
+          const nums: number[] = [];
+          for (const el of priceNodes) {
+            const t = String((el as any)?.textContent || '').replace(/\s+/g, ' ').trim();
+            if (/month|شهري|شهر|\/\s*mo/i.test(t)) continue;
+            const n = parsePriceNumber(t);
+            if (n && isReasonablePrice(n, curCandidate)) {
+              const minByCur: Record<string, number> = { USD: 80, CAD: 100, EUR: 90, GBP: 70, SAR: 500, AED: 500, KWD: 20, QAR: 500, BHD: 20, OMR: 20, TRY: 1500, INR: 7000, EGP: 5000 };
+              const accessory = /(case|cover|cable|adapter|charger|protector|stand|جراب|غلاف|سلك|كيبل|شاحن|حماية|حافظ)/i.test(queryRaw);
+              const min = typeof minByCur[curCandidate] === 'number' ? minByCur[curCandidate] : 50;
+              if (!accessory && n < min) continue;
+              nums.push(n);
+            }
+          }
+          nums.sort((a, b) => a - b);
+          const best = nums[0];
+          if (best) {
+            return {
+              ok: true as const,
+              offer: {
+                title,
+                url: pageUrl,
+                store: host,
+                price: best,
+                currency: curCandidate,
+                priceText: `${curCandidate} ${best}`,
+                availability: '',
+                image,
+                source: 'dom',
+                confidence: 0.7,
+              },
+            };
+          }
+        }
+
+        return { ok: false as const, error: 'no_price_found' };
+      };
+
+      const titleHintByUrl = new Map<string, string>();
+      for (const r of results) {
+        const u = String(r?.url || '').trim();
+        const t = String(r?.title || '').trim();
+        if (u && t) titleHintByUrl.set(u, t);
+      }
+
+      const mapLimit = async <T, R>(arr: T[], conc: number, fn: (t: T) => Promise<R>) => {
+        const out: R[] = new Array(arr.length) as any;
+        let idx = 0;
+        const workers = new Array(Math.min(conc, arr.length)).fill(0).map(async () => {
+          while (idx < arr.length && Date.now() < deadlineMs) {
+            const cur = idx++;
+            out[cur] = await fn(arr[cur]);
+          }
+        });
+        await Promise.all(workers);
+        return out;
+      };
+
+      const candidateUrls = dedupUrls.slice(0, maxCandidates);
+      let settled: any[] = [];
+      try {
+        settled = await mapLimit(candidateUrls, 2, async (u) => {
+          if (Date.now() >= deadlineMs) return { ok: false as const, url: u, error: 'deadline_exceeded' };
+          const hint = titleHintByUrl.get(u) || '';
+          const got = await Promise.race([
+            fetchHtml(u),
+            new Promise<{ ok: false; error: string; html: string; finalUrl: string; rendered: boolean }>((resolve) =>
+              setTimeout(() => resolve({ ok: false, error: 'candidate_timeout', html: '', finalUrl: u, rendered: false }), 22000)
+            ),
+          ]);
+          if (!got.ok) return { ok: false as const, url: u, error: got.error || 'fetch_failed' };
+          const ext = extractOfferFromHtml(got.html, got.finalUrl || u, hint);
+          if (!ext.ok) return { ok: false as const, url: got.finalUrl || u, error: (ext as any).error || 'extract_failed' };
+          return { ok: true as const, offer: (ext as any).offer };
+        });
+      } finally {
+        await closeSharedBrowser();
+      }
+
+      const offers = settled.filter((x: any) => x && x.ok && x.offer).map((x: any) => x.offer);
+      logs.push(`candidates.tried=${candidateUrls.length}`);
+      logs.push(`offers.found=${offers.length}`);
+      if (!offers.length) return { ok: false, error: 'no_offers_extracted', logs };
+
+      const uniqOffers: any[] = [];
+      const offerSeen = new Set<string>();
+      for (const o of offers) {
+        const key = `${String(o.url)}|${String(o.currency)}|${String(o.price)}`;
+        if (offerSeen.has(key)) continue;
+        offerSeen.add(key);
+        uniqOffers.push(o);
+      }
+
+      const byCurrency: Record<string, any[]> = {};
+      for (const o of uniqOffers) {
+        const cur = String(o.currency || '').toUpperCase() || 'UNKNOWN';
+        if (!byCurrency[cur]) byCurrency[cur] = [];
+        byCurrency[cur].push(o);
+      }
+      for (const [cur, arr] of Object.entries(byCurrency)) {
+        arr.sort((a: any, b: any) => Number(a.price) - Number(b.price));
+        byCurrency[cur] = arr.slice(0, limit);
+      }
+
+      const flattened = Object.values(byCurrency).flat().slice(0, limit);
+      return { ok: true, output: { offers: flattened, byCurrency, candidatesTried: candidateUrls.length }, logs };
+    },
   },
   {
     name: 'central_answer',
@@ -2471,7 +3568,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const parseHtml = (rawHtml: string, baseUrl: string) => {
         // 1. Try Mozilla Readability (The "Smart" Way)
         try {
-            const dom = new JSDOM(rawHtml, { url: baseUrl });
+            const dom = createDom(rawHtml, baseUrl);
             const reader = new Readability(dom.window.document);
             const article = reader.parse();
             if (article) {
