@@ -218,28 +218,7 @@ export default function Joe() {
     setComposerHeight(el?.offsetHeight || 0);
   }, [mode, showSidebar, agentComposerOpen, showFiles, selected]);
 
-  useEffect(() => {
-    const apply = () => {
-      if (showLivePanel) {
-        document.documentElement.classList.add('live-panel-open');
-        const width = isNarrow ? Math.min(window.innerWidth * 0.92, 520) : 480;
-        const height = livePanelExpanded
-          ? Math.min(window.innerHeight * 0.5, 420)
-          : Math.max(96, Math.min(window.innerHeight * 0.18, 140));
-        document.documentElement.style.setProperty('--live-panel-width', `${Math.round(width)}px`);
-        document.documentElement.style.setProperty('--live-panel-height', `${Math.round(height)}px`);
-        document.documentElement.style.setProperty('--composer-height', `${composerHeight}px`);
-      } else {
-        document.documentElement.classList.remove('live-panel-open');
-        document.documentElement.style.removeProperty('--live-panel-width');
-        document.documentElement.style.removeProperty('--live-panel-height');
-      }
-    };
-    apply();
-    const onResize = () => apply();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [showLivePanel, isNarrow, livePanelExpanded, composerHeight]);
+  useEffect(() => {}, [showLivePanel, isNarrow, livePanelExpanded, composerHeight]);
 
   useEffect(() => {
     const release = SocketService.subscribe((event: any) => {
@@ -751,62 +730,7 @@ export default function Joe() {
               </button>
             </div>
           </div>
-          {/* Live Panel Dock - bottom-right */}
-          <div style={{ position: 'fixed', right: 16, bottom: (composerHeight || 0) + 16, zIndex: 200 }}>
-            {!showLivePanel ? (
-              <button
-                onClick={() => setShowLivePanel(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  height: 36,
-                  padding: '0 12px',
-                  borderRadius: 12,
-                  border: '1px solid var(--border-color)',
-                  background: 'rgba(255,255,255,0.06)',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(8px)'
-                }}
-                title="لوحة المتابعة"
-              >
-                <Activity size={16} />
-                <span style={{ fontSize: 12 }}>{liveStatus === 'running' ? 'النشاط جارٍ' : 'لوحة المتابعة'}</span>
-              </button>
-            ) : (
-              <div style={{ width: isNarrow ? 'min(92vw, 520px)' : 480, maxWidth: '95vw' }}>
-                <LiveInteractionPanel 
-                  steps={liveSteps} 
-                  logs={liveLogs} 
-                  messages={liveMessages} 
-                  status={liveStatus} 
-                  onPause={() => setLiveStatus('paused')}
-                  onResume={() => setLiveStatus('running')}
-                  onStop={() => setLiveStatus('idle')}
-                  expanded={livePanelExpanded}
-                  onExpand={(v) => setLivePanelExpanded(!!v)}
-                />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-                  <button
-                    onClick={() => setShowLivePanel(false)}
-                    style={{
-                      height: 28,
-                      padding: '0 10px',
-                      borderRadius: 10,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(255,255,255,0.06)',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontSize: 12
-                    }}
-                  >
-                    إغلاق اللوحة
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          
         {mode === 'agent' && (
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
             <div
@@ -881,7 +805,7 @@ export default function Joe() {
 
             <div
               style={{
-                width: isNarrow ? '100%' : 420,
+                width: isNarrow ? '100%' : (showLivePanel ? 740 : 420),
                 flex: isNarrow ? `0 0 ${agentComposerOpen ? '45%' : '44px'}` : '0 0 auto',
                 height: isNarrow ? (agentComposerOpen ? undefined : 44) : '100%',
                 minHeight: 0,
@@ -893,44 +817,103 @@ export default function Joe() {
                 flexDirection: 'column',
               }}
             >
-              {isNarrow ? (
-                <div style={{ padding: '10px 12px', borderBottom: agentComposerOpen ? '1px solid var(--border-color)' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>الأوامر</div>
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>الأوامر</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {isNarrow ? (
+                    <button
+                      onClick={() => setAgentComposerOpen(v => !v)}
+                      style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                    >
+                      {agentComposerOpen ? 'إخفاء' : 'إظهار'}
+                    </button>
+                  ) : null}
                   <button
-                    onClick={() => setAgentComposerOpen(v => !v)}
-                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                    onClick={() => setShowLivePanel(v => !v)}
+                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                    title="لوحة المتابعة"
                   >
-                    {agentComposerOpen ? 'إخفاء' : 'إظهار'}
+                    <Activity size={14} /> {showLivePanel ? 'إخفاء اللوحة' : 'عرض اللوحة'}
                   </button>
                 </div>
-              ) : null}
+              </div>
               {(!isNarrow || agentComposerOpen) ? (
-                <CommandComposer
-                  sessionId={agentSelected || undefined}
-                  sessionKind="agent"
-                  browserSessionId={agentBrowserSessionId}
-                  onSessionCreated={async (id) => {
-                      await loadAllSessions();
-                      setAgentSelected(id);
-                    }}
-                />
+                <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                    <CommandComposer
+                      sessionId={agentSelected || undefined}
+                      sessionKind="agent"
+                      browserSessionId={agentBrowserSessionId}
+                      onSessionCreated={async (id) => {
+                          await loadAllSessions();
+                          setAgentSelected(id);
+                        }}
+                    />
+                  </div>
+                  {showLivePanel ? (
+                    <div style={{ width: isNarrow ? '100%' : 320, minWidth: 280, maxWidth: 420 }}>
+                      <LiveInteractionPanel 
+                        steps={liveSteps} 
+                        logs={liveLogs} 
+                        messages={liveMessages} 
+                        status={liveStatus} 
+                        onPause={() => setLiveStatus('paused')}
+                        onResume={() => setLiveStatus('running')}
+                        onStop={() => setLiveStatus('idle')}
+                        expanded={livePanelExpanded}
+                        onExpand={(v) => setLivePanelExpanded(!!v)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </div>
         )}
         {mode === 'chat' && (
           <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {liveStatus === 'running' ? <ThinkingIndicator stepName={(liveSteps[liveSteps.length - 1] || {}).name} /> : null}
-              <CommandComposer
-                key={selected || 'new'}
-                sessionId={selected || undefined}
-                sessionKind="chat"
-                onSessionCreated={async (id) => {
-                    await loadAllSessions();
-                    setSelected(id);
-                  }}
-              />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    onClick={() => setShowLivePanel(v => !v)}
+                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                    title="لوحة المتابعة"
+                  >
+                    <Activity size={14} /> {showLivePanel ? 'إخفاء اللوحة' : 'عرض اللوحة'}
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
+                  {liveStatus === 'running' ? <ThinkingIndicator stepName={(liveSteps[liveSteps.length - 1] || {}).name} /> : null}
+                  <CommandComposer
+                    key={selected || 'new'}
+                    sessionId={selected || undefined}
+                    sessionKind="chat"
+                    onSessionCreated={async (id) => {
+                        await loadAllSessions();
+                        setSelected(id);
+                      }}
+                  />
+                </div>
+                {showLivePanel ? (
+                  <div style={{ width: isNarrow ? '100%' : 320, minWidth: 280, maxWidth: 420 }}>
+                    <LiveInteractionPanel 
+                      steps={liveSteps} 
+                      logs={liveLogs} 
+                      messages={liveMessages} 
+                      status={liveStatus} 
+                      onPause={() => setLiveStatus('paused')}
+                      onResume={() => setLiveStatus('running')}
+                      onStop={() => setLiveStatus('idle')}
+                      expanded={livePanelExpanded}
+                      onExpand={(v) => setLivePanelExpanded(!!v)}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
             {showFiles ? (
               <div style={{ width: 420, minWidth: 320, height: '100%', borderLeft: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
