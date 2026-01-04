@@ -624,6 +624,15 @@ function isWeatherLikeQuery(text: string) {
   return false;
 }
 
+function isLocationLikeQuery(text: string) {
+  const t = normalizeArabicQuery(text);
+  if (!t) return false;
+  if (/(geo|coordinates|coordinate|lat(?:itude)?|lon(?:gitude)?)/i.test(text)) return true;
+  if (/(احداثيات|إحداثيات|موقعي|موقعي|مكاني|موقعك|مكاني الحالي|موقعي الحالي|خط\s+العرض|خط\s+الطول)/.test(t)) return true;
+  if (/ما\s+هي\s+احداثيات/.test(t)) return true;
+  return false;
+}
+
 function extractWeatherCity(text: string) {
   const raw = String(text || '').trim();
   const t = normalizeArabicQuery(raw);
@@ -927,11 +936,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (isGreetingOnly(rawUserText) && !hasAttachments) {
         initialPlan = { name: 'echo', input: { text: greetingReply(rawUserText) } };
       } else {
-        // Use full history for planning to ensure context awareness
-        initialPlan = await planNextStep(
-          history,
-          { provider, apiKey, baseUrl, model, throwOnError: true }
-        );
+        const wantsLocation = isLocationLikeQuery(rawUserText);
+        if (wantsLocation) {
+          initialPlan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+        }
+        if (!initialPlan) {
+          // Use full history for planning to ensure context awareness
+          initialPlan = await planNextStep(
+            history,
+            { provider, apiKey, baseUrl, model, throwOnError: true }
+          );
+        }
       }
   } catch (err) {
       console.warn('LLM planning error:', safeErrorMessage(err));
@@ -1005,6 +1020,57 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
   }
 
+  // Fast path: handle location queries without LLM planning
+  try {
+    const rawUserText = String(text || '');
+    if (isLocationLikeQuery(rawUserText)) {
+      ev({ type: 'step_started', data: { name: 'execute:http_fetch', input: { url: 'https://ipinfo.io/json', sessionId } } });
+      const result = await executeTool('http_fetch', { url: 'https://ipinfo.io/json', sessionId });
+      ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:http_fetch', result } });
+      if (useMock) {
+        store.addExec(runId, 'http_fetch', { url: 'https://ipinfo.io/json', sessionId }, result.output, result.ok, result.logs);
+      } else {
+        await ToolExecution.create({ runId, name: 'http_fetch', input: { url: 'https://ipinfo.io/json', sessionId }, output: result.output, ok: result.ok, logs: result.logs });
+      }
+      let lat: number | null = null, lon: number | null = null;
+      const j = (result as any)?.output?.json || {};
+      if (typeof j?.loc === 'string' && j.loc.includes(',')) {
+        const parts = j.loc.split(',').map((x: string) => Number(x.trim()));
+        if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+          lat = parts[0]; lon = parts[1];
+        }
+      } else if (typeof j?.latitude === 'number' && typeof j?.longitude === 'number') {
+        lat = j.latitude; lon = j.longitude;
+      } else if (typeof j?.lat === 'number' && typeof j?.lon === 'number') {
+        lat = j.lat; lon = j.lon;
+      }
+      let finalText = '';
+      if (lat !== null && lon !== null) {
+        finalText = [
+          `### الإحداثيات التقريبية`,
+          `- خط العرض (Latitude): ${lat.toFixed(6)}`,
+          `- خط الطول (Longitude): ${lon.toFixed(6)}`,
+          `- المصدر: مزود تحديد الموقع عبر عنوان IP (تقريبي)`
+        ].join('\n');
+      } else {
+        finalText = 'تعذّر استخراج الإحداثيات من مزود الموقع. حاول مرة أخرى بعد قليل.';
+      }
+      ev({ type: 'text', data: finalText });
+      ev({ type: 'run_completed', data: { runId, result } });
+      ev({ type: 'run_finished', data: { runId, status: 'done' } });
+      if (useMock) {
+        store.addMessage(sessionId, 'assistant', finalText, runId);
+        store.updateRun(runId, { status: 'done' });
+      } else {
+        await Message.create({ sessionId, role: 'assistant', content: finalText, runId });
+        await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
+      }
+      return res.json({ runId, sessionId, status: 'done' });
+    }
+  } catch (e) {
+    // fall through to agent loop on error
+  }
+
   // --- Agent Loop ---
   let steps = 0;
   const MAX_STEPS = 50;
@@ -1059,7 +1125,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
                assistantTextEmitted = true;
                break;
             }
-            if (!plan) plan = null;
+            if (!plan) {
+              const userTextForOverrides = String(text || '');
+              if (isLocationLikeQuery(userTextForOverrides)) {
+                plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+              } else {
+                plan = null;
+              }
+            }
         }
     }
 
@@ -1076,9 +1149,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
     
     let planName = String(plan?.name || '');
+    const userTextForOverrides = String(text || '');
+    const userTextNorm = normalizeArabicQuery(userTextForOverrides);
+    const wantsLocationEarly = isLocationLikeQuery(userTextForOverrides);
+    if (wantsLocationEarly) {
+      plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+      planName = 'http_fetch';
+    }
     
     // Safety: Prevent infinite loops of same tool execution
-    if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase'].includes(planName)) {
+    if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch'].includes(planName)) {
         const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
         if (executedToolSigs.has(sig)) {
              console.log(`[Safety] Skipping repeated execution of ${planName}`);
@@ -1128,8 +1208,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     const isBrowserTool = /^browser_/.test(planName);
-    const userTextForOverrides = String(text || '');
-    const userTextNorm = normalizeArabicQuery(userTextForOverrides);
     const requestedRepoName = extractRequestedRepoName(userTextForOverrides);
     const wantsGithubRepo =
       /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
@@ -1233,7 +1311,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       plan = { name: 'central_answer', input: { question: q } } as any;
       planName = 'central_answer';
     }
-
+    
     const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
     if (wf && wf.kind !== 'ecommerce' && (!planName || planName === 'echo')) {
       const marker =
@@ -1785,6 +1863,65 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             forcedText = mdw;
             ev({ type: 'text', data: mdw });
             assistantTextEmitted = true;
+          }
+        }
+        
+        if (/(ipapi\.co|ipinfo\.io|ip-api\.com)/i.test(u.hostname)) {
+          let lat: number | null = null;
+          let lon: number | null = null;
+          
+          const j = (result as any)?.output?.json || {};
+          if (typeof j?.latitude === 'number' && typeof j?.longitude === 'number') {
+            lat = j.latitude; lon = j.longitude;
+          } else if (typeof j?.lat === 'number' && typeof j?.lon === 'number') {
+            lat = j.lat; lon = j.lon;
+          } else if (typeof j?.loc === 'string' && j.loc.includes(',')) {
+            const parts = j.loc.split(',').map((x: string) => Number(x.trim()));
+            if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+              lat = parts[0]; lon = parts[1];
+            }
+          }
+          
+          if (lat !== null && lon !== null) {
+            const mdLoc = [
+              `### الإحداثيات التقريبية`,
+              `- خط العرض (Latitude): ${lat.toFixed(6)}`,
+              `- خط الطول (Longitude): ${lon.toFixed(6)}`,
+              `- المصدر: مزود تحديد الموقع عبر عنوان IP (تقريبي)`
+            ].join('\n');
+            forcedText = mdLoc;
+            ev({ type: 'text', data: mdLoc });
+            assistantTextEmitted = true;
+          } else {
+            const status = Number((result as any)?.output?.status);
+            const host = String(u.hostname || '').toLowerCase();
+            const tryIpinfo = () => {
+              const nextUrl = 'https://ipinfo.io/json';
+              const sig = `http_fetch:${nextUrl}`;
+              if (!executedToolSigs.has(sig)) {
+                pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
+                executedToolSigs.add(sig);
+              }
+            };
+            const tryIpApi = () => {
+              const nextUrl = 'http://ip-api.com/json';
+              const sig = `http_fetch:${nextUrl}`;
+              if (!executedToolSigs.has(sig)) {
+                pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
+                executedToolSigs.add(sig);
+              }
+            };
+            if (host.includes('ipapi.co')) {
+              if (status === 429) {
+                tryIpinfo();
+              } else {
+                tryIpinfo();
+              }
+            } else if (host.includes('ipinfo.io')) {
+              tryIpApi();
+            } else if (host.includes('ip-api.com')) {
+              tryIpinfo();
+            }
           }
         }
       } catch {}
