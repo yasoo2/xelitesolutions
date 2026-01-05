@@ -668,6 +668,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   const providerKey = String(provider || 'openai').trim().toLowerCase();
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   const hasAnyKey = Boolean((typeof apiKey === 'string' && apiKey.trim()) || (typeof process.env.OPENAI_API_KEY === 'string' && process.env.OPENAI_API_KEY.trim()));
+  let missingApiKey = false;
 
   if (providerKey === 'llm') {
     return res.status(400).json({
@@ -675,9 +676,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     });
   }
   if (!hasAnyKey) {
-    return res.status(400).json({
-      error: '⚠️ لا يوجد API Key. أدخل مفتاح المزود من زر المزودين قبل التشغيل.',
-    });
+    missingApiKey = true;
   }
   if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
     return res.status(400).json({
@@ -844,6 +843,39 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       browserSessionId: typeof browserSessionId === 'string' ? browserSessionId : undefined,
     });
   } catch {}
+
+  if (missingApiKey) {
+    const msg = [
+      '⚠️ يلزم إدخال API Key للمزوّد قبل التنفيذ.',
+      `- المزود: ${providerKey || 'openai'}`,
+      '- أدخل المفتاح في نافذة التوكن وأرسله.',
+    ].join('\n');
+    const ev = (e: LiveEvent) => broadcast({ ...e, runId });
+    ev({ type: 'text', data: msg });
+    ev({
+      type: 'secret_required',
+      data: {
+        sessionId,
+        runId,
+        provider: providerKey || 'openai',
+        key: 'LLM_API_KEY',
+        label: 'LLM API Key',
+        reason: 'Missing API Key',
+      },
+    });
+    if (useMock) {
+      store.updateRun(runId, { status: 'blocked' as any });
+    } else {
+      try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
+    }
+    return res.json({
+      runId,
+      sessionId,
+      blocked: true,
+      secretRequired: true,
+      secret: { provider: providerKey || 'openai', key: 'LLM_API_KEY', label: 'LLM API Key' },
+    });
+  }
 
   const systemPromptEventId = `system_prompt:${sessionId}`;
   let systemPromptCreated = false;

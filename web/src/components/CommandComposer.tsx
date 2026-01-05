@@ -2573,6 +2573,7 @@ export default function CommandComposer({
                         if (val) {
                              const sid = secretPrompt.sessionId;
                              const key = secretPrompt.key;
+                             const provider = secretPrompt.provider;
                              setSecretPrompt(null);
                              setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
                             
@@ -2581,7 +2582,7 @@ export default function CommandComposer({
                                 const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                                  body: JSON.stringify({ key, value: val }),
+                                  body: JSON.stringify({ key, value: val, ...(provider ? { provider } : {}) }),
                                 });
                                 if (res.status === 401) {
                                   handleUnauthorized();

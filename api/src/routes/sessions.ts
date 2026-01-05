@@ -204,6 +204,12 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     try {
       await setUserSecretEncrypted(String(userId), provider, key, value);
     } catch {}
+    if (key === 'LLM_API_KEY') {
+      try {
+        const { setSessionRunConfig } = await import('../services/secrets');
+        setSessionRunConfig(String(sessionId), { provider, apiKey: value });
+      } catch {}
+    }
   }
 
   const pending = popPendingTool(sessionId);
