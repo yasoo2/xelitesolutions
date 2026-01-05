@@ -1274,12 +1274,17 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     }
 
     const isBrowserTool = /^browser_/.test(planName);
-    const requestedRepoName = extractRequestedRepoName(userTextForOverrides);
+    const awaitingRepoName = historyHasMarker(history as any, 'ASKED_FOR_REPO_NAME');
+    let requestedRepoName = extractRequestedRepoName(userTextForOverrides);
+    if (!requestedRepoName && awaitingRepoName) {
+      const bare = userTextForOverrides.match(/^\s*([A-Za-z0-9._-]{1,100})\s*$/);
+      if (bare && bare[1]) requestedRepoName = bare[1].trim();
+    }
     const wantsGithubRepo =
       /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
       /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
       /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
-    if (wantsGithubRepo) {
+    if (wantsGithubRepo || (awaitingRepoName && requestedRepoName)) {
       if (requestedRepoName) {
         plan = {
           name: 'github_create_repo',
@@ -1494,6 +1499,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
     } else if (!requestedRepoName) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
+        history.push({ role: 'assistant', content: 'ASKED_FOR_REPO_NAME' } as any);
+        try {
+          if (useMock) {
+            store.addMessage(sessionId, 'assistant', 'ASKED_FOR_REPO_NAME', runId);
+          } else {
+            await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
+          }
+        } catch {}
     }
     }
     if (isBrowserTool) {
