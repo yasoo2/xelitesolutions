@@ -1003,7 +1003,7 @@ router.post('/:id/run-config', authenticate as any, async (req: Request, res: Re
   const kind = req.body?.kind === 'agent' ? 'agent' : req.body?.kind === 'chat' ? 'chat' : undefined;
   if (!id) return res.status(400).json({ error: 'Missing sessionId' });
   try {
-    const cur = getSessionRunConfig(id) || {};
+    const cur = getSessionRunConfig(id) || ({} as any);
     setSessionRunConfig(id, {
       provider: provider ?? cur.provider,
       apiKey: apiKey ?? cur.apiKey,

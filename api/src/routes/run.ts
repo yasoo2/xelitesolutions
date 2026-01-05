@@ -833,7 +833,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   }
 
   try {
-    const { setSessionRunConfig } = await import('../services/secrets');
+    const { setSessionRunConfig, getSessionRunConfig } = await import('../services/secrets');
+    const curCfg = getSessionRunConfig(String(sessionId)) || ({} as any);
     setSessionRunConfig(String(sessionId), {
       provider: typeof provider === 'string' ? provider : undefined,
       apiKey: typeof apiKey === 'string' ? apiKey : undefined,
@@ -841,6 +842,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       model: typeof model === 'string' ? model : undefined,
       kind,
       browserSessionId: typeof browserSessionId === 'string' ? browserSessionId : undefined,
+      autoApproveAll: curCfg.autoApproveAll,
+      autoApproveSafe: curCfg.autoApproveSafe,
     });
   } catch {}
 
@@ -1014,7 +1017,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const { planContext } = await import('../approvals/context');
       planContext.set(ap.id, { runId, name: initialPlan.name, input: initialPlan.input });
       const { getSessionRunConfig } = await import('../services/secrets');
-      const cfg = getSessionRunConfig(String(sessionId)) || {};
+      const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
       const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
       const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
       const safe = !/HIGH|CRITICAL/i.test(String(risk));
@@ -1041,7 +1044,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, name: initialPlan.name, input: initialPlan.input });
       const { getSessionRunConfig } = await import('../services/secrets');
-      const cfg = getSessionRunConfig(String(sessionId)) || {};
+      const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
       const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
       const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
       const safe = !/HIGH|CRITICAL/i.test(String(risk));
@@ -1600,7 +1603,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           const { planContext } = await import('../approvals/context');
           planContext.set(ap.id, { runId, name: plan?.name || '', input: plan?.input });
           const { getSessionRunConfig } = await import('../services/secrets');
-          const cfg = getSessionRunConfig(String(sessionId)) || {};
+          const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
           const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
           const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
@@ -1627,7 +1630,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
           const { planContext } = await import('../approvals/context');
           planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
           const { getSessionRunConfig } = await import('../services/secrets');
-          const cfg = getSessionRunConfig(String(sessionId)) || {};
+          const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
           const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
           const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
