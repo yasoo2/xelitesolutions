@@ -151,6 +151,84 @@ export default function Joe() {
     setAgentSelected,
   } = useSessionStore();
 
+  const [showEmbeddedPreview, setShowEmbeddedPreview] = useState(true);
+  const [previewUrl, setPreviewUrl] = useState('http://localhost:5173/');
+  const didDetectPreviewRef = useRef(false);
+  const [autoDetectPreview, setAutoDetectPreview] = useState(true);
+  useEffect(() => {
+    async function ping(u: string, ms = 1500): Promise<boolean> {
+      try {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), ms);
+        await fetch(u, { mode: 'no-cors', signal: ctrl.signal });
+        clearTimeout(to);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    async function detect() {
+      if (didDetectPreviewRef.current) return;
+      didDetectPreviewRef.current = true;
+      const bases = [
+        'http://localhost:5173/',
+        'http://127.0.0.1:5173/',
+        'http://localhost:3000/',
+        'http://127.0.0.1:3000/',
+        'http://localhost:5174/',
+        'http://127.0.0.1:5174/',
+      ];
+      for (const b of bases) {
+        try {
+          const bo = new URL(b).origin;
+          if (bo === window.location.origin) continue;
+        } catch {}
+        const ok = await ping(b);
+        if (ok) {
+          setPreviewUrl(b);
+          break;
+        }
+      }
+    }
+    detect();
+  }, []);
+  useEffect(() => {
+    if (!autoDetectPreview) return;
+    let alive = true;
+    const bases = [
+      'http://localhost:5173/',
+      'http://127.0.0.1:5173/',
+      'http://localhost:3000/',
+      'http://127.0.0.1:3000/',
+      'http://localhost:5174/',
+      'http://127.0.0.1:5174/',
+    ];
+    const tick = async () => {
+      for (const b of bases) {
+        if (!alive) return;
+        try {
+          const bo = new URL(b).origin;
+          if (bo === window.location.origin) continue;
+        } catch {}
+        try {
+          const ctrl = new AbortController();
+          const to = setTimeout(() => ctrl.abort(), 1200);
+          await fetch(b, { mode: 'no-cors', signal: ctrl.signal });
+          clearTimeout(to);
+          if (b !== previewUrl) setPreviewUrl(b);
+          break;
+        } catch {
+          // ignore
+        }
+      }
+    };
+    const id = setInterval(tick, 6000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [autoDetectPreview, previewUrl]);
+
   const [showSidebar, setShowSidebar] = useState(true);
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
@@ -815,13 +893,78 @@ export default function Joe() {
               ) : null}
             </div>
 
-            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
-              <BrowserApp 
-                minimal={true} 
-                autoOpen={true} 
-                onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }} 
-                initialSession={activeBrowserSession}
-              />
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>معاينة النظام</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    value={previewUrl}
+                    onChange={(e) => setPreviewUrl(e.target.value)}
+                    placeholder="http://localhost:5173/"
+                    dir="auto"
+                    style={{
+                      height: 30,
+                      padding: '0 10px',
+                      borderRadius: 10,
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                      minWidth: 220,
+                    }}
+                  />
+                  <button
+                    onClick={() => setAutoDetectPreview(v => !v)}
+                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: autoDetectPreview ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                  >
+                    {autoDetectPreview ? 'إيقاف التحديث' : 'تشغيل التحديث'}
+                  </button>
+                  <button
+                    onClick={() => setShowEmbeddedPreview(true)}
+                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                  >
+                    عرض مدمج
+                  </button>
+                  <button
+                    onClick={() => setShowEmbeddedPreview(false)}
+                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                  >
+                    عرض المتصفح
+                  </button>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url: previewUrl } }))}
+                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                  >
+                    فتح في الوكيل
+                  </button>
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ height: 30, display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', fontSize: 12, textDecoration: 'none' }}
+                  >
+                    نافذة جديدة
+                  </a>
+                </div>
+              </div>
+              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
+                {showEmbeddedPreview ? (
+                  <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 16 }}>
+                    <iframe
+                      src={previewUrl}
+                      style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
+                    />
+                  </div>
+                ) : (
+                  <BrowserApp
+                    minimal={true}
+                    autoOpen={true}
+                    onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }}
+                    initialSession={activeBrowserSession}
+                  />
+                )}
+              </div>
             </div>
 
             <div
