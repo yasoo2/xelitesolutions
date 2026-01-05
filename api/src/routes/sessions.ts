@@ -12,7 +12,7 @@ import { generateSummary, SYSTEM_PROMPT, planNextStep } from '../llm';
 import { MemoryItem } from '../models/memoryItem';
 import { broadcast } from '../ws';
 import { executeTool } from '../tools/registry';
-import { getSessionRunConfig, popPendingTool, setPendingTool, setSessionSecret, setUserSecretEncrypted } from '../services/secrets';
+import { getSessionRunConfig, popPendingTool, setPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted } from '../services/secrets';
 import { Tenant } from '../models/tenant';
 
 const router = Router();
@@ -990,6 +990,35 @@ router.patch('/:id/state', authenticate as any, async (req: Request, res: Respon
     });
     
     return res.json({ ok: true });
+});
+
+router.post('/:id/run-config', authenticate as any, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '').trim();
+  const autoApproveAll = req.body?.autoApproveAll === true || req.body?.autoApproveAll === 'true';
+  const autoApproveSafe = req.body?.autoApproveSafe === true || req.body?.autoApproveSafe === 'true';
+  const provider = typeof req.body?.provider === 'string' ? req.body.provider : undefined;
+  const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey : undefined;
+  const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl : undefined;
+  const model = typeof req.body?.model === 'string' ? req.body.model : undefined;
+  const kind = req.body?.kind === 'agent' ? 'agent' : req.body?.kind === 'chat' ? 'chat' : undefined;
+  if (!id) return res.status(400).json({ error: 'Missing sessionId' });
+  try {
+    const cur = getSessionRunConfig(id) || {};
+    setSessionRunConfig(id, {
+      provider: provider ?? cur.provider,
+      apiKey: apiKey ?? cur.apiKey,
+      baseUrl: baseUrl ?? cur.baseUrl,
+      model: model ?? cur.model,
+      kind: kind ?? cur.kind,
+      browserSessionId: cur.browserSessionId,
+      autoApproveAll: autoApproveAll || cur.autoApproveAll,
+      autoApproveSafe: autoApproveSafe || cur.autoApproveSafe,
+    });
+    const next = getSessionRunConfig(id);
+    return res.json({ ok: true, config: next });
+  } catch {
+    return res.status(500).json({ error: 'Failed to update run config' });
+  }
 });
 
 export default router;
