@@ -646,6 +646,43 @@ function isLocationLikeQuery(text: string) {
   return false;
 }
 
+function isPaymentRequest(text: string) {
+  const s = String(text || '');
+  const t = normalizeArabicQuery(s);
+  const en = /(pay|payment|checkout|buy|purchase|subscribe|subscription|invoice|charge)/i.test(s);
+  const ar =
+    /(دفع|سداد|تسديد|شراء|اشتراك|فاتوره|فاتورة|حجز|تحويل|جلسه\s+دفع|جلسة\s+دفع|ادفع|ادفعي|ادفعوا)/.test(t);
+  return en || ar;
+}
+
+function extractPaymentParams(text: string) {
+  const raw = String(text || '');
+  const t = normalizeArabicQuery(raw);
+  let currency = 'usd';
+  if (/\b(eur|euro)\b/i.test(raw) || /يورو/.test(t)) currency = 'eur';
+  else if (/\b(sar|saudi\s+riyal)\b/i.test(raw) || /(ريال\s+سعودي|ريال سعودي)/.test(t)) currency = 'sar';
+  else if (/\b(aed|dirham)\b/i.test(raw) || /(درهم\s+اماراتي|درهم اماراتي|درهم اماراتي)/.test(t)) currency = 'aed';
+  else if (/\b(kwd|kuwaiti\s+dinar)\b/i.test(raw) || /(دينار\s+كويتي|دينار كويتي)/.test(t)) currency = 'kwd';
+  else if (/\b(egp|egyptian\s+pound)\b/i.test(raw) || /(جنيه\s+مصري|جنيه مصري)/.test(t)) currency = 'egp';
+  else if (/\b(qar|qatar\s+riyal)\b/i.test(raw) || /(ريال\s+قطري|ريال قطري)/.test(t)) currency = 'qar';
+  else if (/\b(omr|omani\s+riyal)\b/i.test(raw) || /(ريال\s+عماني|ريال عماني)/.test(t)) currency = 'omr';
+  else if (/\b(jod|jordanian\s+dinar)\b/i.test(raw) || /(دينار\s+اردني|دينار اردني|دينار أردني)/.test(t)) currency = 'jod';
+  else if (/\b(usd|dollar)\b/i.test(raw) || /دولار/.test(t)) currency = 'usd';
+  const m = raw.match(/(\d+(?:[.,]\d{1,2})?)/);
+  let amountCents = 4999;
+  if (m && m[1]) {
+    const n = Number(String(m[1]).replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) amountCents = Math.max(1, Math.round(n * 100));
+  }
+  let productName = 'Subscription';
+  if (/premium/i.test(raw) || /بريميوم/.test(t)) productName = 'Premium Plan';
+  else if (/pro/i.test(raw)) productName = 'Pro Plan';
+  else if (/basic/i.test(raw) || /اساسي/.test(t)) productName = 'Basic Plan';
+  else if (/gold/i.test(raw) || /ذهبي/.test(t)) productName = 'Gold Plan';
+  else if (/silver/i.test(raw) || /فضي/.test(t)) productName = 'Silver Plan';
+  return { amount: amountCents, currency, productName };
+}
+
 function extractWeatherCity(text: string) {
   const raw = String(text || '').trim();
   const t = normalizeArabicQuery(raw);
@@ -987,6 +1024,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         const wantsLocation = isLocationLikeQuery(rawUserText);
         if (wantsLocation) {
           initialPlan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+        }
+        if (!initialPlan && isPaymentRequest(rawUserText)) {
+          const p = extractPaymentParams(rawUserText);
+          initialPlan = { name: 'payments_create_checkout_session', input: { amount: p.amount, currency: p.currency, productName: p.productName } } as any;
         }
         if (!initialPlan) {
           // Use full history for planning to ensure context awareness

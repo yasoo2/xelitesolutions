@@ -255,51 +255,7 @@ export default function Joe() {
   const showLivePanelRef = useRef(showLivePanel);
   useEffect(() => { showLivePanelRef.current = showLivePanel; }, [showLivePanel]);
 
-  const [payAmount, setPayAmount] = useState('49.99');
-  const [payCurrency, setPayCurrency] = useState('usd');
-  const [payProduct, setPayProduct] = useState('Premium Plan');
-  const [payUrl, setPayUrl] = useState<string | null>(null);
-  const [payLoading, setPayLoading] = useState(false);
-  const [payError, setPayError] = useState<string | null>(null);
-  async function createCheckout() {
-    setPayLoading(true);
-    setPayError(null);
-    setPayUrl(null);
-    try {
-      const token = localStorage.getItem('token');
-      const cents = Math.max(1, Math.round(Number(payAmount) * 100));
-      const body = {
-        amount: cents,
-        currency: payCurrency.trim().toLowerCase(),
-        productName: payProduct.trim() || 'Product',
-        successUrl: `${window.location.origin}/joe?payment=success`,
-        cancelUrl: `${window.location.origin}/joe?payment=cancel`,
-      };
-      const res = await fetch(`${API}/tools/payments_create_checkout_session/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(body),
-      });
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        setPayError('غير مصرح');
-        return;
-      }
-      const j = await res.json();
-      if (!j?.ok) {
-        setPayError(String(j?.error || 'فشل إنشاء جلسة الدفع'));
-        return;
-      }
-      const url = j?.output?.checkoutUrl || (Array.isArray(j?.artifacts) ? j.artifacts.find((a: any) => a?.href)?.href : '');
-      setPayUrl(url || null);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (e: any) {
-      setPayError(String(e?.message || e));
-    } finally {
-      setPayLoading(false);
-    }
-  }
+  const openedPaymentsRef = useRef<Set<string>>(new Set());
 
   const nav = useNavigate();
 
@@ -362,11 +318,28 @@ export default function Joe() {
         if (!/^system_prompt:/.test(String(event?.id || ''))) {
           setLiveMessages(prev => [...prev, { role: 'assistant', content: txt }]);
         }
+      } else if (type === 'artifact_created') {
+        const href = String(event?.data?.href || '');
+        const name = String(event?.data?.name || '');
+        const isStripe = /stripe\.com/i.test(href) || /checkout/i.test(name);
+        if (isStripe && href && !openedPaymentsRef.current.has(href)) {
+          openedPaymentsRef.current.add(href);
+          try { window.open(href, '_blank', 'noopener,noreferrer'); } catch {}
+        }
       } else if (type === 'step_started') {
         setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'started', duration: 0 }]);
         setLiveStatus('running');
       } else if (type === 'step_done') {
         setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'done', duration: event?.data?.duration || 0 }]);
+        const name = String(event?.data?.name || '');
+        const isPayment = /execute:payments_create_checkout_session/.test(name);
+        if (isPayment) {
+          const url = String(event?.data?.result?.output?.checkoutUrl || '');
+          if (url && !openedPaymentsRef.current.has(url)) {
+            openedPaymentsRef.current.add(url);
+            try { window.open(url, '_blank', 'noopener,noreferrer'); } catch {}
+          }
+        }
       } else if (type === 'step_failed') {
         setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'failed', error: event?.data?.error || '' }]);
         setLiveStatus('error');
@@ -1101,48 +1074,6 @@ export default function Joe() {
               </div>
               <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
-                  <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, padding: 12, background: 'var(--bg-secondary)' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10, fontSize: 13 }}>الدفع</div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <input
-                        type="text"
-                        value={payProduct}
-                        onChange={(e) => setPayProduct(e.target.value)}
-                        placeholder="اسم المنتج"
-                        dir="auto"
-                        style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', outline: 'none', minWidth: 180 }}
-                      />
-                      <input
-                        type="text"
-                        value={payAmount}
-                        onChange={(e) => setPayAmount(e.target.value)}
-                        placeholder="السعر (USD)"
-                        dir="auto"
-                        style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', outline: 'none', width: 120 }}
-                      />
-                      <input
-                        type="text"
-                        value={payCurrency}
-                        onChange={(e) => setPayCurrency(e.target.value)}
-                        placeholder="العملة"
-                        dir="auto"
-                        style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', outline: 'none', width: 120 }}
-                      />
-                      <button
-                        onClick={createCheckout}
-                        disabled={payLoading}
-                        style={{ height: 32, padding: '0 12px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37,99,235,0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                      >
-                        {payLoading ? 'جاري الإنشاء...' : 'إنشاء جلسة دفع'}
-                      </button>
-                      {payError ? <div style={{ color: '#ef4444', fontSize: 12 }}>{payError}</div> : null}
-                      {payUrl ? (
-                        <a href={payUrl} target="_blank" rel="noreferrer" style={{ height: 32, display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', fontSize: 12, textDecoration: 'none' }}>
-                          الدفع الآن
-                        </a>
-                      ) : null}
-                    </div>
-                  </div>
                   {liveStatus === 'running' ? <ThinkingIndicator stepName={(liveSteps[liveSteps.length - 1] || {}).name} /> : null}
                   <CommandComposer
                     key={selected || 'new'}
