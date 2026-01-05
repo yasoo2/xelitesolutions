@@ -1119,6 +1119,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
   let thoughtLoopPauseEmitted = false;
   let postScaffoldScheduled = false;
   let postInstallScheduled = false;
+  let postDevScheduled = false;
+  let postPreviewScheduled = false;
   let lastExecutedToolSig: string | null = null;
   let lastExecutedToolName: string | null = null;
 
@@ -1723,6 +1725,18 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (cwd && !postInstallScheduled) {
         pendingPlan = { name: 'npm_build', input: { cwd } } as any;
         postInstallScheduled = true;
+      }
+    } else if (result.ok && String(plan?.name || '') === 'npm_build') {
+      const cwd = String((plan as any)?.input?.cwd || '').trim();
+      if (cwd && !postDevScheduled) {
+        pendingPlan = { name: 'dev_server_start', input: { cwd } } as any;
+        postDevScheduled = true;
+      }
+    } else if (result.ok && String(plan?.name || '') === 'dev_server_start') {
+      const url = String((result as any)?.output?.previewUrl || '').trim();
+      if (url && !postPreviewScheduled) {
+        pendingPlan = { name: 'browser_open', input: { url } } as any;
+        postPreviewScheduled = true;
       }
     }
     
