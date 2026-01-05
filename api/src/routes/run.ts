@@ -160,6 +160,16 @@ function isGithubAuthError(raw: string) {
   );
 }
 
+function isStripeAuthError(raw: string) {
+  const s = String(raw || '');
+  return (
+    /Missing Stripe API key/i.test(s) ||
+    /Stripe API 401/i.test(s) ||
+    /invalid api key/i.test(s) ||
+    /\b401\b/.test(s)
+  );
+}
+
 function isArabicText(raw: string): boolean {
   return /[\u0600-\u06FF]/.test(String(raw || ''));
 }
@@ -1653,6 +1663,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
       if (!input || typeof input !== 'object') (plan as any).input = {};
       if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
     }
+    if (String(plan?.name || '') === 'payments_create_checkout_session') {
+      const input = (plan as any).input;
+      if (!input || typeof input !== 'object') (plan as any).input = {};
+      if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+    }
     if (String(plan?.name || '') === 'http_fetch') {
       const input = (plan as any).input;
       if (!input || typeof input !== 'object') (plan as any).input = {};
@@ -2155,6 +2170,45 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             blocked: true,
             secretRequired: true,
             secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+          });
+        }
+
+        if (String(plan?.name || '') === 'payments_create_checkout_session' && isStripeAuthError(errorMsg)) {
+          const msg = [
+            `⚠️ مطلوب مفتاح Stripe لإنشاء جلسة دفع.`,
+            `- أدخل STRIPE_API_KEY في نافذة التوكن وأرسله.`,
+            `- سيتم حفظ المفتاح بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+          ].join('\n');
+
+          ev({ type: 'text', data: msg });
+          ev({
+            type: 'secret_required',
+            data: {
+              sessionId,
+              runId,
+              provider: 'stripe',
+              key: 'STRIPE_API_KEY',
+              label: 'Stripe Secret Key',
+              reason: 'إنشاء جلسة دفع يحتاج مصادقة',
+            },
+          });
+
+          const { setPendingTool } = await import('../services/secrets');
+          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+          if (useMock) {
+            store.updateRun(runId, { status: 'blocked' as any });
+          } else {
+            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
+          }
+
+          return res.json({
+            runId,
+            sessionId,
+            blocked: true,
+            secretRequired: true,
+            secret: { provider: 'stripe', key: 'STRIPE_API_KEY', label: 'Stripe Secret Key' },
             ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
           });
         }
