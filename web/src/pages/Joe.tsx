@@ -155,18 +155,18 @@ export default function Joe() {
   const [previewUrl, setPreviewUrl] = useState('http://localhost:5173/');
   const didDetectPreviewRef = useRef(false);
   const [autoDetectPreview, setAutoDetectPreview] = useState(true);
-  useEffect(() => {
-    async function ping(u: string, ms = 1500): Promise<boolean> {
-      try {
-        const ctrl = new AbortController();
-        const to = setTimeout(() => ctrl.abort(), ms);
-        await fetch(u, { mode: 'no-cors', signal: ctrl.signal });
-        clearTimeout(to);
-        return true;
-      } catch {
-        return false;
-      }
+  async function pingUrl(u: string): Promise<boolean> {
+    try {
+      const head = new URL(u);
+      head.pathname = '/';
+      head.search = '';
+      await fetch(head.toString(), { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+      return true;
+    } catch {
+      return false;
     }
+  }
+  useEffect(() => {
     async function detect() {
       if (didDetectPreviewRef.current) return;
       didDetectPreviewRef.current = true;
@@ -183,7 +183,7 @@ export default function Joe() {
           const bo = new URL(b).origin;
           if (bo === window.location.origin) continue;
         } catch {}
-        const ok = await ping(b);
+        const ok = await pingUrl(b);
         if (ok) {
           setPreviewUrl(b);
           break;
@@ -210,15 +210,10 @@ export default function Joe() {
           const bo = new URL(b).origin;
           if (bo === window.location.origin) continue;
         } catch {}
-        try {
-          const ctrl = new AbortController();
-          const to = setTimeout(() => ctrl.abort(), 1200);
-          await fetch(b, { mode: 'no-cors', signal: ctrl.signal });
-          clearTimeout(to);
+        const ok = await pingUrl(b);
+        if (ok) {
           if (b !== previewUrl) setPreviewUrl(b);
           break;
-        } catch {
-          // ignore
         }
       }
     };
