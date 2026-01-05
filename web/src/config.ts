@@ -7,7 +7,7 @@ const isPrivateNetHost =
 const isLocal = isLocalHost || isPrivateNetHost;
 const apiEnv = (window as any).JOE_CONFIG?.API_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
-const defaultLocalApiUrl = `${window.location.protocol}//127.0.0.1:8080`;
+const defaultLocalApiUrl = `${window.location.protocol}//127.0.0.1:3000`;
 const fallbackApiUrl = isLocal
   ? defaultLocalApiUrl
   : 'https://api.xelitesolutions.com';

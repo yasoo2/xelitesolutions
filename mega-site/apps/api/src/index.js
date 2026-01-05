@@ -16,8 +16,13 @@ app.use((req, res, next) => {
   next();
 });
 
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/app')
-  .then(() => console.log('✅ DB Connected'));
+if (process.env.MONGO_URI) {
+  mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log('✅ DB Connected'))
+    .catch((e) => console.warn('⚠️ DB Connect Failed:', e && e.message ? e.message : String(e)));
+} else {
+  console.log('⚠️ DB Disabled (MONGO_URI not set)');
+}
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/status', (req, res) => {
@@ -87,3 +92,32 @@ app.get('/api/orders', async (req, res) => {
 });
 
 app.listen(4000, () => console.log('🚀 API on 4000'));
+const sseClients = new Set();
+const messages = [];
+function sseBroadcast(obj) {
+  const data = `data: ${JSON.stringify(obj)}\n\n`;
+  for (const res of sseClients) {
+    res.write(data);
+  }
+}
+app.get('/chat/sse', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+  sseClients.add(res);
+  res.write(`data: ${JSON.stringify({ type: 'history', items: messages.slice(-50) })}\n\n`);
+  req.on('close', () => {
+    sseClients.delete(res);
+    res.end();
+  });
+});
+app.post('/chat/send', async (req, res) => {
+  const text = String(req.body?.text || '').trim();
+  const from = String(req.body?.from || 'user').trim();
+  if (!text) return res.status(400).json({ error: 'missing_text' });
+  const item = { text, from, ts: Date.now() };
+  messages.push(item);
+  sseBroadcast({ type: 'message', item });
+  return res.json({ ok: true });
+});

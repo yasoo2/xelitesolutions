@@ -50,6 +50,14 @@ function BrowserApp({
         },
         body: JSON.stringify({ url: effectiveUrl }),
       });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        setWsUrl(null);
+        setSessionId(null);
+        setError('غير مصرح');
+        return;
+      }
       const data = await res.json();
       const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
       if (!data?.ok || !nextWsUrl) {

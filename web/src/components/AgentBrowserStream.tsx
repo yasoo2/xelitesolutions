@@ -219,6 +219,14 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         },
         body: JSON.stringify({ sessionId, actions })
       });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        setWsError('غير مصرح');
+        setOverlay('غير مصرح');
+        setTimeout(() => setOverlay(''), 2000);
+        return;
+      }
       const j = await res.json();
       if (Array.isArray(j.artifacts)) {
         const items = j.artifacts.map((a: any) => ({ name: a.name || a.filename || 'download', href: a.href }));
@@ -324,6 +332,14 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         },
         body: JSON.stringify({ sessionId, schema: schemaObj })
       });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        setOverlay('غير مصرح');
+        setTimeout(() => setOverlay(''), 2000);
+        setExtracted(null);
+        return;
+      }
       const j = await res.json();
       if (j?.ok && j?.output) {
         setExtracted(j.output);
@@ -351,6 +367,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         } as any,
         body: form
       });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        setOverlay('غير مصرح');
+        setTimeout(() => setOverlay(''), 2000);
+        return;
+      }
       const j = await res.json();
       if (j && j._id) {
         const rawUrl = `${API}/files/${j._id}/raw`;

@@ -702,6 +702,90 @@ export const tools: ToolDefinition[] = [
     mockSupported: true,
   },
   {
+    name: 'ui_theme_generator',
+    version: '1.0.0',
+    tags: ['ui', 'design', 'tailwind'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, preset: { type: 'string' } }, required: ['path'] },
+    outputSchema: { type: 'object', properties: { changed: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
+    name: 'ui_layout_polish',
+    version: '1.0.0',
+    tags: ['ui', 'design'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    outputSchema: { type: 'object', properties: { changed: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
+    name: 'animation_optimizer',
+    version: '1.0.0',
+    tags: ['ui', 'design', 'animation'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    outputSchema: { type: 'object', properties: { changed: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
+    name: 'component_library_import',
+    version: '1.0.0',
+    tags: ['ui', 'design', 'components'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    outputSchema: { type: 'object', properties: { changed: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
+    name: 'animation_sweep',
+    version: '1.0.0',
+    tags: ['ui', 'design', 'animation'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    outputSchema: { type: 'object', properties: { changed: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
+    name: 'component_library_import_plus',
+    version: '1.0.0',
+    tags: ['ui', 'design', 'components'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    outputSchema: { type: 'object', properties: { changed: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
+    name: 'animation_optimizer_plus',
+    version: '1.0.0',
+    tags: ['ui', 'design', 'animation'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    outputSchema: { type: 'object', properties: { changed: { type: 'array', items: { type: 'string' } } } },
+    permissions: ['write'],
+    sideEffects: ['write'],
+    rateLimitPerMinute: 30,
+    auditFields: ['path'],
+    mockSupported: false,
+  },
+  {
     name: 'check_syntax',
     version: '1.0.0',
     tags: ['dev', 'debug'],
@@ -3978,8 +4062,7 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     if (name === 'file_write') {
       const filename = String(input?.filename ?? 'artifact.txt');
       const content = String(input?.content ?? '');
-      // Allow full path access for system engineering
-      const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+      const full = path.isAbsolute(filename) ? filename : path.join(ARTIFACT_DIR, filename);
       
       // Ensure directory exists
       const dir = path.dirname(full);
@@ -3999,7 +4082,543 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       
       return { ok: true, output: { href }, logs, artifacts: href ? [{ name: path.basename(full), href }] : [] };
     }
+    if (name === 'ui_theme_generator') {
+      const base = resolveToolPath(String(input?.path || '.'));
+      const presetRaw = String(input?.preset || 'elegant-dark').toLowerCase();
+      const tryPaths = [
+        path.join(base, 'tailwind.config.js'),
+        path.join(base, 'apps', 'web', 'tailwind.config.js'),
+        path.join(base, 'web', 'tailwind.config.js'),
+      ];
+      const configPath = tryPaths.find(p => fs.existsSync(p));
+      if (!configPath) {
+        return { ok: false, error: 'tailwind_config_not_found', logs };
+      }
+      const raw = fs.readFileSync(configPath, 'utf-8');
+      const m = raw.match(/content\s*:\s*(\[[\s\S]*?\])/i);
+      const contentStr = m ? m[1] : `["./index.html", "./src/**/*.{js,ts,jsx,tsx}"]`;
+      const palette = (() => {
+        const p = presetRaw;
+        if (p === 'light' || p === 'light-classic') {
+          return {
+            primary: '#2563eb',
+            secondary: '#7c3aed',
+            accent: '#16a34a',
+            muted: '#94a3b8',
+            background: '#ffffff',
+            foreground: '#0f172a',
+            card: '#f8fafc',
+          };
+        }
+        if (p === 'pastel') {
+          return {
+            primary: '#60a5fa',
+            secondary: '#a78bfa',
+            accent: '#86efac',
+            muted: '#cbd5e1',
+            background: '#0b0f19',
+            foreground: '#e5e7eb',
+            card: '#0f172a',
+          };
+        }
+        return {
+          primary: '#3b82f6',
+          secondary: '#a855f7',
+          accent: '#22c55e',
+          muted: '#64748b',
+          background: '#0b0f19',
+          foreground: '#e5e7eb',
+          card: '#111827',
+        };
+      })();
+      const cfg = [
+        `export default {`,
+        `  content: ${contentStr},`,
+        `  theme: {`,
+        `    extend: {`,
+        `      colors: {`,
+        `        primary: "${palette.primary}",`,
+        `        secondary: "${palette.secondary}",`,
+        `        accent: "${palette.accent}",`,
+        `        muted: "${palette.muted}",`,
+        `        background: "${palette.background}",`,
+        `        foreground: "${palette.foreground}",`,
+        `        card: "${palette.card}"`,
+        `      },`,
+        `      container: { center: true, padding: "1rem", screens: { sm: "640px", md: "768px", lg: "1024px", xl: "1280px" } },`,
+        `      borderRadius: { lg: "0.75rem", xl: "1rem" }`,
+        `    }`,
+        `  },`,
+        `  plugins: []`,
+        `}`,
+        ``,
+      ].join('\n');
+      fs.writeFileSync(configPath, cfg);
+      const changed: string[] = [configPath];
+      const cssCandidates = [
+        path.join(base, 'src', 'index.css'),
+        path.join(base, 'apps', 'web', 'src', 'index.css'),
+        path.join(base, 'web', 'src', 'index.css'),
+      ];
+      const cssPath = cssCandidates.find(p => fs.existsSync(p));
+      if (cssPath) {
+        const existing = fs.readFileSync(cssPath, 'utf-8');
+        const addition = [
+          '',
+          '.btn { @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg; }',
+          '.btn-primary { @apply bg-primary text-white hover:bg-primary/90; }',
+          '',
+        ].join('\n');
+        if (!existing.includes('.btn-primary')) {
+          fs.appendFileSync(cssPath, addition);
+          changed.push(cssPath);
+        }
+      }
+      logs.push(`ui_theme_generator.updated=${changed.length}`);
+      return { ok: true, output: { changed }, logs };
+    }
+    if (name === 'ui_layout_polish') {
+      const base = resolveToolPath(String(input?.path || '.'));
+      const candidates = [
+        path.join(base, 'src', 'App.jsx'),
+        path.join(base, 'apps', 'web', 'src', 'App.jsx'),
+        path.join(base, 'web', 'src', 'App.jsx'),
+      ];
+      const appPath = candidates.find(p => fs.existsSync(p));
+      if (!appPath) {
+        return { ok: false, error: 'app_file_not_found', logs };
+      }
+      const content = [
+        "import React, { useEffect, useRef, useState } from 'react';",
+        "import { Send, MessageCircle } from 'lucide-react';",
+        "export default function App() {",
+        "  const [connected, setConnected] = useState(false);",
+        "  const [messages, setMessages] = useState([]);",
+        "  const [text, setText] = useState('');",
+        "  const srcRef = useRef(null);",
+        "  useEffect(() => {",
+        "    const proto = window.location.protocol;",
+        "    const host = 'localhost:4000';",
+        "    const url = `${proto}//${host}/chat/sse`;",
+        "    const src = new window.EventSource(url);",
+        "    srcRef.current = src;",
+        "    src.onopen = () => setConnected(true);",
+        "    src.onerror = () => setConnected(false);",
+        "    src.onmessage = (e) => {",
+        "      let msg = null;",
+        "      try { msg = JSON.parse(e.data); } catch { msg = null; }",
+        "      if (msg && msg.type === 'history' && Array.isArray(msg.items)) {",
+        "        setMessages(msg.items);",
+        "      } else if (msg && msg.type === 'message' && msg.item) {",
+        "        setMessages((prev) => [...prev, msg.item]);",
+        "      }",
+        "    };",
+        "    return () => {",
+        "      src.close();",
+        "      srcRef.current = null;",
+        "    };",
+        "  }, []);",
+        "  const send = () => {",
+        "    const t = text.trim();",
+        "    if (!t) return;",
+        "    window.fetch('http://localhost:4000/chat/send', {",
+        "      method: 'POST',",
+        "      headers: { 'Content-Type': 'application/json' },",
+        "      body: JSON.stringify({ text: t, from: 'me' })",
+        "    }).then(() => setText('')).catch(() => {});",
+        "  };",
+        "  return (",
+        "    <div className=\"min-h-screen bg-background text-foreground flex items-center justify-center\">",
+        "      <div className=\"w-full max-w-md p-4\">",
+        "        <div className=\"flex items-center justify-between mb-4\">",
+        "          <div className=\"flex items-center gap-2\">",
+        "            <MessageCircle className=\"w-6 h-6 text-primary\" />",
+        "            <h1 className=\"text-xl font-semibold\">Chat</h1>",
+        "          </div>",
+        "          <div className=\"text-xs\">{connected ? 'Online' : 'Offline'}</div>",
+        "        </div>",
+        "        <div className=\"bg-card rounded-2xl p-3 h-72 overflow-auto mb-3 border border-muted/40 shadow\">",
+        "          {messages.map((m, i) => {",
+        "            const mine = m.from === 'me';",
+        "            return (",
+        "              <div key={i} className={`mb-2 ${mine ? 'text-right' : 'text-left'}`}>",
+        "                <div className={`inline-block px-3 py-2 rounded-2xl shadow ${mine ? 'bg-primary text-white' : 'bg-muted/20'}`}>",
+        "                  <div className=\"text-sm\">{m.text}</div>",
+        "                  <div className=\"text-[10px] opacity-70\">{new Date(m.ts).toLocaleTimeString()}</div>",
+        "                </div>",
+        "              </div>",
+        "            );",
+        "          })}",
+        "        </div>",
+        "        <div className=\"flex gap-2\">",
+        "          <input",
+        "            value={text}",
+        "            onChange={(e) => setText(e.target.value)}",
+        "            className=\"flex-1 px-3 py-2 rounded-lg bg-card border border-muted/40\"",
+        "            placeholder=\"Type a message\"",
+        "          />",
+        "          <button onClick={send} className=\"btn btn-primary\">",
+        "            <Send className=\"w-4 h-4\" />",
+        "            <span>Send</span>",
+        "          </button>",
+        "        </div>",
+        "      </div>",
+        "    </div>",
+        "  );",
+        "}",
+        "",
+      ].join('\n');
+      fs.writeFileSync(appPath, content);
+      logs.push(`ui_layout_polish.updated=1`);
+      return { ok: true, output: { changed: [appPath] }, logs };
+    }
 
+    if (name === 'animation_optimizer') {
+      const base = resolveToolPath(String(input?.path || '.'));
+      const appCandidates = [
+        path.join(base, 'src', 'App.jsx'),
+        path.join(base, 'apps', 'web', 'src', 'App.jsx'),
+        path.join(base, 'web', 'src', 'App.jsx'),
+      ];
+      const appPath = appCandidates.find(p => fs.existsSync(p));
+      if (!appPath) {
+        return { ok: false, error: 'app_file_not_found', logs };
+      }
+      const cssCandidates = [
+        path.join(base, 'src', 'index.css'),
+        path.join(base, 'apps', 'web', 'src', 'index.css'),
+        path.join(base, 'web', 'src', 'index.css'),
+      ];
+      const cssPath = cssCandidates.find(p => fs.existsSync(p));
+      const tailwindCandidates = [
+        path.join(base, 'tailwind.config.js'),
+        path.join(base, 'apps', 'web', 'tailwind.config.js'),
+        path.join(base, 'web', 'tailwind.config.js'),
+      ];
+      const twPath = tailwindCandidates.find(p => fs.existsSync(p));
+      let primaryColor = '#3b82f6';
+      if (twPath) {
+        try {
+          const twRaw = fs.readFileSync(twPath, 'utf-8');
+          const m = twRaw.match(/primary:\s*["'](#?[0-9a-fA-F]{3,8})["']/);
+          if (m && m[1]) primaryColor = m[1];
+        } catch {}
+      }
+      const changed: string[] = [];
+      if (cssPath) {
+        const existing = fs.readFileSync(cssPath, 'utf-8');
+        let next = existing;
+        if (/\.(btn-primary)\s*\{[\s\S]*?@apply\s+.*bg-primary[\s\S]*?\}/.test(existing)) {
+          next = next.replace(
+            /\.(btn-primary)\s*\{[\s\S]*?\}/,
+            `.btn-primary { background-color: ${primaryColor}; color: #fff; transition: filter 120ms ease-out; }\n.btn-primary:hover { filter: brightness(0.95); }`
+          );
+        }
+        if (!/\.btn\s*\{[\s\S]*?transition/.test(next)) {
+          next += `\n.btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-radius: 0.5rem; transition: transform 120ms ease-out, box-shadow 120ms ease-out; }\n.btn:hover { transform: translateY(-0.5px); box-shadow: 0 6px 14px rgba(0,0,0,0.15); }\n`;
+        }
+        if (!/@keyframes\s+fadeIn/.test(next)) {
+          next += `\n@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }\n.fade-in { animation: fadeIn 160ms ease-out both; }\n`;
+        }
+        if (next !== existing) {
+          fs.writeFileSync(cssPath, next);
+          changed.push(cssPath);
+        }
+      }
+      const appContent = [
+        "import React, { useEffect, useRef, useState } from 'react';",
+        "import { Send, MessageCircle } from 'lucide-react';",
+        "export default function App() {",
+        "  const [connected, setConnected] = useState(false);",
+        "  const [messages, setMessages] = useState([]);",
+        "  const [text, setText] = useState('');",
+        "  const srcRef = useRef(null);",
+        "  const listRef = useRef(null);",
+        "  useEffect(() => {",
+        "    const proto = window.location.protocol;",
+        "    const host = 'localhost:4000';",
+        "    const url = `${proto}//${host}/chat/sse`;",
+        "    const src = new window.EventSource(url);",
+        "    srcRef.current = src;",
+        "    src.onopen = () => setConnected(true);",
+        "    src.onerror = () => setConnected(false);",
+        "    src.onmessage = (e) => {",
+        "      let msg = null;",
+        "      try { msg = JSON.parse(e.data); } catch { msg = null; }",
+        "      if (msg && msg.type === 'history' && Array.isArray(msg.items)) {",
+        "        setMessages(msg.items);",
+        "      } else if (msg && msg.type === 'message' && msg.item) {",
+        "        setMessages((prev) => [...prev, msg.item]);",
+        "      }",
+        "    };",
+        "    return () => {",
+        "      src.close();",
+        "      srcRef.current = null;",
+        "    };",
+        "  }, []);",
+        "  useEffect(() => {",
+        "    const el = listRef.current;",
+        "    if (!el) return;",
+        "    el.scrollTop = el.scrollHeight;",
+        "  }, [messages]);",
+        "  const send = () => {",
+        "    const t = text.trim();",
+        "    if (!t) return;",
+        "    window.fetch('http://localhost:4000/chat/send', {",
+        "      method: 'POST',",
+        "      headers: { 'Content-Type': 'application/json' },",
+        "      body: JSON.stringify({ text: t, from: 'me' })",
+        "    }).then(() => setText('')).catch(() => {});",
+        "  };",
+        "  return (",
+        "    <div className=\"min-h-screen bg-background text-foreground flex items-center justify-center\">",
+        "      <div className=\"w-full max-w-md p-4\">",
+        "        <div className=\"flex items-center justify-between mb-4\">",
+        "          <div className=\"flex items-center gap-2\">",
+        "            <MessageCircle className=\"w-6 h-6 text-primary\" />",
+        "            <h1 className=\"text-xl font-semibold\">Chat</h1>",
+        "          </div>",
+        "          <div className=\"text-xs\">{connected ? 'Online' : 'Offline'}</div>",
+        "        </div>",
+        "        <div ref={listRef} className=\"bg-card rounded-2xl p-3 h-72 overflow-auto mb-3 border border-muted/40 shadow scroll-smooth\">",
+        "          {messages.map((m, i) => {",
+        "            const mine = m.from === 'me';",
+        "            return (",
+        "              <div key={i} className={`mb-2 ${mine ? 'text-right' : 'text-left'} fade-in`}>",
+        "                <div className={`inline-block px-3 py-2 rounded-2xl shadow transition-all duration-150 ${mine ? 'bg-primary text-white hover:shadow-lg' : 'bg-muted/20 hover:bg-muted/30'}`}>",
+        "                  <div className=\"text-sm\">{m.text}</div>",
+        "                  <div className=\"text-[10px] opacity-70\">{new Date(m.ts).toLocaleTimeString()}</div>",
+        "                </div>",
+        "              </div>",
+        "            );",
+        "          })}",
+        "        </div>",
+        "        <div className=\"flex gap-2\">",
+        "          <input",
+        "            value={text}",
+        "            onChange={(e) => setText(e.target.value)}",
+        "            onKeyDown={(e) => { if (e.key === 'Enter') send(); }}",
+        "            className=\"flex-1 px-3 py-2 rounded-lg bg-card border border-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/50\"",
+        "            placeholder=\"Type a message\"",
+        "          />",
+        "          <button onClick={send} className=\"btn btn-primary\">",
+        "            <Send className=\"w-4 h-4\" />",
+        "            <span>Send</span>",
+        "          </button>",
+        "        </div>",
+        "      </div>",
+        "    </div>",
+        "  );",
+        "}",
+        "",
+      ].join('\n');
+      fs.writeFileSync(appPath, appContent);
+      changed.push(appPath);
+      logs.push(`animation_optimizer.updated=${changed.length}`);
+      return { ok: true, output: { changed }, logs };
+    }
+    if (name === 'component_library_import') {
+      const base = resolveToolPath(String(input?.path || '.'));
+      const cssCandidates = [
+        path.join(base, 'src', 'index.css'),
+        path.join(base, 'apps', 'web', 'src', 'index.css'),
+        path.join(base, 'web', 'src', 'index.css'),
+      ];
+      const cssPath = cssCandidates.find(p => fs.existsSync(p));
+      const twCandidates = [
+        path.join(base, 'tailwind.config.js'),
+        path.join(base, 'apps', 'web', 'tailwind.config.js'),
+        path.join(base, 'web', 'tailwind.config.js'),
+      ];
+      const twPath = twCandidates.find(p => fs.existsSync(p));
+      let primary = '#3b82f6', secondary = '#a855f7', muted = '#64748b', card = '#111827', foreground = '#e5e7eb';
+      if (twPath) {
+        try {
+          const raw = fs.readFileSync(twPath, 'utf-8');
+          const pick = (k: string, d: string) => {
+            const m = raw.match(new RegExp(`${k}\\s*:\\s*["'](#?[0-9a-fA-F]{3,8})["']`));
+            return m && m[1] ? m[1] : d;
+          };
+          primary = pick('primary', primary);
+          secondary = pick('secondary', secondary);
+          muted = pick('muted', muted);
+          card = pick('card', card);
+          foreground = pick('foreground', foreground);
+        } catch {}
+      }
+      const toRgba = (hex: string, alpha: number) => {
+        const h = hex.replace('#','');
+        const r = parseInt(h.length>=6 ? h.slice(0,2) : h[0]+h[0], 16);
+        const g = parseInt(h.length>=6 ? h.slice(2,4) : h[1]+h[1], 16);
+        const b = parseInt(h.length>=6 ? h.slice(4,6) : h[2]+h[2], 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+      };
+      const changed: string[] = [];
+      if (cssPath) {
+        const existing = fs.readFileSync(cssPath, 'utf-8');
+        let next = existing;
+        if (!/\.card\s*\{/.test(next)) {
+          next += `\n.card { background-color: ${card}; color: ${foreground}; border: 1px solid ${toRgba(muted,0.4)}; border-radius: 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }\n`;
+        }
+        if (!/\.input\s*\{/.test(next)) {
+          next += `\n.input { background-color: ${card}; color: ${foreground}; border: 1px solid ${toRgba(muted,0.4)}; padding: 0.5rem 0.75rem; border-radius: 0.5rem; transition: box-shadow 120ms ease-out; }\n.input:focus { outline: none; box-shadow: 0 0 0 2px ${toRgba(primary,0.45)}; }\n`;
+        }
+        if (!/\.toolbar\s*\{/.test(next)) {
+          next += `\n.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem; }\n`;
+        }
+        if (!/\.badge\s*\{/.test(next)) {
+          next += `\n.badge { display: inline-block; border-radius: 999px; font-size: 12px; padding: 2px 8px; background-color: ${secondary}; color: #fff; }\n`;
+        }
+        if (next !== existing) {
+          fs.writeFileSync(cssPath, next);
+          changed.push(cssPath);
+        }
+      }
+      logs.push(`component_library_import.updated=${changed.length}`);
+      return { ok: true, output: { changed }, logs };
+    }
+    if (name === 'animation_sweep') {
+      const base = resolveToolPath(String(input?.path || '.'));
+      const cssCandidates = [
+        path.join(base, 'src', 'index.css'),
+        path.join(base, 'apps', 'web', 'src', 'index.css'),
+        path.join(base, 'web', 'src', 'index.css'),
+      ];
+      const cssPath = cssCandidates.find(p => fs.existsSync(p));
+      const changed: string[] = [];
+      if (cssPath) {
+        const existing = fs.readFileSync(cssPath, 'utf-8');
+        let next = existing;
+        if (!/@keyframes\s+slideUp/.test(next)) {
+          next += `\n@keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }\n.slide-up { animation: slideUp 180ms ease-out both; }\n`;
+        }
+        if (!/@keyframes\s+pulseSoft/.test(next)) {
+          next += `\n@keyframes pulseSoft { 0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.0); } 50% { box-shadow: 0 0 0 6px rgba(0,0,0,0.06); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0.0); } }\n.pulse-soft { animation: pulseSoft 1600ms ease-out infinite; }\n`;
+        }
+        if (next !== existing) {
+          fs.writeFileSync(cssPath, next);
+          changed.push(cssPath);
+        }
+      }
+      logs.push(`animation_sweep.updated=${changed.length}`);
+      return { ok: true, output: { changed }, logs };
+    }
+    if (name === 'component_library_import_plus') {
+      const base = resolveToolPath(String(input?.path || '.'));
+      const cssCandidates = [
+        path.join(base, 'src', 'index.css'),
+        path.join(base, 'apps', 'web', 'src', 'index.css'),
+        path.join(base, 'web', 'src', 'index.css'),
+      ];
+      const cssPath = cssCandidates.find(p => fs.existsSync(p));
+      const twCandidates = [
+        path.join(base, 'tailwind.config.js'),
+        path.join(base, 'apps', 'web', 'tailwind.config.js'),
+        path.join(base, 'web', 'tailwind.config.js'),
+      ];
+      const twPath = twCandidates.find(p => fs.existsSync(p));
+      let primary = '#3b82f6', secondary = '#a855f7', muted = '#64748b', card = '#111827', foreground = '#e5e7eb', accent = '#22c55e';
+      if (twPath) {
+        try {
+          const raw = fs.readFileSync(twPath, 'utf-8');
+          const pick = (k: string, d: string) => {
+            const m = raw.match(new RegExp(`${k}\\s*:\\s*["'](#?[0-9a-fA-F]{3,8})["']`));
+            return m && m[1] ? m[1] : d;
+          };
+          primary = pick('primary', primary);
+          secondary = pick('secondary', secondary);
+          muted = pick('muted', muted);
+          card = pick('card', card);
+          foreground = pick('foreground', foreground);
+          accent = pick('accent', accent);
+        } catch {}
+      }
+      const toRgba = (hex: string, alpha: number) => {
+        const h = hex.replace('#','');
+        const r = parseInt(h.length>=6 ? h.slice(0,2) : h[0]+h[0], 16);
+        const g = parseInt(h.length>=6 ? h.slice(2,4) : h[1]+h[1], 16);
+        const b = parseInt(h.length>=6 ? h.slice(4,6) : h[2]+h[2], 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+      };
+      const changed: string[] = [];
+      if (cssPath) {
+        const existing = fs.readFileSync(cssPath, 'utf-8');
+        let next = existing;
+        if (!/\.modal-overlay\s*\{/.test(next)) {
+          next += `\n.modal-overlay { position: fixed; inset: 0; background: ${toRgba('#000000',0.5)}; display: grid; place-items: center; z-index: 50; }\n`;
+        }
+        if (!/\.modal\s*\{/.test(next)) {
+          next += `\n.modal { background-color: ${card}; color: ${foreground}; border: 1px solid ${toRgba(muted,0.4)}; border-radius: 1rem; width: min(640px, 92vw); box-shadow: 0 16px 36px rgba(0,0,0,0.35); padding: 1rem; }\n`;
+        }
+        if (!/\.toast\s*\{/.test(next)) {
+          next += `\n.toast { position: fixed; bottom: 1rem; right: 1rem; border-radius: 0.75rem; padding: 0.625rem 0.875rem; box-shadow: 0 10px 16px rgba(0,0,0,0.25); z-index: 60; }\n`;
+        }
+        if (!/\.toast-success\s*\{/.test(next)) {
+          next += `\n.toast-success { background-color: ${toRgba(accent,0.15)}; border: 1px solid ${toRgba(accent,0.6)}; color: ${foreground}; }\n`;
+        }
+        if (!/\.toast-error\s*\{/.test(next)) {
+          next += `\n.toast-error { background-color: ${toRgba('#ef4444',0.15)}; border: 1px solid ${toRgba('#ef4444',0.6)}; color: ${foreground}; }\n`;
+        }
+        if (!/@keyframes\s+skeletonPulse/.test(next)) {
+          next += `\n@keyframes skeletonPulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }\n.skeleton { background-color: ${toRgba(muted,0.18)}; border-radius: 0.5rem; animation: skeletonPulse 1500ms ease-in-out infinite; }\n`;
+        }
+        if (next !== existing) {
+          fs.writeFileSync(cssPath, next);
+          changed.push(cssPath);
+        }
+      }
+      logs.push(`component_library_import_plus.updated=${changed.length}`);
+      return { ok: true, output: { changed }, logs };
+    }
+    if (name === 'animation_optimizer_plus') {
+      const base = resolveToolPath(String(input?.path || '.'));
+      const cssCandidates = [
+        path.join(base, 'src', 'index.css'),
+        path.join(base, 'apps', 'web', 'src', 'index.css'),
+        path.join(base, 'web', 'src', 'index.css'),
+      ];
+      const cssPath = cssCandidates.find(p => fs.existsSync(p));
+      const appCandidates = [
+        path.join(base, 'src', 'App.jsx'),
+        path.join(base, 'apps', 'web', 'src', 'App.jsx'),
+        path.join(base, 'web', 'src', 'App.jsx'),
+      ];
+      const appPath = appCandidates.find(p => fs.existsSync(p));
+      const changed: string[] = [];
+      if (cssPath) {
+        const existing = fs.readFileSync(cssPath, 'utf-8');
+        let next = existing;
+        if (!/@keyframes\s+popIn/.test(next)) {
+          next += `\n@keyframes popIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }\n.animate-pop { animation: popIn 140ms ease-out both; }\n`;
+        }
+        if (!/@keyframes\s+scaleIn/.test(next)) {
+          next += `\n@keyframes scaleIn { from { transform: scale(0.98); } to { transform: scale(1); } }\n.scale-in { animation: scaleIn 120ms ease-out both; }\n`;
+        }
+        if (!/\.hover-raise\s*\{/.test(next)) {
+          next += `\n.hover-raise { transition: transform 140ms ease-out, box-shadow 140ms ease-out; }\n.hover-raise:hover { transform: translateY(-1px); box-shadow: 0 10px 18px rgba(0,0,0,0.25); }\n`;
+        }
+        if (next !== existing) {
+          fs.writeFileSync(cssPath, next);
+          changed.push(cssPath);
+        }
+      }
+      if (appPath) {
+        const src = fs.readFileSync(appPath, 'utf-8');
+        let next = src;
+        if (!/fade-in/.test(next) && /messages\.map/.test(next)) {
+          next = next.replace(/className={`mb-2 \${mine \? 'text-right' : 'text-left'}(.*?)`}/, (m) => {
+            if (/fade-in/.test(m)) return m;
+            return m.replace(/`$/, ' fade-in`');
+          });
+        }
+        if (next !== src) {
+          fs.writeFileSync(appPath, next);
+          changed.push(appPath);
+        }
+      }
+      logs.push(`animation_optimizer_plus.updated=${changed.length}`);
+      return { ok: true, output: { changed }, logs };
+    }
     if (name === 'image_generate') {
       const prompt = String(input?.prompt ?? '').trim();
       const allowedSizes = ['1024x1024', '1024x1792', '1792x1024'] as const;

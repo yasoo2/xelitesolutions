@@ -206,8 +206,8 @@ export async function planNextStep(
     }
   }
 
-  const forceMock = false;
-  const shouldMock = false;
+  const forceMock = String(process.env.LLM_PLAN_MOCK || '').trim() === '1';
+  const shouldMock = forceMock || (!optKey && !envKey);
 
   console.log('[DEBUG LLM] planNextStep:', {
       providerKey,

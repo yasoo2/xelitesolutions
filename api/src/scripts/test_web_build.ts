@@ -5,8 +5,9 @@ import path from 'path';
 import puppeteer from 'puppeteer';
 import { config } from '../config';
 
-const API_URL = 'http://localhost:8080';
-const WS_URL = 'ws://localhost:8080/ws';
+const API_PORT = Number(process.env.API_PORT || process.env.PORT || config.port || 3000);
+const API_URL = process.env.API_URL || `http://localhost:${API_PORT}`;
+const WS_URL = process.env.WS_URL || `ws://localhost:${API_PORT}/ws`;
 const JWT_SECRET = process.env.JWT_SECRET || config.jwtSecret;
 const WEB_URL = process.env.WEB_URL || 'http://127.0.0.1:5173';
 
