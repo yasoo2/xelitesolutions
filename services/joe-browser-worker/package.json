@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "PLAYWRIGHT_BROWSERS_PATH=./ms-playwright HEADLESS=0 ts-node-esm src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --packages=external && PLAYWRIGHT_BROWSERS_PATH=./ms-playwright npx playwright install chromium",
-    "start": "PLAYWRIGHT_BROWSERS_PATH=./ms-playwright node dist/index.js",
-    "install-chromium": "npx playwright install --with-deps chromium"
+    "dev": "mkdir -p ms-playwright && PLAYWRIGHT_BROWSERS_PATH=./ms-playwright HEADLESS=0 ts-node-esm src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --packages=external && mkdir -p ms-playwright && PLAYWRIGHT_BROWSERS_PATH=./ms-playwright npx playwright install chromium firefox webkit ffmpeg",
+    "start": "mkdir -p ms-playwright && PLAYWRIGHT_BROWSERS_PATH=./ms-playwright node dist/index.js",
+    "install-browsers": "mkdir -p ms-playwright && PLAYWRIGHT_BROWSERS_PATH=./ms-playwright npx playwright install --with-deps chromium firefox webkit ffmpeg"
   },
   "dependencies": {
     "@types/ws": "^8.18.1",

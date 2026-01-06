@@ -15,8 +15,10 @@ COPY . .
 # Build the project
 RUN npm run build
 
-# Install Chromium explicitly to ensure it matches the version required
-RUN npx playwright install chromium
+# Ensure ms-playwright exists and install all browsers + deps
+RUN mkdir -p /app/ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright
+RUN npx playwright install --with-deps chromium firefox webkit ffmpeg
 
 # Expose port
 EXPOSE 8080
