@@ -251,43 +251,7 @@ export default function Joe() {
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   
-  // ===== نظام عرض سلسلة التفكير والحوار الداخلي =====
-  const [thinkingChain, setThinkingChain] = useState<Array<{
-    id: string;
-    type: 'thought' | 'decision' | 'action' | 'result' | 'error';
-    content: string;
-    timestamp: number;
-    details?: any;
-  }>>([]);
-  const [showThinkingPanel, setShowThinkingPanel] = useState(true);
-  const thinkingPanelRef = useRef<HTMLDivElement>(null);
-
   const openedPaymentsRef = useRef<Set<string>>(new Set());
-  
-  // ===== معالج أحداث سلسلة التفكير =====
-  useEffect(() => {
-    const handler = (ev: Event) => {
-      const detail = (ev as CustomEvent)?.detail || {};
-      if (detail.type && detail.content) {
-        setThinkingChain(prev => [...prev, {
-          id: `thought-${Date.now()}-${Math.random()}`,
-          type: detail.type,
-          content: detail.content,
-          timestamp: Date.now(),
-          details: detail.details
-        }]);
-        // تمرير تلقائي إلى آخر العناصر
-        setTimeout(() => {
-          thinkingPanelRef.current?.scrollTo({
-            top: thinkingPanelRef.current.scrollHeight,
-            behavior: 'smooth'
-          });
-        }, 100);
-      }
-    };
-    window.addEventListener('joe:thinking_update', handler as any);
-    return () => window.removeEventListener('joe:thinking_update', handler as any);
-  }, []);
 
   const nav = useNavigate();
 
@@ -336,17 +300,12 @@ export default function Joe() {
     setComposerHeight(el?.offsetHeight || 0);
   }, [mode, showSidebar, agentComposerOpen, showFiles, selected]);
 
-  useEffect(() => {}, [isNarrow, livePanelExpanded, composerHeight]);
+  useEffect(() => {}, [isNarrow, composerHeight]);
 
   useEffect(() => {
     const release = SocketService.subscribe((event: any) => {
       const type = String(event?.type || '');
-      if (type === 'text') {
-        const txt = String(event?.data || '');
-        if (!/^system_prompt:/.test(String(event?.id || ''))) {
-          setLiveMessages(prev => [...prev, { role: 'assistant', content: txt }]);
-        }
-      } else if (type === 'artifact_created') {
+      if (type === 'artifact_created') {
         const href = String(event?.data?.href || '');
         const name = String(event?.data?.name || '');
         const isStripe = /stripe\.com/i.test(href) || /checkout/i.test(name);
@@ -354,11 +313,7 @@ export default function Joe() {
           openedPaymentsRef.current.add(href);
           try { window.open(href, '_blank', 'noopener,noreferrer'); } catch {}
         }
-      } else if (type === 'step_started') {
-        setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'started', duration: 0 }]);
-        setLiveStatus('running');
       } else if (type === 'step_done') {
-        setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'done', duration: event?.data?.duration || 0 }]);
         const name = String(event?.data?.name || '');
         const isPayment = /execute:payments_create_checkout_session/.test(name);
         if (isPayment) {
@@ -368,14 +323,6 @@ export default function Joe() {
             try { window.open(url, '_blank', 'noopener,noreferrer'); } catch {}
           }
         }
-      } else if (type === 'step_failed') {
-        setLiveSteps(prev => [...prev, { name: event?.data?.name, status: 'failed', error: event?.data?.error || '' }]);
-        setLiveStatus('error');
-      } else {
-        try { setLiveLogs(prev => [...prev, JSON.stringify(event)]); } catch { /* noop */ }
-      }
-      if (type === 'run_finished' || type === 'run_completed') {
-        setLiveStatus('idle');
       }
     });
     return () => { release(); };
