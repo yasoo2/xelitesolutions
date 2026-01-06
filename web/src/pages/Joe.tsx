@@ -1,8 +1,6 @@
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
-import { LiveInteractionPanel } from '../components/LiveInteractionPanel';
 import FileExplorer from '../components/FileExplorer';
-import { ThinkingIndicator } from '../components/ThinkingIndicator';
 import { SocketService } from '../services/socket';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -250,14 +248,8 @@ export default function Joe() {
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
-  const [liveSteps, setLiveSteps] = useState<any[]>([]);
-  const [liveLogs, setLiveLogs] = useState<string[]>([]);
-  const [liveMessages, setLiveMessages] = useState<any[]>([]);
-  const [liveStatus, setLiveStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle');
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
-  const [livePanelExpanded, setLivePanelExpanded] = useState(false);
-  const [livePanelAutoOpened, setLivePanelAutoOpened] = useState(false);
   
   // ===== نظام عرض سلسلة التفكير والحوار الداخلي =====
   const [thinkingChain, setThinkingChain] = useState<Array<{
@@ -1013,7 +1005,7 @@ export default function Joe() {
 
             <div
               style={{
-                width: isNarrow ? '100%' : (showLivePanel ? 740 : 420),
+                width: isNarrow ? '100%' : 420,
                 flex: isNarrow ? `0 0 ${agentComposerOpen ? '45%' : '44px'}` : '0 0 auto',
                 height: isNarrow ? (agentComposerOpen ? undefined : 44) : '100%',
                 minHeight: 0,
@@ -1128,22 +1120,6 @@ export default function Joe() {
                       }}
                   />
                 </div>
-                {showLivePanel ? (
-                  <div style={{ width: isNarrow ? '100%' : 260, minWidth: 220, maxWidth: 340 }}>
-                    <LiveInteractionPanel 
-                      steps={liveSteps} 
-                      logs={liveLogs} 
-                      messages={liveMessages} 
-                      status={liveStatus} 
-                      onPause={() => setLiveStatus('paused')}
-                      onResume={() => setLiveStatus('running')}
-                      onStop={() => setLiveStatus('idle')}
-                      expanded={livePanelExpanded}
-                      onExpand={(v) => setLivePanelExpanded(!!v)}
-                      compact
-                    />
-                  </div>
-                ) : null}
               </div>
             </div>
             {showFiles ? (
