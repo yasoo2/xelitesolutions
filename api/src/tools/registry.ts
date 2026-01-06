@@ -1792,7 +1792,7 @@ export const tools: ToolDefinition[] = [
           sharedBrowserPromise = (async () => {
             const puppeteer = await import('puppeteer');
             return puppeteer.launch({
-              headless: true,
+              headless: false,
               args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
             });
           })();
