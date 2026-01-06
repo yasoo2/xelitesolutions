@@ -2433,7 +2433,18 @@ export default function CommandComposer({
                                                 <input 
                                                     type={showKey[activeProvider] ? "text" : "password"} 
                                                     value={providers[activeProvider].apiKey}
-                                                    onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: e.target.value, isConnected: false } }))}
+                                                    onChange={(e) => {
+                                                        const newKey = e.target.value;
+                                                        setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
+                                                        // Send API key to server for OpenAI
+                                                        if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
+                                                            fetch(`${API}/providers/openai/key`, {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ apiKey: newKey.trim() })
+                                                            }).catch(err => console.error('Failed to send API key to server:', err));
+                                                        }
+                                                    }}
                                                     placeholder="sk-..."
                                                     style={{ 
                                                         width: '100%', padding: '10px 12px', borderRadius: 8, 
@@ -2449,7 +2460,16 @@ export default function CommandComposer({
                                                 </button>
                                             </div>
                                             <button 
-                                                onClick={() => deleteProviderKey(activeProvider)}
+                                                onClick={() => {
+                                                    deleteProviderKey(activeProvider);
+                                                    // Clear API key on server for OpenAI
+                                                    if (activeProvider === 'openai') {
+                                                        fetch(`${API}/providers/clear`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' }
+                                                        }).catch(err => console.error('Failed to clear API key on server:', err));
+                                                    }
+                                                }}
                                                 title="Clear Key"
                                                 style={{ 
                                                     padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)', 
