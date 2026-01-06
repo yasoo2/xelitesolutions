@@ -7,10 +7,18 @@ const isPrivateNetHost =
 const isLocal = isLocalHost || isPrivateNetHost;
 const apiEnv = (window as any).JOE_CONFIG?.API_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
-const defaultLocalApiUrl = `${window.location.protocol}//127.0.0.1:3000`;
-const fallbackApiUrl = isLocal
-  ? defaultLocalApiUrl
-  : 'https://api.xelitesolutions.com';
+let fallbackApiUrl = 'https://api.xelitesolutions.com';
+
+if (isLocal) {
+  fallbackApiUrl = `${window.location.protocol}//${hostname}:3000`;
+} else {
+  // If we are on a numeric IP (public IP), assume the API is on port 3000 of the same IP
+  const isNumericIp = /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
+  if (isNumericIp) {
+    fallbackApiUrl = `${window.location.protocol}//${hostname}:3000`;
+  }
+}
+
 export const API_URL = String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
 
 // Determine WebSocket URL

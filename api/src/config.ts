@@ -10,6 +10,9 @@ const allowedOriginsDefault = [
   'https://browser.xelitesolutions.com',
   'http://localhost:5173',
   'http://localhost:3000',
+  'http://46.224.187.142',
+  'http://46.224.187.142:5173',
+  'http://46.224.187.142:3000',
 ];
 
 export const config = {
