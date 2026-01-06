@@ -1453,7 +1453,7 @@ export default function CommandComposer({
       const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
       if (hasUrl) return true;
 
-      const explicitBrowser = /(\b(browser|web)\b|متصفح|داخل المتصفح)/i.test(s);
+      const explicitBrowser = /(\b(browser|web|preview)\b|متصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
       if (explicitBrowser) return true;
 
       const openKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
@@ -1510,14 +1510,25 @@ export default function CommandComposer({
     const token = localStorage.getItem('token');
     try {
       let effectiveBrowserSessionId = browserSessionId;
-      if (sessionKind === 'agent' && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
+      // Allow auto-open in chat mode too
+      if ((sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
         const urlMatch = inputText.match(/https?:\/\/[^\s"'<>]+/i);
         const directUrl = urlMatch?.[0];
         const wantsYoutube = /youtube|يوتيوب/i.test(inputText);
         const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(inputText);
-        const desiredUrl = directUrl || (wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
+        const wantsPreview = /(preview|معاينة|المعاينة|عرض الموقع|show site)/i.test(inputText);
+        const desiredUrl = directUrl || (wantsPreview ? 'http://localhost:5173' : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
         const opened = await ensureBrowserSession(desiredUrl);
         effectiveBrowserSessionId = opened.sessionId;
+        
+        // If in chat mode, show the browser artifact immediately
+        if (sessionKind === 'chat' && opened.wsUrl) {
+           setEvents(prev => [...prev, { 
+             type: 'artifact_created', 
+             data: { kind: 'browser_stream', href: opened.wsUrl, name: 'Browser' },
+             ts: Date.now() 
+           }]);
+        }
       }
 
       const pickFirstValidProvider = () => {

@@ -832,8 +832,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       style={{
         display: 'flex',
         flexDirection: 'column',
-        background: '#2b2a33', // Chrome dark theme bg
-        borderBottom: '1px solid #000',
+        background: '#202124', // Modern dark theme bg
+        borderBottom: '1px solid #3c4043',
+        fontFamily: 'Segoe UI, Roboto, Helvetica, Arial, sans-serif',
       }}
     >
       {/* Tabs Bar */}
@@ -844,42 +845,45 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           alignItems: 'flex-end',
           padding: '8px 8px 0 8px',
           gap: 6,
-          background: '#1c1b22', // Tab bar bg
+          background: '#202124',
           overflowX: 'auto',
-          height: 40,
+          height: 38,
         }}
       >
         {tabs.map((t) => {
           const isActive = String(t.id) === String(activeTabId);
           let label = t.title && t.title.trim() ? t.title : (t.url ? (() => { try { return new URL(String(t.url)).hostname; } catch { return String(t.url); } })() : 'New Tab');
-          label = String(label).slice(0, 20);
+          label = String(label).slice(0, 25);
           return (
             <div 
               key={t.id} 
               onClick={() => runActions([{ type: 'tab.switch', tabId: t.id }])}
+              className="browser-tab"
               style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: 8,
                 padding: '0 12px',
-                height: 32,
-                background: isActive ? '#2b2a33' : 'transparent',
-                color: isActive ? '#fff' : '#aaa',
+                height: 30,
+                background: isActive ? '#323639' : 'transparent',
+                color: isActive ? '#e8eaed' : '#9aa0a6',
                 borderRadius: '8px 8px 0 0',
                 fontSize: 12,
                 cursor: 'pointer',
                 maxWidth: 200,
-                minWidth: 100,
+                minWidth: 120,
                 position: 'relative',
-                borderTop: isActive ? '1px solid #000' : 'none',
-                borderLeft: isActive ? '1px solid #000' : 'none',
-                borderRight: isActive ? '1px solid #000' : 'none',
+                transition: 'background 0.2s, color 0.2s',
               }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#292c2f'; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
               <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); runActions([{ type: 'tab.close', tabId: t.id }]); }}
-                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 14, opacity: 0.6 }}
+                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 14, opacity: 0.7, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
               >
                 ×
               </button>
@@ -888,7 +892,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         })}
         <button
           onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])}
-          style={{ width: 28, height: 28, borderRadius: '50%', background: 'transparent', border: 'none', color: '#aaa', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: 28, height: 28, borderRadius: '50%', background: 'transparent', border: 'none', color: '#9aa0a6', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
           +
         </button>
@@ -900,27 +906,34 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '6px 10px',
-          height: 44,
+          gap: 12,
+          padding: '8px 12px',
+          height: 52,
+          background: '#323639',
         }}
       >
         <div style={{ display: 'flex', gap: 4 }}>
           <button
             onClick={() => runActions([{ type: 'goBack' }])}
-            style={{ width: 28, height: 28, background: 'none', border: 'none', color: '#fff', opacity: 0.8, cursor: 'pointer', fontSize: 16 }}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: '#e8eaed', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
           >
             ←
           </button>
           <button
             onClick={() => runActions([{ type: 'goForward' }])}
-            style={{ width: 28, height: 28, background: 'none', border: 'none', color: '#fff', opacity: 0.8, cursor: 'pointer', fontSize: 16 }}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: '#e8eaed', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
           >
             →
           </button>
           <button
             onClick={() => runActions([{ type: 'reload' }])}
-            style={{ width: 28, height: 28, background: 'none', border: 'none', color: '#fff', opacity: 0.8, cursor: 'pointer', fontSize: 16 }}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: '#e8eaed', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
           >
             ↻
           </button>
@@ -929,14 +942,18 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         <div 
           style={{
             flex: 1,
-            background: '#1c1b22',
-            borderRadius: 20,
+            background: '#202124',
+            borderRadius: 24,
             display: 'flex',
             alignItems: 'center',
-            padding: '0 12px',
-            height: 32,
-            border: '1px solid #000',
+            padding: '0 16px',
+            height: 36,
+            border: '1px solid transparent',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            transition: 'border-color 0.2s, background 0.2s',
           }}
+          onFocus={(e) => { e.currentTarget.style.background = '#202124'; e.currentTarget.style.border = '1px solid #5f6368'; }}
+          onBlur={(e) => { e.currentTarget.style.background = '#202124'; e.currentTarget.style.border = '1px solid transparent'; }}
         >
           <input
             type="text"
@@ -953,9 +970,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               flex: 1,
               background: 'transparent',
               border: 'none',
-              color: '#fff',
+              color: '#e8eaed',
               outline: 'none',
-              fontSize: 13,
+              fontSize: 14,
             }}
           />
         </div>
@@ -966,15 +983,18 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
           }}
           style={{
-             background: 'var(--accent-primary)',
-             color: '#fff',
+             background: 'none',
+             color: '#8ab4f8',
              border: 'none',
-             borderRadius: 6,
-             padding: '4px 12px',
-             fontSize: 13,
+             padding: '0 8px',
+             fontSize: 14,
              cursor: 'pointer',
-             height: 28,
+             height: 36,
+             fontWeight: 500,
+             transition: 'opacity 0.2s'
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.8'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
         >
           Go
         </button>
@@ -993,12 +1013,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         position: focusMode ? 'fixed' : 'relative',
         inset: focusMode ? 12 : undefined,
         zIndex: focusMode ? 9999 : undefined,
-        background: focusMode ? 'var(--bg-dark)' : undefined,
-        padding: focusMode ? 12 : undefined,
-        borderRadius: focusMode ? 16 : undefined,
-        border: focusMode ? '1px solid var(--border-color)' : undefined,
+        background: focusMode ? '#202124' : undefined,
+        padding: focusMode ? 0 : undefined,
+        borderRadius: focusMode ? 12 : undefined,
+        border: focusMode ? '1px solid #5f6368' : undefined,
         boxShadow: focusMode ? '0 12px 50px rgba(0,0,0,0.6)' : undefined,
         height: '100%',
+        overflow: 'hidden',
       }}
     >
       {CompactHeader}
@@ -1204,7 +1225,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
 
 
-      <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: minimal ? 0 : 16, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: minimal ? 'none' : undefined, flex: minimal ? 1 : undefined }}>
+      <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: 0, overflow: 'hidden', position: 'relative', background: '#202124', boxShadow: minimal ? 'none' : undefined, flex: minimal ? 1 : undefined }}>
         <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
           <canvas
             ref={canvasRef}

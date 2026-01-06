@@ -14,11 +14,13 @@ function BrowserApp({
   autoOpen,
   minimal,
   initialSession,
+  headless,
 }: {
   onSession?: (s: { sessionId: string; wsUrl: string }) => void;
   autoOpen?: boolean;
   minimal?: boolean;
   initialSession?: { sessionId: string; wsUrl: string } | null;
+  headless?: boolean;
 }) {
   const [url, setUrl] = useState('https://www.google.com');
   const [wsUrl, setWsUrl] = useState<string | null>(initialSession?.wsUrl || null);
@@ -128,7 +130,7 @@ function BrowserApp({
               </div>
             </div>
           </div>
-        ) : (
+        ) : headless ? null : (
           <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading stream...</div>}>
             <AgentBrowserStreamLazy wsUrl={wsUrl!} minimal />
           </Suspense>
@@ -980,6 +982,16 @@ export default function Joe() {
           </div>
         )}
         {mode === 'chat' && (
+        <>
+          <div style={{ display: 'none' }}>
+            <BrowserApp
+               minimal={false}
+               autoOpen={false}
+               headless={true}
+               onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }}
+               initialSession={activeBrowserSession}
+            />
+          </div>
           <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1008,7 +1020,8 @@ export default function Joe() {
               </div>
             ) : null}
           </div>
-        )}
+        </>
+      )}
         </div>
       </main>
     </div>
