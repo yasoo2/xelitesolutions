@@ -2552,6 +2552,22 @@ export default function CommandComposer({
                                         </>
                                     )}
                                 </button>
+                                
+                                <button 
+                                    onClick={() => handleDisconnect(activeProvider)}
+                                    disabled={!providers[activeProvider].isConnected}
+                                    title="Disconnect Provider"
+                                    style={{ 
+                                        padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-color)',
+                                        background: 'var(--bg-secondary)',
+                                        color: providers[activeProvider].isConnected ? '#ef4444' : 'var(--text-muted)', 
+                                        fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                        opacity: !providers[activeProvider].isConnected ? 0.5 : 1
+                                    }}
+                                >
+                                    <Power size={18} />
+                                </button>
                             </div>
                         </>
                     )}
