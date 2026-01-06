@@ -1720,6 +1720,28 @@ export default function CommandComposer({
     }
   };
 
+  const handleDisconnect = async (key: string) => {
+    if (!confirm('Are you sure you want to disconnect?')) return;
+    
+    setProviders(prev => ({ 
+        ...prev, 
+        [key]: { ...prev[key], isConnected: false } 
+    }));
+
+    try {
+        const token = localStorage.getItem('token');
+        await fetch(`${API}/providers/clear`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            }
+        });
+    } catch (e) {
+        console.error('Failed to clear provider on backend', e);
+    }
+  };
+
   const formatStepDisplayName = (name: string) => {
     if (name === 'plan') return t('tools.plan');
     if (name.startsWith('thinking_step_')) {
