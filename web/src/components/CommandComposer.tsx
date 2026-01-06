@@ -940,7 +940,20 @@ export default function CommandComposer({
                    }
                 }
               }
-              else if (msg.type === 'step_done') setTaskStatusByExecuteEvent(rid, tool, 'done');
+              else if (msg.type === 'step_done') {
+                setTaskStatusByExecuteEvent(rid, tool, 'done');
+                // Handle browser_open OR browser_run success
+                if ((tool === 'browser_open' || tool === 'browser_run') && msg.data?.result?.ok) {
+                   const output = msg.data.result.output;
+                   // browser_open returns { sessionId, wsUrl }
+                   // browser_run usually returns { outputs } but might return artifacts or carry over session
+                   if (output?.sessionId && output?.wsUrl) {
+                      window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
+                        detail: { sessionId: output.sessionId, wsUrl: output.wsUrl } 
+                      }));
+                   }
+                }
+              }
               else setTaskStatusByExecuteEvent(rid, tool, 'failed');
             }
           }
@@ -1066,16 +1079,6 @@ export default function CommandComposer({
             if (start) {
               msg.duration = Date.now() - start;
               delete stepStartTimes.current[`${rid}:${name}`];
-            }
-
-            // Backup: Detect browser_open result directly
-            if (name === 'execute:browser_open' && msg.data?.result?.ok) {
-              const output = msg.data.result.output;
-              if (output?.sessionId && output?.wsUrl) {
-                window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
-                  detail: { sessionId: output.sessionId, wsUrl: output.wsUrl } 
-                }));
-              }
             }
 
             hideToolSoon();

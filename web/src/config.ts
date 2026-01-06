@@ -19,7 +19,18 @@ if (isLocal) {
   }
 }
 
-export const API_URL = String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
+// Explicit override for the known remote server to ensure it works even if env vars are stale
+if (hostname === '46.224.187.142') {
+  fallbackApiUrl = `${window.location.protocol}//${hostname}:3000`;
+  // We will force this URL by ignoring conflicting env vars in the export below if needed,
+  // but usually fallbackApiUrl is used when apiEnv is empty. 
+  // If apiEnv IS set (e.g. to localhost), we must override it.
+  // We'll handle this in the export logic.
+}
+
+export const API_URL = (hostname === '46.224.187.142') 
+  ? fallbackApiUrl.replace(/\/+$/, '') 
+  : String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
 
 // Determine WebSocket URL
 const rawWsUrl = import.meta.env.VITE_WS_URL;
