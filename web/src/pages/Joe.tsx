@@ -255,7 +255,6 @@ export default function Joe() {
   const [liveMessages, setLiveMessages] = useState<any[]>([]);
   const [liveStatus, setLiveStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle');
   const [showFiles, setShowFiles] = useState(false);
-  const [showLivePanel, setShowLivePanel] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   const [livePanelExpanded, setLivePanelExpanded] = useState(false);
   const [livePanelAutoOpened, setLivePanelAutoOpened] = useState(false);
@@ -1056,14 +1055,6 @@ export default function Joe() {
                     >
                       {agentComposerOpen ? 'إخفاء' : 'إظهار'}
                     </button>
-                  ) : null}
-                  <button
-                    onClick={() => { setShowLivePanel(v => !v); setLivePanelAutoOpened(false); }}
-                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                    title="لوحة المتابعة"
-                  >
-                    <Activity size={14} /> {showLivePanel ? 'إخفاء اللوحة' : 'عرض اللوحة'}
-                  </button>
                 </div>
               </div>
               {(!isNarrow || agentComposerOpen) ? (
@@ -1079,60 +1070,6 @@ export default function Joe() {
                         }}
                     />
                   </div>
-                  {showLivePanel ? (
-                    <div style={{ width: isNarrow ? '100%' : 260, minWidth: 220, maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <LiveInteractionPanel 
-                        steps={liveSteps} 
-                        logs={liveLogs} 
-                        messages={liveMessages} 
-                        status={liveStatus} 
-                        onPause={() => setLiveStatus('paused')}
-                        onResume={() => setLiveStatus('running')}
-                        onStop={() => setLiveStatus('idle')}
-                        expanded={livePanelExpanded}
-                        onExpand={(v) => setLivePanelExpanded(!!v)}
-                        compact
-                      />
-                      {/* ===== عرض سلسلة التفكير والحوار الداخلي ===== */}
-                      <div style={{
-                        background: 'rgba(100, 150, 255, 0.05)',
-                        border: '1px solid rgba(100, 150, 255, 0.2)',
-                        borderRadius: 10,
-                        padding: 10,
-                        minHeight: 150,
-                        maxHeight: 300,
-                        overflow: 'auto',
-                        fontSize: 11,
-                        fontFamily: 'monospace'
-                      }} ref={thinkingPanelRef}>
-                        <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(100, 150, 255, 0.8)' }}>سلسلة التفكير</div>
-                        {thinkingChain.length === 0 ? (
-                          <div style={{ color: 'rgba(255, 255, 255, 0.4)' }}>في انتظار الأوامر...</div>
-                        ) : (
-                          thinkingChain.map(item => (
-                            <div key={item.id} style={{
-                              marginBottom: 6,
-                              padding: 6,
-                              background: 'rgba(255, 255, 255, 0.03)',
-                              borderRadius: 4,
-                              borderLeft: `2px solid ${
-                                item.type === 'thought' ? 'rgba(100, 200, 255, 0.6)' :
-                                item.type === 'decision' ? 'rgba(150, 200, 100, 0.6)' :
-                                item.type === 'action' ? 'rgba(255, 180, 100, 0.6)' :
-                                item.type === 'result' ? 'rgba(100, 255, 150, 0.6)' :
-                                'rgba(255, 100, 100, 0.6)'
-                              }`
-                            }}>
-                              <div style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 10, marginBottom: 2 }}>
-                                <strong>[{item.type.toUpperCase()}]</strong> {new Date(item.timestamp).toLocaleTimeString('ar-SA')}
-                              </div>
-                              <div style={{ color: 'rgba(255, 255, 255, 0.8)' }}>{item.content}</div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1144,13 +1081,6 @@ export default function Joe() {
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button
-                    onClick={() => { setShowLivePanel(v => !v); setLivePanelAutoOpened(false); }}
-                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                    title="لوحة المتابعة"
-                  >
-                    <Activity size={14} /> {showLivePanel ? 'إخفاء اللوحة' : 'عرض اللوحة'}
-                  </button>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
