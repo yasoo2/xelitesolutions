@@ -1190,6 +1190,47 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let plan: { name: string, input: any } | null = null;
   let pendingPlan: { name: string, input: any } | null = null;
   let lastPlanError: string | null = null;
+  let endAfterBrowserState = false;
+  let simpleBrowserOpenLabel = '';
+  let simpleBrowserOpenUrl = '';
+
+  const initialUserTextForOpen = String(text || '');
+  const isSimpleBrowserOpenRequest = (() => {
+    const s = initialUserTextForOpen;
+    if (!s.trim()) return false;
+    const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
+    const openKeyword = /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ)/i.test(s);
+    const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
+    const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
+    const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+    const hasSiteKeyword = /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب)/i.test(s);
+    if (!hasUrl && !hasSiteKeyword) return false;
+    if (!(openKeyword || browserKeyword || hasUrl)) return false;
+    if (isFileOp && !hasUrl) return false;
+    if (analysisKeyword) return false;
+    return true;
+  })();
+  if (isSimpleBrowserOpenRequest) {
+    const s = initialUserTextForOpen;
+    const directUrl = s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || '';
+    if (/(github|جيتهاب|كتهاب|كيتهاب)/i.test(s)) simpleBrowserOpenLabel = 'GitHub';
+    else if (/(yahoo|ياهو)/i.test(s)) simpleBrowserOpenLabel = 'Yahoo';
+    else if (/(youtube|يوتيوب)/i.test(s)) simpleBrowserOpenLabel = 'YouTube';
+    else if (/(google|جوجل)/i.test(s)) simpleBrowserOpenLabel = 'Google';
+    else {
+      const m = s.match(/https?:\/\/[^\s"'<>]+/i);
+      simpleBrowserOpenLabel = m?.[0] || 'الموقع';
+    }
+    simpleBrowserOpenUrl =
+      directUrl.trim() ||
+      (simpleBrowserOpenLabel === 'GitHub'
+        ? 'https://github.com'
+        : simpleBrowserOpenLabel === 'Yahoo'
+          ? 'https://www.yahoo.com'
+          : simpleBrowserOpenLabel === 'YouTube'
+            ? 'https://www.youtube.com'
+            : 'https://www.google.com');
+  }
 
   while (steps < MAX_STEPS) {
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
@@ -1201,6 +1242,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } else if (steps === 0 && initialPlan) {
         plan = initialPlan;
         initialPlan = null; // Prevent reuse
+    } else if (steps === 0 && isSimpleBrowserOpenRequest) {
+        plan = { name: 'browser_open', input: { url: simpleBrowserOpenUrl || 'https://github.com' } } as any;
     } else {
         const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
         if (Date.now() < coolUntil) {
@@ -1783,10 +1826,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+
+    if (result.ok && String(plan?.name || '') === 'browser_get_state' && endAfterBrowserState) {
+      const msg = isArabicText(initialUserTextForOpen)
+        ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} في المتصفح.`
+        : `Opened ${simpleBrowserOpenLabel || 'the site'} in the browser.`;
+      endAfterBrowserState = false;
+      pendingPlan = { name: 'echo', input: { text: msg } } as any;
+    }
     // After browser actions, capture page state for accurate reading/sync
     if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
       const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
       if (sidNext) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
+      if (isSimpleBrowserOpenRequest) endAfterBrowserState = true;
     }
     // Auto post-scaffold steps: install and build
     if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
