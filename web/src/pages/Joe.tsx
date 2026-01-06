@@ -251,7 +251,43 @@ export default function Joe() {
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   
+  // ===== نظام عرض سلسلة التفكير والحوار الداخلي =====
+  const [thinkingChain, setThinkingChain] = useState<Array<{
+    id: string;
+    type: 'thought' | 'decision' | 'action' | 'result' | 'error';
+    content: string;
+    timestamp: number;
+    details?: any;
+  }>>([]);
+  const [showThinkingPanel, setShowThinkingPanel] = useState(true);
+  const thinkingPanelRef = useRef<HTMLDivElement>(null);
+
   const openedPaymentsRef = useRef<Set<string>>(new Set());
+  
+  // ===== معالج أحداث سلسلة التفكير =====
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail || {};
+      if (detail.type && detail.content) {
+        setThinkingChain(prev => [...prev, {
+          id: `thought-${Date.now()}-${Math.random()}`,
+          type: detail.type,
+          content: detail.content,
+          timestamp: Date.now(),
+          details: detail.details
+        }]);
+        // تمرير تلقائي إلى آخر العناصر
+        setTimeout(() => {
+          thinkingPanelRef.current?.scrollTo({
+            top: thinkingPanelRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }, 100);
+      }
+    };
+    window.addEventListener('joe:thinking_update', handler as any);
+    return () => window.removeEventListener('joe:thinking_update', handler as any);
+  }, []);
 
   const nav = useNavigate();
 
@@ -1005,58 +1041,7 @@ export default function Joe() {
               </div>
               <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
-                  {liveStatus === 'running' ? <ThinkingIndicator stepName={(liveSteps[liveSteps.length - 1] || {}).name} /> : null}
                   {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
-                  {showThinkingPanel && thinkingChain.length > 0 && (
-                    <div style={{
-                      background: 'rgba(100, 150, 255, 0.05)',
-                      border: '1px solid rgba(100, 150, 255, 0.2)',
-                      borderRadius: 10,
-                      padding: 10,
-                      maxHeight: 200,
-                      overflow: 'auto',
-                      fontSize: 11,
-                      fontFamily: 'monospace'
-                    }}>
-                      <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(100, 150, 255, 0.8)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>سلسلة التفكير</span>
-                        <button onClick={() => setShowThinkingPanel(false)} style={{ background: 'none', border: 'none', color: 'rgba(255, 255, 255, 0.5)', cursor: 'pointer', fontSize: 14 }}>×</button>
-                      </div>
-                      {thinkingChain.slice(-5).map(item => (
-                        <div key={item.id} style={{
-                          marginBottom: 4,
-                          padding: 4,
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          borderRadius: 3,
-                          borderLeft: `2px solid ${
-                            item.type === 'thought' ? 'rgba(100, 200, 255, 0.6)' :
-                            item.type === 'decision' ? 'rgba(150, 200, 100, 0.6)' :
-                            item.type === 'action' ? 'rgba(255, 180, 100, 0.6)' :
-                            item.type === 'result' ? 'rgba(100, 255, 150, 0.6)' :
-                            'rgba(255, 100, 100, 0.6)'
-                          }`
-                        }}>
-                          <div style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: 9 }}>[{item.type}]</div>
-                          <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 10 }}>{item.content.substring(0, 100)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    onClick={() => setShowThinkingPanel(!showThinkingPanel)}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 6,
-                      border: '1px solid rgba(100, 150, 255, 0.3)',
-                      background: 'rgba(100, 150, 255, 0.1)',
-                      color: 'rgba(100, 150, 255, 0.8)',
-                      cursor: 'pointer',
-                      fontSize: 11,
-                      display: thinkingChain.length === 0 ? 'none' : 'block'
-                    }}
-                  >
-                    {showThinkingPanel ? 'إخفاء سلسلة التفكير' : 'عرض سلسلة التفكير'}
-                  </button>
                   <CommandComposer
                     key={selected || 'new'}
                     sessionId={selected || undefined}
