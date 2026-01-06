@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL as API } from '../config';
 
 export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; minimal?: boolean }) {
@@ -42,10 +42,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const activeTabIdRef = useRef<string>('');
   const [downloads, setDownloads] = useState<Array<{ name: string; href: string }>>([]);
   const [overlay, setOverlay] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'console' | 'network' | 'downloads'>('console');
-  const [panelOpen, setPanelOpen] = useState<boolean>(false);
-  const [consoleEntries, setConsoleEntries] = useState<Array<{ level: string; text: string; ts: number }>>([]);
-  const [networkEntries, setNetworkEntries] = useState<Array<{ stage: 'request' | 'response'; url: string; method: string; status?: number; resourceType?: string; ts: number }>>([]);
   const [zoom, setZoom] = useState<number>(1);
   const [focusMode, setFocusMode] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -100,7 +96,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
   useEffect(() => {
     if (!minimal) return;
-    setPanelOpen(false);
+
     setFocusMode(false);
     setZoom(1);
     setStreamPaused(false);
@@ -481,12 +477,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 const items = msg.downloads.map((d: any) => ({ name: d.filename || d.name || 'download', href: absHrefFromWs(d.href) }));
                 setDownloads(items.slice(-10).reverse());
               }
-              if (Array.isArray(msg.logs)) {
-                setConsoleEntries(msg.logs.slice(-500));
-              }
-              if (Array.isArray(msg.network)) {
-                setNetworkEntries(msg.network.slice(-500));
-              }
+
             }
             if (msg.type === 'tabs') {
               if (Array.isArray(msg.tabs)) setTabs(msg.tabs);
@@ -502,12 +493,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             if (msg.type === 'url' && typeof msg.url === 'string') {
               if (!msg.tabId || String(msg.tabId) === String(activeTabIdRef.current)) setAddress(msg.url);
             }
-            if (msg.type === 'console' && msg.entry) {
-              setConsoleEntries((prev) => [...prev, msg.entry].slice(-500));
-            }
-            if (msg.type === 'network' && msg.entry) {
-              setNetworkEntries((prev) => [...prev, msg.entry].slice(-500));
-            }
+
             if (msg.type === 'download' && msg.download) {
               const d = msg.download;
               const item = { name: d.filename || d.name || 'download', href: absHrefFromWs(d.href) };
@@ -712,7 +698,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     setTypeText('');
   }
 
-  const [showControls, setShowControls] = useState(false);
+
 
   function handleCanvasKeyDown(e: React.KeyboardEvent<HTMLCanvasElement>) {
     if (!controlEnabled) return;
@@ -1024,204 +1010,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     >
       {CompactHeader}
 
-      {false ? (
-      <div
-        className="agent-browser-header glass-panel"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          padding: '10px 12px',
-          borderRadius: 14,
-          gap: 8,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: status === 'connected' ? 'var(--accent-success)' : (status === 'reconnecting' ? 'var(--accent-warning)' : 'var(--accent-danger)'),
-              boxShadow: status === 'connected' ? '0 0 8px var(--accent-success)' : 'none'
-            }}
-          />
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }} dir="auto">
-            {status === 'connected' ? 'متصل' : status}
-          </span>
-          {status === 'error' ? (
-            <button
-              onClick={() => setReconnectNonce(v => v + 1)}
-              style={{
-                height: 28,
-                padding: '0 10px',
-                borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                background: 'rgba(255,255,255,0.04)',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-              }}
-            >
-              إعادة اتصال
-            </button>
-          ) : null}
-        </div>
 
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '1 1 420px', minWidth: 260 }}>
-          <button onClick={() => runActions([{ type: 'goBack' }])} title="Back" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>⟵</button>
-          <button onClick={() => runActions([{ type: 'goForward' }])} title="Forward" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>⟶</button>
-          <button onClick={() => runActions([{ type: 'reload' }])} title="Reload" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>⟳</button>
-          <input
-            type="text"
-            value={address}
-            onChange={e => setAddress(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                const url = normalizeUrl(address);
-                if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
-              }
-            }}
-            placeholder="https://example.com"
-            dir="auto"
-            style={{
-              flex: 1,
-              height: 32,
-              padding: '0 10px',
-              borderRadius: 10,
-              border: '1px solid var(--border-color)',
-              background: 'rgba(255,255,255,0.06)',
-              color: 'var(--text-primary)',
-              outline: 'none',
-              minWidth: 200,
-            }}
-          />
-          <button
-            onClick={() => {
-              const url = normalizeUrl(address);
-              if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
-            }}
-            style={{ height: 32, padding: '0 12px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            فتح
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => {
-              const url = normalizeUrl(address);
-              if (url && navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
-            }}
-            title="Copy URL"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            نسخ
-          </button>
-          <button
-            onClick={() => {
-              const url = normalizeUrl(address);
-              if (url) window.open(url, '_blank', 'noreferrer');
-            }}
-            title="Open in new tab"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            فتح خارجي
-          </button>
-          <button
-            onClick={() => runActions([{ type: 'screenshot', fullPage: false, quality: 60 }])}
-            title="Screenshot"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            لقطة
-          </button>
-          <button
-            onClick={() => {
-              const d = downloads[0];
-              if (d?.href) window.open(d.href, '_blank', 'noreferrer');
-            }}
-            disabled={!downloads[0]?.href}
-            title="Open latest download"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: downloads[0]?.href ? 'pointer' : 'not-allowed', opacity: downloads[0]?.href ? 1 : 0.5 }}
-          >
-            تنزيل
-          </button>
-          <button
-            onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
-            title="Zoom out"
-            style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            −
-          </button>
-          <button
-            onClick={() => setZoom(1)}
-            title="Reset zoom"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            {Math.round(zoom * 100)}%
-          </button>
-          <button
-            onClick={() => setZoom(z => Math.min(2, Number((z + 0.1).toFixed(2))))}
-            title="Zoom in"
-            style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            +
-          </button>
-          <button
-            onClick={async () => {
-              try {
-                if (!document.fullscreenElement) await rootRef.current?.requestFullscreen();
-                else await document.exitFullscreen();
-              } catch {}
-            }}
-            title="Fullscreen"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            {isFullscreen ? 'خروج' : 'ملء'}
-          </button>
-          <button
-            onClick={() => setStreamPaused(v => !v)}
-            title="Pause stream"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: streamPaused ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            {streamPaused ? 'تشغيل' : 'إيقاف'}
-          </button>
-          <button
-            onClick={() => setFocusMode(v => !v)}
-            title="Focus mode"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: focusMode ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            تركيز
-          </button>
-          <button
-            onClick={() => setPanelOpen(v => !v)}
-            title="Logs"
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: panelOpen ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            سجلات
-          </button>
-          <button
-            onClick={() => setShowControls(!showControls)}
-            style={{ height: 32, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-          >
-            {showControls ? 'أقل' : 'أكثر'}
-          </button>
-        </div>
-
-        {wsError ? (
-          <div style={{ width: '100%', fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
-            {wsError}
-          </div>
-        ) : null}
-
-        {overlay ? (
-          <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-            <div style={{ padding: '4px 12px', background: 'rgba(var(--accent-primary-rgb), 0.15)', border: '1px solid rgba(var(--accent-primary-rgb), 0.3)', borderRadius: 999, color: 'var(--accent-primary)', fontSize: 12 }} dir="auto">
-              {overlay}
-            </div>
-          </div>
-        ) : null}
-      </div>
-      ) : null}
 
 
 
@@ -1295,299 +1084,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         </div>
       </div>
 
-      {!minimal && panelOpen ? (
-        <div className="glass-panel" style={{ borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 8, padding: 10, borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', alignItems: 'center' }}>
-            <button onClick={() => setActiveTab('console')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'console' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Console</button>
-            <button onClick={() => setActiveTab('network')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'network' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Network</button>
-            <button onClick={() => setActiveTab('downloads')} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: activeTab === 'downloads' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>Downloads</button>
-            <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button
-                onClick={() => {
-                  if (activeTab === 'console') setConsoleEntries([]);
-                  if (activeTab === 'network') setNetworkEntries([]);
-                  if (activeTab === 'downloads') setDownloads([]);
-                }}
-                style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}
-              >
-                Clear
-              </button>
-              <button onClick={() => setPanelOpen(false)} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer' }}>إخفاء</button>
-            </div>
-          </div>
 
-          <div style={{ maxHeight: 220, overflow: 'auto', padding: 10, fontSize: 12, color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace' }}>
-            {activeTab === 'console' ? (
-              consoleEntries.length ? consoleEntries.slice(-200).map((e, i) => (
-                <div key={i} style={{ opacity: 0.95, padding: '2px 0' }} dir="auto">
-                  <span style={{ color: e.level === 'error' ? 'var(--accent-danger)' : (e.level === 'warning' || e.level === 'warn' ? 'var(--accent-warning)' : 'var(--text-secondary)') }}>
-                    {new Date(e.ts).toLocaleTimeString()}
-                  </span>
-                  {' '}
-                  {e.text}
-                </div>
-              )) : <div style={{ color: 'var(--text-secondary)' }}>لا توجد رسائل</div>
-            ) : null}
-
-            {activeTab === 'network' ? (
-              networkEntries.length ? networkEntries.slice(-200).map((e, i) => (
-                <div key={i} style={{ opacity: 0.95, padding: '2px 0' }} dir="auto">
-                  <span style={{ color: 'var(--text-secondary)' }}>{new Date(e.ts).toLocaleTimeString()}</span>
-                  {' '}
-                  <span style={{ color: e.stage === 'response' && typeof e.status === 'number' && e.status >= 400 ? 'var(--accent-danger)' : 'var(--text-primary)' }}>
-                    {e.method}
-                  </span>
-                  {' '}
-                  {e.stage === 'response' ? <span style={{ color: 'var(--text-secondary)' }}>{e.status ?? ''}</span> : <span style={{ color: 'var(--text-secondary)' }}>→</span>}
-                  {' '}
-                  {e.url}
-                </div>
-              )) : <div style={{ color: 'var(--text-secondary)' }}>لا توجد طلبات</div>
-            ) : null}
-
-            {activeTab === 'downloads' ? (
-              downloads.length ? downloads.map((d, i) => (
-                <div key={i} style={{ padding: '2px 0' }} dir="auto">
-                  <a href={d.href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
-                    {d.name}
-                  </a>
-                </div>
-              )) : <div style={{ color: 'var(--text-secondary)' }}>لا توجد تنزيلات</div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Advanced Manual Controls (Hidden by Default) */}
-      {showControls && (
-        <div style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div className="agent-browser-controls-row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => runActions([{ type: 'goBack' }])} className="btn" title="Back">⟵</button>
-                <button onClick={() => runActions([{ type: 'goForward' }])} className="btn" title="Forward">⟶</button>
-                <button onClick={() => runActions([{ type: 'reload' }])} className="btn" title="Reload">⟳</button>
-                <input 
-                  type="text" 
-                  value={address} 
-                  onChange={e => setAddress(e.target.value)} 
-                  onKeyDown={e => { if (e.key === 'Enter' && address) runActions([{ type: 'goto', url: normalizeUrl(address), waitUntil: 'domcontentloaded' }]); }} 
-                  placeholder="https://example.com"
-                  style={{ flex: 1, minWidth: 220, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                />
-                <button onClick={() => address && runActions([{ type: 'goto', url: normalizeUrl(address), waitUntil: 'domcontentloaded' }])} className="btn">Go</button>
-                <button onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])} className="btn" title="New tab">+Tab</button>
-                <button onClick={() => activeTabId && runActions([{ type: 'tab.close', tabId: activeTabId }])} className="btn" title="Close active tab">×Tab</button>
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
-                 {/* Upload */}
-                 <div style={{ display: 'flex', gap: 4 }}>
-                    <input type="text" placeholder="Upload Selector" value={uploadSelector} onChange={e => setUploadSelector(e.target.value)} style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
-                    <input type="file" ref={fileRef} style={{ width: 80 }} />
-                    <button onClick={doUpload} className="btn">Up</button>
-                 </div>
-                 
-                 {/* Type */}
-                 <div style={{ display: 'flex', gap: 4 }}>
-                    <input type={loginMode ? "password" : "text"} value={typeText} onChange={e => setTypeText(e.target.value)} placeholder="Type text..." style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
-                    <button onClick={doType} className="btn">Type</button>
-                    <button onClick={() => runActions([{ type: 'press', key: 'Enter' }])} className="btn">Ent</button>
-                 </div>
-
-                 {/* Locate */}
-                 <div style={{ display: 'flex', gap: 4 }}>
-                    <input type="text" value={selector} onChange={e => setSelector(e.target.value)} placeholder="CSS Selector" style={{ flex: 1, padding: 4, borderRadius: 4, border: '1px solid var(--border-color)' }} />
-                    <button onClick={() => selector && runActions([{ type: 'locate', selector }])} className="btn">Loc</button>
-                    <button onClick={() => selector && runActions([{ type: 'click', selector }])} className="btn">Clk</button>
-                 </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                <input type="checkbox" checked={controlEnabled} onChange={e => setControlEnabled(e.target.checked)} />
-                تحكم
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                <input type="checkbox" checked={pickerMode} onChange={e => setPickerMode(e.target.checked)} disabled={!controlEnabled} />
-                Picker
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                <input type="checkbox" checked={loginMode} onChange={e => setLoginMode(e.target.checked)} />
-                Login
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                <input type="checkbox" checked={redactionEnabled} onChange={e => { const v = e.target.checked; setRedactionEnabled(v); runActions([{ type: 'redaction.set', enabled: v }]); }} />
-                Redaction
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                FPS
-                <select value={streamFps} onChange={e => { const v = Number(e.target.value); setStreamFps(v); runActions([{ type: 'stream.setFps', fps: v }]); }} style={{ height: 26, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-                  {[2, 5, 8, 10, 15, 20].map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                جودة
-                <select value={streamQuality} onChange={e => { const v = Number(e.target.value); setStreamQuality(v); runActions([{ type: 'stream.setQuality', quality: v }]); }} style={{ height: 26, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-                  {[35, 45, 50, 60, 70].map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                Timeline
-                <input type="checkbox" checked={timelineEnabled} onChange={e => setTimelineEnabled(e.target.checked)} />
-              </label>
-              <button
-                onClick={() => {
-                  if (!replayMode) {
-                    prevStreamPausedRef.current = streamPaused;
-                    setStreamPaused(true);
-                    if (!timelineEnabled) setTimelineEnabled(true);
-                    setReplayMode(true);
-                    setReplayPlaying(false);
-                    setReplayIndex(i => Math.min(i, Math.max(0, timeline.length - 1)));
-                  } else {
-                    setReplayMode(false);
-                    setReplayPlaying(false);
-                    setStreamPaused(prevStreamPausedRef.current);
-                  }
-                }}
-                className="btn"
-              >
-                {replayMode ? 'إغلاق Replay' : 'Replay'}
-              </button>
-              <button onClick={() => { setTimeline([]); setReplayIndex(0); }} className="btn">مسح</button>
-            </div>
-
-            {replayMode && timeline.length ? (
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => setReplayPlaying(v => !v)}
-                  className="btn"
-                  disabled={timeline.length <= 1}
-                  style={{ opacity: timeline.length <= 1 ? 0.6 : 1 }}
-                >
-                  {replayPlaying ? 'إيقاف' : 'تشغيل'}
-                </button>
-                <button
-                  onClick={() => { setReplayPlaying(false); setReplayIndex(0); }}
-                  className="btn"
-                  disabled={timeline.length <= 1}
-                  style={{ opacity: timeline.length <= 1 ? 0.6 : 1 }}
-                >
-                  بداية
-                </button>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, timeline.length - 1)}
-                  value={Math.min(replayIndex, Math.max(0, timeline.length - 1))}
-                  onChange={e => setReplayIndex(Number(e.target.value))}
-                  style={{ flex: 1, minWidth: 240 }}
-                />
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
-                  {timeline[replayIndex] ? new Date(timeline[replayIndex].ts).toLocaleTimeString() : ''}
-                </div>
-              </div>
-            ) : null}
-
-            {replayMode && timeline.length ? (
-              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }}>
-                {timeline.map((f, idx) => (
-                  <button
-                    key={`${f.ts}-${idx}`}
-                    onClick={() => { setReplayPlaying(false); setReplayIndex(idx); }}
-                    style={{
-                      border: idx === replayIndex ? '2px solid rgba(37, 99, 235, 0.9)' : '1px solid var(--border-color)',
-                      padding: 0,
-                      borderRadius: 8,
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      flex: '0 0 auto',
-                    }}
-                    title={new Date(f.ts).toLocaleTimeString()}
-                  >
-                    <img
-                      src={`data:image/jpeg;base64,${f.jpegBase64}`}
-                      alt=""
-                      style={{ display: 'block', width: 110, height: 70, objectFit: 'cover', borderRadius: 6 }}
-                    />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {replayMode && timeline.length ? (
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 240, flex: '1 1 240px' }} dir="auto">
-                  {(() => {
-                    const ts = timeline[replayIndex]?.ts;
-                    if (!ts) return null;
-                    const near = timelineEvents.filter(e => Math.abs(e.ts - ts) <= 1500).slice(-8);
-                    if (!near.length) return <div>لا توجد أحداث قريبة</div>;
-                    return near.map((e, i) => (
-                      <div key={`${e.ts}-${i}`} style={{ padding: '2px 0' }}>
-                        <span style={{ color: e.kind === 'error' ? 'var(--accent-danger)' : e.kind === 'action' ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>
-                          {e.kind === 'action' ? 'فعل' : e.kind === 'error' ? 'خطأ' : e.kind === 'click' ? 'نقر' : 'رابط'}
-                        </span>
-                        {' '}
-                        {e.text}
-                      </div>
-                    ));
-                  })()}
-                </div>
-              </div>
-            ) : null}
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  type="text"
-                  value={quickSearchQuery}
-                  onChange={e => setQuickSearchQuery(e.target.value)}
-                  placeholder="بحث Google..."
-                  style={{ flex: 1, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                />
-                <button
-                  onClick={() => {
-                    const q = quickSearchQuery.trim();
-                    if (!q) return;
-                    runActions([{ type: 'searchGoogle', query: q, sensitive: loginMode }]);
-                  }}
-                  className="btn"
-                >
-                  ابحث
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  type="text"
-                  value={quickClickText}
-                  onChange={e => setQuickClickText(e.target.value)}
-                  placeholder="انقر على نص..."
-                  style={{ flex: 1, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                />
-                <button
-                  onClick={() => {
-                    const t = quickClickText.trim();
-                    if (!t) return;
-                    runActions([{ type: 'clickText', text: t, exact: false }]);
-                  }}
-                  className="btn"
-                >
-                  انقر
-                </button>
-              </div>
-            </div>
-
-            {picked ? (
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="auto">
-                Picked: {String(picked.tag || '')} {picked.id ? `#${picked.id}` : ''} {picked.ariaLabel ? `aria="${picked.ariaLabel}"` : ''} {picked.selector ? `sel=${picked.selector}` : ''}
-              </div>
-            ) : null}
-            
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                DevTools: <label><input type="checkbox" checked={autoExtract} onChange={e => setAutoExtract(e.target.checked)} /> Auto Extract</label>
-            </div>
-        </div>
-      )}
     </div>
   );
 }
