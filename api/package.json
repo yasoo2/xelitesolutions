@@ -16,7 +16,8 @@
     "test:qa": "ts-node src/scripts/qa_suite.ts",
     "test:syntax-healing": "ts-node src/scripts/verify_syntax_healing.ts",
     "test:browser-worker": "ts-node src/scripts/test_browser_worker.ts",
-    "test:browser-actions": "ts-node src/scripts/verify-browser-actions.ts"
+    "test:browser": "ts-node src/scripts/verify-browser-suite.ts",
+    "test:factory": "ts-node src/scripts/test_factory_capability.ts"
   },
   "keywords": [],
   "author": "",
