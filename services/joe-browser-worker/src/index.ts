@@ -71,8 +71,8 @@ function auth(req: express.Request, res: express.Response, next: express.NextFun
 
 async function launchChromium() {
   const args = ['--no-sandbox', '--disable-dev-shm-usage'];
-  // Default to headless unless explicitly disabled (HEADLESS=0 or HEADLESS=false)
-  const headless = process.env.HEADLESS !== '0' && process.env.HEADLESS !== 'false';
+  // Default to visible (headless: false) unless explicitly enabled (HEADLESS=true or HEADLESS=1)
+  const headless = process.env.HEADLESS === 'true' || process.env.HEADLESS === '1';
   const channel = String(process.env.PLAYWRIGHT_CHANNEL || process.env.BROWSER_CHANNEL || '').trim();
   try {
     if (channel) return await chromium.launch({ args, headless, channel: channel as any });

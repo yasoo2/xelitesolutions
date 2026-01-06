@@ -55,7 +55,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=8080
-      - HEADLESS=true
+      - HEADLESS=false
     networks: [joe_net]
     depends_on:
       - api
