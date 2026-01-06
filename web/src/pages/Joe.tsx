@@ -913,71 +913,19 @@ export default function Joe() {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>معاينة النظام</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input
-                    type="text"
-                    value={previewUrl}
-                    onChange={(e) => setPreviewUrl(e.target.value)}
-                    placeholder="https://example.com/"
-                    dir="auto"
-                    style={{
-                      height: 30,
-                      padding: '0 10px',
-                      borderRadius: 10,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(255,255,255,0.06)',
-                      color: 'var(--text-primary)',
-                      outline: 'none',
-                      minWidth: 220,
-                    }}
-                  />
-                  <button
-                    onClick={() => setAutoDetectPreview(v => !v)}
-                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: autoDetectPreview ? 'rgba(37, 99, 235, 0.12)' : 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                  >
-                    {autoDetectPreview ? 'إيقاف التحديث' : 'تشغيل التحديث'}
-                  </button>
-                  <button
-                    onClick={() => setShowEmbeddedPreview(true)}
-                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                  >
-                    عرض مدمج
-                  </button>
-                  <button
-                    onClick={() => setShowEmbeddedPreview(false)}
-                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                  >
-                    عرض المتصفح
-                  </button>
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url: previewUrl } }))}
-                    style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                  >
-                    فتح في الوكيل
-                  </button>
-                  <a
-                    href={previewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ height: 30, display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', fontSize: 12, textDecoration: 'none' }}
-                  >
-                    نافذة جديدة
-                  </a>
-                </div>
-              </div>
               <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
                 {showEmbeddedPreview ? (
-                  <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 16 }}>
-                    <iframe
-                      src={previewUrl}
-                      style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
+                  <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 0 }}>
+                    <BrowserApp
+                      minimal={false}
+                      autoOpen={true}
+                      onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }}
+                      initialSession={activeBrowserSession}
                     />
                   </div>
                 ) : (
                   <BrowserApp
-                    minimal={true}
+                    minimal={false}
                     autoOpen={true}
                     onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }}
                     initialSession={activeBrowserSession}

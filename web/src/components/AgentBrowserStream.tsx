@@ -826,178 +826,161 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     setReplayIndex(i => Math.max(0, Math.min(i, Math.max(0, timeline.length - 1))));
   }, [replayMode, timeline.length]);
 
-  const TabsStrip = tabs.length ? (
-    <div
-      className="agent-browser-tabs glass-panel"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: minimal ? '8px 10px' : '8px 10px',
-        borderRadius: 14,
-        flexWrap: 'nowrap',
-        overflowX: 'auto',
-        overscrollBehaviorX: 'contain',
-      }}
-    >
-      {tabs.slice(0, 12).map((t) => {
-        const isActive = String(t.id) === String(activeTabId);
-        let label = t.title && t.title.trim() ? t.title : (t.url ? (() => { try { return new URL(String(t.url)).hostname; } catch { return String(t.url); } })() : t.id);
-        label = String(label).slice(0, 28);
-        return (
-          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button
-              onClick={() => runActions([{ type: 'tab.switch', tabId: t.id }])}
-              className={`agent-browser-tab${isActive ? ' active' : ''}`}
-              dir="auto"
-              title={t.title || t.url || t.id}
-            >
-              {label}
-            </button>
-            <button
-              onClick={() => runActions([{ type: 'tab.close', tabId: t.id }])}
-              className="agent-browser-tab-close"
-              title="Close tab"
-            >
-              ×
-            </button>
-          </div>
-        );
-      })}
-      <button
-        onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])}
-        className="agent-browser-tab-new"
-        title="New tab"
-      >
-        +
-      </button>
-    </div>
-  ) : null;
-
   const CompactHeader = (
     <div
-      className="agent-browser-compact-header glass-panel"
+      className="browser-chrome-ui"
       style={{
-        position: 'absolute',
-        top: 10,
-        left: 10,
-        right: 10,
-        zIndex: 60,
         display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: 10,
-        borderRadius: 14,
+        flexDirection: 'column',
+        background: '#2b2a33', // Chrome dark theme bg
+        borderBottom: '1px solid #000',
       }}
     >
-      <div
+      {/* Tabs Bar */}
+      <div 
+        className="browser-tabs-bar"
         style={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background:
-            status === 'connected'
-              ? 'var(--accent-success)'
-              : status === 'reconnecting'
-                ? 'var(--accent-warning)'
-                : 'var(--accent-danger)',
-          boxShadow: status === 'connected' ? '0 0 8px var(--accent-success)' : 'none',
-          flex: '0 0 auto',
-        }}
-      />
-      <button
-        onClick={() => setControlEnabled(v => !v)}
-        style={{
-          height: 32,
-          padding: '0 10px',
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: controlEnabled ? 'rgba(37, 99, 235, 0.18)' : 'rgba(255,255,255,0.03)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          flex: '0 0 auto',
+          display: 'flex',
+          alignItems: 'flex-end',
+          padding: '8px 8px 0 8px',
+          gap: 6,
+          background: '#1c1b22', // Tab bar bg
+          overflowX: 'auto',
+          height: 40,
         }}
       >
-        {controlEnabled ? 'تحكم: مفعل' : 'تحكم: متوقف'}
-      </button>
-      <button
-        onClick={() => setPickerMode(v => !v)}
-        disabled={!controlEnabled}
+        {tabs.map((t) => {
+          const isActive = String(t.id) === String(activeTabId);
+          let label = t.title && t.title.trim() ? t.title : (t.url ? (() => { try { return new URL(String(t.url)).hostname; } catch { return String(t.url); } })() : 'New Tab');
+          label = String(label).slice(0, 20);
+          return (
+            <div 
+              key={t.id} 
+              onClick={() => runActions([{ type: 'tab.switch', tabId: t.id }])}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 8,
+                padding: '0 12px',
+                height: 32,
+                background: isActive ? '#2b2a33' : 'transparent',
+                color: isActive ? '#fff' : '#aaa',
+                borderRadius: '8px 8px 0 0',
+                fontSize: 12,
+                cursor: 'pointer',
+                maxWidth: 200,
+                minWidth: 100,
+                position: 'relative',
+                borderTop: isActive ? '1px solid #000' : 'none',
+                borderLeft: isActive ? '1px solid #000' : 'none',
+                borderRight: isActive ? '1px solid #000' : 'none',
+              }}
+            >
+              <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); runActions([{ type: 'tab.close', tabId: t.id }]); }}
+                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 14, opacity: 0.6 }}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+        <button
+          onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])}
+          style={{ width: 28, height: 28, borderRadius: '50%', background: 'transparent', border: 'none', color: '#aaa', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          +
+        </button>
+      </div>
+
+      {/* Address Bar Toolbar */}
+      <div 
+        className="browser-toolbar"
         style={{
-          height: 32,
-          padding: '0 10px',
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: pickerMode ? 'rgba(234, 179, 8, 0.18)' : 'rgba(255,255,255,0.03)',
-          color: 'var(--text-primary)',
-          cursor: controlEnabled ? 'pointer' : 'not-allowed',
-          opacity: controlEnabled ? 1 : 0.6,
-          flex: '0 0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 10px',
+          height: 44,
         }}
       >
-        {pickerMode ? 'Picker: مفعل' : 'Picker'}
-      </button>
-      <button
-        onClick={() => runActions([{ type: 'goBack' }])}
-        title="Back"
-        style={{
-          width: 34,
-          height: 32,
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: 'rgba(255,255,255,0.03)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          flex: '0 0 auto',
-        }}
-      >
-        ⟵
-      </button>
-      <button
-        onClick={() => runActions([{ type: 'goForward' }])}
-        title="Forward"
-        style={{
-          width: 34,
-          height: 32,
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: 'rgba(255,255,255,0.03)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          flex: '0 0 auto',
-        }}
-      >
-        ⟶
-      </button>
-      <button
-        onClick={() => runActions([{ type: 'reload' }])}
-        title="Reload"
-        style={{
-          width: 34,
-          height: 32,
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: 'rgba(255,255,255,0.03)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          flex: '0 0 auto',
-        }}
-      >
-        ⟳
-      </button>
-      <input
-        type="text"
-        value={address}
-        onChange={e => setAddress(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => runActions([{ type: 'goBack' }])}
+            style={{ width: 28, height: 28, background: 'none', border: 'none', color: '#fff', opacity: 0.8, cursor: 'pointer', fontSize: 16 }}
+          >
+            ←
+          </button>
+          <button
+            onClick={() => runActions([{ type: 'goForward' }])}
+            style={{ width: 28, height: 28, background: 'none', border: 'none', color: '#fff', opacity: 0.8, cursor: 'pointer', fontSize: 16 }}
+          >
+            →
+          </button>
+          <button
+            onClick={() => runActions([{ type: 'reload' }])}
+            style={{ width: 28, height: 28, background: 'none', border: 'none', color: '#fff', opacity: 0.8, cursor: 'pointer', fontSize: 16 }}
+          >
+            ↻
+          </button>
+        </div>
+
+        <div 
+          style={{
+            flex: 1,
+            background: '#1c1b22',
+            borderRadius: 20,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 12px',
+            height: 32,
+            border: '1px solid #000',
+          }}
+        >
+          <input
+            type="text"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                const url = normalizeUrl(address);
+                if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
+              }
+            }}
+            placeholder="Search or enter website name"
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              color: '#fff',
+              outline: 'none',
+              fontSize: 13,
+            }}
+          />
+        </div>
+        
+        <button
+          onClick={() => {
             const url = normalizeUrl(address);
             if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
-          }
-        }}
-        placeholder="https://example.com"
-        dir="auto"
-        style={{
+          }}
+          style={{
+             background: 'var(--accent-primary)',
+             color: '#fff',
+             border: 'none',
+             borderRadius: 6,
+             padding: '4px 12px',
+             fontSize: 13,
+             cursor: 'pointer',
+             height: 28,
+          }}
+        >
+          Go
+        </button>
+      </div>
+    </div>
+  );
           flex: '1 1 auto',
           height: 32,
           padding: '0 10px',
