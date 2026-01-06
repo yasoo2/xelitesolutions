@@ -810,7 +810,7 @@ function getOpenAIClient() {
   });
 }
 
-export async function runAgent(messages: { role: string; content: string }[]) {
+export async function generateSummary(messages: { role: string; content: string }[]) {
   if (!messages || messages.length === 0) return 'No content to summarize.';
   
   const msgs = [
