@@ -72,7 +72,7 @@ function BrowserApp({
       setSessionId(sid);
       if (sid && wsu) {
         onSession?.({ sessionId: sid, wsUrl: wsu });
-        window.dispatchEvent(new CustomEvent('joe:browser_opened', { detail: { sessionId: sid, wsUrl: wsu } }));
+        window.dispatchEvent(new CustomEvent('joe:browser_attached', { detail: { sessionId: sid, wsUrl: wsu } }));
       }
     } catch (e: any) {
       setWsUrl(null);
@@ -921,7 +921,11 @@ export default function Joe() {
                     <BrowserApp
                       minimal={false}
                       autoOpen={true}
-                      onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }}
+                      onSession={(s) => { 
+                 setAgentBrowserSessionId(s.sessionId);
+                 setActiveBrowserSession(s);
+                 setMode('agent');
+               }}
                       initialSession={activeBrowserSession}
                     />
                   </div>
@@ -988,7 +992,11 @@ export default function Joe() {
                minimal={false}
                autoOpen={false}
                headless={true}
-               onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }}
+               onSession={(s) => { 
+                 setAgentBrowserSessionId(s.sessionId);
+                 setActiveBrowserSession(s);
+                 setMode('agent');
+               }}
                initialSession={activeBrowserSession}
             />
           </div>
