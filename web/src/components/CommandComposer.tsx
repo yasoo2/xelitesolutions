@@ -1520,26 +1520,26 @@ export default function CommandComposer({
         effectiveBrowserSessionId = opened.sessionId;
       }
 
-      const pickFirstKeyedProvider = () => {
+      const pickFirstValidProvider = () => {
         for (const [k, p] of Object.entries(providers)) {
-          if (String(p?.apiKey || '').trim()) return k;
+          if (String(p?.apiKey || '').trim() && p?.isConnected) return k;
         }
         return 'openai';
       };
 
       let providerToSend = activeProvider;
       let providerCfgToSend = providers[providerToSend];
-      if (!String(providerCfgToSend?.apiKey || '').trim()) {
-        const keyed = pickFirstKeyedProvider();
-        providerToSend = keyed;
-        providerCfgToSend = providers[keyed];
+      if (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected) {
+        const valid = pickFirstValidProvider();
+        providerToSend = valid;
+        providerCfgToSend = providers[valid];
       }
 
-      if (!String(providerCfgToSend?.apiKey || '').trim()) {
+      if (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected) {
         setShowProviders(true);
         setEvents((prev) => [
           ...prev,
-          { type: 'text', data: '⚠️ يلزم إدخال API Key في إعدادات المزودين قبل التشغيل.', ts: Date.now() },
+          { type: 'text', data: '⚠️ يلزم توصيل المزود (Connect) في الإعدادات قبل التشغيل.', ts: Date.now() },
         ]);
         clearToolTimers();
         clearDraftTimer();
@@ -1725,7 +1725,7 @@ export default function CommandComposer({
     
     setProviders(prev => ({ 
         ...prev, 
-        [key]: { ...prev[key], isConnected: false } 
+        [key]: { ...prev[key], isConnected: false, isVerifying: false } 
     }));
 
     try {
@@ -2576,7 +2576,11 @@ export default function CommandComposer({
                                 </button>
                                 
                                 <button 
-                                    onClick={() => handleDisconnect(activeProvider)}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleDisconnect(activeProvider);
+                                    }}
                                     disabled={!providers[activeProvider].isConnected}
                                     title="Disconnect Provider"
                                     style={{ 
