@@ -21,3 +21,18 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'Invalid token' });
   }
 }
+
+export function authenticateOptional(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return next();
+  }
+  const token = header.slice('Bearer '.length);
+  try {
+    const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+    (req as any).auth = payload;
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}

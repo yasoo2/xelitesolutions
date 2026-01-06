@@ -14,10 +14,13 @@ if (apiKey) {
 let dynamicApiKey: string | null = null;
 
 export function setDynamicOpenAIKey(key: string) {
-  if (key && key.trim()) {
-    dynamicApiKey = key.trim();
-    console.info('LLM: Dynamic OpenAI API Key set from client.');
+  const trimmed = typeof key === 'string' ? key.trim() : '';
+  if (!trimmed) {
+    dynamicApiKey = null;
+    return;
   }
+  dynamicApiKey = trimmed;
+  console.info('LLM: Dynamic OpenAI API Key set from client.');
 }
 
 export function getDynamicOpenAIKey(): string | null {
@@ -25,6 +28,7 @@ export function getDynamicOpenAIKey(): string | null {
 }
 
 const getActiveApiKey = () => dynamicApiKey || apiKey || 'dummy';
+const getActiveApiKeyStrict = () => dynamicApiKey || apiKey || '';
 
 const openai = new OpenAI({
   apiKey: getActiveApiKey(), 
@@ -177,7 +181,7 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
 export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
-    if (!String(process.env.OPENAI_API_KEY || '').trim()) {
+    if (!String(getActiveApiKeyStrict() || '').trim()) {
         throw new Error('NO_API_KEY_CONFIGURED');
     }
     const msgs = [
@@ -187,7 +191,7 @@ export async function callLLM(prompt: string, context: any[] = []): Promise<stri
     ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
     try {
-        const completion = await openai.chat.completions.create({
+        const completion = await getOpenAIClient().chat.completions.create({
             model: process.env.OPENAI_MODEL || 'gpt-4o',
             messages: msgs,
         });
@@ -825,7 +829,7 @@ export async function generateSummary(messages: { role: string; content: string 
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAIClient().chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
     });

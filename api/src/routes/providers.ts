@@ -1,4 +1,5 @@
-import express, { Router, Request, Response } from 'express';
+import { Router, Request, Response } from 'express';
+import OpenAI from 'openai';
 import { setDynamicOpenAIKey, getDynamicOpenAIKey } from '../llm';
 
 const router = Router();
@@ -49,11 +50,14 @@ router.post('/openai/key', (req: Request, res: Response) => {
  */
 router.get('/openai/status', (req: Request, res: Response) => {
   try {
-    const hasKey = getDynamicOpenAIKey() !== null;
+    const dynamicKey = String(getDynamicOpenAIKey() || '').trim();
+    const envKey = String(process.env.OPENAI_API_KEY || '').trim();
+    const hasKey = Boolean(dynamicKey || envKey);
     
     res.json({
       provider: 'openai',
       configured: hasKey,
+      source: dynamicKey ? 'dynamic' : (envKey ? 'env' : 'none'),
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -69,7 +73,7 @@ router.get('/openai/status', (req: Request, res: Response) => {
  * POST /providers/openai/test
  * Test OpenAI API connection
  */
-router.post('/providers/openai/test', async (req: Request, res: Response) => {
+router.post('/openai/test', async (req: Request, res: Response) => {
   try {
     const { apiKey } = req.body;
 
@@ -83,8 +87,6 @@ router.post('/providers/openai/test', async (req: Request, res: Response) => {
     // Set the key temporarily for testing
     setDynamicOpenAIKey(apiKey);
 
-    // Test the connection by making a simple request
-    const OpenAI = require('openai').default;
     const testClient = new OpenAI({
       apiKey: apiKey,
       timeout: 10000,

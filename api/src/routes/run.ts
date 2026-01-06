@@ -10,7 +10,7 @@ import { Artifact } from '../models/artifact';
 import { Approval } from '../models/approval';
 import { Run } from '../models/run';
 import { planNextStep, generateSessionTitle, getSystemPrompt } from '../llm';
-import { authenticate } from '../middleware/auth';
+import { authenticateOptional } from '../middleware/auth';
 import { Session } from '../models/session';
 import { Message } from '../models/message';
 import { FileModel } from '../models/file';
@@ -557,7 +557,7 @@ function redactToolInputForStorage(name: string, input: any) {
 }
 
 // Connection verification endpoint
-router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
+router.post('/verify', authenticateOptional as any, async (req: Request, res: Response) => {
   const { provider, apiKey, baseUrl, model } = req.body || {};
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   const providerKey = String(provider || '').trim().toLowerCase();
@@ -697,7 +697,7 @@ function extractWeatherCity(text: string) {
   return 'Istanbul';
 }
 
-router.post('/start', authenticate as any, async (req: Request, res: Response) => {
+router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
   let { text, sessionId, fileIds, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
