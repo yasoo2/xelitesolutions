@@ -1518,9 +1518,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                  plan = { name: 'grep_search', input: { pattern: m[4].trim(), path: '.' } } as any;
                  planName = 'grep_search';
              }
+        } else if (/(open|start|launch|افتح|شغل|ابدأ)\s*(the\s+)?(browser|متصفح|المتصفح)/i.test(userTextForOverrides)) {
+             // Explicit browser open request
+             plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
+             planName = 'browser_open';
         } else {
-             plan = { name: 'project_detect', input: { path: '.' } } as any;
-             planName = 'project_detect';
+             // Do not force project_detect blindly. If no heuristic matches, let the original plan (likely echo) proceed.
+             // This prevents infinite loops when the user asks a question that the LLM answered with text (echo).
+             // plan = { name: 'project_detect', input: { path: '.' } } as any;
+             // planName = 'project_detect';
         }
       }
     }
