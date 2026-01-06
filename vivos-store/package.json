@@ -1,0 +1,23 @@
+{
+  "name": "vivos-store",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "build": "npm install --include=dev && npm run build --workspaces",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run test -w apps/web && jest"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3",
+    "jest": "^30.2.0",
+    "@eslint/js": "^9.0.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "@typescript-eslint/parser": "^8.11.0",
+    "@typescript-eslint/eslint-plugin": "^8.11.0"
+  }
+}
