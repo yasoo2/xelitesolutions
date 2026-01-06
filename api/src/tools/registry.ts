@@ -1786,7 +1786,18 @@ export const tools: ToolDefinition[] = [
       let sharedBrowserPromise: Promise<any> | null = null;
       let sharedWorkerSessionId: string | null = null;
       let sharedWorkerSessionPromise: Promise<string> | null = null;
+      let browserIdleTimer: NodeJS.Timeout | null = null;
+
+      const resetIdleTimer = () => {
+        if (browserIdleTimer) clearTimeout(browserIdleTimer);
+        browserIdleTimer = setTimeout(() => {
+           console.log('💤 Closing idle shared browser...');
+           closeSharedBrowser();
+        }, 300000); // 5 minutes
+      };
+
       const getSharedBrowser = async () => {
+        resetIdleTimer();
         if (sharedBrowser) return sharedBrowser;
         if (!sharedBrowserPromise) {
           sharedBrowserPromise = (async () => {
@@ -2547,7 +2558,7 @@ export const tools: ToolDefinition[] = [
           return { ok: true as const, offer: (ext as any).offer };
         });
       } finally {
-        await closeSharedBrowser();
+        // await closeSharedBrowser(); // Keep browser alive for performance
       }
 
       const offers = settled.filter((x: any) => x && x.ok && x.offer).map((x: any) => x.offer);
