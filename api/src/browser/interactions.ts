@@ -1,0 +1,453 @@
+/**
+ * Advanced Browser Interactions
+ * =============================
+ * 
+ * نظام متقدم للتفاعلات الطبيعية والموشر الذكي
+ * يحاكي سلوك الإنسان الحقيقي
+ */
+
+import { EventEmitter } from 'events';
+
+/**
+ * بنية التفاعل
+ */
+export interface Interaction {
+  type: 'click' | 'hover' | 'scroll' | 'type' | 'select' | 'drag' | 'focus' | 'blur';
+  target: string;
+  value?: string;
+  duration?: number;
+  delay?: number;
+  timestamp: number;
+}
+
+/**
+ * بنية الحركة الطبيعية
+ */
+export interface NaturalMovement {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  duration: number;
+  curve: 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'bezier';
+  jitter: number; // درجة الارتجاج الطبيعية
+}
+
+/**
+ * نظام التفاعلات المتقدمة
+ */
+export class AdvancedInteractionSystem extends EventEmitter {
+  private interactions: Interaction[] = [];
+  private mouseVelocity: { x: number; y: number } = { x: 0, y: 0 };
+  private lastMousePosition: { x: number; y: number } = { x: 0, y: 0 };
+  private interactionDelay: number = 100; // تأخير طبيعي بين التفاعلات
+  private humanBehavior: boolean = true; // محاكاة السلوك البشري
+
+  constructor() {
+    super();
+  }
+
+  /**
+   * حركة موشر طبيعية مع منحنى بيزيه
+   */
+  async naturalMouseMove(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    duration: number = 500
+  ): Promise<void> {
+    this.emit('log', `🖱️ حركة موشر طبيعية من (${startX}, ${startY}) إلى (${endX}, ${endY})`);
+
+    const steps = Math.ceil(duration / 16); // 60 FPS
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+
+    for (let i = 0; i <= steps; i++) {
+      const progress = i / steps;
+      
+      // منحنى بيزيه للحركة الطبيعية
+      const easeProgress = this.easeInOutCubic(progress);
+      
+      // إضافة ارتجاج طبيعي
+      const jitter = this.humanBehavior ? (Math.random() - 0.5) * 2 : 0;
+      
+      const currentX = startX + deltaX * easeProgress + jitter;
+      const currentY = startY + deltaY * easeProgress + jitter;
+
+      // حساب السرعة
+      this.mouseVelocity = {
+        x: currentX - this.lastMousePosition.x,
+        y: currentY - this.lastMousePosition.y
+      };
+
+      this.lastMousePosition = { x: currentX, y: currentY };
+
+      this.emit('mouse-move', {
+        x: currentX,
+        y: currentY,
+        velocity: this.mouseVelocity,
+        progress: easeProgress
+      });
+
+      await this.sleep(16);
+    }
+
+    this.emit('log', `✅ اكتملت الحركة الطبيعية`);
+  }
+
+  /**
+   * نقر طبيعي مع تأخير
+   */
+  async naturalClick(
+    selector: string,
+    x: number,
+    y: number,
+    options: {
+      delay?: number;
+      doubleClick?: boolean;
+      rightClick?: boolean;
+    } = {}
+  ): Promise<void> {
+    const { delay = 100, doubleClick = false, rightClick = false } = options;
+
+    this.emit('log', `🖱️ نقر طبيعي على ${selector}`);
+
+    // تحريك الموشر إلى الهدف
+    await this.naturalMouseMove(
+      this.lastMousePosition.x,
+      this.lastMousePosition.y,
+      x,
+      y,
+      300
+    );
+
+    // تأخير طبيعي قبل النقر
+    await this.sleep(delay);
+
+    // محاكاة النقر
+    this.emit('click', {
+      selector,
+      x,
+      y,
+      button: rightClick ? 'right' : 'left',
+      doubleClick
+    });
+
+    if (doubleClick) {
+      await this.sleep(100);
+      this.emit('click', {
+        selector,
+        x,
+        y,
+        button: rightClick ? 'right' : 'left',
+        doubleClick: true
+      });
+    }
+
+    this.interactions.push({
+      type: 'click',
+      target: selector,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ اكتمل النقر الطبيعي`);
+  }
+
+  /**
+   * كتابة نصية طبيعية مع تأخيرات عشوائية
+   */
+  async naturalType(
+    selector: string,
+    text: string,
+    options: {
+      minDelay?: number;
+      maxDelay?: number;
+      typos?: number; // نسبة الأخطاء الطباعية
+    } = {}
+  ): Promise<void> {
+    const { minDelay = 30, maxDelay = 150, typos = 0 } = options;
+
+    this.emit('log', `⌨️ كتابة طبيعية: "${text}"`);
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      
+      // محاكاة أخطاء طباعية عشوائية
+      if (typos > 0 && Math.random() < typos) {
+        const wrongChar = String.fromCharCode(char.charCodeAt(0) + 1);
+        this.emit('type', {
+          selector,
+          character: wrongChar,
+          isTypo: true
+        });
+        await this.sleep(this.randomDelay(minDelay, maxDelay));
+        
+        // محاكاة التصحيح
+        this.emit('backspace', { selector });
+        await this.sleep(100);
+      }
+
+      this.emit('type', {
+        selector,
+        character: char,
+        progress: ((i + 1) / text.length) * 100
+      });
+
+      // تأخير عشوائي طبيعي
+      const delay = this.randomDelay(minDelay, maxDelay);
+      await this.sleep(delay);
+    }
+
+    this.interactions.push({
+      type: 'type',
+      target: selector,
+      value: text,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ اكتملت الكتابة الطبيعية`);
+  }
+
+  /**
+   * التمرير الطبيعي
+   */
+  async naturalScroll(
+    direction: 'up' | 'down',
+    amount: number = 300,
+    duration: number = 500
+  ): Promise<void> {
+    this.emit('log', `📜 تمرير طبيعي ${direction === 'down' ? 'لأسفل' : 'لأعلى'}`);
+
+    const steps = Math.ceil(duration / 16);
+    const deltaScroll = direction === 'down' ? amount : -amount;
+
+    for (let i = 0; i <= steps; i++) {
+      const progress = i / steps;
+      const easeProgress = this.easeInOutCubic(progress);
+      const currentScroll = deltaScroll * easeProgress;
+
+      this.emit('scroll', {
+        direction,
+        amount: Math.abs(currentScroll),
+        progress: easeProgress
+      });
+
+      await this.sleep(16);
+    }
+
+    this.interactions.push({
+      type: 'scroll',
+      target: 'window',
+      value: direction,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ اكتمل التمرير الطبيعي`);
+  }
+
+  /**
+   * التحويم على عنصر
+   */
+  async hover(
+    selector: string,
+    x: number,
+    y: number,
+    duration: number = 500
+  ): Promise<void> {
+    this.emit('log', `🎯 التحويم على ${selector}`);
+
+    // تحريك الموشر إلى العنصر
+    await this.naturalMouseMove(
+      this.lastMousePosition.x,
+      this.lastMousePosition.y,
+      x,
+      y,
+      300
+    );
+
+    // البقاء على العنصر
+    await this.sleep(duration);
+
+    this.emit('hover', { selector, x, y });
+
+    this.interactions.push({
+      type: 'hover',
+      target: selector,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ اكتمل التحويم`);
+  }
+
+  /**
+   * السحب والإفلات
+   */
+  async dragAndDrop(
+    sourceSelector: string,
+    targetSelector: string,
+    sourceX: number,
+    sourceY: number,
+    targetX: number,
+    targetY: number
+  ): Promise<void> {
+    this.emit('log', `🔄 سحب من ${sourceSelector} إلى ${targetSelector}`);
+
+    // تحريك إلى المصدر
+    await this.naturalMouseMove(
+      this.lastMousePosition.x,
+      this.lastMousePosition.y,
+      sourceX,
+      sourceY,
+      300
+    );
+
+    // محاكاة الضغط
+    this.emit('mouse-down', { selector: sourceSelector });
+    await this.sleep(100);
+
+    // السحب إلى الهدف
+    await this.naturalMouseMove(sourceX, sourceY, targetX, targetY, 500);
+
+    // محاكاة الإفلات
+    this.emit('mouse-up', { selector: targetSelector });
+
+    this.interactions.push({
+      type: 'drag',
+      target: sourceSelector,
+      value: targetSelector,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ اكتمل السحب والإفلات`);
+  }
+
+  /**
+   * التركيز على عنصر
+   */
+  async focus(selector: string): Promise<void> {
+    this.emit('log', `🎯 التركيز على ${selector}`);
+
+    this.emit('focus', { selector });
+
+    this.interactions.push({
+      type: 'focus',
+      target: selector,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ تم التركيز`);
+  }
+
+  /**
+   * إزالة التركيز
+   */
+  async blur(selector: string): Promise<void> {
+    this.emit('log', `❌ إزالة التركيز من ${selector}`);
+
+    this.emit('blur', { selector });
+
+    this.interactions.push({
+      type: 'blur',
+      target: selector,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ تم إزالة التركيز`);
+  }
+
+  /**
+   * اختيار من قائمة منسدلة
+   */
+  async selectOption(
+    selector: string,
+    optionValue: string,
+    x: number,
+    y: number
+  ): Promise<void> {
+    this.emit('log', `📋 اختيار من القائمة: ${optionValue}`);
+
+    // النقر على القائمة
+    await this.naturalClick(selector, x, y);
+    await this.sleep(300);
+
+    // اختيار الخيار
+    this.emit('select', { selector, value: optionValue });
+
+    this.interactions.push({
+      type: 'select',
+      target: selector,
+      value: optionValue,
+      timestamp: Date.now()
+    });
+
+    this.emit('log', `✅ تم الاختيار`);
+  }
+
+  /**
+   * منحنى بيزيه للحركة الطبيعية
+   */
+  private easeInOutCubic(t: number): number {
+    return t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  /**
+   * تأخير عشوائي طبيعي
+   */
+  private randomDelay(min: number, max: number): number {
+    return Math.random() * (max - min) + min;
+  }
+
+  /**
+   * الانتظار
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * الحصول على سجل التفاعلات
+   */
+  getInteractionHistory(): Interaction[] {
+    return [...this.interactions];
+  }
+
+  /**
+   * مسح السجل
+   */
+  clearHistory(): void {
+    this.interactions = [];
+  }
+
+  /**
+   * تعيين تأخير التفاعل
+   */
+  setInteractionDelay(delay: number): void {
+    this.interactionDelay = delay;
+  }
+
+  /**
+   * تفعيل/تعطيل محاكاة السلوك البشري
+   */
+  setHumanBehavior(enabled: boolean): void {
+    this.humanBehavior = enabled;
+  }
+
+  /**
+   * الحصول على معلومات الموشر
+   */
+  getMouseInfo(): any {
+    return {
+      position: this.lastMousePosition,
+      velocity: this.mouseVelocity,
+      totalInteractions: this.interactions.length
+    };
+  }
+}
+
+/**
+ * نسخة مفردة من نظام التفاعلات
+ */
+export const advancedInteractions = new AdvancedInteractionSystem();
