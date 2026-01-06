@@ -981,43 +981,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       </div>
     </div>
   );
-          flex: '1 1 auto',
-          height: 32,
-          padding: '0 10px',
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: 'rgba(0,0,0,0.55)',
-          color: 'var(--text-primary)',
-          outline: 'none',
-          minWidth: 140,
-          backdropFilter: 'blur(8px)',
-        }}
-      />
-      <button
-        onClick={() => {
-          const url = normalizeUrl(address);
-          if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
-        }}
-        style={{
-          height: 32,
-          padding: '0 12px',
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: 'rgba(37, 99, 235, 0.18)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          flex: '0 0 auto',
-        }}
-      >
-        فتح
-      </button>
-      {wsError ? (
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 420 }} dir="auto">
-          {wsError}
-        </div>
-      ) : null}
-    </div>
-  );
 
   return (
     <div
@@ -1026,7 +989,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: minimal ? 0 : 8,
+        gap: 0,
         position: focusMode ? 'fixed' : 'relative',
         inset: focusMode ? 12 : undefined,
         zIndex: focusMode ? 9999 : undefined,
@@ -1035,14 +998,12 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         borderRadius: focusMode ? 16 : undefined,
         border: focusMode ? '1px solid var(--border-color)' : undefined,
         boxShadow: focusMode ? '0 12px 50px rgba(0,0,0,0.6)' : undefined,
-        height: minimal ? '100%' : undefined,
+        height: '100%',
       }}
     >
-      {minimal ? (
-        CompactHeader
-      ) : null}
+      {CompactHeader}
 
-      {!minimal ? (
+      {false ? (
       <div
         className="agent-browser-header glass-panel"
         style={{
@@ -1241,7 +1202,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       </div>
       ) : null}
 
-      {TabsStrip}
+
 
       <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: minimal ? 0 : 16, overflow: 'hidden', position: 'relative', background: '#000', boxShadow: minimal ? 'none' : undefined, flex: minimal ? 1 : undefined }}>
         <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
