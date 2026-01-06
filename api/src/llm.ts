@@ -3,15 +3,31 @@ import { tools } from './tools/registry';
 import path from 'path';
 
 // Initialize OpenAI client
-const apiKey = process.env.OPENAI_API_KEY;
+let apiKey = process.env.OPENAI_API_KEY;
 if (apiKey) {
-  console.info('LLM: OpenAI API Key configured.');
+  console.info('LLM: OpenAI API Key configured from environment.');
 } else {
-  console.warn('LLM: No OpenAI API Key found in environment variables. LLM features will be disabled.');
+  console.warn('LLM: No OpenAI API Key found in environment variables.');
 }
 
+// Support for dynamic API key from requests
+let dynamicApiKey: string | null = null;
+
+export function setDynamicOpenAIKey(key: string) {
+  if (key && key.trim()) {
+    dynamicApiKey = key.trim();
+    console.info('LLM: Dynamic OpenAI API Key set from client.');
+  }
+}
+
+export function getDynamicOpenAIKey(): string | null {
+  return dynamicApiKey;
+}
+
+const getActiveApiKey = () => dynamicApiKey || apiKey || 'dummy';
+
 const openai = new OpenAI({
-  apiKey: apiKey || 'dummy', 
+  apiKey: getActiveApiKey(), 
   baseURL: process.env.OPENAI_BASE_URL,
 });
 
@@ -785,9 +801,16 @@ export async function generateSessionTitle(messages: { role: string; content: st
     console.error('Title generation failed', e);
     return 'New Session';
   }
+}// Update OpenAI client when API key changes
+function getOpenAIClient() {
+  const activeKey = getActiveApiKey();
+  return new OpenAI({
+    apiKey: activeKey,
+    baseURL: process.env.OPENAI_BASE_URL,
+  });
 }
 
-export async function generateSummary(messages: { role: string; content: string }[]) {
+export async function runAgent(eSummary(messages: { role: string; content: string }[]) {
   if (!messages || messages.length === 0) return 'No content to summarize.';
   
   const msgs = [

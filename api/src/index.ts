@@ -20,6 +20,7 @@ import memoryRoutes from './routes/memory';
 import knowledgeRoutes from './routes/knowledge';
 import systemRoutes from './routes/system';
 import instaRoutes from './routes/insta';
+import providersRoutes from './routes/providers';
 
 import { authenticate } from './middleware/auth';
 import http from 'http';
@@ -103,6 +104,7 @@ async function main() {
 
   app.use('/system', systemRoutes);
   app.use('/insta', instaRoutes);
+  app.use('/providers', providersRoutes);
   
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
