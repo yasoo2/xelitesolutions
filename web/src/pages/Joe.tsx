@@ -258,8 +258,6 @@ export default function Joe() {
   const [composerHeight, setComposerHeight] = useState(0);
   const [livePanelExpanded, setLivePanelExpanded] = useState(false);
   const [livePanelAutoOpened, setLivePanelAutoOpened] = useState(false);
-  const showLivePanelRef = useRef(showLivePanel);
-  useEffect(() => { showLivePanelRef.current = showLivePanel; }, [showLivePanel]);
   
   // ===== نظام عرض سلسلة التفكير والحوار الداخلي =====
   const [thinkingChain, setThinkingChain] = useState<Array<{
@@ -346,16 +344,12 @@ export default function Joe() {
     setComposerHeight(el?.offsetHeight || 0);
   }, [mode, showSidebar, agentComposerOpen, showFiles, selected]);
 
-  useEffect(() => {}, [showLivePanel, isNarrow, livePanelExpanded, composerHeight]);
+  useEffect(() => {}, [isNarrow, livePanelExpanded, composerHeight]);
 
   useEffect(() => {
     const release = SocketService.subscribe((event: any) => {
       const type = String(event?.type || '');
       if (type === 'text') {
-        if (!showLivePanelRef.current) {
-          setShowLivePanel(true);
-          setLivePanelAutoOpened(true);
-        }
         const txt = String(event?.data || '');
         if (!/^system_prompt:/.test(String(event?.id || ''))) {
           setLiveMessages(prev => [...prev, { role: 'assistant', content: txt }]);
@@ -394,20 +388,6 @@ export default function Joe() {
     });
     return () => { release(); };
   }, []);
-
-  useEffect(() => {
-    if (liveStatus === 'running' || liveStatus === 'paused' || liveStatus === 'error') {
-      if (!showLivePanel) {
-        setShowLivePanel(true);
-        setLivePanelAutoOpened(true);
-      }
-    } else if (liveStatus === 'idle') {
-      if (livePanelAutoOpened && showLivePanel && !livePanelExpanded) {
-        setShowLivePanel(false);
-      }
-      setLivePanelAutoOpened(false);
-    }
-  }, [liveStatus]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
