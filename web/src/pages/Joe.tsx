@@ -1055,6 +1055,7 @@ export default function Joe() {
                     >
                       {agentComposerOpen ? 'إخفاء' : 'إظهار'}
                     </button>
+                  ) : null}
                 </div>
               </div>
               {(!isNarrow || agentComposerOpen) ? (
