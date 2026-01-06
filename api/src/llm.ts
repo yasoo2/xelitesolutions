@@ -485,7 +485,7 @@ export async function planNextStep(
       if (wantsLs) return { name: 'ls', input: { path: '.' } };
       const wantsOpen =
         /\bopen\b/i.test(rawText) ||
-        /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع/i.test(rawText);
+        /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع|واجهة الوكيل/i.test(rawText);
 
       const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes('youtube.com');
       const wantsSearch =
@@ -558,7 +558,10 @@ export async function planNextStep(
         if (!url) {
           if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
         }
-        if (!hasOpened) {
+        
+        // Always allow re-opening if explicitly requested for "agent interface"
+        const explicitAgentInterface = /واجهة الوكيل/i.test(rawText);
+        if (!hasOpened || explicitAgentInterface) {
           return {
             name: 'browser_open',
             input: { url: url || 'https://www.google.com' },
