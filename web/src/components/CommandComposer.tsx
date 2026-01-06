@@ -1112,85 +1112,97 @@ export default function CommandComposer({
 
             const delay = hadTool ? 220 : 0;
             window.setTimeout(() => {
-              let content: any = msg.data;
               try {
-                if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                  const p = JSON.parse(content);
-                  content = p.text || p.output || content;
+                let content: any = msg.data;
+                try {
+                  if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                    const p = JSON.parse(content);
+                    content = p.text || p.output || content;
+                  }
+                } catch {}
+
+                const cleaned = cleanAssistantText(content);
+                const finalText = String(cleaned || content || '').trimEnd();
+
+                if (!finalText) {
+                  setEvents((prev) => {
+                    if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                    return [...prev, msg];
+                  });
+                  setIsThinking(false);
+                  setStatus('idle');
+                  setThinkingGlimpse('');
+                  stopDraft();
+                  return;
                 }
-              } catch {}
 
-              const cleaned = cleanAssistantText(content);
-              const finalText = String(cleaned || content || '').trimEnd();
+                setDraftActive(true);
+                setDraftText('');
 
-              if (!finalText) {
-                setEvents((prev) => {
-                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                  return [...prev, msg];
-                });
+                // Smooth Streaming Logic (Enhanced)
+                const chars = finalText.split('');
+                const totalChars = chars.length;
+                
+                // Dynamic speed based on length: faster for longer text
+                // Base speed: 10ms per char (~6000 chars/min) -> Very fast
+                // Long text (>500 chars) -> Speed up
+                let intervalMs = 12; 
+                if (totalChars > 200) intervalMs = 8;
+                if (totalChars > 500) intervalMs = 5;
+                
+                // Add some randomness to mimic human-like bursts? No, users prefer consistent fast stream.
+                // But we can process multiple chars per tick if it's really long.
+                let charsPerTick = 1;
+                if (totalChars > 800) charsPerTick = 2;
+                if (totalChars > 1500) charsPerTick = 4;
+
+                let idx = 0;
+
+                draftTimerRef.current = window.setInterval(() => {
+                  const nextBatch = Math.min(totalChars - idx, charsPerTick);
+                  idx += nextBatch;
+                  
+                  const currentStr = finalText.substring(0, idx);
+                  setDraftText(currentStr);
+                  
+                  // Auto-scroll logic could be triggered here if needed, but the effect handles it via deps
+
+                  if (idx >= totalChars) {
+                    clearDraftTimer();
+                    // Keep the draft visible for a moment to let the user finish reading the last bit? 
+                    // No, swap to final message immediately but smoothly.
+                    
+                    // Small delay before finalizing to ensure render catches up
+                    setTimeout(() => {
+                      setDraftActive(false);
+                      setDraftText('');
+                      setEvents((prev) => {
+                        if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                        return [...prev, msg];
+                      });
+                      try {
+                        speak(finalText);
+                      } catch {}
+                      
+                      window.setTimeout(() => {
+                        setIsThinking(false);
+                        setStatus('idle');
+                        setThinkingGlimpse('');
+                      }, 100);
+                    }, 50);
+                  }
+                }, intervalMs);
+              } catch (e) {
+                console.error('Error in text streaming:', e);
                 setIsThinking(false);
                 setStatus('idle');
                 setThinkingGlimpse('');
                 stopDraft();
-                return;
+                setEvents((prev) => {
+                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                  return [...prev, msg];
+                });
               }
-
-              setDraftActive(true);
-              setDraftText('');
-
-              // Smooth Streaming Logic (Enhanced)
-              const chars = finalText.split('');
-              const totalChars = chars.length;
-              
-              // Dynamic speed based on length: faster for longer text
-              // Base speed: 10ms per char (~6000 chars/min) -> Very fast
-              // Long text (>500 chars) -> Speed up
-              let intervalMs = 12; 
-              if (totalChars > 200) intervalMs = 8;
-              if (totalChars > 500) intervalMs = 5;
-              
-              // Add some randomness to mimic human-like bursts? No, users prefer consistent fast stream.
-              // But we can process multiple chars per tick if it's really long.
-              let charsPerTick = 1;
-              if (totalChars > 800) charsPerTick = 2;
-              if (totalChars > 1500) charsPerTick = 4;
-
-              let idx = 0;
-
-              draftTimerRef.current = window.setInterval(() => {
-                const nextBatch = Math.min(totalChars - idx, charsPerTick);
-                idx += nextBatch;
-                
-                const currentStr = finalText.substring(0, idx);
-                setDraftText(currentStr);
-                
-                // Auto-scroll logic could be triggered here if needed, but the effect handles it via deps
-
-                if (idx >= totalChars) {
-                  clearDraftTimer();
-                  // Keep the draft visible for a moment to let the user finish reading the last bit? 
-                  // No, swap to final message immediately but smoothly.
-                  
-                  // Small delay before finalizing to ensure render catches up
-                  setTimeout(() => {
-                    setDraftActive(false);
-                    setDraftText('');
-                    setEvents((prev) => {
-                      if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                      return [...prev, msg];
-                    });
-                    try {
-                      speak(finalText);
-                    } catch {}
-                    
-                    window.setTimeout(() => {
-                      setIsThinking(false);
-                      setStatus('idle');
-                      setThinkingGlimpse('');
-                    }, 100);
-                  }, 50);
-                }
-              }, intervalMs);
             }, delay);
             return;
           }
@@ -1224,6 +1236,17 @@ export default function CommandComposer({
           if (wsRef.current !== ws) return;
           setIsConnected(false);
 
+          // Reset thinking state on disconnect to avoid stuck UI
+          if (isThinkingRef.current || statusRef.current !== 'idle') {
+             setStatus('idle');
+             setIsThinking(false);
+             setActiveToolName(null);
+             setToolVisible(false);
+             setThinkingGlimpse('');
+             clearToolTimers();
+             clearDraftTimer();
+          }
+
           const triedFallback = (ws as any)?.__triedFallback === true;
           if (allowFallback && !triedFallback && primaryUrl !== fallbackUrl) {
             try {
@@ -1241,6 +1264,16 @@ export default function CommandComposer({
         ws.onerror = () => {
           if (wsRef.current !== ws) return;
           setIsConnected(false);
+          
+          if (isThinkingRef.current || statusRef.current !== 'idle') {
+             setStatus('idle');
+             setIsThinking(false);
+             setActiveToolName(null);
+             setToolVisible(false);
+             setThinkingGlimpse('');
+             clearToolTimers();
+             clearDraftTimer();
+          }
         };
       };
 
