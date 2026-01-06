@@ -162,7 +162,9 @@ export default function Joe() {
   const [showEmbeddedPreview, setShowEmbeddedPreview] = useState(true);
   const [previewUrl, setPreviewUrl] = useState('http://localhost:5173/');
   const didDetectPreviewRef = useRef(false);
-  const [autoDetectPreview, setAutoDetectPreview] = useState(true);
+  // Only enable auto-detect in development (localhost)
+  const isProduction = !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1');
+  const [autoDetectPreview, setAutoDetectPreview] = useState(!isProduction);
   async function pingUrl(u: string): Promise<boolean> {
     try {
       const head = new URL(u);
@@ -175,6 +177,9 @@ export default function Joe() {
     }
   }
   useEffect(() => {
+    // Skip auto-detection in production
+    if (isProduction) return;
+    
     async function detect() {
       if (didDetectPreviewRef.current) return;
       didDetectPreviewRef.current = true;
@@ -199,9 +204,11 @@ export default function Joe() {
       }
     }
     detect();
-  }, []);
+  }, [isProduction]);
   useEffect(() => {
-    if (!autoDetectPreview) return;
+    // Skip auto-detection in production
+    if (isProduction || !autoDetectPreview) return;
+    
     let alive = true;
     const bases = [
       'http://localhost:5173/',
@@ -230,7 +237,7 @@ export default function Joe() {
       alive = false;
       clearInterval(id);
     };
-  }, [autoDetectPreview, previewUrl]);
+  }, [autoDetectPreview, previewUrl, isProduction]);
 
   const [showSidebar, setShowSidebar] = useState(true);
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
@@ -959,7 +966,7 @@ export default function Joe() {
                     type="text"
                     value={previewUrl}
                     onChange={(e) => setPreviewUrl(e.target.value)}
-                    placeholder="http://localhost:5173/"
+                    placeholder="https://example.com/"
                     dir="auto"
                     style={{
                       height: 30,
