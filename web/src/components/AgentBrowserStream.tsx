@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { API_URL as API } from '../config';
 
 export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; minimal?: boolean }) {
