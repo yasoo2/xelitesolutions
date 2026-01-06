@@ -6,7 +6,7 @@
  * مع تصاميم احترافية وانيميشنات سلسة
  */
 
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertCircle,
   CheckCircle,
@@ -188,7 +188,7 @@ export const ImprovedButton: React.FC<ButtonProps> = ({
       whileTap={{ scale: 0.95 }}
       disabled={disabled || isLoading}
       className={`${variants[variant]} ${sizes_map[size]} rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg`}
-      {...props}
+      {...(props as any)}
     >
       {isLoading ? (
         <Loader className="w-4 h-4 animate-spin" />
@@ -447,4 +447,4 @@ export const ImprovedTooltip: React.FC<TooltipProps> = ({
 // Helper for AnimatePresence
 // ============================================
 
-const AnimatePresence = motion.AnimatePresence;
+// AnimatePresence is imported from framer-motion
