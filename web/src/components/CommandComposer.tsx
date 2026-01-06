@@ -1095,9 +1095,12 @@ export default function CommandComposer({
                       try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
                     })()
                   : '';
-            const sig = `${rid}:${rawSigPart}`;
+            
+            // Strict deduplication: Ignore runId, focus on content. 
+            // If the exact same text arrives within 10 seconds, ignore it.
+            const sig = rawSigPart.trim();
             const now = Date.now();
-            if (lastTextDedupRef.current && lastTextDedupRef.current.sig === sig && now - lastTextDedupRef.current.ts < 4000) return;
+            if (lastTextDedupRef.current && lastTextDedupRef.current.sig === sig && now - lastTextDedupRef.current.ts < 10000) return;
             lastTextDedupRef.current = { sig, ts: now };
 
             const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
@@ -1127,6 +1130,9 @@ export default function CommandComposer({
                 if (!finalText) {
                   setEvents((prev) => {
                     if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                    // Double check against last message content
+                    const last = prev[prev.length - 1];
+                    if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
                     return [...prev, msg];
                   });
                   setIsThinking(false);
@@ -1178,6 +1184,9 @@ export default function CommandComposer({
                       setDraftText('');
                       setEvents((prev) => {
                         if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                        // Double check against last message content
+                        const last = prev[prev.length - 1];
+                        if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
                         return [...prev, msg];
                       });
                       try {
@@ -1200,6 +1209,9 @@ export default function CommandComposer({
                 stopDraft();
                 setEvents((prev) => {
                   if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                  // Double check against last message content
+                  const last = prev[prev.length - 1];
+                  if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
                   return [...prev, msg];
                 });
               }
