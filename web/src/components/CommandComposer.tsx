@@ -929,7 +929,17 @@ export default function CommandComposer({
             const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
             if (rid && name.startsWith('execute:')) {
               const tool = name.slice('execute:'.length).trim();
-              if (msg.type === 'step_started') setTaskStatusByExecuteEvent(rid, tool, 'start', msg?.data?.input);
+              if (msg.type === 'step_started') {
+                setTaskStatusByExecuteEvent(rid, tool, 'start', msg?.data?.input);
+                if (tool.startsWith('browser_') && msg.data?.input?.sessionId) {
+                   const sid = String(msg.data.input.sessionId);
+                   if (sid) {
+                      window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
+                        detail: { sessionId: sid, wsUrl: `/browser/ws/${sid}` } 
+                      }));
+                   }
+                }
+              }
               else if (msg.type === 'step_done') setTaskStatusByExecuteEvent(rid, tool, 'done');
               else setTaskStatusByExecuteEvent(rid, tool, 'failed');
             }
