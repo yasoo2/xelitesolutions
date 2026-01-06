@@ -1280,21 +1280,47 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
       planName = 'http_fetch';
     }
+
+    if (!wantsLocationEarly) {
+      const s = userTextForOverrides;
+      const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
+      const openKeyword = /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ)/i.test(s);
+      const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
+      const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
+      const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(s);
+      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+
+      let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword);
+      if (openKeyword && githubKeyword && analysisKeyword) wantsBrowser = false;
+      if (openKeyword && isFileOp) wantsBrowser = false;
+
+      if (wantsBrowser && !/^browser_/.test(planName)) {
+        const urlMatch = s.match(/https?:\/\/[^\s"'<>]+/i);
+        const directUrl = urlMatch?.[0];
+        const wantsYahoo = /(yahoo|ياهو)/i.test(s);
+        const wantsYoutube = /youtube|يوتيوب/i.test(s);
+        const wantsGoogle = /google|جوجل/i.test(s);
+        const desiredUrl =
+          (directUrl || '').trim() ||
+          (wantsYahoo ? 'https://www.yahoo.com' : wantsYoutube ? 'https://www.youtube.com' : githubKeyword ? 'https://github.com' : wantsGoogle ? 'https://www.google.com' : 'https://www.google.com');
+        plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
+        planName = 'browser_open';
+      }
+    }
     
     // Safety: Prevent immediate repeats of same tool execution
     if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch'].includes(planName)) {
         const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
-        if (lastExecutedToolSig === sig) {
-            if (planName === 'project_detect') {
-                plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-                planName = 'analyze_codebase';
-            } else {
-                plan = {
-                    name: 'echo',
-                    input: { text: `(System) Skipped repeated step: ${planName}. Moving to next step.` }
-                } as any;
-                planName = 'echo';
-            }
+        if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
+            plan = {
+                name: 'echo',
+                input: {
+                  text: isArabicText(userTextForOverrides)
+                    ? 'تم تكرار نفس الخطوة بدون تقدم. حدّد المطلوب التالي (مثال: افتح https://www.yahoo.com).'
+                    : 'The same step repeated without progress. Tell me the next action (e.g. open https://www.yahoo.com).',
+                }
+            } as any;
+            planName = 'echo';
         } else {
             executedToolSigs.add(sig);
         }

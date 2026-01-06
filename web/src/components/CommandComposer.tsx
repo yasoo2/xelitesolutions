@@ -1540,14 +1540,17 @@ export default function CommandComposer({
           const wsUrl = typeof detail?.wsUrl === 'string' ? detail.wsUrl : undefined;
           if (!sessionId) return;
           window.removeEventListener('joe:browser_opened', onOpened as any);
+          window.removeEventListener('joe:browser_attached', onOpened as any);
           resolve({ sessionId, wsUrl });
         };
 
         window.addEventListener('joe:browser_opened', onOpened as any);
+        window.addEventListener('joe:browser_attached', onOpened as any);
         window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url } }));
 
         window.setTimeout(() => {
           window.removeEventListener('joe:browser_opened', onOpened as any);
+          window.removeEventListener('joe:browser_attached', onOpened as any);
           reject(new Error('browser_open_timeout'));
         }, timeoutMs);
       });
