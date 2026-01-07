@@ -252,7 +252,7 @@ export default function CommandComposer({
   onMessagesUpdate?: (msgs: any[]) => void;
 }) {
   const { t } = useTranslation();
-  const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
+  const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -1643,24 +1643,6 @@ export default function CommandComposer({
         const valid = pickFirstValidProvider();
         providerToSend = valid;
         providerCfgToSend = providers[valid];
-      }
-
-      if (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected) {
-        setShowProviders(true);
-        setEvents((prev) => [
-          ...prev,
-          { type: 'text', data: '⚠️ يلزم توصيل المزود (Connect) في الإعدادات قبل التشغيل.', ts: Date.now() },
-        ]);
-        clearToolTimers();
-        clearDraftTimer();
-        setDraftActive(false);
-        setDraftText('');
-        setStatus('idle');
-        setIsThinking(false);
-        setActiveToolName(null);
-        setToolVisible(false);
-        setThinkingGlimpse('');
-        return;
       }
 
       const res = await fetch(`${API}/runs/start`, {
