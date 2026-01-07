@@ -5,6 +5,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const fallbackTimerRef = useRef<number | null>(null);
+  const fallbackActiveRef = useRef(false);
   const effectiveWsUrl = useMemo(() => {
     let abs = String(wsUrl || '').trim();
     if (!abs) return abs;
@@ -36,6 +38,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const sizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 800 });
   const [status, setStatus] = useState('connecting');
   const [wsError, setWsError] = useState<string>('');
+  const [fallbackActive, setFallbackActive] = useState(false);
+  const [fallbackError, setFallbackError] = useState('');
   const [framesSeen, setFramesSeen] = useState<number>(0);
   const [lastFrameAt, setLastFrameAt] = useState<number>(0);
   const [noFramesHint, setNoFramesHint] = useState<string>('');
@@ -615,6 +619,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     return () => {
       disposed = true;
       clearTimers();
+      if (fallbackTimerRef.current != null) {
+        window.clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
+      fallbackActiveRef.current = false;
+      setFallbackActive(false);
+      setFallbackError('');
       if (cursorRafRef.current != null) cancelAnimationFrame(cursorRafRef.current);
       cursorRafRef.current = null;
       pendingCursorRef.current = null;
@@ -624,6 +635,87 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       wsRef.current = null;
     };
   }, [wsUrl, reconnectNonce]);
+
+  useEffect(() => {
+    const sessionId = getSessionId();
+    if (!sessionId) return;
+    if (framesSeen > 0) {
+      if (fallbackTimerRef.current != null) {
+        window.clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
+      fallbackActiveRef.current = false;
+      setFallbackActive(false);
+      setFallbackError('');
+      return;
+    }
+
+    const shouldTryFallback = status === 'error' || (status === 'connected' && framesSeen === 0);
+    if (!shouldTryFallback) return;
+    if (fallbackActiveRef.current) return;
+
+    const token = localStorage.getItem('token') || '';
+    let stopped = false;
+
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const res = await fetch(`${API}/sessions/${encodeURIComponent(sessionId)}/browser/snapshot`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          } as any,
+          body: JSON.stringify({}),
+        });
+
+        if (res.status === 401) {
+          localStorage.removeItem('token');
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          setFallbackError('غير مصرح');
+          return;
+        }
+
+        if (!res.ok) {
+          const t = await res.text().catch(() => '');
+          setFallbackError(t ? `Snapshot error: ${t.slice(0, 140)}` : 'Snapshot error');
+        } else {
+          const j: any = await res.json().catch(() => null);
+          if (j?.viewport?.width && j?.viewport?.height) {
+            const next = { w: j.viewport.width, h: j.viewport.height };
+            sizeRef.current = next;
+            setSize(next);
+          }
+          if (typeof j?.url === 'string' && j.url) setAddress(j.url);
+          if (typeof j?.jpegBase64 === 'string' && j.jpegBase64) {
+            const now = Date.now();
+            setLastFrameAt(now);
+            setFramesSeen((c) => c + 1);
+            setNoFramesHint('');
+            if (!streamPaused && !replayMode) enqueueJpegFrame(j.jpegBase64);
+            setFallbackError('');
+          }
+        }
+      } catch (e: any) {
+        setFallbackError(String(e?.message || e || 'Snapshot error'));
+      }
+
+      fallbackTimerRef.current = window.setTimeout(poll, 650);
+    };
+
+    fallbackActiveRef.current = true;
+    setFallbackActive(true);
+    setFallbackError('');
+    const delay = status === 'connected' ? 3200 : 0;
+    fallbackTimerRef.current = window.setTimeout(() => {
+      if (stopped) return;
+      poll();
+    }, delay);
+
+    return () => {
+      stopped = true;
+    };
+  }, [status, framesSeen, streamPaused, replayMode, effectiveWsUrl]);
 
   useEffect(() => {
     if (status !== 'connected') {
@@ -1057,7 +1149,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             onKeyDown={handleCanvasKeyDown}
             style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'default', touchAction: 'none', outline: 'none' }}
           />
-          {(status !== 'connected' || wsError || noFramesHint) ? (
+          {(status !== 'connected' || wsError || noFramesHint || fallbackActive || fallbackError) ? (
             <div
               style={{
                 position: 'absolute',
@@ -1078,8 +1170,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             >
               <div style={{ fontWeight: 600, marginBottom: 6 }}>
                 {status === 'connected' ? 'متصل' : status === 'reconnecting' ? 'يعيد الاتصال...' : status === 'error' ? 'خطأ اتصال' : 'جاري الاتصال...'}
+                {fallbackActive ? ' • وضع بديل (HTTP)' : ''}
               </div>
               {wsError ? <div style={{ color: '#fecaca', marginBottom: 6 }}>{wsError}</div> : null}
+              {fallbackError ? <div style={{ color: '#fde68a', marginBottom: 6 }}>{fallbackError}</div> : null}
               {noFramesHint ? <div style={{ color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{noFramesHint}</div> : null}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
