@@ -1504,11 +1504,46 @@ export default function CommandComposer({
     setActiveToolName(null);
     setToolVisible(false);
 
+    const isLikelyCodeFile = (v: string) => {
+      const t = v.toLowerCase();
+      return /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|json|md|yml|yaml|py|go|java|cs|cpp|c|h|hpp|rs|swift|kt|php|rb|sh|sql|toml|lock)(?:$|\?|\#)/i.test(t);
+    };
+
+    const extractLikelyUrl = (text: string) => {
+      const t = String(text || '');
+      const direct = t.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
+      if (direct) return direct;
+
+      const local = t.match(/\b(?:localhost|127\.0\.0\.1)(?::\d{2,5})?(?:\/[^\s"'<>]*)?/i)?.[0];
+      if (local) return local.startsWith('http://') || local.startsWith('https://') ? local : `http://${local}`;
+
+      const www = t.match(/\bwww\.[^\s"'<>]+\b/i)?.[0];
+      if (www) return `https://${www}`;
+
+      const m = t.match(/\b[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+\b(?:\/[^\s"'<>]*)?/i);
+      if (!m) return null;
+
+      const candidate = m[0];
+      if (isLikelyCodeFile(candidate)) return null;
+
+      const idx = typeof (m as any).index === 'number' ? (m as any).index : -1;
+      if (idx > 0) {
+        const prev = t[idx - 1];
+        if (prev === '/' || prev === '\\' || prev === '.' || prev === '_') return null;
+      }
+
+      const host = candidate.split('/')[0].split(':')[0];
+      const tld = (host.split('.').pop() || '').toLowerCase();
+      if (['ts', 'tsx', 'js', 'jsx', 'json', 'md', 'yml', 'yaml', 'py', 'go', 'java', 'cs', 'rs', 'php', 'rb', 'sh', 'sql', 'toml', 'lock'].includes(tld)) return null;
+
+      return `https://${candidate}`;
+    };
+
     const needsBrowserForText = (raw: string) => {
       const s = String(raw || '').trim();
       if (!s) return false;
 
-      const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
+      const hasUrl = Boolean(extractLikelyUrl(s));
       if (hasUrl) return true;
 
       const explicitBrowser = /(\b(browser|web|preview)\b|متصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
@@ -1575,20 +1610,23 @@ export default function CommandComposer({
       if ((sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
         const urlMatch = inputText.match(/https?:\/\/[^\s"'<>]+/i);
         const directUrl = urlMatch?.[0];
+        const extractedUrl = extractLikelyUrl(inputText);
         const wantsYoutube = /youtube|يوتيوب/i.test(inputText);
         const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(inputText);
         const wantsPreview = /(preview|معاينة|المعاينة|عرض الموقع|show site)/i.test(inputText);
-        const desiredUrl = directUrl || (wantsPreview ? 'http://localhost:5173' : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
-        const opened = await ensureBrowserSession(desiredUrl);
-        effectiveBrowserSessionId = opened.sessionId;
-        
-        // If in chat mode, show the browser artifact immediately
-        if (sessionKind === 'chat' && opened.wsUrl) {
-           setEvents(prev => [...prev, { 
-             type: 'artifact_created', 
-             data: { kind: 'browser_stream', href: opened.wsUrl, name: 'Browser' },
-             ts: Date.now() 
-           }]);
+        const desiredUrl = directUrl || extractedUrl || (wantsPreview ? 'http://localhost:5173' : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
+        try {
+          const opened = await ensureBrowserSession(desiredUrl);
+          effectiveBrowserSessionId = opened.sessionId;
+
+          if (sessionKind === 'chat' && opened.wsUrl) {
+            setEvents(prev => [...prev, {
+              type: 'artifact_created',
+              data: { kind: 'browser_stream', href: opened.wsUrl, name: 'Browser' },
+              ts: Date.now()
+            }]);
+          }
+        } catch {
         }
       }
 
