@@ -547,6 +547,17 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               canvasRef.current?.parentElement?.appendChild(clickEl);
               setTimeout(() => clickEl.remove(), 500);
             }
+            if (msg.type === 'highlight' && msg.boundingBox) {
+              const b = msg.boundingBox;
+              if (
+                typeof b?.x === 'number' &&
+                typeof b?.y === 'number' &&
+                typeof b?.width === 'number' &&
+                typeof b?.height === 'number'
+              ) {
+                setHighlight({ x: b.x, y: b.y, width: b.width, height: b.height });
+              }
+            }
             if (msg.type === 'action_start') {
               const a = msg.action;
               let text = a.type;

@@ -314,8 +314,15 @@ async function captureScreenshot(session: Session, opts?: { fullPage?: boolean; 
 }
 
 async function maybeNotifyCursorForLocator(session: Session, locator: any) {
-  const box = await locator?.boundingBox?.({ timeout: 1000 }).catch(() => null);
+  try {
+    await locator?.scrollIntoViewIfNeeded?.({ timeout: 1500 });
+  } catch {}
+
+  const box =
+    (await locator?.boundingBox?.({ timeout: 1500 }).catch(() => null)) ||
+    (await locator?.elementHandle?.().then((h: any) => h?.boundingBox?.()).catch(() => null));
   if (!box) return null;
+  notifySession(session, 'highlight', { boundingBox: box });
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await session.page.mouse.move(x, y, { steps: 2 }).catch(() => {});
@@ -432,6 +439,7 @@ async function runActions(session: Session, actions: Action[]) {
           } else if (typeof a.x === 'number' && typeof a.y === 'number') {
             await session.page.mouse.move(a.x, a.y, { steps: 2 }).catch(() => {});
             notifySession(session, 'cursor_move', { x: a.x, y: a.y });
+            notifySession(session, 'highlight', { boundingBox: { x: a.x - 10, y: a.y - 10, width: 20, height: 20 } });
             await new Promise(r => setTimeout(r, 120));
             await session.page.mouse.click(a.x, a.y, { button: a.button || 'left' });
             notifySession(session, 'cursor_click', { x: a.x, y: a.y });
@@ -456,6 +464,7 @@ async function runActions(session: Session, actions: Action[]) {
             const el = await locator.elementHandle();
             if (el) box = await el.boundingBox();
           }
+          if (box) notifySession(session, 'highlight', { boundingBox: box });
           outputs.push({ type: 'locate', boundingBox: box });
           break;
         }
