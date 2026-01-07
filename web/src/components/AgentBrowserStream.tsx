@@ -30,6 +30,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         const token = localStorage.getItem('token');
         if (token) u.searchParams.set('token', token);
       }
+      if (window.location.protocol === 'https:' && u.protocol === 'ws:') {
+        u.protocol = 'wss:';
+      }
       abs = u.toString();
     } catch {}
     return abs;

@@ -28,9 +28,22 @@ if (hostname === '46.224.187.142') {
   // We'll handle this in the export logic.
 }
 
-export const API_URL = (hostname === '46.224.187.142') 
+const API_URL_RAW = (hostname === '46.224.187.142') 
   ? fallbackApiUrl.replace(/\/+$/, '') 
   : String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
+
+const API_URL_SAFE = (() => {
+  const raw = API_URL_RAW;
+  if (window.location.protocol !== 'https:') return raw;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'http:' && (u.hostname === 'api.xelitesolutions.com' || u.hostname.endsWith('.xelitesolutions.com'))) {
+      u.protocol = 'https:';
+      return u.toString().replace(/\/+$/, '');
+    }
+  } catch {}
+  return raw;
+})();
 
 // Determine WebSocket URL
 const rawWsUrl = import.meta.env.VITE_WS_URL;
@@ -38,7 +51,7 @@ let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
 if (!wsUrl) {
   try {
-    const api = new URL(API_URL);
+    const api = new URL(API_URL_SAFE);
     api.protocol = api.protocol === 'https:' ? 'wss:' : 'ws:';
     if (api.hostname === 'api.xelitesolutions.com' || (api.hostname.startsWith('api.') && api.hostname.endsWith('.xelitesolutions.com'))) {
       api.hostname = `ws.${api.hostname.slice('api.'.length)}`;
@@ -48,7 +61,7 @@ if (!wsUrl) {
     api.hash = '';
     wsUrl = api.toString();
   } catch {
-    wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
+    wsUrl = `${API_URL_SAFE.replace(/^http/, 'ws')}/ws`;
   }
 }
 
@@ -57,4 +70,10 @@ if (wsUrl.startsWith('http')) {
   wsUrl = wsUrl.replace(/^http/, 'ws');
 }
 
+if (window.location.protocol === 'https:' && wsUrl.startsWith('ws:')) {
+  wsUrl = wsUrl.replace(/^ws:/, 'wss:');
+}
+
 export const WS_URL = wsUrl;
+
+export { API_URL_SAFE as API_URL };
