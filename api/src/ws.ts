@@ -54,17 +54,104 @@ export function attachWebSocket(server: Server) {
       return;
     }
 
+    const workerBaseHttp = String(config.browserWorkerUrl || '').replace(/\/+$/, '');
+    const workerKey = String(config.browserWorkerKey || '');
+    const workerWsBase = (() => {
+      try {
+        const u = new URL(workerBaseHttp);
+        u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        return u.toString().replace(/\/+$/, '');
+      } catch {
+        return workerBaseHttp.replace(/^http/i, 'ws');
+      }
+    })();
+
     const upstreamUrl = new URL(`/ws/${encodeURIComponent(sessionId)}`, config.browserWorkerUrl);
     upstreamUrl.searchParams.set('key', config.browserWorkerKey);
     upstreamUrl.protocol = upstreamUrl.protocol === 'https:' ? 'wss:' : 'ws:';
 
     const upstreamWs = new WebSocket(upstreamUrl.toString());
 
+    let closed = false;
+    let hasFrame = false;
+    let polling = false;
+    let sentStart = false;
+    let lastUpstreamMsgAt = Date.now();
+    let pollTimer: NodeJS.Timeout | null = null;
+
     const closeBoth = (code?: number, reason?: string) => {
+      closed = true;
+      polling = false;
+      if (pollTimer) {
+        try { clearTimeout(pollTimer); } catch {}
+        pollTimer = null;
+      }
       try { if (clientWs.readyState === WebSocket.OPEN) clientWs.close(code, reason); } catch {}
       try { if (upstreamWs.readyState === WebSocket.OPEN) upstreamWs.close(code, reason); } catch {}
       try { clientWs.terminate(); } catch {}
       try { upstreamWs.terminate(); } catch {}
+    };
+
+    const safeSendToClient = (payload: any) => {
+      if (clientWs.readyState !== WebSocket.OPEN) return;
+      try {
+        clientWs.send(typeof payload === 'string' ? payload : JSON.stringify(payload));
+      } catch {}
+    };
+
+    const startPolling = () => {
+      if (polling || closed) return;
+      polling = true;
+
+      const loop = async () => {
+        if (closed || !polling) return;
+        if (clientWs.readyState !== WebSocket.OPEN) return;
+        if (hasFrame) {
+          polling = false;
+          return;
+        }
+
+        try {
+          const snap = await fetch(`${workerBaseHttp}/session/${encodeURIComponent(sessionId)}/snapshot`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-worker-key': workerKey,
+            },
+            body: JSON.stringify({}),
+          });
+
+          if (snap.ok) {
+            const j: any = await snap.json().catch(() => null);
+            const screenshotPath = typeof j?.screenshot === 'string' ? j.screenshot : '';
+            const viewport = j?.viewport && typeof j.viewport === 'object' ? j.viewport : null;
+            const w = viewport && typeof viewport.width === 'number' ? viewport.width : undefined;
+            const h = viewport && typeof viewport.height === 'number' ? viewport.height : undefined;
+
+            if (!sentStart && w && h) {
+              sentStart = true;
+              safeSendToClient({ type: 'stream_start', w, h });
+            }
+
+            if (typeof j?.url === 'string' && j.url) {
+              safeSendToClient({ type: 'url', url: j.url });
+            }
+
+            if (screenshotPath) {
+              const img = await fetch(`${workerBaseHttp}${screenshotPath}`, { method: 'GET' });
+              if (img.ok) {
+                const ab = await img.arrayBuffer();
+                const b64 = Buffer.from(ab).toString('base64');
+                safeSendToClient({ type: 'frame', jpegBase64: b64, ts: Date.now(), w, h });
+              }
+            }
+          }
+        } catch {}
+
+        pollTimer = setTimeout(loop, 700);
+      };
+
+      void loop();
     };
 
     clientWs.on('message', (data) => {
@@ -74,15 +161,34 @@ export function attachWebSocket(server: Server) {
     });
 
     upstreamWs.on('message', (data) => {
+      lastUpstreamMsgAt = Date.now();
       if (clientWs.readyState === WebSocket.OPEN) {
         try { clientWs.send(data); } catch {}
       }
+
+      try {
+        const txt = typeof data === 'string' ? data : data.toString();
+        if (txt.includes('"type":"frame"')) hasFrame = true;
+      } catch {}
     });
 
-    upstreamWs.on('close', () => closeBoth(1011, 'upstream_closed'));
-    upstreamWs.on('error', () => closeBoth(1011, 'upstream_error'));
+    upstreamWs.on('close', () => {
+      if (!hasFrame && !closed) startPolling();
+      else closeBoth(1011, 'upstream_closed');
+    });
+    upstreamWs.on('error', () => {
+      if (!hasFrame && !closed) startPolling();
+      else closeBoth(1011, 'upstream_error');
+    });
     clientWs.on('close', () => closeBoth(1000, 'client_closed'));
     clientWs.on('error', () => closeBoth(1011, 'client_error'));
+
+    setTimeout(() => {
+      if (closed) return;
+      if (clientWs.readyState !== WebSocket.OPEN) return;
+      const idleMs = Date.now() - lastUpstreamMsgAt;
+      if (!hasFrame && idleMs >= 2000) startPolling();
+    }, 2500);
   });
 
   server.on('upgrade', (req: any, socket: any, head: any) => {

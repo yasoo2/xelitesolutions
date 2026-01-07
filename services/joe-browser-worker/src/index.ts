@@ -868,7 +868,13 @@ app.post('/session/:id/snapshot', auth, async (req, res) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(p, buf);
   // Increase DOM limit to 2MB to avoid cutting off body content in large pages
-  res.json({ dom: html.slice(0, 2000000), a11y: a11ySnap, screenshot: `/shots/${name}` });
+  res.json({
+    dom: html.slice(0, 2000000),
+    a11y: a11ySnap,
+    screenshot: `/shots/${name}`,
+    viewport: s.viewport,
+    url: s.page.url(),
+  });
 });
 
 app.post('/session/:id/extract', auth, async (req, res) => {

@@ -36,6 +36,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const sizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 800 });
   const [status, setStatus] = useState('connecting');
   const [wsError, setWsError] = useState<string>('');
+  const [framesSeen, setFramesSeen] = useState<number>(0);
+  const [lastFrameAt, setLastFrameAt] = useState<number>(0);
+  const [noFramesHint, setNoFramesHint] = useState<string>('');
   const [address, setAddress] = useState<string>('');
   const [tabs, setTabs] = useState<Array<{ id: string; title?: string; url?: string; createdAt?: number }>>([]);
   const [activeTabId, setActiveTabId] = useState<string>('');
@@ -383,6 +386,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     connectAttemptsRef.current = 0;
     setStatus('connecting');
     setWsError('');
+    setFramesSeen(0);
+    setLastFrameAt(0);
+    setNoFramesHint('');
 
     const clearTimers = () => {
       if (reconnectTimerRef.current != null) {
@@ -421,6 +427,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           connectAttemptsRef.current = 0;
           setWsError('');
           setStatus('connected');
+          setNoFramesHint('');
         };
 
         ws.onclose = (ev) => {
@@ -573,6 +580,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               }
             }
             if (msg.type === 'frame') {
+              const now = Date.now();
+              setLastFrameAt(now);
+              setFramesSeen((c) => c + 1);
+              setNoFramesHint('');
               if (timelineEnabled && !replayMode && typeof msg.jpegBase64 === 'string') {
                 const now = Date.now();
                 if (now - lastTimelinePushAtRef.current >= 800) {
@@ -613,6 +624,23 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       wsRef.current = null;
     };
   }, [wsUrl, reconnectNonce]);
+
+  useEffect(() => {
+    if (status !== 'connected') {
+      setNoFramesHint('');
+      return;
+    }
+    if (framesSeen > 0) {
+      setNoFramesHint('');
+      return;
+    }
+    const t = window.setTimeout(() => {
+      if (framesSeen === 0 && status === 'connected') {
+        setNoFramesHint('تم الاتصال ولكن لم تصل أي صورة بعد. غالبًا بث WebSocket محجوب أو خدمة المتصفح متوقفة.');
+      }
+    }, 3000);
+    return () => window.clearTimeout(t);
+  }, [status, framesSeen]);
 
   useEffect(() => {
     if (!replayMode) return;
@@ -1029,6 +1057,51 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             onKeyDown={handleCanvasKeyDown}
             style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'default', touchAction: 'none', outline: 'none' }}
           />
+          {(status !== 'connected' || wsError || noFramesHint) ? (
+            <div
+              style={{
+                position: 'absolute',
+                left: 12,
+                top: 12,
+                zIndex: 80,
+                maxWidth: 'min(520px, calc(100% - 24px))',
+                padding: '10px 12px',
+                borderRadius: 12,
+                background: 'rgba(0,0,0,0.60)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: 'rgba(255,255,255,0.92)',
+                fontSize: 12,
+                lineHeight: 1.35,
+                backdropFilter: 'blur(8px)',
+              }}
+              dir="auto"
+            >
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                {status === 'connected' ? 'متصل' : status === 'reconnecting' ? 'يعيد الاتصال...' : status === 'error' ? 'خطأ اتصال' : 'جاري الاتصال...'}
+              </div>
+              {wsError ? <div style={{ color: '#fecaca', marginBottom: 6 }}>{wsError}</div> : null}
+              {noFramesHint ? <div style={{ color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{noFramesHint}</div> : null}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setReconnectNonce((n) => n + 1)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    background: 'rgba(255,255,255,0.08)',
+                    color: 'rgba(255,255,255,0.92)',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                  }}
+                >
+                  إعادة الاتصال
+                </button>
+                <div style={{ opacity: 0.75 }}>
+                  {framesSeen > 0 ? `Frames: ${framesSeen}` : lastFrameAt ? `Last frame: ${new Date(lastFrameAt).toLocaleTimeString()}` : `Frames: 0`}
+                </div>
+              </div>
+            </div>
+          ) : null}
           {minimal && controlEnabled && !canvasFocused ? (
             <div
               style={{
