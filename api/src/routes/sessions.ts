@@ -451,10 +451,11 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     });
 
     let steps = 0;
-    let lastResult: any = null;
-    let forcedText: string | null = null;
-    let assistantTextEmitted = false;
-    let finalOk = true;
+      let lastResult: any = null;
+      let lastToolName = '';
+      let forcedText: string | null = null;
+      let assistantTextEmitted = false;
+      let finalOk = true;
 
     while (steps < MAX_STEPS) {
       broadcast({ type: 'step_started', runId: pending.runId, data: { name: `thinking_step_${steps + 1}` } });
@@ -621,8 +622,9 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         plan?.name || '',
         stepResult.output || stepResult.error || 'Done'
       )}`;
-      history.push({ role: 'assistant', content: toolCallSummary });
-      lastResult = stepResult;
+        history.push({ role: 'assistant', content: toolCallSummary });
+        lastToolName = String(plan?.name || '');
+        lastResult = stepResult;
 
       if (!stepResult.ok) {
         const errorMsg = safeErrorMessage(stepResult.error || (stepResult.logs ? stepResult.logs.join('\n') : 'Unknown error'));
@@ -690,7 +692,18 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       }
     }
 
-    const finalContent = forcedText || (lastResult?.output ? JSON.stringify(lastResult.output) : 'No output');
+      const finalContent =
+        forcedText ||
+        (() => {
+          const raw = (lastResult as any)?.output ?? (lastResult as any)?.error ?? 'No output';
+          const sanitized = sanitizeForInline(lastToolName, raw);
+          if (typeof sanitized === 'string') return sanitized;
+          try {
+            return JSON.stringify(sanitized);
+          } catch {
+            return 'Output too large';
+          }
+        })();
     if (!assistantTextEmitted) broadcast({ type: 'text', runId: pending.runId, data: finalContent });
 
     if (useMock) {

@@ -2472,7 +2472,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
   }
 
-  const finalContent = forcedText || (lastResult?.output ? (() => { try { return JSON.stringify(lastResult.output); } catch { return 'Output too large'; } })() : 'No output');
+  const finalContent =
+    forcedText ||
+    (() => {
+      const toolName = String(lastExecutedToolName || '');
+      const raw = (lastResult as any)?.output ?? (lastResult as any)?.error ?? 'No output';
+      const sanitized = sanitizeForInline(toolName, raw);
+      if (typeof sanitized === 'string') return sanitized;
+      try {
+        return JSON.stringify(sanitized);
+      } catch {
+        return 'Output too large';
+      }
+    })();
 
   if (!assistantTextEmitted) {
     ev({ type: 'text', data: finalContent });
