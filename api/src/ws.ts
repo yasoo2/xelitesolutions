@@ -99,9 +99,59 @@ export function attachWebSocket(server: Server) {
       } catch {}
     };
 
+    const executeActionViaHttp = async (action: any) => {
+      if (!workerBaseHttp || !workerKey) return;
+      if (!action || typeof action !== 'object') return;
+      const actionType = String((action as any).type || '').trim();
+      if (!actionType) return;
+
+      const allowed = new Set([
+        'goto',
+        'goBack',
+        'goForward',
+        'reload',
+        'mouseMove',
+        'click',
+        'clickText',
+        'fillByLabel',
+        'searchGoogle',
+        'scroll',
+        'type',
+        'press',
+        'screenshot',
+        'tab.new',
+        'tab.switch',
+        'tab.close',
+        'tabs.list',
+        'pick',
+        'stream.setFps',
+        'stream.setQuality',
+        'redaction.set',
+      ]);
+      if (!allowed.has(actionType)) return;
+
+      if (actionType === 'goto') {
+        const url = String((action as any).url || '').trim();
+        if (!url) return;
+      }
+
+      try {
+        await fetch(`${workerBaseHttp}/session/${encodeURIComponent(sessionId)}/job/run`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-worker-key': workerKey,
+          },
+          body: JSON.stringify({ actions: [action] }),
+        });
+      } catch {}
+    };
+
     const startPolling = () => {
       if (polling || closed) return;
       polling = true;
+      let pollFailures = 0;
+      let pollDelayMs = 1500;
 
       const loop = async () => {
         if (closed || !polling) return;
@@ -143,12 +193,21 @@ export function attachWebSocket(server: Server) {
                 const ab = await img.arrayBuffer();
                 const b64 = Buffer.from(ab).toString('base64');
                 safeSendToClient({ type: 'frame', jpegBase64: b64, ts: Date.now(), w, h });
+                pollFailures = 0;
+                pollDelayMs = 1500;
               }
             }
+            if (!screenshotPath) {
+              pollFailures += 1;
+              pollDelayMs = Math.min(6000, 1500 + pollFailures * 900);
+            }
+          } else {
+            pollFailures += 1;
+            pollDelayMs = Math.min(6000, 1500 + pollFailures * 900);
           }
         } catch {}
 
-        pollTimer = setTimeout(loop, 700);
+        pollTimer = setTimeout(loop, pollDelayMs);
       };
 
       void loop();
@@ -157,7 +216,16 @@ export function attachWebSocket(server: Server) {
     clientWs.on('message', (data) => {
       if (upstreamWs.readyState === WebSocket.OPEN) {
         try { upstreamWs.send(data); } catch {}
+        return;
       }
+
+      try {
+        const txt = typeof data === 'string' ? data : data.toString();
+        const msg = JSON.parse(txt);
+        if (msg && msg.type === 'action' && msg.action && typeof msg.action === 'object') {
+          void executeActionViaHttp(msg.action);
+        }
+      } catch {}
     });
 
     upstreamWs.on('message', (data) => {

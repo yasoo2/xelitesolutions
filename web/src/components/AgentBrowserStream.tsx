@@ -7,6 +7,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const wsRef = useRef<WebSocket | null>(null);
   const fallbackTimerRef = useRef<number | null>(null);
   const fallbackActiveRef = useRef(false);
+  const fallbackPollDelayRef = useRef<number>(1500);
+  const fallbackPollFailuresRef = useRef<number>(0);
   const effectiveWsUrl = useMemo(() => {
     let abs = String(wsUrl || '').trim();
     if (!abs) return abs;
@@ -18,7 +20,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     } catch {}
     try {
       const u = new URL(abs);
-      if (u.pathname.startsWith('/ws/') && u.searchParams.get('key')) {
+      if (u.pathname.startsWith('/ws/')) {
         const sessionId = u.pathname.split('/').filter(Boolean).pop() || '';
         const base = API.replace(/^http/i, 'ws');
         abs = new URL(`/browser/ws/${encodeURIComponent(sessionId)}`, base).toString();
@@ -182,12 +184,14 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!sessionId) return;
 
     // Check for WS optimization
-    const wsActions = ['mouseMove', 'click', 'clickText', 'fillByLabel', 'searchGoogle', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
+    const wsActions = ['goto', 'mouseMove', 'click', 'clickText', 'fillByLabel', 'searchGoogle', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
     const canUseWs = wsRef.current && 
                      wsRef.current.readyState === WebSocket.OPEN && 
                      actions.every(a => wsActions.includes(a.type));
 
     if (canUseWs) {
+       const gotoUrl = actions.find((a: any) => a && a.type === 'goto' && typeof a.url === 'string')?.url;
+       if (typeof gotoUrl === 'string' && gotoUrl.trim()) setAddress(gotoUrl.trim());
        actions.forEach(a => {
          wsRef.current?.send(JSON.stringify({ type: 'action', action: a }));
        });
@@ -218,6 +222,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     }
 
     try {
+      const gotoUrl = actions.find((a: any) => a && a.type === 'goto' && typeof a.url === 'string')?.url;
+      if (typeof gotoUrl === 'string' && gotoUrl.trim()) setAddress(gotoUrl.trim());
+      const actionNames = actions.map(a => a.type).join(', ');
+      if (actionNames) {
+        setOverlay(actionNames);
+        setTimeout(() => setOverlay(''), 1200);
+      }
       const token = localStorage.getItem('token');
       const res = await fetch(`${API}/tools/browser_run/execute`, {
         method: 'POST',
@@ -287,9 +298,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           }
         }
       }
-      const names = actions.map(a => a.type).join(', ');
-      setOverlay(names);
-      setTimeout(() => setOverlay(''), 1200);
       if (actions.some(a => a.type === 'goto' || a.type === 'reload')) {
         setHighlight(null);
         if (autoLocate) {
@@ -701,8 +709,11 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         if (!res.ok) {
           const t = await res.text().catch(() => '');
           setFallbackError(t ? `Snapshot error: ${t.slice(0, 140)}` : 'Snapshot error');
+          fallbackPollFailuresRef.current += 1;
+          fallbackPollDelayRef.current = Math.min(6000, 1500 + fallbackPollFailuresRef.current * 900);
         } else {
           const j: any = await res.json().catch(() => null);
+          setFallbackError('');
           if (j?.viewport?.width && j?.viewport?.height) {
             const next = { w: j.viewport.width, h: j.viewport.height };
             sizeRef.current = next;
@@ -715,19 +726,27 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             setFramesSeen((c) => c + 1);
             setNoFramesHint('');
             if (!streamPaused && !replayMode) enqueueJpegFrame(j.jpegBase64);
-            setFallbackError('');
+            fallbackPollFailuresRef.current = 0;
+            fallbackPollDelayRef.current = 1500;
+          } else {
+            fallbackPollFailuresRef.current += 1;
+            fallbackPollDelayRef.current = Math.min(6000, 1500 + fallbackPollFailuresRef.current * 900);
           }
         }
       } catch (e: any) {
         setFallbackError(String(e?.message || e || 'Snapshot error'));
+        fallbackPollFailuresRef.current += 1;
+        fallbackPollDelayRef.current = Math.min(6000, 1500 + fallbackPollFailuresRef.current * 900);
       }
 
-      fallbackTimerRef.current = window.setTimeout(poll, 650);
+      fallbackTimerRef.current = window.setTimeout(poll, fallbackPollDelayRef.current);
     };
 
     fallbackActiveRef.current = true;
     setFallbackActive(true);
     setFallbackError('');
+    fallbackPollFailuresRef.current = 0;
+    fallbackPollDelayRef.current = 1500;
     const delay = status === 'connected' ? 3200 : 0;
     fallbackTimerRef.current = window.setTimeout(() => {
       if (stopped) return;

@@ -302,7 +302,14 @@ function switchToTab(session: Session, tabId: string) {
 }
 
 async function captureScreenshot(session: Session, opts?: { fullPage?: boolean; quality?: number }) {
-  const buf = await session.page.screenshot({ type: 'jpeg', quality: opts?.quality || 60, fullPage: opts?.fullPage || false });
+  const buf = await session.page.screenshot({
+    type: 'jpeg',
+    quality: opts?.quality || 60,
+    fullPage: opts?.fullPage || false,
+    timeout: 15000,
+    caret: 'hide',
+    animations: 'disabled',
+  });
   const name = `s-${Date.now()}.jpg`;
   const p = path.join(STORAGE_DIR, 'shots', name);
   const dir = path.dirname(p);
@@ -866,21 +873,30 @@ app.post('/session/:id/job/run', auth, async (req, res) => {
 app.post('/session/:id/snapshot', auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
   if (!s) return res.status(404).json({ error: 'session_not_found' });
-  const [html, a11ySnap, buf] = await Promise.all([
-    s.page.content(),
-    (s.page as any).accessibility?.snapshot ? (s.page as any).accessibility.snapshot().catch(() => null) : Promise.resolve(null),
-    s.page.screenshot({ type: 'jpeg', quality: 60 })
-  ]);
-  const name = `snap-${Date.now()}.jpg`;
-  const p = path.join(STORAGE_DIR, 'shots', name);
-  const dir = path.dirname(p);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(p, buf);
-  // Increase DOM limit to 2MB to avoid cutting off body content in large pages
+  let html = '';
+  let a11ySnap: any = null;
+  try {
+    html = await s.page.content();
+  } catch {}
+  try {
+    a11ySnap = (s.page as any).accessibility?.snapshot ? await (s.page as any).accessibility.snapshot().catch(() => null) : null;
+  } catch {}
+
+  let screenshot = '';
+  try {
+    const buf = await s.page.screenshot({ type: 'jpeg', quality: 55, timeout: 7000, caret: 'hide', animations: 'disabled' });
+    const name = `snap-${Date.now()}.jpg`;
+    const p = path.join(STORAGE_DIR, 'shots', name);
+    const dir = path.dirname(p);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(p, buf);
+    screenshot = `/shots/${name}`;
+  } catch {}
+
   res.json({
     dom: html.slice(0, 2000000),
     a11y: a11ySnap,
-    screenshot: `/shots/${name}`,
+    screenshot,
     viewport: s.viewport,
     url: s.page.url(),
   });
@@ -997,7 +1013,13 @@ const server = app.listen(PORT, '0.0.0.0', () => {
       while (running) {
         try {
           s.lastActiveAt = Date.now();
-          const buf = await s.page.screenshot({ type: 'jpeg', quality: s.streamQuality });
+          const buf = await s.page.screenshot({
+            type: 'jpeg',
+            quality: s.streamQuality,
+            timeout: 7000,
+            caret: 'hide',
+            animations: 'disabled',
+          });
           ws.send(JSON.stringify({ type: 'frame', jpegBase64: buf.toString('base64'), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
           const delay = Math.max(33, Math.round(1000 / Math.max(1, Math.min(30, s.streamFps || 5))));
           await new Promise(r => setTimeout(r, delay));

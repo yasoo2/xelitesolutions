@@ -39,7 +39,7 @@ router.post('/:id/browser/snapshot', authenticate as any, async (req: Request, r
     const status = snapRes.status;
     if (!snapRes.ok) {
       const t = await snapRes.text().catch(() => '');
-      return res.status(status || 502).json({ error: 'snapshot_failed', status, detail: redactSecretsFromString(t).slice(0, 800) });
+      return res.json({ ok: false, ts: Date.now(), error: 'snapshot_failed', status, detail: redactSecretsFromString(t).slice(0, 800), viewport: null, url: '', jpegBase64: '' });
     }
 
     const j: any = await snapRes.json().catch(() => null);
