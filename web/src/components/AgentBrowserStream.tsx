@@ -14,7 +14,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!abs) return abs;
     try {
       if (!/^wss?:\/\//i.test(abs)) {
-        const base = API.replace(/^http/i, 'ws');
+        const base =
+          abs.startsWith('/')
+            ? window.location.origin.replace(/^http/i, 'ws')
+            : API.replace(/^http/i, 'ws');
         abs = new URL(abs, base).toString();
       }
     } catch {}

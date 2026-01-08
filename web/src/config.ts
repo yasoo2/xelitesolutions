@@ -50,12 +50,18 @@ const rawWsUrl = import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
 if (!wsUrl) {
+  const canUseSameOriginWs =
+    !isLocal &&
+    (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com');
+  if (canUseSameOriginWs) {
+    wsUrl = `${window.location.origin.replace(/^http/i, 'ws').replace(/\/+$/, '')}/ws`;
+  }
+}
+
+if (!wsUrl) {
   try {
     const api = new URL(API_URL_SAFE);
     api.protocol = api.protocol === 'https:' ? 'wss:' : 'ws:';
-    if (api.hostname === 'api.xelitesolutions.com' || (api.hostname.startsWith('api.') && api.hostname.endsWith('.xelitesolutions.com'))) {
-      api.hostname = `ws.${api.hostname.slice('api.'.length)}`;
-    }
     api.pathname = `${api.pathname.replace(/\/+$/, '')}/ws`;
     api.search = '';
     api.hash = '';

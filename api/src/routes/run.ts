@@ -2472,12 +2472,70 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
   }
 
+  const MAX_FINAL_INLINE_CHARS = 1800;
+  const truncateFinal = (s: string, max = MAX_FINAL_INLINE_CHARS) => (s.length > max ? `${s.slice(0, max)}…[truncated]` : s);
+  const extractTitleFromHtmlFinal = (html: string) => {
+    const m = html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i);
+    const t = String(m?.[1] || '').replace(/\s+/g, ' ').trim();
+    return t || '';
+  };
+  const inferSiteLabelFinal = (url: string, dom: string) => {
+    const u = String(url || '').trim();
+    try {
+      if (u) {
+        const host = new URL(u).hostname.replace(/^www\./i, '');
+        if (host) return host;
+      }
+    } catch {}
+    const d = String(dom || '');
+    if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
+    if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
+    if (/github\.com/i.test(d)) return 'github.com';
+    const title = extractTitleFromHtmlFinal(d);
+    return title || 'page';
+  };
+  const summarizeBrowserOutputFinal = (out: any) => {
+    if (!out || typeof out !== 'object') return out;
+    const url = typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
+    const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
+    const title = dom ? extractTitleFromHtmlFinal(dom) : '';
+    const site = inferSiteLabelFinal(url, dom);
+    const domLen = dom ? dom.length : 0;
+    const hasScreenshot = Boolean((out as any).screenshot || (out as any).screenshotHref);
+    const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
+    const loginLike = /ServiceLogin|signin|login|تسجيل\s+الدخول|تسجيل\s+دخول/i.test(dom);
+    const summary: any = { site };
+    if (url) summary.url = url;
+    if (title) summary.title = title;
+    if (loginLike) summary.pageType = 'login';
+    if (domLen) summary.domLength = domLen;
+    if (hasScreenshot) summary.hasScreenshot = true;
+    if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
+    return summary;
+  };
+  const sanitizeFinalForInline = (toolName: string, obj: any) => {
+    if (obj == null) return obj;
+    const t = String(toolName || '');
+    if (/^browser_/.test(t)) return summarizeBrowserOutputFinal(obj);
+    if (typeof obj === 'string') return truncateFinal(obj);
+    if (typeof obj === 'object') {
+      try {
+        const raw = JSON.stringify(obj);
+        if (raw.length <= MAX_FINAL_INLINE_CHARS) return obj;
+        return truncateFinal(raw);
+      } catch {
+        return '[Result too large or circular]';
+      }
+    }
+    return obj;
+  };
+
   const finalContent =
     forcedText ||
     (() => {
       const toolName = String(lastExecutedToolName || '');
       const raw = (lastResult as any)?.output ?? (lastResult as any)?.error ?? 'No output';
-      const sanitized = sanitizeForInline(toolName, raw);
+      const sanitized = sanitizeFinalForInline(toolName, raw);
       if (typeof sanitized === 'string') return sanitized;
       try {
         return JSON.stringify(sanitized);
