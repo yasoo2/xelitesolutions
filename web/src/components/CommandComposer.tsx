@@ -1221,65 +1221,29 @@ export default function CommandComposer({
                   return;
                 }
 
-                setDraftActive(true);
-                setDraftText('');
+                stopDraft();
 
-                // Smooth Streaming Logic (Enhanced)
-                const chars = finalText.split('');
-                const totalChars = chars.length;
-                
-                // Dynamic speed based on length: faster for longer text
-                // Base speed: 10ms per char (~6000 chars/min) -> Very fast
-                // Long text (>500 chars) -> Speed up
-                let intervalMs = 12; 
-                if (totalChars > 200) intervalMs = 8;
-                if (totalChars > 500) intervalMs = 5;
-                
-                // Add some randomness to mimic human-like bursts? No, users prefer consistent fast stream.
-                // But we can process multiple chars per tick if it's really long.
-                let charsPerTick = 1;
-                if (totalChars > 800) charsPerTick = 2;
-                if (totalChars > 1500) charsPerTick = 4;
+                const normalizedMsg = {
+                  ...msg,
+                  data: msg?.data != null && typeof msg.data === 'object' ? { ...(msg.data as any), text: finalText } : { text: finalText },
+                };
 
-                let idx = 0;
+                setEvents((prev) => {
+                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                  const last = prev[prev.length - 1];
+                  const lastText =
+                    last && last.type === 'text'
+                      ? typeof last.data === 'string'
+                        ? last.data
+                        : last?.data?.text
+                      : '';
+                  if (last && last.type === 'text' && String(lastText || '').trim() === finalText.trim()) return prev;
+                  return [...prev, normalizedMsg];
+                });
 
-                draftTimerRef.current = window.setInterval(() => {
-                  const nextBatch = Math.min(totalChars - idx, charsPerTick);
-                  idx += nextBatch;
-                  
-                  const currentStr = finalText.substring(0, idx);
-                  setDraftText(currentStr);
-                  
-                  // Auto-scroll logic could be triggered here if needed, but the effect handles it via deps
-
-                  if (idx >= totalChars) {
-                    clearDraftTimer();
-                    // Keep the draft visible for a moment to let the user finish reading the last bit? 
-                    // No, swap to final message immediately but smoothly.
-                    
-                    // Small delay before finalizing to ensure render catches up
-                    setTimeout(() => {
-                      setDraftActive(false);
-                      setDraftText('');
-                      setEvents((prev) => {
-                        if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                        // Double check against last message content
-                        const last = prev[prev.length - 1];
-                        if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
-                        return [...prev, msg];
-                      });
-                      try {
-                        speak(finalText);
-                      } catch {}
-                      
-                      window.setTimeout(() => {
-                        setIsThinking(false);
-                        setStatus('idle');
-                        setThinkingGlimpse('');
-                      }, 100);
-                    }, 50);
-                  }
-                }, intervalMs);
+                setIsThinking(false);
+                setStatus('idle');
+                setThinkingGlimpse('');
               } catch (e) {
                 console.error('Error in text streaming:', e);
                 setIsThinking(false);
