@@ -13,13 +13,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check SSH port reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="${{ secrets.HOST }}"
+          port="${{ secrets.PORT || 22 }}"
+          echo "Testing TCP connectivity to ${host}:${port} ..."
+          timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${host}/${port}" && echo "TCP OK" || (echo "TCP FAILED" && exit 1)
+
       - name: Deploy to Server
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.PORT || 22 }}
+          protocol: tcp4
+          timeout: 60s
+          command_timeout: 45m
+          debug: true
           script: |
             set -ue
 
