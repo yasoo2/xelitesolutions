@@ -114,7 +114,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     setFocusMode(false);
     setZoom(1);
     setStreamPaused(false);
-    setControlEnabled(false);
   }, [minimal]);
 
   useEffect(() => {
@@ -793,7 +792,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   }, [replayMode, replayPlaying, timeline.length]);
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (!controlEnabled) return;
+    if (!controlEnabled) setControlEnabled(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
     try { canvas.focus(); } catch {}
@@ -1184,11 +1183,11 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             onMouseMove={handleCanvasMove}
             onTouchStart={handleCanvasTouchStart}
             onTouchMove={handleCanvasTouchMove}
-            tabIndex={controlEnabled ? 0 : -1}
+            tabIndex={0}
             onFocus={() => setCanvasFocused(true)}
             onBlur={() => setCanvasFocused(false)}
             onKeyDown={handleCanvasKeyDown}
-            style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'default', touchAction: 'none', outline: 'none' }}
+            style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'pointer', touchAction: 'none', outline: 'none' }}
           />
           {(status !== 'connected' || wsError || noFramesHint || fallbackActive || fallbackError) ? (
             <div

@@ -132,7 +132,7 @@ function BrowserApp({
           </div>
         ) : headless ? null : (
           <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading stream...</div>}>
-            <AgentBrowserStreamLazy wsUrl={wsUrl!} minimal />
+            <AgentBrowserStreamLazy wsUrl={wsUrl!} />
           </Suspense>
         )}
       </div>
