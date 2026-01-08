@@ -49,16 +49,72 @@ import {
   Sparkles,
   MicOff,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  Bot,
+  User
 } from 'lucide-react';
 
 const DEBUG_TOOL_UI = false;
 
 const AgentBrowserStreamLazy = lazy(() => import('./AgentBrowserStream'));
 
-const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { event: any, isUser: boolean, onOptionClick?: (text: string) => void, isTyping?: boolean }, ref: any) => {
+const ChatBubble = forwardRef(
+  (
+    {
+      event,
+      isUser,
+      variant,
+      tone,
+      ts,
+      onOptionClick,
+      isTyping,
+    }: {
+      event: any;
+      isUser: boolean;
+      variant?: 'user' | 'ai' | 'system';
+      tone?: 'normal' | 'danger' | 'success' | 'info';
+      ts?: number;
+      onOptionClick?: (text: string) => void;
+      isTyping?: boolean;
+    },
+    ref: any
+  ) => {
   let content = event.data.text || event.data;
   let options: any[] = [];
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+  const bubbleVariant: 'user' | 'ai' | 'system' = variant || (isUser ? 'user' : 'ai');
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const fmtTime = (t?: number) => {
+    const d = new Date(typeof t === 'number' ? t : Date.now());
+    try {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
+    }
+  };
+
+  const senderLabel = bubbleVariant === 'user' ? 'أنت' : bubbleVariant === 'system' ? 'النظام' : 'Joe';
+  const SenderIcon = bubbleVariant === 'user' ? User : bubbleVariant === 'system' ? ShieldCheck : Bot;
+
+  const rawText =
+    typeof content === 'string' ? content : content && typeof content === 'object' ? JSON.stringify(content) : String(content ?? '');
+  const canCopy = Boolean(rawText && rawText.trim());
+  const doCopy = async () => {
+    if (!canCopy) return;
+    try {
+      await navigator.clipboard.writeText(rawText);
+      setCopied(true);
+      if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
 
   if (!isUser && typeof content === 'string' && content.includes(':::options')) {
       const extractFirstJsonValue = (s: string) => {
@@ -152,69 +208,84 @@ const ChatBubble = forwardRef(({ event, isUser, onOptionClick, isTyping }: { eve
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className={`chat-bubble-wrapper ${isUser ? 'user' : 'ai'}`}
+      className={`chat-bubble-wrapper ${bubbleVariant}`}
     >
-      <div className={`chat-bubble ${isUser ? 'user' : 'ai'}`}>
+      <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
+        <SenderIcon size={16} />
+      </div>
+      <div className={`chat-bubble ${bubbleVariant}${tone ? ` tone-${tone}` : ''}`}>
+        <div className="chat-bubble-header">
+          <div className="chat-bubble-sender">{senderLabel}</div>
+          <div className="chat-bubble-actions">
+            <div className="chat-bubble-time">
+              <Clock size={14} />
+              <span>{fmtTime(ts)}</span>
+            </div>
+            <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
+              {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
+        </div>
+
         <div className="chat-bubble-content" dir="auto">
-          {isUser ? (
+          {bubbleVariant === 'user' ? (
             <div>{content}</div>
           ) : (
-             <>
-             <ReactMarkdown
-               components={{
-                  h1: ({node, ...props}) => <h1 {...props} />,
-                  h2: ({node, ...props}) => <h2 {...props} />,
-                  h3: ({node, ...props}) => <h3 {...props} />,
-                  ul: ({node, ...props}) => <ul {...props} />,
-                  ol: ({node, ...props}) => <ol {...props} />,
-                  li: ({node, ...props}) => <li {...props} />,
-                  p: ({node, ...props}) => <p {...props} />,
-                  blockquote: ({node, ...props}) => <blockquote {...props} />,
-                  a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+            <>
+              <ReactMarkdown
+                components={{
+                  h1: ({ node, ...props }) => <h1 {...props} />,
+                  h2: ({ node, ...props }) => <h2 {...props} />,
+                  h3: ({ node, ...props }) => <h3 {...props} />,
+                  ul: ({ node, ...props }) => <ul {...props} />,
+                  ol: ({ node, ...props }) => <ol {...props} />,
+                  li: ({ node, ...props }) => <li {...props} />,
+                  p: ({ node, ...props }) => <p {...props} />,
+                  blockquote: ({ node, ...props }) => <blockquote {...props} />,
+                  a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
                   code({ className, children, ...props }: any) {
-                   const { inline, node, ...rest } = props as any;
-                   const match = /language-(\w+)/.exec(className || '');
-                   return !inline && match ? (
-                     <SyntaxHighlighter
-                       style={vscDarkPlus as any}
-                       language={match[1]}
-                       PreTag="div"
-                       dir="ltr"
-                       {...rest}
-                     >
-                       {String(children).replace(/\n$/, '')}
-                     </SyntaxHighlighter>
-                   ) : (
-                     <code className={className} {...rest}>
-                       {children}
-                     </code>
-                   );
-                 }
-               }}
-             >
-               {content || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
-             </ReactMarkdown>
-             
-             {options.length > 0 && (
-               <div className="options-container">
-                 {options.map((opt: any, idx: number) => (
-                   <button 
-                     key={idx}
-                     onClick={() => onOptionClick?.(opt.query)}
-                     className="option-btn"
-                   >
-                     <span className="option-icon">✨</span> {opt.label}
-                   </button>
-                 ))}
-               </div>
-            )}
-             </>
+                    const { inline, node, ...rest } = props as any;
+                    const match = /language-(\w+)/.exec(className || '');
+                    return !inline && match ? (
+                      <SyntaxHighlighter style={vscDarkPlus as any} language={match[1]} PreTag="div" dir="ltr" {...rest}>
+                        {String(children).replace(/\n$/, '')}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className={className} {...rest}>
+                        {children}
+                      </code>
+                    );
+                  },
+                }}
+              >
+                {content || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
+              </ReactMarkdown>
+
+              {options.length > 0 && (
+                <div className="options-container">
+                  {options.map((opt: any, idx: number) => (
+                    <button key={idx} onClick={() => onOptionClick?.(opt.query)} className="option-btn">
+                      <span className="option-icon">✨</span> {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
+
+          {isTyping ? (
+            <div className="typing-dots" aria-label="Typing">
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+            </div>
+          ) : null}
         </div>
       </div>
     </motion.div>
   );
-});
+  }
+);
 
 interface ProviderConfig {
   name: string;
@@ -2075,6 +2146,16 @@ export default function CommandComposer({
     return kept;
   };
 
+  const isSystemNoticeText = (raw: any) => {
+    const s = typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim();
+    if (!s) return false;
+    if (s.length > 420) return false;
+    if (/^\s*(⚠️|ℹ️|✅|🔐|🚫|⛔|🛡️)/.test(s)) return true;
+    if (/^\s*(مطلوب|يلزم|تنبيه|تحذير)\b/.test(s)) return true;
+    if (/token saved|secret required|authentication failed/i.test(s)) return true;
+    return false;
+  };
+
   const renderItems = useMemo(() => {
     const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
     const inserted = new Set<string>();
@@ -2350,20 +2431,19 @@ export default function CommandComposer({
             );
           }
 
-          if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} />;
+          if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} variant="user" ts={item.e?.ts} />;
 
           if (item.kind === 'error') {
+            const msg = typeof item.e?.data === 'string' ? item.e.data : String(item.e?.data ?? '');
             return (
-              <motion.div
+              <ChatBubble
                 key={item.key}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="message-row joe"
-              >
-                <div className="message-bubble error" dir="auto" style={{ color: '#ef4444', border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)' }}>
-                  ⚠️ {item.e?.data}
-                </div>
-              </motion.div>
+                event={{ data: { text: `⚠️ ${msg}` } }}
+                isUser={false}
+                variant="system"
+                tone="danger"
+                ts={item.e?.ts}
+              />
             );
           }
 
@@ -2378,7 +2458,18 @@ export default function CommandComposer({
 
             const cleaned = cleanAssistantText(content);
             if (!cleaned) return null;
-            return <ChatBubble key={item.key} event={{ data: { text: cleaned } }} isUser={false} onOptionClick={(q) => run(q)} />;
+            const system = isSystemNoticeText(cleaned);
+            return (
+              <ChatBubble
+                key={item.key}
+                event={{ data: { text: cleaned } }}
+                isUser={false}
+                variant={system ? 'system' : 'ai'}
+                tone={system ? 'info' : 'normal'}
+                ts={item.e?.ts}
+                onOptionClick={(q) => run(q)}
+              />
+            );
           }
 
           if (item.kind === 'artifact') {
@@ -2451,7 +2542,7 @@ export default function CommandComposer({
         })}
         {status === 'answering' && draftActive && draftText ? (
           <div data-joe-draft="1">
-            <ChatBubble key="draft:typing" event={{ data: { text: draftText } }} isUser={false} />
+            <ChatBubble key="draft:typing" event={{ data: { text: draftText } }} isUser={false} variant="ai" ts={Date.now()} isTyping={true} />
           </div>
         ) : null}
         </AnimatePresence>
