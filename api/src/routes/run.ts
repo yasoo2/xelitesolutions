@@ -1796,13 +1796,74 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
     
     // Add result to history to prevent infinite loops
-    const safeOutput = (obj: any) => {
-        try { return JSON.stringify(obj); } catch { return '"[Result too large or circular]"'; }
+    const MAX_INLINE_CHARS = 1800;
+    const truncate = (s: string, max = MAX_INLINE_CHARS) => (s.length > max ? `${s.slice(0, max)}…[truncated]` : s);
+    const extractTitleFromHtml = (html: string) => {
+      const m = html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i);
+      const t = String(m?.[1] || '').replace(/\s+/g, ' ').trim();
+      return t || '';
+    };
+    const inferSiteLabel = (url: string, dom: string) => {
+      const u = String(url || '').trim();
+      try {
+        if (u) {
+          const host = new URL(u).hostname.replace(/^www\./i, '');
+          if (host) return host;
+        }
+      } catch {}
+      const d = String(dom || '');
+      if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
+      if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
+      if (/github\.com/i.test(d)) return 'github.com';
+      const title = extractTitleFromHtml(d);
+      return title || 'page';
+    };
+    const summarizeBrowserOutput = (out: any) => {
+      if (!out || typeof out !== 'object') return out;
+      const url = typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
+      const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
+      const title = dom ? extractTitleFromHtml(dom) : '';
+      const site = inferSiteLabel(url, dom);
+      const domLen = dom ? dom.length : 0;
+      const hasScreenshot = Boolean((out as any).screenshot || (out as any).screenshotHref);
+      const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
+      const loginLike = /ServiceLogin|signin|login|تسجيل\s+الدخول|تسجيل\s+دخول/i.test(dom);
+      const summary: any = { site };
+      if (url) summary.url = url;
+      if (title) summary.title = title;
+      if (loginLike) summary.pageType = 'login';
+      if (domLen) summary.domLength = domLen;
+      if (hasScreenshot) summary.hasScreenshot = true;
+      if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
+      return summary;
+    };
+    const sanitizeForInline = (toolName: string, obj: any) => {
+      if (obj == null) return obj;
+      const t = String(toolName || '');
+      if (/^browser_/.test(t)) return summarizeBrowserOutput(obj);
+      if (typeof obj === 'string') return truncate(obj);
+      if (typeof obj === 'object') {
+        try {
+          const raw = JSON.stringify(obj);
+          if (raw.length <= MAX_INLINE_CHARS) return obj;
+          return truncate(raw);
+        } catch {
+          return '[Result too large or circular]';
+        }
+      }
+      return obj;
+    };
+    const safeOutput = (toolName: string, obj: any) => {
+      try {
+        return JSON.stringify(sanitizeForInline(toolName, obj));
+      } catch {
+        return '"[Result too large or circular]"';
+      }
     };
 
     history.push({ 
         role: 'assistant', 
-        content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(persistedInput)}\nOutput: ${safeOutput(result.output || result.error || 'Done')}` 
+        content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(plan?.name || '', persistedInput)}\nOutput: ${safeOutput(plan?.name || '', result.output || result.error || 'Done')}` 
     });
 
     lastResult = result;
@@ -1825,7 +1886,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
     }
 
-    ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+    const eventResult =
+      /^browser_/.test(String(plan?.name || '')) && result && typeof result === 'object'
+        ? { ...result, output: summarizeBrowserOutput((result as any).output) }
+        : result;
+    ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result: eventResult } });
 
     if (result.ok && String(plan?.name || '') === 'browser_get_state' && endAfterBrowserState) {
       const msg = isArabicText(initialUserTextForOpen)
@@ -1894,7 +1959,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Read] Read ${pkgPath} for context.` } });
                history.push({ 
                    role: 'assistant', 
-                   content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${JSON.stringify(subResult.output)}` 
+                   content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${safeOutput('file_read', subResult.output)}` 
                });
            }
        }
@@ -1913,7 +1978,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Correction] ls ${dir}: ${JSON.stringify(subResult.output)}` } });
                history.push({ 
                    role: 'assistant', 
-                   content: `Tool Call: ls\nInput: {"path":"${dir}"}\nOutput: ${JSON.stringify(subResult.output)}` 
+                   content: `Tool Call: ls\nInput: {"path":"${dir}"}\nOutput: ${safeOutput('ls', subResult.output)}` 
                });
            }
        }

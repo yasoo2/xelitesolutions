@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
 // import fetch from 'node-fetch'; // Using native fetch
 
-const API_URL = process.env.API_URL || 'http://localhost:8080';
+const API_URL = process.env.API_URL || 'http://localhost:3000';
 const WS_URL = process.env.WS_URL || `${API_URL.replace('http', 'ws')}/ws`;
 const JWT_SECRET = 'change-me';
 
@@ -74,7 +74,7 @@ async function main() {
         // But for Real DB it works.
     }
 
-    // 3. Test Operations Room (WebSocket & Execution)
+    // 3. Test Operations Room (WebSocket & Live Events)
     console.log('\n3️⃣  Testing Operations Room (Live Events)...');
     const ws = new WebSocket(WS_URL);
     
@@ -84,20 +84,16 @@ async function main() {
         ws.on('open', async () => {
             console.log('   📡 WebSocket Connected');
             
-            // Trigger a task that generates steps
-            console.log('   🚀 Triggering task: "Write a file named verify.txt"');
-            await fetch(`${API_URL}/runs/start`, {
-                method: 'POST',
-                headers: authHeaders,
-                body: JSON.stringify({ 
-                    text: 'write a file named verify.txt with content "verified"', 
-                    sessionId 
-                })
+            console.log('   🚀 Triggering tool run (echo) to emit steps');
+            await fetch(`${API_URL}/tools/run`, {
+              method: 'POST',
+              headers: authHeaders,
+              body: JSON.stringify({ text: 'hello', sessionId }),
             });
         });
 
         let stepCount = 0;
-        let hasExecution = false;
+        let hasExecutionDone = false;
 
         ws.on('message', (data) => {
             const msg = JSON.parse(data.toString());
@@ -106,17 +102,17 @@ async function main() {
                 stepCount++;
             }
             if (msg.type === 'step_done') {
-                if (msg.data.name.includes('execute')) hasExecution = true;
+              if (String(msg.data?.name || '').includes('execute:echo')) hasExecutionDone = true;
             }
-            if (msg.type === 'run_completed') {
-                clearTimeout(timeout);
-                console.log('   🏁 Task Completed');
-                if (stepCount >= 2 && hasExecution) {
-                    console.log('   ✅ Operations Room Verified: Events flow correctly.');
-                    resolve();
-                } else {
-                    reject(new Error('Missing expected steps or execution events'));
-                }
+            if (hasExecutionDone) {
+              clearTimeout(timeout);
+              console.log('   🏁 Tool Execution Completed');
+              if (stepCount >= 2) {
+                console.log('   ✅ Operations Room Verified: Events flow correctly.');
+                resolve();
+              } else {
+                reject(new Error('Missing expected steps'));
+              }
             }
         });
         

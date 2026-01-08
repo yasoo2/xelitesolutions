@@ -1,14 +1,21 @@
 import { setTimeout as wait } from 'timers/promises';
+import jwt from 'jsonwebtoken';
 
-const API = process.env.API_URL || 'http://localhost:8080';
+const API = process.env.API_URL || 'http://localhost:3000';
+const JWT_SECRET = 'change-me';
+const token = jwt.sign({ sub: 'test-user', role: 'OWNER' }, JWT_SECRET);
+const authHeaders = {
+  'Content-Type': 'application/json',
+  Authorization: `Bearer ${token}`,
+};
 
-type RunStartResp = { runId: string; sessionId?: string; result?: any };
+type RunStartResp = { runId: string; sessionId?: string; result?: any; blocked?: boolean; secretRequired?: boolean; error?: string };
 type RunDetailsResp = { run: any; execs: Array<any>; artifacts: Array<{ name: string; href: string }> };
 
 async function startRun(text: string): Promise<RunStartResp> {
   const res = await fetch(`${API}/runs/start`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({ text }),
   });
   if (!res.ok) throw new Error(`start failed: ${res.status}`);
@@ -30,11 +37,27 @@ function findExec(execs: RunDetailsResp['execs'], name: string) {
 }
 
 async function testPrompt(text: string) {
-  const { runId } = await startRun(text);
-  await wait(500); // small delay for execution
-  const details = await getRun(runId);
-  const execOk = details.execs.some(e => e.ok === true);
-  const imageOk = hasImageArtifact(details.artifacts);
+  const start = await startRun(text);
+  if (start?.blocked && start?.secretRequired) {
+    return { ok: false, skipped: true, reason: 'secret_required' as const };
+  }
+
+  const runId = start.runId;
+  const startedAt = Date.now();
+  let details: RunDetailsResp | null = null;
+  while (Date.now() - startedAt < 20000) {
+    await wait(750);
+    details = await getRun(runId);
+    const runStatus = String((details as any)?.run?.status || '').toLowerCase();
+    const execOk = Array.isArray(details.execs) && details.execs.some(e => e && e.ok === true);
+    const imageOk = Array.isArray(details.artifacts) && hasImageArtifact(details.artifacts);
+    if (execOk || imageOk) return { ok: true, details };
+    if (runStatus && runStatus !== 'running') break;
+  }
+
+  details = details || (await getRun(runId));
+  const execOk = Array.isArray(details.execs) && details.execs.some(e => e && e.ok === true);
+  const imageOk = Array.isArray(details.artifacts) && hasImageArtifact(details.artifacts);
   return { ok: execOk || imageOk, details };
 }
 
@@ -106,10 +129,17 @@ async function main() {
 
   const failures: Array<{ text: string; reason: string }> = [];
   let passCount = 0;
+  let skipCount = 0;
 
   for (const text of prompts) {
     try {
-      const { ok } = await testPrompt(text);
+      const out = await testPrompt(text);
+      if ((out as any)?.skipped) {
+        skipCount++;
+        await wait(100);
+        continue;
+      }
+      const ok = Boolean((out as any)?.ok);
       if (!ok) failures.push({ text, reason: 'no ok exec or image artifact' });
       else passCount++;
       await wait(200);
@@ -118,7 +148,7 @@ async function main() {
     }
   }
 
-  console.log(`QA Suite: passed=${passCount} failed=${failures.length}`);
+  console.log(`QA Suite: passed=${passCount} failed=${failures.length} skipped=${skipCount}`);
   if (failures.length) {
     console.log('Failures:');
     failures.forEach(f => console.log(`- "${f.text}": ${f.reason}`));
