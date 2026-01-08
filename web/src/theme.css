@@ -1,16 +1,16 @@
 :root {
-  --accent-primary: #ffff00;
-  --accent-secondary: #fff200;
-  --accent-primary-rgb: 255, 255, 0;
-  --accent-secondary-rgb: 255, 242, 0;
-  --accent-rgb: 255, 255, 0;
-  --accent-glow: rgba(255, 255, 0, 0.94);
-  --brand-mark-yellow: #ffff00;
-  --brand-mark-yellow-rgb: 255, 255, 0;
+  --accent-primary: #38bdf8;
+  --accent-secondary: #ffda00;
+  --accent-primary-rgb: 56, 189, 248;
+  --accent-secondary-rgb: 255, 218, 0;
+  --accent-rgb: 56, 189, 248;
+  --accent-glow: rgba(56, 189, 248, 0.55);
+  --brand-mark-yellow: #ffda00;
+  --brand-mark-yellow-rgb: 255, 218, 0;
   --accent-danger: #ef4444;
   --accent-success: #22c55e;
-  --bg-dark: #080703;
-  --bg-card: rgba(20, 18, 10, 0.78);
+  --bg-dark: #050a14;
+  --bg-card: rgba(10, 14, 26, 0.76);
   --bg-secondary: rgba(255, 255, 255, 0.06);
   --bg-input: rgba(255, 255, 255, 0.06);
   --bg-hover: rgba(255, 255, 255, 0.09);
@@ -33,14 +33,14 @@ html {
 }
 
 html[data-theme="light"] {
-  --accent-primary: #3b82f6;
-  --accent-secondary: #0ea5e9;
-  --accent-primary-rgb: 59, 130, 246;
-  --accent-secondary-rgb: 14, 165, 233;
-  --accent-rgb: 59, 130, 246;
-  --accent-glow: rgba(59, 130, 246, 0.42);
-  --brand-mark-yellow: #fde047;
-  --brand-mark-yellow-rgb: 253, 224, 71;
+  --accent-primary: #38bdf8;
+  --accent-secondary: #ffda00;
+  --accent-primary-rgb: 56, 189, 248;
+  --accent-secondary-rgb: 255, 218, 0;
+  --accent-rgb: 56, 189, 248;
+  --accent-glow: rgba(56, 189, 248, 0.30);
+  --brand-mark-yellow: #ffda00;
+  --brand-mark-yellow-rgb: 255, 218, 0;
   --bg-dark: #f6f8ff;
   --bg-card: rgba(255, 255, 255, 0.92);
   --bg-secondary: rgba(15, 23, 42, 0.04);

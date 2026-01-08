@@ -1584,7 +1584,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         } else if (/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i.test(userTextForOverrides)) {
              const m = userTextForOverrides.match(/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i);
              if (m && m[4]) {
-                 plan = { name: 'grep_search', input: { pattern: m[4].trim(), path: '.' } } as any;
+                 plan = { name: 'grep_search', input: { query: m[4].trim(), path: '.' } } as any;
                  planName = 'grep_search';
              }
         } else if (/(open|start|launch|افتح|شغل|ابدأ)\s*(the\s+)?(browser|متصفح|المتصفح)/i.test(userTextForOverrides)) {
@@ -2460,7 +2460,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.` 
         });
     } else {
-        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(result.output)}` });
+        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(String(plan?.name || ''), result.output)}` });
     }
     
     steps++;

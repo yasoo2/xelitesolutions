@@ -506,11 +506,6 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       }
 
       broadcast({ type: 'step_done', runId: pending.runId, data: { name: `thinking_step_${steps + 1}`, plan } });
-      if (plan?.thought) {
-          console.log('[DEBUG] Thought broadcasted:', plan.thought);
-      } else {
-          console.log('[DEBUG] No thought in plan');
-      }
 
 
       if (String(plan?.name || '') === 'browser_run') {

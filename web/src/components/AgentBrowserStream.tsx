@@ -78,6 +78,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const lastMoveRef = useRef<number>(0);
   const cursorRafRef = useRef<number | null>(null);
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
+  const highlightRafRef = useRef<number | null>(null);
+  const pendingHighlightRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const connectTimeoutRef = useRef<number | null>(null);
   const connectAttemptsRef = useRef<number>(0);
@@ -540,7 +542,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 left: ${(msg.x / s.w) * 100}%;
                 top: ${(msg.y / s.h) * 100}%;
                 width: 20px; height: 20px;
-                background: rgba(255, 0, 0, 0.5);
+                background: rgba(var(--accent-secondary-rgb), 0.45);
                 border-radius: 50%;
                 transform: translate(-50%, -50%);
                 pointer-events: none;
@@ -558,7 +560,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 typeof b?.width === 'number' &&
                 typeof b?.height === 'number'
               ) {
-                setHighlight({ x: b.x, y: b.y, width: b.width, height: b.height });
+                pendingHighlightRef.current = { x: b.x, y: b.y, width: b.width, height: b.height };
+                if (highlightRafRef.current == null) {
+                  highlightRafRef.current = requestAnimationFrame(() => {
+                    highlightRafRef.current = null;
+                    if (pendingHighlightRef.current) setHighlight(pendingHighlightRef.current);
+                  });
+                }
               }
             }
             if (msg.type === 'action_start') {
@@ -952,8 +960,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       style={{
         display: 'flex',
         flexDirection: 'column',
-        background: '#202124', // Modern dark theme bg
-        borderBottom: '1px solid #3c4043',
+        background: 'var(--bg-card)',
+        borderBottom: '1px solid var(--border-color)',
         fontFamily: 'Segoe UI, Roboto, Helvetica, Arial, sans-serif',
       }}
     >
@@ -965,7 +973,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           alignItems: 'flex-end',
           padding: '8px 8px 0 8px',
           gap: 6,
-          background: '#202124',
+          background: 'var(--bg-card)',
           overflowX: 'auto',
           height: 38,
         }}
@@ -985,8 +993,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 gap: 8,
                 padding: '0 12px',
                 height: 30,
-                background: isActive ? '#323639' : 'transparent',
-                color: isActive ? '#e8eaed' : '#9aa0a6',
+                background: isActive ? 'rgba(var(--accent-primary-rgb), 0.12)' : 'transparent',
+                color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
                 borderRadius: '8px 8px 0 0',
                 fontSize: 12,
                 cursor: 'pointer',
@@ -995,14 +1003,14 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 position: 'relative',
                 transition: 'background 0.2s, color 0.2s',
               }}
-              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#292c2f'; }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
               onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
               <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); runActions([{ type: 'tab.close', tabId: t.id }]); }}
                 style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 14, opacity: 0.7, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
               >
                 ×
@@ -1012,8 +1020,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         })}
         <button
           onClick={() => runActions([{ type: 'tab.new', url: 'about:blank', waitUntil: 'domcontentloaded' }])}
-          style={{ width: 28, height: 28, borderRadius: '50%', background: 'transparent', border: 'none', color: '#9aa0a6', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+          style={{ width: 28, height: 28, borderRadius: '50%', background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
           +
@@ -1029,30 +1037,30 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           gap: 12,
           padding: '8px 12px',
           height: 52,
-          background: '#323639',
+          background: 'var(--bg-card)',
         }}
       >
         <div style={{ display: 'flex', gap: 4 }}>
           <button
             onClick={() => runActions([{ type: 'goBack' }])}
-            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: '#e8eaed', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
           >
             ←
           </button>
           <button
             onClick={() => runActions([{ type: 'goForward' }])}
-            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: '#e8eaed', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
           >
             →
           </button>
           <button
             onClick={() => runActions([{ type: 'reload' }])}
-            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: '#e8eaed', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
           >
             ↻
@@ -1062,7 +1070,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         <div 
           style={{
             flex: 1,
-            background: '#202124',
+            background: 'var(--bg-input)',
             borderRadius: 24,
             display: 'flex',
             alignItems: 'center',
@@ -1072,8 +1080,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
             transition: 'border-color 0.2s, background 0.2s',
           }}
-          onFocus={(e) => { e.currentTarget.style.background = '#202124'; e.currentTarget.style.border = '1px solid #5f6368'; }}
-          onBlur={(e) => { e.currentTarget.style.background = '#202124'; e.currentTarget.style.border = '1px solid transparent'; }}
+          onFocus={(e) => { e.currentTarget.style.background = 'var(--bg-input)'; e.currentTarget.style.border = '1px solid var(--border-light)'; }}
+          onBlur={(e) => { e.currentTarget.style.background = 'var(--bg-input)'; e.currentTarget.style.border = '1px solid transparent'; }}
         >
           <input
             type="text"
@@ -1090,7 +1098,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               flex: 1,
               background: 'transparent',
               border: 'none',
-              color: '#e8eaed',
+              color: 'var(--text-primary)',
               outline: 'none',
               fontSize: 14,
             }}
@@ -1104,7 +1112,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           }}
           style={{
              background: 'none',
-             color: '#8ab4f8',
+             color: 'var(--accent-primary)',
              border: 'none',
              padding: '0 8px',
              fontSize: 14,
@@ -1133,10 +1141,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         position: focusMode ? 'fixed' : 'relative',
         inset: focusMode ? 12 : undefined,
         zIndex: focusMode ? 9999 : undefined,
-        background: focusMode ? '#202124' : undefined,
+        background: focusMode ? 'var(--bg-dark)' : undefined,
         padding: focusMode ? 0 : undefined,
         borderRadius: focusMode ? 12 : undefined,
-        border: focusMode ? '1px solid #5f6368' : undefined,
+        border: focusMode ? '1px solid var(--border-light)' : undefined,
         boxShadow: focusMode ? '0 12px 50px rgba(0,0,0,0.6)' : undefined,
         height: '100%',
         overflow: 'hidden',
@@ -1148,7 +1156,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
 
 
-      <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: 0, overflow: 'hidden', position: 'relative', background: '#202124', boxShadow: minimal ? 'none' : undefined, flex: minimal ? 1 : undefined }}>
+      <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-dark)', boxShadow: minimal ? 'none' : undefined, flex: minimal ? 1 : undefined }}>
         <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
           <canvas
             ref={canvasRef}
@@ -1186,8 +1194,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 {status === 'connected' ? 'متصل' : status === 'reconnecting' ? 'يعيد الاتصال...' : status === 'error' ? 'خطأ اتصال' : 'جاري الاتصال...'}
                 {fallbackActive ? ' • وضع بديل (HTTP)' : ''}
               </div>
-              {wsError ? <div style={{ color: '#fecaca', marginBottom: 6 }}>{wsError}</div> : null}
-              {fallbackError ? <div style={{ color: '#fde68a', marginBottom: 6 }}>{fallbackError}</div> : null}
+              {wsError ? <div style={{ color: 'var(--accent-danger)', marginBottom: 6 }}>{wsError}</div> : null}
+              {fallbackError ? <div style={{ color: 'var(--accent-secondary)', marginBottom: 6 }}>{fallbackError}</div> : null}
               {noFramesHint ? <div style={{ color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{noFramesHint}</div> : null}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
@@ -1238,8 +1246,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 top: `${(highlight.y / size.h) * 100}%`,
                 width: `${(highlight.width / size.w) * 100}%`,
                 height: `${(highlight.height / size.h) * 100}%`,
-                border: '2px solid #eab308',
-                boxShadow: '0 0 15px rgba(234, 179, 8, 0.4)',
+                border: '2px solid var(--accent-secondary)',
+                boxShadow: '0 0 15px rgba(var(--accent-secondary-rgb), 0.4)',
                 pointerEvents: 'none',
                 borderRadius: 4,
                 transition: 'all 0.2s ease'
@@ -1259,7 +1267,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 transition: 'all 0.1s linear'
               }}
             >
-              <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#eab308', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
+              <div style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--accent-secondary)', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
             </div>
           )}
         </div>

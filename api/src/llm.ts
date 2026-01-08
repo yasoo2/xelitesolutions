@@ -75,17 +75,61 @@ const PRIORITY_TOOL_NAMES: string[] = [
   'deep_research',
 ];
 
-function selectToolDefsForProvider(all: typeof activeTools, limit: number) {
+function selectToolDefsForProvider(
+  all: typeof activeTools,
+  limit: number,
+  messages: { role: 'user' | 'assistant' | 'system'; content: string | any[] }[]
+) {
   const byName = new Map(all.map(t => [t.name, t] as const));
   const selected: (typeof activeTools)[number][] = [];
   const seen = new Set<string>();
+
+  const routingTextRaw = messages
+    .slice(-10)
+    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
+    .join('\n');
+  const routingText = routingTextRaw.toLowerCase();
+  const isArabic = /[\u0600-\u06FF]/.test(routingTextRaw);
+
+  const hasUrl = /https?:\/\/\S+/i.test(routingTextRaw);
+  const wantsBrowser =
+    hasUrl ||
+    /\b(browser|browse|web|website|open)\b/i.test(routingTextRaw) ||
+    /متصفح|موقع|رابط|داخل\s+المتصفح/i.test(routingTextRaw);
+  const wantsSearch =
+    /\b(search|research|find|lookup|web_search|deep_research|knowledge)\b/i.test(routingTextRaw) ||
+    /ابحث|بحث|مصدر|مراجع|معلومات/i.test(routingTextRaw);
+  const wantsFs =
+    /\b(file|folder|directory|path|read|write|edit|tree|glob|grep)\b/i.test(routingTextRaw) ||
+    /ملف|مجلد|مسار|اقرأ|اكتب|عدل|عدّل|ابحث\s+في\s+الكود/i.test(routingTextRaw);
+  const wantsShell =
+    /\b(terminal|command|shell|npm|pnpm|yarn|pip|python|node|run)\b/i.test(routingTextRaw) ||
+    /ترمينال|طرفية|أمر|تشغيل/i.test(routingTextRaw);
+  const wantsQuality =
+    /\b(lint|eslint|typecheck|tsc|test|jest|build|ci)\b/i.test(routingTextRaw) ||
+    /اختبار|اختبر|lint|بناء|typecheck|تحقق/i.test(routingTextRaw);
+  const wantsGit =
+    /\b(git|github|commit|pr|pull request|diff|branch)\b/i.test(routingTextRaw) ||
+    /جيت|جيتهاب|فرع|كوميت|طلب\s+دمج/i.test(routingTextRaw);
+  const wantsImage = /\b(image|png|jpg|jpeg|generate image)\b/i.test(routingTextRaw) || /صورة|صور/i.test(routingTextRaw);
+
+  let computedLimit = 72;
+  if (routingTextRaw.length < 140) computedLimit = 56;
+  if (routingTextRaw.length > 700) computedLimit = 96;
+  if (wantsBrowser) computedLimit = Math.max(computedLimit, 88);
+  if (wantsSearch) computedLimit = Math.max(computedLimit, 80);
+  if (wantsFs) computedLimit = Math.max(computedLimit, 80);
+  if (wantsQuality) computedLimit = Math.max(computedLimit, 80);
+  if (wantsGit) computedLimit = Math.max(computedLimit, 72);
+  if (wantsImage) computedLimit = Math.max(computedLimit, 72);
+  const effectiveLimit = Math.max(PRIORITY_TOOL_NAMES.length, Math.min(limit, computedLimit));
 
   for (const name of PRIORITY_TOOL_NAMES) {
     const t = byName.get(name);
     if (!t) continue;
     selected.push(t);
     seen.add(t.name);
-    if (selected.length >= limit) return selected;
+    if (selected.length >= effectiveLimit) return selected;
   }
 
   const isGeneratedName = (name: string) =>
@@ -94,7 +138,10 @@ function selectToolDefsForProvider(all: typeof activeTools, limit: number) {
     name.startsWith('noop_');
 
   const scoreTool = (t: any) => {
-    const tags = Array.isArray(t?.tags) ? t.tags : [];
+    const tags: string[] = Array.isArray(t?.tags) ? t.tags : [];
+    const name = String(t?.name || '').toLowerCase();
+    const desc = String(t?.description || '').toLowerCase();
+    const hay = `${name} ${desc} ${tags.join(' ')}`;
     let score = 0;
     if (tags.includes('agent')) score += 50;
     if (tags.includes('browser')) score += 45;
@@ -103,6 +150,34 @@ function selectToolDefsForProvider(all: typeof activeTools, limit: number) {
     if (tags.includes('search')) score += 25;
     if (tags.includes('knowledge')) score += 20;
     if (tags.includes('code')) score += 10;
+
+    if (wantsBrowser && (tags.includes('browser') || name.startsWith('browser_'))) score += 90;
+    if (wantsSearch && (tags.includes('search') || tags.includes('knowledge') || name.includes('search') || name.includes('research'))) score += 65;
+    if (wantsFs && (tags.includes('fs') || name.includes('file_') || name.includes('read') || name.includes('write') || name.includes('grep') || name.includes('glob'))) score += 65;
+    if (wantsShell && (tags.includes('shell') || name.includes('shell') || name.includes('command'))) score += 55;
+    if (wantsQuality && (name.includes('lint') || name.includes('test') || name.includes('type') || name.includes('quality') || tags.includes('quality'))) score += 60;
+    if (wantsGit && (name.includes('git') || name.includes('github') || tags.includes('git'))) score += 55;
+    if (wantsImage && (name.includes('image') || tags.includes('image'))) score += 55;
+
+    if (hasUrl && (name.includes('http') || name.includes('html') || tags.includes('browser'))) score += 20;
+    if (isArabic) {
+      if (/(arabic|ar)\b/.test(hay)) score += 5;
+    }
+
+    const boostKeywords = [
+      'scaffold',
+      'analyze',
+      'repo',
+      'project',
+      'deploy',
+      'migration',
+      'db',
+      'auth',
+      'payments',
+    ];
+    for (const kw of boostKeywords) {
+      if (routingText.includes(kw) && hay.includes(kw)) score += 10;
+    }
     return score;
   };
 
@@ -116,19 +191,19 @@ function selectToolDefsForProvider(all: typeof activeTools, limit: number) {
     });
 
   for (const t of preferred) {
-    if (selected.length >= limit) return selected;
+    if (selected.length >= effectiveLimit) return selected;
     selected.push(t);
     seen.add(t.name);
   }
 
   for (const t of all) {
-    if (selected.length >= limit) return selected;
+    if (selected.length >= effectiveLimit) return selected;
     if (seen.has(t.name)) continue;
     selected.push(t);
     seen.add(t.name);
   }
 
-  return selected.slice(0, limit);
+  return selected.slice(0, effectiveLimit);
 }
 
 export interface PlanOptions {
@@ -144,7 +219,7 @@ export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer 
 
 ## CORE PHILOSOPHY & PERSONALITY:
 1.  **Elite Intelligence**: You don't just answer; you solve. You anticipate needs before they are spoken. You see the architecture, not just the code.
-2.  **Adaptive Intelligence**: You judge the complexity of the request. For simple queries, be concise. For complex or open-ended queries (like "research", "comprehensive", "lethal"), be COMPREHENSIVE and DETAILED. Provide deep insights, detailed breakdowns, and "Chain of Thought" reasoning.
+2.  **Adaptive Intelligence**: You judge the complexity of the request. For simple queries, be concise. For complex or open-ended queries (like "research", "comprehensive", "lethal"), be COMPREHENSIVE and DETAILED. Provide deep insights and detailed breakdowns.
 3.  **Proactive Evolution**: You constantly seek to improve the codebase. If you see a legacy pattern, suggest a modern one. If you see a security risk, patch it.
 4.  **Deep Context**: You analyze the entire project structure. You know where files are, how they connect, and what the user is trying to build.
 
@@ -154,8 +229,12 @@ Before *every* action, perform a rapid internal cognitive cycle:
 2.  **PLAN**: Select the most powerful tools for the job and avoid unnecessary steps.
 3.  **ACT**: Execute with precision. Verify the output. If a tool fails, auto-correct and retry immediately.
 
+## CONFIDENTIALITY:
+- Never reveal private internal reasoning or hidden analysis. Provide only conclusions and actionable steps.
+
 ## TOOL USAGE GUIDELINES:
 - Use tools whenever the user asks for external data (prices, availability, comparisons, current information).
+- Prefer high-level tools that finish end-to-end (analysis/scaffold/quality) over many tiny steps.
 - For shopping/product queries, prefer **product_search** first to collect multiple offers + prices, then summarize and compare.
 - Use **web_search + html_extract** for general web research when structured product extraction is not required.
 - Use **browser_open/browser_run** only when a site blocks automated fetching or requires interactive steps; otherwise do not ask the user to manually browse.
@@ -208,12 +287,17 @@ export async function planNextStep(
   const providerKey = String(options?.provider || '').trim().toLowerCase();
   const optKey = String(options?.apiKey || '').trim();
   const envKey = String(process.env.OPENAI_API_KEY || '').trim();
-  if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
-  if (!optKey && !envKey) throw new Error('NO_API_KEY_CONFIGURED');
+  const forceMock = String(process.env.LLM_PLAN_MOCK || '').trim() === '1';
+  const shouldMock = forceMock || options?.mock === true;
+
+  if (!shouldMock) {
+    if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
+    if (!optKey && !envKey) throw new Error('NO_API_KEY_CONFIGURED');
+  }
 
   // Determine client to use
   let client = openai;
-  if (options?.apiKey || options?.baseUrl) {
+  if (!shouldMock && (options?.apiKey || options?.baseUrl)) {
     const isDefaultKey = !options.apiKey || options.apiKey === process.env.OPENAI_API_KEY;
     const isDefaultBaseUrl = !options.baseUrl || options.baseUrl === process.env.OPENAI_BASE_URL;
 
@@ -226,19 +310,8 @@ export async function planNextStep(
     }
   }
 
-  const forceMock = String(process.env.LLM_PLAN_MOCK || '').trim() === '1';
-  const shouldMock = forceMock || (!optKey && !envKey);
-
-  console.log('[DEBUG LLM] planNextStep:', {
-      providerKey,
-      forceMock,
-      shouldMock,
-      hasApiKey: !!options?.apiKey,
-      hasEnvKey: !!process.env.OPENAI_API_KEY
-  });
-
   if (shouldMock) {
-      console.info('[LLM] Using Mock Planner');
+       console.info('[LLM] Using Mock Planner');
       const lastMsg = messages[messages.length - 1];
       const lastUserMsg = [...messages].reverse().find(m => m.role === 'user') || lastMsg;
       const rawText =
@@ -662,12 +735,12 @@ export async function planNextStep(
   }
 
   // 1. Prepare tools for OpenAI
-  const selectedToolDefs = selectToolDefsForProvider(activeTools, MAX_PROVIDER_TOOLS);
+  const selectedToolDefs = selectToolDefsForProvider(activeTools, MAX_PROVIDER_TOOLS, messages);
   const aiTools: OpenAI.Chat.Completions.ChatCompletionTool[] = selectedToolDefs.map(t => ({
     type: 'function',
     function: {
       name: t.name,
-      description: t.description || `Tool: ${t.name}. Tags: ${t.tags.join(', ')}`,
+      description: t.description || `Tool: ${t.name}. Tags: ${(Array.isArray((t as any).tags) ? (t as any).tags : []).join(', ')}`,
       parameters: t.inputSchema as any,
     },
   }));
@@ -762,10 +835,18 @@ export async function planNextStep(
     const toolCall = choice.message.tool_calls?.[0];
 
     if (toolCall && toolCall.type === 'function') {
+      let parsedArgs: any = {};
+      try {
+        parsedArgs = JSON.parse(toolCall.function.arguments || '{}');
+      } catch (e: any) {
+        return {
+          name: 'echo',
+          input: { text: `Tool arguments parse failed for ${toolCall.function.name}.` },
+        };
+      }
       return {
         name: toolCall.function.name,
-        input: JSON.parse(toolCall.function.arguments),
-        thought: choice.message.content // Capture thought
+        input: parsedArgs,
       };
     }
 
@@ -773,7 +854,6 @@ export async function planNextStep(
     return {
       name: 'echo',
       input: { text: choice.message.content || "I'm not sure what to do." },
-      thought: choice.message.content // Capture thought
     };
 
   } catch (error) {

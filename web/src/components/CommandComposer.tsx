@@ -1959,7 +1959,7 @@ export default function CommandComposer({
       return { label: t('toolCategoryBrowse'), Icon: Eye, color: 'var(--accent-primary)', bg: 'rgba(var(--accent-primary-rgb),0.08)', border: 'rgba(var(--accent-primary-rgb),0.35)' };
     }
     if (lowerTool.includes('image_generate')) {
-      return { label: t('toolCategoryImage'), Icon: ImageIcon, color: '#eab308', bg: 'rgba(234,179,8,0.08)', border: 'rgba(234,179,8,0.35)' };
+      return { label: t('toolCategoryImage'), Icon: ImageIcon, color: 'var(--accent-secondary)', bg: 'rgba(var(--accent-secondary-rgb),0.08)', border: 'rgba(var(--accent-secondary-rgb),0.35)' };
     }
     return { label: t('toolCategoryGeneric'), Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
   };
@@ -2596,8 +2596,8 @@ export default function CommandComposer({
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <span style={{ 
                                         width: 8, height: 8, borderRadius: '50%',
-                                        background: p.isConnected ? '#22c55e' : (p.apiKey ? '#eab308' : '#71717a'),
-                                        boxShadow: p.isConnected ? '0 0 8px #22c55e' : 'none'
+                                        background: p.isConnected ? 'var(--accent-success)' : (p.apiKey ? 'var(--accent-secondary)' : '#71717a'),
+                                        boxShadow: p.isConnected ? '0 0 8px rgba(34, 197, 94, 0.6)' : p.apiKey ? '0 0 8px rgba(var(--accent-secondary-rgb), 0.45)' : 'none'
                                     }} />
                                     {p.name.split(' ')[0]}
                                 </span>
@@ -2788,8 +2788,8 @@ export default function CommandComposer({
       {secretPrompt && (
         <div className="modal">
           <div className="panel" style={{ width: 400, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <div style={{ padding: 10, borderRadius: 12, background: 'rgba(234, 179, 8, 0.1)', color: '#eab308' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
                 <Lock size={24} />
               </div>
               <div>
