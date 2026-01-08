@@ -299,7 +299,10 @@ export const tools: ToolDefinition[] = [
         type: { type: 'string', enum: ['ecommerce', 'saas', 'blog'] },
         features: { type: 'array', items: { type: 'string' } },
         baseDir: { type: 'string' },
-        skipDev: { type: 'boolean' }
+        skipDev: { type: 'boolean' },
+        qualityTasks: { type: 'array', items: { type: 'string', enum: ['lint', 'typecheck', 'test', 'build'] } },
+        securityChecks: { type: 'boolean' },
+        autoFix: { type: 'boolean' }
       },
       required: ['name']
     },
@@ -317,6 +320,11 @@ export const tools: ToolDefinition[] = [
       const features = Array.isArray(input?.features) ? input.features : [];
       const baseDir = String(input?.baseDir || '').trim();
       const skipDev = input?.skipDev === true;
+      const autoFix = input?.autoFix !== false;
+      const securityChecks = input?.securityChecks !== false;
+      const qualityTasks: Array<'lint' | 'typecheck' | 'test' | 'build'> = Array.isArray(input?.qualityTasks) && input.qualityTasks.length
+        ? input.qualityTasks
+        : ['lint', 'typecheck', 'test', 'build'];
       logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
       const scRes = await executeTool('scaffold_full_stack', { name, type, features, baseDir });
       if (!scRes?.ok) {
@@ -325,15 +333,87 @@ export const tools: ToolDefinition[] = [
       }
       const projectPath = String(scRes.output?.path || '').trim();
       steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });
-      let installRes = await executeTool('shell_execute', { command: `cd "${projectPath}" && npm install --include=dev --legacy-peer-deps --no-audit --no-fund --quiet`, timeout: 10 * 60 * 1000 });
-      if (!installRes.ok) installRes = await executeTool('shell_execute', { command: `cd "${projectPath}" && npm ci --legacy-peer-deps --no-audit --no-fund --quiet`, timeout: 10 * 60 * 1000 });
-      steps.push({ step: 'npm_install', ok: installRes.ok, output: installRes.output });
-      const qualityRes = await executeTool('quality_run', { path: projectPath, tasks: ['lint', 'typecheck', 'test', 'build'] });
-      steps.push({ step: 'quality_run', ok: qualityRes.ok, output: qualityRes.output });
+
+      const detectRes = await executeTool('project_detect', { path: projectPath });
+      steps.push({ step: 'project_detect', ok: detectRes.ok, output: detectRes.output });
+      const detectedNodeProjects: string[] = Array.isArray(detectRes.output?.nodeProjects) ? detectRes.output.nodeProjects : [];
+      const allNodeProjects = Array.from(new Set([projectPath, ...detectedNodeProjects].map(p => String(p).trim()).filter(Boolean)));
+
+      const rootPkgPath = path.join(projectPath, 'package.json');
+      let rootHasWorkspaces = false;
+      if (fs.existsSync(rootPkgPath)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
+          rootHasWorkspaces = !!pkg?.workspaces;
+        } catch {}
+      }
+
+      const runInstall = async (p: string) => {
+        let r = await executeTool('shell_execute', {
+          command: `cd "${p}" && npm install --include=dev --legacy-peer-deps --no-audit --no-fund --quiet`,
+          timeout: 10 * 60 * 1000
+        });
+        if (!r.ok) {
+          r = await executeTool('shell_execute', {
+            command: `cd "${p}" && npm ci --legacy-peer-deps --no-audit --no-fund --quiet`,
+            timeout: 10 * 60 * 1000
+          });
+        }
+        return r;
+      };
+
+      if (rootHasWorkspaces) {
+        const installRes = await runInstall(projectPath);
+        steps.push({ step: 'npm_install', ok: installRes.ok, output: installRes.output });
+      } else {
+        for (const proj of allNodeProjects) {
+          const installRes = await runInstall(proj);
+          steps.push({ step: 'npm_install', ok: installRes.ok, output: { project: proj, ...installRes.output } });
+          if (!installRes.ok) break;
+        }
+      }
+
+      const readScripts = (proj: string) => {
+        const pkgPath = path.join(proj, 'package.json');
+        if (!fs.existsSync(pkgPath)) return {};
+        try {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+          const scripts = pkg?.scripts && typeof pkg.scripts === 'object' ? pkg.scripts : {};
+          return scripts;
+        } catch {
+          return {};
+        }
+      };
+
+      for (const proj of allNodeProjects) {
+        const qualityRes = await executeTool('quality_run', { path: proj, tasks: qualityTasks });
+        steps.push({ step: 'quality_run', ok: qualityRes.ok, output: { project: proj, ...qualityRes.output } });
+        if (!qualityRes.ok && autoFix) {
+          const results = Array.isArray(qualityRes.output?.results) ? qualityRes.output.results : [];
+          const lintFailed = results.some((r: any) => r && r.task === 'lint' && r.ok === false && !r.skipped);
+          const scripts = readScripts(proj);
+          if (lintFailed && typeof (scripts as any)?.lint === 'string') {
+            const fixRes = await executeTool('shell_execute', { command: `cd "${proj}" && npm run lint -- --fix`, timeout: 10 * 60 * 1000 });
+            steps.push({ step: 'lint_fix', ok: fixRes.ok, output: { project: proj, ...fixRes.output } });
+            const lintRetry = await executeTool('quality_run', { path: proj, tasks: ['lint'] });
+            steps.push({ step: 'quality_run', ok: lintRetry.ok, output: { project: proj, ...lintRetry.output, retry: true } });
+          }
+        }
+      }
+
+      if (securityChecks) {
+        const secretsRes = await executeTool('secrets_scan_repo', { path: projectPath });
+        steps.push({ step: 'secrets_scan_repo', ok: secretsRes.ok, output: secretsRes.output });
+        const depRes = await executeTool('dependency_audit', { path: projectPath });
+        steps.push({ step: 'dependency_audit', ok: depRes.ok, output: depRes.output });
+      }
+
       const ciRes = await executeTool('ci_generate_pipeline', { path: projectPath, kind: 'node' });
       steps.push({ step: 'ci_generate_pipeline', ok: ciRes.ok, output: ciRes.output });
       const analyzeRes = await executeTool('analyze_codebase', { path: projectPath });
       steps.push({ step: 'analyze_codebase', ok: analyzeRes.ok, output: analyzeRes.output });
+      const projectAnalyzeRes = await executeTool('analyze_project', { path: projectPath });
+      steps.push({ step: 'analyze_project', ok: projectAnalyzeRes.ok, output: projectAnalyzeRes.output });
       if (!skipDev) {
         const devRes = await executeTool('dev_server_start', { cwd: projectPath });
         steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
@@ -780,6 +860,18 @@ export const tools: ToolDefinition[] = [
     sideEffects: [],
     rateLimitPerMinute: 10,
     auditFields: [],
+    mockSupported: true,
+  },
+  {
+    name: 'analyze_project',
+    version: '1.0.0',
+    tags: ['analysis', 'project'],
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: [] },
+    outputSchema: { type: 'object', properties: { status: { type: 'string' } } },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 15,
+    auditFields: ['path'],
     mockSupported: true,
   },
   {
@@ -2838,6 +2930,35 @@ export const tools: ToolDefinition[] = [
     mockSupported: false,
   },
   {
+    name: 'shell_execute',
+    version: '1.0.0',
+    tags: ['shell', 'execute'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string' },
+        cwd: { type: 'string' },
+        timeout: { type: 'number' },
+        dryRun: { type: 'boolean' },
+      },
+      required: ['command'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        stdout: { type: 'string' },
+        stderr: { type: 'string' },
+        exitCode: { type: 'number' },
+        cwd: { type: 'string' },
+      },
+    },
+    permissions: ['execute'],
+    sideEffects: ['execute'],
+    rateLimitPerMinute: 60,
+    auditFields: ['command', 'cwd'],
+    mockSupported: true,
+  },
+  {
     name: 'read_file_tree',
     version: '1.0.1',
     tags: ['fs', 'utility'],
@@ -3365,12 +3486,19 @@ function addPhase2AndCoreDevTools() {
 
       const pkgPath = path.join(p, 'package.json');
       let scripts: Record<string, string> = {};
+      let dependencies: Record<string, string> = {};
+      let devDependencies: Record<string, string> = {};
       if (fs.existsSync(pkgPath)) {
         try {
           const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
           scripts = pkg?.scripts && typeof pkg.scripts === 'object' ? pkg.scripts : {};
+          dependencies = pkg?.dependencies && typeof pkg.dependencies === 'object' ? pkg.dependencies : {};
+          devDependencies = pkg?.devDependencies && typeof pkg.devDependencies === 'object' ? pkg.devDependencies : {};
         } catch {}
       }
+      const allDeps: Record<string, string> = { ...dependencies, ...devDependencies };
+      const hasDep = (n: string) => typeof allDeps?.[n] === 'string';
+      const hasFile = (rel: string) => fs.existsSync(path.join(p, rel));
 
       const runScript = async (task: string) => {
         const scriptName =
@@ -3383,13 +3511,53 @@ function addPhase2AndCoreDevTools() {
                 : task === 'build'
                   ? (scripts.build ? 'build' : '')
                   : '';
-        if (!scriptName) {
+        const cmdFromScript = scriptName ? `npm --prefix "${p}" run ${scriptName}` : '';
+
+        const fallbackCmd = (() => {
+          if (task === 'lint') {
+            const hasEslintConfig =
+              hasFile('eslint.config.js') ||
+              hasFile('eslint.config.mjs') ||
+              hasFile('.eslintrc') ||
+              hasFile('.eslintrc.json') ||
+              hasFile('.eslintrc.js') ||
+              hasFile('.eslintrc.cjs');
+            if (hasDep('eslint') || hasEslintConfig) return `cd "${p}" && npx --no-install eslint .`;
+          }
+          if (task === 'typecheck') {
+            if (hasDep('typescript') && (hasFile('tsconfig.json') || hasFile('tsconfig.base.json'))) {
+              const config = hasFile('tsconfig.json') ? 'tsconfig.json' : 'tsconfig.base.json';
+              return `cd "${p}" && npx --no-install tsc -p "${config}" --noEmit`;
+            }
+          }
+          if (task === 'test') {
+            if (hasDep('vitest')) return `cd "${p}" && npx --no-install vitest run`;
+            if (hasDep('jest')) return `cd "${p}" && npx --no-install jest`;
+          }
+          if (task === 'build') {
+            if (hasDep('vite')) return `cd "${p}" && npx --no-install vite build`;
+            if (hasDep('next')) return `cd "${p}" && npx --no-install next build`;
+            if (hasDep('react-scripts')) return `cd "${p}" && npx --no-install react-scripts build`;
+          }
+          return '';
+        })();
+
+        if (!cmdFromScript && !fallbackCmd) {
           results.push({ task, ok: false, skipped: true, reason: 'missing_script' });
           return;
         }
-        const cmd = `npm --prefix "${p}" run ${scriptName}`;
+
+        const cmd = cmdFromScript || fallbackCmd;
         const r = await executeTool('shell_execute', { command: cmd, cwd: repoRoot(), timeout: 10 * 60 * 1000 });
-        results.push({ task, ok: r.ok, stdout: r.output?.stdout, stderr: r.output?.stderr, exitCode: r.output?.exitCode });
+        results.push({
+          task,
+          ok: r.ok,
+          skipped: false,
+          command: cmd,
+          stdout: r.output?.stdout,
+          stderr: r.output?.stderr,
+          exitCode: r.output?.exitCode
+        });
       };
 
       for (const t of tasks) await runScript(t);
@@ -3799,28 +3967,6 @@ addPhase2AndCoreDevTools();
 addBulkToolPackToReach200();
 if (tools.length < TARGET_TOOL_COUNT) {
   tools.push(...generatedTools.slice(0, Math.max(0, TARGET_TOOL_COUNT - tools.length)));
-}
-
-const enableNoopTools =
-  process.env.ENABLE_NOOP_TOOLS === '1' ||
-  process.env.ENABLE_NOOP_TOOLS === 'true';
-
-if (enableNoopTools) {
-  const remaining = Math.max(0, TARGET_TOOL_COUNT - tools.length);
-  for (let i = 1; i <= remaining; i++) {
-    tools.push({
-      name: `noop_${i}`,
-      version: '1.0.0',
-      tags: ['utility'],
-      inputSchema: { type: 'object', properties: { note: { type: 'string' } } },
-      outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } } },
-      permissions: [],
-      sideEffects: [],
-      rateLimitPerMinute: 600,
-      auditFields: [],
-      mockSupported: true,
-    });
-  }
 }
 
 import { KnowledgeService } from '../services/knowledge';
@@ -6247,10 +6393,6 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       const doc = await KnowledgeService.add(filename, content, tags);
       logs.push(`knowledge.add=${filename} id=${doc.id}`);
       return { ok: true, output: { id: doc.id }, logs };
-    }
-    if (name.startsWith('noop_')) {
-      logs.push('noop.ok=true');
-      return { ok: true, output: { ok: true }, logs };
     }
     return { ok: false, error: 'unknown_tool', logs };
   } catch (e: any) {

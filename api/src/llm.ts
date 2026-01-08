@@ -43,6 +43,7 @@ const PRIORITY_TOOL_NAMES: string[] = [
   'echo',
   'project_detect',
   'analyze_codebase',
+  'website_full_pipeline',
   'file_read',
   'file_write',
   'file_edit',

@@ -1567,7 +1567,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
              plan = { name: 'browser_open', input: { url: 'https://www.youtube.com' } } as any;
              planName = 'browser_open';
         } else if (/(list|سرد|قائمة)\s*(tools|الأدوات|الادوات)/i.test(userTextForOverrides)) {
-             plan = { name: 'http_fetch', input: { url: 'http://localhost:' + (process.env.PORT || 4000) + '/tools' } } as any;
+             plan = { name: 'http_fetch', input: { url: 'http://localhost:' + (process.env.PORT || 3000) + '/tools' } } as any;
              planName = 'http_fetch';
         } else if (/(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userTextForOverrides) || /^ls$/.test(textLower)) {
              plan = { name: 'ls', input: { path: '.' } } as any;

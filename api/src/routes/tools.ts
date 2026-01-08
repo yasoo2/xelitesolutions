@@ -10,9 +10,8 @@ import { ToolExecution } from '../models/toolExecution';
 const router = Router();
 
 router.get('/', async (_req: Request, res: Response) => {
-  const noopCount = tools.filter(t => t.name.startsWith('noop_')).length;
-  const realCount = tools.length - noopCount;
-  res.json({ count: tools.length, realCount, noopCount, tools });
+  const count = tools.length;
+  res.json({ count, realCount: count, noopCount: 0, tools });
 });
 
 router.post('/run', async (req: Request, res: Response) => {
