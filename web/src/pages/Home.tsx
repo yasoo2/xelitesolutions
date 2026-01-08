@@ -13,18 +13,12 @@ export default function Home() {
       
       <div className="home-content">
         <div className="home-logo-container">
-          <div className="home-logo-ring">
-            <span className="home-logo-text">J</span>
-          </div>
+          <div className="brand-mark brand-mark-xl" aria-hidden="true" />
         </div>
         
         <h1 className="home-title">
-          <span>
-            <span>J</span>
-            <span className="logo-letter-yellow">O</span>
-            <span>E</span>
-          </span>{' '}
-          <span className="home-title-accent">AI</span>
+          <span className="brand-word">JOE</span>{' '}
+          <span className="brand-ai brand-ai-xl">AI</span>
         </h1>
         
         <p className="home-subtitle">

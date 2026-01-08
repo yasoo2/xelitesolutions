@@ -200,9 +200,11 @@ export default function TopBar() {
   return (
     <div className="topbar">
       <div className="brand" onClick={() => nav('/')}>
-        <span>J</span>
-        <span className="logo-letter-yellow">O</span>
-        <span>E</span>
+        <div className="brand-mark" aria-hidden="true" />
+        <div className="brand-wordmark">
+          <div className="brand-word">JOE</div>
+          <div className="brand-ai">AI</div>
+        </div>
       </div>
       <div className="spacer" />
       

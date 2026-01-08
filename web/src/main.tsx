@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import App from './App';
-import Home from './pages/Home';
-import Login from './pages/Login';
-import Joe from './pages/Joe';
+const Home = lazy(() => import('./pages/Home'));
+const Login = lazy(() => import('./pages/Login'));
+const Joe = lazy(() => import('./pages/Joe'));
 import './theme.css';
 import './global.css';
 import './i18n';
@@ -20,13 +20,15 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<App />}>
-          <Route index element={<Home />} />
-          <Route path="login" element={<Login />} />
+          <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
+          <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
           <Route
             path="joe"
             element={
               <RequireAuth>
-                <Joe />
+                <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                  <Joe />
+                </Suspense>
               </RequireAuth>
             }
           />

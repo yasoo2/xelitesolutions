@@ -2186,11 +2186,7 @@ export default function CommandComposer({
             <div className="hero-logo-container">
               <div className="hero-logo-glow"></div>
               <div className="hero-logo-content">
-                <span className="hero-logo-text">
-                  <span>J</span>
-                  <span className="logo-letter-yellow">O</span>
-                  <span>E</span>
-                </span>
+                <div className="brand-mark brand-mark-hero" aria-hidden="true" />
               </div>
             </div>
             

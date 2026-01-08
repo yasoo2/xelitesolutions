@@ -91,16 +91,12 @@ export default function Login() {
         <div className="login-header">
           <div className="login-logo-wrapper">
             <div className="login-logo">
-              <span className="login-logo-text">J</span>
+              <div className="brand-mark brand-mark-lg" aria-hidden="true" />
             </div>
           </div>
           <div className="login-title">
-            <span>
-              <span>J</span>
-              <span className="logo-letter-yellow">O</span>
-              <span>E</span>
-            </span>{' '}
-            <span>AI</span>
+            <span className="brand-word">JOE</span>{' '}
+            <span className="brand-ai">AI</span>
           </div>
           <div className="login-subtitle">
             <Sparkles size={14} className="text-accent-primary" />
