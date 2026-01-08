@@ -324,6 +324,7 @@ export default function CommandComposer({
 }) {
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
+  const showFloatingTaskbar = false;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -456,6 +457,7 @@ export default function CommandComposer({
   };
 
   const ensureTaskBar = (rid: string, patch: Partial<{ visible: boolean; analyzing: boolean }>) => {
+    if (!showFloatingTaskbar) return;
     setTaskBarByRunId((prev) => {
       const cur = prev[rid];
       const next = cur
@@ -471,6 +473,7 @@ export default function CommandComposer({
     kind: 'start' | 'done' | 'failed',
     input?: any
   ) => {
+    if (!showFloatingTaskbar) return;
     const normalized = String(tool || '').trim();
     if (!normalized) return;
 
@@ -1032,14 +1035,16 @@ export default function CommandComposer({
           if (msg.type === 'run_finished' || msg.type === 'run_completed') {
             const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
             if (rid) {
-              setTaskBarByRunId((prev) => {
-                const cur = prev[rid];
-                if (!cur) return prev;
-                if (!cur.items.length) {
-                  return { ...prev, [rid]: { ...cur, visible: false, analyzing: false } };
-                }
-                return prev;
-              });
+              if (showFloatingTaskbar) {
+                setTaskBarByRunId((prev) => {
+                  const cur = prev[rid];
+                  if (!cur) return prev;
+                  if (!cur.items.length) {
+                    return { ...prev, [rid]: { ...cur, visible: false, analyzing: false } };
+                  }
+                  return prev;
+                });
+              }
             }
           }
 
@@ -2182,12 +2187,14 @@ export default function CommandComposer({
   }, [sortedEvents]);
 
   const activeTaskBar = useMemo(() => {
+    if (!showFloatingTaskbar) return null;
     const rid = activeRunId ? activeRunId.trim() : '';
     if (!rid) return null;
     return taskBarByRunId[rid] || null;
   }, [activeRunId, taskBarByRunId]);
 
   useEffect(() => {
+    if (!showFloatingTaskbar) return;
     const rid = activeRunId ? activeRunId.trim() : '';
     if (!rid) return;
     const bar = taskBarByRunId[rid];
@@ -2882,7 +2889,7 @@ export default function CommandComposer({
         )}
 
         <AnimatePresence>
-          {activeTaskBar?.visible ? (
+          {showFloatingTaskbar && activeTaskBar?.visible ? (
             <motion.div
               key="taskbar-floating"
               initial={{ opacity: 0, y: 6 }}
