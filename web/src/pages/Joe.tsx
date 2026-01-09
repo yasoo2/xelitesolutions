@@ -719,6 +719,9 @@ export default function Joe() {
                            session={s}
                            isActive={selected === s.id}
                            isLoading={loadingStates[`deleting-session-${s.id}`]}
+                           folders={folders}
+                           onMoveToFolder={(folderId) => moveSessionToFolder(s.id, folderId)}
+                           showInlineDelete
                            onSelect={() => {
                              setSelected(s.id);
                              setSearchQuery('');
@@ -783,6 +786,8 @@ export default function Joe() {
                 <SessionItem 
                   session={s}
                   isActive={selected === s.id}
+                  folders={folders}
+                  onMoveToFolder={(folderId) => moveSessionToFolder(s.id, folderId)}
                   onSelect={() => {
                     setSelected(s.id);
                     if (isNarrow) setShowSidebar(false);
