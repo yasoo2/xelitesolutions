@@ -1046,6 +1046,7 @@ export default function CommandComposer({
                 });
               }
             }
+            window.dispatchEvent(new CustomEvent('sessions:refresh'));
           }
 
           if (msg.type === 'artifact_created') {

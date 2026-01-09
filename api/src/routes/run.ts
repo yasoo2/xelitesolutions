@@ -849,6 +849,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
      await FileModel.updateMany({ _id: { $in: fileIds } }, { $set: { sessionId } });
   }
 
+  const isAutoTitleCandidate = (title: string) => {
+    const t = String(title || '').trim();
+    return (
+      t === 'New Session' ||
+      t === 'Untitled Session' ||
+      t === 'محادثة جديدة' ||
+      t === 'جلسة جديدة' ||
+      t.startsWith('Session ') ||
+      t.startsWith('جلسة ')
+    );
+  };
+
   let runId: string;
   if (useMock) {
     const run = store.createRun(sessionId);
@@ -861,12 +873,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     (async () => {
       try {
         const session = await Session.findById(sessionId);
-        if (session && (session.title.startsWith('Session ') || session.title.startsWith('جلسة ') || session.title === 'New Session')) {
+        if (session && isAutoTitleCandidate(session.title)) {
           const messageCount = await Message.countDocuments({ sessionId });
           // Only trigger if it's the first or second message
           if (messageCount <= 2) {
             // Get the user message and potential context
-            const messages = [{ role: 'user', content: fullPromptText }];
+            const seed = String(text || '').trim() || fullPromptText;
+            const messages = [{ role: 'user', content: seed }];
             const newTitle = await generateSessionTitle(messages);
             if (newTitle && newTitle !== 'New Session') {
                await Session.findByIdAndUpdate(sessionId, { title: newTitle });

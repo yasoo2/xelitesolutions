@@ -394,7 +394,7 @@ export default function Joe() {
       const res = await fetch(`${API}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: 'محادثة جديدة' }),
+        body: JSON.stringify({ title: 'جلسة جديدة' }),
       });
       if (res.status === 401) {
         localStorage.removeItem('token');
@@ -419,6 +419,26 @@ export default function Joe() {
     loadAllSessions();
     loadFolders();
   }, []);
+
+  const sessionsRefreshTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    const onRefresh = () => {
+      if (sessionsRefreshTimerRef.current != null) {
+        window.clearTimeout(sessionsRefreshTimerRef.current);
+      }
+      sessionsRefreshTimerRef.current = window.setTimeout(() => {
+        sessionsRefreshTimerRef.current = null;
+        loadAllSessions();
+      }, 250);
+    };
+
+    window.addEventListener('sessions:refresh', onRefresh as any);
+    return () => {
+      window.removeEventListener('sessions:refresh', onRefresh as any);
+      if (sessionsRefreshTimerRef.current != null) window.clearTimeout(sessionsRefreshTimerRef.current);
+      sessionsRefreshTimerRef.current = null;
+    };
+  }, [loadAllSessions]);
 
   useEffect(() => {
     if (mode === 'agent') {
