@@ -8,7 +8,7 @@ html, body {
 
 body {
   margin: 0;
-  font-family: Tajawal, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: Inter, "Noto Sans Arabic", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   background: var(--bg-dark);
   color: var(--text-primary);
 }
@@ -1791,7 +1791,7 @@ html[data-theme="light"] .sidebar-toggle-btn {
   border: 1px solid var(--border-color);
   background: rgba(255, 255, 255, 0.02);
   margin-bottom: 8px;
-  overflow: hidden;
+  overflow: visible;
   transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -2426,7 +2426,6 @@ html.live-panel-open .events-content {
 
 .chat-bubble-wrapper.user {
   justify-content: flex-end;
-  flex-direction: row-reverse;
 }
 
 .chat-bubble-wrapper.ai {
@@ -2450,6 +2449,10 @@ html.live-panel-open .events-content {
   color: var(--text-primary);
   box-shadow: 0 14px 45px rgba(0,0,0,0.20);
   transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.chat-bubble-wrapper.user .chat-avatar {
+  display: none;
 }
 
 .chat-bubble-wrapper:hover .chat-avatar {
@@ -2483,6 +2486,41 @@ html.live-panel-open .events-content {
   overflow: hidden;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, filter 0.18s ease;
+}
+
+.chat-bubble.ai::after,
+.chat-bubble.user::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  bottom: 12px;
+  border-radius: 4px;
+  transform: rotate(45deg);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.chat-bubble.ai {
+  position: relative;
+}
+
+.chat-bubble.user {
+  position: relative;
+}
+
+.chat-bubble.ai::after {
+  left: -6px;
+  background: rgba(var(--accent-primary-rgb), 0.18);
+  border-left: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+  border-bottom: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+}
+
+.chat-bubble.user::after {
+  right: -6px;
+  background: rgba(var(--accent-secondary-rgb), 0.18);
+  border-right: 1px solid rgba(var(--accent-secondary-rgb), 0.35);
+  border-bottom: 1px solid rgba(var(--accent-secondary-rgb), 0.35);
 }
 
 .chat-bubble:hover {
@@ -2541,6 +2579,10 @@ html.live-panel-open .events-content {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-color);
   background: rgba(255, 255, 255, 0.02);
+}
+
+.chat-bubble.user .chat-bubble-header {
+  display: none;
 }
 
 .chat-bubble-sender {
@@ -2616,6 +2658,84 @@ html.live-panel-open .events-content {
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.7;
+}
+
+.chat-bubble-content > :first-child {
+  margin-top: 0;
+}
+
+.chat-bubble-content > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-bubble-content p {
+  margin: 0 0 10px;
+}
+
+.chat-bubble-content ul,
+.chat-bubble-content ol {
+  margin: 0 0 10px;
+  padding-inline-start: 18px;
+}
+
+.chat-bubble-content li {
+  margin: 4px 0;
+}
+
+.chat-bubble-content a {
+  color: rgba(var(--accent-primary-rgb), 0.95);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+}
+
+.chat-bubble-content a:hover {
+  border-bottom-color: rgba(var(--accent-primary-rgb), 0.7);
+}
+
+.chat-bubble-content blockquote {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(var(--accent-primary-rgb), 0.55);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  color: var(--text-secondary);
+}
+
+[dir="rtl"] .chat-bubble-content blockquote {
+  border-left: 0;
+  border-right: 3px solid rgba(var(--accent-primary-rgb), 0.55);
+}
+
+.chat-bubble-content code {
+  font-family: JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12.5px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+html[data-theme="light"] .chat-bubble-content code {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.10);
+}
+
+.chat-bubble-content pre {
+  margin: 10px 0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.chat-bubble-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px 10px;
+  gap: 8px;
+}
+
+.chat-bubble-time-inline {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .typing-dots {

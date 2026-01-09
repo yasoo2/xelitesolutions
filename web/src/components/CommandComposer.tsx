@@ -102,6 +102,9 @@ const ChatBubble = forwardRef(
 
   const senderLabel = bubbleVariant === 'user' ? 'أنت' : bubbleVariant === 'system' ? 'النظام' : 'Joe';
   const SenderIcon = bubbleVariant === 'user' ? User : bubbleVariant === 'system' ? ShieldCheck : Bot;
+  const showHeader = bubbleVariant !== 'user';
+  const showAvatar = bubbleVariant !== 'user';
+  const showCopy = bubbleVariant !== 'user';
 
   const rawText =
     typeof content === 'string' ? content : content && typeof content === 'object' ? JSON.stringify(content) : String(content ?? '');
@@ -210,22 +213,28 @@ const ChatBubble = forwardRef(
       transition={{ duration: 0.4, ease: "easeOut" }}
       className={`chat-bubble-wrapper ${bubbleVariant}`}
     >
-      <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
-        <SenderIcon size={16} />
-      </div>
-      <div className={`chat-bubble ${bubbleVariant}${tone ? ` tone-${tone}` : ''}`}>
-        <div className="chat-bubble-header">
-          <div className="chat-bubble-sender">{senderLabel}</div>
-          <div className="chat-bubble-actions">
-            <div className="chat-bubble-time">
-              <Clock size={14} />
-              <span>{fmtTime(ts)}</span>
-            </div>
-            <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
-              {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
-            </button>
-          </div>
+      {showAvatar ? (
+        <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
+          <SenderIcon size={16} />
         </div>
+      ) : null}
+      <div className={`chat-bubble ${bubbleVariant}${tone ? ` tone-${tone}` : ''}`}>
+        {showHeader ? (
+          <div className="chat-bubble-header">
+            <div className="chat-bubble-sender">{senderLabel}</div>
+            <div className="chat-bubble-actions">
+              <div className="chat-bubble-time">
+                <Clock size={14} />
+                <span>{fmtTime(ts)}</span>
+              </div>
+              {showCopy ? (
+                <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
+                  {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="chat-bubble-content" dir="auto">
           {bubbleVariant === 'user' ? (
@@ -281,6 +290,12 @@ const ChatBubble = forwardRef(
             </div>
           ) : null}
         </div>
+
+        {!showHeader ? (
+          <div className="chat-bubble-footer" aria-hidden="true">
+            <span className="chat-bubble-time-inline">{fmtTime(ts)}</span>
+          </div>
+        ) : null}
       </div>
     </motion.div>
   );
