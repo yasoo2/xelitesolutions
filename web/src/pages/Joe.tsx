@@ -160,7 +160,13 @@ export default function Joe() {
   } = useSessionStore();
 
   const [showEmbeddedPreview, setShowEmbeddedPreview] = useState(true);
-  const [previewUrl, setPreviewUrl] = useState('http://localhost:5173/');
+  const [previewUrl, setPreviewUrl] = useState(() => {
+    try {
+      return `${new URL(window.location.href).origin}/`;
+    } catch {
+      return 'http://localhost:5173/';
+    }
+  });
   const didDetectPreviewRef = useRef(false);
   // Only enable auto-detect in development (localhost)
   const isProduction = !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1');
@@ -1039,6 +1045,7 @@ export default function Joe() {
                     key={selected || 'new'}
                     sessionId={selected || undefined}
                     sessionKind="chat"
+                    previewBaseUrl={previewUrl}
                     onSessionCreated={async (id) => {
                         await loadAllSessions();
                         setSelected(id);

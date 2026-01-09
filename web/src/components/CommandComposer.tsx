@@ -324,6 +324,7 @@ export default function CommandComposer({
   sessionId,
   sessionKind = 'chat',
   browserSessionId = null,
+  previewBaseUrl,
   onSessionCreated,
   onPreviewArtifact,
   onStepsUpdate,
@@ -332,6 +333,7 @@ export default function CommandComposer({
   sessionId?: string;
   sessionKind?: 'chat' | 'agent';
   browserSessionId?: string | null;
+  previewBaseUrl?: string;
   onSessionCreated?: (id: string) => void;
   onPreviewArtifact?: (content: string, lang: string) => void;
   onStepsUpdate?: (steps: any[]) => void;
@@ -1670,7 +1672,36 @@ export default function CommandComposer({
         const wantsYoutube = /youtube|يوتيوب/i.test(inputText);
         const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(inputText);
         const wantsPreview = /(preview|معاينة|المعاينة|عرض الموقع|show site)/i.test(inputText);
-        const desiredUrl = directUrl || extractedUrl || (wantsPreview ? 'http://localhost:5173' : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
+        const normalizePreviewUrl = (u: string) => {
+          try {
+            const parsed = new URL(u);
+            const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+            const appIsLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            if (wantsPreview && isLocal && !appIsLocal) {
+              const base = new URL(window.location.origin);
+              parsed.protocol = base.protocol;
+              parsed.host = base.host;
+              return parsed.toString();
+            }
+          } catch {}
+          return u;
+        };
+
+        let previewCandidate =
+          typeof previewBaseUrl === 'string' && previewBaseUrl.trim()
+            ? previewBaseUrl.trim()
+            : window.location.origin;
+        try {
+          previewCandidate = new URL(previewCandidate).toString();
+        } catch {
+          previewCandidate = window.location.origin;
+        }
+
+        const desiredUrl = normalizePreviewUrl(
+          directUrl ||
+            extractedUrl ||
+            (wantsPreview ? previewCandidate : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com')
+        );
         try {
           const opened = await ensureBrowserSession(desiredUrl);
           effectiveBrowserSessionId = opened.sessionId;
