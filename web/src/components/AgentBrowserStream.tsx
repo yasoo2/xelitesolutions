@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { API_URL as API } from '../config';
 
 export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; minimal?: boolean }) {
+  const { t, i18n } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -76,7 +78,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [autoLocate, setAutoLocate] = useState<boolean>(true);
   const [autoFocus, setAutoFocus] = useState<boolean>(true);
   const [autoTypeAfterFocus, setAutoTypeAfterFocus] = useState<boolean>(true);
-  const [defaultSearchText, setDefaultSearchText] = useState<string>('أضرار التدخين');
+  const [defaultSearchText, setDefaultSearchText] = useState<string>(() => t('browserDefaultSearchText'));
   const lastMoveRef = useRef<number>(0);
   const cursorRafRef = useRef<number | null>(null);
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
@@ -115,6 +117,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     setZoom(1);
     setStreamPaused(false);
   }, [minimal]);
+
+  useEffect(() => {
+    setDefaultSearchText(t('browserDefaultSearchText'));
+  }, [i18n.language, t]);
 
   useEffect(() => {
     sizeRef.current = size;
@@ -240,8 +246,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       if (res.status === 401) {
         localStorage.removeItem('token');
         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        setWsError('غير مصرح');
-        setOverlay('غير مصرح');
+        setWsError(t('unauthorized'));
+        setOverlay(t('unauthorized'));
         setTimeout(() => setOverlay(''), 2000);
         return;
       }
@@ -254,7 +260,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         const outs = j.output.outputs;
         const blocked = outs.find((o: any) => o && o.type === 'goto_blocked');
         if (blocked?.url) {
-          const msg = `تم حظر فتح هذا الرابط: ${String(blocked.url)}`;
+          const msg = t('browserBlockedUrl', { url: String(blocked.url) });
           setWsError(msg);
           setOverlay(msg);
           setTimeout(() => setOverlay(''), 2500);
@@ -350,7 +356,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       if (res.status === 401) {
         localStorage.removeItem('token');
         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        setOverlay('غير مصرح');
+        setOverlay(t('unauthorized'));
         setTimeout(() => setOverlay(''), 2000);
         setExtracted(null);
         return;
@@ -385,7 +391,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       if (res.status === 401) {
         localStorage.removeItem('token');
         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        setOverlay('غير مصرح');
+        setOverlay(t('unauthorized'));
         setTimeout(() => setOverlay(''), 2000);
         return;
       }
@@ -701,13 +707,17 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         if (res.status === 401) {
           localStorage.removeItem('token');
           window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-          setFallbackError('غير مصرح');
+          setFallbackError(t('unauthorized'));
           return;
         }
 
         if (!res.ok) {
-          const t = await res.text().catch(() => '');
-          setFallbackError(t ? `Snapshot error: ${t.slice(0, 140)}` : 'Snapshot error');
+          const msg = await res.text().catch(() => '');
+          setFallbackError(
+            msg
+              ? t('browserSnapshotErrorWithMessage', { message: msg.slice(0, 140) })
+              : t('browserSnapshotError')
+          );
           fallbackPollFailuresRef.current += 1;
           fallbackPollDelayRef.current = Math.min(6000, 1500 + fallbackPollFailuresRef.current * 900);
         } else {
@@ -766,13 +776,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       setNoFramesHint('');
       return;
     }
-    const t = window.setTimeout(() => {
+    const timerId = window.setTimeout(() => {
       if (framesSeen === 0 && status === 'connected') {
-        setNoFramesHint('تم الاتصال ولكن لم تصل أي صورة بعد. غالبًا بث WebSocket محجوب أو خدمة المتصفح متوقفة.');
+        setNoFramesHint(t('browserNoFramesHint'));
       }
     }, 3000);
-    return () => window.clearTimeout(t);
-  }, [status, framesSeen]);
+    return () => window.clearTimeout(timerId);
+  }, [status, framesSeen, t]);
 
   useEffect(() => {
     if (!replayMode) return;
@@ -1179,8 +1189,14 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               dir="auto"
             >
               <div style={{ fontWeight: 600, marginBottom: 6 }}>
-                {status === 'connected' ? 'متصل' : status === 'reconnecting' ? 'يعيد الاتصال...' : status === 'error' ? 'خطأ اتصال' : 'جاري الاتصال...'}
-                {fallbackActive ? ' • وضع بديل (HTTP)' : ''}
+                {status === 'connected'
+                  ? t('browserStatusConnected')
+                  : status === 'reconnecting'
+                    ? t('browserStatusReconnecting')
+                    : status === 'error'
+                      ? t('browserStatusError')
+                      : t('browserStatusConnecting')}
+                {fallbackActive ? ` • ${t('browserFallbackModeHttp')}` : ''}
               </div>
               {wsError ? <div style={{ color: 'var(--accent-danger)', marginBottom: 6 }}>{wsError}</div> : null}
               {fallbackError ? <div style={{ color: 'var(--accent-secondary)', marginBottom: 6 }}>{fallbackError}</div> : null}
@@ -1198,7 +1214,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                     fontSize: 12,
                   }}
                 >
-                  إعادة الاتصال
+                  {t('browserReconnect')}
                 </button>
                 <div style={{ opacity: 0.75 }}>
                   {framesSeen > 0 ? `Frames: ${framesSeen}` : lastFrameAt ? `Last frame: ${new Date(lastFrameAt).toLocaleTimeString()}` : `Frames: 0`}
@@ -1223,7 +1239,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               }}
               dir="auto"
             >
-              اضغط داخل المتصفح لتفعيل لوحة المفاتيح
+              {t('browserClickToEnableKeyboard')}
             </div>
           ) : null}
           {highlight && (

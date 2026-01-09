@@ -2021,6 +2021,20 @@ export default function CommandComposer({
   const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
   const [runExpandMode, setRunExpandMode] = useState<Record<string, 'auto' | 'manual'>>({});
   const [expandedStepKeys, setExpandedStepKeys] = useState<Record<string, boolean>>({});
+  const [showTechnicalByRunId, setShowTechnicalByRunId] = useState<Record<string, boolean>>({});
+
+  const formatSystemLogs = (lines: string[]) => {
+    const flat = Array.isArray(lines) ? lines : [];
+    const last = flat.slice(Math.max(0, flat.length - 200));
+    return last
+      .map((x) => {
+        const s = String(x ?? '');
+        if (s.length <= 1400) return s;
+        return `${s.slice(0, 1400)}…`;
+      })
+      .join('\n')
+      .trim();
+  };
 
   const getEventRunId = (e: any) => {
     const rid = typeof e?.runId === 'string' ? e.runId : typeof e?.data?.runId === 'string' ? e.data.runId : '';
@@ -2465,15 +2479,27 @@ export default function CommandComposer({
                         })}
                         
                         <div className="step-item">
-                          <div className="step-header" style={{ cursor: 'default' }}>
+                          <div
+                            className="step-header"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }));
+                            }}
+                          >
                             <div className="step-title">
-                              <Terminal size={16} />
-                              <span>{t('systemLogs')}</span>
+                              {showTechnicalByRunId[rid] ? <EyeOff size={16} /> : <Eye size={16} />}
+                              <span>{showTechnicalByRunId[rid] ? t('hideTechnicalDetails') : t('showTechnicalDetails')}</span>
                             </div>
                           </div>
-                          <div className="log-viewer" dir="ltr">
-                            {logs.length ? logs.join('\n') : t('systemLogsEmpty')}
-                          </div>
+                          {showTechnicalByRunId[rid] ? (
+                            <div className="log-viewer" dir="ltr">
+                              {logs.length ? formatSystemLogs(logs) : t('systemLogsEmpty')}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted" style={{ padding: '0.5rem 0.75rem' }} dir="auto">
+                              {t('technicalDetailsHidden')}
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
