@@ -403,6 +403,7 @@ export default function CommandComposer({
   const lastExecTaskIdRef = useRef<Record<string, Record<string, string>>>({});
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
+  const lastAutoOpenedHrefRef = useRef<string>('');
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -1094,6 +1095,38 @@ export default function CommandComposer({
 
               if (sessionKind === 'agent' && browserSessionId) {
                 return;
+              }
+            }
+
+            if (typeof href === 'string' && /^https?:\/\//i.test(href)) {
+              const name = String(msg.data?.name || '').trim();
+              const lowerName = name.toLowerCase();
+              const lowerKind = String(kind || '').toLowerCase();
+              const looksLikeAsset = /\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|pdf|zip|tar|gz)(\?|#|$)/i.test(href);
+
+              let shouldAutoOpen = false;
+              if (!looksLikeAsset) {
+                try {
+                  const u = new URL(href);
+                  const host = u.hostname.toLowerCase();
+                  const looksLocal = host === 'localhost' || host === '127.0.0.1';
+                  const looksPreviewHost =
+                    host.endsWith('.vercel.app') ||
+                    host.endsWith('.netlify.app') ||
+                    host.endsWith('.pages.dev') ||
+                    host.endsWith('.web.app');
+                  if (looksLocal || looksPreviewHost) shouldAutoOpen = true;
+                } catch {}
+
+                if (!shouldAutoOpen) {
+                  if (lowerKind.includes('deploy') || lowerKind.includes('preview')) shouldAutoOpen = true;
+                  else if (/(preview|deploy|site|demo|app)/i.test(lowerName)) shouldAutoOpen = true;
+                }
+              }
+
+              if (shouldAutoOpen && lastAutoOpenedHrefRef.current !== href) {
+                lastAutoOpenedHrefRef.current = href;
+                window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url: href } }));
               }
             }
           }

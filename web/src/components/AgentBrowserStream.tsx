@@ -63,6 +63,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [streamFps, setStreamFps] = useState<number>(5);
   const [streamQuality, setStreamQuality] = useState<number>(50);
   const [redactionEnabled, setRedactionEnabled] = useState<boolean>(true);
+  const [textBoxesEnabled, setTextBoxesEnabled] = useState<boolean>(false);
+  const [textBoxes, setTextBoxes] = useState<Array<{ x: number; y: number; width: number; height: number; text?: string }>>([]);
   const [reconnectNonce, setReconnectNonce] = useState<number>(0);
   const [extractSchema, setExtractSchema] = useState<string>('{"list":{"selector":"a[href^=\\"https\\"]:not([href*=\\"google.com\\"])","fields":{"text":{"selector":"","attr":""},"url":{"selector":"","attr":"href"}}}}');
   const [extracted, setExtracted] = useState<any>(null);
@@ -189,7 +191,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!sessionId) return;
 
     // Check for WS optimization
-    const wsActions = ['goto', 'mouseMove', 'click', 'clickText', 'fillByLabel', 'searchGoogle', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
+    const wsActions = ['goto', 'mouseMove', 'click', 'clickText', 'fillByLabel', 'searchGoogle', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'textBoxes.once', 'textBoxes.start', 'textBoxes.stop', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
     const canUseWs = wsRef.current && 
                      wsRef.current.readyState === WebSocket.OPEN && 
                      actions.every(a => wsActions.includes(a.type));
@@ -582,6 +584,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 }
               }
             }
+            if (msg.type === 'text_boxes' && Array.isArray(msg.boxes)) {
+              const next = msg.boxes
+                .filter((b: any) => b && typeof b.x === 'number' && typeof b.y === 'number' && typeof b.width === 'number' && typeof b.height === 'number')
+                .slice(0, 900)
+                .map((b: any) => ({ x: b.x, y: b.y, width: b.width, height: b.height, text: typeof b.text === 'string' ? b.text : undefined }));
+              setTextBoxes(next);
+            }
             if (msg.type === 'action_start') {
               const a = msg.action;
               let text = a.type;
@@ -661,6 +670,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       fallbackActiveRef.current = false;
       setFallbackActive(false);
       setFallbackError('');
+      setTextBoxes([]);
       if (cursorRafRef.current != null) cancelAnimationFrame(cursorRafRef.current);
       cursorRafRef.current = null;
       pendingCursorRef.current = null;
@@ -1126,6 +1136,33 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         >
           Go
         </button>
+        <button
+          onClick={() => {
+            const next = !textBoxesEnabled;
+            setTextBoxesEnabled(next);
+            if (next) runActions([{ type: 'textBoxes.start', intervalMs: 900, maxBoxes: 350 }]);
+            else {
+              setTextBoxes([]);
+              runActions([{ type: 'textBoxes.stop' }]);
+            }
+          }}
+          style={{
+            background: textBoxesEnabled ? 'rgba(239,68,68,0.12)' : 'none',
+            color: textBoxesEnabled ? 'rgb(239,68,68)' : 'var(--text-muted)',
+            border: '1px solid rgba(255,255,255,0.10)',
+            padding: '0 10px',
+            fontSize: 13,
+            cursor: 'pointer',
+            height: 36,
+            borderRadius: 10,
+            fontWeight: 600,
+            transition: 'opacity 0.2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+        >
+          النص
+        </button>
       </div>
     </div>
   );
@@ -1258,6 +1295,26 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               }}
             />
           )}
+
+          {textBoxesEnabled && textBoxes.length ? (
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 45 }}>
+              {textBoxes.slice(0, 500).map((b, idx) => (
+                <div
+                  key={`${idx}-${Math.round(b.x)}-${Math.round(b.y)}-${Math.round(b.width)}-${Math.round(b.height)}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${(b.x / size.w) * 100}%`,
+                    top: `${(b.y / size.h) * 100}%`,
+                    width: `${(b.width / size.w) * 100}%`,
+                    height: `${(b.height / size.h) * 100}%`,
+                    border: '1px solid rgba(239,68,68,0.75)',
+                    background: 'rgba(239,68,68,0.06)',
+                    borderRadius: 2,
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
 
           {cursor && (
             <div

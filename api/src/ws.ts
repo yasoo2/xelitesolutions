@@ -66,14 +66,25 @@ export function attachWebSocket(server: Server) {
       }
     })();
 
-    const upstreamUrl = new URL(`/ws/${encodeURIComponent(sessionId)}`, config.browserWorkerUrl);
-    upstreamUrl.searchParams.set('key', config.browserWorkerKey);
-    upstreamUrl.protocol = upstreamUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    const upstreamUrl = (() => {
+      try {
+        const u = new URL(workerWsBase);
+        const basePath = u.pathname.replace(/\/+$/, '');
+        u.pathname = `${basePath}/ws/${encodeURIComponent(sessionId)}`;
+        u.searchParams.set('key', workerKey);
+        return u;
+      } catch {
+        const u = new URL(`/ws/${encodeURIComponent(sessionId)}`, workerWsBase);
+        u.searchParams.set('key', workerKey);
+        return u;
+      }
+    })();
 
     const upstreamWs = new WebSocket(upstreamUrl.toString());
 
     let closed = false;
-    let hasFrame = false;
+    let lastAnyFrameAt = 0;
+    let lastUpstreamFrameAt = 0;
     let polling = false;
     let sentStart = false;
     let lastUpstreamMsgAt = Date.now();
@@ -124,6 +135,9 @@ export function attachWebSocket(server: Server) {
         'tab.close',
         'tabs.list',
         'pick',
+        'textBoxes.once',
+        'textBoxes.start',
+        'textBoxes.stop',
         'stream.setFps',
         'stream.setQuality',
         'redaction.set',
@@ -156,7 +170,7 @@ export function attachWebSocket(server: Server) {
       const loop = async () => {
         if (closed || !polling) return;
         if (clientWs.readyState !== WebSocket.OPEN) return;
-        if (hasFrame) {
+        if (upstreamWs.readyState === WebSocket.OPEN && Date.now() - lastUpstreamFrameAt < 1500) {
           polling = false;
           return;
         }
@@ -188,11 +202,12 @@ export function attachWebSocket(server: Server) {
             }
 
             if (screenshotPath) {
-              const img = await fetch(`${workerBaseHttp}${screenshotPath}`, { method: 'GET' });
+              const img = await fetch(`${workerBaseHttp}${screenshotPath}`, { method: 'GET', headers: { 'x-worker-key': workerKey } as any });
               if (img.ok) {
                 const ab = await img.arrayBuffer();
                 const b64 = Buffer.from(ab).toString('base64');
                 safeSendToClient({ type: 'frame', jpegBase64: b64, ts: Date.now(), w, h });
+                lastAnyFrameAt = Date.now();
                 pollFailures = 0;
                 pollDelayMs = 1500;
               }
@@ -236,27 +251,36 @@ export function attachWebSocket(server: Server) {
 
       try {
         const txt = typeof data === 'string' ? data : data.toString();
-        if (txt.includes('"type":"frame"')) hasFrame = true;
+        if (txt.includes('"type":"frame"')) {
+          const now = Date.now();
+          lastAnyFrameAt = now;
+          lastUpstreamFrameAt = now;
+        }
       } catch {}
     });
 
     upstreamWs.on('close', () => {
-      if (!hasFrame && !closed) startPolling();
-      else closeBoth(1011, 'upstream_closed');
+      if (!closed) startPolling();
     });
     upstreamWs.on('error', () => {
-      if (!hasFrame && !closed) startPolling();
-      else closeBoth(1011, 'upstream_error');
+      if (!closed) startPolling();
     });
     clientWs.on('close', () => closeBoth(1000, 'client_closed'));
     clientWs.on('error', () => closeBoth(1011, 'client_error'));
 
-    setTimeout(() => {
+    const watchdog = setInterval(() => {
       if (closed) return;
       if (clientWs.readyState !== WebSocket.OPEN) return;
       const idleMs = Date.now() - lastUpstreamMsgAt;
-      if (!hasFrame && idleMs >= 2000) startPolling();
-    }, 2500);
+      const staleFrames = Date.now() - lastAnyFrameAt >= 2500;
+      if (staleFrames && idleMs >= 2000) startPolling();
+    }, 800);
+    clientWs.on('close', () => {
+      try { clearInterval(watchdog); } catch {}
+    });
+    upstreamWs.on('close', () => {
+      try { clearInterval(watchdog); } catch {}
+    });
   });
 
   server.on('upgrade', (req: any, socket: any, head: any) => {

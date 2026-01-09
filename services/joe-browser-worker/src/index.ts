@@ -27,6 +27,13 @@ type Session = {
   streamFps: number;
   streamQuality: number;
   redactionEnabled: boolean;
+  textBoxes: {
+    enabled: boolean;
+    intervalMs: number;
+    maxBoxes: number;
+    includeText: boolean;
+    timer?: NodeJS.Timeout | null;
+  };
   createdAt: number;
   lastActiveAt: number;
   lastAutoShotAt?: number;
@@ -203,6 +210,13 @@ async function createSession(opts: { viewport?: { width: number; height: number 
     streamFps,
     streamQuality,
     redactionEnabled: true,
+    textBoxes: {
+      enabled: false,
+      intervalMs: 900,
+      maxBoxes: 350,
+      includeText: false,
+      timer: null,
+    },
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
     downloads: [],
@@ -217,6 +231,13 @@ async function createSession(opts: { viewport?: { width: number; height: number 
 async function closeSession(id: string) {
   const s = SESSIONS.get(id);
   if (!s) return;
+  try {
+    if (s.textBoxes?.timer) clearInterval(s.textBoxes.timer);
+  } catch {}
+  try {
+    s.textBoxes.timer = null;
+    s.textBoxes.enabled = false;
+  } catch {}
   for (const t of s.tabs) {
     try { await t.page.close(); } catch {}
   }
@@ -260,10 +281,124 @@ type Action =
   | { type: 'tab.close', tabId?: string }
   | { type: 'tabs.list' }
   | { type: 'pick', x: number, y: number }
+  | { type: 'textBoxes.once', maxBoxes?: number, includeText?: boolean }
+  | { type: 'textBoxes.start', intervalMs?: number, maxBoxes?: number, includeText?: boolean }
+  | { type: 'textBoxes.stop' }
   | { type: 'stream.setFps', fps: number }
   | { type: 'stream.setQuality', quality: number }
   | { type: 'redaction.set', enabled: boolean }
   ;
+
+type TextBox = { x: number; y: number; width: number; height: number; text?: string };
+
+async function computeTextBoxes(session: Session, opts?: { maxBoxes?: number; includeText?: boolean }) {
+  const maxBoxes = Math.max(1, Math.min(900, Number(opts?.maxBoxes ?? session.textBoxes.maxBoxes) || 350));
+  const includeText = Boolean(opts?.includeText ?? session.textBoxes.includeText);
+  const boxes: TextBox[] = await session.page.evaluate(({ maxBoxes, includeText }) => {
+    const out: Array<{ x: number; y: number; width: number; height: number; text?: string }> = [];
+    const isHiddenEl = (el: Element | null) => {
+      if (!el) return true;
+      const style = window.getComputedStyle(el as any);
+      return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+    };
+    const isBadParent = (el: Element | null) => {
+      if (!el) return true;
+      return Boolean((el as any).closest?.('script,style,noscript,svg,canvas,textarea,select,option'));
+    };
+    const inViewport = (r: DOMRect) => {
+      if (!r || !Number.isFinite(r.left) || !Number.isFinite(r.top)) return false;
+      if (r.width <= 0 || r.height <= 0) return false;
+      const vw = window.innerWidth || 0;
+      const vh = window.innerHeight || 0;
+      if (!vw || !vh) return true;
+      return r.right >= 0 && r.bottom >= 0 && r.left <= vw && r.top <= vh;
+    };
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        try {
+          const t = String((node as any).nodeValue || '');
+          if (!t || !t.trim()) return NodeFilter.FILTER_REJECT;
+          const parent = (node as any).parentElement as Element | null;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          if (isBadParent(parent)) return NodeFilter.FILTER_REJECT;
+          if (isHiddenEl(parent)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        } catch {
+          return NodeFilter.FILTER_REJECT;
+        }
+      }
+    } as any);
+
+    const range = document.createRange();
+    while (out.length < maxBoxes) {
+      const node = walker.nextNode();
+      if (!node) break;
+      const text = String((node as any).nodeValue || '');
+      const tokens = text.match(/\S+/g) || [];
+      let idx = 0;
+      for (const tok of tokens) {
+        if (out.length >= maxBoxes) break;
+        const start = text.indexOf(tok, idx);
+        if (start < 0) continue;
+        const end = start + tok.length;
+        idx = end;
+        try {
+          range.setStart(node, start);
+          range.setEnd(node, end);
+          const rects = Array.from(range.getClientRects());
+          for (const rr of rects) {
+            if (out.length >= maxBoxes) break;
+            if (!inViewport(rr)) continue;
+            if (rr.width > 1400 || rr.height > 400) continue;
+            const item: any = { x: rr.left, y: rr.top, width: rr.width, height: rr.height };
+            if (includeText) item.text = tok;
+            out.push(item);
+          }
+        } catch {}
+      }
+    }
+    try { range.detach(); } catch {}
+    return out;
+  }, { maxBoxes, includeText });
+  return boxes;
+}
+
+async function pushTextBoxes(session: Session, reason: 'once' | 'interval' | 'start') {
+  if (!session.ws || session.ws.readyState !== WebSocket.OPEN) return;
+  const boxes = await computeTextBoxes(session).catch(() => [] as TextBox[]);
+  notifySession(session, 'text_boxes', { boxes, ts: Date.now(), reason });
+  return boxes;
+}
+
+function startTextBoxes(session: Session, opts?: { intervalMs?: number; maxBoxes?: number; includeText?: boolean }) {
+  const intervalMs = Math.max(200, Math.min(5000, Number(opts?.intervalMs ?? session.textBoxes.intervalMs) || 900));
+  const maxBoxes = Math.max(1, Math.min(900, Number(opts?.maxBoxes ?? session.textBoxes.maxBoxes) || 350));
+  const includeText = Boolean(opts?.includeText ?? session.textBoxes.includeText);
+  try {
+    if (session.textBoxes.timer) clearInterval(session.textBoxes.timer);
+  } catch {}
+  session.textBoxes.enabled = true;
+  session.textBoxes.intervalMs = intervalMs;
+  session.textBoxes.maxBoxes = maxBoxes;
+  session.textBoxes.includeText = includeText;
+  session.textBoxes.timer = setInterval(() => {
+    if (!session.textBoxes.enabled) return;
+    void pushTextBoxes(session, 'interval');
+  }, intervalMs);
+  void pushTextBoxes(session, 'start');
+}
+
+function stopTextBoxes(session: Session) {
+  session.textBoxes.enabled = false;
+  try {
+    if (session.textBoxes.timer) clearInterval(session.textBoxes.timer);
+  } catch {}
+  session.textBoxes.timer = null;
+  try {
+    notifySession(session, 'text_boxes', { boxes: [], ts: Date.now(), reason: 'stop' });
+  } catch {}
+}
 
 function sanitizeAction(session: Session, a: Action) {
   if (!session.redactionEnabled) return a as any;
@@ -659,11 +794,16 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'evaluate': {
-          const result = await session.page.evaluate((code) => {
-            // eslint-disable-next-line no-eval
-            return eval(code);
-          }, a.script);
-          outputs.push({ type: 'evaluate', result });
+          const expr = String(a.script ?? '').trim();
+          if (expr === 'location.href' || expr === 'window.location.href') {
+            outputs.push({ type: 'evaluate', result: session.page.url() });
+            break;
+          }
+          if (expr === 'document.title') {
+            outputs.push({ type: 'evaluate', result: await session.page.title() });
+            break;
+          }
+          throw new Error('evaluate_expression_not_supported');
           break;
         }
         case 'tab.new': {
@@ -754,6 +894,21 @@ async function runActions(session: Session, actions: Action[]) {
           }, { x: a.x, y: a.y });
           outputs.push({ type: 'pick', x: a.x, y: a.y, element: info });
           if (info?.boundingBox) notifySession(session, 'pick', { x: a.x, y: a.y, element: info });
+          break;
+        }
+        case 'textBoxes.once': {
+          const boxes = await pushTextBoxes(session, 'once');
+          outputs.push({ type: 'textBoxes.once', count: Array.isArray(boxes) ? boxes.length : 0, boxes: (boxes || []).slice(0, 250) });
+          break;
+        }
+        case 'textBoxes.start': {
+          startTextBoxes(session, { intervalMs: a.intervalMs, maxBoxes: a.maxBoxes, includeText: a.includeText });
+          outputs.push({ type: 'textBoxes.start', enabled: true, intervalMs: session.textBoxes.intervalMs, maxBoxes: session.textBoxes.maxBoxes, includeText: session.textBoxes.includeText });
+          break;
+        }
+        case 'textBoxes.stop': {
+          stopTextBoxes(session);
+          outputs.push({ type: 'textBoxes.stop', enabled: false });
           break;
         }
         case 'stream.setFps': {
@@ -865,6 +1020,7 @@ app.post('/session/:id/close', auth, async (req, res) => {
 app.post('/session/:id/job/run', auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
   if (!s) return res.status(404).json({ error: 'session_not_found' });
+  s.lastActiveAt = Date.now();
   const actions: Action[] = Array.isArray(req.body?.actions) ? req.body.actions : [];
   const outputs = await runActions(s, actions);
   res.json({ ok: true, outputs, artifacts: s.downloads });
@@ -873,6 +1029,7 @@ app.post('/session/:id/job/run', auth, async (req, res) => {
 app.post('/session/:id/snapshot', auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
   if (!s) return res.status(404).json({ error: 'session_not_found' });
+  s.lastActiveAt = Date.now();
   let html = '';
   let a11ySnap: any = null;
   try {
@@ -905,6 +1062,7 @@ app.post('/session/:id/snapshot', auth, async (req, res) => {
 app.post('/session/:id/extract', auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
   if (!s) return res.status(404).json({ error: 'session_not_found' });
+  s.lastActiveAt = Date.now();
   const schema = req.body?.schema;
   if (!schema) return res.status(400).json({ error: 'schema_required' });
   const outputs = await runActions(s, [{ type: 'extract', schema }]);
@@ -992,7 +1150,11 @@ const server = app.listen(PORT, '0.0.0.0', () => {
       }));
     } catch {}
     let running = true;
-    ws.on('close', () => { running = false; s.ws = undefined; });
+    ws.on('close', () => {
+      running = false;
+      s.ws = undefined;
+      try { stopTextBoxes(s); } catch {}
+    });
     ws.on('message', async (data) => {
       try {
         const msg = JSON.parse(data.toString());
@@ -1023,8 +1185,11 @@ const server = app.listen(PORT, '0.0.0.0', () => {
           ws.send(JSON.stringify({ type: 'frame', jpegBase64: buf.toString('base64'), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
           const delay = Math.max(33, Math.round(1000 / Math.max(1, Math.min(30, s.streamFps || 5))));
           await new Promise(r => setTimeout(r, delay));
-        } catch (e) {
-          break;
+        } catch (e: any) {
+          logger.warn({ id: s.id, error: String(e?.message || e) }, 'stream_frame_error');
+          if (!running) break;
+          if (ws.readyState !== WebSocket.OPEN) break;
+          await new Promise(r => setTimeout(r, 250));
         }
       }
     };
