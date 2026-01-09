@@ -14,10 +14,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!abs) return abs;
     try {
       if (!/^wss?:\/\//i.test(abs)) {
-        const base =
-          abs.startsWith('/')
-            ? window.location.origin.replace(/^http/i, 'ws')
-            : API.replace(/^http/i, 'ws');
+        const base = API.replace(/^http/i, 'ws');
         abs = new URL(abs, base).toString();
       }
     } catch {}
@@ -794,11 +791,12 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     return () => window.clearInterval(timer);
   }, [replayMode, replayPlaying, timeline.length]);
 
-  function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
+  function handleCanvasPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!controlEnabled) setControlEnabled(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
     try { canvas.focus(); } catch {}
+    if (typeof e.button === 'number' && e.button !== 0) return;
     const rect = canvas.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left) * (size.w / rect.width));
     const y = Math.round((e.clientY - rect.top) * (size.h / rect.height));
@@ -813,7 +811,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     const dy = Math.round(e.deltaY);
     runActions([{ type: 'scroll', deltaY: dy }]);
   }
-  function handleCanvasMove(e: React.MouseEvent<HTMLCanvasElement>) {
+  function handleCanvasPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!controlEnabled) return;
     const now = Date.now();
     if (now - (lastMoveRef.current || 0) < 60) return;
@@ -823,35 +821,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     const rect = canvas.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left) * (size.w / rect.width));
     const y = Math.round((e.clientY - rect.top) * (size.h / rect.height));
-    setCursor({ x, y });
-    runActions([{ type: 'mouseMove', x, y, steps: 2 }]);
-  }
-
-  function handleCanvasTouchStart(e: React.TouchEvent<HTMLCanvasElement>) {
-    if (!controlEnabled) return;
-    const canvas = canvasRef.current;
-    const touch = e.touches?.[0];
-    if (!canvas || !touch) return;
-    e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.round((touch.clientX - rect.left) * (size.w / rect.width));
-    const y = Math.round((touch.clientY - rect.top) * (size.h / rect.height));
-    runActions([{ type: 'click', x, y }]);
-    setCursor({ x, y });
-  }
-
-  function handleCanvasTouchMove(e: React.TouchEvent<HTMLCanvasElement>) {
-    if (!controlEnabled) return;
-    const now = Date.now();
-    if (now - (lastMoveRef.current || 0) < 60) return;
-    lastMoveRef.current = now;
-    const canvas = canvasRef.current;
-    const touch = e.touches?.[0];
-    if (!canvas || !touch) return;
-    e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.round((touch.clientX - rect.left) * (size.w / rect.width));
-    const y = Math.round((touch.clientY - rect.top) * (size.h / rect.height));
     setCursor({ x, y });
     runActions([{ type: 'mouseMove', x, y, steps: 2 }]);
   }
@@ -1181,11 +1150,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
           <canvas
             ref={canvasRef}
-            onClick={handleCanvasClick}
+            onPointerDown={handleCanvasPointerDown}
             onWheel={handleCanvasWheel}
-            onMouseMove={handleCanvasMove}
-            onTouchStart={handleCanvasTouchStart}
-            onTouchMove={handleCanvasTouchMove}
+            onPointerMove={handleCanvasPointerMove}
             tabIndex={0}
             onFocus={() => setCanvasFocused(true)}
             onBlur={() => setCanvasFocused(false)}

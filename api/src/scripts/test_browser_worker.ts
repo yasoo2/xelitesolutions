@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import WebSocket from 'ws';
 import { config } from '../config';
 
-const API = process.env.API_URL || 'http://localhost:8080';
+const API = process.env.API_URL || 'http://localhost:3000';
 
 async function assertUnauthorized(url: string) {
   const res = await fetch(url, {
@@ -84,7 +84,7 @@ async function main() {
   const res1 = await fetch(`${API}/tools/browser_open/execute`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ url: 'https://example.com', viewport: { width: 1280, height: 800 } })
+    body: JSON.stringify({ url: 'https://www.wikipedia.org', viewport: { width: 1280, height: 800 } })
   });
   const j1 = await res1.json();
   if (!j1?.ok || !j1?.output?.sessionId || !j1?.output?.wsUrl) {
@@ -97,6 +97,33 @@ async function main() {
 
   const stream = await waitForBrowserFrames(streamWsUrl, 15000);
   console.log(`✅ stream ok frames=${stream.frames}`);
+
+  const resInteract = await fetch(`${API}/tools/browser_run/execute`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      sessionId,
+      actions: [
+        { type: 'waitForSelector', selector: '#searchInput', timeoutMs: 12000 },
+        { type: 'click', selector: '#searchInput' },
+        { type: 'fillForm', fields: [{ selector: '#searchInput', value: 'OpenAI' }] },
+        { type: 'press', key: 'Enter' },
+        { type: 'waitForLoad', state: 'domcontentloaded' },
+        { type: 'wait', ms: 800 },
+        { type: 'evaluate', script: 'location.href' }
+      ]
+    })
+  });
+  const jInteract = await resInteract.json();
+  if (!jInteract?.ok) {
+    throw new Error(`browser_run interaction failed: ${JSON.stringify(jInteract)}`);
+  }
+  const outputs = Array.isArray(jInteract?.output?.outputs) ? jInteract.output.outputs : [];
+  const href = String(outputs.find((o: any) => o?.type === 'evaluate')?.result || '');
+  if (!href || !/wikipedia\.org/i.test(href)) {
+    throw new Error(`interaction_url_unexpected: ${href}`);
+  }
+  console.log(`✅ interaction ok url=${href}`);
 
   const res2 = await fetch(`${API}/tools/browser_get_state/execute`, {
     method: 'POST',
@@ -118,17 +145,17 @@ async function main() {
     body: JSON.stringify({
       sessionId,
       actions: [
-        { type: 'scroll', deltaY: 800 },
-        { type: 'wait', ms: 500 },
+        { type: 'scroll', deltaY: 600 },
+        { type: 'wait', ms: 400 },
         { type: 'screenshot', fullPage: false }
       ]
     })
   });
   const j3 = await res3.json();
   if (!j3?.ok) {
-    throw new Error(`browser_run failed: ${JSON.stringify(j3)}`);
+    throw new Error(`browser_run post-actions failed: ${JSON.stringify(j3)}`);
   }
-  console.log('✅ browser_run ok');
+  console.log('✅ post-actions ok');
 }
 
 main().catch(err => {

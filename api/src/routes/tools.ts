@@ -69,6 +69,50 @@ router.post('/run', async (req: Request, res: Response) => {
 router.post('/:name/execute', authenticate, async (req: Request, res: Response) => {
   const name = String(req.params.name);
   const result = await executeTool(name, req.body || {});
+  if (result && result.ok && result.output && typeof result.output === 'object') {
+    const authHeader = String(req.headers.authorization || '');
+    const bearerToken =
+      authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : '';
+    const xfProto = req.headers['x-forwarded-proto'];
+    const reqProto =
+      typeof xfProto === 'string' && xfProto.trim()
+        ? xfProto.split(',')[0].trim()
+        : req.protocol;
+    const wsProto = reqProto === 'https' ? 'wss' : 'ws';
+    const host = String(req.get('host') || '').trim();
+
+    const absolutize = (href: string) => {
+      const v = String(href || '').trim();
+      if (!v) return v;
+      if (/^wss?:\/\//i.test(v)) return v;
+      if (!host) return v;
+      const base = v.startsWith('/') ? `${wsProto}://${host}${v}` : `${wsProto}://${host}/${v}`;
+      try {
+        const u = new URL(base);
+        if (bearerToken && u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
+          u.searchParams.set('token', bearerToken);
+        }
+        return u.toString();
+      } catch {
+        return base;
+      }
+    };
+
+    const wsUrlRaw = (result.output as any).wsUrl;
+    if (typeof wsUrlRaw === 'string' && wsUrlRaw.startsWith('/browser/ws/')) {
+      (result.output as any).wsUrl = absolutize(wsUrlRaw);
+    }
+    if (Array.isArray(result.artifacts)) {
+      result.artifacts = result.artifacts.map((a) => {
+        if (!a || typeof a !== 'object') return a;
+        const href = (a as any).href;
+        if (typeof href === 'string' && href.startsWith('/browser/ws/')) {
+          return { ...(a as any), href: absolutize(href) };
+        }
+        return a as any;
+      });
+    }
+  }
   res.json(result);
 });
 

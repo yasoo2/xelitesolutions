@@ -43,7 +43,7 @@ function auth(req, res, next) {
 }
 async function launchChromium() {
   const args = ["--no-sandbox", "--disable-dev-shm-usage"];
-  const headless = process.env.HEADLESS !== "0" && process.env.HEADLESS !== "false";
+  const headless = process.env.HEADLESS === "true" || process.env.HEADLESS === "1";
   const channel = String(process.env.PLAYWRIGHT_CHANNEL || process.env.BROWSER_CHANNEL || "").trim();
   try {
     if (channel) return await chromium.launch({ args, headless, channel });
@@ -205,6 +205,10 @@ function sanitizeAction(session2, a2) {
   if (a2.type === "type") {
     return { ...a2, text: `[redacted:${a2.text.length}]` };
   }
+  if (a2.type === "searchGoogle" && a2.sensitive) {
+    const q = a2.query == null ? "" : String(a2.query);
+    return { ...a2, query: `[redacted:${q.length}]` };
+  }
   if (a2.type === "fillForm") {
     const fields = a2.fields.map((f) => {
       const should = a2.sensitive || f.sensitive;
@@ -213,6 +217,10 @@ function sanitizeAction(session2, a2) {
       return { ...f, value: `[redacted:${v.length}]` };
     });
     return { ...a2, fields };
+  }
+  if (a2.type === "fillByLabel" && a2.sensitive) {
+    const v = a2.value == null ? "" : String(a2.value);
+    return { ...a2, value: `[redacted:${v.length}]` };
   }
   if (a2.type === "evaluate" && a2.sensitive) return { ...a2, script: "[redacted]" };
   return a2;
@@ -226,8 +234,71 @@ function switchToTab(session2, tabId) {
   notifySession(session2, "url", { url: t.url || t.page.url(), tabId: t.id });
   return true;
 }
+async function captureScreenshot(session2, opts) {
+  const buf = await session2.page.screenshot({
+    type: "jpeg",
+    quality: opts?.quality || 60,
+    fullPage: opts?.fullPage || false,
+    timeout: 15e3,
+    caret: "hide",
+    animations: "disabled"
+  });
+  const name = `s-${Date.now()}.jpg`;
+  const p = path.join(STORAGE_DIR, "shots", name);
+  const dir = path.dirname(p);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(p, buf);
+  const href = `/shots/${name}`;
+  notifySession(session2, "screenshot", { href });
+  return href;
+}
+async function maybeNotifyCursorForLocator(session2, locator) {
+  try {
+    await locator?.scrollIntoViewIfNeeded?.({ timeout: 1500 });
+  } catch {
+  }
+  const box = await locator?.boundingBox?.({ timeout: 1500 }).catch(() => null) || await locator?.elementHandle?.().then((h) => h?.boundingBox?.()).catch(() => null);
+  if (!box) return null;
+  notifySession(session2, "highlight", { boundingBox: box });
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await session2.page.mouse.move(x, y, { steps: 2 }).catch(() => {
+  });
+  notifySession(session2, "cursor_move", { x, y });
+  await new Promise((r) => setTimeout(r, 250));
+  return { x, y };
+}
+async function clickLocatorWithCursor(session2, locator) {
+  const pt = await maybeNotifyCursorForLocator(session2, locator);
+  if (pt) notifySession(session2, "cursor_click", { x: pt.x, y: pt.y });
+  await locator.click();
+  return pt;
+}
+async function tryAcceptGoogleConsent(session2, outputs2) {
+  const selectors = [
+    "#L2AGLb",
+    'button[aria-label*="Agree"]',
+    "text=I agree",
+    "text=Agree",
+    "text=Accept all",
+    "text=Accept",
+    "text=\u0623\u0648\u0627\u0641\u0642",
+    "text=\u0642\u0628\u0648\u0644 \u0627\u0644\u0643\u0644",
+    "text=\u0645\u0648\u0627\u0641\u0642"
+  ];
+  for (const sel of selectors) {
+    const loc = session2.page.locator(sel);
+    const c = await loc.count().catch(() => 0);
+    if (c > 0) {
+      await loc.first().click({ timeout: 1e3 }).catch(() => null);
+      if (outputs2) outputs2.push({ type: "cookie_consent_click", selector: sel });
+      break;
+    }
+  }
+}
 async function runActions(session, actions) {
   const outputs = [];
+  const autoScreenshotsEnabled = process.env.WORKER_AUTO_SCREENSHOT !== "0" && process.env.WORKER_AUTO_SCREENSHOT !== "false";
   for (const a of actions) {
     session.lastActiveAt = Date.now();
     notifySession(session, "action_start", { action: sanitizeAction(session, a) });
@@ -248,26 +319,7 @@ async function runActions(session, actions) {
           try {
             const u = new URL(a.url);
             if (/(^|\.)google\./i.test(u.hostname)) {
-              const selectors = [
-                "#L2AGLb",
-                'button[aria-label*="Agree"]',
-                "text=I agree",
-                "text=Agree",
-                "text=Accept all",
-                "text=Accept",
-                "text=\u0623\u0648\u0627\u0641\u0642",
-                "text=\u0642\u0628\u0648\u0644 \u0627\u0644\u0643\u0644",
-                "text=\u0645\u0648\u0627\u0641\u0642"
-              ];
-              for (const sel of selectors) {
-                const loc = session.page.locator(sel);
-                const c = await loc.count().catch(() => 0);
-                if (c > 0) {
-                  await loc.first().click({ timeout: 1e3 });
-                  outputs.push({ type: "cookie_consent_click", selector: sel });
-                  break;
-                }
-              }
+              await tryAcceptGoogleConsent(session, outputs);
             }
           } catch {
           }
@@ -306,40 +358,36 @@ async function runActions(session, actions) {
         }
         case "click": {
           if (a.selector) {
+            const loc = session.page.locator(a.selector).first();
             try {
-              const loc = session.page.locator(a.selector).first();
-              const box = await loc.boundingBox({ timeout: 1e3 }).catch(() => null);
-              if (box) {
-                const cx = box.x + box.width / 2;
-                const cy = box.y + box.height / 2;
-                notifySession(session, "cursor_move", { x: cx, y: cy });
-                await new Promise((r) => setTimeout(r, 400));
-                notifySession(session, "cursor_click", { x: cx, y: cy });
-              }
-              await loc.click();
+              await clickLocatorWithCursor(session, loc);
             } catch (e) {
               await session.page.click(a.selector);
             }
           } else if (a.roleName && a.role) {
+            const loc = session.page.getByRole(a.role, { name: a.roleName }).first();
             try {
-              const loc = session.page.getByRole(a.role, { name: a.roleName }).first();
-              const box = await loc.boundingBox({ timeout: 1e3 }).catch(() => null);
-              if (box) {
-                const cx = box.x + box.width / 2;
-                const cy = box.y + box.height / 2;
-                notifySession(session, "cursor_move", { x: cx, y: cy });
-                await new Promise((r) => setTimeout(r, 400));
-                notifySession(session, "cursor_click", { x: cx, y: cy });
-              }
-              await loc.click();
+              await clickLocatorWithCursor(session, loc);
             } catch {
               await session.page.getByRole(a.role, { name: a.roleName }).click();
             }
           } else if (typeof a.x === "number" && typeof a.y === "number") {
+            await session.page.mouse.move(a.x, a.y, { steps: 2 }).catch(() => {
+            });
+            notifySession(session, "cursor_move", { x: a.x, y: a.y });
+            notifySession(session, "highlight", { boundingBox: { x: a.x - 10, y: a.y - 10, width: 20, height: 20 } });
+            await new Promise((r) => setTimeout(r, 120));
             await session.page.mouse.click(a.x, a.y, { button: a.button || "left" });
             notifySession(session, "cursor_click", { x: a.x, y: a.y });
           }
           outputs.push({ type: "click" });
+          break;
+        }
+        case "clickText": {
+          const loc = session.page.getByText(a.text, { exact: a.exact ?? false }).first();
+          await loc.waitFor({ state: "visible", timeout: 8e3 });
+          await clickLocatorWithCursor(session, loc);
+          outputs.push({ type: "clickText", text: a.text, exact: Boolean(a.exact) });
           break;
         }
         case "locate": {
@@ -352,6 +400,7 @@ async function runActions(session, actions) {
             const el = await locator.elementHandle();
             if (el) box = await el.boundingBox();
           }
+          if (box) notifySession(session, "highlight", { boundingBox: box });
           outputs.push({ type: "locate", boundingBox: box });
           break;
         }
@@ -395,15 +444,8 @@ async function runActions(session, actions) {
           break;
         }
         case "screenshot": {
-          const buf = await session.page.screenshot({ type: "jpeg", quality: a.quality || 60, fullPage: a.fullPage || false });
-          const name = `s-${Date.now()}.jpg`;
-          const p = path.join(STORAGE_DIR, "shots", name);
-          const dir = path.dirname(p);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(p, buf);
-          const href = `/shots/${name}`;
-          outputs.push({ type: "screenshot", href });
-          notifySession(session, "screenshot", { href });
+          const href = await captureScreenshot(session, { quality: a.quality || 60, fullPage: a.fullPage || false });
+          outputs.push({ type: "screenshot", href, auto: false });
           break;
         }
         case "snapshot.dom": {
@@ -466,30 +508,71 @@ async function runActions(session, actions) {
               if (f.selector) loc = session.page.locator(f.selector).first();
               else if (f.label) loc = session.page.getByLabel(f.label).first();
               if (loc) {
-                const box = await loc.boundingBox({ timeout: 500 }).catch(() => null);
-                if (box) {
-                  const cx = box.x + box.width / 2;
-                  const cy = box.y + box.height / 2;
-                  notifySession(session, "cursor_move", { x: cx, y: cy });
-                  await new Promise((r) => setTimeout(r, 400));
-                  notifySession(session, "cursor_click", { x: cx, y: cy });
-                }
+                const pt = await maybeNotifyCursorForLocator(session, loc);
+                if (pt) notifySession(session, "cursor_click", { x: pt.x, y: pt.y });
               }
             } catch {
             }
             if (f.selector) {
               if (f.kind === "file") {
               } else {
-                await session.page.fill(f.selector, String(f.value ?? ""));
+                const v = String(f.value ?? "");
+                if (f.kind === "checkbox") {
+                  if (f.value === false || f.value === "false" || f.value === 0 || f.value === "0") await session.page.locator(f.selector).first().uncheck();
+                  else await session.page.locator(f.selector).first().check();
+                } else if (f.kind === "radio") {
+                  await session.page.locator(f.selector).first().check();
+                } else if (f.kind === "select") {
+                  await session.page.locator(f.selector).first().selectOption(v);
+                } else {
+                  await session.page.fill(f.selector, v);
+                }
               }
             } else if (f.label) {
               const locator = session.page.getByLabel(f.label);
-              if (f.kind === "checkbox") await locator.check();
-              else if (f.kind === "radio") await locator.check();
-              else await locator.fill(String(f.value ?? ""));
+              const v = String(f.value ?? "");
+              if (f.kind === "checkbox") {
+                if (f.value === false || f.value === "false" || f.value === 0 || f.value === "0") await locator.uncheck();
+                else await locator.check();
+              } else if (f.kind === "radio") await locator.check();
+              else if (f.kind === "select") await locator.selectOption(v);
+              else await locator.fill(v);
             }
           }
           outputs.push({ type: "fillForm", count: a.fields.length });
+          break;
+        }
+        case "fillByLabel": {
+          const locator = session.page.getByLabel(a.label).first();
+          await locator.waitFor({ state: "visible", timeout: 8e3 });
+          const pt = await maybeNotifyCursorForLocator(session, locator);
+          if (pt) notifySession(session, "cursor_click", { x: pt.x, y: pt.y });
+          const v = String(a.value ?? "");
+          if (a.kind === "checkbox") {
+            if (a.value === false || a.value === "false" || a.value === 0 || a.value === "0") await locator.uncheck();
+            else await locator.check();
+          } else if (a.kind === "radio") {
+            await locator.check();
+          } else if (a.kind === "select") {
+            await locator.selectOption(v);
+          } else {
+            await locator.fill(v);
+          }
+          outputs.push({ type: "fillByLabel", label: a.label });
+          break;
+        }
+        case "searchGoogle": {
+          const q = String(a.query ?? "").trim();
+          const hl = String(a.lang || "en").trim() || "en";
+          await session.page.goto(`https://www.google.com/?hl=${encodeURIComponent(hl)}`, { waitUntil: "domcontentloaded" });
+          await tryAcceptGoogleConsent(session, outputs);
+          const box = session.page.locator('textarea[name="q"], input[name="q"]:not([type="hidden"])').first();
+          await box.waitFor({ state: "visible", timeout: 8e3 });
+          await clickLocatorWithCursor(session, box);
+          await session.page.keyboard.type(q, { delay: 25 });
+          await session.page.keyboard.press("Enter");
+          await session.page.waitForLoadState("domcontentloaded");
+          outputs.push({ type: "searchGoogle", queryLen: q.length, lang: hl });
           break;
         }
         case "uploadFile": {
@@ -625,6 +708,15 @@ async function runActions(session, actions) {
           break;
         }
       }
+      if (autoScreenshotsEnabled) {
+        const should = a.type === "goto" || a.type === "click" || a.type === "clickText" || a.type === "fillForm" || a.type === "fillByLabel" || a.type === "searchGoogle" || a.type === "uploadFile" || a.type === "goBack" || a.type === "goForward" || a.type === "reload" || a.type === "tab.new" || a.type === "tab.switch" || a.type === "tab.close";
+        const now = Date.now();
+        if (should && (session.lastAutoShotAt == null || now - session.lastAutoShotAt > 900)) {
+          session.lastAutoShotAt = now;
+          const href = await captureScreenshot(session, { quality: 55, fullPage: false });
+          outputs.push({ type: "screenshot", href, auto: true, after: a.type });
+        }
+      }
       notifySession(session, "action_done", { action: sanitizeAction(session, a) });
     } catch (err) {
       logger.warn({ action: a, error: err.message }, "action_failed");
@@ -643,7 +735,7 @@ app.get("/up", (_req, res) => {
   res.json({ status: "UP" });
 });
 app.get("/health", (_req, res) => {
-  if (startupError) return res.json({ status: "ERROR", error: startupError, help: "If on Render, ensure Service Type is set to Docker" });
+  if (startupError) return res.json({ status: "ERROR", error: startupError, help: "Ensure service configuration is correct" });
   if (!browserHealthy) return res.json({ status: "STARTING" });
   res.json({ status: "OK" });
 });
@@ -688,17 +780,34 @@ app.post("/session/:id/job/run", auth, async (req, res) => {
 app.post("/session/:id/snapshot", auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
   if (!s) return res.status(404).json({ error: "session_not_found" });
-  const [html, a11ySnap, buf] = await Promise.all([
-    s.page.content(),
-    s.page.accessibility?.snapshot ? s.page.accessibility.snapshot().catch(() => null) : Promise.resolve(null),
-    s.page.screenshot({ type: "jpeg", quality: 60 })
-  ]);
-  const name = `snap-${Date.now()}.jpg`;
-  const p = path.join(STORAGE_DIR, "shots", name);
-  const dir = path.dirname(p);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(p, buf);
-  res.json({ dom: html.slice(0, 1e5), a11y: a11ySnap, screenshot: `/shots/${name}` });
+  let html = "";
+  let a11ySnap = null;
+  try {
+    html = await s.page.content();
+  } catch {
+  }
+  try {
+    a11ySnap = s.page.accessibility?.snapshot ? await s.page.accessibility.snapshot().catch(() => null) : null;
+  } catch {
+  }
+  let screenshot = "";
+  try {
+    const buf = await s.page.screenshot({ type: "jpeg", quality: 55, timeout: 7e3, caret: "hide", animations: "disabled" });
+    const name = `snap-${Date.now()}.jpg`;
+    const p = path.join(STORAGE_DIR, "shots", name);
+    const dir = path.dirname(p);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(p, buf);
+    screenshot = `/shots/${name}`;
+  } catch {
+  }
+  res.json({
+    dom: html.slice(0, 2e6),
+    a11y: a11ySnap,
+    screenshot,
+    viewport: s.viewport,
+    url: s.page.url()
+  });
 });
 app.post("/session/:id/extract", auth, async (req, res) => {
   const s = SESSIONS.get(req.params.id);
@@ -805,7 +914,13 @@ Content-Length: ${Buffer.byteLength(message)}\r
       while (running) {
         try {
           s.lastActiveAt = Date.now();
-          const buf = await s.page.screenshot({ type: "jpeg", quality: s.streamQuality });
+          const buf = await s.page.screenshot({
+            type: "jpeg",
+            quality: s.streamQuality,
+            timeout: 7e3,
+            caret: "hide",
+            animations: "disabled"
+          });
           ws.send(JSON.stringify({ type: "frame", jpegBase64: buf.toString("base64"), ts: Date.now(), w: s.viewport.width, h: s.viewport.height }));
           const delay = Math.max(33, Math.round(1e3 / Math.max(1, Math.min(30, s.streamFps || 5))));
           await new Promise((r) => setTimeout(r, delay));
