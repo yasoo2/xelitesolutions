@@ -206,6 +206,33 @@ async function formatWorkerHttpError(resp: any, base: string) {
   return `worker_error=${status} base=${base} ${snippet}`.trim();
 }
 
+async function resolveBrowserWorkerConfig(input: any) {
+  const rawUserId = typeof input?.__userId === 'string' ? input.__userId : '';
+  const userId = rawUserId.trim();
+
+  let base = String(config.browserWorkerUrl || '').trim();
+  let key = String(config.browserWorkerKey || '').trim();
+
+  const shouldLoadFromUserSecrets =
+    process.env.NODE_ENV === 'production' && (!key || key === 'change-me' || !base);
+
+  if (shouldLoadFromUserSecrets && userId) {
+    try {
+      const { getUserSecret } = await import('../services/secrets');
+      if (!base) {
+        const fromUser = await getUserSecret(userId, 'browser', 'BROWSER_WORKER_URL');
+        if (fromUser && String(fromUser).trim()) base = String(fromUser).trim();
+      }
+      if (!key || key === 'change-me') {
+        const fromUser = await getUserSecret(userId, 'browser', 'BROWSER_WORKER_KEY');
+        if (fromUser && String(fromUser).trim()) key = String(fromUser).trim();
+      }
+    } catch {}
+  }
+
+  return { base, key };
+}
+
 export const tools: ToolDefinition[] = [
   {
     name: 'payments_create_checkout_session',
@@ -474,8 +501,9 @@ export const tools: ToolDefinition[] = [
     mockSupported: false,
     async execute(input) {
       const logs: string[] = [];
-      const key = config.browserWorkerKey;
-      const base = config.browserWorkerUrl;
+      const resolved = await resolveBrowserWorkerConfig(input);
+      const key = resolved.key;
+      const base = resolved.base;
       try {
         await ensureBrowserWorker(base, key, logs);
         await workerHealthOrThrow(base, logs);
@@ -547,8 +575,9 @@ export const tools: ToolDefinition[] = [
     auditFields: ['sessionId'],
     mockSupported: false,
     async execute(input) {
-      const key = config.browserWorkerKey;
-      const base = config.browserWorkerUrl;
+      const resolved = await resolveBrowserWorkerConfig(input);
+      const key = resolved.key;
+      const base = resolved.base;
       const logs: string[] = [];
       try {
         await ensureBrowserWorker(base, key, logs);
@@ -583,8 +612,9 @@ export const tools: ToolDefinition[] = [
     auditFields: ['sessionId'],
     mockSupported: false,
     async execute(input) {
-      const key = config.browserWorkerKey;
-      const base = config.browserWorkerUrl;
+      const resolved = await resolveBrowserWorkerConfig(input);
+      const key = resolved.key;
+      const base = resolved.base;
       const logs: string[] = [];
       try {
         await ensureBrowserWorker(base, key, logs);
@@ -619,8 +649,9 @@ export const tools: ToolDefinition[] = [
     auditFields: ['sessionId'],
     mockSupported: false,
     async execute(input) {
-      const key = config.browserWorkerKey;
-      const base = config.browserWorkerUrl;
+      const resolved = await resolveBrowserWorkerConfig(input);
+      const key = resolved.key;
+      const base = resolved.base;
       const logs: string[] = [];
       try {
         await ensureBrowserWorker(base, key, logs);

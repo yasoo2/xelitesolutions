@@ -402,6 +402,7 @@ export default function CommandComposer({
   const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
   const lastExecTaskIdRef = useRef<Record<string, Record<string, string>>>({});
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
+  const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -1634,16 +1635,28 @@ export default function CommandComposer({
           if (!sessionId) return;
           window.removeEventListener('joe:browser_opened', onOpened as any);
           window.removeEventListener('joe:browser_attached', onOpened as any);
+          window.removeEventListener('joe:browser_open_failed', onFailed as any);
           resolve({ sessionId, wsUrl });
+        };
+
+        const onFailed = (ev: Event) => {
+          const detail = (ev as CustomEvent)?.detail || {};
+          const err = String(detail?.error || 'فشل فتح المتصفح');
+          window.removeEventListener('joe:browser_opened', onOpened as any);
+          window.removeEventListener('joe:browser_attached', onOpened as any);
+          window.removeEventListener('joe:browser_open_failed', onFailed as any);
+          reject(new Error(err));
         };
 
         window.addEventListener('joe:browser_opened', onOpened as any);
         window.addEventListener('joe:browser_attached', onOpened as any);
+        window.addEventListener('joe:browser_open_failed', onFailed as any);
         window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url } }));
 
         window.setTimeout(() => {
           window.removeEventListener('joe:browser_opened', onOpened as any);
           window.removeEventListener('joe:browser_attached', onOpened as any);
+          window.removeEventListener('joe:browser_open_failed', onFailed as any);
           reject(new Error('browser_open_timeout'));
         }, timeoutMs);
       });
@@ -1713,7 +1726,32 @@ export default function CommandComposer({
               ts: Date.now()
             }]);
           }
-        } catch {
+        } catch (e: any) {
+          const msg = String(e?.message || e || 'فشل فتح المتصفح');
+          setEvents(prev => [...prev, { type: 'error', data: msg, ts: Date.now() }]);
+          const sid = String(sessionId || '').trim();
+          const looksLikeUnauthorizedWorker = /worker_error=401\b|unauthorized\b|غير مصرح/i.test(msg);
+          const looksLikeUnreachableWorker = /worker_unhealthy\b|ECONNREFUSED\b|fetch failed\b/i.test(msg);
+          if (sid && (looksLikeUnauthorizedWorker || looksLikeUnreachableWorker)) {
+            pendingBrowserRetryRef.current = { url: desiredUrl, sessionId: sid };
+            if (looksLikeUnreachableWorker) {
+              setSecretPrompt({
+                sessionId: sid,
+                provider: 'browser',
+                key: 'BROWSER_WORKER_URL',
+                label: 'Browser Worker URL',
+                reason: msg,
+              });
+            } else {
+              setSecretPrompt({
+                sessionId: sid,
+                provider: 'browser',
+                key: 'BROWSER_WORKER_KEY',
+                label: 'Browser Worker Key',
+                reason: msg,
+              });
+            }
+          }
         }
       }
 
@@ -2847,8 +2885,13 @@ export default function CommandComposer({
                                   handleUnauthorized();
                                   return;
                                 }
-                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
                                 setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
+                                const pending = pendingBrowserRetryRef.current;
+                                if (pending && pending.sessionId === sid && pending.url) {
+                                  pendingBrowserRetryRef.current = null;
+                                  window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url: pending.url } }));
+                                }
                              } catch (err) {
                                 setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
                              }

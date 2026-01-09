@@ -42,12 +42,50 @@ function BrowserApp({
     try {
       const token = localStorage.getItem('token');
       const effectiveUrl = (typeof nextUrl === 'string' && nextUrl.trim()) ? nextUrl.trim() : url;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      const currentSessionId = String(sessionId || '').trim();
+      const currentWsUrl = String(wsUrl || '').trim();
+
+      if (currentSessionId && effectiveUrl) {
+        const navRes = await fetch(`${API}/tools/browser_run/execute`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            sessionId: currentSessionId,
+            actions: [{ type: 'goto', url: effectiveUrl, waitUntil: 'domcontentloaded' }],
+          }),
+        });
+        if (navRes.status === 401) {
+          localStorage.removeItem('token');
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          setWsUrl(null);
+          setSessionId(null);
+          const err = 'غير مصرح';
+          setError(err);
+          window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
+          return;
+        }
+        const navData = await navRes.json().catch(() => ({} as any));
+        if (!navData?.ok) {
+          const err = String(navData?.error || 'فشل فتح المتصفح');
+          setError(err);
+          window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
+          return;
+        }
+        if (currentWsUrl) {
+          window.dispatchEvent(new CustomEvent('joe:browser_opened', { detail: { sessionId: currentSessionId, wsUrl: currentWsUrl } }));
+          window.dispatchEvent(new CustomEvent('joe:browser_attached', { detail: { sessionId: currentSessionId, wsUrl: currentWsUrl } }));
+        }
+        return;
+      }
+
       const res = await fetch(`${API}/tools/browser_open/execute`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
         body: JSON.stringify({ url: effectiveUrl }),
       });
       if (res.status === 401) {
@@ -55,15 +93,19 @@ function BrowserApp({
         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
         setWsUrl(null);
         setSessionId(null);
-        setError('غير مصرح');
+        const err = 'غير مصرح';
+        setError(err);
+        window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
         return;
       }
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as any));
       const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
       if (!data?.ok || !nextWsUrl) {
         setWsUrl(null);
         setSessionId(null);
-        setError(String(data?.error || 'فشل فتح المتصفح'));
+        const err = String(data?.error || 'فشل فتح المتصفح');
+        setError(err);
+        window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
         return;
       }
       const sid = String(data?.output?.sessionId || '');
@@ -72,12 +114,16 @@ function BrowserApp({
       setSessionId(sid);
       if (sid && wsu) {
         onSession?.({ sessionId: sid, wsUrl: wsu });
+        window.dispatchEvent(new CustomEvent('joe:browser_opened', { detail: { sessionId: sid, wsUrl: wsu } }));
         window.dispatchEvent(new CustomEvent('joe:browser_attached', { detail: { sessionId: sid, wsUrl: wsu } }));
       }
     } catch (e: any) {
       setWsUrl(null);
       setSessionId(null);
-      setError(String(e?.message || e));
+      const err = String(e?.message || e);
+      setError(err);
+      const effectiveUrl = (typeof nextUrl === 'string' && nextUrl.trim()) ? nextUrl.trim() : url;
+      window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
     } finally {
       setIsOpening(false);
     }

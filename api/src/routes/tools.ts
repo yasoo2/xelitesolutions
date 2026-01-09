@@ -68,7 +68,8 @@ router.post('/run', async (req: Request, res: Response) => {
 
 router.post('/:name/execute', authenticate, async (req: Request, res: Response) => {
   const name = String(req.params.name);
-  const result = await executeTool(name, req.body || {});
+  const userId = (req as any)?.auth?.sub;
+  const result = await executeTool(name, { ...(req.body || {}), __userId: userId });
   if (result && result.ok && result.output && typeof result.output === 'object') {
     const authHeader = String(req.headers.authorization || '');
     const bearerToken =
