@@ -11,6 +11,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const fallbackActiveRef = useRef(false);
   const fallbackPollDelayRef = useRef<number>(1500);
   const fallbackPollFailuresRef = useRef<number>(0);
+  const [authToken, setAuthToken] = useState<string>(() => {
+    try {
+      return localStorage.getItem('token') || '';
+    } catch {
+      return '';
+    }
+  });
   const effectiveWsUrl = useMemo(() => {
     let abs = String(wsUrl || '').trim();
     if (!abs) return abs;
@@ -38,8 +45,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         u.hash = '';
       }
       if (u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
-        const token = localStorage.getItem('token');
-        if (token) u.searchParams.set('token', token);
+        if (authToken) u.searchParams.set('token', authToken);
       }
       if (window.location.protocol === 'https:' && u.protocol === 'ws:') {
         u.protocol = 'wss:';
@@ -47,7 +53,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       abs = u.toString();
     } catch {}
     return abs;
-  }, [wsUrl]);
+  }, [wsUrl, authToken]);
   const [size, setSize] = useState<{ w: number, h: number }>({ w: 1280, h: 800 });
   const sizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 800 });
   const [status, setStatus] = useState('connecting');
@@ -118,6 +124,27 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const pendingFrameRef = useRef<string | null>(null);
   const decodingFrameRef = useRef<boolean>(false);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+
+  useEffect(() => {
+    const sync = () => {
+      try {
+        setAuthToken(localStorage.getItem('token') || '');
+      } catch {
+        setAuthToken('');
+      }
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'token') sync();
+    };
+    window.addEventListener('auth:authorized', sync as any);
+    window.addEventListener('auth:unauthorized', sync as any);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('auth:authorized', sync as any);
+      window.removeEventListener('auth:unauthorized', sync as any);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
   const lastCanvasSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
   const MAX_TIMELINE_FRAMES = 90;
   const MAX_TIMELINE_EVENTS = 140;
@@ -801,7 +828,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       try { wsRef.current?.close(); } catch {}
       wsRef.current = null;
     };
-  }, [wsUrl, reconnectNonce]);
+  }, [effectiveWsUrl, reconnectNonce]);
 
   useEffect(() => {
     const sessionId = getSessionId();
@@ -821,7 +848,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!shouldTryFallback) return;
     if (fallbackActiveRef.current) return;
 
-    const token = localStorage.getItem('token') || '';
+    const token = authToken || '';
     let stopped = false;
 
     const poll = async () => {
@@ -897,7 +924,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     return () => {
       stopped = true;
     };
-  }, [status, framesSeen, streamPaused, replayMode, effectiveWsUrl]);
+  }, [status, framesSeen, streamPaused, replayMode, effectiveWsUrl, authToken]);
 
   useEffect(() => {
     if (status !== 'connected') {

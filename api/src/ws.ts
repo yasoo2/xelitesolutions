@@ -89,6 +89,7 @@ export function attachWebSocket(server: Server) {
     let sentStart = false;
     let lastUpstreamMsgAt = Date.now();
     let pollTimer: NodeJS.Timeout | null = null;
+    let httpQueue: Promise<any> = Promise.resolve();
 
     const closeBoth = (code?: number, reason?: string) => {
       closed = true;
@@ -110,11 +111,9 @@ export function attachWebSocket(server: Server) {
       } catch {}
     };
 
-    const executeActionViaHttp = async (action: any) => {
+    const executeActionsViaHttp = async (actions: any[]) => {
       if (!workerBaseHttp || !workerKey) return;
-      if (!action || typeof action !== 'object') return;
-      const actionType = String((action as any).type || '').trim();
-      if (!actionType) return;
+      if (!Array.isArray(actions) || actions.length === 0) return;
 
       const allowed = new Set([
         'goto',
@@ -148,12 +147,19 @@ export function attachWebSocket(server: Server) {
         'stream.setQuality',
         'redaction.set',
       ]);
-      if (!allowed.has(actionType)) return;
-
-      if (actionType === 'goto') {
-        const url = String((action as any).url || '').trim();
-        if (!url) return;
-      }
+      const filtered = actions
+        .filter((a) => a && typeof a === 'object')
+        .filter((a) => {
+          const t = String((a as any).type || '').trim();
+          if (!t) return false;
+          if (!allowed.has(t)) return false;
+          if (t === 'goto') {
+            const url = String((a as any).url || '').trim();
+            if (!url) return false;
+          }
+          return true;
+        });
+      if (filtered.length === 0) return;
 
       try {
         await fetch(`${workerBaseHttp}/session/${encodeURIComponent(sessionId)}/job/run`, {
@@ -162,9 +168,15 @@ export function attachWebSocket(server: Server) {
             'Content-Type': 'application/json',
             'x-worker-key': workerKey,
           },
-          body: JSON.stringify({ actions: [action] }),
+          body: JSON.stringify({ actions: filtered }),
         });
       } catch {}
+    };
+
+    const enqueueActionsViaHttp = (actions: any[]) => {
+      httpQueue = httpQueue
+        .then(() => executeActionsViaHttp(actions))
+        .catch(() => {});
     };
 
     const startPolling = () => {
@@ -244,10 +256,10 @@ export function attachWebSocket(server: Server) {
         const txt = typeof data === 'string' ? data : data.toString();
         const msg = JSON.parse(txt);
         if (msg && msg.type === 'action' && msg.action && typeof msg.action === 'object') {
-          void executeActionViaHttp(msg.action);
+          enqueueActionsViaHttp([msg.action]);
         }
         if (msg && msg.type === 'actions' && Array.isArray(msg.actions)) {
-          for (const a of msg.actions) void executeActionViaHttp(a);
+          enqueueActionsViaHttp(msg.actions);
         }
       } catch {}
     });

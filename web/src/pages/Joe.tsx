@@ -153,7 +153,8 @@ function BrowserApp({
     const handler = (ev: Event) => {
       const detail = (ev as CustomEvent)?.detail || {};
       const sid = String(detail?.sessionId || '');
-      const wsu = String(detail?.wsUrl || '');
+      const wsuRaw = String(detail?.wsUrl || '');
+      const wsu = wsuRaw || (sid ? `/browser/ws/${encodeURIComponent(sid)}` : '');
       if (sid && wsu) {
         setWsUrl(wsu);
         setSessionId(sid);
