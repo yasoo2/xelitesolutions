@@ -1289,6 +1289,35 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             : 'https://www.google.com');
   }
 
+  if (isSimpleBrowserOpenRequest) {
+    const url = String(simpleBrowserOpenUrl || 'https://www.google.com').trim() || 'https://www.google.com';
+    const persistedInput = redactToolInputForStorage('browser_open', { url });
+    ev({ type: 'step_started', data: { name: 'execute:browser_open', input: persistedInput } });
+    const result = await executeTool('browser_open', { url });
+    ev({
+      type: result.ok ? 'step_done' : 'step_failed',
+      data: { name: 'execute:browser_open', result: result.ok ? { ...result, output: summarizeBrowserOutput((result as any).output) } : result },
+    });
+    const msg = result.ok
+      ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`
+      : `تعذّر فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`;
+    ev({ type: 'text', data: msg });
+    ev({ type: 'run_completed', data: { runId, result } });
+    ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+    if (useMock) {
+      store.addMessage(sessionId, 'assistant', msg, runId);
+      store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+    } else {
+      try {
+        await Message.create({ sessionId, role: 'assistant', content: msg, runId });
+      } catch {}
+      try {
+        await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+      } catch {}
+    }
+    return res.json({ ok: result.ok, runId, sessionId, result });
+  }
+
   while (steps < MAX_STEPS) {
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
     
@@ -1299,8 +1328,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } else if (steps === 0 && initialPlan) {
         plan = initialPlan;
         initialPlan = null; // Prevent reuse
-    } else if (steps === 0 && isSimpleBrowserOpenRequest) {
-        plan = { name: 'browser_open', input: { url: simpleBrowserOpenUrl || 'https://github.com' } } as any;
     } else {
         const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
         if (Date.now() < coolUntil) {
