@@ -325,7 +325,7 @@ jobs:
           mkdir -p /opt/joe/certbot/conf /opt/joe/certbot/www
           if [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/fullchain.pem ] || [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/privkey.pem ]; then
             echo "TLS certificate not found. Bootstrapping Let's Encrypt..."
-            COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" ./init-letsencrypt.sh
+            COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" bash ./scripts/init-letsencrypt.sh
           fi
 
           echo "Pre-clean potential name conflicts..."

@@ -49,3 +49,4 @@ curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost || echo "
 curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://xelitesolutions.com || echo "Remote check failed"
 
 echo "✨ تم حل المشكلة بنجاح!"
+

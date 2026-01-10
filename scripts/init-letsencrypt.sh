@@ -99,3 +99,4 @@ echo
 
 echo "### Reloading nginx ..."
 $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec nginx nginx -s reload
+

@@ -66,3 +66,4 @@ else
     echo "Please ensure Docker is installed and in your PATH."
     exit 1
 fi
+
