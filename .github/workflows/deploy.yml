@@ -59,6 +59,7 @@ jobs:
           set -euo pipefail
           host="${{ secrets.HOST }}"
           port="${{ secrets.PORT }}"
+          known_hosts_fallback="${{ secrets.SSH_KNOWN_HOSTS }}"
           host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
           port="$(printf '%s' "${port:-}" | tr -dc '0-9')"
           port="${port:-22}"
@@ -68,21 +69,30 @@ jobs:
           fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          tmp="$(mktemp)"
+          tmp_keys="$(mktemp)"
+          tmp_err="$(mktemp)"
           for attempt in 1 2 3 4 5; do
-            out="$(ssh-keyscan -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>/dev/null || true)"
+            : >"$tmp_err"
+            out="$(ssh-keyscan -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>"$tmp_err" || true)"
             if [ -n "${out:-}" ]; then
-              printf '%s\n' "$out" >> "$tmp"
+              printf '%s\n' "$out" >>"$tmp_keys"
               break
             fi
             sleep 2
           done
-          if [ ! -s "$tmp" ]; then
-            echo "ssh-keyscan produced no output for ${host}:${port}. Check HOST/PORT and firewall."
+          if [ ! -s "$tmp_keys" ] && [ -n "${known_hosts_fallback:-}" ]; then
+            printf '%s\n' "$known_hosts_fallback" >>"$tmp_keys"
+          fi
+          if [ ! -s "$tmp_keys" ]; then
+            echo "ssh-keyscan produced no keys for ${host}:${port}."
+            if [ -s "$tmp_err" ]; then
+              echo "ssh-keyscan stderr (last 50 lines):"
+              tail -n 50 "$tmp_err" || true
+            fi
             exit 1
           fi
-          cat "$tmp" >> ~/.ssh/known_hosts
-          rm -f "$tmp"
+          cat "$tmp_keys" >> ~/.ssh/known_hosts
+          rm -f "$tmp_keys" "$tmp_err"
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy to Server
