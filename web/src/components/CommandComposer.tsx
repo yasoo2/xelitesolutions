@@ -2011,20 +2011,63 @@ export default function CommandComposer({
     return tool || null;
   };
 
-  const formatValue = (value: any, maxChars = 1600) => {
+  const formatValue = (value: any, maxChars = 1600, opts?: { technical?: boolean }) => {
+    const truncate = (str: string) => {
+      if (str.length <= maxChars) return str;
+      return `${str.slice(0, maxChars)}\n…`;
+    };
+
+    const looksLikeBrowserSummary = (v: any) => {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+      if (typeof (v as any).site !== 'string') return false;
+      const hasAnyField =
+        typeof (v as any).url === 'string' ||
+        typeof (v as any).title === 'string' ||
+        typeof (v as any).pageType === 'string' ||
+        typeof (v as any).hasScreenshot === 'boolean' ||
+        typeof (v as any).redactionEnabled === 'boolean' ||
+        typeof (v as any).domLength === 'number';
+      return hasAnyField;
+    };
+
+    const formatBrowserSummary = (v: any) => {
+      const site = typeof v.site === 'string' && v.site.trim() ? v.site.trim() : t('browserSummaryUnknownSite');
+      const title = typeof v.title === 'string' && v.title.trim() ? v.title.trim() : '';
+      const url = typeof v.url === 'string' && v.url.trim() ? v.url.trim() : '';
+      const pageType = typeof v.pageType === 'string' ? v.pageType.trim().toLowerCase() : '';
+      const isLogin = pageType === 'login';
+      const hasScreenshot = Boolean(v.hasScreenshot);
+      const redactionEnabled = typeof v.redactionEnabled === 'boolean' ? v.redactionEnabled : undefined;
+
+      const lines: string[] = [];
+      let header = `${t('browserSummaryPrefix')}: ${site}`;
+      if (title) header += ` — ${title}`;
+      if (isLogin) header += ` (${t('browserSummaryPageTypeLogin')})`;
+      lines.push(header);
+
+      if (url) lines.push(`${t('browserSummaryUrlLabel')}: ${url}`);
+      if (hasScreenshot) lines.push(t('browserSummaryScreenshotTaken'));
+      if (typeof redactionEnabled === 'boolean') {
+        lines.push(`${t('browserSummaryRedactionLabel')}: ${redactionEnabled ? t('yes') : t('no')}`);
+      }
+
+      return lines.join('\n');
+    };
+
     try {
+      const technical = opts?.technical === true;
+      if (!technical && looksLikeBrowserSummary(value)) return truncate(formatBrowserSummary(value));
+
       const str =
         typeof value === 'string'
           ? value
           : value == null
             ? ''
             : JSON.stringify(value, null, 2);
-      if (str.length <= maxChars) return str;
-      return `${str.slice(0, maxChars)}\n…`;
+      return truncate(str);
     } catch {
       const str = String(value ?? '');
-      if (str.length <= maxChars) return str;
-      return `${str.slice(0, maxChars)}\n…`;
+      return truncate(str);
     }
   };
 
@@ -2490,13 +2533,17 @@ export default function CommandComposer({
                                     {input && (
                                       <div className="mb-2">
                                         <div className="text-xs font-bold text-muted mb-1">{t('inputs')}</div>
-                                        <div className="text-xs text-secondary whitespace-pre-wrap">{formatValue(input)}</div>
+                                        <div className="text-xs text-secondary whitespace-pre-wrap">
+                                          {formatValue(input, 1600, { technical: showTechnicalByRunId[rid] })}
+                                        </div>
                                       </div>
                                     )}
                                     {output && (
                                       <div>
                                         <div className="text-xs font-bold text-muted mb-1">{t('outputs')}</div>
-                                        <div className="text-xs text-secondary whitespace-pre-wrap">{formatValue(output)}</div>
+                                        <div className="text-xs text-secondary whitespace-pre-wrap">
+                                          {formatValue(output, 1600, { technical: showTechnicalByRunId[rid] })}
+                                        </div>
                                       </div>
                                     )}
                                     {s.error && (
