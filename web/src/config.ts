@@ -70,9 +70,8 @@ const canUseSameOriginWs =
   !isLocal && (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com');
 
 if (canUseSameOriginWs && !wsUrl) {
-  const baseDomain = hostname.replace(/^www\./, '');
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  wsUrl = `${proto}://ws.${baseDomain}/ws`;
+  wsUrl = `${proto}://${window.location.host}/ws`;
 }
 
 if (!wsUrl) {
