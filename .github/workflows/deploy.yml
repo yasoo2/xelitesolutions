@@ -262,7 +262,7 @@ jobs:
 
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
           echo "Deployment finished!"
-REMOTE
+          REMOTE
             then
               echo "SSH deploy succeeded."
               break
