@@ -36,8 +36,20 @@ const API_URL_RAW = (hostname === '46.224.187.142')
   ? fallbackApiUrl.replace(/\/+$/, '') 
   : String(apiEnv || fallbackApiUrl).replace(/\/+$/, '');
 
+const API_URL_RAW_FIXED = (() => {
+  if (isLocal) return API_URL_RAW;
+  const canUseSameOriginApi =
+    hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com';
+  if (!canUseSameOriginApi) return API_URL_RAW;
+  try {
+    const u = new URL(API_URL_RAW);
+    if (u.hostname === 'api.xelitesolutions.com') return window.location.origin.replace(/\/+$/, '');
+  } catch {}
+  return API_URL_RAW;
+})();
+
 const API_URL_SAFE = (() => {
-  const raw = API_URL_RAW;
+  const raw = API_URL_RAW_FIXED;
   if (window.location.protocol !== 'https:') return raw;
   try {
     const u = new URL(raw);
