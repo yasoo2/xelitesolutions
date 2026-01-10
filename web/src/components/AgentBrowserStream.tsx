@@ -66,6 +66,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [zoom, setZoom] = useState<number>(1);
   const [focusMode, setFocusMode] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const focusModeBeforeFullscreenRef = useRef<boolean>(false);
+  const fullscreenRequestedRef = useRef<boolean>(false);
   const [streamPaused, setStreamPaused] = useState<boolean>(false);
   const [streamFps, setStreamFps] = useState<number>(5);
   const [streamQuality, setStreamQuality] = useState<number>(50);
@@ -141,11 +143,21 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
   useEffect(() => {
     const onChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const docAny = document as any;
+      const next = Boolean(document.fullscreenElement || docAny.webkitFullscreenElement);
+      setIsFullscreen(next);
+      if (!next && fullscreenRequestedRef.current) {
+        fullscreenRequestedRef.current = false;
+        setFocusMode(focusModeBeforeFullscreenRef.current);
+      }
     };
     document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
     onChange();
-    return () => document.removeEventListener('fullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
   }, []);
 
   function getSessionId() {
@@ -1082,6 +1094,52 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           >
             ↻
           </button>
+          <button
+            onClick={async () => {
+              const docAny = document as any;
+              const elAny = rootRef.current as any;
+              const fullscreenEl = document.fullscreenElement || docAny.webkitFullscreenElement;
+
+              if (fullscreenEl) {
+                try {
+                  if (document.exitFullscreen) await document.exitFullscreen();
+                  else if (docAny.webkitExitFullscreen) docAny.webkitExitFullscreen();
+                } catch {}
+                return;
+              }
+
+              if (!elAny) return;
+
+              try {
+                fullscreenRequestedRef.current = true;
+                focusModeBeforeFullscreenRef.current = focusMode;
+                setFocusMode(true);
+
+                const p = elAny.requestFullscreen?.() ?? elAny.webkitRequestFullscreen?.();
+                if (p && typeof p.then === 'function') await p;
+              } catch {
+                fullscreenRequestedRef.current = false;
+                setFocusMode(focusModeBeforeFullscreenRef.current);
+              }
+            }}
+            aria-label={isFullscreen ? 'الخروج من ملء الشاشة' : 'ملء الشاشة'}
+            title={isFullscreen ? 'الخروج من ملء الشاشة' : 'ملء الشاشة'}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: isFullscreen ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { if (!isFullscreen) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+            onMouseLeave={(e) => { if (!isFullscreen) e.currentTarget.style.background = 'none'; }}
+          >
+            {isFullscreen ? '⤺' : '⛶'}
+          </button>
+          <button
+            onClick={() => setFocusMode(v => !v)}
+            aria-label={focusMode ? 'إرجاع الحجم الطبيعي' : 'تكبير المتصفح لملء الصفحة'}
+            title={focusMode ? 'إرجاع الحجم الطبيعي' : 'تكبير لملء الصفحة'}
+            style={{ width: 32, height: 32, borderRadius: '50%', background: focusMode ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { if (!focusMode) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+            onMouseLeave={(e) => { if (!focusMode) e.currentTarget.style.background = 'none'; }}
+          >
+            {focusMode ? '⤡' : '⤢'}
+          </button>
         </div>
 
         <div 
@@ -1230,15 +1288,16 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         flexDirection: 'column',
         gap: 0,
         position: focusMode ? 'fixed' : 'relative',
-        inset: focusMode ? 12 : undefined,
+        inset: focusMode ? 0 : undefined,
         zIndex: focusMode ? 9999 : undefined,
         background: focusMode ? 'var(--bg-dark)' : undefined,
         padding: focusMode ? 0 : undefined,
-        borderRadius: focusMode ? 12 : undefined,
-        border: focusMode ? '1px solid var(--border-light)' : undefined,
-        boxShadow: focusMode ? '0 12px 50px rgba(0,0,0,0.6)' : undefined,
+        borderRadius: focusMode ? 0 : undefined,
+        border: focusMode ? 'none' : undefined,
+        boxShadow: focusMode ? 'none' : undefined,
         height: '100%',
         overflow: 'hidden',
+        minHeight: 0,
       }}
     >
       {CompactHeader}
@@ -1247,7 +1306,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
 
 
-      <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-dark)', boxShadow: minimal ? 'none' : undefined, flex: minimal ? 1 : undefined }}>
+      <div className="agent-browser-canvas-frame" style={{ border: minimal ? 'none' : undefined, borderRadius: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-dark)', boxShadow: minimal ? 'none' : undefined, flex: 1, minHeight: 0 }}>
         <div style={{ transform: minimal ? 'none' : `scale(${zoom})`, transformOrigin: 'top left', position: 'relative' }}>
           <canvas
             ref={canvasRef}
@@ -1258,7 +1317,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             onFocus={() => setCanvasFocused(true)}
             onBlur={() => setCanvasFocused(false)}
             onKeyDown={handleCanvasKeyDown}
-            style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'pointer', touchAction: 'none', outline: 'none' }}
+            style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'pointer', touchAction: 'none', outline: 'none', maxHeight: focusMode ? '100dvh' : undefined }}
           />
           {minimal && controlEnabled && !canvasFocused ? (
             <div
