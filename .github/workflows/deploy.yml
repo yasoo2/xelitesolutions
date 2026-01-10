@@ -19,9 +19,27 @@ jobs:
           set -euo pipefail
           host="${{ secrets.HOST }}"
           port="${{ secrets.PORT }}"
+          host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
+          port="$(printf '%s' "${port:-}" | tr -dc '0-9')"
           port="${port:-22}"
+          if [ -z "${host:-}" ]; then
+            echo "HOST secret is empty."
+            exit 1
+          fi
           echo "Testing TCP connectivity to ${host}:${port} ..."
-          timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${host}/${port}" && echo "TCP OK" || (echo "TCP FAILED" && exit 1)
+          ok=0
+          for i in $(seq 1 10); do
+            if timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${host}/${port}" 2>/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "TCP FAILED"
+            exit 1
+          fi
+          echo "TCP OK"
 
       - name: Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -34,10 +52,12 @@ jobs:
           set -euo pipefail
           host="${{ secrets.HOST }}"
           port="${{ secrets.PORT }}"
+          host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
+          port="$(printf '%s' "${port:-}" | tr -dc '0-9')"
           port="${port:-22}"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          ssh-keyscan -p "$port" -H "$host" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 15 -p "$port" -H "$host" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy to Server
@@ -49,9 +69,10 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           set -euo pipefail
-          host="$HOST"
+          host="$(printf '%s' "${HOST:-}" | tr -d '\r' | xargs)"
           user="$USERNAME"
-          port="${PORT:-22}"
+          port="$(printf '%s' "${PORT:-}" | tr -dc '0-9')"
+          port="${port:-22}"
 
           ssh_opts=(
             -p "$port"
