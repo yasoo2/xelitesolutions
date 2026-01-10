@@ -62,24 +62,17 @@ const API_URL_SAFE = (() => {
 })();
 
 // Determine WebSocket URL
-const rawWsUrl = import.meta.env.VITE_WS_URL;
+const wsEnv = (window as any).JOE_CONFIG?.WS_URL;
+const rawWsUrl = wsEnv || import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
 const canUseSameOriginWs =
   !isLocal && (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com');
 
-if (canUseSameOriginWs) {
-  const sameOriginWs = `${window.location.origin.replace(/^http/i, 'ws').replace(/\/+$/, '')}/ws`;
-  let shouldForceSameOrigin = !wsUrl;
-  if (!shouldForceSameOrigin) {
-    try {
-      const u = new URL(wsUrl, window.location.origin);
-      if (u.hostname === 'api.xelitesolutions.com' || u.hostname === 'ws.xelitesolutions.com') {
-        shouldForceSameOrigin = true;
-      }
-    } catch {}
-  }
-  if (shouldForceSameOrigin) wsUrl = sameOriginWs;
+if (canUseSameOriginWs && !wsUrl) {
+  const baseDomain = hostname.replace(/^www\./, '');
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  wsUrl = `${proto}://ws.${baseDomain}/ws`;
 }
 
 if (!wsUrl) {
