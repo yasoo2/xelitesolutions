@@ -2016,7 +2016,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // After browser actions, capture page state for accurate reading/sync
     if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
       const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
-      if (sidNext) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
+      if (sidNext && !pendingPlan) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
       if (isSimpleBrowserOpenRequest && steps === 0) endAfterBrowserState = true;
     }
     // Auto post-scaffold steps: install and build

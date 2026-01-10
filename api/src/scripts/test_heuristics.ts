@@ -16,7 +16,7 @@ function pickToolFromText(text: string) {
   // Normalized: "افتح", "ابدا", "ادخل", "اذهب"
   // Removed "browser" to avoid "info about browser" false positive
   // Added "فتح" (opening) and "دخول" (entering)
-  if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
+  if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول|زيارة|شغل|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(tn)) {
     let url = urlMatch ? urlMatch[0] : '';
     if (!url && domainMatch?.[1]) {
       const candidate = String(domainMatch[1]).replace(/[)\].,;:!?]+$/g, '').trim();
@@ -83,6 +83,7 @@ const inputs = [
     "افتح المتصفح والدخول الى جوجل",
     "افتح جوجل",
     "افتح موقع open ai",
+    "روح xelitesolutions.com",
     "أفتح المتصفح",
     "إفتح المتصفح",
     "ابدأ المتصفح",
