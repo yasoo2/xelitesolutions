@@ -64,7 +64,8 @@ jobs:
 
           for attempt in 1 2 3; do
             echo "SSH deploy attempt ${attempt}/3..."
-            if ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' bash -s" <<'REMOTE'
+            code=0
+            ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' bash -s" <<'REMOTE' || code=$?
           set -euo pipefail
 
           REPO_URL="https://github.com/yasoo2/xelitesolutions.git"
@@ -263,12 +264,11 @@ jobs:
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
           echo "Deployment finished!"
           REMOTE
-            then
+            if [ "$code" -eq 0 ]; then
               echo "SSH deploy succeeded."
               break
             fi
 
-            code=$?
             if [ "$attempt" -eq 3 ]; then
               exit "$code"
             fi
