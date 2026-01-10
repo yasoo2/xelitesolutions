@@ -95,6 +95,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
   const highlightRafRef = useRef<number | null>(null);
   const pendingHighlightRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const lastHighlightBoxRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const lastLocateActionRef = useRef<any | null>(null);
+  const autoLocateTimerRef = useRef<number | null>(null);
+  const autoExtractTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const connectTimeoutRef = useRef<number | null>(null);
   const connectAttemptsRef = useRef<number>(0);
@@ -210,7 +214,38 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (!sessionId) return;
 
     // Check for WS optimization
-    const wsActions = ['goto', 'mouseMove', 'click', 'clickText', 'fillByLabel', 'searchGoogle', 'scroll', 'type', 'press', 'goBack', 'goForward', 'reload', 'screenshot', 'tab.new', 'tab.switch', 'tab.close', 'tabs.list', 'pick', 'textBoxes.once', 'textBoxes.start', 'textBoxes.stop', 'stream.setFps', 'stream.setQuality', 'redaction.set'];
+    const wsActions = [
+      'goto',
+      'mouseMove',
+      'click',
+      'clickText',
+      'fillByLabel',
+      'searchGoogle',
+      'scroll',
+      'scrollTo',
+      'type',
+      'press',
+      'goBack',
+      'goForward',
+      'reload',
+      'screenshot',
+      'tab.new',
+      'tab.switch',
+      'tab.close',
+      'tabs.list',
+      'pick',
+      'locate',
+      'waitForRole',
+      'waitForSelector',
+      'waitForLoad',
+      'wait',
+      'textBoxes.once',
+      'textBoxes.start',
+      'textBoxes.stop',
+      'stream.setFps',
+      'stream.setQuality',
+      'redaction.set',
+    ];
     const canUseWs = wsRef.current && 
                      wsRef.current.readyState === WebSocket.OPEN && 
                      actions.every(a => wsActions.includes(a.type));
@@ -218,9 +253,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     if (canUseWs) {
        const gotoUrl = actions.find((a: any) => a && a.type === 'goto' && typeof a.url === 'string')?.url;
        if (typeof gotoUrl === 'string' && gotoUrl.trim()) setAddress(gotoUrl.trim());
-       actions.forEach(a => {
-         wsRef.current?.send(JSON.stringify({ type: 'action', action: a }));
-       });
+       const locate = actions.find((a: any) => a && a.type === 'locate');
+       if (locate) {
+         const prev: any = lastLocateActionRef.current;
+         const autoLocate = Boolean(prev && prev.__autoLocate);
+         lastLocateActionRef.current = autoLocate ? { ...locate, __autoLocate: true } : locate;
+       }
+       wsRef.current?.send(JSON.stringify({ type: 'actions', actions }));
        
        // UI updates
        const names = actions.map(a => a.type).join(', ');
@@ -229,20 +268,18 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
        // Handle autoExtract triggers if needed (e.g. Enter press)
        if (autoExtract && actions.some(a => a.type === 'press' && a.key === 'Enter')) {
-          setTimeout(() => doExtract(), 2000);
+          scheduleAutoExtract(900);
        }
        if (autoExtract && actions.some(a => a.type === 'reload')) {
-          setTimeout(() => doExtract(), 1500);
+          scheduleAutoExtract(650);
        }
        if (actions.some(a => a.type === 'goto' || a.type === 'reload')) {
          setHighlight(null);
          if (autoLocate) {
-           const extra: any[] = [];
-           if (selector) extra.push({ type: 'locate', selector });
-           else if (role && roleName) extra.push({ type: 'locate', role, roleName });
-           if (extra.length) setTimeout(() => runActions(extra), 1000);
+           const extra = buildAutoLocateActions(actions);
+           if (extra.length) scheduleAutoLocate(extra, 50);
          }
-         if (autoExtract) setTimeout(() => doExtract(), 1500);
+         if (autoExtract) scheduleAutoExtract(650);
        }
        return;
     }
@@ -327,37 +364,64 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       if (actions.some(a => a.type === 'goto' || a.type === 'reload')) {
         setHighlight(null);
         if (autoLocate) {
-          const extra: any[] = [];
-          if (selector) {
-            extra.push({ type: 'locate', selector });
-          } else if (role && roleName) {
-            extra.push({ type: 'locate', role, roleName });
-          } else {
-            const g = actions.find(a => a.type === 'goto');
-            try {
-              const host = g?.url ? new URL(g.url).hostname : '';
-              if (host && /(^|\.)(google)\./i.test(host)) {
-                extra.push({ type: 'locate', selector: 'textarea[name="q"], input[name="q"]:not([type="hidden"])' });
-              }
-            } catch {}
-          }
-          if (extra.length) {
-            setTimeout(() => runActions(extra), 1000);
-          }
+          const extra = buildAutoLocateActions(actions);
+          if (extra.length) scheduleAutoLocate(extra, 50);
         }
       }
       if (autoExtract && actions.some(a => a.type === 'press' && a.key === 'Enter')) {
-        setTimeout(() => {
-          doExtract();
-        }, 2000);
+        scheduleAutoExtract(900);
       }
       if (autoExtract && actions.some(a => a.type === 'goto' || a.type === 'reload')) {
-        setTimeout(() => {
-          doExtract();
-        }, 1500);
+        scheduleAutoExtract(650);
       }
     } catch (e) {
     }
+  }
+
+  function scheduleAutoLocate(actions: any[], delayMs: number) {
+    if (autoLocateTimerRef.current != null) {
+      window.clearTimeout(autoLocateTimerRef.current);
+      autoLocateTimerRef.current = null;
+    }
+    autoLocateTimerRef.current = window.setTimeout(() => {
+      autoLocateTimerRef.current = null;
+      const locate = actions.find((a: any) => a && a.type === 'locate');
+      if (locate) lastLocateActionRef.current = { ...locate, __autoLocate: true };
+      runActions(actions);
+    }, Math.max(0, delayMs));
+  }
+
+  function scheduleAutoExtract(delayMs: number) {
+    if (autoExtractTimerRef.current != null) {
+      window.clearTimeout(autoExtractTimerRef.current);
+      autoExtractTimerRef.current = null;
+    }
+    autoExtractTimerRef.current = window.setTimeout(() => {
+      autoExtractTimerRef.current = null;
+      doExtract();
+    }, Math.max(0, delayMs));
+  }
+
+  function buildAutoLocateActions(currentActions: any[]) {
+    const extra: any[] = [];
+    if (selector) {
+      extra.push({ type: 'waitForSelector', selector, timeoutMs: 8000 });
+      extra.push({ type: 'locate', selector });
+    } else if (role && roleName) {
+      extra.push({ type: 'waitForRole', role, roleName, timeoutMs: 8000 });
+      extra.push({ type: 'locate', role, roleName });
+    } else {
+      const g = currentActions.find(a => a && a.type === 'goto');
+      try {
+        const host = g?.url ? new URL(g.url).hostname : '';
+        if (host && /(^|\.)(google)\./i.test(host)) {
+          const sel = 'textarea[name="q"], input[name="q"]:not([type="hidden"])';
+          extra.push({ type: 'waitForSelector', selector: sel, timeoutMs: 8000 });
+          extra.push({ type: 'locate', selector: sel });
+        }
+      } catch {}
+    }
+    return extra;
   }
 
   async function doExtract() {
@@ -441,6 +505,14 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       if (connectTimeoutRef.current != null) {
         window.clearTimeout(connectTimeoutRef.current);
         connectTimeoutRef.current = null;
+      }
+      if (autoLocateTimerRef.current != null) {
+        window.clearTimeout(autoLocateTimerRef.current);
+        autoLocateTimerRef.current = null;
+      }
+      if (autoExtractTimerRef.current != null) {
+        window.clearTimeout(autoExtractTimerRef.current);
+        autoExtractTimerRef.current = null;
       }
     };
 
@@ -594,7 +666,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                 typeof b?.width === 'number' &&
                 typeof b?.height === 'number'
               ) {
-                pendingHighlightRef.current = { x: b.x, y: b.y, width: b.width, height: b.height };
+                const next = { x: b.x, y: b.y, width: b.width, height: b.height };
+                lastHighlightBoxRef.current = next;
+                pendingHighlightRef.current = next;
                 if (highlightRafRef.current == null) {
                   highlightRafRef.current = requestAnimationFrame(() => {
                     highlightRafRef.current = null;
@@ -628,6 +702,35 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               }
             }
             if (msg.type === 'action_done') {
+              const a = msg.action;
+              if (a?.type === 'locate') {
+                const locAct: any = lastLocateActionRef.current;
+                const isAutoLocate = Boolean(locAct && locAct.__autoLocate);
+                if (!isAutoLocate && autoFocus) {
+                  const seq: any[] = [];
+                  if (locAct?.selector) seq.push({ type: 'click', selector: locAct.selector });
+                  else if (locAct?.role && locAct?.roleName) seq.push({ type: 'click', role: locAct.role, roleName: locAct.roleName });
+                  else {
+                    const b = lastHighlightBoxRef.current;
+                    if (b) {
+                      const cx = Math.round(b.x + b.width / 2);
+                      const cy = Math.round(b.y + b.height / 2);
+                      seq.push({ type: 'click', x: cx, y: cy });
+                    }
+                  }
+                  if (seq.length) setTimeout(() => runActions(seq), 250);
+
+                  const isGoogleSelector = Boolean(locAct?.selector && /(input|textarea)\[name=["']q["']\]/i.test(String(locAct.selector)));
+                  const isSearchRole = Boolean(locAct?.roleName && String(locAct.roleName).includes('بحث'));
+                  if (autoTypeAfterFocus && !typeText.trim() && (isGoogleSelector || isSearchRole)) {
+                    setTimeout(() => {
+                      runActions([{ type: 'waitForSelector', selector: 'textarea[name="q"], input[name="q"]:not([type="hidden"])', timeoutMs: 8000 }]);
+                      setTimeout(() => runActions([{ type: 'type', text: defaultSearchText, delay: 30 }]), 200);
+                      setTimeout(() => runActions([{ type: 'press', key: 'Enter' }]), 300);
+                    }, 400);
+                  }
+                }
+              }
               setTimeout(() => setOverlay(''), 500);
             }
             if (msg.type === 'action_error') {

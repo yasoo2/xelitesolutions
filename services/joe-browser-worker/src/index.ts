@@ -36,6 +36,7 @@ type Session = {
   };
   createdAt: number;
   lastActiveAt: number;
+  streamPauseUntil?: number;
   lastAutoShotAt?: number;
   downloads: Array<{ id: string; filename: string; href: string; size: number }>;
   logs: Array<{ level: string; text: string; ts: number }>;
@@ -315,7 +316,7 @@ async function computeTextBoxes(session: Session, opts?: { maxBoxes?: number; in
     };
 
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
+      acceptNode(node: any) {
         try {
           const t = String((node as any).nodeValue || '');
           if (!t || !t.trim()) return NodeFilter.FILTER_REJECT;
@@ -509,7 +510,9 @@ async function runActions(session: Session, actions: Action[]) {
   const autoScreenshotsEnabled = process.env.WORKER_AUTO_SCREENSHOT !== '0' && process.env.WORKER_AUTO_SCREENSHOT !== 'false';
 
   for (const a of actions) {
-    session.lastActiveAt = Date.now();
+    const now = Date.now();
+    session.lastActiveAt = now;
+    session.streamPauseUntil = now + 150;
     notifySession(session, 'action_start', { action: sanitizeAction(session, a) });
     try {
       switch (a.type) {
@@ -957,9 +960,11 @@ async function runActions(session: Session, actions: Action[]) {
         }
       }
 
+      session.streamPauseUntil = Date.now() + 120;
       notifySession(session, 'action_done', { action: sanitizeAction(session, a) });
     } catch (err: any) {
       logger.warn({ action: a, error: err.message }, 'action_failed');
+      session.streamPauseUntil = Date.now() + 250;
       notifySession(session, 'action_error', { type: a.type, error: err.message });
       outputs.push({ type: 'error', action: a.type, message: err.message });
     }
@@ -1169,11 +1174,21 @@ const server = app.listen(PORT, '0.0.0.0', () => {
            // Or just call runActions and ignore return? runActions uses 'session' which we have.
            await runActions(s, [a]);
         }
+        if (msg.type === 'actions' && Array.isArray(msg.actions)) {
+           s.lastActiveAt = Date.now();
+           await runActions(s, msg.actions);
+        }
       } catch {}
     });
     const loop = async () => {
       while (running) {
         try {
+          const pauseUntil = Number(s.streamPauseUntil || 0);
+          if (pauseUntil && Date.now() < pauseUntil) {
+            const waitMs = Math.min(250, Math.max(10, pauseUntil - Date.now()));
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
+          }
           s.lastActiveAt = Date.now();
           const buf = await s.page.screenshot({
             type: 'jpeg',

@@ -127,6 +127,7 @@ export function attachWebSocket(server: Server) {
         'fillByLabel',
         'searchGoogle',
         'scroll',
+        'scrollTo',
         'type',
         'press',
         'screenshot',
@@ -135,6 +136,11 @@ export function attachWebSocket(server: Server) {
         'tab.close',
         'tabs.list',
         'pick',
+        'locate',
+        'waitForRole',
+        'waitForSelector',
+        'waitForLoad',
+        'wait',
         'textBoxes.once',
         'textBoxes.start',
         'textBoxes.stop',
@@ -239,6 +245,9 @@ export function attachWebSocket(server: Server) {
         const msg = JSON.parse(txt);
         if (msg && msg.type === 'action' && msg.action && typeof msg.action === 'object') {
           void executeActionViaHttp(msg.action);
+        }
+        if (msg && msg.type === 'actions' && Array.isArray(msg.actions)) {
+          for (const a of msg.actions) void executeActionViaHttp(a);
         }
       } catch {}
     });
