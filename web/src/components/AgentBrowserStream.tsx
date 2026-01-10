@@ -1163,6 +1163,53 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         >
           النص
         </button>
+        <div style={{ marginLeft: 6, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 999,
+              border: '1px solid rgba(255,255,255,0.10)',
+              background: 'rgba(255,255,255,0.04)',
+              color: 'var(--text-muted)',
+              fontSize: 12,
+              lineHeight: 1,
+              maxWidth: 260,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            dir="auto"
+          >
+            {status === 'connected'
+              ? t('browserStatusConnected')
+              : status === 'reconnecting'
+                ? t('browserStatusReconnecting')
+                : status === 'error'
+                  ? t('browserStatusError')
+                  : t('browserStatusConnecting')}
+          </div>
+          {(wsError || noFramesHint || fallbackActive || fallbackError || status !== 'connected') ? (
+            <button
+              onClick={() => setReconnectNonce((n) => n + 1)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 10,
+                border: '1px solid rgba(255,255,255,0.18)',
+                background: 'rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.92)',
+                cursor: 'pointer',
+                fontSize: 12,
+                height: 36,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t('browserReconnect')}
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -1206,59 +1253,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             onKeyDown={handleCanvasKeyDown}
             style={{ width: '100%', height: 'auto', display: 'block', cursor: controlEnabled ? 'crosshair' : 'pointer', touchAction: 'none', outline: 'none' }}
           />
-          {(status !== 'connected' || wsError || noFramesHint || fallbackActive || fallbackError) ? (
-            <div
-              style={{
-                position: 'absolute',
-                left: 12,
-                top: 12,
-                zIndex: 80,
-                maxWidth: 'min(520px, calc(100% - 24px))',
-                padding: '10px 12px',
-                borderRadius: 12,
-                background: 'rgba(0,0,0,0.60)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: 'rgba(255,255,255,0.92)',
-                fontSize: 12,
-                lineHeight: 1.35,
-                backdropFilter: 'blur(8px)',
-              }}
-              dir="auto"
-            >
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>
-                {status === 'connected'
-                  ? t('browserStatusConnected')
-                  : status === 'reconnecting'
-                    ? t('browserStatusReconnecting')
-                    : status === 'error'
-                      ? t('browserStatusError')
-                      : t('browserStatusConnecting')}
-                {fallbackActive ? ` • ${t('browserFallbackModeHttp')}` : ''}
-              </div>
-              {wsError ? <div style={{ color: 'var(--accent-danger)', marginBottom: 6 }}>{wsError}</div> : null}
-              {fallbackError ? <div style={{ color: 'var(--accent-secondary)', marginBottom: 6 }}>{fallbackError}</div> : null}
-              {noFramesHint ? <div style={{ color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{noFramesHint}</div> : null}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => setReconnectNonce((n) => n + 1)}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.18)',
-                    background: 'rgba(255,255,255,0.08)',
-                    color: 'rgba(255,255,255,0.92)',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                  }}
-                >
-                  {t('browserReconnect')}
-                </button>
-                <div style={{ opacity: 0.75 }}>
-                  {framesSeen > 0 ? `Frames: ${framesSeen}` : lastFrameAt ? `Last frame: ${new Date(lastFrameAt).toLocaleTimeString()}` : `Frames: 0`}
-                </div>
-              </div>
-            </div>
-          ) : null}
           {minimal && controlEnabled && !canvasFocused ? (
             <div
               style={{
