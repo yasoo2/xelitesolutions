@@ -41,12 +41,12 @@ jobs:
           fi
           echo "TCP OK"
           echo "Checking SSH banner on ${host}:${port} ..."
-          banner="$(timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 4 <&3" 2>/dev/null || true)"
-          if [ "$banner" != "SSH-" ]; then
-            echo "Not an SSH service on ${host}:${port} (banner_prefix='${banner}'). Check secrets.PORT."
-            exit 1
+          banner="$(timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 12 <&3" 2>/dev/null || true)"
+          if printf '%s' "$banner" | grep -q '^SSH-'; then
+            echo "SSH banner OK"
+          else
+            echo "Warning: SSH banner not detected on ${host}:${port} (banner_prefix='${banner}'). Will try ssh-keyscan next."
           fi
-          echo "SSH banner OK"
 
       - name: Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
