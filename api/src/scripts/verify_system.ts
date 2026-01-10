@@ -41,6 +41,19 @@ async function main() {
     const sessionId = session.id || session._id;
     console.log(`   Target Session ID: ${sessionId}`);
 
+    console.log('\n1️⃣  Testing Session History...');
+    const historyRes = await fetch(`${API_URL}/sessions/${sessionId}/history`, {
+        headers: authHeaders
+    });
+    if (!historyRes.ok) {
+        const raw = await historyRes.text().catch(() => '');
+        throw new Error(`History endpoint failed: ${historyRes.status} ${raw}`.slice(0, 800));
+    }
+    const historyData = await historyRes.json().catch(() => ({} as any));
+    if (!Array.isArray(historyData.events)) {
+        throw new Error('History endpoint did not return events array');
+    }
+
     // 2. Test Deep Persistence (Save State)
     console.log('\n2️⃣  Testing Deep Persistence...');
     const testState = {

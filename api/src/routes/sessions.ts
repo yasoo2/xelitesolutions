@@ -960,7 +960,8 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
 });
 
 router.get('/:id/history', authenticate as any, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Missing session id' });
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
     const msgs = store.listMessages(id).filter(m => m.role !== 'system');
@@ -971,6 +972,9 @@ router.get('/:id/history', authenticate as any, async (req: Request, res: Respon
     }));
     return res.json({ events });
   }
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: 'Invalid session id' });
+  }
   try {
     const msgs = await Message.find({ sessionId: id, role: { $ne: 'system' } }).sort({ createdAt: 1 }).lean();
     const events = msgs.map(m => ({
@@ -980,7 +984,8 @@ router.get('/:id/history', authenticate as any, async (req: Request, res: Respon
     }));
     return res.json({ events });
   } catch (e) {
-    return res.status(500).json({ error: 'Failed to fetch history' });
+    console.error('Failed to fetch history', { sessionId: id }, e);
+    return res.json({ events: [], error: 'Failed to fetch history' });
   }
 });
 
