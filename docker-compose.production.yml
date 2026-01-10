@@ -68,9 +68,12 @@ services:
     networks:
       - joe-network
     depends_on:
-      - api
-      - web
-      - joe-browser-worker
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+      "joe-browser-worker":
+        condition: service_started
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
 
   certbot:
