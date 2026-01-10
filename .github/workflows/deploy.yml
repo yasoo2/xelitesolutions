@@ -13,15 +13,59 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Check SSH port reachable
+      - name: Select SSH port
+        id: select_ssh_port
         shell: bash
         run: |
           set -euo pipefail
           host="${{ secrets.HOST }}"
-          port="${{ secrets.PORT }}"
+          port_raw="${{ secrets.PORT }}"
           host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
-          port="$(printf '%s' "${port:-}" | tr -dc '0-9')"
-          port="${port:-22}"
+          port_raw="$(printf '%s' "${port_raw:-}" | tr -d '\r' | xargs)"
+          if [ -z "${host:-}" ]; then
+            echo "HOST secret is empty."
+            exit 1
+          fi
+          ports=()
+          if [ -n "${port_raw:-}" ]; then
+            p="$(printf '%s' "$port_raw" | tr -dc '0-9')"
+            if [ -n "$p" ]; then ports+=("$p"); fi
+          fi
+          if [ ${#ports[@]} -eq 0 ]; then
+            ports+=(22 2222 443)
+          else
+            if [ "${ports[0]}" = "22" ]; then ports+=(443); fi
+          fi
+          selected=""
+          for p in "${ports[@]}"; do
+            echo "Testing TCP connectivity to ${host}:${p} ..."
+            ok=0
+            for i in $(seq 1 6); do
+              if timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${host}/${p}" 2>/dev/null; then
+                ok=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$ok" -eq 1 ]; then
+              selected="$p"
+              break
+            fi
+          done
+          if [ -z "$selected" ]; then
+            echo "No reachable SSH TCP port found. Tried: ${ports[*]}"
+            exit 1
+          fi
+          echo "Selected SSH port: $selected"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+          echo "port=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Check SSH port reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="${{ steps.select_ssh_port.outputs.host }}"
+          port="${{ steps.select_ssh_port.outputs.port }}"
           if [ -z "${host:-}" ]; then
             echo "HOST secret is empty."
             exit 1
@@ -57,12 +101,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          host="${{ secrets.HOST }}"
-          port="${{ secrets.PORT }}"
+          host="${{ steps.select_ssh_port.outputs.host }}"
+          port="${{ steps.select_ssh_port.outputs.port }}"
           known_hosts_fallback="${{ secrets.SSH_KNOWN_HOSTS }}"
           host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
-          port="$(printf '%s' "${port:-}" | tr -dc '0-9')"
-          port="${port:-22}"
           if [ -z "${host:-}" ]; then
             echo "HOST secret is empty."
             exit 1
@@ -107,16 +149,15 @@ jobs:
       - name: Deploy to Server
         shell: bash
         env:
-          HOST: ${{ secrets.HOST }}
+          HOST: ${{ steps.select_ssh_port.outputs.host }}
           USERNAME: ${{ secrets.USERNAME }}
-          PORT: ${{ secrets.PORT }}
+          PORT: ${{ steps.select_ssh_port.outputs.port }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           set -euo pipefail
           host="$(printf '%s' "${HOST:-}" | tr -d '\r' | xargs)"
           user="$USERNAME"
           port="$(printf '%s' "${PORT:-}" | tr -dc '0-9')"
-          port="${port:-22}"
 
           strict_host_key_checking="yes"
           if command -v ssh-keygen >/dev/null 2>&1; then
