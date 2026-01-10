@@ -92,11 +92,15 @@ function selectToolDefsForProvider(
   const routingText = routingTextRaw.toLowerCase();
   const isArabic = /[\u0600-\u06FF]/.test(routingTextRaw);
 
-  const hasUrl = /https?:\/\/\S+/i.test(routingTextRaw);
+  const hasUrl =
+    /https?:\/\/\S+/i.test(routingTextRaw) ||
+    /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(routingTextRaw);
   const wantsBrowser =
     hasUrl ||
     /\b(browser|browse|web|website|open)\b/i.test(routingTextRaw) ||
-    /متصفح|موقع|رابط|داخل\s+المتصفح/i.test(routingTextRaw);
+    /(متصفح|موقع|رابط|داخل\s+المتصفح|افتح|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|اختبر|شيك|جرّب|تأكد)/i.test(
+      routingTextRaw,
+    );
   const wantsSearch =
     /\b(search|research|find|lookup|web_search|deep_research|knowledge)\b/i.test(routingTextRaw) ||
     /ابحث|بحث|مصدر|مراجع|معلومات/i.test(routingTextRaw);
@@ -405,8 +409,19 @@ export async function planNextStep(
         historyTextRaw.match(/\bsessionId\b\s*[:=]\s*["']([^"']+)["']/i);
       const sessionId = sessionIdMatch?.[1];
 
-      const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
-      let url = urlMatch?.[0];
+      const extractUrlCandidate = (s: string) => {
+        const http = s.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
+        if (http) return http;
+        const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+        const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+        if (!candidate) return undefined;
+        const isLocal =
+          /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+          /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+          /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+        return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+      };
+      let url = extractUrlCandidate(rawText);
 
       const extractQuoted = (s: string) => {
         const m = s.match(/["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/);
@@ -559,7 +574,9 @@ export async function planNextStep(
       if (wantsLs) return { name: 'ls', input: { path: '.' } };
       const wantsOpen =
         /\bopen\b/i.test(rawText) ||
-        /افتح|افتحي|افتحوا|افتح المتصفح|افتح الموقع|واجهة الوكيل/i.test(rawText);
+        /افتح|افتحي|افتحوا|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|افتح المتصفح|افتح الموقع|واجهة الوكيل/i.test(
+          rawText,
+        );
 
       const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes('youtube.com');
       const wantsSearch =

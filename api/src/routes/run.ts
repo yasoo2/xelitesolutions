@@ -1227,8 +1227,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const isSimpleBrowserOpenRequest = (() => {
     const s = initialUserTextForOpen;
     if (!s.trim()) return false;
-    const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
-    const openKeyword = /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ)/i.test(s);
+    const hasUrl =
+      /https?:\/\/[^\s"'<>]+/i.test(s) ||
+      /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
+    const openKeyword =
+      /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+        s,
+      );
     const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
     const multiStepKeyword =
       /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
@@ -1239,7 +1244,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const hasSiteKeyword =
       /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(
         s,
-      );
+      ) ||
+      /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
     if (!hasUrl && !hasSiteKeyword) return false;
     if (!(openKeyword || browserKeyword || hasUrl)) return false;
     if (multiStepKeyword) return false;
@@ -1249,7 +1255,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   })();
   if (isSimpleBrowserOpenRequest) {
     const s = initialUserTextForOpen;
-    const directUrl = s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || '';
+    const directUrl =
+      s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
+      (() => {
+        const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+        const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+        if (!candidate) return '';
+        const isLocal =
+          /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+          /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+          /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+        return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+      })();
     if (/(github|جيتهاب|كتهاب|كيتهاب)/i.test(s)) simpleBrowserOpenLabel = 'GitHub';
     else if (/(yahoo|ياهو)/i.test(s)) simpleBrowserOpenLabel = 'Yahoo';
     else if (/(youtube|يوتيوب)/i.test(s)) simpleBrowserOpenLabel = 'YouTube';
@@ -1366,20 +1383,36 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     if (!wantsLocationEarly) {
       const s = userTextForOverrides;
-      const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
-      const openKeyword = /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ)/i.test(s);
+      const extractUrlCandidate = (text: string) => {
+        const http = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
+        if (http) return http;
+        const m = text.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+        const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+        if (!candidate) return undefined;
+        const isLocal =
+          /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+          /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+          /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+        return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+      };
+      const extractedUrl = extractUrlCandidate(s) || '';
+      const hasUrl = Boolean(extractedUrl);
+      const openKeyword =
+        /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+          s,
+        );
       const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
       const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
       const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(s);
       const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
 
-      let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword);
+      const testKeyword = /(اختبر|اختبار|شيك|شيّك|تشييك|جرّب|جرب|تاكد|تأكد|تفقد|تفقده|تحقق)/i.test(s);
+      let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword || (testKeyword && hasUrl));
       if (openKeyword && githubKeyword && analysisKeyword) wantsBrowser = false;
       if (openKeyword && isFileOp) wantsBrowser = false;
 
       if (wantsBrowser && !/^browser_/.test(planName)) {
-        const urlMatch = s.match(/https?:\/\/[^\s"'<>]+/i);
-        const directUrl = urlMatch?.[0];
+        const directUrl = extractedUrl;
         const wantsYahoo = /(yahoo|ياهو)/i.test(s);
         const wantsYoutube = /youtube|يوتيوب/i.test(s);
         const wantsGoogle = /google|جوجل/i.test(s);

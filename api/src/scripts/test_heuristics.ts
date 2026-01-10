@@ -8,13 +8,25 @@ function pickToolFromText(text: string) {
     .replace(/ـ/g, '')
     .replace(/[أإآ]/g, 'ا'); // Normalize Alefs to bare Alef
 
-  const urlMatch = text.match(/https?:\/\/\S+/);
+  const urlMatch = text.match(/https?:\/\/[^\s"'<>]+/i);
+  const domainMatch = !urlMatch
+    ? text.match(/(?:^|\s)((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i)
+    : null;
   // Browser open heuristics (Arabic/English)
   // Normalized: "افتح", "ابدا", "ادخل", "اذهب"
   // Removed "browser" to avoid "info about browser" false positive
   // Added "فتح" (opening) and "دخول" (entering)
   if (/(open|افتح|ابدا|launch|go\s+to|ادخل|اذهب|فتح|دخول)/i.test(tn)) {
-    let url = urlMatch ? urlMatch[0] : 'https://www.google.com';
+    let url = urlMatch ? urlMatch[0] : '';
+    if (!url && domainMatch?.[1]) {
+      const candidate = String(domainMatch[1]).replace(/[)\].,;:!?]+$/g, '').trim();
+      const isLocal =
+        /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+        /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+        /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+      url = `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+    }
+    if (!url) url = 'https://www.google.com';
     // Fallback for known sites if no URL
     if (!urlMatch) {
         if (/(google|جوجل)/i.test(tn)) url = 'https://www.google.com';
@@ -39,8 +51,13 @@ function pickToolFromText(text: string) {
 function isSimpleBrowserOpenRequestText(text: string) {
   const s = String(text || '');
   if (!s.trim()) return false;
-  const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
-  const openKeyword = /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ)/i.test(s);
+  const hasUrl =
+    /https?:\/\/[^\s"'<>]+/i.test(s) ||
+    /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
+  const openKeyword =
+    /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+      s,
+    );
   const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
   const multiStepKeyword =
     /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
@@ -51,7 +68,8 @@ function isSimpleBrowserOpenRequestText(text: string) {
   const hasSiteKeyword =
     /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(
       s,
-    );
+    ) ||
+    /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
   if (!hasUrl && !hasSiteKeyword) return false;
   if (!(openKeyword || browserKeyword || hasUrl)) return false;
   if (multiStepKeyword) return false;

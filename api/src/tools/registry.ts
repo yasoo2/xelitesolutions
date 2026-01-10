@@ -576,6 +576,17 @@ export const tools: ToolDefinition[] = [
         const j = await readJsonWithTimeout(resp, createTimeoutMs, logs);
         const sessionId = j.sessionId;
         const wsUrl = `/browser/ws/${encodeURIComponent(String(sessionId))}`;
+        const targetUrl = (() => {
+          const raw = String(input?.url || '').trim();
+          if (!raw) return 'https://www.google.com';
+          if (/^https?:\/\//i.test(raw)) return raw;
+          const cleaned = raw.replace(/[)\].,;:!?]+$/g, '').trim();
+          const isLocal =
+            /^localhost(?::\d+)?(?:\/|$)/i.test(cleaned) ||
+            /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(cleaned) ||
+            /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(cleaned);
+          return `${isLocal ? 'http' : 'https'}://${cleaned.replace(/^\/\//, '')}`;
+        })();
         // Navigate
         const navTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_NAV_TIMEOUT_MS', 30000);
         const nav = await fetchWithTimeout(
@@ -584,7 +595,7 @@ export const tools: ToolDefinition[] = [
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
             body: JSON.stringify({
-              actions: [{ type: 'goto', url: String(input?.url || 'https://www.google.com'), waitUntil: 'domcontentloaded' }],
+              actions: [{ type: 'goto', url: targetUrl, waitUntil: 'domcontentloaded' }],
             }),
           },
           navTimeoutMs,
