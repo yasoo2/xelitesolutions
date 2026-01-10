@@ -576,7 +576,12 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
 
         connectTimeoutRef.current = window.setTimeout(() => {
           try {
-            if (ws.readyState !== WebSocket.OPEN) ws.close();
+            if (disposed) return;
+            if (wsRef.current !== ws) return;
+            if (ws.readyState === WebSocket.CONNECTING) {
+              setStatus('error');
+              setWsError('WebSocket is taking too long to connect. Falling back…');
+            }
           } catch {}
         }, 8000);
 

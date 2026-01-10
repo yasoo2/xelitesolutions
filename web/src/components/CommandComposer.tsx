@@ -1092,7 +1092,7 @@ export default function CommandComposer({
   function connectWS() {
     try {
       if (wsRef.current) {
-        if (wsRef.current.readyState === WebSocket.OPEN) return;
+        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
         try { wsRef.current.close(); } catch {}
       }
       const primaryUrl = WS;
