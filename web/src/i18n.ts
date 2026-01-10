@@ -740,7 +740,14 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: localStorage.getItem('lang') || 'en',
+    lng: (() => {
+      const saved = localStorage.getItem('lang');
+      if (saved && resources[saved as keyof typeof resources]) return saved;
+      const nav = typeof navigator !== 'undefined' ? String((navigator as any).language || (navigator as any).userLanguage || '') : '';
+      const base = nav.toLowerCase().split('-')[0];
+      if (base && resources[base as keyof typeof resources]) return base;
+      return 'en';
+    })(),
     fallbackLng: 'en',
     interpolation: { escapeValue: false }
   });

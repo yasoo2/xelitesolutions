@@ -79,6 +79,7 @@ const ChatBubble = forwardRef(
     },
     ref: any
   ) => {
+  const { t } = useTranslation();
   let content = event.data.text || event.data;
   let options: any[] = [];
   const [copied, setCopied] = useState(false);
@@ -155,7 +156,7 @@ const ChatBubble = forwardRef(
                   if (ch !== expected) return null;
                   stack.pop();
                   if (stack.length === 0) {
-                      return { jsonText: s.slice(start, i + 1), rest: s.slice(i + 1) };
+                      return { start, jsonText: s.slice(start, i + 1), rest: s.slice(i + 1) };
                   }
               }
           }
@@ -203,6 +204,103 @@ const ChatBubble = forwardRef(
           options = extracted;
           content = cleaned;
       }
+  }
+
+  if (!isUser) {
+    const looksLikeBrowserSummary = (v: any) => {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+      if (typeof (v as any).site !== 'string') return false;
+      const hasAnyField =
+        typeof (v as any).url === 'string' ||
+        typeof (v as any).title === 'string' ||
+        typeof (v as any).pageType === 'string' ||
+        typeof (v as any).hasScreenshot === 'boolean' ||
+        typeof (v as any).redactionEnabled === 'boolean' ||
+        typeof (v as any).domLength === 'number';
+      return hasAnyField;
+    };
+
+    const formatBrowserSummary = (v: any) => {
+      const site = typeof v.site === 'string' && v.site.trim() ? v.site.trim() : t('browserSummaryUnknownSite');
+      const title = typeof v.title === 'string' && v.title.trim() ? v.title.trim() : '';
+      const url = typeof v.url === 'string' && v.url.trim() ? v.url.trim() : '';
+      const pageType = typeof v.pageType === 'string' ? v.pageType.trim().toLowerCase() : '';
+      const isLogin = pageType === 'login';
+      const hasScreenshot = Boolean(v.hasScreenshot);
+      const redactionEnabled = typeof v.redactionEnabled === 'boolean' ? v.redactionEnabled : undefined;
+
+      const lines: string[] = [];
+      let header = `${t('browserSummaryPrefix')}: ${site}`;
+      if (title) header += ` — ${title}`;
+      if (isLogin) header += ` (${t('browserSummaryPageTypeLogin')})`;
+      lines.push(header);
+
+      if (url) lines.push(`${t('browserSummaryUrlLabel')}: ${url.replace(/`+/g, '').trim()}`);
+      if (hasScreenshot) lines.push(t('browserSummaryScreenshotTaken'));
+      if (typeof redactionEnabled === 'boolean') {
+        lines.push(`${t('browserSummaryRedactionLabel')}: ${redactionEnabled ? t('yes') : t('no')}`);
+      }
+
+      return lines.join('\n');
+    };
+
+    const extractFirstJsonObject = (s: string) => {
+      const start = s.indexOf('{');
+      if (start < 0) return null;
+      const stack: string[] = [];
+      let inStr = false;
+      let esc = false;
+      for (let i = start; i < s.length; i++) {
+        const ch = s[i];
+        if (inStr) {
+          if (esc) {
+            esc = false;
+            continue;
+          }
+          if (ch === '\\') {
+            esc = true;
+            continue;
+          }
+          if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') {
+          inStr = true;
+          continue;
+        }
+        if (ch === '{') {
+          stack.push('}');
+          continue;
+        }
+        if (ch === '}') {
+          if (!stack.length) return null;
+          stack.pop();
+          if (!stack.length) {
+            return { start, jsonText: s.slice(start, i + 1), end: i + 1 };
+          }
+        }
+      }
+      return null;
+    };
+
+    const humanizeBrowserSummaryInText = (text: string) => {
+      const m = extractFirstJsonObject(text);
+      if (!m) return text;
+      try {
+        const parsed = JSON.parse(m.jsonText);
+        if (!looksLikeBrowserSummary(parsed)) return text;
+        const formatted = formatBrowserSummary(parsed);
+        const before = text.slice(0, m.start);
+        const after = text.slice(m.end);
+        const combined = `${before}${formatted}${after}`;
+        return combined.replace(/\n{3,}/g, '\n\n').trim();
+      } catch {
+        return text;
+      }
+    };
+
+    if (typeof content === 'string') content = humanizeBrowserSummaryInText(content);
+    else if (looksLikeBrowserSummary(content)) content = formatBrowserSummary(content);
   }
 
   return (
@@ -2054,13 +2152,66 @@ export default function CommandComposer({
       return lines.join('\n');
     };
 
+    const extractFirstJsonObject = (s: string) => {
+      const start = s.indexOf('{');
+      if (start < 0) return null;
+      const stack: string[] = [];
+      let inStr = false;
+      let esc = false;
+      for (let i = start; i < s.length; i++) {
+        const ch = s[i];
+        if (inStr) {
+          if (esc) {
+            esc = false;
+            continue;
+          }
+          if (ch === '\\') {
+            esc = true;
+            continue;
+          }
+          if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') {
+          inStr = true;
+          continue;
+        }
+        if (ch === '{') {
+          stack.push('}');
+          continue;
+        }
+        if (ch === '}') {
+          if (!stack.length) return null;
+          stack.pop();
+          if (!stack.length) {
+            return { start, jsonText: s.slice(start, i + 1), end: i + 1 };
+          }
+        }
+      }
+      return null;
+    };
+
     try {
       const technical = opts?.technical === true;
       if (!technical && looksLikeBrowserSummary(value)) return truncate(formatBrowserSummary(value));
 
       const str =
         typeof value === 'string'
-          ? value
+          ? (() => {
+              if (!technical) {
+                const m = extractFirstJsonObject(value);
+                if (m) {
+                  try {
+                    const parsed = JSON.parse(m.jsonText);
+                    if (looksLikeBrowserSummary(parsed)) {
+                      const formatted = formatBrowserSummary(parsed);
+                      return `${value.slice(0, m.start)}${formatted}${value.slice(m.end)}`.trim();
+                    }
+                  } catch {}
+                }
+              }
+              return value;
+            })()
           : value == null
             ? ''
             : JSON.stringify(value, null, 2);
