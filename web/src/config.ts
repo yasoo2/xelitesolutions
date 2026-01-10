@@ -71,7 +71,7 @@ const canUseSameOriginWs =
 
 if (canUseSameOriginWs && !wsUrl) {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  wsUrl = `${proto}://${window.location.host}/ws`;
+  wsUrl = `${proto}://ws.xelitesolutions.com/ws`;
 }
 
 if (!wsUrl) {
@@ -95,6 +95,21 @@ if (wsUrl.startsWith('http')) {
 if (window.location.protocol === 'https:' && wsUrl.startsWith('ws:')) {
   wsUrl = wsUrl.replace(/^ws:/, 'wss:');
 }
+
+try {
+  const u = new URL(wsUrl);
+  const shouldPreferDedicatedWsHost =
+    canUseSameOriginWs &&
+    (u.hostname === 'xelitesolutions.com' ||
+      u.hostname === 'www.xelitesolutions.com' ||
+      u.hostname === 'api.xelitesolutions.com') &&
+    (u.pathname === '/ws' || u.pathname === '/ws/');
+  if (shouldPreferDedicatedWsHost) {
+    u.hostname = 'ws.xelitesolutions.com';
+    u.hash = '';
+    wsUrl = u.toString();
+  }
+} catch {}
 
 export const WS_URL = wsUrl;
 

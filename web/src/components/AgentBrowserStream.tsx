@@ -9,7 +9,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const wsRef = useRef<WebSocket | null>(null);
   const fallbackTimerRef = useRef<number | null>(null);
   const fallbackActiveRef = useRef(false);
-  const fallbackPollDelayRef = useRef<number>(1500);
+  const fallbackPollDelayRef = useRef<number>(3500);
   const fallbackPollFailuresRef = useRef<number>(0);
   const [authToken, setAuthToken] = useState<string>(() => {
     try {
@@ -42,6 +42,15 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       if (canUseSameOriginWs && u.hostname === 'api.xelitesolutions.com') {
         u.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         u.host = window.location.host;
+        u.hash = '';
+      }
+      if (
+        canUseSameOriginWs &&
+        (u.hostname === 'xelitesolutions.com' || u.hostname === 'www.xelitesolutions.com') &&
+        (u.pathname === '/ws' || u.pathname === '/ws/' || u.pathname.startsWith('/browser/ws/'))
+      ) {
+        u.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        u.hostname = 'ws.xelitesolutions.com';
         u.hash = '';
       }
       if (u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
@@ -198,6 +207,24 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       return parts[parts.length - 1];
     } catch {
       return '';
+    }
+  }
+
+  function computeFallbackWsUrl(primary: string) {
+    try {
+      const u = new URL(primary);
+      const preferDedicatedWsHost =
+        u.hostname === 'xelitesolutions.com' ||
+        u.hostname === 'www.xelitesolutions.com' ||
+        u.hostname === 'api.xelitesolutions.com';
+      if (preferDedicatedWsHost) u.hostname = 'ws.xelitesolutions.com';
+      if (window.location.protocol === 'https:' && u.protocol === 'ws:') u.protocol = 'wss:';
+      if (u.protocol === 'http:') u.protocol = 'ws:';
+      if (u.protocol === 'https:') u.protocol = 'wss:';
+      u.hash = '';
+      return u.toString();
+    } catch {
+      return primary;
     }
   }
 
@@ -570,7 +597,14 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           wsRef.current = null;
         }
 
-        const ws = new WebSocket(effectiveWsUrl);
+        const primaryUrl = effectiveWsUrl;
+        const fallbackUrl = computeFallbackWsUrl(primaryUrl);
+        const shouldTryFallbackUrl =
+          connectAttemptsRef.current > 0 && Boolean(fallbackUrl) && fallbackUrl !== primaryUrl;
+
+        const connectStartedAt = Date.now();
+        let opened = false;
+        const ws = new WebSocket(shouldTryFallbackUrl ? fallbackUrl : primaryUrl);
         wsRef.current = ws;
         setStatus(connectAttemptsRef.current > 0 ? 'reconnecting' : 'connecting');
 
@@ -581,6 +615,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             if (ws.readyState === WebSocket.CONNECTING) {
               setStatus('error');
               setWsError('WebSocket is taking too long to connect. Falling back…');
+              connectAttemptsRef.current = 999;
+              try { ws.close(); } catch {}
             }
           } catch {}
         }, 8000);
@@ -588,6 +624,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         ws.onopen = () => {
           clearTimers();
           if (disposed) return;
+          opened = true;
           connectAttemptsRef.current = 0;
           setWsError('');
           setStatus('connected');
@@ -602,6 +639,15 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           const maxAttempts = 8;
           const attempt = connectAttemptsRef.current + 1;
           connectAttemptsRef.current = attempt;
+
+          const closedEarly = !opened && Date.now() - connectStartedAt < 2000;
+          if (closedEarly) {
+            setStatus('error');
+            const reason = ev?.reason ? ` reason=${ev.reason}` : '';
+            setWsError(`WebSocket closed early (code=${ev?.code ?? 'unknown'}${reason})`);
+            connectAttemptsRef.current = 999;
+            return;
+          }
 
           if (attempt > maxAttempts) {
             setStatus('error');
@@ -900,7 +946,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               : t('browserSnapshotError')
           );
           fallbackPollFailuresRef.current += 1;
-          fallbackPollDelayRef.current = Math.min(6000, 1500 + fallbackPollFailuresRef.current * 900);
+          fallbackPollDelayRef.current = Math.min(15000, 3500 + fallbackPollFailuresRef.current * 1200);
         } else {
           const j: any = await res.json().catch(() => null);
           setFallbackError('');
@@ -917,16 +963,16 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             setNoFramesHint('');
             if (!streamPaused && !replayMode) enqueueJpegFrame(j.jpegBase64);
             fallbackPollFailuresRef.current = 0;
-            fallbackPollDelayRef.current = 1500;
+            fallbackPollDelayRef.current = 3500;
           } else {
             fallbackPollFailuresRef.current += 1;
-            fallbackPollDelayRef.current = Math.min(6000, 1500 + fallbackPollFailuresRef.current * 900);
+            fallbackPollDelayRef.current = Math.min(15000, 3500 + fallbackPollFailuresRef.current * 1200);
           }
         }
       } catch (e: any) {
         setFallbackError(String(e?.message || e || 'Snapshot error'));
         fallbackPollFailuresRef.current += 1;
-        fallbackPollDelayRef.current = Math.min(6000, 1500 + fallbackPollFailuresRef.current * 900);
+        fallbackPollDelayRef.current = Math.min(15000, 3500 + fallbackPollFailuresRef.current * 1200);
       }
 
       fallbackTimerRef.current = window.setTimeout(poll, fallbackPollDelayRef.current);
@@ -936,8 +982,8 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     setFallbackActive(true);
     setFallbackError('');
     fallbackPollFailuresRef.current = 0;
-    fallbackPollDelayRef.current = 1500;
-    const delay = status === 'connected' ? 3200 : 0;
+    fallbackPollDelayRef.current = 3500;
+    const delay = status === 'connected' ? 4500 : 800;
     fallbackTimerRef.current = window.setTimeout(() => {
       if (stopped) return;
       poll();
