@@ -326,16 +326,17 @@ export function attachWebSocket(server: Server) {
       return reject(400, 'Bad Request');
     }
 
-    if (url.pathname === '/ws') {
+    if (url.pathname === '/ws' || url.pathname === '/ws/') {
       console.log('[WS] Upgrading /ws connection');
-      liveWssRef?.handleUpgrade(req, socket, head, (ws) => {
+      if (!liveWssRef) return reject(503, 'Service Unavailable');
+      liveWssRef.handleUpgrade(req, socket, head, (ws) => {
         console.log('[WS] Connection established');
         liveWssRef?.emit('connection', ws, req);
       });
       return;
     }
 
-    if (url.pathname.startsWith('/browser/ws/')) {
+    if (url.pathname === '/browser/ws' || url.pathname.startsWith('/browser/ws/')) {
       const sessionId = url.pathname.split('/').filter(Boolean).pop();
       const token = url.searchParams.get('token');
       if (!token) return reject(401, 'Unauthorized');
@@ -347,7 +348,8 @@ export function attachWebSocket(server: Server) {
       }
 
       (req as any).browserSessionId = sessionId;
-      browserProxyWssRef?.handleUpgrade(req, socket, head, (ws) => {
+      if (!browserProxyWssRef) return reject(503, 'Service Unavailable');
+      browserProxyWssRef.handleUpgrade(req, socket, head, (ws) => {
         browserProxyWssRef?.emit('connection', ws, req);
       });
       return;
