@@ -1073,6 +1073,32 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   const risk = detectRisk(String(text || ''));
   if (risk && initialPlan) {
+    const authRole = (req as any)?.auth?.role;
+    const { getSessionRunConfig } = await import('../services/secrets');
+    const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
+    const autoAll =
+      authRole === 'OWNER' || cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
+    const auto =
+      autoAll || cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
+    const safe = !/HIGH|CRITICAL/i.test(String(risk));
+    if (autoAll || (auto && safe)) {
+      ev({
+        type: 'step_started',
+        data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) },
+      });
+      const result = await executeTool(initialPlan.name, initialPlan.input);
+      ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
+      if (result.artifacts) {
+        for (const a of result.artifacts) {
+          if (useMock) store.addArtifact(runId, a.name, a.href);
+          ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
+        }
+      }
+      if (useMock) store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+      else await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+      ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+      return res.json({ ok: true, runId, result });
+    }
     if (useMock) {
       const ap = store.createApproval(runId, String(text || ''), risk, initialPlan.name, initialPlan.input);
       ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: text } });
@@ -1080,11 +1106,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       // store plan context for continuation
       const { planContext } = await import('../approvals/context');
       planContext.set(ap.id, { runId, name: initialPlan.name, input: initialPlan.input });
-      const { getSessionRunConfig } = await import('../services/secrets');
-      const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
-      const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
-      const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
-      const safe = !/HIGH|CRITICAL/i.test(String(risk));
       if (autoAll || (auto && safe)) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
         const result = await executeTool(initialPlan.name, initialPlan.input);
@@ -1107,11 +1128,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, name: initialPlan.name, input: initialPlan.input });
-      const { getSessionRunConfig } = await import('../services/secrets');
-      const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
-      const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
-      const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
-      const safe = !/HIGH|CRITICAL/i.test(String(risk));
       if (autoAll || (auto && safe)) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
         const result = await executeTool(initialPlan.name, initialPlan.input);
@@ -1707,6 +1723,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
       if (sensitive) {
         const risk = 'high';
+        const authRole = (req as any)?.auth?.role;
+        const { getSessionRunConfig } = await import('../services/secrets');
+        const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
+        const autoAll =
+          authRole === 'OWNER' || cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
+        if (autoAll) {
+          ev({
+            type: 'step_started',
+            data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
+          });
+          const result = await executeTool(plan?.name || '', (plan as any)?.input);
+          ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+          if (useMock) store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+          else await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+          ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+          return res.json({ ok: true, runId, result });
+        }
         if (useMock) {
           const ap = store.createApproval(runId, actionText, risk, plan?.name || '', redactToolInputForStorage(plan?.name || '', plan?.input));
           ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: actionText } });
