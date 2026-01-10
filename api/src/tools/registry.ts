@@ -642,7 +642,7 @@ export const tools: ToolDefinition[] = [
     version: '1.0.0',
     tags: ['browser', 'snapshot'],
     inputSchema: { type: 'object', properties: { sessionId: { type: 'string' } }, required: ['sessionId'] },
-    outputSchema: { type: 'object', properties: { dom: { type: 'string' }, a11y: { type: 'object' }, screenshot: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { url: { type: 'string' }, dom: { type: 'string' }, a11y: { type: 'object' }, screenshot: { type: 'string' } } },
     permissions: ['internet'],
     sideEffects: [],
     rateLimitPerMinute: 30,
@@ -700,7 +700,7 @@ export const tools: ToolDefinition[] = [
       if (domLen < 500) {
         logs.push(`warn_empty_dom: DOM is very short (${domLen} chars). Page might be empty or loading.`);
       }
-      return { ok: true, output: { dom: finalDom, a11y: j.a11y, screenshot: j.screenshot }, logs };
+      return { ok: true, output: { url: j.url, dom: finalDom, a11y: j.a11y, screenshot: j.screenshot }, logs };
     }
   },
   {
