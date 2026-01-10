@@ -1,4 +1,6 @@
 
+import assert from 'node:assert/strict';
+
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
   const tn = t
@@ -33,6 +35,27 @@ function pickToolFromText(text: string) {
   return { name: 'echo', input: { text } };
 }
 
+function isSimpleBrowserOpenRequestText(text: string) {
+  const s = String(text || '');
+  if (!s.trim()) return false;
+  const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
+  const openKeyword = /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ)/i.test(s);
+  const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
+  const multiStepKeyword =
+    /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+      s,
+    );
+  const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
+  const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+  const hasSiteKeyword = /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب)/i.test(s);
+  if (!hasUrl && !hasSiteKeyword) return false;
+  if (!(openKeyword || browserKeyword || hasUrl)) return false;
+  if (multiStepKeyword) return false;
+  if (isFileOp && !hasUrl) return false;
+  if (analysisKeyword) return false;
+  return true;
+}
+
 const inputs = [
     "طلبت من جو فتح المتصفح والدخول الى جوجل ولكنه لم يستجيب",
     "افتح المتصفح والدخول الى جوجل",
@@ -56,3 +79,9 @@ inputs.forEach(input => {
     console.log(`Result:`, pickToolFromText(input));
     console.log('---');
 });
+
+assert.equal(isSimpleBrowserOpenRequestText('افتح جوجل'), true);
+assert.equal(isSimpleBrowserOpenRequestText('افتح https://www.google.com'), true);
+assert.equal(isSimpleBrowserOpenRequestText('افتح جوجل ثم ابحث عن سعر الدولار'), false);
+assert.equal(isSimpleBrowserOpenRequestText('افتح https://www.google.com ثم ابحث عن سعر الدولار'), false);
+assert.equal(isSimpleBrowserOpenRequestText('open google then search for exchange rates'), false);

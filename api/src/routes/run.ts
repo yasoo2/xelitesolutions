@@ -1230,11 +1230,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const hasUrl = /https?:\/\/[^\s"'<>]+/i.test(s);
     const openKeyword = /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ)/i.test(s);
     const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
+    const multiStepKeyword =
+      /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+        s,
+      );
     const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
     const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
     const hasSiteKeyword = /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب)/i.test(s);
     if (!hasUrl && !hasSiteKeyword) return false;
     if (!(openKeyword || browserKeyword || hasUrl)) return false;
+    if (multiStepKeyword) return false;
     if (isFileOp && !hasUrl) return false;
     if (analysisKeyword) return false;
     return true;
@@ -1949,7 +1954,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
       const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
       if (sidNext) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
-      if (isSimpleBrowserOpenRequest) endAfterBrowserState = true;
+      if (isSimpleBrowserOpenRequest && steps === 0) endAfterBrowserState = true;
     }
     // Auto post-scaffold steps: install and build
     if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
