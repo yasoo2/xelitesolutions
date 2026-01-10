@@ -22,6 +22,7 @@ function pickToolFromText(text: string) {
         else if (/(twitter|تويتر)/i.test(tn)) url = 'https://www.twitter.com';
         else if (/(linkedin|لينكد)/i.test(tn)) url = 'https://www.linkedin.com';
         else if (/(github|جيت)/i.test(tn)) url = 'https://www.github.com';
+        else if (/(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(tn)) url = 'https://platform.openai.com/';
     }
     return { name: 'browser_open', input: { url } };
   }
@@ -47,7 +48,10 @@ function isSimpleBrowserOpenRequestText(text: string) {
     );
   const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
   const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
-  const hasSiteKeyword = /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب)/i.test(s);
+  const hasSiteKeyword =
+    /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(
+      s,
+    );
   if (!hasUrl && !hasSiteKeyword) return false;
   if (!(openKeyword || browserKeyword || hasUrl)) return false;
   if (multiStepKeyword) return false;
@@ -60,6 +64,7 @@ const inputs = [
     "طلبت من جو فتح المتصفح والدخول الى جوجل ولكنه لم يستجيب",
     "افتح المتصفح والدخول الى جوجل",
     "افتح جوجل",
+    "افتح موقع open ai",
     "أفتح المتصفح",
     "إفتح المتصفح",
     "ابدأ المتصفح",
@@ -71,7 +76,8 @@ const inputs = [
     "Info about browser",
     "معلومات عن المتصفح",
     "google",
-    "جوجل"
+    "جوجل",
+    "open ai"
 ];
 
 inputs.forEach(input => {

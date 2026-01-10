@@ -1233,10 +1233,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const multiStepKeyword =
       /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
         s,
-      );
+    );
     const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
     const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
-    const hasSiteKeyword = /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب)/i.test(s);
+    const hasSiteKeyword =
+      /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(
+        s,
+      );
     if (!hasUrl && !hasSiteKeyword) return false;
     if (!(openKeyword || browserKeyword || hasUrl)) return false;
     if (multiStepKeyword) return false;
@@ -1251,6 +1254,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     else if (/(yahoo|ياهو)/i.test(s)) simpleBrowserOpenLabel = 'Yahoo';
     else if (/(youtube|يوتيوب)/i.test(s)) simpleBrowserOpenLabel = 'YouTube';
     else if (/(google|جوجل)/i.test(s)) simpleBrowserOpenLabel = 'Google';
+    else if (/(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s)) simpleBrowserOpenLabel = 'OpenAI';
     else {
       const m = s.match(/https?:\/\/[^\s"'<>]+/i);
       simpleBrowserOpenLabel = m?.[0] || 'الموقع';
@@ -1263,6 +1267,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ? 'https://www.yahoo.com'
           : simpleBrowserOpenLabel === 'YouTube'
             ? 'https://www.youtube.com'
+            : simpleBrowserOpenLabel === 'OpenAI'
+              ? 'https://platform.openai.com/'
             : 'https://www.google.com');
   }
 
@@ -1377,9 +1383,27 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const wantsYahoo = /(yahoo|ياهو)/i.test(s);
         const wantsYoutube = /youtube|يوتيوب/i.test(s);
         const wantsGoogle = /google|جوجل/i.test(s);
+        const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s);
+        const wantsBilling =
+          /(balance|billing|credit|credits|usage|payment|invoice|invoices|رصيد|الرصيد|فواتير|الفواتير|استخدام|المدفوعات)/i.test(
+            s,
+          );
+        const openAiUrl = wantsBilling
+          ? 'https://platform.openai.com/account/billing/overview'
+          : 'https://platform.openai.com/';
         const desiredUrl =
           (directUrl || '').trim() ||
-          (wantsYahoo ? 'https://www.yahoo.com' : wantsYoutube ? 'https://www.youtube.com' : githubKeyword ? 'https://github.com' : wantsGoogle ? 'https://www.google.com' : 'https://www.google.com');
+          (wantsOpenAI
+            ? openAiUrl
+            : wantsYahoo
+              ? 'https://www.yahoo.com'
+              : wantsYoutube
+                ? 'https://www.youtube.com'
+                : githubKeyword
+                  ? 'https://github.com'
+                  : wantsGoogle
+                    ? 'https://www.google.com'
+                    : 'https://www.google.com');
         plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
         planName = 'browser_open';
       }
