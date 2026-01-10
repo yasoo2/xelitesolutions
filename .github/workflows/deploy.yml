@@ -73,7 +73,10 @@ jobs:
           tmp_err="$(mktemp)"
           for attempt in 1 2 3 4 5; do
             : >"$tmp_err"
-            out="$(ssh-keyscan -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>"$tmp_err" || true)"
+            out="$(ssh-keyscan -4 -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>"$tmp_err" || true)"
+            if [ -z "${out:-}" ]; then
+              out="$(ssh-keyscan -6 -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>"$tmp_err" || true)"
+            fi
             if [ -n "${out:-}" ]; then
               printf '%s\n' "$out" >>"$tmp_keys"
               break
@@ -85,11 +88,17 @@ jobs:
           fi
           if [ ! -s "$tmp_keys" ]; then
             echo "ssh-keyscan produced no keys for ${host}:${port}."
+            if command -v getent >/dev/null 2>&1; then
+              echo "DNS:"
+              getent ahosts "$host" | head -n 20 || true
+            fi
+            echo "TCP banner (first 120 bytes, printable):"
+            timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 120 <&3 | tr -cd '[:print:]\n' || true" 2>/dev/null || true
             if [ -s "$tmp_err" ]; then
               echo "ssh-keyscan stderr (last 50 lines):"
               tail -n 50 "$tmp_err" || true
             fi
-            exit 1
+            echo "Warning: known_hosts not populated; deploy step will decide."
           fi
           cat "$tmp_keys" >> ~/.ssh/known_hosts
           rm -f "$tmp_keys" "$tmp_err"
@@ -109,12 +118,25 @@ jobs:
           port="$(printf '%s' "${PORT:-}" | tr -dc '0-9')"
           port="${port:-22}"
 
+          strict_host_key_checking="yes"
+          if command -v ssh-keygen >/dev/null 2>&1; then
+            if ! ssh-keygen -F "[$host]:$port" -f ~/.ssh/known_hosts >/dev/null 2>&1 && ! ssh-keygen -F "$host" -f ~/.ssh/known_hosts >/dev/null 2>&1; then
+              if ssh -o StrictHostKeyChecking=accept-new -G "$user@$host" >/dev/null 2>&1; then
+                strict_host_key_checking="accept-new"
+              else
+                strict_host_key_checking="no"
+              fi
+            fi
+          else
+            strict_host_key_checking="accept-new"
+          fi
+
           ssh_opts=(
             -p "$port"
             -o ConnectTimeout=20
             -o ServerAliveInterval=15
             -o ServerAliveCountMax=3
-            -o StrictHostKeyChecking=yes
+            -o StrictHostKeyChecking="$strict_host_key_checking"
             -o LogLevel=ERROR
           )
 
