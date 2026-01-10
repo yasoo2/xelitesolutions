@@ -30,6 +30,16 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     } catch {}
     try {
       const u = new URL(abs);
+      const canUseSameOriginWs =
+        window.location.hostname === 'xelitesolutions.com' || window.location.hostname === 'www.xelitesolutions.com';
+      if (canUseSameOriginWs && u.hostname === 'api.xelitesolutions.com') {
+        const same = new URL(window.location.origin);
+        same.protocol = same.protocol === 'https:' ? 'wss:' : 'ws:';
+        same.pathname = u.pathname;
+        same.search = u.search;
+        same.hash = '';
+        abs = same.toString();
+      }
       if (u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
         const token = localStorage.getItem('token');
         if (token) u.searchParams.set('token', token);

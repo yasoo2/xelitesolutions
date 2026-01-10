@@ -9,11 +9,9 @@ function connect() {
     return;
   }
 
-  console.info('Connecting to WS:', WS_URL);
   socket = new WebSocket(WS_URL);
 
   socket.onopen = () => {
-    console.info('WS Connected');
     // Flush pending
     while (pendingQueue.length > 0) {
       const msg = pendingQueue.shift();
@@ -26,18 +24,15 @@ function connect() {
       const data = JSON.parse(event.data);
       listeners.forEach(l => l(data));
     } catch (e) {
-      console.error('WS Parse Error', e);
     }
   };
 
   socket.onclose = () => {
-    console.warn('WS Closed, retrying in 3s...');
     socket = null;
     setTimeout(connect, 3000);
   };
 
   socket.onerror = (err) => {
-    console.error('WS Error', err);
   };
 }
 

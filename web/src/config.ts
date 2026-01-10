@@ -50,6 +50,15 @@ const rawWsUrl = import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
 if (!wsUrl) {
+  const canUseSameOriginWs =
+    !isLocal &&
+    (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com');
+  if (canUseSameOriginWs) {
+    wsUrl = `${window.location.origin.replace(/^http/i, 'ws').replace(/\/+$/, '')}/ws`;
+  }
+}
+
+if (!wsUrl) {
   try {
     const api = new URL(API_URL_SAFE);
     api.protocol = api.protocol === 'https:' ? 'wss:' : 'ws:';
