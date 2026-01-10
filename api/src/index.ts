@@ -76,9 +76,26 @@ async function ensureOwnerFromEnv() {
 async function main() {
   const app = express();
 
+  const allowedOrigins = new Set<string>([
+    'https://xelitesolutions.com',
+    'https://www.xelitesolutions.com',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ]);
   app.use(cors({
-    origin: true, // Allow all origins for now to fix connectivity issues
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.has(origin)) return cb(null, true);
+      if (/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?$/i.test(origin)) return cb(null, true);
+      return cb(null, false);
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Worker-Key', 'x-worker-key'],
   }));
   app.use(express.json({ limit: '10mb' }));
 

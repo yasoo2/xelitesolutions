@@ -3,7 +3,7 @@
  * Handles communication with the providers API endpoint
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { API_URL as API_BASE } from '../config';
 
 export interface SetKeyResponse {
   success: boolean;
