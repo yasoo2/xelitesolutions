@@ -206,6 +206,58 @@ async function formatWorkerHttpError(resp: any, base: string) {
   return `worker_error=${status} base=${base} ${snippet}`.trim();
 }
 
+function timeoutMsFromEnv(key: string, fallbackMs: number) {
+  const raw = process.env[key];
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  return fallbackMs;
+}
+
+async function fetchWithTimeout(url: string, init: any, timeoutMs: number, logs: string[]) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...(init || {}), signal: controller.signal });
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      try {
+        const u = new URL(url);
+        logs.push(`worker_timeout_ms=${timeoutMs} path=${u.pathname}`);
+      } catch {
+        logs.push(`worker_timeout_ms=${timeoutMs}`);
+      }
+      throw new Error(`worker_timeout timeoutMs=${timeoutMs}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readJsonWithTimeout(resp: any, timeoutMs: number, logs: string[]) {
+  let didTimeout = false;
+  const timer = setTimeout(() => {
+    didTimeout = true;
+    try {
+      resp?.body?.cancel?.();
+    } catch {}
+  }, timeoutMs);
+  try {
+    return await Promise.race([
+      resp.json(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('worker_json_timeout')), timeoutMs)),
+    ]);
+  } catch (e: any) {
+    if (didTimeout || e?.message === 'worker_json_timeout') {
+      logs.push(`worker_json_timeout_ms=${timeoutMs}`);
+      throw new Error(`worker_timeout timeoutMs=${timeoutMs}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function resolveBrowserWorkerConfig(input: any) {
   const rawUserId = typeof input?.__userId === 'string' ? input.__userId : '';
   const userId = rawUserId.trim();
@@ -507,23 +559,37 @@ export const tools: ToolDefinition[] = [
       try {
         await ensureBrowserWorker(base, key, logs);
         await workerHealthOrThrow(base, logs);
-        const resp = await fetch(`${base}/session/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
-          body: JSON.stringify({ viewport: input?.viewport, device: input?.device })
-        });
+        const createTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_CREATE_TIMEOUT_MS', 15000);
+        const resp = await fetchWithTimeout(
+          `${base}/session/create`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+            body: JSON.stringify({ viewport: input?.viewport, device: input?.device }),
+          },
+          createTimeoutMs,
+          logs,
+        );
         if (!resp.ok) {
           return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
         }
-        const j = await resp.json();
+        const j = await readJsonWithTimeout(resp, createTimeoutMs, logs);
         const sessionId = j.sessionId;
         const wsUrl = `/browser/ws/${encodeURIComponent(String(sessionId))}`;
         // Navigate
-        const nav = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/job/run`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
-          body: JSON.stringify({ actions: [{ type: 'goto', url: String(input?.url || 'https://www.google.com'), waitUntil: 'domcontentloaded' }] })
-        });
+        const navTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_NAV_TIMEOUT_MS', 30000);
+        const nav = await fetchWithTimeout(
+          `${base}/session/${encodeURIComponent(sessionId)}/job/run`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+            body: JSON.stringify({
+              actions: [{ type: 'goto', url: String(input?.url || 'https://www.google.com'), waitUntil: 'domcontentloaded' }],
+            }),
+          },
+          navTimeoutMs,
+          logs,
+        );
         if (!nav.ok) {
           logs.push(`nav_error=${nav.status}`);
           const errDetail = await formatWorkerHttpError(nav, base);
@@ -587,15 +653,26 @@ export const tools: ToolDefinition[] = [
       } catch (e: any) {
         return { ok: false, error: e?.message || String(e), logs };
       }
-      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/job/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
-        body: JSON.stringify({ actions: input?.actions || [] })
-      });
+      const runTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_RUN_TIMEOUT_MS', 45000);
+      let resp: any;
+      try {
+        resp = await fetchWithTimeout(
+          `${base}/session/${encodeURIComponent(String(input?.sessionId))}/job/run`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+            body: JSON.stringify({ actions: input?.actions || [] }),
+          },
+          runTimeoutMs,
+          logs,
+        );
+      } catch (e: any) {
+        return { ok: false, error: e?.message || String(e), logs };
+      }
       if (!resp.ok) {
         return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
-      const j = await resp.json();
+      const j = await readJsonWithTimeout(resp, runTimeoutMs, logs);
       const artifacts = (j.artifacts || []).map((a: any) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(path.basename(a.href))}` }));
       return { ok: true, output: { outputs: j.outputs }, logs, artifacts };
     }
@@ -624,15 +701,26 @@ export const tools: ToolDefinition[] = [
       } catch (e: any) {
         return { ok: false, error: e?.message || String(e), logs };
       }
-      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/extract`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
-        body: JSON.stringify({ schema: input?.schema })
-      });
+      const extractTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_EXTRACT_TIMEOUT_MS', 45000);
+      let resp: any;
+      try {
+        resp = await fetchWithTimeout(
+          `${base}/session/${encodeURIComponent(String(input?.sessionId))}/extract`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+            body: JSON.stringify({ schema: input?.schema }),
+          },
+          extractTimeoutMs,
+          logs,
+        );
+      } catch (e: any) {
+        return { ok: false, error: e?.message || String(e), logs };
+      }
       if (!resp.ok) {
         return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
-      const j = await resp.json();
+      const j = await readJsonWithTimeout(resp, extractTimeoutMs, logs);
       return { ok: true, output: { json: j.json, confidence: j.confidence }, logs };
     }
   },
@@ -661,14 +749,25 @@ export const tools: ToolDefinition[] = [
       } catch (e: any) {
         return { ok: false, error: e?.message || String(e), logs };
       }
-      const resp = await fetch(`${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-worker-key': key }
-      });
+      const snapshotTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_SNAPSHOT_TIMEOUT_MS', 30000);
+      let resp: any;
+      try {
+        resp = await fetchWithTimeout(
+          `${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
+          },
+          snapshotTimeoutMs,
+          logs,
+        );
+      } catch (e: any) {
+        return { ok: false, error: e?.message || String(e), logs };
+      }
       if (!resp.ok) {
         return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
-      const j = await resp.json();
+      const j = await readJsonWithTimeout(resp, snapshotTimeoutMs, logs);
       // User requested to hide screenshots from chat. We keep the data in output for internal use (or potential future use),
       // but we do NOT emit an artifact so the UI doesn't show a large image.
       // const artifacts = [{ name: 'snapshot.jpg', href: `${base}/shots/${path.basename(j.screenshot)}` }];
