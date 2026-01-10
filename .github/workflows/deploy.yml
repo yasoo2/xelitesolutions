@@ -131,13 +131,22 @@ jobs:
             strict_host_key_checking="accept-new"
           fi
 
+          if command -v getent >/dev/null 2>&1; then
+            echo "DNS:"
+            getent ahosts "$host" | head -n 20 || true
+          fi
+          echo "TCP banner (first 120 bytes, printable):"
+          timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 120 <&3 | tr -cd '[:print:]\n' || true" 2>/dev/null || true
+
           ssh_opts=(
             -p "$port"
             -o ConnectTimeout=20
+            -o ConnectionAttempts=1
             -o ServerAliveInterval=15
             -o ServerAliveCountMax=3
             -o StrictHostKeyChecking="$strict_host_key_checking"
-            -o LogLevel=ERROR
+            -o BatchMode=yes
+            -o LogLevel=VERBOSE
           )
 
           for attempt in 1 2 3; do
@@ -345,6 +354,12 @@ jobs:
             if [ "$code" -eq 0 ]; then
               echo "SSH deploy succeeded."
               break
+            fi
+
+            if [ "$code" -eq 255 ]; then
+              echo "SSH failed before authentication (network/banner/firewall/proxy)."
+              echo "SSH debug (short):"
+              ssh -vv "${ssh_opts[@]}" "$user@$host" "exit" </dev/null || true
             fi
 
             if [ "$attempt" -eq 3 ]; then
