@@ -9,6 +9,10 @@ const apiEnv = (window as any).JOE_CONFIG?.API_URL || import.meta.env.VITE_API_U
 
 let fallbackApiUrl = 'https://api.xelitesolutions.com';
 
+if (!isLocal && (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com')) {
+  fallbackApiUrl = window.location.origin;
+}
+
 if (isLocal) {
   fallbackApiUrl = `${window.location.protocol}//${hostname}:3000`;
 } else {
