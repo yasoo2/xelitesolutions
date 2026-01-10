@@ -49,13 +49,21 @@ const API_URL_SAFE = (() => {
 const rawWsUrl = import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
-if (!wsUrl) {
-  const canUseSameOriginWs =
-    !isLocal &&
-    (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com');
-  if (canUseSameOriginWs) {
-    wsUrl = `${window.location.origin.replace(/^http/i, 'ws').replace(/\/+$/, '')}/ws`;
+const canUseSameOriginWs =
+  !isLocal && (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com');
+
+if (canUseSameOriginWs) {
+  const sameOriginWs = `${window.location.origin.replace(/^http/i, 'ws').replace(/\/+$/, '')}/ws`;
+  let shouldForceSameOrigin = !wsUrl;
+  if (!shouldForceSameOrigin) {
+    try {
+      const u = new URL(wsUrl, window.location.origin);
+      if (u.hostname === 'api.xelitesolutions.com' || u.hostname === 'ws.xelitesolutions.com') {
+        shouldForceSameOrigin = true;
+      }
+    } catch {}
   }
+  if (shouldForceSameOrigin) wsUrl = sameOriginWs;
 }
 
 if (!wsUrl) {

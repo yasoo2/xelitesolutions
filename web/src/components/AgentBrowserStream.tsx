@@ -33,12 +33,9 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
       const canUseSameOriginWs =
         window.location.hostname === 'xelitesolutions.com' || window.location.hostname === 'www.xelitesolutions.com';
       if (canUseSameOriginWs && u.hostname === 'api.xelitesolutions.com') {
-        const same = new URL(window.location.origin);
-        same.protocol = same.protocol === 'https:' ? 'wss:' : 'ws:';
-        same.pathname = u.pathname;
-        same.search = u.search;
-        same.hash = '';
-        abs = same.toString();
+        u.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        u.host = window.location.host;
+        u.hash = '';
       }
       if (u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
         const token = localStorage.getItem('token');
