@@ -40,6 +40,13 @@ jobs:
             exit 1
           fi
           echo "TCP OK"
+          echo "Checking SSH banner on ${host}:${port} ..."
+          banner="$(timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 4 <&3" 2>/dev/null || true)"
+          if [ "$banner" != "SSH-" ]; then
+            echo "Not an SSH service on ${host}:${port} (banner_prefix='${banner}'). Check secrets.PORT."
+            exit 1
+          fi
+          echo "SSH banner OK"
 
       - name: Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -55,9 +62,27 @@ jobs:
           host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
           port="$(printf '%s' "${port:-}" | tr -dc '0-9')"
           port="${port:-22}"
+          if [ -z "${host:-}" ]; then
+            echo "HOST secret is empty."
+            exit 1
+          fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          ssh-keyscan -T 15 -p "$port" -H "$host" >> ~/.ssh/known_hosts
+          tmp="$(mktemp)"
+          for attempt in 1 2 3 4 5; do
+            out="$(ssh-keyscan -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>/dev/null || true)"
+            if [ -n "${out:-}" ]; then
+              printf '%s\n' "$out" >> "$tmp"
+              break
+            fi
+            sleep 2
+          done
+          if [ ! -s "$tmp" ]; then
+            echo "ssh-keyscan produced no output for ${host}:${port}. Check HOST/PORT and firewall."
+            exit 1
+          fi
+          cat "$tmp" >> ~/.ssh/known_hosts
+          rm -f "$tmp"
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy to Server
