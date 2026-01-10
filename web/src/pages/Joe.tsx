@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
 
@@ -22,6 +23,7 @@ function BrowserApp({
   initialSession?: { sessionId: string; wsUrl: string } | null;
   headless?: boolean;
 }) {
+  const { t } = useTranslation();
   const [url, setUrl] = useState('https://www.google.com');
   const [wsUrl, setWsUrl] = useState<string | null>(initialSession?.wsUrl || null);
   const [sessionId, setSessionId] = useState<string | null>(initialSession?.sessionId || null);
@@ -46,6 +48,17 @@ function BrowserApp({
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
+      const readError = async (res: Response) => {
+        const raw = await res.text().catch(() => '');
+        const rawText = String(raw || '');
+        const isBadGateway =
+          res.status === 502 ||
+          /<title>\s*502\b/i.test(rawText) ||
+          /\b502\b[\s\S]{0,40}bad gateway/i.test(rawText) ||
+          /\bbad gateway\b/i.test(rawText);
+        if (isBadGateway) return `${t('httpBadGateway', 'Server temporarily unavailable (502 Bad Gateway).')}\n${t('httpBadGatewayHint', 'The backend service is unreachable behind Nginx.')}`;
+        return rawText || String(t('httpRequestFailed', { status: res.status }) || `HTTP ${res.status}`);
+      };
 
       const currentSessionId = String(sessionId || '').trim();
       const currentWsUrl = String(wsUrl || '').trim();
@@ -64,14 +77,20 @@ function BrowserApp({
           window.dispatchEvent(new CustomEvent('auth:unauthorized'));
           setWsUrl(null);
           setSessionId(null);
-          const err = 'غير مصرح';
+          const err = t('unauthorized', 'Unauthorized');
           setError(err);
           window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
           return;
         }
+        if (!navRes.ok) {
+          const err = await readError(navRes);
+          setError(String(err).slice(0, 700));
+          window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: String(err).slice(0, 700) } }));
+          return;
+        }
         const navData = await navRes.json().catch(() => ({} as any));
         if (!navData?.ok) {
-          const err = String(navData?.error || 'فشل فتح المتصفح');
+          const err = String(navData?.error || t('browserSnapshotError', 'Browser request failed.'));
           setError(err);
           window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
           return;
@@ -93,9 +112,17 @@ function BrowserApp({
         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
         setWsUrl(null);
         setSessionId(null);
-        const err = 'غير مصرح';
+        const err = t('unauthorized', 'Unauthorized');
         setError(err);
         window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
+        return;
+      }
+      if (!res.ok) {
+        const err = await readError(res);
+        setWsUrl(null);
+        setSessionId(null);
+        setError(String(err).slice(0, 700));
+        window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: String(err).slice(0, 700) } }));
         return;
       }
       const data = await res.json().catch(() => ({} as any));
@@ -103,7 +130,7 @@ function BrowserApp({
       if (!data?.ok || !nextWsUrl) {
         setWsUrl(null);
         setSessionId(null);
-        const err = String(data?.error || 'فشل فتح المتصفح');
+        const err = String(data?.error || t('browserSnapshotError', 'Browser request failed.'));
         setError(err);
         window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
         return;

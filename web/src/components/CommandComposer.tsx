@@ -1931,8 +1931,16 @@ export default function CommandComposer({
         throw new Error(t('unauthorized', 'Unauthorized'));
       }
       if (!res.ok) {
-        const msg = data?.error || raw || `HTTP ${res.status}`;
-        throw new Error(String(msg).slice(0, 500));
+        const rawText = String(raw || '');
+        const isBadGateway =
+          res.status === 502 ||
+          /<title>\s*502\b/i.test(rawText) ||
+          /\b502\b[\s\S]{0,40}bad gateway/i.test(rawText) ||
+          /\bbad gateway\b/i.test(rawText);
+        const msg = isBadGateway
+          ? `${t('httpBadGateway', 'Server temporarily unavailable (502 Bad Gateway).')}\n${t('httpBadGatewayHint', 'The backend service is unreachable behind Nginx.')}`
+          : String(data?.error || rawText || t('httpRequestFailed', { status: res.status }) || `HTTP ${res.status}`);
+        throw new Error(String(msg).slice(0, 700));
       }
 
       if (typeof data?.runId === 'string' && data.runId.trim()) {

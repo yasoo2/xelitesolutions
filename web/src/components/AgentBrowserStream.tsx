@@ -336,7 +336,24 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         setTimeout(() => setOverlay(''), 2000);
         return;
       }
-      const j = await res.json();
+      if (!res.ok) {
+        const raw = await res.text().catch(() => '');
+        const rawText = String(raw || '');
+        const isBadGateway =
+          res.status === 502 ||
+          /<title>\s*502\b/i.test(rawText) ||
+          /\b502\b[\s\S]{0,40}bad gateway/i.test(rawText) ||
+          /\bbad gateway\b/i.test(rawText);
+        const msg = isBadGateway
+          ? `${t('httpBadGateway', 'Server temporarily unavailable (502 Bad Gateway).')}\n${t('httpBadGatewayHint', 'The backend service is unreachable behind Nginx.')}`
+          : (rawText || t('httpRequestFailed', { status: res.status }) || `HTTP ${res.status}`);
+        setWsError(String(msg).slice(0, 700));
+        setOverlay(String(msg).slice(0, 160));
+        setTimeout(() => setOverlay(''), 2500);
+        return;
+      }
+
+      const j = await res.json().catch(() => ({} as any));
       if (Array.isArray(j.artifacts)) {
         const items = j.artifacts.map((a: any) => ({ name: a.name || a.filename || 'download', href: a.href }));
         setDownloads(prev => [...items, ...prev].slice(0, 5));
