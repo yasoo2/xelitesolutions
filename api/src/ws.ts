@@ -36,6 +36,23 @@ export function attachWebSocket(server: Server) {
 
   liveWssRef.on('connection', (ws) => {
     console.log('[WS] Client connected to liveWss');
+    (ws as any).isAlive = true;
+    ws.on('pong', () => {
+      (ws as any).isAlive = true;
+    });
+    const pingTimer = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        clearInterval(pingTimer);
+        return;
+      }
+      if ((ws as any).isAlive === false) {
+        clearInterval(pingTimer);
+        try { ws.terminate(); } catch {}
+        return;
+      }
+      (ws as any).isAlive = false;
+      try { ws.ping(); } catch {}
+    }, 30000);
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
@@ -44,6 +61,9 @@ export function attachWebSocket(server: Server) {
       } catch (e) {
         // ignore non-json
       }
+    });
+    ws.on('close', () => {
+      clearInterval(pingTimer);
     });
   });
 

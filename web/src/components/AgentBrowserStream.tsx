@@ -50,7 +50,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         (u.pathname === '/ws' || u.pathname === '/ws/' || u.pathname.startsWith('/browser/ws/'))
       ) {
         u.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        u.hostname = 'ws.xelitesolutions.com';
+        u.host = window.location.host;
         u.hash = '';
       }
       if (u.pathname.startsWith('/browser/ws/') && !u.searchParams.get('token')) {
@@ -213,11 +213,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   function computeFallbackWsUrl(primary: string) {
     try {
       const u = new URL(primary);
-      const preferDedicatedWsHost =
-        u.hostname === 'xelitesolutions.com' ||
-        u.hostname === 'www.xelitesolutions.com' ||
-        u.hostname === 'api.xelitesolutions.com';
-      if (preferDedicatedWsHost) u.hostname = 'ws.xelitesolutions.com';
+      if (u.hostname === 'ws.xelitesolutions.com') u.host = window.location.host;
       if (window.location.protocol === 'https:' && u.protocol === 'ws:') u.protocol = 'wss:';
       if (u.protocol === 'http:') u.protocol = 'ws:';
       if (u.protocol === 'https:') u.protocol = 'wss:';
