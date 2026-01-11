@@ -41,8 +41,8 @@ export class Builder {
         "typescript": "^5.9.3",
         "jest": "^30.2.0",
         "@eslint/js": "^9.0.0",
-        "eslint-plugin-react": "^7.34.0",
-        "eslint-plugin-react-hooks": "^4.6.0",
+        "eslint-plugin-react": "^7.37.5",
+        "eslint-plugin-react-hooks": "^7.0.1",
         "@typescript-eslint/parser": "^8.11.0",
         "@typescript-eslint/eslint-plugin": "^8.11.0"
       }
