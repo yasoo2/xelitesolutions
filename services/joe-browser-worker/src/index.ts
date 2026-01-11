@@ -46,7 +46,7 @@ type Session = {
 
 const SESSIONS = new Map<string, Session>();
 const TTL_MS = Number(process.env.SESSION_TTL_MS || 30 * 60 * 1000);
-const API_KEY = process.env.WORKER_API_KEY || 'change-me';
+const API_KEY = process.env.WORKER_API_KEY || process.env.BROWSER_WORKER_KEY || 'change-me';
 const STORAGE_DIR = process.env.WORKER_STORAGE_DIR || '/tmp/joe-browser-worker';
 const PORT = Number(process.env.PORT || 7070);
 

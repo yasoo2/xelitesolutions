@@ -106,11 +106,10 @@ async function main() {
       actions: [
         { type: 'waitForSelector', selector: '#searchInput', timeoutMs: 12000 },
         { type: 'click', selector: '#searchInput' },
-        { type: 'fillForm', fields: [{ selector: '#searchInput', value: 'OpenAI' }] },
+        { type: 'type', selector: '#searchInput', text: 'OpenAI' },
         { type: 'press', key: 'Enter' },
         { type: 'waitForLoad', state: 'domcontentloaded' },
-        { type: 'wait', ms: 800 },
-        { type: 'evaluate', script: 'location.href' }
+        { type: 'wait', ms: 800 }
       ]
     })
   });
@@ -118,12 +117,6 @@ async function main() {
   if (!jInteract?.ok) {
     throw new Error(`browser_run interaction failed: ${JSON.stringify(jInteract)}`);
   }
-  const outputs = Array.isArray(jInteract?.output?.outputs) ? jInteract.output.outputs : [];
-  const href = String(outputs.find((o: any) => o?.type === 'evaluate')?.result || '');
-  if (!href || !/wikipedia\.org/i.test(href)) {
-    throw new Error(`interaction_url_unexpected: ${href}`);
-  }
-  console.log(`✅ interaction ok url=${href}`);
 
   const res2 = await fetch(`${API}/tools/browser_get_state/execute`, {
     method: 'POST',
@@ -134,6 +127,11 @@ async function main() {
   if (!j2?.ok || !j2?.output) {
     throw new Error(`browser_get_state failed: ${JSON.stringify(j2)}`);
   }
+  const currentUrl = String(j2.output?.url || '');
+  if (!currentUrl || !/wikipedia\.org/i.test(currentUrl)) {
+    throw new Error(`interaction_url_unexpected: ${currentUrl}`);
+  }
+  console.log(`✅ interaction ok url=${currentUrl}`);
   const domLen = String(j2.output?.dom || '').length;
   const hasA11y = !!j2.output?.a11y;
   const hasShot = !!j2.output?.screenshot;

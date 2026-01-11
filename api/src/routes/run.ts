@@ -1296,7 +1296,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const result = await executeTool('browser_open', { url });
     ev({
       type: result.ok ? 'step_done' : 'step_failed',
-      data: { name: 'execute:browser_open', result: result.ok ? { ...result, output: summarizeBrowserOutput((result as any).output) } : result },
+      data: {
+        name: 'execute:browser_open',
+        result: result.ok
+          ? {
+              ...result,
+              output: (() => {
+                const out: any = (result as any).output;
+                if (!out || typeof out !== 'object') return out;
+                const summary: any = {};
+                if (typeof out.sessionId === 'string') summary.sessionId = out.sessionId;
+                if (typeof out.wsUrl === 'string') summary.wsUrl = out.wsUrl;
+                if (typeof out.url === 'string') summary.url = out.url;
+                return Object.keys(summary).length ? summary : out;
+              })(),
+            }
+          : result,
+      },
     });
     const msg = result.ok
       ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`

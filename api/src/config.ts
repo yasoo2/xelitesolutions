@@ -24,5 +24,5 @@ export const config = {
   browserWorkerUrl:
     process.env.BROWSER_WORKER_URL ||
     (process.env.NODE_ENV === 'production' ? 'https://browser.xelitesolutions.com' : 'http://127.0.0.1:7070'),
-  browserWorkerKey: process.env.BROWSER_WORKER_KEY || 'change-me',
+  browserWorkerKey: process.env.BROWSER_WORKER_KEY || process.env.WORKER_API_KEY || 'change-me',
 };
