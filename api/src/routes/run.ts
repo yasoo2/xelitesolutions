@@ -1293,7 +1293,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const url = String(simpleBrowserOpenUrl || 'https://www.google.com').trim() || 'https://www.google.com';
     const persistedInput = redactToolInputForStorage('browser_open', { url });
     ev({ type: 'step_started', data: { name: 'execute:browser_open', input: persistedInput } });
-    const result = await executeTool('browser_open', { url });
+    const callInput: any = { url, sessionId: String(sessionId) };
+    if (userId) callInput.userId = String(userId);
+    const result = await executeTool('browser_open', callInput);
     ev({
       type: result.ok ? 'step_done' : 'step_failed',
       data: {
@@ -1317,6 +1319,53 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const msg = result.ok
       ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`
       : `تعذّر فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`;
+    ev({ type: 'text', data: msg });
+    ev({ type: 'run_completed', data: { runId, result } });
+    ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+    if (useMock) {
+      store.addMessage(sessionId, 'assistant', msg, runId);
+      store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+    } else {
+      try {
+        await Message.create({ sessionId, role: 'assistant', content: msg, runId });
+      } catch {}
+      try {
+        await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+      } catch {}
+    }
+    return res.json({ ok: result.ok, runId, sessionId, result });
+  }
+
+  const isSimpleGoogleSearchRequest = (() => {
+    const s = String(text || '').trim();
+    if (!s) return false;
+    const hasGoogle = /(google|جوجل)/i.test(s);
+    const hasSearch = /(search|ابحث|بحث|فتش|تفتيش|دور|ابغى\s+بحث|عايز\s+بحث|عاوز\s+بحث)/i.test(s);
+    if (!hasGoogle || !hasSearch) return false;
+    const multiStepKeyword =
+      /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+        s,
+      );
+    if (multiStepKeyword) return false;
+    return true;
+  })();
+
+  if (isSimpleGoogleSearchRequest) {
+    const s = String(text || '').trim();
+    const query =
+      (s.match(/(?:ابحث(?:\s+عن)?|بحث(?:\s+عن)?|search(?:\s+for)?|find)\s+(.+)/i)?.[1] || '').trim();
+    const target =
+      query ? `https://www.google.com/search?q=${encodeURIComponent(query)}` : 'https://www.google.com';
+    const persistedInput = redactToolInputForStorage('browser_open', { url: target });
+    ev({ type: 'step_started', data: { name: 'execute:browser_open', input: persistedInput } });
+    const callInput: any = { url: target, sessionId: String(sessionId) };
+    if (userId) callInput.userId = String(userId);
+    const result = await executeTool('browser_open', callInput);
+    ev({
+      type: result.ok ? 'step_done' : 'step_failed',
+      data: { name: 'execute:browser_open', result },
+    });
+    const msg = result.ok ? `تم فتح نتائج البحث في جوجل داخل المتصفح.` : `تعذّر فتح جوجل داخل المتصفح.`;
     ev({ type: 'text', data: msg });
     ev({ type: 'run_completed', data: { runId, result } });
     ev({ type: 'run_finished', data: { runId, ok: result.ok } });
@@ -1971,6 +2020,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     };
     const summarizeBrowserOutput = (out: any) => {
       if (!out || typeof out !== 'object') return out;
+      const isBrowserStateLike =
+        typeof (out as any).url === 'string' ||
+        typeof (out as any).pageUrl === 'string' ||
+        typeof (out as any).dom === 'string' ||
+        typeof (out as any).screenshot === 'string' ||
+        typeof (out as any).screenshotHref === 'string';
+      if (!isBrowserStateLike) return out;
       const url = typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
       const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
       const title = dom ? extractTitleFromHtml(dom) : '';

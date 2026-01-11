@@ -580,6 +580,7 @@ export const tools: ToolDefinition[] = [
           const raw = String(input?.url || '').trim();
           if (!raw) return 'https://www.google.com';
           if (/^https?:\/\//i.test(raw)) return raw;
+          if (/^about:/i.test(raw)) return raw;
           const cleaned = raw.replace(/[)\].,;:!?]+$/g, '').trim();
           const isLocal =
             /^localhost(?::\d+)?(?:\/|$)/i.test(cleaned) ||
@@ -4114,7 +4115,15 @@ import { KnowledgeService } from '../services/knowledge';
 
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
 
-function checkToolRateLimit(toolName: string, limitPerMinute: number) {
+function rateLimitBucketKey(toolName: string, input: any) {
+  const safeId = (v: any) => (typeof v === 'string' ? v.trim().slice(0, 80) : '');
+  const userId = safeId(input?.userId || input?.__userId);
+  const sessionId = safeId(input?.sessionId);
+  const scope = userId ? `user:${userId}` : sessionId ? `session:${sessionId}` : 'global';
+  return `${toolName}:${scope}`;
+}
+
+function checkToolRateLimit(bucketKey: string, limitPerMinute: number) {
   const limit = Number(limitPerMinute);
   if (!Number.isFinite(limit)) return { allowed: true as const };
   if (limit <= 0) {
@@ -4122,16 +4131,16 @@ function checkToolRateLimit(toolName: string, limitPerMinute: number) {
   }
   const now = Date.now();
   const minute = Math.floor(now / 60000);
-  const cur = toolRateBuckets.get(toolName);
+  const cur = toolRateBuckets.get(bucketKey);
   if (!cur || cur.minute !== minute) {
-    toolRateBuckets.set(toolName, { minute, count: 1 });
+    toolRateBuckets.set(bucketKey, { minute, count: 1 });
     return { allowed: true as const };
   }
   const next = cur.count + 1;
   if (next > limit) {
     return { allowed: false as const, retryAfterMs: (minute + 1) * 60000 - now };
   }
-  toolRateBuckets.set(toolName, { minute, count: next });
+  toolRateBuckets.set(bucketKey, { minute, count: next });
   return { allowed: true as const };
 }
 
@@ -4144,9 +4153,12 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
     if (!tDef) {
       return { ok: false, error: 'unknown_tool', logs };
     }
-    const rl = checkToolRateLimit(name, tDef.rateLimitPerMinute);
+    const bucketKey = rateLimitBucketKey(name, input);
+    const rl = checkToolRateLimit(bucketKey, tDef.rateLimitPerMinute);
     if (!rl.allowed) {
-      logs.push(`rate_limited=1 limit_per_minute=${tDef.rateLimitPerMinute} retry_after_ms=${rl.retryAfterMs}`);
+      logs.push(
+        `rate_limited=1 bucket=${bucketKey} limit_per_minute=${tDef.rateLimitPerMinute} retry_after_ms=${rl.retryAfterMs}`,
+      );
       return { ok: false, error: 'rate_limited', output: { retryAfterMs: rl.retryAfterMs }, logs };
     }
     if (tDef && typeof (tDef as any).execute === 'function') {
