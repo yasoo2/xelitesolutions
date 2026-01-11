@@ -66,6 +66,10 @@ const wsEnv = (window as any).JOE_CONFIG?.WS_URL;
 const rawWsUrl = wsEnv || import.meta.env.VITE_WS_URL;
 let wsUrl = rawWsUrl ? String(rawWsUrl).trim() : '';
 
+if (wsUrl) {
+  wsUrl = wsUrl.replace(/^[\s"'`]+/, '').replace(/[\s"'`]+$/, '');
+}
+
 const canUseSameOriginWs =
   !isLocal && (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com');
 
