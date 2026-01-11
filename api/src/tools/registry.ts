@@ -56,7 +56,18 @@ function stripUrlTrailingPunctuation(v: string) {
 function normalizeBrowserUrl(raw: string) {
   const v = String(raw || '').trim();
   if (!v) return 'https://www.google.com';
-  if (/^https?:\/\//i.test(v)) return stripUrlTrailingPunctuation(v);
+  if (/^https?:\/\//i.test(v)) {
+    const withStripped = stripUrlTrailingPunctuation(v);
+    try {
+      const u = new URL(withStripped);
+      const h = u.hostname.toLowerCase();
+      if (h === 'xelitesolutins.com' || h === 'www.xelitesolutins.com') {
+        u.hostname = 'xelitesolutions.com';
+        return u.toString();
+      }
+    } catch {}
+    return withStripped;
+  }
   if (/^(about:|data:|file:)/i.test(v)) return v;
   const cleaned = stripUrlTrailingPunctuation(v);
   if (!cleaned) return 'https://www.google.com';
@@ -65,7 +76,16 @@ function normalizeBrowserUrl(raw: string) {
     /^localhost(?::\d+)?(?:\/|$)/i.test(withoutSchemeSlashes) ||
     /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(withoutSchemeSlashes) ||
     /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(withoutSchemeSlashes);
-  return `${isLocal ? 'http' : 'https'}://${withoutSchemeSlashes}`;
+  const url = `${isLocal ? 'http' : 'https'}://${withoutSchemeSlashes}`;
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    if (h === 'xelitesolutins.com' || h === 'www.xelitesolutins.com') {
+      u.hostname = 'xelitesolutions.com';
+      return u.toString();
+    }
+  } catch {}
+  return url;
 }
 
 async function waitForWorkerHealth(base: string, timeoutMs: number) {
