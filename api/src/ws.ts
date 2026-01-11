@@ -286,18 +286,23 @@ export function attachWebSocket(server: Server) {
 
     upstreamWs.on('message', (data) => {
       lastUpstreamMsgAt = Date.now();
-      if (clientWs.readyState === WebSocket.OPEN) {
-        try { clientWs.send(data); } catch {}
+
+      let txt = '';
+      try {
+        txt = typeof data === 'string' ? data : data.toString();
+      } catch {
+        txt = '';
       }
 
-      try {
-        const txt = typeof data === 'string' ? data : data.toString();
-        if (txt.includes('"type":"frame"')) {
-          const now = Date.now();
-          lastAnyFrameAt = now;
-          lastUpstreamFrameAt = now;
-        }
-      } catch {}
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try { clientWs.send(txt || data); } catch {}
+      }
+
+      if (txt && txt.includes('"type":"frame"')) {
+        const now = Date.now();
+        lastAnyFrameAt = now;
+        lastUpstreamFrameAt = now;
+      }
     });
 
     upstreamWs.on('close', () => {

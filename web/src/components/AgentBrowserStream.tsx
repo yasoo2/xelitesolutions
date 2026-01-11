@@ -29,6 +29,10 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
     } catch {}
     try {
       const u = new URL(abs);
+      if ((u.protocol === 'http:' || u.protocol === 'https:') && (u.pathname === '/ws' || u.pathname === '/ws/' || u.pathname.startsWith('/browser/ws/'))) {
+        u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        abs = u.toString();
+      }
       if (u.pathname.startsWith('/ws/')) {
         const sessionId = u.pathname.split('/').filter(Boolean).pop() || '';
         const base = API.replace(/^http/i, 'ws');
@@ -667,9 +671,23 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
           setWsError('WebSocket error');
         };
 
-        ws.onmessage = (evt) => {
+        ws.onmessage = async (evt) => {
           try {
-            const msg = JSON.parse(evt.data);
+            let raw: any = (evt as any)?.data;
+            let text = '';
+            if (typeof raw === 'string') {
+              text = raw;
+            } else if (raw instanceof Blob) {
+              text = await raw.text();
+            } else if (raw instanceof ArrayBuffer) {
+              text = new TextDecoder().decode(raw);
+            } else if (raw && typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(raw)) {
+              text = new TextDecoder().decode(raw.buffer);
+            } else {
+              text = String(raw ?? '');
+            }
+
+            const msg = JSON.parse(text);
             if (msg.type === 'stream_start') {
               const next = { w: msg.w, h: msg.h };
               sizeRef.current = next;
