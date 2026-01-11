@@ -5,6 +5,39 @@ import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
+function findWorkspaceRootFrom(startDir: string): string {
+  let dir = path.resolve(startDir);
+  for (let i = 0; i < 10; i += 1) {
+    const hasApi = fs.existsSync(path.join(dir, 'api'));
+    const hasWeb = fs.existsSync(path.join(dir, 'web'));
+    if (hasApi && hasWeb) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(startDir);
+}
+
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT
+  ? path.resolve(String(process.env.WORKSPACE_ROOT))
+  : findWorkspaceRootFrom(process.cwd());
+
+async function resolvePathInsideWorkspace(inputPath: string): Promise<string | null> {
+  const raw = String(inputPath || '').trim();
+  if (!raw) return null;
+
+  const workspaceReal =
+    (await fs.promises.realpath(WORKSPACE_ROOT).catch(() => null)) || WORKSPACE_ROOT;
+
+  const candidate = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(workspaceReal, raw);
+  const candidateReal =
+    (await fs.promises.realpath(candidate).catch(() => null)) || candidate;
+
+  const rel = path.relative(workspaceReal, candidateReal);
+  const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return inside ? candidateReal : null;
+}
+
 interface GraphNode {
   id: string;
   name: string;
@@ -65,7 +98,8 @@ function getImports(content: string): string[] {
 
 router.get('/graph', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const cwd = String(req.query.path || process.cwd());
+    const cwdRaw = req.query.path ? String(req.query.path) : WORKSPACE_ROOT;
+    const cwd = (await resolvePathInsideWorkspace(cwdRaw)) || WORKSPACE_ROOT;
     
     try {
         await fs.promises.access(cwd);
@@ -156,7 +190,9 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
 // File Tree Endpoint
 router.get('/tree', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const rootPath = String(req.query.path || process.cwd());
+    const rootPathRaw = req.query.path ? String(req.query.path) : WORKSPACE_ROOT;
+    const rootPath = await resolvePathInsideWorkspace(rootPathRaw);
+    if (!rootPath) return res.status(400).json({ error: 'Invalid path' });
     const depth = Number(req.query.depth || 5);
     
     try {
@@ -202,7 +238,8 @@ router.get('/tree', authenticate as any, async (req: Request, res: Response) => 
 // File Content Endpoint (Read)
 router.get('/content', authenticate as any, async (req: Request, res: Response) => {
     try {
-        const filePath = String(req.query.path);
+        const filePathRaw = String(req.query.path || '');
+        const filePath = await resolvePathInsideWorkspace(filePathRaw);
         if (!filePath) {
             return res.status(404).json({ error: 'File not found' });
         }
@@ -210,11 +247,6 @@ router.get('/content', authenticate as any, async (req: Request, res: Response) 
             await fs.promises.access(filePath);
         } catch {
             return res.status(404).json({ error: 'File not found' });
-        }
-        
-        // Security: Ensure inside cwd (basic check)
-        if (!filePath.startsWith(process.cwd()) && !filePath.includes('xelitesolutions')) {
-             // Relaxed check for this env
         }
 
         const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -227,12 +259,20 @@ router.get('/content', authenticate as any, async (req: Request, res: Response) 
 // File Content Endpoint (Write)
 router.post('/content', authenticate as any, async (req: Request, res: Response) => {
     try {
-        const { path: filePath, content } = req.body;
+        const { path: filePathRaw, content } = req.body;
+        const filePath = await resolvePathInsideWorkspace(String(filePathRaw || ''));
         if (!filePath) {
             return res.status(400).json({ error: 'Path required' });
         }
 
-        await fs.promises.writeFile(filePath, content, 'utf-8');
+        try {
+            const stat = await fs.promises.stat(filePath);
+            if (!stat.isFile()) return res.status(400).json({ error: 'Path must be a file' });
+        } catch {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        await fs.promises.writeFile(filePath, String(content ?? ''), 'utf-8');
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: 'Write failed' });

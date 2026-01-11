@@ -97,15 +97,19 @@ const FileTreeItem = ({
 export default function FileExplorer({ sessionId }: FileExplorerProps) {
     const [tree, setTree] = useState<FileNode[]>([]);
     const [loading, setLoading] = useState(false);
+    const [treeError, setTreeError] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<{ node: FileNode, content: string } | null>(null);
     const [loadingContent, setLoadingContent] = useState(false);
+    const [contentError, setContentError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
     const fetchTree = async () => {
         setLoading(true);
+        setTreeError(null);
         const token = localStorage.getItem('token');
         if (!token) {
             setTree([]);
+            setTreeError('Unauthorized');
             setLoading(false);
             return;
         }
@@ -117,14 +121,26 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                 localStorage.removeItem('token');
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
                 setTree([]);
+                setTreeError('Unauthorized');
+                return;
+            }
+            if (!res.ok) {
+                const raw = await res.text().catch(() => '');
+                setTree([]);
+                setTreeError(raw || `HTTP ${res.status}`);
                 return;
             }
             const data = await res.json();
             if (data.tree) {
                 setTree(data.tree);
+            } else {
+                setTree([]);
+                setTreeError('Invalid response');
             }
         } catch (e) {
             console.error(e);
+            setTree([]);
+            setTreeError(e instanceof Error ? e.message : 'Unknown error');
         } finally {
             setLoading(false);
         }
@@ -138,6 +154,7 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         if (node.type !== 'file') return;
         
         setLoadingContent(true);
+        setContentError(null);
         setSelectedFile({ node, content: '' }); // Reset content while loading
         
         try {
@@ -145,6 +162,7 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
             if (!token) {
                 setLoadingContent(false);
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                setContentError('Unauthorized');
                 return;
             }
             const res = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
@@ -153,15 +171,21 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
             if (res.status === 401) {
                 localStorage.removeItem('token');
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                setContentError('Unauthorized');
                 return;
             }
             
-            if (res.ok) {
-                const json = await res.json();
-                setSelectedFile({ node, content: json.content || '' });
+            if (!res.ok) {
+                const raw = await res.text().catch(() => '');
+                setSelectedFile({ node, content: '' });
+                setContentError(raw || `HTTP ${res.status}`);
+                return;
             }
+            const json = await res.json();
+            setSelectedFile({ node, content: json.content || '' });
         } catch (e) {
             console.error(e);
+            setContentError(e instanceof Error ? e.message : 'Unknown error');
         } finally {
             setLoadingContent(false);
         }
@@ -176,7 +200,7 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
                 return;
             }
-            await fetch(`${API}/project/content`, {
+            const res = await fetch(`${API}/project/content`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -184,10 +208,13 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                 },
                 body: JSON.stringify({ path: selectedFile.node.path, content: selectedFile.content })
             });
-            // Show success indicator?
+            if (!res.ok) {
+                const raw = await res.text().catch(() => '');
+                throw new Error(raw || `HTTP ${res.status}`);
+            }
         } catch (e) {
             console.error(e);
-            alert('Failed to save file');
+            alert(e instanceof Error ? e.message : 'Failed to save file');
         } finally {
             setIsSaving(false);
         }
@@ -203,6 +230,11 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                     </button>
                 </div>
                 <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
+                    {treeError ? (
+                        <div style={{ padding: '6px 10px', color: 'var(--text-muted)', fontSize: 12 }}>
+                            {treeError === 'Unauthorized' ? 'Please login to view files.' : `Failed to load files: ${treeError}`}
+                        </div>
+                    ) : null}
                     {tree.map((node, i) => (
                         <FileTreeItem 
                             key={i} 
@@ -235,6 +267,11 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.1)' }}>
                                     <Loader2 className="spin" />
                                  </div>
+                             ) : null}
+                             {contentError ? (
+                                <div style={{ position: 'absolute', top: 10, left: 10, right: 10, padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: 6, background: 'var(--bg-secondary)', color: 'var(--text-muted)', fontSize: 12, zIndex: 2 }}>
+                                    {contentError === 'Unauthorized' ? 'Please login.' : `Failed to load file: ${contentError}`}
+                                </div>
                              ) : null}
                              <CodeEditor 
                                 code={selectedFile.content} 
