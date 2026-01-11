@@ -49,6 +49,25 @@ function isLocalWorkerUrl(base: string) {
   }
 }
 
+function stripUrlTrailingPunctuation(v: string) {
+  return String(v || '').replace(/[)\].,;:!?]+$/g, '').trim();
+}
+
+function normalizeBrowserUrl(raw: string) {
+  const v = String(raw || '').trim();
+  if (!v) return 'https://www.google.com';
+  if (/^https?:\/\//i.test(v)) return stripUrlTrailingPunctuation(v);
+  if (/^(about:|data:|file:)/i.test(v)) return v;
+  const cleaned = stripUrlTrailingPunctuation(v);
+  if (!cleaned) return 'https://www.google.com';
+  const withoutSchemeSlashes = cleaned.replace(/^\/\//, '');
+  const isLocal =
+    /^localhost(?::\d+)?(?:\/|$)/i.test(withoutSchemeSlashes) ||
+    /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(withoutSchemeSlashes) ||
+    /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(withoutSchemeSlashes);
+  return `${isLocal ? 'http' : 'https'}://${withoutSchemeSlashes}`;
+}
+
 async function waitForWorkerHealth(base: string, timeoutMs: number) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -576,18 +595,7 @@ export const tools: ToolDefinition[] = [
         const j = await readJsonWithTimeout(resp, createTimeoutMs, logs);
         const sessionId = j.sessionId;
         const wsUrl = `/browser/ws/${encodeURIComponent(String(sessionId))}`;
-        const targetUrl = (() => {
-          const raw = String(input?.url || '').trim();
-          if (!raw) return 'https://www.google.com';
-          if (/^https?:\/\//i.test(raw)) return raw;
-          if (/^about:/i.test(raw)) return raw;
-          const cleaned = raw.replace(/[)\].,;:!?]+$/g, '').trim();
-          const isLocal =
-            /^localhost(?::\d+)?(?:\/|$)/i.test(cleaned) ||
-            /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(cleaned) ||
-            /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(cleaned);
-          return `${isLocal ? 'http' : 'https'}://${cleaned.replace(/^\/\//, '')}`;
-        })();
+        const targetUrl = normalizeBrowserUrl(String(input?.url || ''));
         // Navigate
         const navTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_NAV_TIMEOUT_MS', 30000);
         const nav = await fetchWithTimeout(
@@ -606,6 +614,53 @@ export const tools: ToolDefinition[] = [
           logs.push(`nav_error=${nav.status}`);
           const errDetail = await formatWorkerHttpError(nav, base);
           return { ok: false, error: `Browser navigation failed: ${errDetail}`, logs };
+        }
+        const navJson = await readJsonWithTimeout(nav, navTimeoutMs, logs).catch(() => null);
+        const outputs = Array.isArray((navJson as any)?.outputs) ? (navJson as any).outputs : [];
+        const navError =
+          outputs.find((o: any) => o && o.type === 'error' && String(o.action || '').toLowerCase() === 'goto') ||
+          outputs.find((o: any) => o && o.type === 'goto_blocked');
+        const snapshotTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_SNAPSHOT_TIMEOUT_MS', 12000);
+        let currentUrl = '';
+        try {
+          const snapResp = await fetchWithTimeout(
+            `${base}/session/${encodeURIComponent(sessionId)}/snapshot`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-worker-key': key }, body: '{}' },
+            snapshotTimeoutMs,
+            logs,
+          );
+          if (snapResp.ok) {
+            const snap: any = await readJsonWithTimeout(snapResp, snapshotTimeoutMs, logs).catch(() => null);
+            currentUrl = String(snap?.url || '');
+          } else {
+            await snapResp.text().catch(() => '');
+          }
+        } catch {}
+        const looksChromeError = /^chrome-error:\/\//i.test(currentUrl) || /^chrome-error:\/\//i.test(targetUrl);
+        if (navError || looksChromeError) {
+          try {
+            await fetchWithTimeout(
+              `${base}/session/${encodeURIComponent(sessionId)}/close`,
+              { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-worker-key': key }, body: '{}' },
+              8000,
+              logs,
+            );
+          } catch {}
+          const errMsg = (() => {
+            if (navError && navError.type === 'goto_blocked') {
+              return `Browser navigation blocked: ${String((navError as any).reason || 'blocked')}`;
+            }
+            if (navError && navError.type === 'error') {
+              const m = String((navError as any).message || 'navigation_failed');
+              return `Browser navigation failed: ${m}`;
+            }
+            if (looksChromeError) {
+              const u = currentUrl || 'chrome-error://chromewebdata/';
+              return `Browser navigation failed: ${u}`;
+            }
+            return 'Browser navigation failed';
+          })();
+          return { ok: false, error: errMsg, logs };
         }
         const artifacts = [
           { name: 'Agent Browser Stream', href: wsUrl, kind: 'browser_stream' }
@@ -666,6 +721,12 @@ export const tools: ToolDefinition[] = [
         return { ok: false, error: e?.message || String(e), logs };
       }
       const runTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_RUN_TIMEOUT_MS', 45000);
+      const rawActions = Array.isArray((input as any)?.actions) ? (input as any).actions : [];
+      const actions = rawActions.map((a: any) => {
+        const type = String(a?.type || '');
+        if (type.toLowerCase() !== 'goto') return a;
+        return { ...a, url: normalizeBrowserUrl(String(a?.url || '')) };
+      });
       let resp: any;
       try {
         resp = await fetchWithTimeout(
@@ -673,7 +734,7 @@ export const tools: ToolDefinition[] = [
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-worker-key': key },
-            body: JSON.stringify({ actions: input?.actions || [] }),
+            body: JSON.stringify({ actions }),
           },
           runTimeoutMs,
           logs,
@@ -685,6 +746,40 @@ export const tools: ToolDefinition[] = [
         return { ok: false, error: await formatWorkerHttpError(resp, base), logs };
       }
       const j = await readJsonWithTimeout(resp, runTimeoutMs, logs);
+      const outputs = Array.isArray((j as any)?.outputs) ? (j as any).outputs : [];
+      const errors = outputs.filter((o: any) => o && o.type === 'error');
+      const blocked = outputs.find((o: any) => o && o.type === 'goto_blocked');
+      const includesGoto = actions.some((a: any) => String(a?.type || '').toLowerCase() === 'goto');
+      if (includesGoto) {
+        const snapshotTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_SNAPSHOT_TIMEOUT_MS', 12000);
+        try {
+          const snapResp = await fetchWithTimeout(
+            `${base}/session/${encodeURIComponent(String(input?.sessionId))}/snapshot`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-worker-key': key }, body: '{}' },
+            snapshotTimeoutMs,
+            logs,
+          );
+          if (snapResp.ok) {
+            const snap: any = await readJsonWithTimeout(snapResp, snapshotTimeoutMs, logs).catch(() => null);
+            const currentUrl = String(snap?.url || '');
+            if (/^chrome-error:\/\//i.test(currentUrl)) {
+              return { ok: false, error: `Browser navigation failed: ${currentUrl}`, logs };
+            }
+          } else {
+            await snapResp.text().catch(() => '');
+          }
+        } catch {}
+      }
+      if (blocked) {
+        return { ok: false, error: `Browser navigation blocked: ${String((blocked as any)?.reason || 'blocked')}`, logs };
+      }
+      if (errors.length) {
+        const msg = errors
+          .slice(0, 3)
+          .map((e: any) => `${String(e.action || 'action')}: ${String(e.message || 'failed')}`.trim())
+          .join(' | ');
+        return { ok: false, error: `Browser action failed: ${msg || 'unknown_error'}`, logs };
+      }
       const artifacts = (j.artifacts || []).map((a: any) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(path.basename(a.href))}` }));
       return { ok: true, output: { outputs: j.outputs }, logs, artifacts };
     }

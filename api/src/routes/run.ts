@@ -1318,7 +1318,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     });
     const msg = result.ok
       ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`
-      : `تعذّر فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`;
+      : `تعذّر فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.${(result as any)?.error ? ` السبب: ${String((result as any).error)}` : ''}`;
     ev({ type: 'text', data: msg });
     ev({ type: 'run_completed', data: { runId, result } });
     ev({ type: 'run_finished', data: { runId, ok: result.ok } });
