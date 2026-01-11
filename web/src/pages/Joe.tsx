@@ -2,7 +2,7 @@ import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
 import FileExplorer from '../components/FileExplorer';
 import { SocketService } from '../services/socket';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity } from 'lucide-react';
@@ -232,6 +232,7 @@ export default function Joe() {
     setSelected,
     setAgentSelected,
   } = useSessionStore();
+  const { t } = useTranslation();
 
   const [showEmbeddedPreview, setShowEmbeddedPreview] = useState(true);
   const [previewUrl, setPreviewUrl] = useState(() => {
@@ -342,7 +343,11 @@ export default function Joe() {
     details?: any;
   }>>([]);
   const [showThinkingPanel, setShowThinkingPanel] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<'thinking' | 'files'>('thinking');
+  const [agentPanelTab, setAgentPanelTab] = useState<'commands' | 'thinking'>('commands');
+  const [liveSteps, setLiveSteps] = useState<any[]>([]);
   const thinkingPanelRef = useRef<HTMLDivElement>(null);
+  const stepStatusByKeyRef = useRef<Map<string, string>>(new Map());
 
   const openedPaymentsRef = useRef<Set<string>>(new Set());
   
@@ -370,6 +375,128 @@ export default function Joe() {
     window.addEventListener('joe:thinking_update', handler as any);
     return () => window.removeEventListener('joe:thinking_update', handler as any);
   }, []);
+
+  const activeSessionKey = mode === 'chat' ? (selected || '') : (agentSelected || '');
+  useEffect(() => {
+    setThinkingChain([]);
+    setLiveSteps([]);
+    stepStatusByKeyRef.current = new Map();
+  }, [activeSessionKey, mode]);
+
+  useEffect(() => {
+    if (rightPanelTab === 'thinking' && !showThinkingPanel && showFiles) setRightPanelTab('files');
+    if (rightPanelTab === 'files' && !showFiles && showThinkingPanel) setRightPanelTab('thinking');
+  }, [rightPanelTab, showFiles, showThinkingPanel]);
+
+  const formatStepLabel = useCallback((step: any) => {
+    const name = String(step?.name || '');
+    if (!name) return '';
+    if (name.startsWith('execute:')) {
+      const tool = name.slice('execute:'.length).trim();
+      const toolLabel = t(`tools.${tool}`, tool);
+      return t('executePrefix', { tool: toolLabel });
+    }
+    return name;
+  }, [t]);
+
+  const handleStepsUpdate = useCallback((steps: any[]) => {
+    setLiveSteps(Array.isArray(steps) ? steps : []);
+    if (!Array.isArray(steps) || steps.length === 0) return;
+
+    const additions: Array<{
+      id: string;
+      type: 'thought' | 'decision' | 'action' | 'result' | 'error';
+      content: string;
+      timestamp: number;
+      details?: any;
+    }> = [];
+
+    for (const s of steps) {
+      const name = String(s?.name || '');
+      if (!name || name === 'plan' || name.startsWith('thinking_step_')) continue;
+      const status = String(s?.status || '');
+      const key = String(s?.key || `${String(s?.runId || '')}::${name}`);
+      const prev = stepStatusByKeyRef.current.get(key);
+      if (prev === status) continue;
+      stepStatusByKeyRef.current.set(key, status);
+
+      const label = formatStepLabel(s);
+      if (!label) continue;
+
+      const base = {
+        id: `think-${Date.now()}-${Math.random()}`,
+        timestamp: Date.now(),
+        details: { step: s },
+      };
+
+      if (status === 'running') {
+        additions.push({ ...base, type: 'action', content: label });
+      } else if (status === 'done') {
+        additions.push({ ...base, type: 'result', content: label });
+      } else if (status === 'failed') {
+        const err = typeof s?.error === 'string' ? s.error : typeof s?.result?.error === 'string' ? s.result.error : '';
+        additions.push({ ...base, type: 'error', content: err ? `${label} — ${err}` : label });
+      }
+    }
+
+    if (additions.length === 0) return;
+    setThinkingChain((prev) => {
+      const next = [...prev, ...additions];
+      return next.length > 260 ? next.slice(next.length - 260) : next;
+    });
+    window.setTimeout(() => {
+      thinkingPanelRef.current?.scrollTo({ top: thinkingPanelRef.current.scrollHeight, behavior: 'smooth' });
+    }, 80);
+  }, [formatStepLabel]);
+
+  const renderThinkingPanel = useCallback(() => {
+    const visible = liveSteps.filter((s: any) => {
+      const name = String(s?.name || '');
+      return name && name !== 'plan' && !name.startsWith('thinking_step_');
+    });
+    const total = visible.length;
+    const done = visible.filter((s: any) => s?.status === 'done').length;
+    const failed = visible.filter((s: any) => s?.status === 'failed').length;
+    const running = visible.filter((s: any) => s?.status === 'running').length;
+    const pct = total ? Math.round(((done + failed) / total) * 100) : 0;
+
+    return (
+      <div className="joe-thinking-panel">
+        <div className="joe-thinking-summary">
+          <div className="joe-thinking-summary-row">
+            <div className="joe-thinking-summary-title">الحالة المباشرة</div>
+            <div className="joe-thinking-summary-badges">
+              <span className="joe-thinking-badge">{t('statusRunning', 'قيد التنفيذ')}: {running}</span>
+              <span className="joe-thinking-badge">{t('statusDone', 'تم')}: {done}</span>
+              <span className="joe-thinking-badge">{t('statusFailed', 'فشل')}: {failed}</span>
+            </div>
+          </div>
+          <div className="joe-thinking-progress">
+            <div className="joe-thinking-progress-fill" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+
+        <div ref={thinkingPanelRef} className="joe-thinking-list" dir="auto">
+          {thinkingChain.length === 0 ? (
+            <div className="joe-thinking-empty">ستظهر هنا الخطوات والأحداث أثناء تنفيذ الطلب.</div>
+          ) : (
+            thinkingChain.map((item) => {
+              const time = new Date(item.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              return (
+                <div key={item.id} className={`joe-thinking-item joe-thinking-${item.type}`}>
+                  <div className="joe-thinking-dot" />
+                  <div className="joe-thinking-body">
+                    <div className="joe-thinking-text">{item.content}</div>
+                    <div className="joe-thinking-meta">{time}</div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }, [liveSteps, thinkingChain, t]);
 
   const nav = useNavigate();
 
@@ -946,12 +1073,31 @@ export default function Joe() {
                 <span className="mode-fab-label">المحادثة</span>
               </button>
               <button 
-                onClick={() => setShowFiles(v => !v)}
+                onClick={() => setShowFiles(v => {
+                  const next = !v;
+                  if (next) setRightPanelTab('files');
+                  return next;
+                })}
                 className={`mode-fab ${showFiles ? 'active' : ''}`}
                 title="Files"
               >
                 <Folder size={16} />
                 <span className="mode-fab-label">الملفات</span>
+              </button>
+              <button 
+                onClick={() => setShowThinkingPanel(v => {
+                  const next = !v;
+                  if (next) {
+                    setRightPanelTab('thinking');
+                    setAgentPanelTab('thinking');
+                  }
+                  return next;
+                })}
+                className={`mode-fab ${showThinkingPanel ? 'active' : ''}`}
+                title="Thinking"
+              >
+                <Activity size={16} />
+                <span className="mode-fab-label">التفكير</span>
               </button>
             </div>
           </div>
@@ -1060,7 +1206,22 @@ export default function Joe() {
               }}
             >
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>الأوامر</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    onClick={() => setAgentPanelTab('commands')}
+                    style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: agentPanelTab === 'commands' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    الأوامر
+                  </button>
+                  {showThinkingPanel ? (
+                    <button
+                      onClick={() => setAgentPanelTab('thinking')}
+                      style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: agentPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <Activity size={14} /> التفكير
+                    </button>
+                  ) : null}
+                </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {isNarrow ? (
                     <button
@@ -1075,15 +1236,20 @@ export default function Joe() {
               {(!isNarrow || agentComposerOpen) ? (
                 <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
                   <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                    <CommandComposer
-                      sessionId={agentSelected || undefined}
-                      sessionKind="agent"
-                      browserSessionId={agentBrowserSessionId}
-                      onSessionCreated={async (id) => {
-                          await loadAllSessions();
-                          setAgentSelected(id);
-                        }}
-                    />
+                    {agentPanelTab === 'thinking' && showThinkingPanel ? (
+                      renderThinkingPanel()
+                    ) : (
+                      <CommandComposer
+                        sessionId={agentSelected || undefined}
+                        sessionKind="agent"
+                        browserSessionId={agentBrowserSessionId}
+                        onStepsUpdate={handleStepsUpdate}
+                        onSessionCreated={async (id) => {
+                            await loadAllSessions();
+                            setAgentSelected(id);
+                          }}
+                      />
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -1120,6 +1286,7 @@ export default function Joe() {
                     sessionId={selected || undefined}
                     sessionKind="chat"
                     previewBaseUrl={previewUrl}
+                    onStepsUpdate={handleStepsUpdate}
                     onSessionCreated={async (id) => {
                         await loadAllSessions();
                         setSelected(id);
@@ -1128,9 +1295,68 @@ export default function Joe() {
                 </div>
               </div>
             </div>
-            {showFiles ? (
-              <div style={{ width: 420, minWidth: 320, height: '100%', borderLeft: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-                <FileExplorer />
+            {(showFiles || showThinkingPanel) ? (
+              <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+                <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {showThinkingPanel ? (
+                      <button
+                        onClick={() => setRightPanelTab('thinking')}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Activity size={14} /> سلسلة التفكير
+                      </button>
+                    ) : null}
+                    {showFiles ? (
+                      <button
+                        onClick={() => setRightPanelTab('files')}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Folder size={14} /> الملفات
+                      </button>
+                    ) : null}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {rightPanelTab === 'thinking' && showThinkingPanel ? (
+                      <button
+                        onClick={() => {
+                          setThinkingChain([]);
+                          stepStatusByKeyRef.current = new Map();
+                        }}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        مسح
+                      </button>
+                    ) : null}
+                    {rightPanelTab === 'thinking' ? (
+                      <button
+                        onClick={() => setShowThinkingPanel(false)}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        إخفاء
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowFiles(false)}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        إخفاء
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                  {rightPanelTab === 'files' && showFiles ? (
+                    <div style={{ height: '100%', overflow: 'auto' }}>
+                      <FileExplorer />
+                    </div>
+                  ) : null}
+
+                  {rightPanelTab === 'thinking' && showThinkingPanel ? (
+                    renderThinkingPanel()
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>

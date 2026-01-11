@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Folder, File, RefreshCw, FileText, Code, Image, Music, Video, Database, Package, Save, CheckCircle2, Loader2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronRight, ChevronDown, Folder, File, RefreshCw, FileText, Code, Image, Music, Video, Database, Package, Save, Loader2, X, Search, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
 
@@ -14,6 +14,15 @@ interface FileNode {
 interface FileExplorerProps {
     sessionId?: string;
 }
+
+type OpenTab = {
+    node: FileNode;
+    content: string;
+    isLoading: boolean;
+    error: string | null;
+    isDirty: boolean;
+    lastSavedAt: number | null;
+};
 
 const FileIcon = ({ name }: { name: string }) => {
     const ext = name.split('.').pop()?.toLowerCase();
@@ -31,15 +40,19 @@ const FileIcon = ({ name }: { name: string }) => {
 const FileTreeItem = ({ 
     node, 
     level, 
-    onSelect,
-    selectedPath
+    expandedByPath,
+    onToggleDir,
+    onOpenFile,
+    selectedPath,
 }: { 
     node: FileNode; 
     level: number; 
-    onSelect: (node: FileNode) => void;
+    expandedByPath: Record<string, boolean>;
+    onToggleDir: (path: string) => void;
+    onOpenFile: (node: FileNode) => void;
     selectedPath?: string;
 }) => {
-    const [expanded, setExpanded] = useState(false);
+    const expanded = !!expandedByPath[node.path];
     const isSelected = selectedPath === node.path;
     
     return (
@@ -60,9 +73,9 @@ const FileTreeItem = ({
                 onClick={(e) => {
                     e.stopPropagation();
                     if (node.type === 'directory') {
-                        setExpanded(!expanded);
+                        onToggleDir(node.path);
                     } else {
-                        onSelect(node);
+                        onOpenFile(node);
                     }
                 }}
                 onMouseEnter={(e) => !isSelected && (e.currentTarget.style.backgroundColor = 'var(--bg-secondary)')}
@@ -86,7 +99,15 @@ const FileTreeItem = ({
             {node.type === 'directory' && expanded && node.children && (
                 <div>
                     {node.children.map((child, i) => (
-                        <FileTreeItem key={i} node={child} level={level + 1} onSelect={onSelect} selectedPath={selectedPath} />
+                        <FileTreeItem
+                            key={child.path || i}
+                            node={child}
+                            level={level + 1}
+                            expandedByPath={expandedByPath}
+                            onToggleDir={onToggleDir}
+                            onOpenFile={onOpenFile}
+                            selectedPath={selectedPath}
+                        />
                     ))}
                 </div>
             )}
@@ -98,10 +119,14 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
     const [tree, setTree] = useState<FileNode[]>([]);
     const [loading, setLoading] = useState(false);
     const [treeError, setTreeError] = useState<string | null>(null);
-    const [selectedFile, setSelectedFile] = useState<{ node: FileNode, content: string } | null>(null);
-    const [loadingContent, setLoadingContent] = useState(false);
-    const [contentError, setContentError] = useState<string | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
+    const [expandedByPath, setExpandedByPath] = useState<Record<string, boolean>>({});
+    const [treeCollapsed, setTreeCollapsed] = useState(false);
+    const [query, setQuery] = useState('');
+    const [tabs, setTabs] = useState<OpenTab[]>([]);
+    const [activePath, setActivePath] = useState<string | null>(null);
+    const [savingPath, setSavingPath] = useState<string | null>(null);
+    const saveFlashTimerRef = useRef<number | null>(null);
+    const [savedPath, setSavedPath] = useState<string | null>(null);
 
     const fetchTree = async () => {
         setLoading(true);
@@ -150,50 +175,124 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         fetchTree();
     }, []);
 
-    const handleSelect = async (node: FileNode) => {
-        if (node.type !== 'file') return;
-        
-        setLoadingContent(true);
-        setContentError(null);
-        setSelectedFile({ node, content: '' }); // Reset content while loading
-        
+    useEffect(() => {
+        return () => {
+            if (saveFlashTimerRef.current != null) window.clearTimeout(saveFlashTimerRef.current);
+        };
+    }, []);
+
+    const toggleDir = useCallback((dirPath: string) => {
+        setExpandedByPath((prev) => ({ ...prev, [dirPath]: !prev[dirPath] }));
+    }, []);
+
+    const filterTree = useCallback((nodes: FileNode[], q: string): FileNode[] => {
+        const s = String(q || '').trim().toLowerCase();
+        if (!s) return nodes;
+
+        const visit = (n: FileNode): FileNode | null => {
+            const selfMatch = n.name.toLowerCase().includes(s) || n.path.toLowerCase().includes(s);
+            if (n.type === 'file') return selfMatch ? n : null;
+            const children = (n.children || []).map(visit).filter(Boolean) as FileNode[];
+            if (selfMatch || children.length) return { ...n, children };
+            return null;
+        };
+
+        return nodes.map(visit).filter(Boolean) as FileNode[];
+    }, []);
+
+    const filteredTree = useMemo(() => filterTree(tree, query), [filterTree, tree, query]);
+
+    const loadFileContent = useCallback(async (node: FileNode) => {
+        setTabs((prev) =>
+            prev.map((t) =>
+                t.node.path === node.path ? { ...t, isLoading: true, error: null } : t
+            )
+        );
+
         try {
             const token = localStorage.getItem('token');
             if (!token) {
-                setLoadingContent(false);
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-                setContentError('Unauthorized');
+                setTabs((prev) =>
+                    prev.map((t) =>
+                        t.node.path === node.path ? { ...t, isLoading: false, error: 'Unauthorized' } : t
+                    )
+                );
                 return;
             }
+
             const res = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
                 localStorage.removeItem('token');
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-                setContentError('Unauthorized');
+                setTabs((prev) =>
+                    prev.map((t) =>
+                        t.node.path === node.path ? { ...t, isLoading: false, error: 'Unauthorized' } : t
+                    )
+                );
                 return;
             }
-            
             if (!res.ok) {
                 const raw = await res.text().catch(() => '');
-                setSelectedFile({ node, content: '' });
-                setContentError(raw || `HTTP ${res.status}`);
+                setTabs((prev) =>
+                    prev.map((t) =>
+                        t.node.path === node.path ? { ...t, isLoading: false, error: raw || `HTTP ${res.status}` } : t
+                    )
+                );
                 return;
             }
             const json = await res.json();
-            setSelectedFile({ node, content: json.content || '' });
+            setTabs((prev) =>
+                prev.map((t) =>
+                    t.node.path === node.path
+                        ? { ...t, isLoading: false, error: null, content: String(json.content || ''), isDirty: false, lastSavedAt: Date.now() }
+                        : t
+                )
+            );
         } catch (e) {
-            console.error(e);
-            setContentError(e instanceof Error ? e.message : 'Unknown error');
-        } finally {
-            setLoadingContent(false);
+            const msg = e instanceof Error ? e.message : 'Unknown error';
+            setTabs((prev) =>
+                prev.map((t) =>
+                    t.node.path === node.path ? { ...t, isLoading: false, error: msg } : t
+                )
+            );
         }
-    };
+    }, []);
 
-    const saveFile = async () => {
-        if (!selectedFile) return;
-        setIsSaving(true);
+    const openFile = useCallback(async (node: FileNode) => {
+        if (node.type !== 'file') return;
+        setActivePath(node.path);
+        setTabs((prev) => {
+            const existing = prev.find((t) => t.node.path === node.path);
+            if (existing) return prev;
+            return [
+                ...prev,
+                { node, content: '', isLoading: true, error: null, isDirty: false, lastSavedAt: null },
+            ];
+        });
+        await loadFileContent(node);
+    }, [loadFileContent]);
+
+    const activeTab = useMemo(() => tabs.find((t) => t.node.path === activePath) || null, [tabs, activePath]);
+
+    const updateActiveContent = useCallback((val: string | undefined) => {
+        setTabs((prev) =>
+            prev.map((t) =>
+                t.node.path === activePath
+                    ? { ...t, content: val || '', isDirty: true }
+                    : t
+            )
+        );
+    }, [activePath]);
+
+    const saveActiveFile = useCallback(async () => {
+        const tab = tabs.find((t) => t.node.path === activePath);
+        if (!tab) return;
+        if (!tab.isDirty) return;
+
+        setSavingPath(tab.node.path);
         try {
             const token = localStorage.getItem('token');
             if (!token) {
@@ -202,91 +301,221 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
             }
             const res = await fetch(`${API}/project/content`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}` 
+                    Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ path: selectedFile.node.path, content: selectedFile.content })
+                body: JSON.stringify({ path: tab.node.path, content: tab.content }),
             });
             if (!res.ok) {
                 const raw = await res.text().catch(() => '');
                 throw new Error(raw || `HTTP ${res.status}`);
             }
+            setTabs((prev) =>
+                prev.map((t) =>
+                    t.node.path === tab.node.path ? { ...t, isDirty: false, lastSavedAt: Date.now(), error: null } : t
+                )
+            );
+            setSavedPath(tab.node.path);
+            if (saveFlashTimerRef.current != null) window.clearTimeout(saveFlashTimerRef.current);
+            saveFlashTimerRef.current = window.setTimeout(() => setSavedPath(null), 900);
         } catch (e) {
-            console.error(e);
-            alert(e instanceof Error ? e.message : 'Failed to save file');
+            const msg = e instanceof Error ? e.message : 'Failed to save file';
+            setTabs((prev) =>
+                prev.map((t) =>
+                    t.node.path === tab.node.path ? { ...t, error: msg } : t
+                )
+            );
         } finally {
-            setIsSaving(false);
+            setSavingPath(null);
         }
-    };
+    }, [activePath, tabs]);
+
+    const closeTab = useCallback((pathToClose: string) => {
+        const tab = tabs.find((t) => t.node.path === pathToClose);
+        if (tab?.isDirty) {
+            const ok = confirm(`لديك تعديلات غير محفوظة في ${tab.node.name}. هل تريد الإغلاق؟`);
+            if (!ok) return;
+        }
+
+        setTabs((prev) => prev.filter((t) => t.node.path !== pathToClose));
+        setActivePath((prevActive) => {
+            if (prevActive !== pathToClose) return prevActive;
+            const remaining = tabs.filter((t) => t.node.path !== pathToClose);
+            return remaining.length ? remaining[remaining.length - 1].node.path : null;
+        });
+    }, [tabs]);
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            if (e.key.toLowerCase() !== 's') return;
+            e.preventDefault();
+            saveActiveFile();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [saveActiveFile]);
     
     return (
-        <div style={{ display: 'flex', height: '100%' }}>
-            <div style={{ width: 'min(250px, 44vw)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: 8, borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>Files</span>
-                    <button onClick={fetchTree} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }}>
-                        <RefreshCw size={14} className={loading ? 'spin' : ''} />
-                    </button>
-                </div>
-                <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
-                    {treeError ? (
-                        <div style={{ padding: '6px 10px', color: 'var(--text-muted)', fontSize: 12 }}>
-                            {treeError === 'Unauthorized' ? 'Please login to view files.' : `Failed to load files: ${treeError}`}
+        <div style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            {!treeCollapsed ? (
+                <div style={{ width: 260, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                    <div style={{ padding: 10, borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Folder size={14} /> مساحة العمل
                         </div>
-                    ) : null}
-                    {tree.map((node, i) => (
-                        <FileTreeItem 
-                            key={i} 
-                            node={node} 
-                            level={1} 
-                            onSelect={handleSelect} 
-                            selectedPath={selectedFile?.node.path}
-                        />
-                    ))}
-                </div>
-            </div>
-            
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {selectedFile ? (
-                    <>
-                        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', height: 40 }}>
-                            <div style={{ fontSize: 13, fontWeight: 500 }}>{selectedFile.node.name}</div>
-                            <button 
-                                onClick={saveFile}
-                                disabled={isSaving}
-                                className="btn"
-                                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', fontSize: 12 }}
-                            >
-                                {isSaving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}
-                                Save
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <button onClick={() => setTreeCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }} aria-label="Collapse">
+                                <PanelLeftClose size={16} />
+                            </button>
+                            <button onClick={fetchTree} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }} aria-label="Refresh">
+                                <RefreshCw size={16} className={loading ? 'spin' : ''} />
                             </button>
                         </div>
-                        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-                             {loadingContent ? (
-                                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.1)' }}>
-                                    <Loader2 className="spin" />
-                                 </div>
-                             ) : null}
-                             {contentError ? (
-                                <div style={{ position: 'absolute', top: 10, left: 10, right: 10, padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: 6, background: 'var(--bg-secondary)', color: 'var(--text-muted)', fontSize: 12, zIndex: 2 }}>
-                                    {contentError === 'Unauthorized' ? 'Please login.' : `Failed to load file: ${contentError}`}
-                                </div>
-                             ) : null}
-                             <CodeEditor 
-                                code={selectedFile.content} 
-                                language={selectedFile.node.name.split('.').pop() || 'text'} 
-                                onChange={(val) => setSelectedFile(prev => prev ? { ...prev, content: val || '' } : null)}
-                                theme="vs-dark"
-                             />
+                    </div>
+
+                    <div style={{ padding: 10, borderBottom: '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border-color)', borderRadius: 12, padding: '6px 10px', background: 'rgba(255,255,255,0.02)' }}>
+                            <Search size={14} style={{ color: 'var(--text-muted)' }} />
+                            <input
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="ابحث عن ملف..."
+                                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-primary)', fontSize: 12 }}
+                            />
+                            {query ? (
+                                <button onClick={() => setQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)' }} aria-label="Clear search">
+                                    <X size={14} />
+                                </button>
+                            ) : null}
                         </div>
-                    </>
-                ) : (
-                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexDirection: 'column', gap: 10 }}>
-                         <Folder size={48} style={{ opacity: 0.2 }} />
-                         <div>Select a file to view content</div>
-                     </div>
-                )}
+                    </div>
+
+                    <div style={{ flex: 1, overflow: 'auto', padding: '8px 0', minHeight: 0 }}>
+                        {treeError ? (
+                            <div style={{ padding: '6px 10px', color: 'var(--text-muted)', fontSize: 12 }}>
+                                {treeError === 'Unauthorized' ? 'الرجاء تسجيل الدخول لعرض الملفات.' : `تعذر تحميل الملفات: ${treeError}`}
+                            </div>
+                        ) : null}
+
+                        {filteredTree.map((node, i) => (
+                            <FileTreeItem
+                                key={node.path || i}
+                                node={node}
+                                level={1}
+                                expandedByPath={expandedByPath}
+                                onToggleDir={toggleDir}
+                                onOpenFile={openFile}
+                                selectedPath={activePath || undefined}
+                            />
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <div style={{ width: 44, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 10, gap: 8 }}>
+                    <button onClick={() => setTreeCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--text-muted)' }} aria-label="Expand">
+                        <PanelLeftOpen size={18} />
+                    </button>
+                    <button onClick={fetchTree} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: 'var(--text-muted)' }} aria-label="Refresh">
+                        <RefreshCw size={18} className={loading ? 'spin' : ''} />
+                    </button>
+                </div>
+            )}
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
+                <div style={{ height: 42, borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 10px', background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'auto' }}>
+                        {tabs.length === 0 ? (
+                            <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>افتح ملفاً للبدء.</div>
+                        ) : (
+                            tabs.map((t) => {
+                                const active = t.node.path === activePath;
+                                return (
+                                    <button
+                                        key={t.node.path}
+                                        onClick={() => setActivePath(t.node.path)}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            padding: '6px 10px',
+                                            borderRadius: 999,
+                                            border: '1px solid rgba(255,255,255,0.10)',
+                                            background: active ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(0,0,0,0.10)',
+                                            color: 'var(--text-primary)',
+                                            cursor: 'pointer',
+                                            fontSize: 12,
+                                            maxWidth: 260,
+                                        }}
+                                    >
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                                            <FileIcon name={t.node.name} />
+                                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {t.node.name}
+                                            </span>
+                                            {t.isDirty ? <span style={{ width: 6, height: 6, borderRadius: 999, background: 'rgba(245, 158, 11, 0.95)' }} /> : null}
+                                        </span>
+                                        <span
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                closeTab(t.node.path);
+                                            }}
+                                            style={{ display: 'inline-flex', padding: 2, borderRadius: 999, color: 'var(--text-muted)' }}
+                                            role="button"
+                                            aria-label="Close"
+                                        >
+                                            <X size={14} />
+                                        </span>
+                                    </button>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
+                        <button
+                            onClick={saveActiveFile}
+                            disabled={!activeTab || !activeTab.isDirty || savingPath === activeTab.node.path}
+                            className="btn"
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 12, opacity: !activeTab || !activeTab.isDirty ? 0.55 : 1 }}
+                        >
+                            {activeTab && savingPath === activeTab.node.path ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
+                            حفظ
+                        </button>
+                        {activeTab && savedPath === activeTab.node.path ? (
+                            <div style={{ fontSize: 12, color: 'rgba(34, 197, 94, 0.95)' }}>تم الحفظ</div>
+                        ) : null}
+                    </div>
+                </div>
+
+                <div style={{ flex: 1, overflow: 'hidden', position: 'relative', minHeight: 0 }}>
+                    {activeTab ? (
+                        <>
+                            {activeTab.isLoading ? (
+                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.10)', zIndex: 2 }}>
+                                    <Loader2 className="spin" />
+                                </div>
+                            ) : null}
+                            {activeTab.error ? (
+                                <div style={{ position: 'absolute', top: 10, left: 10, right: 10, padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: 12, background: 'rgba(0,0,0,0.28)', color: 'var(--text-primary)', fontSize: 12, zIndex: 3 }}>
+                                    {activeTab.error === 'Unauthorized' ? 'الرجاء تسجيل الدخول.' : activeTab.error}
+                                </div>
+                            ) : null}
+                            <CodeEditor
+                                code={activeTab.content}
+                                language={activeTab.node.name.split('.').pop() || 'text'}
+                                onChange={updateActiveContent}
+                                theme="vs-dark"
+                            />
+                        </>
+                    ) : (
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexDirection: 'column', gap: 10, height: '100%' }}>
+                            <Folder size={48} style={{ opacity: 0.2 }} />
+                            <div style={{ fontSize: 13 }}>اختر ملفاً من الشجرة لفتحه.</div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

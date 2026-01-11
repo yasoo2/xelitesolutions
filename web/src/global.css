@@ -3260,3 +3260,140 @@ html[data-theme="light"] .send-btn {
     max-width: 92%;
   }
 }
+
+.joe-thinking-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background:
+    radial-gradient(1200px 600px at 10% 0%, rgba(var(--accent-primary-rgb), 0.14), transparent 55%),
+    radial-gradient(1000px 600px at 100% 10%, rgba(var(--accent-secondary-rgb), 0.10), transparent 55%);
+}
+
+.joe-thinking-summary {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(10px);
+}
+
+.joe-thinking-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.joe-thinking-summary-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: rgba(var(--accent-primary-rgb), 0.9);
+}
+
+.joe-thinking-summary-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.joe-thinking-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+}
+
+.joe-thinking-progress {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.joe-thinking-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(var(--accent-primary-rgb), 0.95), rgba(var(--accent-secondary-rgb), 0.85));
+  box-shadow: 0 0 18px rgba(var(--accent-primary-rgb), 0.30);
+  transition: width 0.2s ease;
+}
+
+.joe-thinking-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.joe-thinking-empty {
+  padding: 14px 12px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.joe-thinking-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(10px);
+  margin-bottom: 10px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+}
+
+.joe-thinking-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 4px;
+  background: rgba(var(--accent-primary-rgb), 0.9);
+  box-shadow: 0 0 14px rgba(var(--accent-primary-rgb), 0.35);
+  flex: 0 0 auto;
+}
+
+.joe-thinking-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.joe-thinking-text {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.joe-thinking-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.joe-thinking-action .joe-thinking-dot {
+  background: rgba(var(--accent-primary-rgb), 0.95);
+}
+
+.joe-thinking-result .joe-thinking-dot {
+  background: rgba(34, 197, 94, 0.95);
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.28);
+}
+
+.joe-thinking-error .joe-thinking-dot {
+  background: rgba(239, 68, 68, 0.95);
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
+}
