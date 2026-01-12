@@ -10,7 +10,7 @@ import os from 'os';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { search as ddgSearch } from 'duck-duck-scrape';
 import { Readability } from '@mozilla/readability';
-import { getBrowserSession, startStreaming, touchSession } from '../browser/manager';
+import { getBrowserSession, screenshotSessionJpeg, startStreaming, touchSession } from '../browser/manager';
 import { executePlannedActions } from '../browser/executor';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
@@ -596,17 +596,17 @@ export const tools: ToolDefinition[] = [
       const sidRaw = String(input?.sessionId || '').trim();
       const sid = sidRaw || (userId ? `browser:${userId}` : `browser:${Date.now()}`);
       const s = await getBrowserSession(sid);
-      startStreaming(sid);
       await s.page.goto(url, { waitUntil: 'domcontentloaded' });
       touchSession(sid);
       const dom = await s.page.content();
       const title = await s.page.title();
-      const buf = await s.page.screenshot({ type: 'jpeg', quality: 55, animations: 'disabled' });
+      const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 60000 });
       const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
       const full = path.join(ARTIFACT_DIR, fname);
       try { fs.writeFileSync(full, buf); } catch {}
       const href = `/artifacts/${encodeURIComponent(fname)}`;
       logs.push(`browser_open sid=${sid} url=${url}`);
+      startStreaming(sid);
       return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts: [{ name: 'Screenshot', href }] };
     },
   },
@@ -639,17 +639,17 @@ export const tools: ToolDefinition[] = [
       const sid = String(input?.sessionId || '').trim();
       if (!sid) return { ok: false, error: 'sessionId_required', logs };
       const s = await getBrowserSession(sid);
-      startStreaming(sid);
       touchSession(sid);
       const url = s.page.url();
       const title = await s.page.title();
       const dom = await s.page.content();
-      const buf = await s.page.screenshot({ type: 'jpeg', quality: 55, animations: 'disabled' });
+      const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 60000 });
       const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
       const full = path.join(ARTIFACT_DIR, fname);
       try { fs.writeFileSync(full, buf); } catch {}
       const href = `/artifacts/${encodeURIComponent(fname)}`;
       logs.push(`browser_get_state sid=${sid} url=${url}`);
+      startStreaming(sid);
       return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts: [{ name: 'Screenshot', href }] };
     },
   },
@@ -697,7 +697,7 @@ export const tools: ToolDefinition[] = [
       const pageUrl = s.page.url();
       const title = await s.page.title();
       const dom = await s.page.content();
-      const buf = await s.page.screenshot({ type: 'jpeg', quality: 55, animations: 'disabled' });
+      const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 60000 });
       const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
       const full = path.join(ARTIFACT_DIR, fname);
       try { fs.writeFileSync(full, buf); } catch {}

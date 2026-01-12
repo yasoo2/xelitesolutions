@@ -12,6 +12,7 @@ type SessionState = {
   streaming: boolean;
   streamTimer: NodeJS.Timeout | null;
   maskLocators: Locator[];
+  captureLocked: boolean;
   viewport: { w: number; h: number };
   lastUsedAt: number;
 };
@@ -46,11 +47,63 @@ export function getChromiumLaunchOptions(): LaunchOptions {
   const headedEnv = parseBool(process.env.BROWSER_HEADED) ?? parseBool(process.env.BROWSER_HEADFUL);
   const headless = headlessEnv !== undefined ? headlessEnv : headedEnv ? false : true;
 
-  const args: string[] = ['--disable-dev-shm-usage'];
+  const args: string[] = [
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--use-gl=swiftshader',
+    '--use-angle=swiftshader',
+  ];
   const noSandbox = parseBool(process.env.BROWSER_NO_SANDBOX) ?? parseBool(process.env.BROWSER_DISABLE_SANDBOX);
   if (noSandbox) args.push('--no-sandbox', '--disable-setuid-sandbox');
 
   return { headless, args };
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+async function tryAcquireCaptureLock(s: SessionState, wait: boolean, timeoutMs: number) {
+  const startedAt = Date.now();
+  while (s.captureLocked) {
+    if (!wait) return false;
+    if (Date.now() - startedAt > timeoutMs) return false;
+    await sleep(50);
+  }
+  s.captureLocked = true;
+  return true;
+}
+
+async function captureJpeg(
+  s: SessionState,
+  opts: { quality: number; timeoutMs: number; mask?: Locator[]; waitForLock: boolean },
+) {
+  const locked = await tryAcquireCaptureLock(s, opts.waitForLock, opts.timeoutMs);
+  if (!locked) return null;
+  try {
+    return await s.page.screenshot({
+      type: 'jpeg',
+      quality: opts.quality,
+      animations: 'disabled',
+      timeout: opts.timeoutMs,
+      mask: opts.mask && opts.mask.length ? opts.mask : undefined,
+    });
+  } finally {
+    s.captureLocked = false;
+  }
+}
+
+export async function screenshotSessionJpeg(sessionId: string, opts?: { quality?: number; timeoutMs?: number }) {
+  const sid = String(sessionId || '').trim();
+  const s = await getBrowserSession(sid);
+  const quality = Math.max(1, Math.min(100, Number(opts?.quality ?? 55)));
+  const timeoutMs = Math.max(1000, Number(opts?.timeoutMs ?? 60000));
+  const buf = await captureJpeg(s, { quality, timeoutMs, waitForLock: true });
+  if (!buf) throw new Error('screenshot_failed');
+  return buf;
 }
 
 let activeRuns = 0;
@@ -116,6 +169,7 @@ async function createSession(sessionId: string) {
     streaming: false,
     streamTimer: null,
     maskLocators: [],
+    captureLocked: false,
     viewport,
     lastUsedAt: Date.now(),
   };
@@ -183,12 +237,13 @@ export function startStreaming(sessionId: string) {
   s.streamTimer = setInterval(async () => {
     if (!s.streaming) return;
     try {
-      const buf = await s.page.screenshot({
-        type: 'jpeg',
+      const buf = await captureJpeg(s, {
         quality: 55,
-        animations: 'disabled',
+        timeoutMs: Math.max(1000, Math.min(8000, cfg.actionTimeoutMs)),
+        waitForLock: false,
         mask: s.maskLocators.length ? s.maskLocators : undefined,
       });
+      if (!buf) return;
       broadcastBrowserEvent(sid, {
         type: 'stream_frame',
         ts: Date.now(),
