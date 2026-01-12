@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { runBrowserInstruction } from '../browser/runner';
 import { executePlannedActions } from '../browser/executor';
+import { stopSession } from '../browser/manager';
 
 const router = Router();
 
@@ -52,6 +53,19 @@ router.post('/actions', authenticate as any, async (req: Request, res: Response)
   } catch (err: any) {
     try { console.error('browser_actions_failed', err); } catch {}
     return res.status(500).json({ error: err?.message || 'browser_actions_failed' });
+  }
+});
+
+router.post('/stop', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const sid = String(req.body?.sessionId || '').trim();
+    if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    try {
+      await stopSession(sid);
+    } catch {}
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'browser_stop_failed' });
   }
 });
 

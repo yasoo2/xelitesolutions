@@ -37,6 +37,26 @@ export type HighlightBoxesEvent = {
   boxes: Array<{ x: number; y: number; width: number; height: number; label?: string }>;
 };
 
+export type SessionStatusEvent = {
+  type: 'session_status';
+  ts: number;
+  sessionId: string;
+  url: string;
+  workerStatus: 'idle' | 'running' | 'error' | (string & {});
+  fallbackMode?: 'screenshots' | (string & {});
+  blockingReason?: FailureReason | (string & {});
+};
+
+export type ActionLogEvent = {
+  type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error';
+  ts: number;
+  actionId: string;
+  actionType: string;
+  summary?: string;
+  error?: string;
+  reason?: FailureReason | (string & {});
+};
+
 export type FinalReportEvent = {
   type: 'final_report';
   ts: number;
@@ -50,6 +70,7 @@ export type BrowserWsEvent =
   | StreamFrameEvent
   | CursorMoveEvent
   | HighlightBoxesEvent
+  | SessionStatusEvent
+  | ActionLogEvent
   | StepEvent
   | FinalReportEvent;
-

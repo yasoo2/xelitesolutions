@@ -1713,7 +1713,9 @@ export default function CommandComposer({
     const ensureBrowserSession = async () => {
       const sid = String(sessionId || '').trim();
       if (!sid) throw new Error('sessionId_required');
-      return { sessionId: sid };
+      const b = String(browserSessionId || '').trim();
+      if (b) return { sessionId: b };
+      return { sessionId: `browser:${sid}` };
     };
     
     // Optimistic update

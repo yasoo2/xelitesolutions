@@ -594,7 +594,7 @@ export const tools: ToolDefinition[] = [
       const url = normalizeBrowserUrl(cleaned);
       const userId = String(input?.userId || input?.__userId || '').trim();
       const sidRaw = String(input?.sessionId || '').trim();
-      const sid = sidRaw || (userId ? `browser:${userId}` : `browser:${Date.now()}`);
+      const sid = sidRaw || (userId ? `browser:${userId}:${Date.now()}` : `browser:${Date.now()}`);
       const s = await getBrowserSession(sid);
       await s.page.goto(url, { waitUntil: 'domcontentloaded' });
       touchSession(sid);
@@ -659,7 +659,31 @@ export const tools: ToolDefinition[] = [
     tags: ['browser', 'web', 'actions'],
     inputSchema: {
       type: 'object',
-      properties: { sessionId: { type: 'string' }, actions: { type: 'array' }, userId: { type: 'string' } },
+      properties: {
+        sessionId: { type: 'string' },
+        actions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string' },
+              url: { type: 'string' },
+              text: { type: 'string' },
+              selector: { type: 'string' },
+              role: { type: 'string' },
+              name: { type: 'string' },
+              direction: { type: 'string' },
+              amount: { type: 'number' },
+              ms: { type: 'number' },
+              x: { type: 'number' },
+              y: { type: 'number' },
+            },
+            required: ['type'],
+            additionalProperties: true,
+          },
+        },
+        userId: { type: 'string' },
+      },
       required: ['sessionId', 'actions'],
     },
     outputSchema: {

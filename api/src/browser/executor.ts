@@ -102,6 +102,15 @@ export async function executePlannedActions(params: {
     startStreaming(sessionId);
 
     const page = s.page;
+    try {
+      broadcastBrowserEvent(sessionId, {
+        type: 'session_status',
+        ts: now(),
+        sessionId,
+        url: page.url(),
+        workerStatus: 'running',
+      });
+    } catch {}
     const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
@@ -110,7 +119,19 @@ export async function executePlannedActions(params: {
       const a: any = actions[i];
       const name = String(a?.type || 'unknown');
       const sid = stepId(i);
+      try {
+        const summary =
+          name === 'goto'
+            ? `goto ${String(a?.url || '').trim()}`
+            : name === 'type'
+              ? `type ${String(a?.text || '').slice(0, 60)}`
+              : name;
+        broadcastBrowserEvent(sessionId, { type: 'action_sent', ts: now(), actionId: sid, actionType: name, summary });
+      } catch {}
       broadcastBrowserEvent(sessionId, { type: 'step_start', stepId: sid, name, ts: now() });
+      try {
+        broadcastBrowserEvent(sessionId, { type: 'action_ack', ts: now(), actionId: sid, actionType: name });
+      } catch {}
 
       let mask: Locator[] = [];
       try {
@@ -124,6 +145,16 @@ export async function executePlannedActions(params: {
           if (!isSameSiteAllowed(s.allowedOrigin, url)) {
             results.push({ stepId: sid, name, ok: false, reason: 'same_site_blocked', message: url });
             broadcastBrowserEvent(sessionId, { type: 'goto_blocked', stepId: sid, ts: now(), url, reason: 'same_site_blocked', message: 'cross_site_blocked' });
+            try {
+              broadcastBrowserEvent(sessionId, {
+                type: 'action_error',
+                ts: now(),
+                actionId: sid,
+                actionType: name,
+                reason: 'same_site_blocked',
+                error: 'cross_site_blocked',
+              });
+            } catch {}
             continue;
           }
           broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: 30, y: 20 });
@@ -141,6 +172,9 @@ export async function executePlannedActions(params: {
 
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { url: page.url() } });
           results.push({ stepId: sid, name, ok: true });
+          try {
+            broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+          } catch {}
           continue;
         }
 
@@ -153,6 +187,9 @@ export async function executePlannedActions(params: {
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
           results.push({ stepId: sid, name, ok: true });
+          try {
+            broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+          } catch {}
           continue;
         }
 
@@ -167,6 +204,9 @@ export async function executePlannedActions(params: {
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
           results.push({ stepId: sid, name, ok: true });
+          try {
+            broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+          } catch {}
           continue;
         }
 
@@ -177,6 +217,9 @@ export async function executePlannedActions(params: {
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { ok: true } });
           results.push({ stepId: sid, name, ok: true });
+          try {
+            broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+          } catch {}
           continue;
         }
 
@@ -198,14 +241,86 @@ export async function executePlannedActions(params: {
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
           results.push({ stepId: sid, name, ok: true });
+          try {
+            broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+          } catch {}
           continue;
         }
 
         if (name === 'click' || name === 'type') {
+          if (name === 'click') {
+            const xNum = Number(a?.x);
+            const yNum = Number(a?.y);
+            if (Number.isFinite(xNum) && Number.isFinite(yNum)) {
+              const x = Math.max(0, Math.round(xNum));
+              const y = Math.max(0, Math.round(yNum));
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x, y });
+                broadcastBrowserEvent(sessionId, {
+                  type: 'highlight_boxes',
+                  ts: now(),
+                  boxes: [{ x: Math.max(0, x - 6), y: Math.max(0, y - 6), width: 12, height: 12, label: 'click' }],
+                });
+              } catch {}
+
+              setStreamMask(sessionId, []);
+              const before = await screenshotJpegBase64(page);
+              evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+
+              await page.mouse.click(x, y);
+
+              await page.waitForTimeout(120);
+              const after = await screenshotJpegBase64(page);
+              evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+              results.push({ stepId: sid, name, ok: true });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+              } catch {}
+              continue;
+            }
+          }
+
+          if (name === 'type') {
+            const textRaw = String(a?.text || '');
+            if (textRaw && !a?.selector && !a?.role && !a?.name && !a?.textTarget) {
+              const secretMatch = textRaw.match(SECRET_TOKEN_RE);
+              if (!secretMatch) {
+                setStreamMask(sessionId, []);
+                const before = await screenshotJpegBase64(page);
+                evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+
+                await page.keyboard.type(textRaw, { delay: 10 });
+
+                await page.waitForTimeout(80);
+                const after = await screenshotJpegBase64(page);
+                evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+
+                broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+                results.push({ stepId: sid, name, ok: true });
+                try {
+                  broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+                } catch {}
+                continue;
+              }
+            }
+          }
+
           const loc = locatorForAction(page, a);
           if (!loc) {
             results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'no_locator' });
             broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'element_not_found', message: 'no_locator' });
+            try {
+              broadcastBrowserEvent(sessionId, {
+                type: 'action_error',
+                ts: now(),
+                actionId: sid,
+                actionType: name,
+                reason: 'element_not_found',
+                error: 'no_locator',
+              });
+            } catch {}
             continue;
           }
 
@@ -213,6 +328,16 @@ export async function executePlannedActions(params: {
           if (!count) {
             results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'not_found' });
             broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'element_not_found', message: 'not_found' });
+            try {
+              broadcastBrowserEvent(sessionId, {
+                type: 'action_error',
+                ts: now(),
+                actionId: sid,
+                actionType: name,
+                reason: 'element_not_found',
+                error: 'not_found',
+              });
+            } catch {}
             continue;
           }
 
@@ -232,6 +357,16 @@ export async function executePlannedActions(params: {
             if (!secretValue) {
               results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `missing_secret:${secretKey}` });
               broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `missing_secret:${secretKey}` });
+              try {
+                broadcastBrowserEvent(sessionId, {
+                  type: 'action_error',
+                  ts: now(),
+                  actionId: sid,
+                  actionType: name,
+                  reason: 'unknown',
+                  error: `missing_secret:${secretKey}`,
+                });
+              } catch {}
               continue;
             }
             mask = [loc.first()];
@@ -245,6 +380,9 @@ export async function executePlannedActions(params: {
             setStreamMask(sessionId, []);
             broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
             results.push({ stepId: sid, name, ok: true });
+            try {
+              broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+            } catch {}
             continue;
           }
 
@@ -273,6 +411,9 @@ export async function executePlannedActions(params: {
               const reason: FailureReason = /timeout/i.test(msg) ? 'timeout' : /overlay|intercept|not clickable/i.test(msg) ? 'overlay_blocking_click' : 'unknown';
               broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg });
               results.push({ stepId: sid, name, ok: false, reason, message: msg });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
+              } catch {}
               continue;
             }
           }
@@ -289,6 +430,16 @@ export async function executePlannedActions(params: {
                 broadcastBrowserEvent(sessionId, { type: 'goto_blocked', stepId: sid, ts: now(), url: cur, reason: 'same_site_blocked', message: 'cross_site_blocked' });
                 try { await page.goBack({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }); } catch {}
                 results.push({ stepId: sid, name, ok: false, reason: 'same_site_blocked', message: cur });
+                try {
+                  broadcastBrowserEvent(sessionId, {
+                    type: 'action_error',
+                    ts: now(),
+                    actionId: sid,
+                    actionType: name,
+                    reason: 'same_site_blocked',
+                    error: 'cross_site_blocked',
+                  });
+                } catch {}
                 continue;
               }
             } catch {}
@@ -296,16 +447,39 @@ export async function executePlannedActions(params: {
 
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
           results.push({ stepId: sid, name, ok: true });
+          try {
+            broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+          } catch {}
           continue;
         }
 
         results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'unsupported_action' });
         broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: 'unsupported_action' });
+        try {
+          broadcastBrowserEvent(sessionId, {
+            type: 'action_error',
+            ts: now(),
+            actionId: sid,
+            actionType: name,
+            reason: 'unknown',
+            error: 'unsupported_action',
+          });
+        } catch {}
       } catch (e: any) {
         const msg = String(e?.message || e);
         const reason: FailureReason = /timeout/i.test(msg) ? 'timeout' : 'unknown';
         results.push({ stepId: sid, name, ok: false, reason, message: msg });
         broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg });
+        try {
+          broadcastBrowserEvent(sessionId, {
+            type: 'action_error',
+            ts: now(),
+            actionId: sid,
+            actionType: name,
+            reason,
+            error: msg,
+          });
+        } catch {}
         setStreamMask(sessionId, []);
       }
     }
@@ -320,6 +494,9 @@ export async function executePlannedActions(params: {
       steps: results,
       evidence,
     });
+    try {
+      broadcastBrowserEvent(sessionId, { type: 'session_status', ts: now(), sessionId, url: page.url(), workerStatus: 'idle' });
+    } catch {}
 
     touchSession(sessionId);
     return { ok, summary, steps: results, evidence };

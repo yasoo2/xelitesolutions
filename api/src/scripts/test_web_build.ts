@@ -24,11 +24,16 @@ async function runUiE2e() {
   const context = await browser.newContext();
   const page = await context.newPage();
   page.setDefaultTimeout(60000);
+  let browserWs: WebSocket | null = null;
 
   try {
-    await page.addInitScript((t) => {
+    await page.addInitScript((cfg: any) => {
+      const t = String(cfg?.token || '');
+      const apiUrl = String(cfg?.apiUrl || '');
+      const wsUrl = String(cfg?.wsUrl || '');
       localStorage.setItem('token', t);
       localStorage.setItem('lang', 'en');
+      (window as any).JOE_CONFIG = { API_URL: apiUrl, WS_URL: wsUrl };
       (window as any).__wsSends = [];
       (window as any).__fetches = [];
       try {
@@ -53,7 +58,7 @@ async function runUiE2e() {
           return await (origFetch as any).apply(window, args as any);
         }) as any;
       } catch {}
-    }, token);
+    }, { token, apiUrl: API_URL, wsUrl: WS_URL });
 
     await page.goto(`${WEB_URL}/joe`, { waitUntil: 'networkidle' });
     await page.waitForSelector('textarea', { state: 'visible' });
@@ -157,6 +162,8 @@ async function runUiE2e() {
     if (!canvas) throw new Error('Browser canvas not found');
     const box = await canvas.boundingBox();
     if (!box) throw new Error('Browser canvas has no bounding box');
+    let remoteW = 1280;
+    let remoteH = 720;
 
     const agentTestHtml = `
     <!doctype html>
@@ -167,10 +174,10 @@ async function runUiE2e() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <style>
           html, body { margin: 0; padding: 0; width: 100%; height: 100%; font-family: Arial, sans-serif; background: #0b1020; color: #fff; }
-          .wrap { width: 1280px; height: 800px; position: relative; }
-          #q { position: absolute; left: 160px; top: 280px; width: 960px; height: 72px; font-size: 26px; padding: 0 18px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35); color: #fff; outline: none; }
-          #btn { position: absolute; left: 160px; top: 380px; width: 960px; height: 66px; font-size: 20px; border-radius: 14px; border: none; background: #2563eb; color: #fff; cursor: pointer; }
-          .hint { position: absolute; left: 160px; top: 470px; width: 960px; opacity: 0.85; font-size: 14px; }
+          .wrap { width: 100%; height: 100%; position: relative; }
+          #q { position: absolute; left: 50%; top: calc(50% - 90px); transform: translateX(-50%); width: min(960px, calc(100% - 80px)); height: 72px; font-size: 26px; padding: 0 18px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35); color: #fff; outline: none; }
+          #btn { position: absolute; left: 50%; top: calc(50% + 10px); transform: translateX(-50%); width: min(960px, calc(100% - 80px)); height: 66px; font-size: 20px; border-radius: 14px; border: none; background: #2563eb; color: #fff; cursor: pointer; }
+          .hint { position: absolute; left: 50%; top: calc(50% + 92px); transform: translateX(-50%); width: min(960px, calc(100% - 80px)); opacity: 0.85; font-size: 14px; text-align: center; }
         </style>
       </head>
       <body data-ready="1">
@@ -210,6 +217,53 @@ async function runUiE2e() {
     const sessionId = String(session?.sessionId || '').trim();
     if (!sessionId) throw new Error('Missing sessionId from joe:browser_attached');
 
+    const openResp = await fetch(`${API_URL}/tools/browser_open/execute`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ sessionId, url: dataUrl }),
+    });
+    const openRaw = await openResp.text().catch(() => '');
+    if (!openResp.ok) {
+      throw new Error(`browser_open_http_${openResp.status}:${openRaw.slice(0, 240)}`);
+    }
+
+    const browserWsUrl = (() => {
+      const base = API_URL.replace(/^http/i, 'ws');
+      const u = new URL('/ws/browser', base);
+      u.searchParams.set('sessionId', sessionId);
+      return u.toString();
+    })();
+
+    browserWs = new WebSocket(browserWsUrl);
+    const browserEvents: any[] = [];
+    const browserWsReady = new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('browser_ws_connect_timeout')), 8000);
+      browserWs?.on('open', () => {
+        clearTimeout(t);
+        resolve();
+      });
+      browserWs?.on('error', (e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+    });
+
+    browserWs.on('message', (data) => {
+      try {
+        const msg = JSON.parse(String(data || ''));
+        browserEvents.push(msg);
+      } catch {}
+    });
+
+    const waitForBrowserEvent = async (pred: (m: any) => boolean, timeoutMs: number, label: string) => {
+      const started = Date.now();
+      while (Date.now() - started < timeoutMs) {
+        if (browserEvents.some(pred)) return;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error(`timeout_waiting_for_${label}`);
+    };
+
     const fetchDom = async () => {
       const res = await fetch(`${API_URL}/tools/browser_get_state/execute`, {
         method: 'POST',
@@ -226,14 +280,44 @@ async function runUiE2e() {
       if (dom.includes('data-ready="1"')) break;
       await new Promise((r) => setTimeout(r, 400));
     }
+    const domReady = await fetchDom();
+    if (!domReady.includes('data-ready="1"')) {
+      throw new Error(`browser_page_not_ready (sessionId=${sessionId})`);
+    }
 
     const clickViewport = async (vx: number, vy: number) => {
-      const cx = box.x + box.width * (vx / 1280);
-      const cy = box.y + box.height * (vy / 800);
+      const x = Math.max(0, Math.min(Math.max(1, remoteW) - 1, Math.round(vx)));
+      const y = Math.max(0, Math.min(Math.max(1, remoteH) - 1, Math.round(vy)));
+      const cx = box.x + box.width * (x / remoteW);
+      const cy = box.y + box.height * (y / remoteH);
       await page.mouse.click(cx, cy);
     };
 
-    await clickViewport(640, 320);
+    await browserWsReady;
+
+    await waitForBrowserEvent((m) => m?.type === 'stream_frame', 12000, 'stream_frame');
+    const firstFrame = browserEvents.find((m) => m?.type === 'stream_frame' && Number.isFinite(m?.w) && Number.isFinite(m?.h));
+    remoteW = Math.max(320, Math.min(3840, Math.floor(Number(firstFrame?.w || remoteW))));
+    remoteH = Math.max(240, Math.min(2160, Math.floor(Number(firstFrame?.h || remoteH))));
+
+    browserEvents.length = 0;
+    const missRes = await fetch(`${API_URL}/tools/browser_run/execute`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        sessionId,
+        actions: [{ type: 'click', selector: '#__definitely_not_found__' }],
+      }),
+    });
+    const missRaw = await missRes.text().catch(() => '');
+    if (!missRes.ok) {
+      throw new Error(`browser_run_missing_click_http_${missRes.status}:${missRaw.slice(0, 240)}`);
+    }
+    await waitForBrowserEvent((m) => m?.type === 'action_sent' && String(m?.actionType || '') === 'click', 20000, 'action_sent_click_missing');
+    await waitForBrowserEvent((m) => m?.type === 'action_error' && String(m?.actionType || '') === 'click', 20000, 'action_error_click_missing');
+
+    browserEvents.length = 0;
+    await clickViewport(remoteW / 2, remoteH / 2 - 54);
 
     await page.waitForFunction(
     () => {
@@ -260,6 +344,9 @@ async function runUiE2e() {
     const canvasFocused = await page.evaluate(() => document.activeElement?.tagName === 'CANVAS');
     if (!canvasFocused) throw new Error('Canvas did not receive focus after click');
 
+    await waitForBrowserEvent((m) => m?.type === 'action_sent' && String(m?.actionType || '') === 'click', 12000, 'action_sent_click');
+    await waitForBrowserEvent((m) => m?.type === 'action_done' && String(m?.actionType || '') === 'click', 12000, 'action_done_click');
+
     await page.keyboard.type('abc', { delay: 10 });
     await page.waitForFunction(
     () => {
@@ -283,7 +370,10 @@ async function runUiE2e() {
     { timeout: 30000 }
     );
 
-    await clickViewport(640, 413);
+    await waitForBrowserEvent((m) => m?.type === 'action_sent' && String(m?.actionType || '') === 'type', 12000, 'action_sent_type');
+    await waitForBrowserEvent((m) => m?.type === 'action_done' && String(m?.actionType || '') === 'type', 12000, 'action_done_type');
+
+    await clickViewport(remoteW / 2, remoteH / 2 + 43);
     await new Promise((r) => setTimeout(r, 600));
 
     const domAfter = await fetchDom();
@@ -308,6 +398,7 @@ async function runUiE2e() {
       )
     );
   } finally {
+    try { browserWs?.close(); } catch {}
     await browser.close();
   }
 }
@@ -406,6 +497,15 @@ async function runCapabilitiesTest() {
 
 async function main() {
   if (process.env.UI_E2E === '1') {
+    await runUiE2e();
+    return;
+  }
+  if (process.env.CAPABILITIES_E2E === '1') {
+    await runCapabilitiesTest();
+    return;
+  }
+  const hasOpenAiKey = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+  if (!hasOpenAiKey) {
     await runUiE2e();
     return;
   }

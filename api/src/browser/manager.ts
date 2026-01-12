@@ -19,6 +19,25 @@ type SessionState = {
 
 const sessions = new Map<string, SessionState>();
 
+function broadcastStatus(sessionId: string, s: SessionState, extra?: { workerStatus?: string; blockingReason?: string }) {
+  const sid = String(sessionId || '').trim();
+  if (!sid) return;
+  let url = '';
+  try {
+    url = s.page.url() || '';
+  } catch {
+    url = '';
+  }
+  broadcastBrowserEvent(sid, {
+    type: 'session_status',
+    ts: Date.now(),
+    sessionId: sid,
+    url,
+    workerStatus: (extra?.workerStatus || 'idle') as any,
+    blockingReason: extra?.blockingReason as any,
+  });
+}
+
 function parseBool(raw: string | undefined) {
   if (raw === undefined) return undefined;
   const s = String(raw).trim().toLowerCase();
@@ -177,6 +196,9 @@ async function createSession(sessionId: string) {
   page.on('framenavigated', (frame) => {
     if (frame !== page.mainFrame()) return;
     try {
+      broadcastStatus(sessionId, state, { workerStatus: 'idle' });
+    } catch {}
+    try {
       const u = new URL(frame.url());
       const origin = u.origin;
       if (!state.allowedOrigin) {
@@ -193,11 +215,18 @@ async function createSession(sessionId: string) {
           message: 'cross_site_navigation_blocked',
         });
         try {
+          broadcastStatus(sessionId, state, { workerStatus: 'idle', blockingReason: 'same_site_blocked' });
+        } catch {}
+        try {
           void page.goBack({ waitUntil: 'domcontentloaded' });
         } catch {}
       }
     } catch {}
   });
+
+  try {
+    broadcastStatus(sessionId, state, { workerStatus: 'idle' });
+  } catch {}
 
   return state;
 }
@@ -232,6 +261,9 @@ export function startStreaming(sessionId: string) {
   if (s.streaming) return;
   s.streaming = true;
   s.lastUsedAt = Date.now();
+  try {
+    broadcastStatus(sid, s, { workerStatus: 'idle' });
+  } catch {}
   const cfg = DEFAULT_BROWSER_CONFIG;
   const intervalMs = Math.max(50, Math.floor(1000 / Math.max(1, cfg.streamFps)));
   s.streamTimer = setInterval(async () => {
@@ -254,6 +286,20 @@ export function startStreaming(sessionId: string) {
       s.lastUsedAt = Date.now();
     } catch {}
   }, intervalMs);
+}
+
+export function stopStreaming(sessionId: string) {
+  const sid = String(sessionId || '').trim();
+  const s = sessions.get(sid);
+  if (!s) return;
+  s.streaming = false;
+  if (s.streamTimer) {
+    try { clearInterval(s.streamTimer); } catch {}
+    s.streamTimer = null;
+  }
+  try {
+    broadcastStatus(sid, s, { workerStatus: 'idle' });
+  } catch {}
 }
 
 export async function stopSession(sessionId: string) {

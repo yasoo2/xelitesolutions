@@ -129,6 +129,99 @@ export default function Joe() {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
+
+  const makeBrowserSessionId = useCallback(
+    (kind: 'agent' | 'chat') => {
+      const base = kind === 'agent' ? String(agentSelected || '').trim() : String(selected || '').trim();
+      if (base) return `browser:${base}`;
+      return `browser:${kind}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+    },
+    [agentSelected, selected],
+  );
+
+  useEffect(() => {
+    if (mode !== 'agent') return;
+    if (agentBrowserSessionId && agentBrowserSessionId.trim()) return;
+    setAgentBrowserSessionId(makeBrowserSessionId('agent'));
+  }, [mode, agentBrowserSessionId, makeBrowserSessionId]);
+
+  useEffect(() => {
+    if (mode !== 'agent') return;
+    const base = String(agentSelected || '').trim();
+    if (!base) return;
+    const desired = `browser:${base}`;
+    if (agentBrowserSessionId === desired) return;
+    setAgentBrowserSessionId(desired);
+  }, [mode, agentSelected, agentBrowserSessionId]);
+
+  const agentBrowserSessionRef = useRef<string>('');
+  useEffect(() => {
+    agentBrowserSessionRef.current = String(agentBrowserSessionId || '').trim();
+  }, [agentBrowserSessionId]);
+
+  useEffect(() => {
+    return () => {
+      const sid = String(agentBrowserSessionRef.current || '').trim();
+      if (!sid) return;
+      const token = (() => {
+        try {
+          return localStorage.getItem('token');
+        } catch {
+          return null;
+        }
+      })();
+      try {
+        void fetch(`${API}/api/browser/stop`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ sessionId: sid }),
+          keepalive: true,
+        });
+      } catch {}
+    };
+  }, [API]);
+
+  useEffect(() => {
+    const handler = async (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail || {};
+      const rawUrl = typeof detail?.url === 'string' ? detail.url : '';
+      const url = rawUrl.trim();
+      if (!url) return;
+
+      const sid =
+        mode === 'agent'
+          ? String(agentBrowserSessionId || '').trim() || makeBrowserSessionId('agent')
+          : String(activeBrowserSession?.sessionId || '').trim() || makeBrowserSessionId('chat');
+
+      if (mode === 'agent') {
+        if (agentBrowserSessionId !== sid) setAgentBrowserSessionId(sid);
+      } else {
+        setActiveBrowserSession({ sessionId: sid, wsUrl: '' });
+      }
+
+      try {
+        (window as any).__joeBrowserSession = { sessionId: sid };
+      } catch {}
+
+      const token = localStorage.getItem('token');
+      try {
+        await fetch(`${API}/tools/browser_open/execute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ sessionId: sid, url }),
+        });
+      } catch {}
+    };
+
+    window.addEventListener('joe:browser_open_request', handler as any);
+    return () => window.removeEventListener('joe:browser_open_request', handler as any);
+  }, [API, mode, agentBrowserSessionId, activeBrowserSession?.sessionId, makeBrowserSessionId]);
   
   // ===== نظام عرض سلسلة التفكير والحوار الداخلي =====
   const [thinkingChain, setThinkingChain] = useState<Array<{
@@ -949,7 +1042,7 @@ export default function Joe() {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
+              <div className="agent-browser-stream" style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
                 {agentBrowserSessionId ? (
                   <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading browser…</div>}>
                     <ModernBrowserStreamLazy sessionId={agentBrowserSessionId} />
