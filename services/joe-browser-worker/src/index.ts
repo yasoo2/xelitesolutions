@@ -24,6 +24,8 @@ type Session = {
   tabs: Array<{ id: string; page: Page; createdAt: number; title?: string; url?: string }>;
   activeTabId: string;
   siteKey?: string;
+  taskLockEnabled: boolean;
+  taskId?: string;
   viewport: { width: number; height: number };
   userAgent?: string;
   locale?: string;
@@ -295,6 +297,7 @@ async function createSession(opts: { viewport?: { width: number; height: number 
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
     locale: opts.locale,
+    taskLockEnabled: true,
     streamFps,
     streamQuality,
     redactionEnabled: true,
@@ -335,12 +338,19 @@ async function closeSession(id: string) {
 }
 
 // Action execution
-type Action =
+type ActionMeta = {
+  taskId?: string;
+  newTask?: boolean;
+  confidenceThreshold?: number;
+  requireConfidence?: boolean;
+};
+
+type ActionCore =
   | { type: 'goto', url: string, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle', allowCrossSite?: boolean }
   | { type: 'goBack' }
   | { type: 'goForward' }
   | { type: 'reload' }
-  | { type: 'type', text: string, delay?: number, sensitive?: boolean }
+  | { type: 'type', text: string, selector?: string, delay?: number, clear?: boolean, sensitive?: boolean }
   | { type: 'press', key: string }
   | { type: 'mouseMove', x: number, y: number, steps?: number }
   | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string, timeoutMs?: number, attempts?: number }
@@ -372,7 +382,10 @@ type Action =
   | { type: 'stream.setFps', fps: number }
   | { type: 'stream.setQuality', quality: number }
   | { type: 'redaction.set', enabled: boolean }
+  | { type: 'login.xelitesolutions', email: string, password: string, startUrl?: string }
   ;
+
+type Action = ActionMeta & ActionCore;
 
 type TextBox = { x: number; y: number; width: number; height: number; text?: string };
 
@@ -490,6 +503,10 @@ function sanitizeAction(session: Session, a: Action) {
   if (a.type === 'type') {
     return { ...a, text: `[redacted:${a.text.length}]` } as any;
   }
+  if (a.type === 'login.xelitesolutions') {
+    const pw = (a as any).password == null ? '' : String((a as any).password);
+    return { ...(a as any), password: `[redacted:${pw.length}]` } as any;
+  }
   if (a.type === 'searchGoogle' && a.sensitive) {
     const q = a.query == null ? '' : String(a.query);
     return { ...a, query: `[redacted:${q.length}]` } as any;
@@ -555,7 +572,7 @@ async function maybeNotifyCursorForLocator(session: Session, locator: any) {
   await session.page.mouse.move(x, y, { steps: 2 }).catch(() => {});
   notifySession(session, 'cursor_move', { x, y });
   await new Promise(r => setTimeout(r, 250));
-  return { x, y };
+  return { x, y, box };
 }
 
 async function clickLocatorWithCursor(session: Session, locator: any, options?: any) {
@@ -581,6 +598,7 @@ async function captureDebugShot(session: Session, meta: { stage: string; actionT
       url: session.page.url(),
       tabId: session.activeTabId,
     });
+    return href;
   } catch (e: any) {
     outputs.push({
       type: 'debug',
@@ -591,6 +609,7 @@ async function captureDebugShot(session: Session, meta: { stage: string; actionT
       url: session.page.url(),
       tabId: session.activeTabId,
     });
+    return null;
   }
 }
 
@@ -634,17 +653,23 @@ async function clickLocatorRobust(session: Session, locator: any, opts: { timeou
     } catch {}
 
     try {
-      await locator.click({ timeout: opts.timeoutMs });
-      return { ok: true, attempt: i + 1, method: 'locator.click' };
+      await clickLocatorWithCursor(session, locator, { timeout: opts.timeoutMs });
+      return { ok: true, attempt: i + 1, method: 'cursor.click' };
     } catch (e: any) {
       lastErr = e;
     }
 
-    try {
-      await clickLocatorWithCursor(session, locator, { timeout: 2200 });
-      return { ok: true, attempt: i + 1, method: 'cursor.click' };
-    } catch (e: any) {
-      lastErr = e;
+    const cov = await getElementCoverage(locator);
+    if (cov?.covered) {
+      outputs.push({
+        type: 'debug',
+        event: 'overlay_blocking_click',
+        attempt: i + 1,
+        blocker: cov.blocker,
+        url: session.page.url(),
+        tabId: session.activeTabId,
+        ...meta,
+      });
     }
 
     try {
@@ -652,8 +677,8 @@ async function clickLocatorRobust(session: Session, locator: any, opts: { timeou
     } catch {}
 
     try {
-      await locator.click({ timeout: 1800, force: true });
-      return { ok: true, attempt: i + 1, method: 'locator.click.force' };
+      await clickLocatorWithCursor(session, locator, { timeout: 2500 });
+      return { ok: true, attempt: i + 1, method: 'cursor.click.after_overlay' };
     } catch (e: any) {
       lastErr = e;
     }
@@ -685,7 +710,7 @@ async function clickLocatorRobust(session: Session, locator: any, opts: { timeou
   }
 
   const msg = String(lastErr?.message || lastErr || 'click_failed');
-  throw new Error(msg);
+  throw new ActionFailure('click_failed', { message: msg }, msg);
 }
 
 async function findClickableInFrames(session: Session, finder: (ctx: any) => any, maxFrames = 12) {
@@ -782,16 +807,214 @@ async function collectClickableCandidates(session: Session, max = 25) {
   }
 }
 
+class ActionFailure extends Error {
+  reason: string;
+  detail: any;
+  constructor(reason: string, detail?: any, message?: string) {
+    super(message || reason);
+    this.reason = reason;
+    this.detail = detail;
+  }
+}
+
+function normText(v: any) {
+  return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function tokenizeNeedle(s: string) {
+  const t = normText(s);
+  if (!t) return [];
+  return t.split(/[\s/|,;:.()\[\]{}"'+=_-]+/g).map(x => x.trim()).filter(Boolean).slice(0, 12);
+}
+
+function tokenPresenceScore(tokens: string[], haystack: string) {
+  if (!tokens.length) return 0;
+  const h = normText(haystack);
+  if (!h) return 0;
+  let hit = 0;
+  for (const tok of tokens) {
+    if (tok && h.includes(tok)) hit += 1;
+  }
+  return hit / Math.max(1, tokens.length);
+}
+
+async function smoothScrollBy(session: Session, dy: number, steps = 6) {
+  const n = Math.max(1, Math.min(14, Math.floor(steps)));
+  const step = dy / n;
+  for (let i = 0; i < n; i++) {
+    await session.page.evaluate((v: number) => window.scrollBy(0, v), step).catch(() => null);
+    await new Promise(r => setTimeout(r, 120));
+  }
+}
+
+async function getElementCoverage(locator: any) {
+  try {
+    const h = await locator.elementHandle().catch(() => null);
+    if (!h) return { ok: false, covered: false, blocker: null };
+    const res = await h.evaluate((el: any) => {
+      try {
+        const r = el.getBoundingClientRect?.();
+        if (!r || r.width < 2 || r.height < 2) return { ok: false, covered: false, blocker: null };
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const top = document.elementFromPoint(cx, cy) as any;
+        const covered = Boolean(top && top !== el && !(el.contains && el.contains(top)));
+        if (!covered) return { ok: true, covered: false, blocker: null };
+        const txt = String(top?.innerText || top?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        const ariaLabel = String(top?.getAttribute?.('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        const role = String(top?.getAttribute?.('role') || '').trim().slice(0, 60);
+        const s = top && top.nodeType === 1 ? window.getComputedStyle(top) : null;
+        const pos = s ? String(s.position || '') : '';
+        const z = s ? String(s.zIndex || '') : '';
+        return {
+          ok: true,
+          covered: true,
+          blocker: {
+            tag: String(top?.tagName || '').toLowerCase(),
+            id: String(top?.id || ''),
+            className: String(top?.className || '').slice(0, 160),
+            text: txt || undefined,
+            ariaLabel: ariaLabel || undefined,
+            role: role || undefined,
+            position: pos || undefined,
+            zIndex: z || undefined,
+          }
+        };
+      } catch {
+        return { ok: false, covered: false, blocker: null };
+      }
+    });
+    return res || { ok: false, covered: false, blocker: null };
+  } catch {
+    return { ok: false, covered: false, blocker: null };
+  }
+}
+
+async function computeTargetConfidence(session: Session, locator: any, expectedText: string) {
+  const tokens = tokenizeNeedle(expectedText);
+  try {
+    const h = await locator.elementHandle().catch(() => null);
+    if (!h) return { score: 0, tokens, diag: { elementHandle: false } };
+    const diag = await h.evaluate((el: any, tokens: string[]) => {
+      const safe = (v: any) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      const out: any = { elementHandle: true };
+      try {
+        const r = el.getBoundingClientRect?.();
+        out.box = r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+        const s = window.getComputedStyle(el);
+        out.visible = Boolean(r && r.width > 1 && r.height > 1 && s && s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity || '1') > 0);
+        out.enabled = !Boolean((el as any).disabled);
+        const vw = window.innerWidth || 0;
+        const vh = window.innerHeight || 0;
+        out.inViewport = Boolean(r && (!vw || !vh || (r.bottom >= 0 && r.right >= 0 && r.left <= vw && r.top <= vh)));
+        const cx = r ? (r.left + r.width / 2) : 0;
+        const cy = r ? (r.top + r.height / 2) : 0;
+        const top = (r && r.width > 1 && r.height > 1) ? (document.elementFromPoint(cx, cy) as any) : null;
+        out.covered = Boolean(top && top !== el && !(el.contains && el.contains(top)));
+        if (out.covered) {
+          out.blocker = {
+            tag: String(top?.tagName || '').toLowerCase(),
+            id: String(top?.id || ''),
+            className: safe(top?.className || ''),
+            text: safe(top?.innerText || top?.textContent || ''),
+            ariaLabel: safe(top?.getAttribute?.('aria-label') || ''),
+            role: safe(top?.getAttribute?.('role') || ''),
+          };
+        }
+        const texts: string[] = [];
+        texts.push(safe(el?.innerText || ''));
+        texts.push(safe(el?.textContent || ''));
+        texts.push(safe(el?.getAttribute?.('aria-label') || ''));
+        texts.push(safe(el?.getAttribute?.('placeholder') || ''));
+        out.textHaystack = texts.filter(Boolean).join(' | ');
+        let labelHay = '';
+        try {
+          const labs = (el as any).labels ? Array.from((el as any).labels as any) : [];
+          labelHay = labs.map((x: any) => safe(x?.innerText || x?.textContent || '')).filter(Boolean).join(' | ');
+        } catch {}
+        try {
+          const ids = safe(el?.getAttribute?.('aria-labelledby') || '');
+          if (ids) {
+            const parts = ids.split(/\s+/g).filter(Boolean);
+            const extra = parts.map((id: string) => document.getElementById(id)).filter(Boolean).map((n: any) => safe(n?.innerText || n?.textContent || '')).filter(Boolean).join(' | ');
+            if (extra) labelHay = labelHay ? `${labelHay} | ${extra}` : extra;
+          }
+        } catch {}
+        out.labelHaystack = labelHay || '';
+      } catch {
+        out.visible = false;
+        out.enabled = true;
+        out.inViewport = false;
+        out.covered = false;
+      }
+      return out;
+    }, tokens);
+
+    const textScore = tokenPresenceScore(tokens, String(diag?.textHaystack || ''));
+    const labelScore = tokenPresenceScore(tokens, String(diag?.labelHaystack || ''));
+    const stateScore =
+      (diag?.visible ? 0.28 : 0) +
+      (diag?.enabled ? 0.10 : 0) +
+      (diag?.inViewport ? 0.16 : 0) +
+      (!diag?.covered ? 0.20 : 0);
+    const matchScore =
+      (!tokens.length ? 0.18 : 0) +
+      (textScore >= 0.6 ? 0.24 : textScore >= 0.3 ? 0.14 : 0) +
+      (labelScore >= 0.6 ? 0.22 : labelScore >= 0.3 ? 0.12 : 0);
+    const score = Math.max(0, Math.min(1, stateScore + matchScore));
+    return { score, tokens, diag: { ...diag, textScore, labelScore } };
+  } catch (e: any) {
+    return { score: 0, tokens, diag: { error: String(e?.message || e) } };
+  }
+}
+
+function actionConfidenceThreshold(a: any) {
+  const raw = a && typeof a.confidenceThreshold === 'number' ? a.confidenceThreshold : undefined;
+  const env = Number(process.env.WORKER_CONFIDENCE_THRESHOLD || 0.75);
+  const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : env;
+  return Math.max(0.05, Math.min(0.98, v));
+}
+
+function shouldRequireConfidence(a: any) {
+  if (a && typeof a.requireConfidence === 'boolean') return a.requireConfidence;
+  if (!a || typeof a.type !== 'string') return false;
+  if (a.type === 'click' || a.type === 'clickText') return true;
+  if (a.type === 'type' && typeof a.selector === 'string' && a.selector.trim()) return true;
+  if (a.type === 'fillByLabel' || a.type === 'fillForm') return true;
+  return false;
+}
+
+function applyTaskLock(session: Session, a: any) {
+  if (!session.taskLockEnabled) return;
+  const taskId = typeof a?.taskId === 'string' ? a.taskId.trim() : '';
+  const newTask = Boolean(a?.newTask);
+  if (newTask) {
+    session.taskId = taskId || uuidv4();
+    notifySession(session, 'task', { taskId: session.taskId, locked: true });
+    return;
+  }
+  if (!session.taskId && taskId) {
+    session.taskId = taskId;
+    notifySession(session, 'task', { taskId: session.taskId, locked: true });
+    return;
+  }
+  if (session.taskId && taskId && taskId !== session.taskId) {
+    throw new ActionFailure('task_locked', { sessionTaskId: session.taskId, actionTaskId: taskId });
+  }
+}
+
 async function runActions(session: Session, actions: Action[]) {
   const outputs: any[] = [];
   const autoScreenshotsEnabled = process.env.WORKER_AUTO_SCREENSHOT !== '0' && process.env.WORKER_AUTO_SCREENSHOT !== 'false';
 
   for (const a of actions) {
+    const outputsStart = outputs.length;
     const now = Date.now();
     session.lastActiveAt = now;
     session.streamPauseUntil = now + 150;
     notifySession(session, 'action_start', { action: sanitizeAction(session, a) });
     try {
+      applyTaskLock(session, a);
       switch (a.type) {
         case 'goto': {
           const did = await safeGoto(
@@ -827,8 +1050,57 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'type': {
-          await session.page.keyboard.type(a.text, { delay: a.delay || 20 });
-          outputs.push({ type: 'type', text: a.text.length });
+          const raw = String(a.text ?? '');
+          const selector = typeof (a as any).selector === 'string' ? String((a as any).selector) : '';
+          const wantsSelector = Boolean(selector && selector.trim());
+          const shouldShot = wantsSelector || raw.length > 3;
+          if (shouldShot) await captureDebugShot(session, { stage: 'before_type', actionType: 'type', selector: selector || undefined }, outputs);
+
+          if (wantsSelector) {
+            const found = await findClickableInFrames(session, (ctx) => ctx.locator(selector), 16);
+            if (!found.locator) throw new ActionFailure('element_not_found', { selector, kind: 'type' }, 'selector_not_found');
+            const threshold = actionConfidenceThreshold(a);
+            if (shouldRequireConfidence(a)) {
+              const conf = await computeTargetConfidence(session, found.locator, '');
+              if (conf.score < threshold) {
+                await tryDismissOverlays(session).catch(() => null);
+                await found.locator.scrollIntoViewIfNeeded({ timeout: 2500 }).catch(() => null);
+                const conf2 = await computeTargetConfidence(session, found.locator, '');
+                if (conf2.score < threshold) {
+                  throw new ActionFailure('confidence_too_low', { threshold, confidence: conf2, selector }, 'confidence_too_low');
+                }
+              }
+            }
+            await clickLocatorWithCursor(session, found.locator, { timeout: 6000 });
+            await new Promise(r => setTimeout(r, 140));
+            if (Boolean((a as any).clear)) {
+              await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => null);
+              await session.page.keyboard.press('Backspace').catch(() => null);
+              await new Promise(r => setTimeout(r, 120));
+            }
+          }
+
+          await session.page.keyboard.type(raw, { delay: a.delay || 20 });
+
+          let verified: boolean | null = null;
+          if (wantsSelector) {
+            try {
+              const vLen = await session.page.locator(selector).first().evaluate((el: any) => {
+                try {
+                  const v = (el && 'value' in el) ? String((el as any).value || '') : '';
+                  return v.length;
+                } catch {
+                  return null;
+                }
+              });
+              verified = typeof vLen === 'number' ? (vLen >= raw.length) : null;
+            } catch {
+              verified = null;
+            }
+          }
+
+          outputs.push({ type: 'type', len: raw.length, selector: wantsSelector ? selector : undefined, verified });
+          if (shouldShot) await captureDebugShot(session, { stage: 'after_type', actionType: 'type', selector: selector || undefined }, outputs);
           break;
         }
         case 'press': {
@@ -851,20 +1123,52 @@ async function runActions(session: Session, actions: Action[]) {
           await captureDebugShot(session, { stage: 'before_click', actionType: 'click', selector: a.selector, role: a.role, roleName: a.roleName }, outputs);
           let used = '';
           let frameUrl = '';
+          let confidence: any = null;
           const timeoutMsRaw = typeof a.timeoutMs === 'number' && Number.isFinite(a.timeoutMs) ? a.timeoutMs : 8000;
           const attemptsRaw = typeof a.attempts === 'number' && Number.isFinite(a.attempts) ? a.attempts : 3;
           const timeoutMs = Math.max(2000, Math.min(20000, Math.floor(timeoutMsRaw)));
           const attempts = Math.max(1, Math.min(6, Math.floor(attemptsRaw)));
-          if (a.selector) {
-            const found = await findClickableInFrames(session, (ctx) => ctx.locator(a.selector), 16);
-            if (!found.locator) throw new Error('selector_not_found');
+          if (a.selector || a.roleName) {
+            const strategies: Array<{ name: string; run: () => Promise<{ locator: any; frameUrl: string }> }> = [];
+            if (a.selector) {
+              strategies.push({ name: 'selector', run: async () => findClickableInFrames(session, (ctx) => ctx.locator(a.selector as string), 16) });
+            }
+            if (a.roleName && a.role) {
+              strategies.push({ name: 'role', run: async () => findClickableInFrames(session, (ctx) => ctx.getByRole(a.role as any, { name: a.roleName as string }), 16) });
+            }
+            if (a.roleName && !a.role) {
+              const n = a.roleName;
+              strategies.push({ name: 'button_name', run: async () => findClickableInFrames(session, (ctx) => ctx.getByRole('button', { name: n as any }), 16) });
+              strategies.push({ name: 'link_name', run: async () => findClickableInFrames(session, (ctx) => ctx.getByRole('link', { name: n as any }), 16) });
+              strategies.push({ name: 'text', run: async () => findClickableInFrames(session, (ctx) => ctx.getByText(n as any), 16) });
+            }
+
+            let found: any = null;
+            for (const s of strategies) {
+              const res = await s.run().catch(() => ({ locator: null, frameUrl: '' }));
+              if (res?.locator) { found = res; break; }
+            }
+            if (!found?.locator) throw new ActionFailure('element_not_found', { selector: a.selector, role: a.role, roleName: a.roleName }, 'element_not_found');
             frameUrl = found.frameUrl;
-            const res = await clickLocatorRobust(session, found.locator, { timeoutMs, attempts }, outputs, meta);
-            used = res.method;
-          } else if (a.roleName && a.role) {
-            const found = await findClickableInFrames(session, (ctx) => ctx.getByRole(a.role as any, { name: a.roleName }), 16);
-            if (!found.locator) throw new Error('role_not_found');
-            frameUrl = found.frameUrl;
+
+            if (shouldRequireConfidence(a)) {
+              const threshold = actionConfidenceThreshold(a);
+              const expectedText = String(a.roleName || '');
+              let conf = await computeTargetConfidence(session, found.locator, expectedText);
+              outputs.push({ type: 'debug', event: 'confidence', actionType: 'click', score: conf.score, threshold, expectedText, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, ...meta });
+              if (conf.score < threshold) {
+                await tryDismissOverlays(session).catch(() => null);
+                if (!conf?.diag?.inViewport) {
+                  await smoothScrollBy(session, Math.round((session.viewport?.height || 800) * 0.7), 8).catch(() => null);
+                }
+                await found.locator.scrollIntoViewIfNeeded({ timeout: 2500 }).catch(() => null);
+                conf = await computeTargetConfidence(session, found.locator, expectedText);
+                outputs.push({ type: 'debug', event: 'confidence', actionType: 'click', score: conf.score, threshold, expectedText, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, ...meta, retry: true });
+                if (conf.score < threshold) throw new ActionFailure('confidence_too_low', { threshold, confidence: conf, expectedText, ...meta });
+              }
+              confidence = { score: conf.score, threshold, tokens: conf.tokens, diag: conf.diag };
+            }
+
             const res = await clickLocatorRobust(session, found.locator, { timeoutMs, attempts }, outputs, meta);
             used = res.method;
           } else if (typeof a.x === 'number' && typeof a.y === 'number') {
@@ -876,7 +1180,7 @@ async function runActions(session: Session, actions: Action[]) {
             notifySession(session, 'cursor_click', { x: a.x, y: a.y });
             used = 'mouse.click';
           }
-          outputs.push({ type: 'click', used, frameUrl, url: session.page.url(), tabId: session.activeTabId, ...meta });
+          outputs.push({ type: 'click', used, frameUrl, confidence, url: session.page.url(), tabId: session.activeTabId, ...meta });
           await captureDebugShot(session, { stage: 'after_click', actionType: 'click', selector: a.selector, role: a.role, roleName: a.roleName }, outputs);
           break;
         }
@@ -884,7 +1188,7 @@ async function runActions(session: Session, actions: Action[]) {
           const meta = { text: a.text, exact: Boolean(a.exact) };
           await captureDebugShot(session, { stage: 'before_click', actionType: 'clickText', text: a.text }, outputs);
           const needle = String(a.text ?? '').trim();
-          if (!needle) throw new Error('text_not_found');
+          if (!needle) throw new ActionFailure('element_not_found', { text: needle, exact: Boolean(a.exact) }, 'text_not_found');
           const rx = a.exact ? new RegExp(`^\\s*${escapeRegExp(needle)}\\s*$`, 'i') : new RegExp(escapeRegExp(needle), 'i');
 
           const candidates = await collectClickableCandidates(session, 25);
@@ -900,11 +1204,90 @@ async function runActions(session: Session, actions: Action[]) {
             });
           }
 
-          let found = await findClickableInFrames(session, (ctx) => ctx.getByRole('button', { name: rx, exact: false }), 16);
-          if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByRole('link', { name: rx, exact: false }), 16);
-          if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByText(rx as any), 16);
-          if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByText(needle, { exact: a.exact ?? false }), 16);
-          if (!found.locator) throw new Error('text_not_found');
+          const disambiguation = await session.page.evaluate(({ needle, exact }: { needle: string; exact: boolean }) => {
+            function norm(t: string) { return String(t || '').replace(/\s+/g, ' ').trim(); }
+            function isVisible(el: Element) {
+              const r = (el as HTMLElement).getBoundingClientRect?.();
+              if (!r || r.width < 2 || r.height < 2) return false;
+              const s = window.getComputedStyle(el as HTMLElement);
+              if (!s || s.visibility === 'hidden' || s.display === 'none' || Number(s.opacity || '1') === 0) return false;
+              if (r.bottom < 0 || r.right < 0 || r.top > (window.innerHeight || 0) || r.left > (window.innerWidth || 0)) return false;
+              return true;
+            }
+            function cssPath(el: Element) {
+              const id = (el as HTMLElement).id;
+              if (id) return `#${CSS.escape(id)}`;
+              const parts: string[] = [];
+              let cur: Element | null = el;
+              while (cur && cur.nodeType === 1 && cur !== document.documentElement) {
+                const tag = cur.tagName.toLowerCase();
+                let part = tag;
+                const parent = cur.parentElement as Element | null;
+                if (parent) {
+                  const siblings = Array.from(parent.children as any as Element[]).filter((c: any) => (c as Element).tagName === (cur as Element).tagName);
+                  if (siblings.length > 1) {
+                    const index = siblings.indexOf(cur as any) + 1;
+                    part = `${tag}:nth-of-type(${index})`;
+                  }
+                }
+                parts.unshift(part);
+                cur = parent;
+              }
+              return parts.join(' > ');
+            }
+            const nNeedle = norm(needle).toLowerCase();
+            const sel = 'button,a,[role="button"],input[type="button"],input[type="submit"]';
+            const els = Array.from(document.querySelectorAll(sel)).slice(0, 500);
+            const out: any[] = [];
+            for (const el of els) {
+              if (!isVisible(el)) continue;
+              const text = norm((el as any).innerText || (el as any).textContent || (el as any).value || '');
+              const ariaLabel = norm((el as any).getAttribute?.('aria-label') || '');
+              const hay = (text || ariaLabel).toLowerCase();
+              if (!hay) continue;
+              const ok = exact ? (hay === nNeedle) : hay.includes(nNeedle);
+              if (!ok) continue;
+              const r = (el as HTMLElement).getBoundingClientRect();
+              out.push({
+                text: text || undefined,
+                ariaLabel: ariaLabel || undefined,
+                tag: (el as HTMLElement).tagName.toLowerCase(),
+                role: norm((el as any).getAttribute?.('role') || '') || undefined,
+                selector: cssPath(el),
+                boundingBox: { x: r.x, y: r.y, width: r.width, height: r.height },
+              });
+              if (out.length >= 4) break;
+            }
+            return out;
+          }, { needle, exact: Boolean(a.exact) }).catch(() => [] as any[]);
+
+          if (Array.isArray(disambiguation) && disambiguation.length > 1) {
+            throw new ActionFailure('need_user_disambiguation', { text: needle, exact: Boolean(a.exact), candidates: disambiguation });
+          }
+
+          let found: any = { locator: null, frameUrl: '' };
+          for (let s = 0; s < 3; s++) {
+            found = await findClickableInFrames(session, (ctx) => ctx.getByRole('button', { name: rx, exact: false }), 16);
+            if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByRole('link', { name: rx, exact: false }), 16);
+            if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByText(rx as any), 16);
+            if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByText(needle, { exact: a.exact ?? false }), 16);
+            if (found.locator) break;
+            await smoothScrollBy(session, Math.round((session.viewport?.height || 800) * 0.75), 9).catch(() => null);
+          }
+          if (!found.locator) throw new ActionFailure('element_not_found', { text: needle, exact: Boolean(a.exact) }, 'text_not_found');
+
+          if (shouldRequireConfidence(a)) {
+            const threshold = actionConfidenceThreshold(a);
+            let conf = await computeTargetConfidence(session, found.locator, needle);
+            outputs.push({ type: 'debug', event: 'confidence', actionType: 'clickText', score: conf.score, threshold, expectedText: needle, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, ...meta });
+            if (conf.score < threshold) {
+              await tryDismissOverlays(session).catch(() => null);
+              await found.locator.scrollIntoViewIfNeeded({ timeout: 2500 }).catch(() => null);
+              conf = await computeTargetConfidence(session, found.locator, needle);
+              outputs.push({ type: 'debug', event: 'confidence', actionType: 'clickText', score: conf.score, threshold, expectedText: needle, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, ...meta, retry: true });
+              if (conf.score < threshold) throw new ActionFailure('confidence_too_low', { threshold, confidence: conf, expectedText: needle, ...meta });
+            }
+          }
           const timeoutMsRaw = typeof a.timeoutMs === 'number' && Number.isFinite(a.timeoutMs) ? a.timeoutMs : 9000;
           const attemptsRaw = typeof a.attempts === 'number' && Number.isFinite(a.attempts) ? a.attempts : 3;
           const timeoutMs = Math.max(2000, Math.min(25000, Math.floor(timeoutMsRaw)));
@@ -1019,43 +1402,42 @@ async function runActions(session: Session, actions: Action[]) {
         }
         case 'fillForm': {
           for (const f of a.fields) {
-            try {
-              let loc = null;
-              if (f.selector) loc = session.page.locator(f.selector).first();
-              else if (f.label) loc = session.page.getByLabel(f.label).first();
-              
-              if (loc) {
-                const pt = await maybeNotifyCursorForLocator(session, loc);
-                if (pt) notifySession(session, 'cursor_click', { x: pt.x, y: pt.y });
+            let loc: any = null;
+            const expectedText = String(f.label || '');
+            if (f.selector) loc = session.page.locator(f.selector).first();
+            else if (f.label) loc = session.page.getByLabel(f.label).first();
+            if (!loc) continue;
+
+            await loc.waitFor({ state: 'visible', timeout: 8000 }).catch(() => null);
+            if (shouldRequireConfidence(a)) {
+              const threshold = actionConfidenceThreshold(a);
+              let conf = await computeTargetConfidence(session, loc, expectedText);
+              outputs.push({ type: 'debug', event: 'confidence', actionType: 'fillForm', score: conf.score, threshold, expectedText, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, selector: f.selector, label: f.label });
+              if (conf.score < threshold) {
+                await tryDismissOverlays(session).catch(() => null);
+                await loc.scrollIntoViewIfNeeded({ timeout: 2500 }).catch(() => null);
+                conf = await computeTargetConfidence(session, loc, expectedText);
+                outputs.push({ type: 'debug', event: 'confidence', actionType: 'fillForm', score: conf.score, threshold, expectedText, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, selector: f.selector, label: f.label, retry: true });
+                if (conf.score < threshold) throw new ActionFailure('confidence_too_low', { threshold, confidence: conf, expectedText, selector: f.selector, label: f.label });
               }
+            }
+
+            try {
+              const pt = await maybeNotifyCursorForLocator(session, loc);
+              if (pt) notifySession(session, 'cursor_click', { x: pt.x, y: pt.y });
             } catch {}
 
-            if (f.selector) {
-              if (f.kind === 'file') {
-                // file handled via uploadFile
-              } else {
-                const v = String(f.value ?? '');
-                if (f.kind === 'checkbox') {
-                  if (f.value === false || f.value === 'false' || f.value === 0 || f.value === '0') await session.page.locator(f.selector).first().uncheck();
-                  else await session.page.locator(f.selector).first().check();
-                } else if (f.kind === 'radio') {
-                  await session.page.locator(f.selector).first().check();
-                } else if (f.kind === 'select') {
-                  await session.page.locator(f.selector).first().selectOption(v);
-                } else {
-                  await session.page.fill(f.selector, v);
-                }
-              }
-            } else if (f.label) {
-              const locator = session.page.getByLabel(f.label);
-              const v = String(f.value ?? '');
-              if (f.kind === 'checkbox') {
-                if (f.value === false || f.value === 'false' || f.value === 0 || f.value === '0') await locator.uncheck();
-                else await locator.check();
-              }
-              else if (f.kind === 'radio') await locator.check();
-              else if (f.kind === 'select') await locator.selectOption(v);
-              else await locator.fill(v);
+            const v = String(f.value ?? '');
+            if (f.kind === 'file') {
+            } else if (f.kind === 'checkbox') {
+              if (f.value === false || f.value === 'false' || f.value === 0 || f.value === '0') await loc.uncheck();
+              else await loc.check();
+            } else if (f.kind === 'radio') {
+              await loc.check();
+            } else if (f.kind === 'select') {
+              await loc.selectOption(v);
+            } else {
+              await loc.fill(v);
             }
           }
           outputs.push({ type: 'fillForm', count: a.fields.length });
@@ -1064,6 +1446,18 @@ async function runActions(session: Session, actions: Action[]) {
         case 'fillByLabel': {
           const locator = session.page.getByLabel(a.label).first();
           await locator.waitFor({ state: 'visible', timeout: 8000 });
+          if (shouldRequireConfidence(a)) {
+            const threshold = actionConfidenceThreshold(a);
+            let conf = await computeTargetConfidence(session, locator, String(a.label || ''));
+            outputs.push({ type: 'debug', event: 'confidence', actionType: 'fillByLabel', score: conf.score, threshold, expectedText: String(a.label || ''), diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, label: a.label });
+            if (conf.score < threshold) {
+              await tryDismissOverlays(session).catch(() => null);
+              await locator.scrollIntoViewIfNeeded({ timeout: 2500 }).catch(() => null);
+              conf = await computeTargetConfidence(session, locator, String(a.label || ''));
+              outputs.push({ type: 'debug', event: 'confidence', actionType: 'fillByLabel', score: conf.score, threshold, expectedText: String(a.label || ''), diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, label: a.label, retry: true });
+              if (conf.score < threshold) throw new ActionFailure('confidence_too_low', { threshold, confidence: conf, expectedText: String(a.label || ''), label: a.label });
+            }
+          }
           const pt = await maybeNotifyCursorForLocator(session, locator);
           if (pt) notifySession(session, 'cursor_click', { x: pt.x, y: pt.y });
           const v = String(a.value ?? '');
@@ -1258,6 +1652,248 @@ async function runActions(session: Session, actions: Action[]) {
           notifySession(session, 'redaction', { enabled: session.redactionEnabled });
           break;
         }
+        case 'login.xelitesolutions': {
+          const email = String((a as any).email ?? '').trim();
+          const password = String((a as any).password ?? '');
+          if (!email) throw new ActionFailure('input_required', { field: 'email' }, 'email_required');
+          if (!password) throw new ActionFailure('input_required', { field: 'password' }, 'password_required');
+
+          const baseUrlRaw = String((a as any).startUrl ?? 'https://xelitesolutions.com').trim() || 'https://xelitesolutions.com';
+          const baseUrl = /^https?:\/\//i.test(baseUrlRaw) ? baseUrlRaw : `https://${baseUrlRaw}`;
+
+          await captureDebugShot(session, { stage: 'login_start', actionType: 'login.xelitesolutions' }, outputs);
+
+          const did = await safeGoto(session, session.page, baseUrl, { waitUntil: 'domcontentloaded' }, outputs);
+          if (!did) throw new ActionFailure('navigation_blocked_same_site', { url: baseUrl }, 'goto_blocked');
+          await session.page.waitForLoadState('domcontentloaded').catch(() => null);
+          await tryDismissOverlays(session).catch(() => null);
+          await captureDebugShot(session, { stage: 'home_loaded', actionType: 'login.xelitesolutions' }, outputs);
+
+          const loginUrl = new URL('/login', baseUrl).toString();
+          const goLogin = async () => {
+            const didLogin = await safeGoto(session, session.page, loginUrl, { waitUntil: 'domcontentloaded' }, outputs);
+            if (!didLogin) throw new ActionFailure('navigation_blocked_same_site', { url: loginUrl }, 'goto_blocked');
+            await session.page.waitForLoadState('domcontentloaded').catch(() => null);
+          };
+
+          let reachedLogin = false;
+          try {
+            await goLogin();
+            reachedLogin = true;
+          } catch {}
+
+          if (!reachedLogin) {
+            const startNowTexts = ['Start Now', 'ابدأ الآن', 'ابدأ الان', 'ابدأ'];
+            let clicked = false;
+            for (const txt of startNowTexts) {
+              try {
+                const timeoutMs = 9000;
+                const attempts = 3;
+                const needle = txt;
+                const rx = new RegExp(escapeRegExp(needle), 'i');
+
+                const disambiguation = await session.page.evaluate(({ needle }: { needle: string }) => {
+                  function norm(t: string) { return String(t || '').replace(/\s+/g, ' ').trim(); }
+                  function isVisible(el: Element) {
+                    const r = (el as HTMLElement).getBoundingClientRect?.();
+                    if (!r || r.width < 2 || r.height < 2) return false;
+                    const s = window.getComputedStyle(el as HTMLElement);
+                    if (!s || s.visibility === 'hidden' || s.display === 'none' || Number(s.opacity || '1') === 0) return false;
+                    if (r.bottom < 0 || r.right < 0 || r.top > (window.innerHeight || 0) || r.left > (window.innerWidth || 0)) return false;
+                    return true;
+                  }
+                  function cssPath(el: Element) {
+                    const id = (el as HTMLElement).id;
+                    if (id) return `#${CSS.escape(id)}`;
+                    const parts: string[] = [];
+                    let cur: Element | null = el;
+                    while (cur && cur.nodeType === 1 && cur !== document.documentElement) {
+                      const tag = cur.tagName.toLowerCase();
+                      let part = tag;
+                      const parent = cur.parentElement as Element | null;
+                      if (parent) {
+                        const siblings = Array.from(parent.children as any as Element[]).filter((c: any) => (c as Element).tagName === (cur as Element).tagName);
+                        if (siblings.length > 1) {
+                          const index = siblings.indexOf(cur as any) + 1;
+                          part = `${tag}:nth-of-type(${index})`;
+                        }
+                      }
+                      parts.unshift(part);
+                      cur = parent;
+                    }
+                    return parts.join(' > ');
+                  }
+                  const nNeedle = norm(needle).toLowerCase();
+                  const sel = 'button,a,[role=\"button\"],input[type=\"button\"],input[type=\"submit\"]';
+                  const els = Array.from(document.querySelectorAll(sel)).slice(0, 700);
+                  const out: any[] = [];
+                  for (const el of els) {
+                    if (!isVisible(el)) continue;
+                    const text = norm((el as any).innerText || (el as any).textContent || (el as any).value || '');
+                    const ariaLabel = norm((el as any).getAttribute?.('aria-label') || '');
+                    const hay = (text || ariaLabel).toLowerCase();
+                    if (!hay) continue;
+                    if (!hay.includes(nNeedle)) continue;
+                    const r = (el as HTMLElement).getBoundingClientRect();
+                    out.push({
+                      text: text || undefined,
+                      ariaLabel: ariaLabel || undefined,
+                      tag: (el as HTMLElement).tagName.toLowerCase(),
+                      role: norm((el as any).getAttribute?.('role') || '') || undefined,
+                      selector: cssPath(el),
+                      boundingBox: { x: r.x, y: r.y, width: r.width, height: r.height },
+                    });
+                    if (out.length >= 4) break;
+                  }
+                  return out;
+                }, { needle }).catch(() => [] as any[]);
+
+                if (Array.isArray(disambiguation) && disambiguation.length > 1) {
+                  throw new ActionFailure('need_user_disambiguation', { text: needle, candidates: disambiguation, stage: 'start_now' });
+                }
+
+                let found: any = { locator: null, frameUrl: '' };
+                for (let s = 0; s < 3; s++) {
+                  found = await findClickableInFrames(session, (ctx) => ctx.getByRole('button', { name: rx as any, exact: false }), 16);
+                  if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByRole('link', { name: rx as any, exact: false }), 16);
+                  if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByText(rx as any), 16);
+                  if (found.locator) break;
+                  await smoothScrollBy(session, Math.round((session.viewport?.height || 800) * 0.75), 9).catch(() => null);
+                }
+                if (!found.locator) continue;
+
+                const threshold = actionConfidenceThreshold(a);
+                let conf = await computeTargetConfidence(session, found.locator, needle);
+                outputs.push({ type: 'debug', event: 'confidence', actionType: 'login.xelitesolutions', step: 'start_now', score: conf.score, threshold, expectedText: needle, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId });
+                if (conf.score < threshold) {
+                  await tryDismissOverlays(session).catch(() => null);
+                  await found.locator.scrollIntoViewIfNeeded({ timeout: 2500 }).catch(() => null);
+                  conf = await computeTargetConfidence(session, found.locator, needle);
+                  outputs.push({ type: 'debug', event: 'confidence', actionType: 'login.xelitesolutions', step: 'start_now', score: conf.score, threshold, expectedText: needle, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId, retry: true });
+                  if (conf.score < threshold) throw new ActionFailure('confidence_too_low', { threshold, confidence: conf, expectedText: needle, step: 'start_now' });
+                }
+
+                await clickLocatorRobust(session, found.locator, { timeoutMs, attempts }, outputs, { text: needle });
+                clicked = true;
+                break;
+              } catch (e) {
+                if (e instanceof ActionFailure && e.reason === 'need_user_disambiguation') throw e;
+              }
+            }
+
+            if (!clicked) throw new ActionFailure('element_not_found', { text: 'Start Now', step: 'start_now' }, 'start_now_not_found');
+            await session.page.waitForLoadState('domcontentloaded').catch(() => null);
+            await captureDebugShot(session, { stage: 'after_start_now', actionType: 'login.xelitesolutions' }, outputs);
+          }
+
+          const emailSelectors = [
+            'input[type="email"]',
+            'input[name="email"]',
+            'input#email',
+            'input[placeholder*="Email" i]',
+            'input[autocomplete="email"]',
+          ];
+          const passSelectors = [
+            'input[type="password"]',
+            'input[name="password"]',
+            'input#password',
+            'input[autocomplete="current-password"]',
+          ];
+          const findFirst = async (sels: string[]) => {
+            for (const sel of sels) {
+              const found = await findClickableInFrames(session, (ctx) => ctx.locator(sel), 16);
+              if (found.locator) return { ...found, selector: sel };
+            }
+            return { locator: null, frameUrl: '', selector: '' };
+          };
+
+          const emailLoc = await findFirst(emailSelectors);
+          if (!emailLoc.locator) {
+            const byLabel = await findClickableInFrames(session, (ctx) => ctx.getByLabel(/email/i), 16);
+            if (byLabel.locator) Object.assign(emailLoc, { locator: byLabel.locator, frameUrl: byLabel.frameUrl, selector: 'label:/email/i' });
+          }
+          if (!emailLoc.locator) throw new ActionFailure('element_not_found', { step: 'email' }, 'email_input_not_found');
+
+          const threshold = actionConfidenceThreshold(a);
+          let confEmail = await computeTargetConfidence(session, emailLoc.locator, 'email');
+          outputs.push({ type: 'debug', event: 'confidence', actionType: 'login.xelitesolutions', step: 'email', score: confEmail.score, threshold, expectedText: 'email', diag: confEmail.diag, url: session.page.url(), tabId: session.activeTabId });
+          if (confEmail.score < threshold) throw new ActionFailure('confidence_too_low', { threshold, confidence: confEmail, expectedText: 'email', step: 'email' });
+
+          await clickLocatorWithCursor(session, emailLoc.locator, { timeout: 6000 });
+          await new Promise(r => setTimeout(r, 160));
+          await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => null);
+          await session.page.keyboard.press('Backspace').catch(() => null);
+          await new Promise(r => setTimeout(r, 140));
+          await session.page.keyboard.type(email, { delay: 25 });
+          const emailVerifiedLen = await emailLoc.locator.evaluate((el: any) => {
+            try { return String((el as any).value || '').length; } catch { return null; }
+          }).catch(() => null);
+          outputs.push({ type: 'login_step', step: 'email', verified: typeof emailVerifiedLen === 'number' ? emailVerifiedLen >= email.length : null });
+          await captureDebugShot(session, { stage: 'email_filled', actionType: 'login.xelitesolutions' }, outputs);
+
+          const passLoc = await findFirst(passSelectors);
+          if (!passLoc.locator) {
+            const byLabel = await findClickableInFrames(session, (ctx) => ctx.getByLabel(/password/i), 16);
+            if (byLabel.locator) Object.assign(passLoc, { locator: byLabel.locator, frameUrl: byLabel.frameUrl, selector: 'label:/password/i' });
+          }
+          if (!passLoc.locator) throw new ActionFailure('element_not_found', { step: 'password' }, 'password_input_not_found');
+
+          let confPass = await computeTargetConfidence(session, passLoc.locator, 'password');
+          outputs.push({ type: 'debug', event: 'confidence', actionType: 'login.xelitesolutions', step: 'password', score: confPass.score, threshold, expectedText: 'password', diag: confPass.diag, url: session.page.url(), tabId: session.activeTabId });
+          if (confPass.score < threshold) throw new ActionFailure('confidence_too_low', { threshold, confidence: confPass, expectedText: 'password', step: 'password' });
+
+          await clickLocatorWithCursor(session, passLoc.locator, { timeout: 6000 });
+          await new Promise(r => setTimeout(r, 160));
+          await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => null);
+          await session.page.keyboard.press('Backspace').catch(() => null);
+          await new Promise(r => setTimeout(r, 140));
+          await session.page.keyboard.type(password, { delay: 22 });
+          outputs.push({ type: 'login_step', step: 'password', verified: null });
+          await captureDebugShot(session, { stage: 'password_filled', actionType: 'login.xelitesolutions' }, outputs);
+
+          const loginTexts = ['Login', 'Log in', 'Sign in', 'تسجيل الدخول', 'دخول'];
+          let loginClicked = false;
+          for (const txt of loginTexts) {
+            try {
+              const rx = new RegExp(escapeRegExp(txt), 'i');
+              let found = await findClickableInFrames(session, (ctx) => ctx.getByRole('button', { name: rx as any, exact: false }), 16);
+              if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByRole('link', { name: rx as any, exact: false }), 16);
+              if (!found.locator) continue;
+              let conf = await computeTargetConfidence(session, found.locator, txt);
+              outputs.push({ type: 'debug', event: 'confidence', actionType: 'login.xelitesolutions', step: 'login_click', score: conf.score, threshold, expectedText: txt, diag: conf.diag, url: session.page.url(), tabId: session.activeTabId });
+              if (conf.score < threshold) continue;
+              await clickLocatorRobust(session, found.locator, { timeoutMs: 12000, attempts: 3 }, outputs, { text: txt });
+              loginClicked = true;
+              break;
+            } catch (e) {
+              if (e instanceof ActionFailure && e.reason === 'need_user_disambiguation') throw e;
+            }
+          }
+          if (!loginClicked) {
+            const anySubmit = await findClickableInFrames(session, (ctx) => ctx.locator('button[type="submit"], input[type="submit"]').first(), 16);
+            if (!anySubmit.locator) throw new ActionFailure('element_not_found', { step: 'login_button' }, 'login_button_not_found');
+            await clickLocatorRobust(session, anySubmit.locator, { timeoutMs: 12000, attempts: 3 }, outputs, { selector: 'button[type=submit]' });
+          }
+
+          await session.page.waitForLoadState('domcontentloaded').catch(() => null);
+          await new Promise(r => setTimeout(r, 500));
+          await captureDebugShot(session, { stage: 'after_login_click', actionType: 'login.xelitesolutions' }, outputs);
+
+          const finalUrl = session.page.url();
+          const success = await session.page.evaluate(() => {
+            const t = (document.body?.innerText || '').toLowerCase();
+            if (t.includes('dashboard')) return true;
+            if (t.includes('logout') || t.includes('log out')) return true;
+            if (t.includes('welcome')) return true;
+            return false;
+          }).catch(() => null);
+
+          outputs.push({ type: 'login.xelitesolutions', ok: Boolean(success), url: finalUrl });
+          if (!success) {
+            throw new ActionFailure('login_not_confirmed', { url: finalUrl }, 'login_not_confirmed');
+          }
+          break;
+        }
       }
 
       if (autoScreenshotsEnabled) {
@@ -1265,6 +1901,8 @@ async function runActions(session: Session, actions: Action[]) {
           a.type === 'goto' ||
           a.type === 'click' ||
           a.type === 'clickText' ||
+          (a.type === 'type' && (Boolean((a as any).selector) || String((a as any).text || '').length > 3)) ||
+          a.type === 'login.xelitesolutions' ||
           a.type === 'fillForm' ||
           a.type === 'fillByLabel' ||
           a.type === 'searchGoogle' ||
@@ -1295,14 +1933,38 @@ async function runActions(session: Session, actions: Action[]) {
         );
       } else if (a.type === 'clickText') {
         await captureDebugShot(session, { stage: 'click_error', actionType: 'clickText', text: a.text }, outputs);
+      } else if (a.type === 'type') {
+        await captureDebugShot(session, { stage: 'type_error', actionType: 'type', selector: (a as any).selector }, outputs);
+      } else if (a.type === 'fillByLabel') {
+        await captureDebugShot(session, { stage: 'fill_error', actionType: 'fillByLabel', text: String((a as any).label || '') }, outputs);
       }
-      logger.warn({ action: a, error: err.message }, 'action_failed');
+      const message = String(err?.message || err || 'action_failed');
+      const reasonFromErr = (err && typeof err === 'object' && 'reason' in err) ? String((err as any).reason || '') : '';
+      const detailFromErr = (err && typeof err === 'object' && 'detail' in err) ? (err as any).detail : undefined;
+      const actionOutputs = outputs.slice(outputsStart);
+      const screenshots = actionOutputs.filter((o: any) => o && o.type === 'screenshot' && o.href).map((o: any) => o.href);
+      const overlay = actionOutputs.find((o: any) => o && o.type === 'debug' && o.event === 'overlay_blocking_click');
+      let reason = reasonFromErr || '';
+      if (!reason) {
+        if (message === 'selector_not_found' || message === 'role_not_found' || message === 'text_not_found') reason = 'element_not_found';
+        else if (message === 'confidence_too_low') reason = 'confidence_too_low';
+        else if (message === 'click_failed') reason = 'click_failed';
+        else if (/timeout/i.test(message)) reason = 'timeout_waiting_for_selector';
+        else reason = 'action_failed';
+      }
+      if (overlay && (reason === 'click_failed' || reason === 'action_failed')) reason = 'overlay_blocking_click';
+      const detail = detailFromErr != null ? detailFromErr : { message };
+
+      logger.warn({ action: sanitizeAction(session, a), reason, message }, 'action_failed');
       session.streamPauseUntil = Date.now() + 250;
-      notifySession(session, 'action_error', { type: a.type, error: err.message });
+      notifySession(session, 'action_error', { type: a.type, error: message, reason, detail, screenshots, url: session.page.url(), tabId: session.activeTabId });
       outputs.push({
         type: 'error',
         action: a.type,
-        message: err.message,
+        reason,
+        message,
+        detail,
+        screenshots,
         url: session.page.url(),
         tabId: session.activeTabId,
         actionInput: sanitizeAction(session, a),

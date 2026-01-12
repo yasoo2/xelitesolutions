@@ -716,6 +716,17 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             if (msg.type === 'url' && typeof msg.url === 'string') {
               if (!msg.tabId || String(msg.tabId) === String(activeTabIdRef.current)) setAddress(msg.url);
             }
+            if (msg.type === 'goto_blocked') {
+              const r = typeof msg.reason === 'string' ? msg.reason : 'blocked';
+              const u = typeof msg.url === 'string' ? msg.url : '';
+              const text = u ? `Navigation blocked (${r})` : `Navigation blocked (${r})`;
+              setOverlay(text);
+              setTimeout(() => setOverlay(''), 1800);
+              if (timelineEnabled && !replayMode) {
+                const now = Date.now();
+                setTimelineEvents(prev => [...prev, { ts: now, kind: 'error' as const, text }].slice(-MAX_TIMELINE_EVENTS));
+              }
+            }
 
             if (msg.type === 'download' && msg.download) {
               const d = msg.download;
@@ -825,11 +836,13 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               setTimeout(() => setOverlay(''), 500);
             }
             if (msg.type === 'action_error') {
-              setOverlay(String(msg.error || 'Action error'));
+              const r = typeof msg.reason === 'string' && msg.reason ? `${msg.reason}: ` : '';
+              const e = String(msg.error || 'Action error');
+              setOverlay(`${r}${e}`);
               setTimeout(() => setOverlay(''), 1500);
               if (timelineEnabled && !replayMode) {
                 const now = Date.now();
-                setTimelineEvents(prev => [...prev, { ts: now, kind: 'error' as const, text: String(msg.error || 'Action error') }].slice(-MAX_TIMELINE_EVENTS));
+                setTimelineEvents(prev => [...prev, { ts: now, kind: 'error' as const, text: `${r}${e}` }].slice(-MAX_TIMELINE_EVENTS));
               }
             }
             if (msg.type === 'url' && typeof msg.url === 'string') {
