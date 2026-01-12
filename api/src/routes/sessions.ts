@@ -14,53 +14,8 @@ import { broadcast } from '../ws';
 import { executeTool } from '../tools/registry';
 import { getSessionRunConfig, popPendingTool, setPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted } from '../services/secrets';
 import { Tenant } from '../models/tenant';
-import { config } from '../config';
 
 const router = Router();
-
-router.post('/:id/browser/snapshot', authenticate as any, async (req: Request, res: Response) => {
-  try {
-    const sessionId = String(req.params.id || '').trim();
-    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
-
-    const workerBaseHttp = String(config.browserWorkerUrl || '').replace(/\/+$/, '');
-    const workerKey = String(config.browserWorkerKey || '');
-    if (!workerBaseHttp || !workerKey) return res.status(500).json({ error: 'browser_worker_not_configured' });
-
-    const snapRes = await fetch(`${workerBaseHttp}/session/${encodeURIComponent(sessionId)}/snapshot`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-worker-key': workerKey,
-      },
-      body: JSON.stringify({}),
-    });
-
-    const status = snapRes.status;
-    if (!snapRes.ok) {
-      const t = await snapRes.text().catch(() => '');
-      return res.json({ ok: false, ts: Date.now(), error: 'snapshot_failed', status, detail: redactSecretsFromString(t).slice(0, 800), viewport: null, url: '', jpegBase64: '' });
-    }
-
-    const j: any = await snapRes.json().catch(() => null);
-    const viewport = j?.viewport && typeof j.viewport === 'object' ? j.viewport : null;
-    const url = typeof j?.url === 'string' ? j.url : '';
-    const screenshotPath = typeof j?.screenshot === 'string' ? j.screenshot : '';
-
-    let jpegBase64 = '';
-    if (screenshotPath) {
-      const imgRes = await fetch(`${workerBaseHttp}${screenshotPath}`, { method: 'GET', headers: { 'x-worker-key': workerKey } as any });
-      if (imgRes.ok) {
-        const buf = Buffer.from(await imgRes.arrayBuffer());
-        jpegBase64 = buf.toString('base64');
-      }
-    }
-
-    res.json({ ok: true, ts: Date.now(), viewport, url, jpegBase64 });
-  } catch (err: any) {
-    res.status(500).json({ error: safeErrorMessage(err) });
-  }
-});
 
 function redactSecretsFromString(input: string): string {
   return input
@@ -91,38 +46,6 @@ function redactToolInputForStorage(name: string, input: any) {
     return { ...input, structure: redactedStructure, _fileCount: keys.length };
   }
 
-  if (name === 'browser_run') {
-    const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
-    const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
-    const redactedActions = actions.map((a: any) => {
-      const t = String(a?.type || '').toLowerCase();
-      if (t === 'type') {
-        const text = typeof a?.text === 'string' ? a.text : '';
-        return { ...a, text: `[redacted:${text.length}]` };
-      }
-      if (t === 'fillform') {
-        const fields = Array.isArray(a?.fields) ? a.fields : [];
-        const nextFields = fields.map((f: any) => {
-          const label = String(f?.label || '').toLowerCase();
-          const selector = String(f?.selector || '').toLowerCase();
-          const combined = `${label} ${selector}`;
-          const v = f?.value == null ? '' : String(f.value);
-          const shouldRedact =
-            Boolean(a?.sensitive) ||
-            Boolean(f?.sensitive) ||
-            /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
-          if (!shouldRedact) return f;
-          return { ...f, value: `[redacted:${v.length}]` };
-        });
-        return { ...a, fields: nextFields };
-      }
-      if (t === 'evaluate' && typeof a?.script === 'string') {
-        if (a?.sensitive) return { ...a, script: '[redacted]' };
-      }
-      return a;
-    });
-    return { sessionId, actions: redactedActions };
-  }
   return input;
 }
 

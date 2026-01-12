@@ -68,9 +68,6 @@ const PRIORITY_TOOL_NAMES: string[] = [
   'central_answer',
   'knowledge_search',
   'html_extract',
-  'browser_open',
-  'browser_run',
-  'browser_extract',
   'github_create_repo',
   'image_generate',
   'deep_research',
@@ -589,51 +586,7 @@ export async function planNextStep(
           rawText.match(/ابحث(?:\s+عن)?\s+(.+?)(?:\s+(?:وشغل|وشغّل|وشغل|شغل|تشغيل)|$)/i) ||
           rawText.match(/search\s+for\s+(.+?)(?:\s+and\s+play|$)/i);
         const query = String(qMatch?.[1] || 'ضيعة ضايعة').trim() || 'ضيعة ضايعة';
-
-        if (!hasOpened || !sessionId) {
-          return { name: 'browser_open', input: { url: 'https://www.youtube.com' } };
-        }
-
-        const hasTypedQuery =
-          historyStr.includes(`"type"`) && historyStr.includes(query.toLowerCase());
-        const hasPressedEnter =
-          historyStr.includes('"press"') && historyStr.includes('"enter"');
-        const hasClickedVideoTitle =
-          historyStr.includes('ytd-video-renderer') && historyStr.includes('video-title');
-
-        if (!hasTypedQuery || !hasPressedEnter) {
-          return {
-            name: 'browser_run',
-            input: {
-              sessionId,
-              actions: [
-                { type: 'goto', url: 'https://www.youtube.com', waitUntil: 'domcontentloaded' },
-                { type: 'waitForSelector', selector: 'input#search', timeoutMs: 8000 },
-                { type: 'click', selector: 'input#search' },
-                { type: 'type', text: query, delay: 80 },
-                { type: 'press', key: 'Enter' },
-                { type: 'wait', ms: 1200 }
-              ]
-            }
-          };
-        }
-
-        if (!hasClickedVideoTitle) {
-          return {
-            name: 'browser_run',
-            input: {
-              sessionId,
-              actions: [
-                { type: 'waitForSelector', selector: 'ytd-video-renderer a#video-title', timeoutMs: 8000 },
-                { type: 'click', selector: 'ytd-video-renderer a#video-title' },
-                { type: 'waitForLoad', state: 'domcontentloaded' },
-                { type: 'wait', ms: 1000 }
-              ]
-            }
-          };
-        }
-
-        return { name: 'echo', input: { text: 'جو انتهى من التعليمات الموجهة إليه بشكل صحيح.' } };
+        return { name: 'echo', input: { text: `ميزة التصفح القديمة أزيلت. سأحتاج تشغيل نظام المتصفح الجديد لتنفيذ: ${query}` } };
       }
 
       if (wantsOpen) {
@@ -650,89 +603,31 @@ export async function planNextStep(
           if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
         }
         
-        // Always allow re-opening if explicitly requested for "agent interface"
-        const explicitAgentInterface = /واجهة الوكيل/i.test(rawText);
-        if (!hasOpened || explicitAgentInterface) {
-          return {
-            name: 'browser_open',
-            input: { url: url || 'https://www.google.com' },
-          };
-        }
         return {
           name: 'echo',
-          input: { text: 'I have already opened the browser.' },
+          input: { text: 'ميزة التصفح القديمة أزيلت. استخدم واجهة المتصفح الجديدة لتنفيذ خطوات داخل موقع.' },
         };
       }
 
       // Simple Heuristics for the GitHub Test
       if (historyStr.includes('github.com') && historyStr.includes('open') && !historyStr.includes('package.json')) {
-          if (hasOpened) {
-              return {
-                  name: 'echo',
-                  input: { text: "I have already opened the browser." }
-              };
-          }
           return {
-              name: 'browser_open',
-              input: { url: 'https://github.com/yasoo2/xelitesolutions' }
+              name: 'echo',
+              input: { text: 'سأحلل ملفات المشروع محلياً بدون استخدام المتصفح.' }
           };
       }
       if (historyStr.includes('package.json')) {
-           if (!hasOpened) {
-                return {
-                    name: 'browser_open',
-                    input: { url: 'https://github.com/yasoo2/xelitesolutions' }
-                };
-           }
-           if (!hasClicked) {
-               if (!sessionId) {
-                 return {
-                   name: 'browser_open',
-                   input: { url: 'https://github.com/yasoo2/xelitesolutions' }
-                 };
-               }
-
-               return {
-                   name: 'browser_run',
-                   input: { 
-                       sessionId,
-                       actions: [{ type: 'click', selector: 'a[title="package.json"]' }]
-                   }
-               };
-           }
-           if (!hasAnalyzed) {
-               if (!sessionId) {
-                 return {
-                   name: 'browser_open',
-                   input: { url: 'https://github.com/yasoo2/xelitesolutions' }
-                 };
-               }
-               
-               return {
-                   name: 'browser_get_state',
-                   input: { sessionId }
-               };
-           }
            return {
                name: 'echo',
-               input: { text: "I have analyzed the package.json content." }
+               input: { text: 'سأقرأ package.json من ملفات المشروع مباشرة.' }
            };
       }
       
       // Yahoo flow (Mock)
       if (content.includes('yahoo') || historyStr.includes('yahoo')) {
-          const hasYahooOpen =
-            (historyStr.includes('tool call: browser_open') || historyStr.includes(`tool 'browser_open' executed`) || historyStr.includes('"name":"browser_open"')) &&
-            historyStr.includes('yahoo.com');
           const hasYahooExtract =
             (historyStr.includes('tool call: html_extract') || historyStr.includes(`tool 'html_extract' executed`) || historyStr.includes('"name":"html_extract"')) &&
             historyStr.includes('yahoo.com');
-          if (!hasYahooOpen) {
-              return {
-                  name: 'browser_open',
-                  input: { url: 'https://www.yahoo.com' }
-              };
-          }
           if (!hasYahooExtract) {
               return {
                   name: 'html_extract',

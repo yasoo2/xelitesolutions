@@ -521,38 +521,6 @@ function redactToolInputForStorage(name: string, input: any) {
     return { ...input, structure: redactedStructure, _fileCount: keys.length };
   }
 
-  if (name === 'browser_run') {
-    const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
-    const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
-    const redactedActions = actions.map((a: any) => {
-      const t = String(a?.type || '').toLowerCase();
-      if (t === 'type') {
-        const text = typeof a?.text === 'string' ? a.text : '';
-        return { ...a, text: `[redacted:${text.length}]` };
-      }
-      if (t === 'fillform') {
-        const fields = Array.isArray(a?.fields) ? a.fields : [];
-        const nextFields = fields.map((f: any) => {
-          const label = String(f?.label || '').toLowerCase();
-          const selector = String(f?.selector || '').toLowerCase();
-          const combined = `${label} ${selector}`;
-          const v = f?.value == null ? '' : String(f.value);
-          const shouldRedact =
-            Boolean(a?.sensitive) ||
-            Boolean(f?.sensitive) ||
-            /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
-          if (!shouldRedact) return f;
-          return { ...f, value: `[redacted:${v.length}]` };
-        });
-        return { ...a, fields: nextFields };
-      }
-      if (t === 'evaluate' && typeof a?.script === 'string') {
-        if (a?.sensitive) return { ...a, script: '[redacted]' };
-      }
-      return a;
-    });
-    return { sessionId, actions: redactedActions };
-  }
   return input;
 }
 
@@ -1354,50 +1322,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   }
 
   if (isSimpleBrowserOpenRequest) {
-    const url = String(simpleBrowserOpenUrl || 'https://www.google.com').trim() || 'https://www.google.com';
-    const persistedInput = redactToolInputForStorage('browser_open', { url });
-    ev({ type: 'step_started', data: { name: 'execute:browser_open', input: persistedInput } });
-    const callInput: any = { url, sessionId: String(sessionId) };
-    if (userId) callInput.userId = String(userId);
-    const result = await executeTool('browser_open', callInput);
-    ev({
-      type: result.ok ? 'step_done' : 'step_failed',
-      data: {
-        name: 'execute:browser_open',
-        result: result.ok
-          ? {
-              ...result,
-              output: (() => {
-                const out: any = (result as any).output;
-                if (!out || typeof out !== 'object') return out;
-                const summary: any = {};
-                if (typeof out.sessionId === 'string') summary.sessionId = out.sessionId;
-                if (typeof out.wsUrl === 'string') summary.wsUrl = out.wsUrl;
-                if (typeof out.url === 'string') summary.url = out.url;
-                return Object.keys(summary).length ? summary : out;
-              })(),
-            }
-          : result,
-      },
-    });
-    const msg = result.ok
-      ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.`
-      : `تعذّر فتح ${simpleBrowserOpenLabel || 'الموقع'} داخل المتصفح.${(result as any)?.error ? ` السبب: ${String((result as any).error)}` : ''}`;
+    const msg = 'ميزة المتصفح القديمة أزيلت. استخدم واجهة المتصفح الجديدة عبر /api/browser/run.';
     ev({ type: 'text', data: msg });
-    ev({ type: 'run_completed', data: { runId, result } });
-    ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+    ev({ type: 'run_completed', data: { runId, result: { ok: false, error: 'legacy_browser_removed' } } });
+    ev({ type: 'run_finished', data: { runId, ok: false } });
     if (useMock) {
       store.addMessage(sessionId, 'assistant', msg, runId);
-      store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+      store.updateRun(runId, { status: 'failed' });
     } else {
       try {
         await Message.create({ sessionId, role: 'assistant', content: msg, runId });
       } catch {}
       try {
-        await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } });
       } catch {}
     }
-    return res.json({ ok: result.ok, runId, sessionId, result });
+    return res.json({ ok: false, runId, sessionId, error: 'legacy_browser_removed' });
   }
 
   const isSimpleGoogleSearchRequest = (() => {
@@ -1415,36 +1355,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   })();
 
   if (isSimpleGoogleSearchRequest) {
-    const s = String(text || '').trim();
-    const query =
-      (s.match(/(?:ابحث(?:\s+عن)?|بحث(?:\s+عن)?|search(?:\s+for)?|find)\s+(.+)/i)?.[1] || '').trim();
-    const target =
-      query ? `https://www.google.com/search?q=${encodeURIComponent(query)}` : 'https://www.google.com';
-    const persistedInput = redactToolInputForStorage('browser_open', { url: target });
-    ev({ type: 'step_started', data: { name: 'execute:browser_open', input: persistedInput } });
-    const callInput: any = { url: target, sessionId: String(sessionId) };
-    if (userId) callInput.userId = String(userId);
-    const result = await executeTool('browser_open', callInput);
-    ev({
-      type: result.ok ? 'step_done' : 'step_failed',
-      data: { name: 'execute:browser_open', result },
-    });
-    const msg = result.ok ? `تم فتح نتائج البحث في جوجل داخل المتصفح.` : `تعذّر فتح جوجل داخل المتصفح.`;
+    const msg = 'تم تعطيل البحث عبر Google في نظام المتصفح القديم.';
     ev({ type: 'text', data: msg });
-    ev({ type: 'run_completed', data: { runId, result } });
-    ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+    ev({ type: 'run_completed', data: { runId, result: { ok: false, error: 'legacy_browser_removed' } } });
+    ev({ type: 'run_finished', data: { runId, ok: false } });
     if (useMock) {
       store.addMessage(sessionId, 'assistant', msg, runId);
-      store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
+      store.updateRun(runId, { status: 'failed' });
     } else {
       try {
         await Message.create({ sessionId, role: 'assistant', content: msg, runId });
       } catch {}
       try {
-        await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } });
       } catch {}
     }
-    return res.json({ ok: result.ok, runId, sessionId, result });
+    return res.json({ ok: false, runId, sessionId, error: 'legacy_browser_removed' });
   }
 
   while (steps < MAX_STEPS) {

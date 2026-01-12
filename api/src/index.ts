@@ -21,6 +21,7 @@ import knowledgeRoutes from './routes/knowledge';
 import systemRoutes from './routes/system';
 import instaRoutes from './routes/insta';
 import providersRoutes from './routes/providers';
+import browserRoutes from './routes/browser';
 
 import { authenticate } from './middleware/auth';
 import http from 'http';
@@ -122,6 +123,7 @@ async function main() {
   app.use('/system', systemRoutes);
   app.use('/insta', instaRoutes);
   app.use('/providers', providersRoutes);
+  app.use('/api/browser', browserRoutes);
   
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
@@ -152,7 +154,7 @@ async function main() {
   attachWebSocket(server);
 
   server.listen(config.port, '0.0.0.0', () => {
-    logger.info({ port: config.port, browserWorkerUrl: config.browserWorkerUrl }, 'API listening');
+    logger.info({ port: config.port }, 'API listening');
   });
 
   // Global Error Handler

@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
-import puppeteer from 'puppeteer';
+import { chromium } from 'playwright';
 import { config } from '../config';
 
 const API_PORT = Number(process.env.API_PORT || process.env.PORT || config.port || 3000);
@@ -20,16 +20,13 @@ const authHeaders = {
 async function runUiE2e() {
   console.log('\n🧪 Starting UI E2E Test (Thinking Glimpse + Draft)...\n');
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  });
-
-  const page = await browser.newPage();
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext();
+  const page = await context.newPage();
   page.setDefaultTimeout(60000);
 
   try {
-    await page.evaluateOnNewDocument((t) => {
+    await page.addInitScript((t) => {
       localStorage.setItem('token', t);
       localStorage.setItem('lang', 'en');
       (window as any).__wsSends = [];
@@ -58,8 +55,8 @@ async function runUiE2e() {
       } catch {}
     }, token);
 
-    await page.goto(`${WEB_URL}/joe`, { waitUntil: 'networkidle2' });
-    await page.waitForSelector('textarea', { visible: true });
+    await page.goto(`${WEB_URL}/joe`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('textarea', { state: 'visible' });
 
     await page.evaluate(() => {
       (window as any).__joeBrowserSession = null;

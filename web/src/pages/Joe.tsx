@@ -8,211 +8,7 @@ import { API_URL as API } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const AgentBrowserStreamLazy = lazy(() => import('../components/AgentBrowserStream'));
-
-function BrowserApp({
-  onSession,
-  autoOpen,
-  minimal,
-  initialSession,
-  headless,
-}: {
-  onSession?: (s: { sessionId: string; wsUrl: string }) => void;
-  autoOpen?: boolean;
-  minimal?: boolean;
-  initialSession?: { sessionId: string; wsUrl: string } | null;
-  headless?: boolean;
-}) {
-  const { t } = useTranslation();
-  const [url, setUrl] = useState('https://www.google.com');
-  const [wsUrl, setWsUrl] = useState<string | null>(initialSession?.wsUrl || null);
-  const [sessionId, setSessionId] = useState<string | null>(initialSession?.sessionId || null);
-  const [isOpening, setIsOpening] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const didAutoOpen = useRef(false);
-
-  useEffect(() => {
-    if (initialSession?.wsUrl) {
-      setWsUrl(initialSession.wsUrl);
-      setSessionId(initialSession.sessionId);
-    }
-  }, [initialSession]);
-
-  async function openBrowser(nextUrl?: string) {
-    setIsOpening(true);
-    setError(null);
-    try {
-      const token = localStorage.getItem('token');
-      const effectiveUrl = (typeof nextUrl === 'string' && nextUrl.trim()) ? nextUrl.trim() : url;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
-      const readError = async (res: Response) => {
-        const raw = await res.text().catch(() => '');
-        const rawText = String(raw || '');
-        const isBadGateway =
-          res.status === 502 ||
-          /<title>\s*502\b/i.test(rawText) ||
-          /\b502\b[\s\S]{0,40}bad gateway/i.test(rawText) ||
-          /\bbad gateway\b/i.test(rawText);
-        if (isBadGateway) return `${t('httpBadGateway', 'Server temporarily unavailable (502 Bad Gateway).')}\n${t('httpBadGatewayHint', 'The backend service is unreachable behind Nginx.')}`;
-        return rawText || String(t('httpRequestFailed', { status: res.status }) || `HTTP ${res.status}`);
-      };
-
-      const currentSessionId = String(sessionId || '').trim();
-      const currentWsUrl = String(wsUrl || '').trim();
-
-      if (currentSessionId && effectiveUrl) {
-        const navRes = await fetch(`${API}/tools/browser_run/execute`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            sessionId: currentSessionId,
-            actions: [{ type: 'goto', url: effectiveUrl, waitUntil: 'domcontentloaded' }],
-          }),
-        });
-        if (navRes.status === 401) {
-          localStorage.removeItem('token');
-          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-          setWsUrl(null);
-          setSessionId(null);
-          const err = t('unauthorized', 'Unauthorized');
-          setError(err);
-          window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
-          return;
-        }
-        if (!navRes.ok) {
-          const err = await readError(navRes);
-          setError(String(err).slice(0, 700));
-          window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: String(err).slice(0, 700) } }));
-          return;
-        }
-        const navData = await navRes.json().catch(() => ({} as any));
-        if (!navData?.ok) {
-          const err = String(navData?.error || t('browserSnapshotError', 'Browser request failed.'));
-          setError(err);
-          window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
-          return;
-        }
-        if (currentWsUrl) {
-          window.dispatchEvent(new CustomEvent('joe:browser_opened', { detail: { sessionId: currentSessionId, wsUrl: currentWsUrl } }));
-          window.dispatchEvent(new CustomEvent('joe:browser_attached', { detail: { sessionId: currentSessionId, wsUrl: currentWsUrl } }));
-        }
-        return;
-      }
-
-      const res = await fetch(`${API}/tools/browser_open/execute`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ url: effectiveUrl }),
-      });
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        setWsUrl(null);
-        setSessionId(null);
-        const err = t('unauthorized', 'Unauthorized');
-        setError(err);
-        window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
-        return;
-      }
-      if (!res.ok) {
-        const err = await readError(res);
-        setWsUrl(null);
-        setSessionId(null);
-        setError(String(err).slice(0, 700));
-        window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: String(err).slice(0, 700) } }));
-        return;
-      }
-      const data = await res.json().catch(() => ({} as any));
-      const nextWsUrl = data?.output?.wsUrl || data?.artifacts?.find?.((a: any) => a?.kind === 'browser_stream')?.href;
-      if (!data?.ok || !nextWsUrl) {
-        setWsUrl(null);
-        setSessionId(null);
-        const err = String(data?.error || t('browserSnapshotError', 'Browser request failed.'));
-        setError(err);
-        window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
-        return;
-      }
-      const sid = String(data?.output?.sessionId || '');
-      const wsu = String(nextWsUrl);
-      setWsUrl(wsu);
-      setSessionId(sid);
-      if (sid && wsu) {
-        onSession?.({ sessionId: sid, wsUrl: wsu });
-        window.dispatchEvent(new CustomEvent('joe:browser_opened', { detail: { sessionId: sid, wsUrl: wsu } }));
-        window.dispatchEvent(new CustomEvent('joe:browser_attached', { detail: { sessionId: sid, wsUrl: wsu } }));
-      }
-    } catch (e: any) {
-      setWsUrl(null);
-      setSessionId(null);
-      const err = String(e?.message || e);
-      setError(err);
-      const effectiveUrl = (typeof nextUrl === 'string' && nextUrl.trim()) ? nextUrl.trim() : url;
-      window.dispatchEvent(new CustomEvent('joe:browser_open_failed', { detail: { url: effectiveUrl, error: err } }));
-    } finally {
-      setIsOpening(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!autoOpen) return;
-    if (didAutoOpen.current) return;
-    didAutoOpen.current = true;
-    openBrowser();
-  }, [autoOpen]);
-
-  useEffect(() => {
-    const handler = (ev: Event) => {
-      const detail = (ev as CustomEvent)?.detail || {};
-      const nextUrl = typeof detail?.url === 'string' ? detail.url : undefined;
-      if (typeof nextUrl === 'string' && nextUrl.trim()) setUrl(nextUrl.trim());
-      openBrowser(nextUrl);
-    };
-    window.addEventListener('joe:browser_open_request', handler as any);
-    return () => window.removeEventListener('joe:browser_open_request', handler as any);
-  }, []);
-
-  
-
-  useEffect(() => {
-    const handler = (ev: Event) => {
-      const detail = (ev as CustomEvent)?.detail || {};
-      const sid = String(detail?.sessionId || '');
-      const wsuRaw = String(detail?.wsUrl || '');
-      const wsu = wsuRaw || (sid ? `/browser/ws/${encodeURIComponent(sid)}` : '');
-      if (sid && wsu) {
-        setWsUrl(wsu);
-        setSessionId(sid);
-        onSession?.({ sessionId: sid, wsUrl: wsu });
-      }
-    };
-    window.addEventListener('joe:browser_attached', handler as any);
-    return () => window.removeEventListener('joe:browser_attached', handler as any);
-  }, []);
-
-  return (
-    <div className="browser-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)' }}>
-        {!sessionId ? (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-primary)' }} dir="auto">
-            <div style={{ textAlign: 'center' }}>
-              {error ? <div style={{ color: '#ef4444', marginBottom: 10 }}>{error}</div> : null}
-              <div>
-                {isOpening ? '...جاري فتح المتصفح' : 'سيتم فتح المتصفح تلقائياً عند الحاجة.'}
-              </div>
-            </div>
-          </div>
-        ) : headless ? null : (
-          <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading stream...</div>}>
-            <AgentBrowserStreamLazy wsUrl={wsUrl!} />
-          </Suspense>
-        )}
-      </div>
-    </div>
-  );
-}
+const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
 
 import { useSessionStore } from '../store/sessionStore';
 
@@ -499,19 +295,6 @@ export default function Joe() {
   }, [liveSteps, thinkingChain, t]);
 
   const nav = useNavigate();
-
-  useEffect(() => {
-    const handler = (ev: Event) => {
-       const detail = (ev as CustomEvent)?.detail || {};
-       if (detail.sessionId && detail.wsUrl) {
-          setActiveBrowserSession({ sessionId: detail.sessionId, wsUrl: detail.wsUrl });
-          setAgentBrowserSessionId(detail.sessionId);
-          setMode('agent');
-       }
-    };
-    window.addEventListener('joe:browser_attached', handler as any);
-    return () => window.removeEventListener('joe:browser_attached', handler as any);
-  }, []);
 
   useEffect(() => {
     const update = () => {
@@ -1167,26 +950,14 @@ export default function Joe() {
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
-                {showEmbeddedPreview ? (
-                  <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 0 }}>
-                    <BrowserApp
-                      minimal={false}
-                      autoOpen={true}
-                      onSession={(s) => { 
-                 setAgentBrowserSessionId(s.sessionId);
-                 setActiveBrowserSession(s);
-                 setMode('agent');
-               }}
-                      initialSession={activeBrowserSession}
-                    />
-                  </div>
+                {agentBrowserSessionId ? (
+                  <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading browser…</div>}>
+                    <ModernBrowserStreamLazy sessionId={agentBrowserSessionId} />
+                  </Suspense>
                 ) : (
-                  <BrowserApp
-                    minimal={false}
-                    autoOpen={true}
-                    onSession={(s) => { setAgentBrowserSessionId(s.sessionId); }}
-                    initialSession={activeBrowserSession}
-                  />
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-primary)' }}>
+                    سيتم تشغيل المتصفح الحي تلقائياً عند أول مهمة تتطلب ذلك.
+                  </div>
                 )}
               </div>
             </div>
@@ -1258,19 +1029,6 @@ export default function Joe() {
         )}
         {mode === 'chat' && (
         <>
-          <div style={{ display: 'none' }}>
-            <BrowserApp
-               minimal={false}
-               autoOpen={false}
-               headless={true}
-               onSession={(s) => { 
-                 setAgentBrowserSessionId(s.sessionId);
-                 setActiveBrowserSession(s);
-                 setMode('agent');
-               }}
-               initialSession={activeBrowserSession}
-            />
-          </div>
           <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -20,9 +20,4 @@ export const config = {
   mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/joe',
   jwtSecret: process.env.JWT_SECRET || 'change-me',
   allowedOrigins: (process.env.ALLOWED_ORIGINS?.split(',').map(s => s.trim()) || allowedOriginsDefault),
-  // Force localhost to avoid IPv4/IPv6 resolution issues with 127.0.0.1 on some systems
-  browserWorkerUrl:
-    process.env.BROWSER_WORKER_URL ||
-    (process.env.NODE_ENV === 'production' ? 'https://browser.xelitesolutions.com' : 'http://127.0.0.1:7070'),
-  browserWorkerKey: process.env.BROWSER_WORKER_KEY || process.env.WORKER_API_KEY || 'change-me',
 };

@@ -56,8 +56,6 @@ import {
 
 const DEBUG_TOOL_UI = false;
 
-const AgentBrowserStreamLazy = lazy(() => import('./AgentBrowserStream'));
-
 const ChatBubble = forwardRef(
   (
     {
@@ -1122,28 +1120,9 @@ export default function CommandComposer({
               const tool = name.slice('execute:'.length).trim();
               if (msg.type === 'step_started') {
                 setTaskStatusByExecuteEvent(rid, tool, 'start', msg?.data?.input);
-                if (tool.startsWith('browser_') && msg.data?.input?.sessionId) {
-                   const sid = String(msg.data.input.sessionId);
-                   if (sid) {
-                      window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
-                        detail: { sessionId: sid, wsUrl: `/browser/ws/${sid}` } 
-                      }));
-                   }
-                }
               }
               else if (msg.type === 'step_done') {
                 setTaskStatusByExecuteEvent(rid, tool, 'done');
-                // Handle browser_open OR browser_run success
-                if ((tool === 'browser_open' || tool === 'browser_run') && msg.data?.result?.ok) {
-                   const output = msg.data.result.output;
-                   // browser_open returns { sessionId, wsUrl }
-                   // browser_run usually returns { outputs } but might return artifacts or carry over session
-                   if (output?.sessionId && output?.wsUrl) {
-                      window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
-                        detail: { sessionId: output.sessionId, wsUrl: output.wsUrl } 
-                      }));
-                   }
-                }
               }
               else setTaskStatusByExecuteEvent(rid, tool, 'failed');
             }
@@ -1169,33 +1148,6 @@ export default function CommandComposer({
           if (msg.type === 'artifact_created') {
             const kind = msg.data?.kind;
             const href = msg.data?.href;
-            const isBrowserStream =
-              kind === 'browser_stream' ||
-              (typeof href === 'string' && (/^wss?:\/\//i.test(href) || /^\/browser\/ws\//i.test(href)) && /\/ws\//i.test(href));
-            
-            if (isBrowserStream) {
-              try {
-                // Try to extract sessionId from URL (e.g. /browser/ws/{sessionId})
-                // href can be relative or absolute
-                const dummyBase = 'http://dummy.com';
-                const u = new URL(href, dummyBase);
-                const parts = u.pathname.split('/').filter(Boolean);
-                // Expected: browser/ws/{sessionId} or ws/{sessionId}
-                const sid = parts[parts.length - 1];
-                if (sid) {
-                  window.dispatchEvent(new CustomEvent('joe:browser_attached', { 
-                    detail: { sessionId: sid, wsUrl: href } 
-                  }));
-                }
-              } catch (e) {
-                console.error('Failed to parse browser stream artifact', e);
-              }
-
-              if (sessionKind === 'agent' && browserSessionId) {
-                return;
-              }
-            }
-
             if (typeof href === 'string' && /^https?:\/\//i.test(href)) {
               const name = String(msg.data?.name || '').trim();
               const lowerName = name.toLowerCase();
@@ -1224,7 +1176,6 @@ export default function CommandComposer({
 
               if (shouldAutoOpen && lastAutoOpenedHrefRef.current !== href) {
                 lastAutoOpenedHrefRef.current = href;
-                window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url: href } }));
               }
             }
           }
@@ -1756,41 +1707,10 @@ export default function CommandComposer({
       return false;
     };
 
-    const ensureBrowserSession = async (url?: string) => {
-      return await new Promise<{ sessionId: string; wsUrl?: string }>((resolve, reject) => {
-        const timeoutMs = 20000;
-        const onOpened = (ev: Event) => {
-          const detail = (ev as CustomEvent)?.detail || {};
-          const sessionId = String(detail?.sessionId || '').trim();
-          const wsUrl = typeof detail?.wsUrl === 'string' ? detail.wsUrl : undefined;
-          if (!sessionId) return;
-          window.removeEventListener('joe:browser_opened', onOpened as any);
-          window.removeEventListener('joe:browser_attached', onOpened as any);
-          window.removeEventListener('joe:browser_open_failed', onFailed as any);
-          resolve({ sessionId, wsUrl });
-        };
-
-        const onFailed = (ev: Event) => {
-          const detail = (ev as CustomEvent)?.detail || {};
-          const err = String(detail?.error || 'فشل فتح المتصفح');
-          window.removeEventListener('joe:browser_opened', onOpened as any);
-          window.removeEventListener('joe:browser_attached', onOpened as any);
-          window.removeEventListener('joe:browser_open_failed', onFailed as any);
-          reject(new Error(err));
-        };
-
-        window.addEventListener('joe:browser_opened', onOpened as any);
-        window.addEventListener('joe:browser_attached', onOpened as any);
-        window.addEventListener('joe:browser_open_failed', onFailed as any);
-        window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url } }));
-
-        window.setTimeout(() => {
-          window.removeEventListener('joe:browser_opened', onOpened as any);
-          window.removeEventListener('joe:browser_attached', onOpened as any);
-          window.removeEventListener('joe:browser_open_failed', onFailed as any);
-          reject(new Error('browser_open_timeout'));
-        }, timeoutMs);
-      });
+    const ensureBrowserSession = async () => {
+      const sid = String(sessionId || '').trim();
+      if (!sid) throw new Error('sessionId_required');
+      return { sessionId: sid };
     };
     
     // Optimistic update
@@ -1847,16 +1767,18 @@ export default function CommandComposer({
             (wantsPreview ? previewCandidate : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com')
         );
         try {
-          const opened = await ensureBrowserSession(desiredUrl);
+          const opened = await ensureBrowserSession();
           effectiveBrowserSessionId = opened.sessionId;
 
-          if (sessionKind === 'chat' && opened.wsUrl) {
-            setEvents(prev => [...prev, {
-              type: 'artifact_created',
-              data: { kind: 'browser_stream', href: opened.wsUrl, name: 'Browser' },
-              ts: Date.now()
-            }]);
-          }
+          const token2 = localStorage.getItem('token');
+          await fetch(`${API}/api/browser/run`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token2 ? { Authorization: `Bearer ${token2}` } : {}),
+            },
+            body: JSON.stringify({ sessionId: opened.sessionId, instructionText: `افتح ${desiredUrl}`, mode: 'execute' }),
+          }).catch(() => null);
         } catch (e: any) {
           const msg = String(e?.message || e || 'فشل فتح المتصفح');
           setEvents(prev => [...prev, { type: 'error', data: msg, ts: Date.now() }]);
@@ -1866,22 +1788,10 @@ export default function CommandComposer({
           if (sid && (looksLikeUnauthorizedWorker || looksLikeUnreachableWorker)) {
             pendingBrowserRetryRef.current = { url: desiredUrl, sessionId: sid };
             if (looksLikeUnreachableWorker) {
-              setSecretPrompt({
-                sessionId: sid,
-                provider: 'browser',
-                key: 'BROWSER_WORKER_URL',
-                label: 'Browser Worker URL',
-                reason: msg,
-              });
-            } else {
-              setSecretPrompt({
-                sessionId: sid,
-                provider: 'browser',
-                key: 'BROWSER_WORKER_KEY',
-                label: 'Browser Worker Key',
-                reason: msg,
-              });
-            }
+              // Legacy prompt removed
+              } else {
+              // Legacy prompt removed
+              }
           }
         }
       }
@@ -2653,7 +2563,11 @@ export default function CommandComposer({
                             }
                             if (toolName) {
                               const generic = t('toolCategoryGeneric');
-                              const toolLabel = meta.label === generic ? toolName : meta.label;
+                              const toolLabel = /^browser_/i.test(toolName)
+                                ? toolName
+                                : meta.label === generic
+                                  ? toolName
+                                  : meta.label;
                               return t('executePrefix', { tool: toolLabel });
                             }
                             return s.displayName || formatStepDisplayName(stepName);
@@ -2793,22 +2707,6 @@ export default function CommandComposer({
             const e = item.e;
             const kind = e?.data?.kind;
             const href = e?.data?.href;
-            const isBrowserStream =
-              kind === 'browser_stream' ||
-              (typeof href === 'string' && /^wss?:\/\//i.test(href) && /\/ws\//i.test(href));
-            if (isBrowserStream && href) {
-              if (sessionKind === 'agent' && browserSessionId) return null;
-              return (
-                <motion.div key={item.key} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message-row joe">
-                  <div className="event-artifact" style={{ padding: 0 }}>
-                    <Suspense fallback={<div style={{ padding: 12, fontSize: 12, opacity: 0.7 }}>Loading Stream...</div>}>
-                      <AgentBrowserStreamLazy wsUrl={href} />
-                    </Suspense>
-                  </div>
-                </motion.div>
-              );
-            }
-
             const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.href || '');
             const isVideo = /\.(mp4|webm|mov)$/i.test(e?.data?.name || '') || /\.(mp4|webm|mov)$/i.test(e?.data?.href || '');
 
@@ -3152,11 +3050,7 @@ export default function CommandComposer({
                                 }
                                   if (!res.ok) throw new Error(`HTTP ${res.status}`);
                                 setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
-                                const pending = pendingBrowserRetryRef.current;
-                                if (pending && pending.sessionId === sid && pending.url) {
-                                  pendingBrowserRetryRef.current = null;
-                                  window.dispatchEvent(new CustomEvent('joe:browser_open_request', { detail: { url: pending.url } }));
-                                }
+                                pendingBrowserRetryRef.current = null;
                              } catch (err) {
                                 setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
                              }

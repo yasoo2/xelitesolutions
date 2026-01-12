@@ -2,9 +2,6 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Skip Chromium download for puppeteer as we use a dedicated browser worker
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-
 COPY package*.json ./
 
 RUN npm ci
