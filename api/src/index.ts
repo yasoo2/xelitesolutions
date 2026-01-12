@@ -107,7 +107,7 @@ async function main() {
   app.get('/health/browser', async (_req, res) => {
     try {
       const r = await healthcheckBrowser();
-      return res.json({ status: 'OK', browser: 'OK', ms: r.ms });
+      return res.json({ status: 'OK', browser: 'OK', ms: r.ms, url: (r as any).url, screenshotHref: (r as any).screenshotHref });
     } catch (e: any) {
       return res.status(503).json({ status: 'FAIL', browser: 'FAIL', error: String(e?.message || e || 'browser_health_failed') });
     }

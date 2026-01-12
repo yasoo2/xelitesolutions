@@ -10,6 +10,8 @@ import os from 'os';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { search as ddgSearch } from 'duck-duck-scrape';
 import { Readability } from '@mozilla/readability';
+import { getBrowserSession, startStreaming, touchSession } from '../browser/manager';
+import { executePlannedActions } from '../browser/executor';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -560,6 +562,155 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 120,
     auditFields: ['text'],
     mockSupported: true,
+  },
+  {
+    name: 'browser_open',
+    version: '1.0.0',
+    tags: ['browser', 'web', 'preview'],
+    inputSchema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, sessionId: { type: 'string' }, userId: { type: 'string' } },
+      required: ['url'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        url: { type: 'string' },
+        title: { type: 'string' },
+        dom: { type: 'string' },
+        screenshotHref: { type: 'string' },
+      },
+    },
+    permissions: ['internet', 'execute'],
+    sideEffects: ['execute', 'internet'],
+    rateLimitPerMinute: 30,
+    auditFields: ['url'],
+    mockSupported: false,
+    async execute(input) {
+      const logs: string[] = [];
+      const raw = String(input?.url || '').trim();
+      const cleaned = raw.replace(/[`]/g, '').trim();
+      const url = normalizeBrowserUrl(cleaned);
+      const userId = String(input?.userId || input?.__userId || '').trim();
+      const sidRaw = String(input?.sessionId || '').trim();
+      const sid = sidRaw || (userId ? `browser:${userId}` : `browser:${Date.now()}`);
+      const s = await getBrowserSession(sid);
+      startStreaming(sid);
+      await s.page.goto(url, { waitUntil: 'domcontentloaded' });
+      touchSession(sid);
+      const dom = await s.page.content();
+      const title = await s.page.title();
+      const buf = await s.page.screenshot({ type: 'jpeg', quality: 55, animations: 'disabled' });
+      const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
+      const full = path.join(ARTIFACT_DIR, fname);
+      try { fs.writeFileSync(full, buf); } catch {}
+      const href = `/artifacts/${encodeURIComponent(fname)}`;
+      logs.push(`browser_open sid=${sid} url=${url}`);
+      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts: [{ name: 'Screenshot', href }] };
+    },
+  },
+  {
+    name: 'browser_get_state',
+    version: '1.0.0',
+    tags: ['browser', 'web', 'preview'],
+    inputSchema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' } },
+      required: ['sessionId'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        url: { type: 'string' },
+        title: { type: 'string' },
+        dom: { type: 'string' },
+        screenshotHref: { type: 'string' },
+      },
+    },
+    permissions: ['read'],
+    sideEffects: [],
+    rateLimitPerMinute: 60,
+    auditFields: ['sessionId'],
+    mockSupported: false,
+    async execute(input) {
+      const logs: string[] = [];
+      const sid = String(input?.sessionId || '').trim();
+      if (!sid) return { ok: false, error: 'sessionId_required', logs };
+      const s = await getBrowserSession(sid);
+      startStreaming(sid);
+      touchSession(sid);
+      const url = s.page.url();
+      const title = await s.page.title();
+      const dom = await s.page.content();
+      const buf = await s.page.screenshot({ type: 'jpeg', quality: 55, animations: 'disabled' });
+      const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
+      const full = path.join(ARTIFACT_DIR, fname);
+      try { fs.writeFileSync(full, buf); } catch {}
+      const href = `/artifacts/${encodeURIComponent(fname)}`;
+      logs.push(`browser_get_state sid=${sid} url=${url}`);
+      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts: [{ name: 'Screenshot', href }] };
+    },
+  },
+  {
+    name: 'browser_run',
+    version: '1.0.0',
+    tags: ['browser', 'web', 'actions'],
+    inputSchema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' }, actions: { type: 'array' }, userId: { type: 'string' } },
+      required: ['sessionId', 'actions'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        pageUrl: { type: 'string' },
+        title: { type: 'string' },
+        dom: { type: 'string' },
+        screenshotHref: { type: 'string' },
+        summary: { type: 'string' },
+      },
+    },
+    permissions: ['internet', 'execute'],
+    sideEffects: ['execute', 'internet'],
+    rateLimitPerMinute: 30,
+    auditFields: ['sessionId'],
+    mockSupported: false,
+    async execute(input) {
+      const logs: string[] = [];
+      const sid = String(input?.sessionId || '').trim();
+      if (!sid) return { ok: false, error: 'sessionId_required', logs };
+      const userId = String(input?.userId || input?.__userId || '').trim();
+      const rawActs = Array.isArray(input?.actions) ? input.actions : [];
+      const actions = rawActs.map((a: any) => {
+        if (a && typeof a === 'object' && String(a.type || '').toLowerCase() === 'goto') {
+          const u = normalizeBrowserUrl(String(a.url || ''));
+          return { ...a, url: u };
+        }
+        return a;
+      });
+      const exec = await executePlannedActions({ userId, sessionId: sid, actions: actions as any });
+      const s = await getBrowserSession(sid);
+      touchSession(sid);
+      const pageUrl = s.page.url();
+      const title = await s.page.title();
+      const dom = await s.page.content();
+      const buf = await s.page.screenshot({ type: 'jpeg', quality: 55, animations: 'disabled' });
+      const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
+      const full = path.join(ARTIFACT_DIR, fname);
+      try { fs.writeFileSync(full, buf); } catch {}
+      const href = `/artifacts/${encodeURIComponent(fname)}`;
+      logs.push(`browser_run sid=${sid} steps=${Array.isArray(actions) ? actions.length : 0}`);
+      return {
+        ok: !!exec?.ok,
+        output: { sessionId: sid, pageUrl, title, dom, screenshotHref: href, summary: String(exec?.summary || '') },
+        logs,
+        artifacts: [{ name: 'Screenshot', href }],
+        error: exec?.ok ? undefined : 'browser_run_failed',
+      };
+    },
   },
   {
     name: 'image_generate',

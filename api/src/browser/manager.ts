@@ -1,4 +1,6 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Locator, type LaunchOptions } from 'playwright';
+import fs from 'fs';
+import path from 'path';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 
@@ -221,7 +223,20 @@ export async function healthcheckBrowser() {
     const context = await browser.newContext({ viewport: { width: viewport.w, height: viewport.h } });
     try {
       const page = await context.newPage();
-      await page.goto('data:text/html,<title>ok</title>', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      const url = 'https://example.com';
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      const buf = await page.screenshot({ type: 'jpeg', quality: 65, animations: 'disabled' });
+      const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+      try {
+        if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
+      } catch {}
+      const fname = `health-browser-${Date.now()}.jpg`;
+      const full = path.join(artifactDir, fname);
+      try {
+        fs.writeFileSync(full, buf);
+      } catch {}
+      const href = `/artifacts/${encodeURIComponent(fname)}`;
+      return { ok: true as const, ms: Date.now() - startedAt, url, screenshotHref: href };
     } finally {
       try { await context.close(); } catch {}
     }
