@@ -1228,6 +1228,65 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let simpleBrowserOpenLabel = '';
   let simpleBrowserOpenUrl = '';
 
+  const normalizeUrlForGoto = (raw: any) => {
+    let s = String(raw ?? '').trim();
+    s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
+    return s;
+  };
+  const hostKeyFromHost = (host: string) => {
+    const h = String(host || '').toLowerCase().trim();
+    if (!h) return '';
+    return h.startsWith('www.') ? h.slice(4) : h;
+  };
+  const isSameSiteHost = (targetHost: string, lockHost: string) => {
+    const t = hostKeyFromHost(targetHost);
+    const l = hostKeyFromHost(lockHost);
+    if (!t || !l) return false;
+    if (t === l) return true;
+    return t.endsWith(`.${l}`);
+  };
+  const urlToHost = (u: string) => {
+    try {
+      const parsed = new URL(u);
+      return parsed.hostname || '';
+    } catch {
+      return '';
+    }
+  };
+  const urlToOrigin = (u: string) => {
+    try {
+      const parsed = new URL(u);
+      return parsed.origin || '';
+    } catch {
+      return '';
+    }
+  };
+  const isCrossSiteBlockedError = (err: any) => {
+    const s = String(err || '');
+    if (!s) return false;
+    if (/cross_site_blocked/i.test(s)) return true;
+    if (/browser navigation blocked/i.test(s)) return true;
+    return false;
+  };
+  let browserHostLock = '';
+  let browserOriginLock = '';
+  const updateBrowserLockFromOutput = (out: any) => {
+    const url = typeof out?.url === 'string' ? out.url : typeof out?.pageUrl === 'string' ? out.pageUrl : '';
+    const host = url ? urlToHost(url) : '';
+    if (host) browserHostLock = hostKeyFromHost(host);
+    const origin = url ? urlToOrigin(url) : '';
+    if (origin) browserOriginLock = origin;
+  };
+  const isStrictSameSiteUiTask = (() => {
+    const s = String(text || '');
+    if (/strict_same_site_ui/i.test(s)) return true;
+    const looksLoginOrForm =
+      /(login|log\s*in|sign\s*in|password|email|form|تسجيل\s*الدخول|سجل\s*دخول|كلمة\s*المرور|البريد|نموذج)/i.test(s);
+    const asksSearch =
+      /(google|جوجل|search|ابحث|بحث|lookup|find|duckduck|duck\s*duck)/i.test(s);
+    return Boolean(looksLoginOrForm && !asksSearch);
+  })();
+
   const initialUserTextForOpen = String(text || '');
   const isSimpleBrowserOpenRequest = (() => {
     const s = initialUserTextForOpen;
@@ -1829,7 +1888,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(userText);
           const desiredUrl =
             (urlFromUser || urlFromInput || urlFromActions || '').trim() ||
-            (wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com');
+            (wantsYoutube
+              ? 'https://www.youtube.com'
+              : wantsGithub
+                ? 'https://github.com'
+                : isStrictSameSiteUiTask
+                  ? 'https://xelitesolutions.com'
+                  : 'https://www.google.com');
 
           if (planName !== 'browser_open') pendingPlan = plan as any;
           plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
@@ -1837,8 +1902,77 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
     }
 
+    if (isStrictSameSiteUiTask) {
+      if (!browserHostLock) updateBrowserLockFromOutput((lastResult as any)?.output);
+      if (plan?.name === 'browser_run') {
+        const rawActions = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+        const actions = rawActions.map((a: any) => {
+          if (!a || typeof a !== 'object') return a;
+          if (String(a.type || '').toLowerCase() === 'goto') {
+            const u = normalizeUrlForGoto(a.url);
+            return { ...a, url: u };
+          }
+          return a;
+        });
+
+        const hasDisallowed = actions.some((a: any) => {
+          const t = String(a?.type || '').toLowerCase();
+          if (t === 'searchgoogle') return true;
+          if (t !== 'goto') return false;
+          const u = normalizeUrlForGoto(a?.url);
+          if (!u) return true;
+          const targetHost = urlToHost(u);
+          if (targetHost && /(^|\.)google\./i.test(targetHost)) return true;
+          if (!browserHostLock) return false;
+          if (!targetHost) return false;
+          return !isSameSiteHost(targetHost, browserHostLock);
+        });
+
+        if (hasDisallowed) {
+          const sid = typeof browserSessionId === 'string' ? browserSessionId.trim() : String((plan as any)?.input?.sessionId || '').trim();
+          const origin = browserOriginLock || (browserHostLock ? `https://${browserHostLock}` : '');
+          if (!sid) {
+            plan = { name: 'echo', input: { text: 'Cannot run browser actions: missing sessionId.' } } as any;
+          } else if (!origin) {
+            plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
+          } else {
+            const safeLoginUrl = new URL('/login', origin).toString();
+            const host = browserHostLock || urlToHost(origin);
+            const isXelite = /(^|\.)xelitesolutions\.com$/i.test(String(host || ''));
+            const fallbackActions = isXelite
+              ? [
+                  { type: 'clickText', text: 'Start Now', exact: false, timeoutMs: 9000, attempts: 3 },
+                  { type: 'waitForLoad', state: 'domcontentloaded' },
+                  { type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' },
+                ]
+              : [{ type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' }];
+            plan = { name: 'browser_run', input: { sessionId: sid, actions: fallbackActions } } as any;
+          }
+        } else {
+          (plan as any).input = { ...(plan as any).input, actions };
+        }
+      }
+    }
+
     if (kind === 'agent' && String(plan?.name || '') === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
-      const url = String((plan as any)?.input?.url || 'https://www.google.com').trim() || 'https://www.google.com';
+      const raw = String((plan as any)?.input?.url || '').trim();
+      const url = normalizeUrlForGoto(raw);
+      if (!url) {
+        plan = { name: 'browser_get_state', input: { sessionId: browserSessionId.trim() } } as any;
+      } else if (isStrictSameSiteUiTask && browserHostLock) {
+        const host = urlToHost(url);
+        if (host && !isSameSiteHost(host, browserHostLock)) {
+          plan = { name: 'browser_get_state', input: { sessionId: browserSessionId.trim() } } as any;
+        } else {
+          plan = {
+            name: 'browser_run',
+            input: {
+              sessionId: browserSessionId.trim(),
+              actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
+            },
+          } as any;
+        }
+      } else {
       plan = {
         name: 'browser_run',
         input: {
@@ -1846,6 +1980,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
         },
       } as any;
+      }
     }
 
     if (
@@ -2101,6 +2236,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     });
 
     lastResult = result;
+    if (result?.ok && /^browser_/.test(String(plan?.name || ''))) {
+      updateBrowserLockFromOutput((result as any)?.output);
+    }
 
     if (result.logs?.length) {
       for (const line of result.logs) {
@@ -2125,6 +2263,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         ? { ...result, output: summarizeBrowserOutput((result as any).output) }
         : result;
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result: eventResult } });
+
+    if (!result.ok && isStrictSameSiteUiTask && /^browser_/.test(String(plan?.name || '')) && isCrossSiteBlockedError(result.error)) {
+      const lock = browserHostLock ? `\n- Locked site: ${browserHostLock}` : '';
+      const msg = isArabicText(userTextForOverrides)
+        ? `⚠️ تم منع محاولة الانتقال خارج نفس الموقع أثناء وضع STRICT_SAME_SITE_UI.\nلن أحاول جوجل/بحث/روابط خارجية تلقائياً.${lock}\n\nوجّهني بما تريد على نفس الصفحة (مثال: \"اضغط Start Now\" أو \"اذهب إلى /login\").`
+        : `⚠️ Navigation was blocked by same-site policy in STRICT_SAME_SITE_UI.\nI won’t auto-switch to Google/search/external sites.${lock}\n\nTell me what to do on the current page (e.g. “click Start Now” or “go to /login”).`;
+      forcedText = msg;
+      ev({ type: 'text', data: msg });
+      assistantTextEmitted = true;
+      break;
+    }
 
     if (result.ok && String(plan?.name || '') === 'browser_get_state' && endAfterBrowserState) {
       const msg = isArabicText(initialUserTextForOpen)
