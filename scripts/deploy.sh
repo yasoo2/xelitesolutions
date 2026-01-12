@@ -25,7 +25,7 @@ if command -v docker &> /dev/null; then
 
     PROJECT_NAME="joe"
 
-    if [ -f docker-compose.production.yml ] && [ -f /opt/joe/env/web.env ] && [ -f /opt/joe/env/api.env ] && [ -f /opt/joe/env/worker.env ]; then
+    if [ -f docker-compose.production.yml ] && [ -f /opt/joe/env/web.env ] && [ -f /opt/joe/env/api.env ]; then
         COMPOSE_FILE="docker-compose.production.yml"
     elif [ -f docker-compose.server.yml ] && [ -f ./env/web.env ]; then
         COMPOSE_FILE="docker-compose.server.yml"
@@ -66,4 +66,3 @@ else
     echo "Please ensure Docker is installed and in your PATH."
     exit 1
 fi
-

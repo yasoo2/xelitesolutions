@@ -16,7 +16,6 @@ services:
       - /opt/joe/env/api.env
     environment:
       - MONGO_URI=mongodb://mongo:27017/joe
-      - BROWSER_WORKER_URL=http://joe-browser-worker:8080
       - PORT=3000
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -28,7 +27,6 @@ services:
       - joe-network
     depends_on:
       - mongo
-      - joe-browser-worker
 
   web:
     build: ./web
@@ -40,19 +38,6 @@ services:
       - VITE_API_URL=https://api.xelitesolutions.com
     networks:
       - joe-network
-
-  joe-browser-worker:
-    build: ./services/joe-browser-worker
-    container_name: joe_browser_worker
-    restart: always
-    env_file:
-      - /opt/joe/env/worker.env
-    environment:
-      - PORT=8080
-      - HEADLESS=true
-    networks:
-      - joe-network
-    shm_size: '2gb'
 
   nginx:
     image: nginx:alpine
@@ -71,8 +56,6 @@ services:
       api:
         condition: service_healthy
       web:
-        condition: service_started
-      "joe-browser-worker":
         condition: service_started
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
 

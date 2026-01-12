@@ -18,7 +18,6 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - MONGO_URI=mongodb://mongo:27017/joe
-      - BROWSER_WORKER_URL=http://joe_browser_worker:8080
     command: sh -lc "npm ci --include=dev && npm run build && npm run start"
     depends_on: [mongo]
     ports:
@@ -45,21 +44,6 @@ services:
     env_file:
       - ./env/web.env
 
-  browser_worker:
-    build:
-      context: ./services/joe-browser-worker
-      dockerfile: Dockerfile
-    image: joe-browser-worker:latest
-    container_name: joe_browser_worker
-    restart: unless-stopped
-    environment:
-      - NODE_ENV=production
-      - PORT=8080
-      - HEADLESS=false
-    networks: [joe_net]
-    depends_on:
-      - api
-
   nginx:
     image: nginx:alpine
     container_name: joe_nginx
@@ -77,8 +61,6 @@ services:
       api:
         condition: service_healthy
       web:
-        condition: service_started
-      browser_worker:
         condition: service_started
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
 
