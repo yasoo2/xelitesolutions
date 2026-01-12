@@ -22,6 +22,7 @@ import systemRoutes from './routes/system';
 import instaRoutes from './routes/insta';
 import providersRoutes from './routes/providers';
 import browserRoutes from './routes/browser';
+import { healthcheckBrowser } from './browser/manager';
 
 import { authenticate } from './middleware/auth';
 import http from 'http';
@@ -103,6 +104,14 @@ async function main() {
   app.use(morgan('dev'));
 
   app.get('/health', (_req, res) => res.json({ status: 'OK' }));
+  app.get('/health/browser', async (_req, res) => {
+    try {
+      const r = await healthcheckBrowser();
+      return res.json({ status: 'OK', browser: 'OK', ms: r.ms });
+    } catch (e: any) {
+      return res.status(503).json({ status: 'FAIL', browser: 'FAIL', error: String(e?.message || e || 'browser_health_failed') });
+    }
+  });
   app.get('/', (_req, res) => res.send('Joe API is running'));
 
   // Auth
