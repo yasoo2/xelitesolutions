@@ -770,7 +770,8 @@ export const tools: ToolDefinition[] = [
       const errors = outputs.filter((o: any) => o && o.type === 'error');
       const blocked = outputs.find((o: any) => o && o.type === 'goto_blocked');
       const includesGoto = actions.some((a: any) => String(a?.type || '').toLowerCase() === 'goto');
-      if (includesGoto) {
+      let currentUrl = '';
+      if (includesGoto || errors.length) {
         const snapshotTimeoutMs = timeoutMsFromEnv('BROWSER_WORKER_SNAPSHOT_TIMEOUT_MS', 12000);
         try {
           const snapResp = await fetchWithTimeout(
@@ -781,7 +782,7 @@ export const tools: ToolDefinition[] = [
           );
           if (snapResp.ok) {
             const snap: any = await readJsonWithTimeout(snapResp, snapshotTimeoutMs, logs).catch(() => null);
-            const currentUrl = String(snap?.url || '');
+            currentUrl = String(snap?.url || '');
             if (/^chrome-error:\/\//i.test(currentUrl)) {
               return { ok: false, error: `Browser navigation failed: ${currentUrl}`, logs };
             }
@@ -791,17 +792,49 @@ export const tools: ToolDefinition[] = [
         } catch {}
       }
       if (blocked) {
-        return { ok: false, error: `Browser navigation blocked: ${String((blocked as any)?.reason || 'blocked')}`, logs };
+        const u = currentUrl ? ` url=${currentUrl}` : '';
+        return { ok: false, error: `Browser navigation blocked: ${String((blocked as any)?.reason || 'blocked')}${u}`, logs };
       }
       if (errors.length) {
-        const msg = errors
-          .slice(0, 3)
-          .map((e: any) => `${String(e.action || 'action')}: ${String(e.message || 'failed')}`.trim())
-          .join(' | ');
-        return { ok: false, error: `Browser action failed: ${msg || 'unknown_error'}`, logs };
+        const summarizeErr = (e: any) => {
+          const ai = e?.actionInput && typeof e.actionInput === 'object' ? e.actionInput : null;
+          const message = String(e?.message || 'failed');
+          if (ai && String(ai.type || '') === 'clickText' && typeof (ai as any).text === 'string') {
+            return `clickText("${String((ai as any).text)}")=${message}`;
+          }
+          if (ai && String(ai.type || '') === 'click' && typeof (ai as any).selector === 'string' && String((ai as any).selector).trim()) {
+            return `click(selector="${String((ai as any).selector)}")=${message}`;
+          }
+          if (
+            ai &&
+            String(ai.type || '') === 'click' &&
+            typeof (ai as any).role === 'string' &&
+            typeof (ai as any).roleName === 'string' &&
+            String((ai as any).role).trim() &&
+            String((ai as any).roleName).trim()
+          ) {
+            return `click(role="${String((ai as any).role)}", name="${String((ai as any).roleName)}")=${message}`;
+          }
+          return `${String(e?.action || 'action')}: ${message}`.trim();
+        };
+        const msg = errors.slice(0, 3).map(summarizeErr).join(' | ');
+        const u = currentUrl ? ` url=${currentUrl}` : '';
+        return { ok: false, error: `Browser action failed: ${msg || 'unknown_error'}${u}`, logs };
       }
-      const artifacts = (j.artifacts || []).map((a: any) => ({ name: a.filename, href: `${base}/downloads/${encodeURIComponent(path.basename(a.href))}` }));
-      return { ok: true, output: { outputs: j.outputs }, logs, artifacts };
+      const artifactsFromDownloads = (j.artifacts || []).map((a: any) => ({
+        name: a.filename,
+        href: `${base}/downloads/${encodeURIComponent(path.basename(a.href))}`,
+      }));
+      const artifactsFromShots = outputs
+        .filter((o: any) => o && o.type === 'screenshot' && typeof o.href === 'string' && String(o.href).trim())
+        .slice(-12)
+        .map((o: any, i: number) => {
+          const href = String(o.href);
+          const abs = href.startsWith('/') ? `${base}${href}` : `${base}/${href}`;
+          return { name: `shot-${i + 1}.jpg`, href: abs };
+        });
+
+      return { ok: true, output: { outputs: j.outputs }, logs, artifacts: [...artifactsFromShots, ...artifactsFromDownloads] };
     }
   },
   {

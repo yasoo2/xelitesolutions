@@ -52,6 +52,8 @@ const API_KEY = process.env.WORKER_API_KEY || process.env.BROWSER_WORKER_KEY || 
 const STORAGE_DIR = process.env.WORKER_STORAGE_DIR || '/tmp/joe-browser-worker';
 const PORT = Number(process.env.PORT || 7070);
 
+logger.info({ cwd: process.cwd(), playwrightBrowsersPath: process.env.PLAYWRIGHT_BROWSERS_PATH || null }, 'worker_env');
+
 let SHARED_BROWSER: Browser | null = null;
 let browserHealthy = false;
 let startupError: string | null = null;
@@ -188,16 +190,18 @@ function setupPageHooks(session: Session, page: Page, tabId: string) {
   });
 }
 
-async function createSession(opts: { viewport?: { width: number; height: number }, userAgent?: string, locale?: string }) {
+async function createSession(opts: { viewport?: { width: number; height: number }, userAgent?: string, locale?: string, recordVideo?: boolean }) {
   const browser = await getSharedBrowser();
-  const context = await browser.newContext({
+  const recordVideoEnabled = Boolean(opts.recordVideo);
+  const contextOptions: any = {
     viewport: opts.viewport || { width: 1280, height: 800 },
     userAgent: opts.userAgent,
     locale: opts.locale || 'en-US',
     ignoreHTTPSErrors: true,
     acceptDownloads: true,
-    recordVideo: { dir: path.join(STORAGE_DIR, 'videos') }
-  });
+  };
+  if (recordVideoEnabled) contextOptions.recordVideo = { dir: path.join(STORAGE_DIR, 'videos') };
+  const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
   const id = uuidv4();
   const tabId = uuidv4();
@@ -642,6 +646,61 @@ async function tryAcceptGoogleConsent(session: Session, outputs?: any[]) {
   }
 }
 
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function collectClickableCandidates(session: Session, max = 25) {
+  const n = Math.max(1, Math.min(100, Number(max || 25) || 25));
+  try {
+    const res = await session.page.evaluate((limit: number) => {
+      function isVisible(el: Element) {
+        const r = (el as HTMLElement).getBoundingClientRect?.();
+        if (!r || r.width < 2 || r.height < 2) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        if (!s || s.visibility === 'hidden' || s.display === 'none' || Number(s.opacity || '1') === 0) return false;
+        if (r.bottom < 0 || r.right < 0 || r.top > (window.innerHeight || 0) || r.left > (window.innerWidth || 0)) return false;
+        return true;
+      }
+
+      function norm(t: string) {
+        return String(t || '').replace(/\s+/g, ' ').trim();
+      }
+
+      const sel = [
+        'button',
+        'a',
+        '[role="button"]',
+        'input[type="button"]',
+        'input[type="submit"]',
+        '[onclick]',
+      ].join(',');
+      const els = Array.from(document.querySelectorAll(sel)).slice(0, 400);
+      const out: Array<{ text: string; ariaLabel?: string; role?: string; tag: string }> = [];
+      const seen = new Set<string>();
+
+      for (const el of els) {
+        if (!isVisible(el)) continue;
+        const tag = (el as HTMLElement).tagName.toLowerCase();
+        const text = norm((el as HTMLElement).innerText || (el as HTMLElement).textContent || '');
+        const ariaLabel = norm((el as HTMLElement).getAttribute('aria-label') || '');
+        const role = norm((el as HTMLElement).getAttribute('role') || '');
+        const key = `${tag}|${role}|${ariaLabel || ''}|${text || ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!text && !ariaLabel) continue;
+        out.push({ text, ariaLabel: ariaLabel || undefined, role: role || undefined, tag });
+        if (out.length >= limit) break;
+      }
+
+      return out;
+    }, n);
+    return Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+}
+
 async function runActions(session: Session, actions: Action[]) {
   const outputs: any[] = [];
   const autoScreenshotsEnabled = process.env.WORKER_AUTO_SCREENSHOT !== '0' && process.env.WORKER_AUTO_SCREENSHOT !== 'false';
@@ -744,7 +803,27 @@ async function runActions(session: Session, actions: Action[]) {
         case 'clickText': {
           const meta = { text: a.text, exact: Boolean(a.exact) };
           await captureDebugShot(session, { stage: 'before_click', actionType: 'clickText', text: a.text }, outputs);
-          const found = await findClickableInFrames(session, (ctx) => ctx.getByText(a.text, { exact: a.exact ?? false }), 16);
+          const needle = String(a.text ?? '').trim();
+          if (!needle) throw new Error('text_not_found');
+          const rx = a.exact ? new RegExp(`^\\s*${escapeRegExp(needle)}\\s*$`, 'i') : new RegExp(escapeRegExp(needle), 'i');
+
+          const candidates = await collectClickableCandidates(session, 25);
+          if (candidates.length) {
+            outputs.push({
+              type: 'debug',
+              event: 'clickText_candidates',
+              text: needle,
+              exact: Boolean(a.exact),
+              candidates: candidates.slice(0, 25),
+              url: session.page.url(),
+              tabId: session.activeTabId,
+            });
+          }
+
+          let found = await findClickableInFrames(session, (ctx) => ctx.getByRole('button', { name: rx, exact: false }), 16);
+          if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByRole('link', { name: rx, exact: false }), 16);
+          if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByText(rx as any), 16);
+          if (!found.locator) found = await findClickableInFrames(session, (ctx) => ctx.getByText(needle, { exact: a.exact ?? false }), 16);
           if (!found.locator) throw new Error('text_not_found');
           const timeoutMsRaw = typeof a.timeoutMs === 'number' && Number.isFinite(a.timeoutMs) ? a.timeoutMs : 9000;
           const attemptsRaw = typeof a.attempts === 'number' && Number.isFinite(a.attempts) ? a.attempts : 3;
@@ -1126,7 +1205,14 @@ async function runActions(session: Session, actions: Action[]) {
       logger.warn({ action: a, error: err.message }, 'action_failed');
       session.streamPauseUntil = Date.now() + 250;
       notifySession(session, 'action_error', { type: a.type, error: err.message });
-      outputs.push({ type: 'error', action: a.type, message: err.message });
+      outputs.push({
+        type: 'error',
+        action: a.type,
+        message: err.message,
+        url: session.page.url(),
+        tabId: session.activeTabId,
+        actionInput: sanitizeAction(session, a),
+      });
     }
   }
   return outputs;
@@ -1150,15 +1236,18 @@ app.use('/shots', express.static(path.join(STORAGE_DIR, 'shots')));
 
 app.post('/session/create', auth, async (req, res) => {
   try {
-    const { viewport, userAgent, locale, device } = req.body || {};
-    const s = await createSession({ viewport, userAgent, locale });
+    const { viewport, userAgent, locale, device, recordVideo } = req.body || {};
+    const s = await createSession({ viewport, userAgent, locale, recordVideo: Boolean(recordVideo) });
     if (device && devices[device]) {
       // Close the default context created in createSession
       await s.context.close();
       // Do NOT close s.browser as it is shared
       
       const browser = await getSharedBrowser();
-      const ctx = await browser.newContext({ ...devices[device], acceptDownloads: true, recordVideo: { dir: path.join(STORAGE_DIR, 'videos') } });
+      const recordVideoEnabled = Boolean(recordVideo);
+      const contextOptions: any = { ...devices[device], acceptDownloads: true };
+      if (recordVideoEnabled) contextOptions.recordVideo = { dir: path.join(STORAGE_DIR, 'videos') };
+      const ctx = await browser.newContext(contextOptions);
       const page = await ctx.newPage();
       s.browser = browser;
       s.context = ctx;

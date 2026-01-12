@@ -2688,6 +2688,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         
         // Self-Healing Notification
         ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });
+        assistantTextEmitted = true;
         
         history.push({ 
             role: 'assistant', 

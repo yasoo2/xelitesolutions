@@ -154,6 +154,49 @@ async function main() {
     throw new Error(`browser_run post-actions failed: ${JSON.stringify(j3)}`);
   }
   console.log('✅ post-actions ok');
+
+  const html = `<!doctype html>
+  <html>
+    <head><meta charset="utf-8"></head>
+    <body>
+      <button id="start">Start Now</button>
+      <div id="status">idle</div>
+      <script>
+        document.getElementById('start')?.addEventListener('click', () => {
+          const el = document.getElementById('status');
+          if (el) el.textContent = 'clicked';
+        });
+      </script>
+    </body>
+  </html>`;
+  const dataUrl = `data:text/html,${encodeURIComponent(html)}`;
+
+  const res4 = await fetch(`${API}/tools/browser_run/execute`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      sessionId,
+      actions: [
+        { type: 'goto', url: dataUrl, waitUntil: 'domcontentloaded' },
+        { type: 'clickText', text: 'Start Now', exact: true, timeoutMs: 6000, attempts: 3 },
+        {
+          type: 'extract',
+          schema: { single: { selector: 'body', fields: { status: { selector: '#status' } } } },
+        },
+      ],
+    }),
+  });
+  const j4 = await res4.json();
+  if (!j4?.ok) {
+    throw new Error(`browser_run clickText failed: ${JSON.stringify(j4)}`);
+  }
+  const out4 = Array.isArray(j4?.output?.outputs) ? j4.output.outputs : [];
+  const extract = out4.find((o: any) => o && o.type === 'extract');
+  const status = extract?.json?.status;
+  if (status !== 'clicked') {
+    throw new Error(`clickText_extract_unexpected: ${JSON.stringify(extract)}`);
+  }
+  console.log('✅ clickText ok (Start Now)');
 }
 
 main().catch(err => {
