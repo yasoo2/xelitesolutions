@@ -1176,6 +1176,9 @@ export default function CommandComposer({
 
               if (shouldAutoOpen && lastAutoOpenedHrefRef.current !== href) {
                 lastAutoOpenedHrefRef.current = href;
+                try {
+                  window.open(href, '_blank', 'noopener,noreferrer');
+                } catch {}
               }
             }
           }
