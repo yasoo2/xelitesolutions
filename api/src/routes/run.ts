@@ -684,6 +684,31 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   const hasAnyKey = Boolean((typeof apiKey === 'string' && apiKey.trim()) || (typeof process.env.OPENAI_API_KEY === 'string' && process.env.OPENAI_API_KEY.trim()));
   let missingApiKey = false;
+  const rawUserTextForKeyBypass = String(text || '');
+  const allowNoKeyForQuickBrowserOpen = (() => {
+    const s = rawUserTextForKeyBypass;
+    if (!s.trim()) return false;
+    const hasUrl =
+      /https?:\/\/[^\s"'<>]+/i.test(s) ||
+      /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
+    const hasSiteKeyword = /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s);
+    if (!hasUrl && !hasSiteKeyword) return false;
+    const openKeyword =
+      /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+        s,
+      );
+    const multiStepKeyword =
+      /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+        s,
+      );
+    if (multiStepKeyword) return false;
+    if (openKeyword) return true;
+    const u = s.trim();
+    if (hasUrl && (u === (u.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || '') || u.toLowerCase() === (u.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || '').toLowerCase())) {
+      return true;
+    }
+    return false;
+  })();
 
   if (providerKey === 'llm') {
     return res.status(400).json({
@@ -691,7 +716,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     });
   }
   if (!hasAnyKey) {
-    missingApiKey = true;
+    missingApiKey = !allowNoKeyForQuickBrowserOpen;
   }
   if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
     return res.status(400).json({
@@ -1322,22 +1347,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   }
 
   if (isSimpleBrowserOpenRequest) {
-    const msg = 'ميزة المتصفح القديمة أزيلت. استخدم واجهة المتصفح الجديدة عبر /api/browser/run.';
-    ev({ type: 'text', data: msg });
-    ev({ type: 'run_completed', data: { runId, result: { ok: false, error: 'legacy_browser_removed' } } });
-    ev({ type: 'run_finished', data: { runId, ok: false } });
-    if (useMock) {
-      store.addMessage(sessionId, 'assistant', msg, runId);
-      store.updateRun(runId, { status: 'failed' });
-    } else {
-      try {
-        await Message.create({ sessionId, role: 'assistant', content: msg, runId });
-      } catch {}
-      try {
-        await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } });
-      } catch {}
-    }
-    return res.json({ ok: false, runId, sessionId, error: 'legacy_browser_removed' });
+    const targetUrl = String(simpleBrowserOpenUrl || '').trim() || 'https://www.yahoo.com';
+    const host = urlToHost(targetUrl);
+    const hostKey = host ? hostKeyFromHost(host) : '';
+    const sid =
+      userId && String(userId).trim()
+        ? `browser:${String(userId).trim()}:${hostKey || 'site'}`
+        : `browser:${Date.now()}`;
+    pendingPlan = { name: 'browser_open', input: { url: targetUrl, sessionId: sid } } as any;
   }
 
   const isSimpleGoogleSearchRequest = (() => {
