@@ -63,6 +63,33 @@ Allowed action types:
 - {"type":"ui_audit"}
 `;
 
+function extractUrl(text: string) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+
+  const direct = t.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
+  if (direct) return direct;
+
+  const www = t.match(/\bwww\.[^\s"'<>]+\b/i)?.[0];
+  if (www) return `https://${www}`;
+
+  const m = t.match(/\b[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+\b(?:\/[^\s"'<>]*)?/i);
+  if (!m) return null;
+  return `https://${m[0]}`;
+}
+
+function shouldFastOpen(text: string) {
+  const s = String(text || '').trim();
+  if (!s) return false;
+  const hasOpenKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
+  const u = extractUrl(s);
+  if (!u) return false;
+  if (hasOpenKeyword) return true;
+  if (s === u) return true;
+  if (s.toLowerCase() === u.toLowerCase()) return true;
+  return false;
+}
+
 export async function runBrowserInstruction(params: {
   userId: string;
   sessionId: string;
@@ -93,6 +120,18 @@ export async function runBrowserInstruction(params: {
 
   const cfg = DEFAULT_BROWSER_CONFIG;
   const safeInstruction = redactSecretsFromString(resolvedSecrets.text);
+
+  if (shouldFastOpen(safeInstruction)) {
+    const url = extractUrl(safeInstruction);
+    if (url) {
+      const exec = await executePlannedActions({
+        userId,
+        sessionId,
+        actions: [{ type: 'goto', url }, { type: 'wait', ms: 450 }] as any,
+      });
+      return { ok: true as const, result: exec };
+    }
+  }
 
   let planned: Planned | null = null;
   try {

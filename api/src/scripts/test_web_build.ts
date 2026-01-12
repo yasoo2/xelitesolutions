@@ -85,15 +85,15 @@ async function runUiE2e() {
 
       await page
         .waitForFunction(
-          (arr) => {
+          (arr: string[]) => {
             const txt = document.body ? document.body.innerText : '';
-            const hasNeedle = arr.some((s) => txt.includes(s));
+            const hasNeedle = arr.some((s: string) => txt.includes(s));
             const hasAi = document.querySelectorAll('.chat-bubble-wrapper.ai').length > 0;
             const hasErr = !!document.querySelector('.message-bubble.error');
             return hasNeedle || hasAi || hasErr;
           },
-          { timeout: 12000 },
-          needles
+          needles,
+          { timeout: 12000 }
         )
         .catch(() => null);
 
@@ -130,15 +130,15 @@ async function runUiE2e() {
       const aiCountBefore = await page.$$eval('.chat-bubble-wrapper.ai', (els) => els.length).catch(() => 0);
       await page
         .waitForFunction(
-          (before) => {
+          (before: number) => {
             const aiInc = document.querySelectorAll('.chat-bubble-wrapper.ai').length > before;
             const err = !!document.querySelector('.message-bubble.error');
             const txt = document.body ? document.body.innerText : '';
             const gate = txt.includes('A token/key is required to continue.');
             return aiInc || err || gate;
           },
-          { timeout: 15000 },
-          aiCountBefore
+          aiCountBefore,
+          { timeout: 15000 }
         )
         .catch(() => null);
 
@@ -152,7 +152,7 @@ async function runUiE2e() {
     } catch {}
 
     await page.click('button[title="Agent Mode"]');
-    await page.waitForSelector('.agent-browser-stream canvas', { visible: true, timeout: 30000 });
+    await page.waitForSelector('.agent-browser-stream canvas', { state: 'visible', timeout: 30000 });
     const canvas = await page.$('.agent-browser-stream canvas');
     if (!canvas) throw new Error('Browser canvas not found');
     const box = await canvas.boundingBox();

@@ -8,7 +8,7 @@ export async function resolveSecretsInText(userId: string, text: string) {
   if (!uid) return { ok: false as const, text: raw, missing: ['USER_ID_REQUIRED'] };
 
   const missing: string[] = [];
-  const resolved = await raw.replaceAll(SECRET_TOKEN_RE, (full, keyRaw) => {
+  raw.replace(SECRET_TOKEN_RE, (full: string, keyRaw: string) => {
     const key = String(keyRaw || '').trim();
     if (!key) return full;
     missing.push(key);
@@ -24,7 +24,7 @@ export async function resolveSecretsInText(userId: string, text: string) {
     if (typeof v === 'string' && v.trim()) map.set(k, v);
   }
   const stillMissing: string[] = [];
-  const finalText = raw.replaceAll(SECRET_TOKEN_RE, (full, keyRaw) => {
+  const finalText = raw.replace(SECRET_TOKEN_RE, (full: string, keyRaw: string) => {
     const key = String(keyRaw || '').trim();
     const v = map.get(key);
     if (!v) {
@@ -40,4 +40,3 @@ export async function resolveSecretsInText(userId: string, text: string) {
 export function redactSecretsFromString(s: string) {
   return String(s || '').replace(SECRET_TOKEN_RE, '{{SECRET:REDACTED}}');
 }
-
