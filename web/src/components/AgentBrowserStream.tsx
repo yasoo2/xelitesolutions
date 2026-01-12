@@ -100,15 +100,15 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
   const [uploadSelector, setUploadSelector] = useState<string>('');
   const fileRef = useRef<HTMLInputElement>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
-  const [autoExtract, setAutoExtract] = useState<boolean>(true);
+  const [autoExtract, setAutoExtract] = useState<boolean>(false);
   const [typeText, setTypeText] = useState<string>('');
   const [selector, setSelector] = useState<string>('');
   const [highlight, setHighlight] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [role, setRole] = useState<string>('');
   const [roleName, setRoleName] = useState<string>('');
-  const [autoLocate, setAutoLocate] = useState<boolean>(true);
-  const [autoFocus, setAutoFocus] = useState<boolean>(true);
-  const [autoTypeAfterFocus, setAutoTypeAfterFocus] = useState<boolean>(true);
+  const [autoLocate, setAutoLocate] = useState<boolean>(false);
+  const [autoFocus, setAutoFocus] = useState<boolean>(false);
+  const [autoTypeAfterFocus, setAutoTypeAfterFocus] = useState<boolean>(false);
   const [defaultSearchText, setDefaultSearchText] = useState<string>(() => t('browserDefaultSearchText'));
   const lastMoveRef = useRef<number>(0);
   const cursorRafRef = useRef<number | null>(null);
@@ -421,15 +421,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
               }
             }
             if (seq.length) setTimeout(() => runActions(seq), 250);
-            const isGoogleSelector = Boolean(locAct?.selector && /(input|textarea)\[name=["']q["']\]/i.test(String(locAct.selector)));
-            const isSearchRole = Boolean(locAct?.roleName && String(locAct.roleName).includes('بحث'));
-            if (autoTypeAfterFocus && !typeText.trim() && (isGoogleSelector || isSearchRole)) {
-              setTimeout(() => {
-                runActions([{ type: 'waitForSelector', selector: 'textarea[name="q"], input[name="q"]:not([type="hidden"])', timeoutMs: 8000 }]);
-                setTimeout(() => runActions([{ type: 'type', text: defaultSearchText, delay: 30 }]), 200);
-                setTimeout(() => runActions([{ type: 'press', key: 'Enter' }]), 300);
-              }, 400);
-            }
           }
         }
       }
@@ -829,16 +820,6 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
                     }
                   }
                   if (seq.length) setTimeout(() => runActions(seq), 250);
-
-                  const isGoogleSelector = Boolean(locAct?.selector && /(input|textarea)\[name=["']q["']\]/i.test(String(locAct.selector)));
-                  const isSearchRole = Boolean(locAct?.roleName && String(locAct.roleName).includes('بحث'));
-                  if (autoTypeAfterFocus && !typeText.trim() && (isGoogleSelector || isSearchRole)) {
-                    setTimeout(() => {
-                      runActions([{ type: 'waitForSelector', selector: 'textarea[name="q"], input[name="q"]:not([type="hidden"])', timeoutMs: 8000 }]);
-                      setTimeout(() => runActions([{ type: 'type', text: defaultSearchText, delay: 30 }]), 200);
-                      setTimeout(() => runActions([{ type: 'press', key: 'Enter' }]), 300);
-                    }, 400);
-                  }
                 }
               }
               setTimeout(() => setOverlay(''), 500);
@@ -1378,7 +1359,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
             onKeyDown={e => {
               if (e.key === 'Enter') {
                 const url = normalizeUrl(address);
-                if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
+                if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded', allowCrossSite: true }]);
               }
             }}
             placeholder="Search or enter website name"
@@ -1396,7 +1377,7 @@ export default function AgentBrowserStream({ wsUrl, minimal }: { wsUrl: string; 
         <button
           onClick={() => {
             const url = normalizeUrl(address);
-            if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded' }]);
+            if (url) runActions([{ type: 'goto', url, waitUntil: 'domcontentloaded', allowCrossSite: true }]);
           }}
           style={{
              background: 'none',

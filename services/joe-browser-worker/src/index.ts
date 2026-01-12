@@ -23,6 +23,7 @@ type Session = {
   page: Page;
   tabs: Array<{ id: string; page: Page; createdAt: number; title?: string; url?: string }>;
   activeTabId: string;
+  siteKey?: string;
   viewport: { width: number; height: number };
   userAgent?: string;
   locale?: string;
@@ -103,8 +104,88 @@ function notifyTabs(session: Session) {
   notifySession(session, 'tabs', { tabs: listTabs(session), activeTabId: session.activeTabId });
 }
 
+function siteKeyFromHost(host: string) {
+  const h = String(host || '').toLowerCase().trim();
+  if (!h) return '';
+  return h.startsWith('www.') ? h.slice(4) : h;
+}
+
+function hostAllowedForSite(host: string, siteKey: string) {
+  const h = siteKeyFromHost(host);
+  const sk = siteKeyFromHost(siteKey);
+  if (!h || !sk) return true;
+  if (h === sk) return true;
+  return h.endsWith(`.${sk}`);
+}
+
+function shouldAllowUrl(session: Session, rawUrl: string, opts?: { allowCrossSite?: boolean }) {
+  const v = String(rawUrl || '').trim();
+  if (!v) return { allowed: false, reason: 'empty_url' as const };
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(v);
+  } catch {
+    return { allowed: true, url: v };
+  }
+
+  const proto = String(parsed.protocol || '').toLowerCase();
+  if (proto === 'data:' || proto === 'about:' || proto === 'blob:') {
+    return { allowed: true, url: parsed.toString() };
+  }
+  if (proto !== 'http:' && proto !== 'https:') {
+    return { allowed: true, url: parsed.toString() };
+  }
+
+  const allowlist = (process.env.WORKER_ALLOWLIST || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+  if (allowlist.length && !allowlist.includes(parsed.hostname)) {
+    return { allowed: false, reason: 'domain_not_allowed' as const, url: parsed.toString() };
+  }
+
+  const hostKey = siteKeyFromHost(parsed.hostname);
+  if (opts?.allowCrossSite) {
+    session.siteKey = hostKey;
+    return { allowed: true, url: parsed.toString() };
+  }
+  if (!session.siteKey) {
+    session.siteKey = hostKey;
+    return { allowed: true, url: parsed.toString() };
+  }
+  if (!hostAllowedForSite(parsed.hostname, session.siteKey)) {
+    return { allowed: false, reason: 'cross_site_blocked' as const, url: parsed.toString(), siteKey: session.siteKey };
+  }
+  return { allowed: true, url: parsed.toString() };
+}
+
+async function safeGoto(session: Session, page: Page, rawUrl: string, options: any, outputs: any[], meta?: any) {
+  const allowCrossSite = Boolean(meta && meta.allowCrossSite);
+  const verdict = shouldAllowUrl(session, rawUrl, { allowCrossSite });
+  if (!verdict.allowed) {
+    outputs.push({ type: 'goto_blocked', url: rawUrl, reason: verdict.reason, siteKey: verdict.siteKey });
+    return false;
+  }
+  await page.goto(verdict.url || rawUrl, options);
+  outputs.push({ type: 'goto', url: verdict.url || rawUrl });
+  return true;
+}
+
 function setupPageHooks(session: Session, page: Page, tabId: string) {
   const findTab = () => session.tabs.find(t => t.id === tabId);
+
+  page.route('**/*', async (route) => {
+    try {
+      const req = route.request();
+      if (!req.isNavigationRequest()) return route.continue();
+      const url = req.url();
+      const verdict = shouldAllowUrl(session, url);
+      if (!verdict.allowed) {
+        notifySession(session, 'goto_blocked', { url, reason: verdict.reason, siteKey: verdict.siteKey, tabId });
+        return route.abort();
+      }
+      return route.continue();
+    } catch {
+      try { return route.continue(); } catch {}
+    }
+  }).catch(() => {});
 
   page.on('framenavigated', (frame: Frame) => {
     try {
@@ -255,7 +336,7 @@ async function closeSession(id: string) {
 
 // Action execution
 type Action =
-  | { type: 'goto', url: string, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }
+  | { type: 'goto', url: string, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle', allowCrossSite?: boolean }
   | { type: 'goBack' }
   | { type: 'goForward' }
   | { type: 'reload' }
@@ -713,16 +794,15 @@ async function runActions(session: Session, actions: Action[]) {
     try {
       switch (a.type) {
         case 'goto': {
-          const allowlist = (process.env.WORKER_ALLOWLIST || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-          try {
-            const u = new URL(a.url);
-            if (allowlist.length && !allowlist.includes(u.hostname)) {
-              outputs.push({ type: 'goto_blocked', url: a.url, reason: 'domain_not_allowed' });
-              break;
-            }
-          } catch {}
-          await session.page.goto(a.url, { waitUntil: a.waitUntil || 'load' });
-          outputs.push({ type: 'goto', url: a.url });
+          const did = await safeGoto(
+            session,
+            session.page,
+            a.url,
+            { waitUntil: a.waitUntil || 'load' },
+            outputs,
+            { allowCrossSite: Boolean((a as any).allowCrossSite) }
+          );
+          if (!did) break;
           try {
             const u = new URL(a.url);
             if (/(^|\.)google\./i.test(u.hostname)) {
@@ -1001,9 +1081,23 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'searchGoogle': {
+          const enabled =
+            process.env.WORKER_ENABLE_SEARCH_GOOGLE === '1' ||
+            process.env.WORKER_ENABLE_SEARCH_GOOGLE === 'true' ||
+            process.env.WORKER_ENABLE_SEARCH_GOOGLE === 'yes';
+          if (!enabled) throw new Error('search_google_disabled');
           const q = String(a.query ?? '').trim();
+          if (!q) throw new Error('query_required');
           const hl = String(a.lang || 'en').trim() || 'en';
-          await session.page.goto(`https://www.google.com/?hl=${encodeURIComponent(hl)}`, { waitUntil: 'domcontentloaded' });
+          const did = await safeGoto(
+            session,
+            session.page,
+            `https://www.google.com/?hl=${encodeURIComponent(hl)}`,
+            { waitUntil: 'domcontentloaded' },
+            outputs,
+            { allowCrossSite: true }
+          );
+          if (!did) break;
           await tryAcceptGoogleConsent(session, outputs);
           const box = session.page.locator('textarea[name="q"], input[name="q"]:not([type="hidden"])').first();
           await box.waitFor({ state: 'visible', timeout: 8000 });
@@ -1046,7 +1140,7 @@ async function runActions(session: Session, actions: Action[]) {
           setupPageHooks(session, page, tabId);
           switchToTab(session, tabId);
           if (a.url) {
-            await page.goto(a.url, { waitUntil: a.waitUntil || 'load' });
+            await safeGoto(session, page, a.url, { waitUntil: a.waitUntil || 'load' }, outputs);
             const t = session.tabs.find(x => x.id === tabId);
             if (t) t.url = page.url();
           }
