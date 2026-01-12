@@ -901,7 +901,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       baseUrl: typeof baseUrl === 'string' ? baseUrl : undefined,
       model: typeof model === 'string' ? model : undefined,
       kind,
-      browserSessionId: typeof browserSessionId === 'string' ? browserSessionId : undefined,
+      browserSessionId:
+        typeof browserSessionId === 'string' && browserSessionId.trim()
+          ? browserSessionId.trim()
+          : typeof curCfg.browserSessionId === 'string' && curCfg.browserSessionId.trim()
+            ? curCfg.browserSessionId.trim()
+            : undefined,
       autoApproveAll: curCfg.autoApproveAll,
       autoApproveSafe: curCfg.autoApproveSafe,
     });
@@ -1992,7 +1997,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     lastExecutedToolName = String(plan?.name || '');
     if (result?.ok && plan?.name === 'browser_open') {
       const sid = String(result?.output?.sessionId || '').trim();
-      if (sid) browserSessionId = sid;
+      if (sid) {
+        browserSessionId = sid;
+        try {
+          const { getSessionRunConfig, setSessionRunConfig } = await import('../services/secrets');
+          const cur = getSessionRunConfig(String(sessionId)) || ({} as any);
+          setSessionRunConfig(String(sessionId), {
+            provider: typeof cur.provider === 'string' ? cur.provider : undefined,
+            apiKey: typeof cur.apiKey === 'string' ? cur.apiKey : undefined,
+            baseUrl: typeof cur.baseUrl === 'string' ? cur.baseUrl : undefined,
+            model: typeof cur.model === 'string' ? cur.model : undefined,
+            kind: cur.kind === 'agent' ? 'agent' : cur.kind === 'chat' ? 'chat' : kind,
+            browserSessionId: sid,
+            autoApproveAll: Boolean(cur.autoApproveAll),
+            autoApproveSafe: Boolean(cur.autoApproveSafe),
+          });
+        } catch {}
+      }
     }
     
     // Add result to history to prevent infinite loops

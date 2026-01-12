@@ -3244,7 +3244,8 @@ export const tools: ToolDefinition[] = [
       const entries: string[] = [];
       let count = 0;
 
-      const { minimatch } = await import('minimatch');
+      const minimatchMod: any = await import('minimatch');
+      const minimatch: any = minimatchMod?.minimatch || minimatchMod?.default || minimatchMod;
 
       function traverse(currentPath: string, depth: number) {
         if (depth > maxDepth || count >= maxEntries) return;
@@ -4178,7 +4179,8 @@ function addBulkToolPackToReach200() {
       const pattern = String(input?.pattern || '').trim();
       const cwd = input?.cwd ? resolveToolPath(String(input.cwd)) : repoRoot();
       if (!pattern) return { ok: false, error: 'pattern_required', logs: [] };
-      const { globSync } = await import('glob');
+      const globMod: any = await import('glob');
+      const globSync: any = globMod?.globSync || globMod?.sync;
       const matches = globSync(pattern, { cwd, nodir: true, dot: true, absolute: true }).slice(0, 500);
       return { ok: true, output: { matches }, logs: [`glob.cwd=${cwd} count=${matches.length}`] };
     },

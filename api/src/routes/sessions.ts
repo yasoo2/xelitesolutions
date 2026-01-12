@@ -251,8 +251,18 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     } catch {}
     if (key === 'LLM_API_KEY') {
       try {
-        const { setSessionRunConfig } = await import('../services/secrets');
-        setSessionRunConfig(String(sessionId), { provider, apiKey: value });
+        const { getSessionRunConfig, setSessionRunConfig } = await import('../services/secrets');
+        const cur = getSessionRunConfig(String(sessionId)) || ({} as any);
+        setSessionRunConfig(String(sessionId), {
+          provider,
+          apiKey: value,
+          baseUrl: typeof cur.baseUrl === 'string' ? cur.baseUrl : undefined,
+          model: typeof cur.model === 'string' ? cur.model : undefined,
+          kind: cur.kind === 'agent' ? 'agent' : cur.kind === 'chat' ? 'chat' : undefined,
+          browserSessionId: typeof cur.browserSessionId === 'string' ? cur.browserSessionId : undefined,
+          autoApproveAll: Boolean(cur.autoApproveAll),
+          autoApproveSafe: Boolean(cur.autoApproveSafe),
+        });
       } catch {}
     }
   }
@@ -571,7 +581,23 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
 
       if (stepResult?.ok && plan?.name === 'browser_open') {
         const sid = String(stepResult?.output?.sessionId || '').trim();
-        if (sid) browserSessionId = sid;
+        if (sid) {
+          browserSessionId = sid;
+          try {
+            const { getSessionRunConfig, setSessionRunConfig } = await import('../services/secrets');
+            const cur = getSessionRunConfig(String(sessionId)) || ({} as any);
+            setSessionRunConfig(String(sessionId), {
+              provider: typeof cur.provider === 'string' ? cur.provider : undefined,
+              apiKey: typeof cur.apiKey === 'string' ? cur.apiKey : undefined,
+              baseUrl: typeof cur.baseUrl === 'string' ? cur.baseUrl : undefined,
+              model: typeof cur.model === 'string' ? cur.model : undefined,
+              kind: cur.kind === 'agent' ? 'agent' : cur.kind === 'chat' ? 'chat' : kind,
+              browserSessionId: sid,
+              autoApproveAll: Boolean(cur.autoApproveAll),
+              autoApproveSafe: Boolean(cur.autoApproveSafe),
+            });
+          } catch {}
+        }
       }
 
       if (stepResult.ok && String(plan?.name || '') === 'http_fetch') {
@@ -972,7 +998,7 @@ router.get('/:id/history', authenticate as any, async (req: Request, res: Respon
     }));
     return res.json({ events });
   }
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!mongoose.isValidObjectId(id)) {
     return res.status(400).json({ error: 'Invalid session id' });
   }
   try {

@@ -1,9 +1,11 @@
 import express from 'express';
 import { WebSocket, WebSocketServer } from 'ws';
 import { chromium, devices } from 'playwright';
-import type { Browser, BrowserContext, Page } from 'playwright';
+import type { Browser, BrowserContext, ConsoleMessage, Download, Frame, Page, Request as PWRequest, Response as PWResponse } from 'playwright';
 import dotenv from 'dotenv';
 import pino from 'pino';
+import { Buffer } from 'node:buffer';
+import process from 'node:process';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
@@ -102,14 +104,14 @@ function notifyTabs(session: Session) {
 function setupPageHooks(session: Session, page: Page, tabId: string) {
   const findTab = () => session.tabs.find(t => t.id === tabId);
 
-  page.on('framenavigated', (frame) => {
+  page.on('framenavigated', (frame: Frame) => {
     try {
       if (frame === page.mainFrame()) {
         const t = findTab();
         if (t) t.url = frame.url();
         notifySession(session, 'url', { url: frame.url(), tabId });
         if (t) {
-          page.title().then((title) => {
+          page.title().then((title: string) => {
             const tt = findTab();
             if (!tt) return;
             tt.title = title;
@@ -120,7 +122,7 @@ function setupPageHooks(session: Session, page: Page, tabId: string) {
     } catch {}
   });
 
-  page.on('console', (msg) => {
+  page.on('console', (msg: ConsoleMessage) => {
     try {
       const entry = { level: msg.type(), text: msg.text(), ts: Date.now() };
       session.logs.push(entry);
@@ -129,7 +131,7 @@ function setupPageHooks(session: Session, page: Page, tabId: string) {
     } catch {}
   });
 
-  page.on('request', (req) => {
+  page.on('request', (req: PWRequest) => {
     try {
       const entry = {
         stage: 'request' as const,
@@ -144,7 +146,7 @@ function setupPageHooks(session: Session, page: Page, tabId: string) {
     } catch {}
   });
 
-  page.on('response', (resp) => {
+  page.on('response', (resp: PWResponse) => {
     try {
       const req = resp.request();
       const entry = {
@@ -161,7 +163,7 @@ function setupPageHooks(session: Session, page: Page, tabId: string) {
     } catch {}
   });
 
-  page.on('download', async (dl) => {
+  page.on('download', async (dl: Download) => {
     try {
       const safeName = dl.suggestedFilename();
       const fileId = uuidv4();
@@ -256,8 +258,8 @@ type Action =
   | { type: 'type', text: string, delay?: number, sensitive?: boolean }
   | { type: 'press', key: string }
   | { type: 'mouseMove', x: number, y: number, steps?: number }
-  | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string }
-  | { type: 'clickText', text: string, exact?: boolean }
+  | { type: 'click', x?: number, y?: number, button?: 'left'|'right'|'middle', selector?: string, roleName?: string, role?: string, timeoutMs?: number, attempts?: number }
+  | { type: 'clickText', text: string, exact?: boolean, timeoutMs?: number, attempts?: number }
   | { type: 'locate', selector?: string, roleName?: string, role?: string }
   | { type: 'waitForRole', role: string, roleName: string, timeoutMs?: number }
   | { type: 'waitForSelector', selector: string, timeoutMs?: number }
@@ -269,9 +271,6 @@ type Action =
   | { type: 'snapshot.dom' }
   | { type: 'snapshot.a11y' }
   | { type: 'extract', schema: any, mode?: 'dom'|'a11y'|'hybrid' }
-  | { type: 'goBack' }
-  | { type: 'goForward' }
-  | { type: 'reload' }
   | { type: 'fillForm', fields: Array<{ label?: string, selector?: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date'|'file', sensitive?: boolean }>, sensitive?: boolean }
   | { type: 'fillByLabel', label: string, value: any, kind?: 'text'|'select'|'checkbox'|'radio'|'date', sensitive?: boolean }
   | { type: 'searchGoogle', query: string, lang?: string, sensitive?: boolean }
@@ -295,7 +294,7 @@ type TextBox = { x: number; y: number; width: number; height: number; text?: str
 async function computeTextBoxes(session: Session, opts?: { maxBoxes?: number; includeText?: boolean }) {
   const maxBoxes = Math.max(1, Math.min(900, Number(opts?.maxBoxes ?? session.textBoxes.maxBoxes) || 350));
   const includeText = Boolean(opts?.includeText ?? session.textBoxes.includeText);
-  const boxes: TextBox[] = await session.page.evaluate(({ maxBoxes, includeText }) => {
+  const boxes: TextBox[] = await session.page.evaluate(({ maxBoxes, includeText }: { maxBoxes: number; includeText: boolean }) => {
     const out: Array<{ x: number; y: number; width: number; height: number; text?: string }> = [];
     const isHiddenEl = (el: Element | null) => {
       if (!el) return true;
@@ -474,11 +473,149 @@ async function maybeNotifyCursorForLocator(session: Session, locator: any) {
   return { x, y };
 }
 
-async function clickLocatorWithCursor(session: Session, locator: any) {
+async function clickLocatorWithCursor(session: Session, locator: any, options?: any) {
   const pt = await maybeNotifyCursorForLocator(session, locator);
   if (pt) notifySession(session, 'cursor_click', { x: pt.x, y: pt.y });
-  await locator.click();
+  await locator.click(options);
   return pt;
+}
+
+async function captureDebugShot(session: Session, meta: { stage: string; actionType: string; selector?: string; text?: string; role?: string; roleName?: string }, outputs: any[]) {
+  try {
+    const href = await captureScreenshot(session, { quality: 55, fullPage: false });
+    outputs.push({
+      type: 'screenshot',
+      href,
+      auto: true,
+      stage: meta.stage,
+      actionType: meta.actionType,
+      selector: meta.selector,
+      text: meta.text,
+      role: meta.role,
+      roleName: meta.roleName,
+      url: session.page.url(),
+      tabId: session.activeTabId,
+    });
+  } catch (e: any) {
+    outputs.push({
+      type: 'debug',
+      stage: meta.stage,
+      actionType: meta.actionType,
+      event: 'screenshot_failed',
+      message: String(e?.message || e),
+      url: session.page.url(),
+      tabId: session.activeTabId,
+    });
+  }
+}
+
+async function tryDismissOverlays(session: Session) {
+  try { await session.page.keyboard.press('Escape'); } catch {}
+  const selectors = [
+    '#onetrust-accept-btn-handler',
+    'button:has-text("Accept")',
+    'button:has-text("Accept all")',
+    'button:has-text("I agree")',
+    'button:has-text("Agree")',
+    'button:has-text("Got it")',
+    'button:has-text("Close")',
+    'button[aria-label="Close"]',
+    'button[aria-label="close"]',
+    '[role="dialog"] button[aria-label="Close"]',
+    '[role="dialog"] button:has-text("Close")',
+  ];
+  for (const sel of selectors) {
+    try {
+      const loc = session.page.locator(sel).first();
+      const c = await loc.count().catch(() => 0);
+      if (c > 0) {
+        await loc.click({ timeout: 900 }).catch(() => null);
+      }
+    } catch {}
+  }
+}
+
+async function clickLocatorRobust(session: Session, locator: any, opts: { timeoutMs: number; attempts: number }, outputs: any[], meta: any) {
+  let lastErr: any = null;
+  for (let i = 0; i < opts.attempts; i++) {
+    try {
+      await locator.waitFor({ state: 'visible', timeout: Math.max(1000, Math.min(opts.timeoutMs, 12000)) });
+    } catch (e) {
+      lastErr = e;
+    }
+
+    try {
+      await locator.scrollIntoViewIfNeeded({ timeout: 2500 }).catch(() => null);
+    } catch {}
+
+    try {
+      await locator.click({ timeout: opts.timeoutMs });
+      return { ok: true, attempt: i + 1, method: 'locator.click' };
+    } catch (e: any) {
+      lastErr = e;
+    }
+
+    try {
+      await clickLocatorWithCursor(session, locator, { timeout: 2200 });
+      return { ok: true, attempt: i + 1, method: 'cursor.click' };
+    } catch (e: any) {
+      lastErr = e;
+    }
+
+    try {
+      await tryDismissOverlays(session);
+    } catch {}
+
+    try {
+      await locator.click({ timeout: 1800, force: true });
+      return { ok: true, attempt: i + 1, method: 'locator.click.force' };
+    } catch (e: any) {
+      lastErr = e;
+    }
+
+    try {
+      await locator.evaluate((el: any) => {
+        try {
+          if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center', inline: 'center' });
+        } catch {}
+        try {
+          if (el && typeof el.click === 'function') el.click();
+        } catch {}
+      });
+      return { ok: true, attempt: i + 1, method: 'dom.click' };
+    } catch (e: any) {
+      lastErr = e;
+    }
+
+    outputs.push({
+      type: 'debug',
+      event: 'click_retry',
+      attempt: i + 1,
+      message: String(lastErr?.message || lastErr || ''),
+      url: session.page.url(),
+      tabId: session.activeTabId,
+      ...meta,
+    });
+    await new Promise(r => setTimeout(r, 200 + i * 250));
+  }
+
+  const msg = String(lastErr?.message || lastErr || 'click_failed');
+  throw new Error(msg);
+}
+
+async function findClickableInFrames(session: Session, finder: (ctx: any) => any, maxFrames = 12) {
+  const frames = session.page.frames();
+  const main = session.page.mainFrame();
+  const rest = frames.filter((f: any) => f !== main).slice(0, Math.max(0, maxFrames - 1));
+  const ordered = [main, ...rest];
+  for (const frame of ordered) {
+    try {
+      const loc = finder(frame);
+      const c = await loc.count().catch(() => 0);
+      if (c > 0) return { locator: loc.first(), frameUrl: frame.url() };
+    } catch {}
+  }
+  return { locator: null, frameUrl: '' };
 }
 
 async function tryAcceptGoogleConsent(session: Session, outputs?: any[]) {
@@ -517,7 +654,7 @@ async function runActions(session: Session, actions: Action[]) {
     try {
       switch (a.type) {
         case 'goto': {
-          const allowlist = (process.env.WORKER_ALLOWLIST || '').split(',').map(s => s.trim()).filter(Boolean);
+          const allowlist = (process.env.WORKER_ALLOWLIST || '').split(',').map((s: string) => s.trim()).filter(Boolean);
           try {
             const u = new URL(a.url);
             if (allowlist.length && !allowlist.includes(u.hostname)) {
@@ -567,20 +704,30 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'click': {
+          const meta = {
+            selector: a.selector,
+            role: a.role,
+            roleName: a.roleName,
+          };
+          await captureDebugShot(session, { stage: 'before_click', actionType: 'click', selector: a.selector, role: a.role, roleName: a.roleName }, outputs);
+          let used = '';
+          let frameUrl = '';
+          const timeoutMsRaw = typeof a.timeoutMs === 'number' && Number.isFinite(a.timeoutMs) ? a.timeoutMs : 8000;
+          const attemptsRaw = typeof a.attempts === 'number' && Number.isFinite(a.attempts) ? a.attempts : 3;
+          const timeoutMs = Math.max(2000, Math.min(20000, Math.floor(timeoutMsRaw)));
+          const attempts = Math.max(1, Math.min(6, Math.floor(attemptsRaw)));
           if (a.selector) {
-            const loc = session.page.locator(a.selector).first();
-            try {
-              await clickLocatorWithCursor(session, loc);
-            } catch (e) {
-              await session.page.click(a.selector);
-            }
+            const found = await findClickableInFrames(session, (ctx) => ctx.locator(a.selector), 16);
+            if (!found.locator) throw new Error('selector_not_found');
+            frameUrl = found.frameUrl;
+            const res = await clickLocatorRobust(session, found.locator, { timeoutMs, attempts }, outputs, meta);
+            used = res.method;
           } else if (a.roleName && a.role) {
-            const loc = session.page.getByRole(a.role as any, { name: a.roleName }).first();
-            try {
-              await clickLocatorWithCursor(session, loc);
-            } catch {
-              await session.page.getByRole(a.role as any, { name: a.roleName }).click();
-            }
+            const found = await findClickableInFrames(session, (ctx) => ctx.getByRole(a.role as any, { name: a.roleName }), 16);
+            if (!found.locator) throw new Error('role_not_found');
+            frameUrl = found.frameUrl;
+            const res = await clickLocatorRobust(session, found.locator, { timeoutMs, attempts }, outputs, meta);
+            used = res.method;
           } else if (typeof a.x === 'number' && typeof a.y === 'number') {
             await session.page.mouse.move(a.x, a.y, { steps: 2 }).catch(() => {});
             notifySession(session, 'cursor_move', { x: a.x, y: a.y });
@@ -588,15 +735,24 @@ async function runActions(session: Session, actions: Action[]) {
             await new Promise(r => setTimeout(r, 120));
             await session.page.mouse.click(a.x, a.y, { button: a.button || 'left' });
             notifySession(session, 'cursor_click', { x: a.x, y: a.y });
+            used = 'mouse.click';
           }
-          outputs.push({ type: 'click' });
+          outputs.push({ type: 'click', used, frameUrl, url: session.page.url(), tabId: session.activeTabId, ...meta });
+          await captureDebugShot(session, { stage: 'after_click', actionType: 'click', selector: a.selector, role: a.role, roleName: a.roleName }, outputs);
           break;
         }
         case 'clickText': {
-          const loc = session.page.getByText(a.text, { exact: a.exact ?? false }).first();
-          await loc.waitFor({ state: 'visible', timeout: 8000 });
-          await clickLocatorWithCursor(session, loc);
-          outputs.push({ type: 'clickText', text: a.text, exact: Boolean(a.exact) });
+          const meta = { text: a.text, exact: Boolean(a.exact) };
+          await captureDebugShot(session, { stage: 'before_click', actionType: 'clickText', text: a.text }, outputs);
+          const found = await findClickableInFrames(session, (ctx) => ctx.getByText(a.text, { exact: a.exact ?? false }), 16);
+          if (!found.locator) throw new Error('text_not_found');
+          const timeoutMsRaw = typeof a.timeoutMs === 'number' && Number.isFinite(a.timeoutMs) ? a.timeoutMs : 9000;
+          const attemptsRaw = typeof a.attempts === 'number' && Number.isFinite(a.attempts) ? a.attempts : 3;
+          const timeoutMs = Math.max(2000, Math.min(25000, Math.floor(timeoutMsRaw)));
+          const attempts = Math.max(1, Math.min(6, Math.floor(attemptsRaw)));
+          const res = await clickLocatorRobust(session, found.locator, { timeoutMs, attempts }, outputs, meta);
+          outputs.push({ type: 'clickText', text: a.text, exact: Boolean(a.exact), used: res.method, frameUrl: found.frameUrl, url: session.page.url(), tabId: session.activeTabId });
+          await captureDebugShot(session, { stage: 'after_click', actionType: 'clickText', text: a.text }, outputs);
           break;
         }
         case 'locate': {
@@ -625,12 +781,12 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'scroll': {
-          await session.page.evaluate((dy) => window.scrollBy(0, dy), a.deltaY);
+          await session.page.evaluate((dy: number) => window.scrollBy(0, dy), a.deltaY);
           outputs.push({ type: 'scroll', deltaY: a.deltaY });
           break;
         }
         case 'scrollTo': {
-          await session.page.evaluate((sel) => {
+          await session.page.evaluate((sel: string) => {
             const el = document.querySelector(sel);
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }, a.selector);
@@ -645,11 +801,6 @@ async function runActions(session: Session, actions: Action[]) {
         case 'waitForLoad': {
           await session.page.waitForLoadState(a.state);
           outputs.push({ type: 'waitForLoad', state: a.state });
-          break;
-        }
-        case 'goBack': {
-          await session.page.goBack();
-          outputs.push({ type: 'goBack' });
           break;
         }
         case 'screenshot': {
@@ -856,7 +1007,7 @@ async function runActions(session: Session, actions: Action[]) {
           break;
         }
         case 'pick': {
-          const info = await session.page.evaluate(({ x, y }) => {
+          const info = await session.page.evaluate(({ x, y }: { x: number; y: number }) => {
             function cssPath(el: Element) {
               const id = (el as HTMLElement).id;
               if (id) return `#${CSS.escape(id)}`;
@@ -963,6 +1114,15 @@ async function runActions(session: Session, actions: Action[]) {
       session.streamPauseUntil = Date.now() + 120;
       notifySession(session, 'action_done', { action: sanitizeAction(session, a) });
     } catch (err: any) {
+      if (a.type === 'click') {
+        await captureDebugShot(
+          session,
+          { stage: 'click_error', actionType: 'click', selector: a.selector, role: (a as any).role, roleName: (a as any).roleName },
+          outputs
+        );
+      } else if (a.type === 'clickText') {
+        await captureDebugShot(session, { stage: 'click_error', actionType: 'clickText', text: a.text }, outputs);
+      }
       logger.warn({ action: a, error: err.message }, 'action_failed');
       session.streamPauseUntil = Date.now() + 250;
       notifySession(session, 'action_error', { type: a.type, error: err.message });
