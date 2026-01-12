@@ -4,6 +4,7 @@ import { broadcastBrowserEvent } from './wsHub';
 import { resolveSecretsInText, redactSecretsFromString } from './secrets';
 import { planNextStep } from '../llm';
 import { executePlannedActions } from './executor';
+import { stopSession } from './manager';
 
 function now() {
   return Date.now();
@@ -102,6 +103,13 @@ function classifyBrowserRuntimeError(e: any) {
   return { code: 'browser_failed', message: msg || 'browser_failed' };
 }
 
+function shouldCloseAfterRun() {
+  const raw = process.env.BROWSER_CLOSE_AFTER_RUN;
+  if (raw === undefined) return process.env.NODE_ENV === 'production';
+  const s = String(raw).trim().toLowerCase();
+  return ['1', 'true', 'yes', 'y', 'on'].includes(s);
+}
+
 export async function runBrowserInstruction(params: {
   userId: string;
   sessionId: string;
@@ -132,6 +140,7 @@ export async function runBrowserInstruction(params: {
 
   const cfg = DEFAULT_BROWSER_CONFIG;
   const safeInstruction = redactSecretsFromString(resolvedSecrets.text);
+  const closeAfterRun = shouldCloseAfterRun();
 
   if (shouldFastOpen(safeInstruction)) {
     const url = extractUrl(safeInstruction);
@@ -142,9 +151,13 @@ export async function runBrowserInstruction(params: {
           sessionId,
           actions: [{ type: 'goto', url }, { type: 'wait', ms: 450 }] as any,
         });
+        if (closeAfterRun) {
+          try { await stopSession(sessionId); } catch {}
+        }
         return { ok: true as const, result: exec };
       } catch (e: any) {
         const c = classifyBrowserRuntimeError(e);
+        try { await stopSession(sessionId); } catch {}
         const ev: BrowserWsEvent = {
           type: 'final_report',
           ts: now(),
@@ -200,9 +213,39 @@ export async function runBrowserInstruction(params: {
       sessionId,
       actions: planned.actions as any,
     });
+    if (closeAfterRun) {
+      try { await stopSession(sessionId); } catch {}
+    }
     return { ok: true as const, result: exec };
   } catch (e: any) {
     const c = classifyBrowserRuntimeError(e);
+    try { await stopSession(sessionId); } catch {}
+    if (c.code === 'browser_closed') {
+      try {
+        const exec2 = await executePlannedActions({
+          userId,
+          sessionId,
+          actions: planned.actions as any,
+        });
+        if (closeAfterRun) {
+          try { await stopSession(sessionId); } catch {}
+        }
+        return { ok: true as const, result: exec2 };
+      } catch (e2: any) {
+        const c2 = classifyBrowserRuntimeError(e2);
+        try { await stopSession(sessionId); } catch {}
+        const ev2: BrowserWsEvent = {
+          type: 'final_report',
+          ts: now(),
+          ok: false,
+          summary: `${c2.code}: ${c2.message}`.slice(0, 600),
+          steps: [],
+          evidence: [],
+        };
+        broadcastBrowserEvent(sessionId, ev2);
+        return { ok: false as const, error: 'browser_unavailable', detail: c2 };
+      }
+    }
     const ev: BrowserWsEvent = {
       type: 'final_report',
       ts: now(),
