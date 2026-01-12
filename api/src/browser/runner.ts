@@ -90,6 +90,18 @@ function shouldFastOpen(text: string) {
   return false;
 }
 
+function classifyBrowserRuntimeError(e: any) {
+  const msg = String(e?.message || e || '').trim();
+  const lower = msg.toLowerCase();
+  if (/executable doesn't exist|playwright install/i.test(msg)) return { code: 'chromium_missing', message: msg };
+  if (/no such file or directory/i.test(msg) && /chrome|chromium/i.test(lower)) return { code: 'chromium_missing', message: msg };
+  if (/target page, context or browser has been closed/i.test(msg)) return { code: 'browser_closed', message: msg };
+  if (/xvfb|display|cannot open display|missing x server/i.test(lower)) return { code: 'display_missing', message: msg };
+  if (/sandbox|setuid/i.test(lower)) return { code: 'sandbox_blocked', message: msg };
+  if (/glibc|gtk|nss|gbm|fontconfig/i.test(lower)) return { code: 'deps_missing', message: msg };
+  return { code: 'browser_failed', message: msg || 'browser_failed' };
+}
+
 export async function runBrowserInstruction(params: {
   userId: string;
   sessionId: string;
@@ -124,12 +136,26 @@ export async function runBrowserInstruction(params: {
   if (shouldFastOpen(safeInstruction)) {
     const url = extractUrl(safeInstruction);
     if (url) {
-      const exec = await executePlannedActions({
-        userId,
-        sessionId,
-        actions: [{ type: 'goto', url }, { type: 'wait', ms: 450 }] as any,
-      });
-      return { ok: true as const, result: exec };
+      try {
+        const exec = await executePlannedActions({
+          userId,
+          sessionId,
+          actions: [{ type: 'goto', url }, { type: 'wait', ms: 450 }] as any,
+        });
+        return { ok: true as const, result: exec };
+      } catch (e: any) {
+        const c = classifyBrowserRuntimeError(e);
+        const ev: BrowserWsEvent = {
+          type: 'final_report',
+          ts: now(),
+          ok: false,
+          summary: `${c.code}: ${c.message}`.slice(0, 600),
+          steps: [],
+          evidence: [],
+        };
+        broadcastBrowserEvent(sessionId, ev);
+        return { ok: false as const, error: 'browser_unavailable', detail: c };
+      }
     }
   }
 
@@ -168,11 +194,24 @@ export async function runBrowserInstruction(params: {
 
   planned.actions = planned.actions.slice(0, cfg.maxSteps);
 
-  const exec = await executePlannedActions({
-    userId,
-    sessionId,
-    actions: planned.actions as any,
-  });
-
-  return { ok: true as const, result: exec };
+  try {
+    const exec = await executePlannedActions({
+      userId,
+      sessionId,
+      actions: planned.actions as any,
+    });
+    return { ok: true as const, result: exec };
+  } catch (e: any) {
+    const c = classifyBrowserRuntimeError(e);
+    const ev: BrowserWsEvent = {
+      type: 'final_report',
+      ts: now(),
+      ok: false,
+      summary: `${c.code}: ${c.message}`.slice(0, 600),
+      steps: [],
+      evidence: [],
+    };
+    broadcastBrowserEvent(sessionId, ev);
+    return { ok: false as const, error: 'browser_unavailable', detail: c };
+  }
 }
