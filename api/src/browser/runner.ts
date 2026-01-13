@@ -5,6 +5,7 @@ import { resolveSecretsInText, redactSecretsFromString } from './secrets';
 import { planNextStep } from '../llm';
 import { executePlannedActions } from './executor';
 import { stopSession } from './manager';
+import { getSessionRunConfig } from '../services/secrets';
 
 function now() {
   return Date.now();
@@ -105,11 +106,24 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
 
   const actions: Planned['actions'] = [];
 
-  const url = extractUrl(s);
-  const wantsOpen = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit|browse)/i.test(s);
-  if (wantsOpen && url) {
-    actions.push({ type: 'goto', url });
-  }
+  const url =
+    extractUrl(s) ||
+    (/(google|جوجل)/i.test(s) || /(ابحث|بحث|search|find|lookup)/i.test(s)
+      ? 'https://www.google.com'
+      : /(youtube|يوتيوب)/i.test(s)
+        ? 'https://www.youtube.com'
+        : /(github|جيتهاب|قيتهب)/i.test(s)
+          ? 'https://github.com'
+          : /(openai|اوبن\s*اي)/i.test(s)
+            ? 'https://platform.openai.com/'
+            : /(x\.com|\btwitter\b|تويتر)/i.test(s)
+              ? 'https://x.com'
+              : /(facebook|فيسبوك)/i.test(s)
+                ? 'https://www.facebook.com'
+                : /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s)
+                  ? 'https://www.linkedin.com'
+                  : null);
+  if (url) actions.push({ type: 'goto', url });
 
   const clickMatches = [
     ...Array.from(s.matchAll(/\bclick\s+["“”']?([^"“”'\n\r]+)["“”']?/gi)),
@@ -131,6 +145,20 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
     actions.push({ type: 'type', text: val });
   }
 
+  const wantsUiAudit =
+    /(audit|ui\s*audit|لقطة|صورة|سكرين|screenshot|فحص|عاين|اعرض|عرض)/i.test(s) &&
+    !/(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق)/i.test(s);
+
+  if (actions.length >= 2 && actions[0]?.type === 'goto') {
+    const second = actions[1] as any;
+    if (!second || String(second.type || '') !== 'wait') {
+      actions.splice(1, 0, { type: 'wait', ms: 450 });
+    }
+  }
+
+  if (wantsUiAudit) actions.push({ type: 'ui_audit' });
+
+  if (actions.length === 0) return [{ type: 'ui_audit' }];
   return actions;
 }
 
@@ -275,12 +303,20 @@ export async function runBrowserInstruction(params: {
   let planned: Planned | null = null;
   let compilerUsed = false;
   try {
+    const runCfg = getSessionRunConfig(sessionId);
+    const providerKey = String(runCfg?.provider || '').trim().toLowerCase();
+    const provider = providerKey && providerKey !== 'llm' ? providerKey : 'openai';
     const r = await planNextStep(
       [
         { role: 'system', content: COMPILER_SYSTEM },
         { role: 'user', content: safeInstruction },
       ],
-      { provider: 'openai' } as any,
+      {
+        provider,
+        apiKey: runCfg?.apiKey,
+        baseUrl: runCfg?.baseUrl,
+        model: runCfg?.model,
+      } as any,
     );
     compilerUsed = true;
     planned = plannedFromUnknown(r);
