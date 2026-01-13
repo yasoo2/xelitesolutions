@@ -2297,7 +2297,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         assistantTextEmitted = true;
         break;
       }
-      if (Number.isFinite(since) && since < BROWSER_RUN_MIN_INTERVAL_MS) {
+      const isSameSig = Boolean(prev.lastSig && prev.lastSig === sig);
+      if (isSameSig && Number.isFinite(since) && since < BROWSER_RUN_MIN_INTERVAL_MS) {
         const waitSec = Math.max(1, Math.ceil((BROWSER_RUN_MIN_INTERVAL_MS - since) / 1000));
         const msg = isArabicText(userTextForOverrides)
           ? `⚠️ تم منع إعادة استدعاء browser_run بسرعة.\nانتظر حوالي ${waitSec}s ثم أعد المحاولة يدويًا إذا لزم.`

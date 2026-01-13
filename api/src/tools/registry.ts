@@ -594,7 +594,7 @@ export const tools: ToolDefinition[] = [
       const url = normalizeBrowserUrl(cleaned);
       const userId = String(input?.userId || input?.__userId || '').trim();
       const sidRaw = String(input?.sessionId || '').trim();
-      const sid = sidRaw || (userId ? `browser:${userId}:${Date.now()}` : `browser:${Date.now()}`);
+      const sid = sidRaw || (userId ? `browser:${userId}` : `browser:${Date.now()}`);
       const s = await getBrowserSession(sid);
       await s.page.goto(url, { waitUntil: 'domcontentloaded' });
       touchSession(sid);
@@ -821,32 +821,6 @@ export const tools: ToolDefinition[] = [
           } catch {}
         }
       } else {
-        const safeActionType = (a: any) => String(a?.type || 'unknown');
-        const safeActionId = (i: number) => `step_${i + 1}`;
-        const safeActionSummary = (a: any) => {
-          const t = safeActionType(a);
-          if (t === 'goto') return `goto ${String(a?.url || '').trim()}`;
-          if (t === 'type') return `type (len=${String(a?.text || '').length})`;
-          return t;
-        };
-
-        try {
-          const { broadcastBrowserEvent } = await import('../browser/wsHub');
-          for (let i = 0; i < Math.min(80, actions.length); i += 1) {
-            const a: any = actions[i];
-            const actionType = safeActionType(a);
-            const actionId = safeActionId(i);
-            broadcastBrowserEvent(sid, {
-              type: 'action_sent',
-              ts: Date.now(),
-              actionId,
-              actionType,
-              summary: safeActionSummary(a),
-            } as any);
-            broadcastBrowserEvent(sid, { type: 'action_ack', ts: Date.now(), actionId, actionType } as any);
-          }
-        } catch {}
-
         let r: any = null;
         try {
           r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
@@ -859,7 +833,7 @@ export const tools: ToolDefinition[] = [
               type: 'action_error',
               ts: Date.now(),
               actionId: 'step_1',
-              actionType: safeActionType(actions?.[0]),
+              actionType: String(actions?.[0]?.type || 'unknown'),
               reason: 'unknown',
               error: execSummary,
             } as any);
@@ -874,31 +848,6 @@ export const tools: ToolDefinition[] = [
           execError = derived.error;
           execSummary = derived.summary;
         }
-
-        try {
-          const steps = Array.isArray(r?.steps) ? r.steps : [];
-          const { broadcastBrowserEvent } = await import('../browser/wsHub');
-          for (const step of steps) {
-            if (!step) continue;
-            if (step.ok) {
-              broadcastBrowserEvent(sid, {
-                type: 'action_done',
-                ts: Date.now(),
-                actionId: String(step.stepId || ''),
-                actionType: String(step.name || 'unknown'),
-              } as any);
-              continue;
-            }
-            broadcastBrowserEvent(sid, {
-              type: 'action_error',
-              ts: Date.now(),
-              actionId: String(step.stepId || ''),
-              actionType: String(step.name || 'unknown'),
-              reason: step.reason || 'unknown',
-              error: step.message || 'failed',
-            } as any);
-          }
-        } catch {}
       }
 
       const s = await getBrowserSession(sid);

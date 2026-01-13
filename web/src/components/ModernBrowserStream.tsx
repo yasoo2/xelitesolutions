@@ -26,6 +26,8 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   const [lastStep, setLastStep] = useState<string>('');
   const [final, setFinal] = useState<{ ok: boolean; summary: string } | null>(null);
   const [debug, setDebug] = useState<{ compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [queueLen, setQueueLen] = useState(0);
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
@@ -35,6 +37,10 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   const pendingTypeRef = useRef('');
   const flushTimerRef = useRef<number | null>(null);
   const lastSendAtRef = useRef(0);
+  const sendQueueRef = useRef<any[][]>([]);
+  const inFlightRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelSeqRef = useRef(0);
   const viewSizeRef = useRef({ w: 1, h: 1 });
   const frameSizeRef = useRef({ w: 1280, h: 800 });
   const cursorTargetNormRef = useRef<{ x: number; y: number } | null>(null);
@@ -115,7 +121,7 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
     };
   }, []);
 
-  const runActions = async (acts: any[]) => {
+  const sendActionsNow = async (acts: any[], signal: AbortSignal) => {
     const sid = String(sessionId || '').trim();
     if (!sid) return;
     const token = (() => {
@@ -133,8 +139,63 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ sessionId: sid, actions: acts }),
+        signal,
       });
     } catch {}
+  };
+
+  const syncQueueLen = () => {
+    setQueueLen(sendQueueRef.current.length);
+  };
+
+  const cancelPending = () => {
+    cancelSeqRef.current += 1;
+    if (flushTimerRef.current) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pendingTypeRef.current = '';
+    sendQueueRef.current.length = 0;
+    syncQueueLen();
+    try {
+      abortRef.current?.abort();
+    } catch {}
+  };
+
+  const drainQueue = async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    setBusy(true);
+    const mySeq = cancelSeqRef.current;
+    try {
+      while (sendQueueRef.current.length) {
+        if (cancelSeqRef.current !== mySeq) break;
+        const next = sendQueueRef.current.shift();
+        syncQueueLen();
+        if (!next) continue;
+        const controller = new AbortController();
+        abortRef.current = controller;
+        try {
+          lastSendAtRef.current = Date.now();
+          await sendActionsNow(next, controller.signal);
+        } catch {
+          if (controller.signal.aborted) break;
+        } finally {
+          if (abortRef.current === controller) abortRef.current = null;
+        }
+      }
+    } finally {
+      inFlightRef.current = false;
+      setBusy(false);
+      syncQueueLen();
+    }
+  };
+
+  const enqueueActions = (acts: any[]) => {
+    if (!Array.isArray(acts) || acts.length === 0) return;
+    sendQueueRef.current.push(acts);
+    syncQueueLen();
+    void drainQueue();
   };
 
   const flushType = async () => {
@@ -145,8 +206,7 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
     const text = pendingTypeRef.current;
     pendingTypeRef.current = '';
     if (!text) return;
-    lastSendAtRef.current = Date.now();
-    await runActions([{ type: 'type', text }]);
+    enqueueActions([{ type: 'type', text }]);
   };
 
   const wsUrl = useMemo(() => {
@@ -342,22 +402,27 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
           const x = Math.max(0, Math.min(w - 1, Math.round(rx * w)));
           const y = Math.max(0, Math.min(h - 1, Math.round(ry * h)));
           void flushType().finally(() => {
-            void runActions([{ type: 'click', x, y }]);
+            enqueueActions([{ type: 'click', x, y }]);
           });
         }}
         onKeyDown={(e) => {
           const key = String((e as any)?.key || '');
+          if (key === 'Escape') {
+            e.preventDefault();
+            cancelPending();
+            return;
+          }
           if (key === 'Enter') {
             e.preventDefault();
             void flushType().finally(() => {
-              void runActions([{ type: 'type', text: '\n' }]);
+              enqueueActions([{ type: 'type', text: '\n' }]);
             });
             return;
           }
           if (key === 'Tab') {
             e.preventDefault();
             void flushType().finally(() => {
-              void runActions([{ type: 'type', text: '\t' }]);
+              enqueueActions([{ type: 'type', text: '\t' }]);
             });
             return;
           }
@@ -378,8 +443,26 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
         <div className="browser-cursor-cross-y" />
         <div className="browser-cursor-dot" />
       </div>
-      <div style={{ position: 'absolute', top: 10, left: 10, padding: '6px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12 }}>
-        {status} · {w}×{h} {lastStep ? `· ${lastStep}` : ''}
+      <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ padding: '6px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12 }}>
+          {status} · {w}×{h} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
+        </div>
+        {busy || queueLen ? (
+          <button
+            onClick={() => cancelPending()}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(239,68,68,0.25)',
+              color: '#fff',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            إلغاء
+          </button>
+        ) : null}
       </div>
       {actions.length ? (
         <div

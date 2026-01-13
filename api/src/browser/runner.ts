@@ -375,6 +375,16 @@ export async function runBrowserInstruction(params: {
     }
     if (planned.actions.length === 0) {
       const summary = 'plan_to_actions_empty';
+      try {
+        broadcastBrowserEvent(sessionId, {
+          type: 'action_error',
+          ts: now(),
+          actionId: 'compiler',
+          actionType: 'compiler',
+          reason: 'unknown',
+          error: summary,
+        } as any);
+      } catch {}
       const ev: BrowserWsEvent = { type: 'final_report', ts: now(), ok: false, summary, steps: [], evidence: [] };
       broadcastBrowserEvent(sessionId, ev);
       broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'plan_to_actions_empty' });
@@ -394,6 +404,16 @@ export async function runBrowserInstruction(params: {
       debugBase.stop_reason = compilerUsed ? 'fallback_after_compiler' : 'fallback_no_compiler';
     } else {
       const summary = 'compiler_failed';
+      try {
+        broadcastBrowserEvent(sessionId, {
+          type: 'action_error',
+          ts: now(),
+          actionId: 'compiler',
+          actionType: 'compiler',
+          reason: 'unknown',
+          error: summary,
+        } as any);
+      } catch {}
       const ev: BrowserWsEvent = { type: 'final_report', ts: now(), ok: false, summary, steps: [], evidence: [] };
       broadcastBrowserEvent(sessionId, ev);
       broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'compiler_failed' });

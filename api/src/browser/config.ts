@@ -7,6 +7,7 @@ export type BrowserConfig = {
   retryLimit: number;
   navTimeoutMs: number;
   actionTimeoutMs: number;
+  captureEvidenceScreenshots: boolean;
 };
 
 export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
@@ -18,4 +19,5 @@ export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
   retryLimit: 3,
   navTimeoutMs: 45000,
   actionTimeoutMs: 20000,
+  captureEvidenceScreenshots: false,
 };

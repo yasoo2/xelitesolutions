@@ -71,6 +71,7 @@ function summarizeBrowserOutputForChat(out: any) {
   const title = dom ? extractTitleFromHtml(dom) : '';
   const site = inferSiteLabel(url, dom);
   const domLen = dom ? dom.length : 0;
+  const hasScreenshot = typeof (out as any).screenshot === 'string' || typeof (out as any).screenshotHref === 'string';
   const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
   const u = String(url || '').toLowerCase();
   const domLower = String(dom || '').toLowerCase();
@@ -78,12 +79,14 @@ function summarizeBrowserOutputForChat(out: any) {
   const hasLoginFormSignal = /<form\b[\s\S]{0,4000}(type=["']password["']|name=["']password["'])/i.test(dom);
   const urlLooksLogin = /serviceLogin|\/login\b|\/signin\b|accounts\.google\.com/i.test(u);
   const domStrongLogin = /<title[^>]*>[\s\S]*?(sign in|login|تسجيل\s+الدخول)[\s\S]*?<\/title>/i.test(dom) || /ServiceLogin/i.test(dom);
+
   const loginLike = Boolean((urlLooksLogin && (hasPasswordField || hasLoginFormSignal)) || (domStrongLogin && hasPasswordField));
   const summary: any = { site };
   if (url) summary.url = url;
   if (title) summary.title = title;
   if (loginLike) summary.pageType = 'login';
   if (domLen) summary.domLength = domLen;
+  if (hasScreenshot) summary.hasScreenshot = true;
   if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
   return summary;
 }
