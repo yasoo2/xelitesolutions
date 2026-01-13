@@ -741,11 +741,46 @@ export const tools: ToolDefinition[] = [
       let missingSecrets: string[] | undefined = undefined;
       let execError: string | undefined = undefined;
 
+      const deriveExecFailure = (res: any) => {
+        const steps = Array.isArray(res?.steps) ? res.steps : [];
+        const failed = steps.filter((s: any) => s && s.ok === false);
+        const total = steps.length;
+        const failedCount = failed.length;
+        if (!failedCount) {
+          return { error: 'some_steps_failed', summary: String(res?.summary || 'فشل تنفيذ بعض الخطوات.').trim() };
+        }
+        const counts = new Map<string, number>();
+        for (const s of failed) {
+          const r = String(s?.reason || 'unknown').trim() || 'unknown';
+          counts.set(r, (counts.get(r) || 0) + 1);
+        }
+        let topReason = 'unknown';
+        let topCount = 0;
+        for (const [k, v] of counts) {
+          if (v > topCount) {
+            topReason = k;
+            topCount = v;
+          }
+        }
+        const error = topReason !== 'unknown' ? topReason : 'some_steps_failed';
+        const first = failed[0] || null;
+        const firstMsg = String(first?.message || '').trim() || String(first?.error || '').trim() || '';
+        const shortMsg = firstMsg ? firstMsg.slice(0, 140) : '';
+        const summary = `فشل تنفيذ بعض الخطوات (${failedCount}/${total || failedCount}). السبب: ${error}${shortMsg ? ` (${shortMsg})` : ''}`;
+        return { error, summary };
+      };
+
       if (instructionText && (!Array.isArray(actions) || actions.length === 0)) {
         const r = await (await import('../browser/runner')).runBrowserInstruction({ userId, sessionId: sid, instructionText });
         if (r && typeof r === 'object' && (r as any).ok) {
           execOk = Boolean((r as any).result?.ok);
-          execSummary = String((r as any).result?.summary || '');
+          const inner = (r as any).result;
+          execSummary = String(inner?.summary || '');
+          if (!execOk) {
+            const derived = deriveExecFailure(inner);
+            execError = derived.error;
+            execSummary = derived.summary;
+          }
           try {
             const dbg = (r as any)?.debug;
             if (dbg && typeof dbg === 'object') {
@@ -834,6 +869,11 @@ export const tools: ToolDefinition[] = [
 
         execOk = Boolean(r?.ok);
         execSummary = String(r?.summary || execSummary || '');
+        if (!execOk) {
+          const derived = deriveExecFailure(r);
+          execError = derived.error;
+          execSummary = derived.summary;
+        }
 
         try {
           const steps = Array.isArray(r?.steps) ? r.steps : [];

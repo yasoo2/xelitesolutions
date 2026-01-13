@@ -6,13 +6,13 @@ import { getBrowserSession, setStreamMask, startStreaming, touchSession, withBro
 import { getUserSecret } from '../services/secrets';
 
 type Action =
-  | { type: 'goto'; url: string }
-  | { type: 'click'; selector?: string; role?: string; name?: string; text?: string }
-  | { type: 'type'; selector?: string; role?: string; name?: string; text: string }
-  | { type: 'scroll'; direction: 'down' | 'up'; amount?: number }
-  | { type: 'wait'; ms: number }
-  | { type: 'assert'; selector?: string; text?: string }
-  | { type: 'ui_audit' };
+  | { type: 'goto'; url: string; optional?: boolean }
+  | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean }
+  | { type: 'type'; selector?: string; role?: string; name?: string; text: string; optional?: boolean }
+  | { type: 'scroll'; direction: 'down' | 'up'; amount?: number; optional?: boolean }
+  | { type: 'wait'; ms: number; optional?: boolean }
+  | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
+  | { type: 'ui_audit'; optional?: boolean };
 
 const SECRET_TOKEN_RE = /^\{\{\s*SECRET\s*:\s*([A-Z0-9_]+)\s*\}\}$/;
 
@@ -140,13 +140,30 @@ export async function executePlannedActions(params: {
       let mask: Locator[] = [];
       try {
         if (name === 'goto') {
+          const optional = Boolean(a?.optional);
           const url = String(a?.url || '').trim();
           if (!url) {
+            if (optional) {
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { skipped: true } });
+              results.push({ stepId: sid, name, ok: true });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+              } catch {}
+              continue;
+            }
             results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'missing_url' });
             broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: 'missing_url' });
             continue;
           }
           if (!isSameSiteAllowed(s.allowedOrigin, url)) {
+            if (optional) {
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { skipped: true, reason: 'same_site_blocked' } });
+              results.push({ stepId: sid, name, ok: true });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+              } catch {}
+              continue;
+            }
             results.push({ stepId: sid, name, ok: false, reason: 'same_site_blocked', message: url });
             broadcastBrowserEvent(sessionId, { type: 'goto_blocked', stepId: sid, ts: now(), url, reason: 'same_site_blocked', message: 'cross_site_blocked' });
             try {
@@ -311,8 +328,17 @@ export async function executePlannedActions(params: {
             }
           }
 
+          const optional = Boolean(a?.optional);
           const loc = locatorForAction(page, a);
           if (!loc) {
+            if (optional) {
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { skipped: true } });
+              results.push({ stepId: sid, name, ok: true });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+              } catch {}
+              continue;
+            }
             results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'no_locator' });
             broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'element_not_found', message: 'no_locator' });
             try {
@@ -330,6 +356,14 @@ export async function executePlannedActions(params: {
 
           const count = await loc.count().catch(() => 0);
           if (!count) {
+            if (optional) {
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { skipped: true, reason: 'element_not_found' } });
+              results.push({ stepId: sid, name, ok: true });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+              } catch {}
+              continue;
+            }
             results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'not_found' });
             broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'element_not_found', message: 'not_found' });
             try {
