@@ -2260,7 +2260,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (String(plan?.name || '') === 'browser_run') {
       const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
       const key = browserRunGuardKey(String(sessionId), bid, String(runId));
-      const now = Date.now();
+      const now0 = Date.now();
       const sigObj = (() => {
         const rawInput: any = (plan as any)?.input || {};
         return {
@@ -2284,7 +2284,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           sigCount: 0,
         } as any);
 
-      const since = prev.lastAt ? now - prev.lastAt : Number.POSITIVE_INFINITY;
+      const since0 = prev.lastAt ? now0 - prev.lastAt : Number.POSITIVE_INFINITY;
       const nextSigCount = prev.lastSig && prev.lastSig === sig ? prev.sigCount + 1 : 1;
       const nextTotal = Number(prev.totalCount || 0) + 1;
 
@@ -2298,16 +2298,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         break;
       }
       const isSameSig = Boolean(prev.lastSig && prev.lastSig === sig);
-      if (isSameSig && Number.isFinite(since) && since < BROWSER_RUN_MIN_INTERVAL_MS) {
-        const waitSec = Math.max(1, Math.ceil((BROWSER_RUN_MIN_INTERVAL_MS - since) / 1000));
+      if (isSameSig && Number.isFinite(since0) && since0 < BROWSER_RUN_MIN_INTERVAL_MS) {
+        const waitMs = Math.max(1, BROWSER_RUN_MIN_INTERVAL_MS - since0);
+        const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
         const msg = isArabicText(userTextForOverrides)
-          ? `⚠️ تم منع إعادة استدعاء browser_run بسرعة.\nانتظر حوالي ${waitSec}s ثم أعد المحاولة يدويًا إذا لزم.`
-          : `⚠️ Blocked a rapid re-call of browser_run.\nWait about ${waitSec}s, then re-run manually if needed.`;
-        forcedText = msg;
+          ? `⚠️ تم منع إعادة استدعاء browser_run بسرعة.\nسأعيد المحاولة تلقائياً بعد حوالي ${waitSec}s.`
+          : `⚠️ Blocked a rapid re-call of browser_run.\nI’ll auto-retry after about ${waitSec}s.`;
         ev({ type: 'text', data: msg });
-        assistantTextEmitted = true;
-        break;
+        await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
       }
+      const now = Date.now();
       browserRunGuard.set(key, { totalCount: nextTotal, lastAt: now, lastSig: sig, sigCount: nextSigCount });
     }
 
