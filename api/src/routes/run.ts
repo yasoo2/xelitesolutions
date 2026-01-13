@@ -1382,6 +1382,30 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (/browser navigation blocked/i.test(s)) return true;
     return false;
   };
+  const extractOpenTargetText = (raw: string) => {
+    let s = String(raw || '').trim();
+    if (!s) return '';
+    s = s
+      .replace(/https?:\/\/[^\s"'<>]+/gi, ' ')
+      .replace(/\b(?:open|start|launch|browse|visit|go\s+to)\b/gi, ' ')
+      .replace(/\b(?:website|site|page)\b/gi, ' ')
+      .replace(/(?:ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور)\b/gi, ' ')
+      .replace(/(?:الى|إلى|لـ|ل)\b/gi, ' ')
+      .replace(/(?:موقع|صفحة|صفحه)\b/gi, ' ')
+      .replace(/(?:على\s+المتصفح|بالـ?متصفح|في\s+المتصفح|المتصفح)\b/gi, ' ')
+      .replace(/[“”"']/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    s = s.replace(/^(?:موقع|صفحة|صفحه)\s+/i, '').trim();
+    s = s.replace(/\s+(?:الآن|الان|حالًا|حالا)\s*$/i, '').trim();
+    return s;
+  };
+  const pickTopUrlFromSearch = (out: any) => {
+    const results = Array.isArray(out?.results) ? out.results : [];
+    const top = results[0];
+    const url = typeof top?.url === 'string' ? String(top.url).trim() : '';
+    return url;
+  };
   let browserHostLock = '';
   let browserOriginLock = '';
   const updateBrowserLockFromOutput = (out: any) => {
@@ -1406,6 +1430,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   })();
 
   const initialUserTextForOpen = String(text || '');
+  let pendingBrowserOpenFromSearch: { target: string } | null = null;
   const isSimpleBrowserOpenRequest = (() => {
     const s = initialUserTextForOpen;
     if (!s.trim()) return false;
@@ -1427,6 +1452,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(
         s,
       ) ||
+      /(website|site|page|موقع|صفحة|صفحه)/i.test(s) ||
       /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
     if (!hasUrl && !hasSiteKeyword) return false;
     if (!(openKeyword || browserKeyword || hasUrl)) return false;
@@ -1458,6 +1484,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const m = s.match(/https?:\/\/[^\s"'<>]+/i);
       simpleBrowserOpenLabel = m?.[0] || 'الموقع';
     }
+    const openTarget = extractOpenTargetText(s);
+    if (!directUrl.trim() && openTarget && simpleBrowserOpenLabel === 'الموقع') {
+      const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
+      pendingPlan = { name: 'web_search', input: { query: q } } as any;
+      pendingBrowserOpenFromSearch = { target: openTarget };
+    } else {
     simpleBrowserOpenUrl =
       directUrl.trim() ||
       (simpleBrowserOpenLabel === 'GitHub'
@@ -1469,17 +1501,20 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             : simpleBrowserOpenLabel === 'OpenAI'
               ? 'https://platform.openai.com/'
             : 'https://www.google.com');
+    }
   }
 
   if (isSimpleBrowserOpenRequest) {
-    const targetUrl = String(simpleBrowserOpenUrl || '').trim() || 'https://www.yahoo.com';
-    const host = urlToHost(targetUrl);
-    const hostKey = host ? hostKeyFromHost(host) : '';
-    const sid =
-      userId && String(userId).trim()
-        ? `browser:${String(userId).trim()}:${hostKey || 'site'}`
-        : `browser:${Date.now()}`;
-    pendingPlan = { name: 'browser_open', input: { url: targetUrl, sessionId: sid } } as any;
+    if (pendingPlan?.name !== 'web_search') {
+      const targetUrl = String(simpleBrowserOpenUrl || '').trim() || 'https://www.yahoo.com';
+      const host = urlToHost(targetUrl);
+      const hostKey = host ? hostKeyFromHost(host) : '';
+      const sid =
+        userId && String(userId).trim()
+          ? `browser:${String(userId).trim()}:${hostKey || 'site'}`
+          : `browser:${Date.now()}`;
+      pendingPlan = { name: 'browser_open', input: { url: targetUrl, sessionId: sid } } as any;
+    }
   }
 
   const isSimpleGoogleSearchRequest = (() => {
@@ -1654,9 +1689,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const wantsYoutube = /youtube|يوتيوب/i.test(s);
         const wantsGoogle = /google|جوجل/i.test(s);
         const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s);
+        const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(s);
         const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(s);
         const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(s);
         const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s);
+        const wantsPricing = /(price|pricing|سعر|الاسعار|الأسعار|تكلفة|cost)/i.test(s);
         const wantsBilling =
           /(balance|billing|credit|credits|usage|payment|invoice|invoices|رصيد|الرصيد|فواتير|الفواتير|استخدام|المدفوعات)/i.test(
             s,
@@ -1664,10 +1701,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const openAiUrl = wantsBilling
           ? 'https://platform.openai.com/account/billing/overview'
           : 'https://platform.openai.com/';
+        const openAiPricingUrl = 'https://openai.com/pricing';
         const desiredUrl =
           (directUrl || '').trim() ||
           (wantsOpenAI
-            ? openAiUrl
+            ? (wantsPricing ? openAiPricingUrl : openAiUrl)
             : wantsYahoo
               ? 'https://www.yahoo.com'
               : wantsYoutube
@@ -1676,6 +1714,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   ? 'https://github.com'
                   : wantsGoogle
                     ? 'https://www.google.com'
+                    : wantsMicrosoft
+                      ? 'https://www.microsoft.com'
                     : wantsX
                       ? 'https://x.com'
                       : wantsFacebook
@@ -1686,6 +1726,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (desiredUrl) {
           plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
           planName = 'browser_open';
+        } else if (openKeyword) {
+          const openTarget = extractOpenTargetText(s);
+          if (openTarget) {
+            const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
+            const sig = `web_search_open:${q}`;
+            if (!executedToolSigs.has(sig)) {
+              executedToolSigs.add(sig);
+              plan = { name: 'web_search', input: { query: q } } as any;
+              planName = 'web_search';
+              pendingBrowserOpenFromSearch = { target: openTarget };
+            }
+          }
         }
       }
     }
@@ -2506,6 +2558,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         : `Opened ${simpleBrowserOpenLabel || 'the site'} in the browser.`;
       endAfterBrowserState = false;
       pendingPlan = { name: 'echo', input: { text: msg } } as any;
+    }
+    if (result.ok && plan?.name === 'web_search' && pendingBrowserOpenFromSearch) {
+      const url = pickTopUrlFromSearch((result as any)?.output);
+      const target = pendingBrowserOpenFromSearch.target;
+      pendingBrowserOpenFromSearch = null;
+      if (url) {
+        simpleBrowserOpenLabel = target || simpleBrowserOpenLabel || 'الموقع';
+        pendingPlan = { name: 'browser_open', input: { url } } as any;
+        endAfterBrowserState = true;
+      } else {
+        const msg = isArabicText(userTextForOverrides)
+          ? `تعذّر العثور على رابط واضح لفتح "${target}".\nأرسل الرابط مباشرة (مثال: https://example.com).`
+          : `I couldn’t find a clear URL to open "${target}".\nPlease send the URL directly (e.g. https://example.com).`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
     }
     // After browser actions, capture page state for accurate reading/sync
     if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
