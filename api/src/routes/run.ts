@@ -663,6 +663,27 @@ function normalizeArabicQuery(input: string) {
     .trim();
 }
 
+function isGeneralKnowledgeQuestion(text: string) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const t = normalizeArabicQuery(raw);
+  const hasQuestionMark = /[?؟]/.test(raw);
+  const arQ =
+    /^(من|ما|ماذا|متي|متى|اين|أين|اين|كيف|هل|لماذا)\b/.test(t) ||
+    /(في\s*(اي|أي)\s*عام)\b/.test(t) ||
+    /(ما\s*(هو|هي|هي)\b)/.test(t);
+  const enQ = /^(what|when|where|why|how|who|which)\b/i.test(raw);
+  const actionKeyword =
+    /(open|start|launch|browse|visit|go to|click|type|run|execute|افتح|شغل|ابدأ|ادخل|اذهب|انقر|اضغط|اكتب|نفذ|قم\s+ب)/i.test(
+      raw,
+    );
+  const toolishKeyword =
+    /(browser|web|preview|متصفح|المتصفح|terminal|command|ترمينال|أمر|npm|node|git|repo|repository|ملف|مجلد|path|مسار|build|lint|typecheck)/i.test(
+      raw,
+    );
+  return Boolean((hasQuestionMark || arQ || enQ) && !actionKeyword && !toolishKeyword);
+}
+
 function containsBuilderPlanText(raw: string): boolean {
   const s = normalizeArabicQuery(raw);
   if (!s) return false;
@@ -1622,12 +1643,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch'].includes(planName)) {
         const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
         if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
+            const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
+            const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
             plan = {
                 name: 'echo',
                 input: {
                   text: isArabicText(userTextForOverrides)
-                    ? 'تم تكرار نفس الخطوة بدون تقدم. حدّد المطلوب التالي (مثال: افتح https://www.yahoo.com).'
-                    : 'The same step repeated without progress. Tell me the next action (e.g. open https://www.yahoo.com).',
+                    ? (isGeneral
+                      ? (needsKey
+                        ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
+                        : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
+                      : `تم تكرار نفس الخطوة بدون تقدم (${planName}).\nأعد صياغة الطلب أو حدّد الخطوة التالية بشكل أوضح.`)
+                    : (isGeneral
+                      ? (needsKey
+                        ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
+                        : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
+                      : `The same step repeated without progress (${planName}).\nPlease rephrase or tell me the next concrete action.`),
                 }
             } as any;
             planName = 'echo';

@@ -110,3 +110,4 @@ assert.equal(isSimpleBrowserOpenRequestText('افتح https://www.google.com'), 
 assert.equal(isSimpleBrowserOpenRequestText('افتح جوجل ثم ابحث عن سعر الدولار'), false);
 assert.equal(isSimpleBrowserOpenRequestText('افتح https://www.google.com ثم ابحث عن سعر الدولار'), false);
 assert.equal(isSimpleBrowserOpenRequestText('open google then search for exchange rates'), false);
+assert.equal(isSimpleBrowserOpenRequestText('في اي عام قامت الثوره الفرنسية؟'), false);
