@@ -600,14 +600,21 @@ export const tools: ToolDefinition[] = [
       touchSession(sid);
       const dom = await s.page.content();
       const title = await s.page.title();
-      const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 60000 });
-      const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
-      const full = path.join(ARTIFACT_DIR, fname);
-      try { fs.writeFileSync(full, buf); } catch {}
-      const href = `/artifacts/${encodeURIComponent(fname)}`;
+      let href = '';
+      let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
+      try {
+        const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 5000 });
+        const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
+        const full = path.join(ARTIFACT_DIR, fname);
+        try { fs.writeFileSync(full, buf); } catch {}
+        href = `/artifacts/${encodeURIComponent(fname)}`;
+        artifacts = [{ name: 'Screenshot', href }];
+      } catch (e: any) {
+        logs.push(`browser_open screenshot_failed=${String(e?.message || e || 'unknown')}`);
+      }
       logs.push(`browser_open sid=${sid} url=${url}`);
       startStreaming(sid);
-      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts: [{ name: 'Screenshot', href }] };
+      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts };
     },
   },
   {
@@ -643,14 +650,21 @@ export const tools: ToolDefinition[] = [
       const url = s.page.url();
       const title = await s.page.title();
       const dom = await s.page.content();
-      const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 60000 });
-      const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
-      const full = path.join(ARTIFACT_DIR, fname);
-      try { fs.writeFileSync(full, buf); } catch {}
-      const href = `/artifacts/${encodeURIComponent(fname)}`;
+      let href = '';
+      let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
+      try {
+        const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 1500 });
+        const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
+        const full = path.join(ARTIFACT_DIR, fname);
+        try { fs.writeFileSync(full, buf); } catch {}
+        href = `/artifacts/${encodeURIComponent(fname)}`;
+        artifacts = [{ name: 'Screenshot', href }];
+      } catch (e: any) {
+        logs.push(`browser_get_state screenshot_failed=${String(e?.message || e || 'unknown')}`);
+      }
       logs.push(`browser_get_state sid=${sid} url=${url}`);
       startStreaming(sid);
-      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts: [{ name: 'Screenshot', href }] };
+      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts };
     },
   },
   {
@@ -738,9 +752,79 @@ export const tools: ToolDefinition[] = [
           if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
         }
       } else {
-        const r: any = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
+        const safeActionType = (a: any) => String(a?.type || 'unknown');
+        const safeActionId = (i: number) => `step_${i + 1}`;
+        const safeActionSummary = (a: any) => {
+          const t = safeActionType(a);
+          if (t === 'goto') return `goto ${String(a?.url || '').trim()}`;
+          if (t === 'type') return `type (len=${String(a?.text || '').length})`;
+          return t;
+        };
+
+        try {
+          const { broadcastBrowserEvent } = await import('../browser/wsHub');
+          for (let i = 0; i < Math.min(80, actions.length); i += 1) {
+            const a: any = actions[i];
+            const actionType = safeActionType(a);
+            const actionId = safeActionId(i);
+            broadcastBrowserEvent(sid, {
+              type: 'action_sent',
+              ts: Date.now(),
+              actionId,
+              actionType,
+              summary: safeActionSummary(a),
+            } as any);
+            broadcastBrowserEvent(sid, { type: 'action_ack', ts: Date.now(), actionId, actionType } as any);
+          }
+        } catch {}
+
+        let r: any = null;
+        try {
+          r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
+        } catch (e: any) {
+          execOk = false;
+          execSummary = String(e?.message || e || 'browser_run_failed');
+          try {
+            const { broadcastBrowserEvent } = await import('../browser/wsHub');
+            broadcastBrowserEvent(sid, {
+              type: 'action_error',
+              ts: Date.now(),
+              actionId: 'step_1',
+              actionType: safeActionType(actions?.[0]),
+              reason: 'unknown',
+              error: execSummary,
+            } as any);
+          } catch {}
+          r = null;
+        }
+
         execOk = Boolean(r?.ok);
-        execSummary = String(r?.summary || '');
+        execSummary = String(r?.summary || execSummary || '');
+
+        try {
+          const steps = Array.isArray(r?.steps) ? r.steps : [];
+          const { broadcastBrowserEvent } = await import('../browser/wsHub');
+          for (const step of steps) {
+            if (!step) continue;
+            if (step.ok) {
+              broadcastBrowserEvent(sid, {
+                type: 'action_done',
+                ts: Date.now(),
+                actionId: String(step.stepId || ''),
+                actionType: String(step.name || 'unknown'),
+              } as any);
+              continue;
+            }
+            broadcastBrowserEvent(sid, {
+              type: 'action_error',
+              ts: Date.now(),
+              actionId: String(step.stepId || ''),
+              actionType: String(step.name || 'unknown'),
+              reason: step.reason || 'unknown',
+              error: step.message || 'failed',
+            } as any);
+          }
+        } catch {}
       }
 
       const s = await getBrowserSession(sid);
@@ -748,17 +832,24 @@ export const tools: ToolDefinition[] = [
       const pageUrl = s.page.url();
       const title = await s.page.title();
       const dom = await s.page.content();
-      const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 60000 });
-      const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
-      const full = path.join(ARTIFACT_DIR, fname);
-      try { fs.writeFileSync(full, buf); } catch {}
-      const href = `/artifacts/${encodeURIComponent(fname)}`;
+      let href = '';
+      let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
+      try {
+        const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 5000 });
+        const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
+        const full = path.join(ARTIFACT_DIR, fname);
+        try { fs.writeFileSync(full, buf); } catch {}
+        href = `/artifacts/${encodeURIComponent(fname)}`;
+        artifacts = [{ name: 'Screenshot', href }];
+      } catch (e: any) {
+        logs.push(`browser_run screenshot_failed=${String(e?.message || e || 'unknown')}`);
+      }
       logs.push(`browser_run sid=${sid} steps=${Array.isArray(actions) ? actions.length : 0} compiled=${instructionText ? 1 : 0}`);
       return {
         ok: execOk,
         output: { sessionId: sid, pageUrl, title, dom, screenshotHref: href, summary: execSummary, missingSecrets },
         logs,
-        artifacts: [{ name: 'Screenshot', href }],
+        artifacts,
         error: execOk ? undefined : missingSecrets && missingSecrets.length ? 'missing_secrets' : 'browser_run_failed',
       };
     },

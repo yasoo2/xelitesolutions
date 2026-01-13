@@ -28,10 +28,6 @@ function inferWsUrl(apiUrl: string) {
     hostname === '0.0.0.0' ||
     hostname.endsWith('.local');
 
-  if (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com') {
-    return 'wss://ws.xelitesolutions.com/ws';
-  }
-
   if (isLocal) {
     return apiUrl.replace(/^http/i, 'ws') + '/ws';
   }

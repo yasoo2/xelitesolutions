@@ -264,25 +264,50 @@ async function runUiE2e() {
       throw new Error(`timeout_waiting_for_${label}`);
     };
 
-    const fetchDom = async () => {
+    const fetchState = async () => {
       const res = await fetch(`${API_URL}/tools/browser_get_state/execute`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ sessionId }),
       });
-      const j: any = await res.json().catch(() => null);
-      return String(j?.output?.dom || '');
+      const raw = await res.text().catch(() => '');
+      if (!res.ok) {
+        throw new Error(`browser_get_state_http_${res.status}:${raw.slice(0, 240)}`);
+      }
+      let j: any = null;
+      try {
+        j = raw ? JSON.parse(raw) : null;
+      } catch {}
+      if (!j || j.ok !== true) {
+        const err = String(j?.error || 'unknown_tool_error');
+        throw new Error(`browser_get_state_failed:${err}:${raw.slice(0, 240)}`);
+      }
+      return {
+        dom: String(j?.output?.dom || ''),
+        url: String(j?.output?.url || ''),
+        title: String(j?.output?.title || ''),
+      };
     };
 
     const loadStartedAt = Date.now();
+    let lastStateError = '';
+    let lastState = { dom: '', url: '', title: '' };
     while (Date.now() - loadStartedAt < 15000) {
-      const dom = await fetchDom();
-      if (dom.includes('data-ready="1"')) break;
+      try {
+        const st = await fetchState();
+        lastState = st;
+        lastStateError = '';
+        if (st.dom.includes('data-ready="1"')) break;
+      } catch (e: any) {
+        lastStateError = String(e?.message || e || 'unknown_state_error');
+      }
       await new Promise((r) => setTimeout(r, 400));
     }
-    const domReady = await fetchDom();
-    if (!domReady.includes('data-ready="1"')) {
-      throw new Error(`browser_page_not_ready (sessionId=${sessionId})`);
+    const domReady = lastStateError ? lastState : await fetchState().catch(() => lastState);
+    if (!String(domReady.dom || '').includes('data-ready="1"')) {
+      throw new Error(
+        `browser_page_not_ready (sessionId=${sessionId}) url=${domReady.url} title=${domReady.title} domSnippet=${domReady.dom.slice(0, 220)} stateError=${lastStateError}`
+      );
     }
 
     const clickViewport = async (vx: number, vy: number) => {
@@ -376,7 +401,7 @@ async function runUiE2e() {
     await clickViewport(remoteW / 2, remoteH / 2 + 43);
     await new Promise((r) => setTimeout(r, 600));
 
-    const domAfter = await fetchDom();
+    const domAfter = (await fetchState()).dom;
     const hasClicked = domAfter.includes('data-clicked="abc"') || domAfter.includes("data-clicked='abc'");
     const hasValue = domAfter.includes('value="abc"') || domAfter.includes("value='abc'");
     if (!hasClicked || !hasValue) {
