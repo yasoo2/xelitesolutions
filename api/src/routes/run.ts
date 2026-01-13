@@ -1501,7 +1501,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } else {
         const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
         if (Date.now() < coolUntil) {
-            plan = { name: 'project_detect', input: { path: '.' } } as any;
+            const userTextForCooldown = String(text || '');
+            if (isGeneralKnowledgeQuestion(userTextForCooldown)) {
+              plan = { name: 'central_answer', input: { question: userTextForCooldown } } as any;
+            } else {
+              plan = { name: 'project_detect', input: { path: '.' } } as any;
+            }
         } else {
         // Plan next step with history
         try {
@@ -1537,6 +1542,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   ? `كم درجة الحرارة الآن في ${city}؟`
                   : `current temperature in ${city} now`;
                 plan = { name: 'central_answer', input: { question: q } } as any;
+              } else if (isGeneralKnowledgeQuestion(userTextForOverrides)) {
+                plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
               } else if (/(ابحث|بحث|search|find|lookup|اعطني|اعطيني|معلومات|info)/.test(userTextNorm) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\b/.test(userTextNorm)) {
                 const qMatch = userTextForOverrides.match(/(?:عن|حول)\s+(.+)/i);
                 const query = qMatch ? qMatch[1] : userTextForOverrides;
@@ -1549,6 +1556,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               const userTextForOverrides = String(text || '');
               if (isLocationLikeQuery(userTextForOverrides)) {
                 plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+              } else if (isGeneralKnowledgeQuestion(userTextForOverrides)) {
+                plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
               } else {
                 plan = null;
               }
@@ -1566,7 +1575,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       ev({ type: 'text', data: msg });
       forcedText = msg;
       assistantTextEmitted = true;
-      plan = { name: 'project_detect', input: { path: '.' } } as any;
+      if (isGeneralKnowledgeQuestion(String(text || ''))) {
+        plan = { name: 'central_answer', input: { question: String(text || '') } } as any;
+      } else {
+        plan = { name: 'project_detect', input: { path: '.' } } as any;
+      }
     }
     
     let planName = String(plan?.name || '');
@@ -1781,6 +1794,21 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         ? `كم درجة الحرارة الآن في ${city}؟`
         : `current temperature in ${city} now`;
       plan = { name: 'central_answer', input: { question: q } } as any;
+      planName = 'central_answer';
+    }
+
+    const wantsGeneralAnswer = isGeneralKnowledgeQuestion(userTextForOverrides);
+    if (
+      wantsGeneralAnswer &&
+      (!planName ||
+        planName === 'echo' ||
+        planName === 'project_detect' ||
+        planName === 'analyze_codebase' ||
+        planName === 'scaffold_project' ||
+        planName === 'npm_install' ||
+        planName === 'npm_build')
+    ) {
+      plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
       planName = 'central_answer';
     }
     
