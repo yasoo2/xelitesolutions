@@ -16,11 +16,12 @@ type WsEvent =
   | { type: 'debug_snapshot'; ts: number; compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string };
 
 export default function ModernBrowserStream({ sessionId }: { sessionId: string }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cursorElRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const [w, setW] = useState(1280);
   const [h, setH] = useState(800);
-  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [boxes, setBoxes] = useState<Array<{ x: number; y: number; width: number; height: number; label?: string }>>([]);
   const [lastStep, setLastStep] = useState<string>('');
   const [final, setFinal] = useState<{ ok: boolean; summary: string } | null>(null);
@@ -30,20 +31,89 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   >([]);
 
   const boxesRef = useRef(boxes);
-  const cursorRef = useRef(cursor);
   const actionsRef = useRef(actions);
   const pendingTypeRef = useRef('');
   const flushTimerRef = useRef<number | null>(null);
   const lastSendAtRef = useRef(0);
+  const viewSizeRef = useRef({ w: 1, h: 1 });
+  const frameSizeRef = useRef({ w: 1280, h: 800 });
+  const cursorTargetNormRef = useRef<{ x: number; y: number } | null>(null);
+  const cursorPosPxRef = useRef<{ x: number; y: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastRafTsRef = useRef<number>(0);
+  const cursorVisibleRef = useRef(false);
   useEffect(() => {
     boxesRef.current = boxes;
   }, [boxes]);
   useEffect(() => {
-    cursorRef.current = cursor;
-  }, [cursor]);
-  useEffect(() => {
     actionsRef.current = actions;
   }, [actions]);
+  useEffect(() => {
+    frameSizeRef.current = { w, h };
+  }, [w, h]);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      viewSizeRef.current = { w: Math.max(1, rect.width), h: Math.max(1, rect.height) };
+    };
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => {
+      try {
+        ro.disconnect();
+      } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
+    const tick = (ts: number) => {
+      const el = cursorElRef.current;
+      const targetNorm = cursorTargetNormRef.current;
+      if (!el || !targetNorm) {
+        if (el && cursorVisibleRef.current) {
+          el.style.opacity = '0';
+          cursorVisibleRef.current = false;
+        }
+        rafRef.current = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      const dtMs = lastRafTsRef.current ? ts - lastRafTsRef.current : 16;
+      lastRafTsRef.current = ts;
+      const dt = Math.max(0.001, Math.min(0.06, dtMs / 1000));
+      const view = viewSizeRef.current;
+
+      const tx = targetNorm.x * view.w;
+      const ty = targetNorm.y * view.h;
+      const cur = cursorPosPxRef.current || { x: tx, y: ty };
+
+      const follow = 1 - Math.pow(0.0001, dt);
+      const nx = cur.x + (tx - cur.x) * follow;
+      const ny = cur.y + (ty - cur.y) * follow;
+      cursorPosPxRef.current = { x: nx, y: ny };
+
+      el.style.transform = `translate3d(${nx}px, ${ny}px, 0) translate(-50%, -50%)`;
+      if (!cursorVisibleRef.current) {
+        el.style.opacity = '1';
+        cursorVisibleRef.current = true;
+      }
+
+      rafRef.current = window.requestAnimationFrame(tick);
+    };
+    rafRef.current = window.requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) {
+        try {
+          window.cancelAnimationFrame(rafRef.current);
+        } catch {}
+      }
+      rafRef.current = null;
+    };
+  }, []);
 
   const runActions = async (acts: any[]) => {
     const sid = String(sessionId || '').trim();
@@ -133,23 +203,15 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
             }
             ctx.restore();
           }
-          const curCursor = cursorRef.current;
-          if (curCursor) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-            ctx.beginPath();
-            ctx.arc(curCursor.x, curCursor.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.restore();
-          }
         };
         img.src = `data:image/jpeg;base64,${msg.jpegBase64}`;
         return;
       }
       if (msg.type === 'cursor_move') {
-        setCursor({ x: msg.x, y: msg.y });
+        const fs = frameSizeRef.current;
+        const nx = fs.w ? msg.x / fs.w : 0;
+        const ny = fs.h ? msg.y / fs.h : 0;
+        cursorTargetNormRef.current = { x: Math.max(0, Math.min(1, nx)), y: Math.max(0, Math.min(1, ny)) };
         return;
       }
       if (msg.type === 'highlight_boxes') {
@@ -207,7 +269,64 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   }, [wsUrl]);
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0b0b' }}>
+    <div ref={rootRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0b0b' }}>
+      <style>{`
+        .browser-cursor {
+          width: 44px;
+          height: 44px;
+          position: absolute;
+          top: 0;
+          left: 0;
+          opacity: 0;
+          pointer-events: none;
+          z-index: 6;
+          will-change: transform, opacity;
+          filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+        }
+        .browser-cursor-ring {
+          position: absolute;
+          inset: 0;
+          border-radius: 999px;
+          border: 3px solid rgba(255, 0, 92, 0.9);
+          box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25), 0 0 24px rgba(255, 0, 92, 0.35);
+          animation: cursorPulse 1.15s ease-in-out infinite;
+        }
+        .browser-cursor-dot {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 12px;
+          height: 12px;
+          transform: translate(-50%, -50%);
+          border-radius: 999px;
+          background: radial-gradient(circle at 30% 30%, #fff 0%, #ffd100 28%, #ff006a 68%, #b000ff 100%);
+          box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35), 0 10px 18px rgba(0, 0, 0, 0.28);
+        }
+        .browser-cursor-cross-x, .browser-cursor-cross-y {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          background: rgba(255, 255, 255, 0.85);
+          box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+        }
+        .browser-cursor-cross-x {
+          width: 22px;
+          height: 2px;
+          transform: translate(-50%, -50%);
+          border-radius: 999px;
+        }
+        .browser-cursor-cross-y {
+          width: 2px;
+          height: 22px;
+          transform: translate(-50%, -50%);
+          border-radius: 999px;
+        }
+        @keyframes cursorPulse {
+          0% { transform: scale(0.92); opacity: 0.78; }
+          55% { transform: scale(1.05); opacity: 1; }
+          100% { transform: scale(0.92); opacity: 0.78; }
+        }
+      `}</style>
       <canvas
         ref={canvasRef}
         tabIndex={0}
@@ -253,6 +372,12 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
         }}
         style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
       />
+      <div ref={cursorElRef} className="browser-cursor" aria-hidden="true">
+        <div className="browser-cursor-ring" />
+        <div className="browser-cursor-cross-x" />
+        <div className="browser-cursor-cross-y" />
+        <div className="browser-cursor-dot" />
+      </div>
       <div style={{ position: 'absolute', top: 10, left: 10, padding: '6px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12 }}>
         {status} · {w}×{h} {lastStep ? `· ${lastStep}` : ''}
       </div>
