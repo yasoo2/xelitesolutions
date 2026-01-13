@@ -2425,6 +2425,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     if (!result.ok && String(plan?.name || '') === 'browser_run') {
       const err = String((result as any)?.error || '').trim();
+      if (err === 'timeout') {
+        const msg = isArabicText(userTextForOverrides)
+          ? `⚠️ انتهت مهلة تنفيذ خطوة في المتصفح (timeout).\nلن أعيد المحاولة تلقائياً لتجنّب حلقة.\nأعد إرسال الأمر إذا كنت تريد المحاولة مرة أخرى.`
+          : `⚠️ A browser step timed out.\nI won’t auto-retry to avoid a loop.\nRe-run the command if you want to try again.`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
       const terminal =
         err === 'plan_to_actions_empty' ||
         err === 'compiler_failed' ||
