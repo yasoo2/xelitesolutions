@@ -10,7 +10,7 @@ export type BrowserConfig = {
 };
 
 export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
-  strictSameSite: true,
+  strictSameSite: false,
   waitForInstruction: true,
   enableGoogleSearch: false,
   streamFps: 10,
@@ -19,4 +19,3 @@ export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
   navTimeoutMs: 45000,
   actionTimeoutMs: 20000,
 };
-
