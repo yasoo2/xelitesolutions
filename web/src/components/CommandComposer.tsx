@@ -2374,6 +2374,17 @@ export default function CommandComposer({
     return false;
   };
 
+  const attachScreenshots = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('ui.chat.attachScreenshots');
+      if (raw == null) return false;
+      const s = String(raw).trim().toLowerCase();
+      return ['1', 'true', 'yes', 'y', 'on'].includes(s);
+    } catch {
+      return false;
+    }
+  }, []);
+
   const renderItems = useMemo(() => {
     const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
     const inserted = new Set<string>();
@@ -2710,8 +2721,12 @@ export default function CommandComposer({
 
           if (item.kind === 'artifact') {
             const e = item.e;
-            const kind = e?.data?.kind;
             const href = e?.data?.href;
+            const nameStr = String(e?.data?.name || '');
+            const hrefStr = typeof href === 'string' ? href : '';
+            const looksLikeBrowserScreenshot =
+              nameStr.trim().toLowerCase() === 'screenshot' || /\/artifacts\/(browser-|health-browser-)/i.test(hrefStr);
+            if (!attachScreenshots && looksLikeBrowserScreenshot) return null;
             const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.href || '');
             const isVideo = /\.(mp4|webm|mov)$/i.test(e?.data?.name || '') || /\.(mp4|webm|mov)$/i.test(e?.data?.href || '');
 

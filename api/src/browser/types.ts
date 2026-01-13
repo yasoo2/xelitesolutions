@@ -66,6 +66,19 @@ export type FinalReportEvent = {
   evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }>;
 };
 
+export type FinalStatusEvent =
+  | { type: 'final_success'; ts: number; summary: string }
+  | { type: 'final_failed'; ts: number; summary: string; reason: string };
+
+export type DebugSnapshotEvent = {
+  type: 'debug_snapshot';
+  ts: number;
+  compiledPlanJson: any;
+  actionsJson: any;
+  actionCount: number;
+  stopReason: string;
+};
+
 export type BrowserWsEvent =
   | StreamFrameEvent
   | CursorMoveEvent
@@ -73,4 +86,6 @@ export type BrowserWsEvent =
   | SessionStatusEvent
   | ActionLogEvent
   | StepEvent
-  | FinalReportEvent;
+  | FinalReportEvent
+  | FinalStatusEvent
+  | DebugSnapshotEvent;

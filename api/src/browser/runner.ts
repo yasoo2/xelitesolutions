@@ -1,4 +1,4 @@
-import type { BrowserWsEvent, FailureReason } from './types';
+import type { BrowserWsEvent } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { resolveSecretsInText, redactSecretsFromString } from './secrets';
@@ -8,25 +8,6 @@ import { stopSession } from './manager';
 
 function now() {
   return Date.now();
-}
-
-function newStepId(i: number) {
-  return `step_${i + 1}`;
-}
-
-function asReason(v: any): FailureReason {
-  const s = String(v || '').trim();
-  if (
-    s === 'element_not_found' ||
-    s === 'overlay_blocking_click' ||
-    s === 'needs_scroll' ||
-    s === 'iframe_or_shadow_dom' ||
-    s === 'timeout' ||
-    s === 'same_site_blocked'
-  ) {
-    return s;
-  }
-  return 'unknown';
 }
 
 type Planned = {
@@ -66,6 +47,93 @@ Allowed action types:
 - {"type":"ui_audit"}
 `;
 
+function extractJsonLike(text: string) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('{') && raw.endsWith('}')) return raw;
+  if (raw.startsWith('[') && raw.endsWith(']')) return raw;
+  const m = raw.match(/\{[\s\S]*\}/);
+  return String(m?.[0] || '').trim();
+}
+
+function deepRedactForDebug(v: any): any {
+  if (v == null) return v;
+  if (typeof v === 'string') return redactSecretsFromString(v);
+  if (typeof v === 'number' || typeof v === 'boolean') return v;
+  if (Array.isArray(v)) return v.map((x) => deepRedactForDebug(x));
+  if (typeof v === 'object') {
+    const out: any = {};
+    for (const k of Object.keys(v)) out[k] = deepRedactForDebug((v as any)[k]);
+    return out;
+  }
+  return redactSecretsFromString(String(v));
+}
+
+function plannedFromUnknown(r: any): Planned | null {
+  if (!r || typeof r !== 'object') return null;
+
+  const input = (r as any).input;
+  if (input && typeof input === 'object' && Array.isArray((input as any).actions)) {
+    return { actions: (input as any).actions };
+  }
+
+  if (String((r as any).name || '') === 'echo') {
+    const text =
+      typeof input === 'string'
+        ? input
+        : typeof input?.text === 'string'
+          ? input.text
+          : typeof (r as any)?.text === 'string'
+            ? (r as any).text
+            : '';
+    const jsonLike = extractJsonLike(text);
+    if (!jsonLike) return null;
+    try {
+      const parsed = JSON.parse(jsonLike);
+      if (parsed && typeof parsed === 'object' && Array.isArray((parsed as any).actions)) {
+        return { actions: (parsed as any).actions };
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+function fallbackActionsFromInstruction(text: string): Planned['actions'] {
+  const s = String(text || '').trim();
+  if (!s) return [];
+
+  const actions: Planned['actions'] = [];
+
+  const url = extractUrl(s);
+  const wantsOpen = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit|browse)/i.test(s);
+  if (wantsOpen && url) {
+    actions.push({ type: 'goto', url });
+  }
+
+  const clickMatches = [
+    ...Array.from(s.matchAll(/\bclick\s+["“”']?([^"“”'\n\r]+)["“”']?/gi)),
+    ...Array.from(s.matchAll(/(?:انقر|اضغط)\s+["“”']?([^"“”'\n\r]+)["“”']?/gi)),
+  ];
+  for (const m of clickMatches) {
+    const label = String(m?.[1] || '').trim();
+    if (!label) continue;
+    actions.push({ type: 'click', text: label });
+  }
+
+  const typeMatches = [
+    ...Array.from(s.matchAll(/\btype\s+["“”']([^"“”']+)["“”']/gi)),
+    ...Array.from(s.matchAll(/(?:اكتب)\s+["“”']([^"“”']+)["“”']/gi)),
+  ];
+  for (const m of typeMatches) {
+    const val = String(m?.[1] || '');
+    if (!val) continue;
+    actions.push({ type: 'type', text: val });
+  }
+
+  return actions;
+}
+
 function extractUrl(text: string) {
   const t = String(text || '').trim();
   if (!t) return null;
@@ -84,6 +152,8 @@ function extractUrl(text: string) {
 function shouldFastOpen(text: string) {
   const s = String(text || '').trim();
   if (!s) return false;
+  const hasOtherSteps = /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق)/i.test(s);
+  if (hasOtherSteps) return false;
   const hasOpenKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
   const u = extractUrl(s);
   if (!u) return false;
@@ -137,16 +207,40 @@ export async function runBrowserInstruction(params: {
       evidence: [],
     };
     broadcastBrowserEvent(sessionId, ev);
+    broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: msg, reason: 'missing_secrets' });
     return { ok: false as const, error: msg, missingSecrets: secretsCheck.missing };
   }
 
   const cfg = DEFAULT_BROWSER_CONFIG;
   const safeInstruction = redactSecretsFromString(instructionTextRaw);
   const closeAfterRun = shouldCloseAfterRun();
+  const debugBase = {
+    instruction: safeInstruction,
+    compiled_plan_json: null as any,
+    actions_json: null as any,
+    action_count: 0,
+    stop_reason: '',
+  };
+  const emitDebugSnapshot = () => {
+    try {
+      broadcastBrowserEvent(sessionId, {
+        type: 'debug_snapshot',
+        ts: now(),
+        compiledPlanJson: debugBase.compiled_plan_json,
+        actionsJson: debugBase.actions_json,
+        actionCount: Number(debugBase.action_count || 0),
+        stopReason: String(debugBase.stop_reason || ''),
+      } as any);
+    } catch {}
+  };
 
   if (shouldFastOpen(safeInstruction)) {
     const url = extractUrl(safeInstruction);
     if (url) {
+      debugBase.compiled_plan_json = [{ type: 'goto' }, { type: 'wait' }];
+      debugBase.actions_json = deepRedactForDebug([{ type: 'goto', url }, { type: 'wait', ms: 450 }]);
+      debugBase.action_count = 2;
+      debugBase.stop_reason = 'fast_open';
       try {
         const exec = await executePlannedActions({
           userId,
@@ -156,7 +250,8 @@ export async function runBrowserInstruction(params: {
         if (closeAfterRun) {
           try { await stopSession(sessionId); } catch {}
         }
-        return { ok: true as const, result: exec };
+        emitDebugSnapshot();
+        return { ok: true as const, result: exec, debug: debugBase };
       } catch (e: any) {
         const c = classifyBrowserRuntimeError(e);
         try { await stopSession(sessionId); } catch {}
@@ -169,12 +264,16 @@ export async function runBrowserInstruction(params: {
           evidence: [],
         };
         broadcastBrowserEvent(sessionId, ev);
-        return { ok: false as const, error: 'browser_unavailable', detail: c };
+        broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: ev.summary, reason: String(c.code || 'browser_unavailable') });
+        debugBase.stop_reason = String(c.code || 'browser_unavailable');
+        emitDebugSnapshot();
+        return { ok: false as const, error: 'browser_unavailable', detail: c, debug: debugBase };
       }
     }
   }
 
   let planned: Planned | null = null;
+  let compilerUsed = false;
   try {
     const r = await planNextStep(
       [
@@ -183,31 +282,58 @@ export async function runBrowserInstruction(params: {
       ],
       { provider: 'openai' } as any,
     );
-    if (r && typeof r === 'object' && r.name === 'echo') {
-      planned = null;
-    } else if (r && typeof r === 'object') {
-      const maybe = (r as any).input;
-      if (maybe && typeof maybe === 'object' && Array.isArray((maybe as any).actions)) {
-        planned = { actions: (maybe as any).actions };
-      }
-    }
+    compilerUsed = true;
+    planned = plannedFromUnknown(r);
   } catch {
     planned = null;
   }
 
-  if (!planned) {
-    broadcastBrowserEvent(sessionId, {
-      type: 'final_report',
-      ts: now(),
-      ok: false,
-      summary: 'compiler_failed',
-      steps: [],
-      evidence: [],
-    });
-    return { ok: false as const, error: 'compiler_failed' };
+  if (planned) {
+    planned.actions = planned.actions.slice(0, cfg.maxSteps);
+    debugBase.compiled_plan_json = planned.actions.map((a: any) => ({ type: String(a?.type || 'unknown') }));
+    debugBase.actions_json = deepRedactForDebug(planned.actions);
+    debugBase.action_count = planned.actions.length;
+    debugBase.stop_reason = 'compiled';
+    const multiStepHint = /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق)/i.test(safeInstruction);
+    if (multiStepHint && planned.actions.length < 2) {
+      const fallback = fallbackActionsFromInstruction(safeInstruction).slice(0, cfg.maxSteps);
+      if (fallback.length > planned.actions.length) {
+        planned = { actions: fallback };
+        debugBase.compiled_plan_json = planned.actions.map((a: any) => ({ type: String(a?.type || 'unknown') }));
+        debugBase.actions_json = deepRedactForDebug(planned.actions);
+        debugBase.action_count = planned.actions.length;
+        debugBase.stop_reason = 'fallback_override';
+      }
+    }
+    if (planned.actions.length === 0) {
+      const summary = 'plan_to_actions_empty';
+      const ev: BrowserWsEvent = { type: 'final_report', ts: now(), ok: false, summary, steps: [], evidence: [] };
+      broadcastBrowserEvent(sessionId, ev);
+      broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'plan_to_actions_empty' });
+      debugBase.stop_reason = 'plan_to_actions_empty';
+      emitDebugSnapshot();
+      return { ok: false as const, error: 'plan_to_actions_empty', debug: debugBase };
+    }
   }
 
-  planned.actions = planned.actions.slice(0, cfg.maxSteps);
+  if (!planned) {
+    const fallback = fallbackActionsFromInstruction(safeInstruction).slice(0, cfg.maxSteps);
+    if (fallback.length) {
+      planned = { actions: fallback };
+      debugBase.compiled_plan_json = planned.actions.map((a: any) => ({ type: String(a?.type || 'unknown') }));
+      debugBase.actions_json = deepRedactForDebug(planned.actions);
+      debugBase.action_count = planned.actions.length;
+      debugBase.stop_reason = compilerUsed ? 'fallback_after_compiler' : 'fallback_no_compiler';
+    } else {
+      const summary = 'compiler_failed';
+      const ev: BrowserWsEvent = { type: 'final_report', ts: now(), ok: false, summary, steps: [], evidence: [] };
+      broadcastBrowserEvent(sessionId, ev);
+      broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'compiler_failed' });
+      debugBase.stop_reason = 'compiler_failed';
+      emitDebugSnapshot();
+      return { ok: false as const, error: 'compiler_failed', debug: debugBase };
+    }
+  }
 
   try {
     const exec = await executePlannedActions({
@@ -218,7 +344,9 @@ export async function runBrowserInstruction(params: {
     if (closeAfterRun) {
       try { await stopSession(sessionId); } catch {}
     }
-    return { ok: true as const, result: exec };
+    debugBase.stop_reason = debugBase.stop_reason || 'executed';
+    emitDebugSnapshot();
+    return { ok: true as const, result: exec, debug: debugBase };
   } catch (e: any) {
     const c = classifyBrowserRuntimeError(e);
     try { await stopSession(sessionId); } catch {}
@@ -232,7 +360,9 @@ export async function runBrowserInstruction(params: {
         if (closeAfterRun) {
           try { await stopSession(sessionId); } catch {}
         }
-        return { ok: true as const, result: exec2 };
+        debugBase.stop_reason = 'browser_closed_retried';
+        emitDebugSnapshot();
+        return { ok: true as const, result: exec2, debug: debugBase };
       } catch (e2: any) {
         const c2 = classifyBrowserRuntimeError(e2);
         try { await stopSession(sessionId); } catch {}
@@ -245,7 +375,10 @@ export async function runBrowserInstruction(params: {
           evidence: [],
         };
         broadcastBrowserEvent(sessionId, ev2);
-        return { ok: false as const, error: 'browser_unavailable', detail: c2 };
+        broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: ev2.summary, reason: String(c2.code || 'browser_unavailable') });
+        debugBase.stop_reason = String(c2.code || 'browser_unavailable');
+        emitDebugSnapshot();
+        return { ok: false as const, error: 'browser_unavailable', detail: c2, debug: debugBase };
       }
     }
     const ev: BrowserWsEvent = {
@@ -257,6 +390,9 @@ export async function runBrowserInstruction(params: {
       evidence: [],
     };
     broadcastBrowserEvent(sessionId, ev);
-    return { ok: false as const, error: 'browser_unavailable', detail: c };
+    broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: ev.summary, reason: String(c.code || 'browser_unavailable') });
+    debugBase.stop_reason = String(c.code || 'browser_unavailable');
+    emitDebugSnapshot();
+    return { ok: false as const, error: 'browser_unavailable', detail: c, debug: debugBase };
   }
 }

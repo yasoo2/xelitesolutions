@@ -21,6 +21,16 @@ const router = Router();
 
 const loopPauseThrottle = new Map<string, number>();
 const rateLimitCooldown = new Map<string, number>();
+const browserRunGuard = new Map<string, { count: number; lastAt: number }>();
+
+const BROWSER_RUN_MAX_PER_SESSION = 1;
+const BROWSER_RUN_MIN_INTERVAL_MS = 7000;
+
+function browserRunGuardKey(sessionId: string, browserSessionId: string) {
+  const bid = String(browserSessionId || '').trim();
+  if (bid) return `browser:${bid}`;
+  return `session:${String(sessionId || '').trim()}`;
+}
 
 function redactSecretsFromString(input: string): string {
   return input
@@ -2150,6 +2160,34 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
        }
     }
 
+    if (String(plan?.name || '') === 'browser_run') {
+      const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+      const key = browserRunGuardKey(String(sessionId), bid);
+      const now = Date.now();
+      const prev = browserRunGuard.get(key) || { count: 0, lastAt: 0 };
+      const since = prev.lastAt ? now - prev.lastAt : Number.POSITIVE_INFINITY;
+      if (prev.count >= BROWSER_RUN_MAX_PER_SESSION) {
+        const msg = isArabicText(userTextForOverrides)
+          ? `⚠️ تم إيقاف تكرار تنفيذ المتصفح لمنع حلقة لا نهائية.\nالسبب: تم تجاوز حد المحاولات (maxRetriesPerSession=${BROWSER_RUN_MAX_PER_SESSION}).\nأعد إرسال الأمر إذا كنت تريد المحاولة مرة أخرى.`
+          : `⚠️ Stopped repeating browser actions to prevent an infinite loop.\nReason: retry limit reached (maxRetriesPerSession=${BROWSER_RUN_MAX_PER_SESSION}).\nRe-run the command if you want to try again.`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
+      if (Number.isFinite(since) && since < BROWSER_RUN_MIN_INTERVAL_MS) {
+        const waitSec = Math.max(1, Math.ceil((BROWSER_RUN_MIN_INTERVAL_MS - since) / 1000));
+        const msg = isArabicText(userTextForOverrides)
+          ? `⚠️ تم منع إعادة استدعاء browser_run بسرعة.\nانتظر حوالي ${waitSec}s ثم أعد المحاولة يدويًا إذا لزم.`
+          : `⚠️ Blocked a rapid re-call of browser_run.\nWait about ${waitSec}s, then re-run manually if needed.`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
+      browserRunGuard.set(key, { count: prev.count + 1, lastAt: now });
+    }
+
     const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
     ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
     const callInput =
@@ -2275,7 +2313,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (result.artifacts && Array.isArray(result.artifacts)) {
       const suppressChatArtifacts = /^browser_/.test(String(plan?.name || ''));
       for (const art of result.artifacts) {
-        if (!suppressChatArtifacts) ev({ type: 'artifact_created', data: art });
+        if (suppressChatArtifacts) continue;
+        ev({ type: 'artifact_created', data: art });
         if (useMock) {
           try { store.addArtifact(runId, String(art.name || 'artifact'), String(art.href || '')); } catch {}
         } else {
@@ -2289,6 +2328,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         ? { ...result, output: summarizeBrowserOutput((result as any).output) }
         : result;
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result: eventResult } });
+
+    if (!result.ok && String(plan?.name || '') === 'browser_run') {
+      const err = String((result as any)?.error || '').trim();
+      const terminal =
+        err === 'plan_to_actions_empty' ||
+        err === 'compiler_failed' ||
+        err === 'unsupported_action' ||
+        err === 'infinite_retry_blocked';
+      if (terminal) {
+        const msg = isArabicText(userTextForOverrides)
+          ? `❌ تعذّر تنفيذ خطوات المتصفح.\nالسبب: ${err}\nأعد صياغة الطلب أو فعّل وضع التصحيح لرؤية الخطة والإجراءات.`
+          : `❌ I couldn’t compile executable browser steps.\nReason: ${err}\nPlease rephrase the instruction or enable debug to see the compiled plan/actions.`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
+    }
 
     if (!result.ok && isStrictSameSiteUiTask && /^browser_/.test(String(plan?.name || '')) && isCrossSiteBlockedError(result.error)) {
       const lock = browserHostLock ? `\n- Locked site: ${browserHostLock}` : '';

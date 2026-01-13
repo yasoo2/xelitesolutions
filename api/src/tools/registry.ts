@@ -739,17 +739,51 @@ export const tools: ToolDefinition[] = [
       let execOk = false;
       let execSummary = '';
       let missingSecrets: string[] | undefined = undefined;
+      let execError: string | undefined = undefined;
 
       if (instructionText && (!Array.isArray(actions) || actions.length === 0)) {
         const r = await (await import('../browser/runner')).runBrowserInstruction({ userId, sessionId: sid, instructionText });
         if (r && typeof r === 'object' && (r as any).ok) {
           execOk = Boolean((r as any).result?.ok);
           execSummary = String((r as any).result?.summary || '');
+          try {
+            const dbg = (r as any)?.debug;
+            if (dbg && typeof dbg === 'object') {
+              const safe = (v: any) => {
+                try {
+                  return JSON.stringify(v);
+                } catch {
+                  return '"[unserializable]"';
+                }
+              };
+              logs.push(`compiled_plan_json=${safe(dbg.compiled_plan_json)}`);
+              logs.push(`actions_json=${safe(dbg.actions_json)}`);
+              logs.push(`action_count=${String(dbg.action_count ?? '')}`);
+              logs.push(`stop_reason=${String(dbg.stop_reason ?? '')}`);
+            }
+          } catch {}
         } else {
           execOk = false;
-          execSummary = String((r as any)?.error || '');
+          execError = String((r as any)?.error || '').trim() || 'browser_run_failed';
+          execSummary = execError;
           const ms = (r as any)?.missingSecrets;
           if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
+          try {
+            const dbg = (r as any)?.debug;
+            if (dbg && typeof dbg === 'object') {
+              const safe = (v: any) => {
+                try {
+                  return JSON.stringify(v);
+                } catch {
+                  return '"[unserializable]"';
+                }
+              };
+              logs.push(`compiled_plan_json=${safe(dbg.compiled_plan_json)}`);
+              logs.push(`actions_json=${safe(dbg.actions_json)}`);
+              logs.push(`action_count=${String(dbg.action_count ?? '')}`);
+              logs.push(`stop_reason=${String(dbg.stop_reason ?? '')}`);
+            }
+          } catch {}
         }
       } else {
         const safeActionType = (a: any) => String(a?.type || 'unknown');
@@ -850,7 +884,7 @@ export const tools: ToolDefinition[] = [
         output: { sessionId: sid, pageUrl, title, dom, screenshotHref: href, summary: execSummary, missingSecrets },
         logs,
         artifacts,
-        error: execOk ? undefined : missingSecrets && missingSecrets.length ? 'missing_secrets' : 'browser_run_failed',
+        error: execOk ? undefined : missingSecrets && missingSecrets.length ? 'missing_secrets' : execError || 'browser_run_failed',
       };
     },
   },

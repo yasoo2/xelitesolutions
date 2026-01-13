@@ -10,7 +10,10 @@ type WsEvent =
   | { type: 'step_done'; stepId: string; name: string; ts: number; data?: any }
   | { type: 'step_error'; stepId: string; name: string; ts: number; reason: string; message: string; data?: any }
   | { type: 'goto_blocked'; stepId: string; ts: number; url: string; reason: string; message: string }
-  | { type: 'final_report'; ts: number; ok: boolean; summary: string; steps: any[]; evidence: any[] };
+  | { type: 'final_report'; ts: number; ok: boolean; summary: string; steps: any[]; evidence: any[] }
+  | { type: 'final_success'; ts: number; summary: string }
+  | { type: 'final_failed'; ts: number; summary: string; reason: string }
+  | { type: 'debug_snapshot'; ts: number; compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string };
 
 export default function ModernBrowserStream({ sessionId }: { sessionId: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -21,6 +24,7 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   const [boxes, setBoxes] = useState<Array<{ x: number; y: number; width: number; height: number; label?: string }>>([]);
   const [lastStep, setLastStep] = useState<string>('');
   const [final, setFinal] = useState<{ ok: boolean; summary: string } | null>(null);
+  const [debug, setDebug] = useState<{ compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string } | null>(null);
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
@@ -177,6 +181,25 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
         setFinal({ ok: msg.ok, summary: msg.summary });
         return;
       }
+      if (msg.type === 'final_success') {
+        setFinal({ ok: true, summary: msg.summary });
+        return;
+      }
+      if (msg.type === 'final_failed') {
+        const reason = String(msg.reason || '').trim();
+        const s = reason ? `${msg.summary}\n${reason}` : msg.summary;
+        setFinal({ ok: false, summary: s });
+        return;
+      }
+      if (msg.type === 'debug_snapshot') {
+        setDebug({
+          compiledPlanJson: (msg as any).compiledPlanJson,
+          actionsJson: (msg as any).actionsJson,
+          actionCount: Number((msg as any).actionCount || 0),
+          stopReason: String((msg as any).stopReason || ''),
+        });
+        return;
+      }
     };
     return () => {
       try { ws.close(); } catch {}
@@ -265,6 +288,43 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
       {final ? (
         <div style={{ position: 'absolute', bottom: 10, left: 10, padding: '8px 10px', borderRadius: 10, background: final.ok ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)', color: '#fff', fontSize: 12 }}>
           {final.summary}
+        </div>
+      ) : null}
+      {debug ? (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 10,
+            right: 10,
+            width: 420,
+            maxWidth: '55%',
+            maxHeight: '55%',
+            overflow: 'auto',
+            padding: '8px 10px',
+            borderRadius: 10,
+            background: 'rgba(0,0,0,0.55)',
+            color: '#fff',
+            fontSize: 12,
+            lineHeight: 1.35,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {(() => {
+            const safe = (v: any) => {
+              try {
+                return JSON.stringify(v, null, 2);
+              } catch {
+                return '"[unserializable]"';
+              }
+            };
+            const parts = [
+              `stop_reason=${String(debug.stopReason || '')}`,
+              `action_count=${String(debug.actionCount || 0)}`,
+              `compiled_plan_json=${safe(debug.compiledPlanJson)}`,
+              `actions_json=${safe(debug.actionsJson)}`,
+            ];
+            return parts.join('\n');
+          })()}
         </div>
       ) : null}
     </div>

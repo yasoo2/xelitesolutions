@@ -498,6 +498,11 @@ export async function executePlannedActions(params: {
       steps: results,
       evidence,
     });
+    if (ok) {
+      broadcastBrowserEvent(sessionId, { type: 'final_success', ts: now(), summary });
+    } else {
+      broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'some_steps_failed' });
+    }
     try {
       broadcastBrowserEvent(sessionId, { type: 'session_status', ts: now(), sessionId, url: page.url(), workerStatus: 'idle' });
     } catch {}
