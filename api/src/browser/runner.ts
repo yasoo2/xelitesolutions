@@ -106,12 +106,18 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
 
   const actions: Planned['actions'] = [];
 
+  const isArabic = /[\u0600-\u06FF]/.test(s);
+  const wantsLogin = /(login|log\s*in|sign\s*in|تسجيل\s*الدخول|سجل\s*دخول|دخول)/i.test(s);
+  const wantsYahoo = /(yahoo|ياهو)/i.test(s);
+
   const url =
     extractUrl(s) ||
     (/(google|جوجل)/i.test(s) || /(ابحث|بحث|search|find|lookup)/i.test(s)
       ? 'https://www.google.com'
       : /(youtube|يوتيوب)/i.test(s)
         ? 'https://www.youtube.com'
+        : wantsYahoo
+          ? 'https://www.yahoo.com'
         : /(github|جيتهاب|قيتهب)/i.test(s)
           ? 'https://github.com'
           : /(openai|اوبن\s*اي)/i.test(s)
@@ -128,6 +134,7 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
   const clickMatches = [
     ...Array.from(s.matchAll(/\bclick\s+["“”']?([^"“”'\n\r]+)["“”']?/gi)),
     ...Array.from(s.matchAll(/(?:انقر|اضغط)\s+["“”']?([^"“”'\n\r]+)["“”']?/gi)),
+    ...Array.from(s.matchAll(/(?:بالضغط\s+على)\s+["“”']?([^"“”'\n\r]+)["“”']?/gi)),
   ];
   for (const m of clickMatches) {
     const label = String(m?.[1] || '').trim();
@@ -154,6 +161,10 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
     if (!second || String(second.type || '') !== 'wait') {
       actions.splice(1, 0, { type: 'wait', ms: 450 });
     }
+  }
+
+  if (wantsYahoo && wantsLogin && !actions.some((a) => a.type === 'click')) {
+    actions.push({ type: 'click', selector: 'a[href*="login.yahoo.com"]' });
   }
 
   if (wantsUiAudit) actions.push({ type: 'ui_audit' });

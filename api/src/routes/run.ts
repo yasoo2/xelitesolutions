@@ -21,15 +21,25 @@ const router = Router();
 
 const loopPauseThrottle = new Map<string, number>();
 const rateLimitCooldown = new Map<string, number>();
-const browserRunGuard = new Map<string, { count: number; lastAt: number }>();
+const browserRunGuard = new Map<
+  string,
+  {
+    totalCount: number;
+    lastAt: number;
+    lastSig: string;
+    sigCount: number;
+  }
+>();
 
-const BROWSER_RUN_MAX_PER_SESSION = 1;
+const BROWSER_RUN_MAX_PER_SESSION = 6;
 const BROWSER_RUN_MIN_INTERVAL_MS = 7000;
 
-function browserRunGuardKey(sessionId: string, browserSessionId: string) {
+function browserRunGuardKey(sessionId: string, browserSessionId: string, runId: string) {
   const bid = String(browserSessionId || '').trim();
-  if (bid) return `browser:${bid}`;
-  return `session:${String(sessionId || '').trim()}`;
+  const rid = String(runId || '').trim();
+  const sid = String(sessionId || '').trim();
+  if (bid) return `run:${rid}:browser:${bid}`;
+  return `run:${rid}:session:${sid}`;
 }
 
 function redactSecretsFromString(input: string): string {
@@ -2221,11 +2231,36 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     if (String(plan?.name || '') === 'browser_run') {
       const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
-      const key = browserRunGuardKey(String(sessionId), bid);
+      const key = browserRunGuardKey(String(sessionId), bid, String(runId));
       const now = Date.now();
-      const prev = browserRunGuard.get(key) || { count: 0, lastAt: 0 };
+      const sigObj = (() => {
+        const rawInput: any = (plan as any)?.input || {};
+        return {
+          instructionText: typeof rawInput?.instructionText === 'string' ? rawInput.instructionText : '',
+          actions: Array.isArray(rawInput?.actions) ? rawInput.actions : null,
+        };
+      })();
+      let sig = '';
+      try {
+        sig = JSON.stringify(sigObj);
+      } catch {
+        sig = String(sigObj?.instructionText || '');
+      }
+
+      const prev =
+        browserRunGuard.get(key) ||
+        ({
+          totalCount: 0,
+          lastAt: 0,
+          lastSig: '',
+          sigCount: 0,
+        } as any);
+
       const since = prev.lastAt ? now - prev.lastAt : Number.POSITIVE_INFINITY;
-      if (prev.count >= BROWSER_RUN_MAX_PER_SESSION) {
+      const nextSigCount = prev.lastSig && prev.lastSig === sig ? prev.sigCount + 1 : 1;
+      const nextTotal = Number(prev.totalCount || 0) + 1;
+
+      if (nextSigCount > 2 || nextTotal > BROWSER_RUN_MAX_PER_SESSION) {
         const msg = isArabicText(userTextForOverrides)
           ? `⚠️ تم إيقاف تكرار تنفيذ المتصفح لمنع حلقة لا نهائية.\nالسبب: تم تجاوز حد المحاولات (maxRetriesPerSession=${BROWSER_RUN_MAX_PER_SESSION}).\nأعد إرسال الأمر إذا كنت تريد المحاولة مرة أخرى.`
           : `⚠️ Stopped repeating browser actions to prevent an infinite loop.\nReason: retry limit reached (maxRetriesPerSession=${BROWSER_RUN_MAX_PER_SESSION}).\nRe-run the command if you want to try again.`;
@@ -2244,7 +2279,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         assistantTextEmitted = true;
         break;
       }
-      browserRunGuard.set(key, { count: prev.count + 1, lastAt: now });
+      browserRunGuard.set(key, { totalCount: nextTotal, lastAt: now, lastSig: sig, sigCount: nextSigCount });
     }
 
     const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
