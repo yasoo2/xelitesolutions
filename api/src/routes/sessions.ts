@@ -553,6 +553,19 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       const normalizeUrlForGoto = (raw: any) => {
         let s = String(raw ?? '').trim();
         s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
+        if (!s) return s;
+        if (/^https?:\/\//i.test(s)) return s;
+        if (/^\/\//.test(s)) return `https:${s}`;
+        if (/^\//.test(s)) return s;
+        const candidate = s.replace(/^\/\//, '');
+        const isLocal =
+          /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+          /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+          /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+        const looksDomain =
+          /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
+        if (isLocal) return `http://${candidate}`;
+        if (looksDomain) return `https://${candidate}`;
         return s;
       };
       const hostKeyFromHost = (host: string) => {
@@ -592,6 +605,10 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       const isStrictSameSiteUiTask = (() => {
         const s = String(lastUserText || '');
         if (/strict_same_site_ui/i.test(s)) return true;
+        const strictByDefault = ['1', 'true', 'yes', 'y', 'on'].includes(
+          String(process.env.STRICT_SAME_SITE_UI || '').trim().toLowerCase(),
+        );
+        if (!strictByDefault) return false;
         const looksLoginOrForm =
           /(login|log\s*in|sign\s*in|password|email|form|تسجيل\s*الدخول|سجل\s*دخول|كلمة\s*المرور|البريد|نموذج)/i.test(s);
         const asksSearch =

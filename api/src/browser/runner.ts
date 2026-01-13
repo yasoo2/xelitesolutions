@@ -126,7 +126,7 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
             ? 'https://platform.openai.com/'
             : /(x\.com|\btwitter\b|تويتر)/i.test(s)
               ? 'https://x.com'
-              : /(facebook|فيسبوك)/i.test(s)
+              : /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(s)
                 ? 'https://www.facebook.com'
                 : /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s)
                   ? 'https://www.linkedin.com'
@@ -135,12 +135,19 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
 
   const clickMatches = [
     ...Array.from(s.matchAll(/\b(?:click|tap|press)\s+(?:on\s+)?["“”']?([^"“”'\n\r]+)["“”']?/gi)),
-    ...Array.from(s.matchAll(/(?:انقر|اضغط|بالضغط\s+على|دوس|اكبس|كبس|كبّس|كليك|اضغطلي|اضغط على)\s+["“”']?([^"“”'\n\r]+)["“”']?/gi)),
+    ...Array.from(
+      s.matchAll(
+        /(?:بالضغط\s+على|اضغط\s+على|انقر\s+على|انقر|اضغط|دوس|اكبس|كبس|كبّس|كليك|اضغطلي)\s+["“”']?([^"“”'\n\r]+)["“”']?/gi,
+      ),
+    ),
   ];
   for (const m of clickMatches) {
     const label = String(m?.[1] || '')
       .trim()
-      .replace(/^زر\s+/i, '')
+      .replace(/^(?:ال)?زر\s+/i, '')
+      .replace(/^(?:على|علي)\s+/, '')
+      .replace(/^(?:the\s+)?button\s+/i, '')
+      .replace(/[)\].,;:!?]+$/g, '')
       .trim();
     if (!label) continue;
     actions.push({ type: 'click', text: label });

@@ -1332,6 +1332,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const normalizeUrlForGoto = (raw: any) => {
     let s = String(raw ?? '').trim();
     s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
+    if (!s) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s)) return `https:${s}`;
+    if (/^\//.test(s)) return s;
+    const candidate = s.replace(/^\/\//, '');
+    const isLocal =
+      /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+      /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+      /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+    const looksDomain =
+      /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
+    if (isLocal) return `http://${candidate}`;
+    if (looksDomain) return `https://${candidate}`;
     return s;
   };
   const hostKeyFromHost = (host: string) => {
@@ -1381,6 +1394,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const isStrictSameSiteUiTask = (() => {
     const s = String(text || '');
     if (/strict_same_site_ui/i.test(s)) return true;
+    const strictByDefault = ['1', 'true', 'yes', 'y', 'on'].includes(
+      String(process.env.STRICT_SAME_SITE_UI || '').trim().toLowerCase(),
+    );
+    if (!strictByDefault) return false;
     const looksLoginOrForm =
       /(login|log\s*in|sign\s*in|password|email|form|تسجيل\s*الدخول|سجل\s*دخول|كلمة\s*المرور|البريد|نموذج)/i.test(s);
     const asksSearch =
@@ -1637,6 +1654,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const wantsYoutube = /youtube|يوتيوب/i.test(s);
         const wantsGoogle = /google|جوجل/i.test(s);
         const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s);
+        const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(s);
+        const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(s);
+        const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s);
         const wantsBilling =
           /(balance|billing|credit|credits|usage|payment|invoice|invoices|رصيد|الرصيد|فواتير|الفواتير|استخدام|المدفوعات)/i.test(
             s,
@@ -1656,9 +1676,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   ? 'https://github.com'
                   : wantsGoogle
                     ? 'https://www.google.com'
-                    : 'https://www.google.com');
-        plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
-        planName = 'browser_open';
+                    : wantsX
+                      ? 'https://x.com'
+                      : wantsFacebook
+                        ? 'https://www.facebook.com'
+                        : wantsLinkedIn
+                          ? 'https://www.linkedin.com'
+                          : '');
+        if (desiredUrl) {
+          plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
+          planName = 'browser_open';
+        }
       }
     }
     
@@ -2434,11 +2462,21 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         assistantTextEmitted = true;
         break;
       }
+      if (err === 'missing_secrets') {
+        const msg = isArabicText(userTextForOverrides)
+          ? `⚠️ لا يمكن إكمال خطوة المتصفح لأن هناك بيانات دخول/أسرار ناقصة.\nأدخل الأسرار المطلوبة من نافذة التوكن ثم أعد إرسال نفس الأمر.`
+          : `⚠️ Browser step needs missing secrets.\nProvide the required secrets, then re-run the same command.`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
       const terminal =
         err === 'plan_to_actions_empty' ||
         err === 'compiler_failed' ||
         err === 'unsupported_action' ||
-        err === 'infinite_retry_blocked';
+        err === 'infinite_retry_blocked' ||
+        err === 'sessionId_required';
       if (terminal) {
         const msg = isArabicText(userTextForOverrides)
           ? `❌ تعذّر تنفيذ خطوات المتصفح.\nالسبب: ${err}\nأعد صياغة الطلب أو فعّل وضع التصحيح لرؤية الخطة والإجراءات.`
