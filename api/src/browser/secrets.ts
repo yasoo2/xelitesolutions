@@ -7,36 +7,33 @@ export async function resolveSecretsInText(userId: string, text: string) {
   const raw = String(text || '');
   if (!uid) return { ok: false as const, text: raw, missing: ['USER_ID_REQUIRED'] };
 
-  const missing: string[] = [];
-  raw.replace(SECRET_TOKEN_RE, (full: string, keyRaw: string) => {
-    const key = String(keyRaw || '').trim();
-    if (!key) return full;
-    missing.push(key);
-    return full;
+  const keys: string[] = [];
+  raw.replace(SECRET_TOKEN_RE, (_full: string, keyRaw: string) => {
+    const k = String(keyRaw || '').trim();
+    if (k) keys.push(k);
+    return _full;
   });
 
-  if (missing.length === 0) return { ok: true as const, text: raw, missing: [] as string[] };
-
-  const unique = Array.from(new Set(missing));
-  const map = new Map<string, string>();
+  const unique = Array.from(new Set(keys));
+  const stillMissing: string[] = [];
   for (const k of unique) {
     const v = await getUserSecret(uid, 'internal', k);
-    if (typeof v === 'string' && v.trim()) map.set(k, v);
+    if (!(typeof v === 'string' && v.trim())) stillMissing.push(k);
   }
-  const stillMissing: string[] = [];
-  const finalText = raw.replace(SECRET_TOKEN_RE, (full: string, keyRaw: string) => {
-    const key = String(keyRaw || '').trim();
-    const v = map.get(key);
-    if (!v) {
-      stillMissing.push(key);
-      return full;
-    }
-    return v;
-  });
 
-  return { ok: stillMissing.length === 0, text: finalText, missing: Array.from(new Set(stillMissing)) };
+  return { ok: stillMissing.length === 0, text: raw, missing: stillMissing };
 }
 
 export function redactSecretsFromString(s: string) {
-  return String(s || '').replace(SECRET_TOKEN_RE, '{{SECRET:REDACTED}}');
+  let out = String(s || '');
+  out = out.replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]');
+  out = out.replace(/\bghp_[A-Za-z0-9_]{10,}\b/g, 'ghp_[REDACTED]');
+  out = out.replace(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/g, 'github_pat_[REDACTED]');
+  out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]');
+  out = out.replace(/([?&]token=)[^&\s]+/gi, '$1[REDACTED]');
+  out = out.replace(/([?&]password=)[^&\s]+/gi, '$1[REDACTED]');
+  out = out.replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]');
+  out = out.replace(/\bx-worker-key\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, 'x-worker-key:[REDACTED]');
+  out = out.replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET|OPENAI_API_KEY)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, '$1=[REDACTED]');
+  return out;
 }

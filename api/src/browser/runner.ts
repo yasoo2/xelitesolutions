@@ -51,7 +51,9 @@ Rules:
 - No Google/search unless explicitly requested.
 - Same-site: you may start by opening a target domain if present.
 - Use Arabic labels/text matching when applicable.
-- If a secret token appears like {{SECRET:JOE_LOGIN_EMAIL}} or {{SECRET:JOE_LOGIN_PASSWORD}}, keep it as-is in output (do not expand).
+- If the user asks for login/sign-in, use {{SECRET:JOE_LOGIN_EMAIL}} and {{SECRET:JOE_LOGIN_PASSWORD}} for credentials (never invent or expand secrets).
+- If a secret token appears like {{SECRET:...}}, keep it as-is in output (do not expand).
+- If the instruction clearly includes multiple steps (e.g., open + click + login + type), output the full multi-step sequence. Do not output only a single goto unless the user only asked to open a page.
 - Max 80 actions.
 
 Allowed action types:
@@ -123,9 +125,9 @@ export async function runBrowserInstruction(params: {
   if (!sessionId) throw new Error('sessionId_required');
   if (!instructionTextRaw) throw new Error('instructionText_required');
 
-  const resolvedSecrets = await resolveSecretsInText(userId, instructionTextRaw);
-  if (!resolvedSecrets.ok) {
-    const msg = `missing_secrets: ${resolvedSecrets.missing.join(', ')}`;
+  const secretsCheck = await resolveSecretsInText(userId, instructionTextRaw);
+  if (!secretsCheck.ok) {
+    const msg = `missing_secrets: ${secretsCheck.missing.join(', ')}`;
     const ev: BrowserWsEvent = {
       type: 'final_report',
       ts: now(),
@@ -135,11 +137,11 @@ export async function runBrowserInstruction(params: {
       evidence: [],
     };
     broadcastBrowserEvent(sessionId, ev);
-    return { ok: false as const, error: msg, missingSecrets: resolvedSecrets.missing };
+    return { ok: false as const, error: msg, missingSecrets: secretsCheck.missing };
   }
 
   const cfg = DEFAULT_BROWSER_CONFIG;
-  const safeInstruction = redactSecretsFromString(resolvedSecrets.text);
+  const safeInstruction = redactSecretsFromString(instructionTextRaw);
   const closeAfterRun = shouldCloseAfterRun();
 
   if (shouldFastOpen(safeInstruction)) {

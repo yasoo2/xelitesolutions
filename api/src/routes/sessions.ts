@@ -23,14 +23,78 @@ function redactSecretsFromString(input: string): string {
     .replace(/\bghp_[A-Za-z0-9_]{10,}\b/g, 'ghp_[REDACTED]')
     .replace(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/g, 'github_pat_[REDACTED]')
     .replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]')
+    .replace(/([?&]token=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/([?&]password=)[^&\s]+/gi, '$1[REDACTED]')
     .replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]')
     .replace(/\bx-worker-key\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, 'x-worker-key:[REDACTED]')
-    .replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, '$1=[REDACTED]');
+    .replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET|OPENAI_API_KEY)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, '$1=[REDACTED]');
 }
 
 function safeErrorMessage(err: any): string {
   const raw = typeof err?.message === 'string' ? err.message : String(err);
   return redactSecretsFromString(raw);
+}
+
+function extractTitleFromHtml(html: string) {
+  const m = String(html || '').match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i);
+  const t = String(m?.[1] || '').replace(/\s+/g, ' ').trim();
+  return t || '';
+}
+
+function inferSiteLabel(url: string, dom: string) {
+  const u = String(url || '').trim();
+  try {
+    if (u) {
+      const host = new URL(u).hostname.replace(/^www\./i, '');
+      if (host) return host;
+    }
+  } catch {}
+  const d = String(dom || '');
+  if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
+  if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
+  if (/github\.com/i.test(d)) return 'github.com';
+  const title = extractTitleFromHtml(d);
+  return title || 'page';
+}
+
+function summarizeBrowserOutputForChat(out: any) {
+  if (!out || typeof out !== 'object') return out;
+  const isBrowserStateLike =
+    typeof (out as any).url === 'string' ||
+    typeof (out as any).pageUrl === 'string' ||
+    typeof (out as any).dom === 'string' ||
+    typeof (out as any).screenshot === 'string' ||
+    typeof (out as any).screenshotHref === 'string';
+  if (!isBrowserStateLike) return out;
+  const url = typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
+  const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
+  const title = dom ? extractTitleFromHtml(dom) : '';
+  const site = inferSiteLabel(url, dom);
+  const domLen = dom ? dom.length : 0;
+  const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
+  const u = String(url || '').toLowerCase();
+  const domLower = String(dom || '').toLowerCase();
+  const hasPasswordField = /type=["']password["']|name=["']password["']|passw(or)?d|passwd/i.test(domLower);
+  const hasLoginFormSignal = /<form\b[\s\S]{0,4000}(type=["']password["']|name=["']password["'])/i.test(dom);
+  const urlLooksLogin = /serviceLogin|\/login\b|\/signin\b|accounts\.google\.com/i.test(u);
+  const domStrongLogin = /<title[^>]*>[\s\S]*?(sign in|login|تسجيل\s+الدخول)[\s\S]*?<\/title>/i.test(dom) || /ServiceLogin/i.test(dom);
+  const loginLike = Boolean((urlLooksLogin && (hasPasswordField || hasLoginFormSignal)) || (domStrongLogin && hasPasswordField));
+  const summary: any = { site };
+  if (url) summary.url = url;
+  if (title) summary.title = title;
+  if (loginLike) summary.pageType = 'login';
+  if (domLen) summary.domLength = domLen;
+  if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
+  return summary;
+}
+
+function sanitizeToolResultForBroadcast(toolName: string, r: any) {
+  const t = String(toolName || '');
+  if (!/^browser_/.test(t) || !r || typeof r !== 'object') return r;
+  const next: any = { ...r };
+  if ('artifacts' in next) delete next.artifacts;
+  if ('output' in next) next.output = summarizeBrowserOutputForChat((r as any).output);
+  return next;
 }
 
 function redactToolInputForStorage(name: string, input: any) {
@@ -44,6 +108,64 @@ function redactToolInputForStorage(name: string, input: any) {
       redactedStructure[k] = '[Content Redacted]';
     }
     return { ...input, structure: redactedStructure, _fileCount: keys.length };
+  }
+
+  if (name === 'shell_execute') {
+    const cmd = typeof (input as any).command === 'string' ? (input as any).command : '';
+    const cwd = typeof (input as any).cwd === 'string' ? (input as any).cwd : undefined;
+    const timeout = typeof (input as any).timeout === 'number' ? (input as any).timeout : undefined;
+    return { ...(input as any), command: redactSecretsFromString(cmd), ...(cwd ? { cwd } : {}), ...(timeout ? { timeout } : {}) };
+  }
+
+  if (name === 'http_fetch') {
+    const url = typeof (input as any).url === 'string' ? redactSecretsFromString((input as any).url) : (input as any).url;
+    const headersRaw = (input as any).headers;
+    if (headersRaw && typeof headersRaw === 'object' && !Array.isArray(headersRaw)) {
+      const headers: any = { ...headersRaw };
+      for (const k of Object.keys(headers)) {
+        if (/^authorization$/i.test(k)) headers[k] = '[REDACTED]';
+      }
+      return { ...(input as any), url, headers };
+    }
+    return { ...(input as any), url };
+  }
+
+  if (name === 'browser_run') {
+    const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
+    const instructionText =
+      typeof (input as any).instructionText === 'string' ? redactSecretsFromString((input as any).instructionText) : undefined;
+    const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
+    const redactedActions = actions.map((a: any) => {
+      const t = String(a?.type || '').toLowerCase();
+      if (t === 'type') {
+        const text = typeof a?.text === 'string' ? a.text : typeof a?.value === 'string' ? a.value : '';
+        return { ...a, text: `[redacted:${String(text || '').length}]`, value: undefined };
+      }
+      if (t === 'fillform') {
+        const fields = Array.isArray(a?.fields) ? a.fields : [];
+        const nextFields = fields.map((f: any) => {
+          const label = String(f?.label || '').toLowerCase();
+          const selector = String(f?.selector || '').toLowerCase();
+          const combined = `${label} ${selector}`;
+          const v = f?.value == null ? '' : String(f.value);
+          const shouldRedact =
+            Boolean(a?.sensitive) ||
+            Boolean(f?.sensitive) ||
+            /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
+          if (!shouldRedact) return f;
+          return { ...f, value: `[redacted:${v.length}]` };
+        });
+        return { ...a, fields: nextFields };
+      }
+      const next: any = { ...a };
+      if (typeof next.url === 'string') next.url = redactSecretsFromString(next.url);
+      if (typeof next.text === 'string') next.text = redactSecretsFromString(next.text);
+      if (typeof next.script === 'string' && next.sensitive) next.script = '[redacted]';
+      return next;
+    });
+    const out: any = { ...(input as any), ...(sessionId ? { sessionId } : {}), ...(instructionText ? { instructionText } : {}) };
+    if (Array.isArray(actions)) out.actions = redactedActions;
+    return out;
   }
 
   return input;
@@ -204,7 +326,8 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   const callPendingInput =
     userId && pending.input && typeof pending.input === 'object' ? { ...(pending.input as any), userId: String(userId) } : pending.input;
   const result = await executeTool(pending.name, callPendingInput);
-  broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: pending.runId, data: { name: `execute:${pending.name}`, result } });
+  const eventResult = sanitizeToolResultForBroadcast(pending.name, result);
+  broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: pending.runId, data: { name: `execute:${pending.name}`, result: eventResult } });
 
   const toText = (r: any) => {
     const toolName = String(pending?.name || '');
@@ -225,6 +348,18 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         if (htmlUrl) parts.push(`- الرابط: ${htmlUrl}`);
         return parts.join('\n');
       }
+      if (toolName === 'shell_execute') {
+        const status = typeof (r as any)?.output?.status === 'string' ? String((r as any).output.status) : '';
+        const exitCode = typeof (r as any)?.output?.exitCode === 'number' ? Number((r as any).output.exitCode) : undefined;
+        const reason = typeof (r as any)?.output?.reason === 'string' ? String((r as any).output.reason).trim() : '';
+        const out = typeof (r as any)?.output?.stdout === 'string' ? String((r as any).output.stdout).trim() : '';
+        const head = out ? out.split('\n').slice(0, 12).join('\n') : '';
+        const parts = [`✅ تم تنفيذ الأمر بنجاح.${typeof exitCode === 'number' ? ` (exit ${exitCode})` : ''}`];
+        if (status) parts.push(`- الحالة: ${status}`);
+        if (reason) parts.push(`- السبب: ${reason}`);
+        if (head) parts.push(`\n${head}`);
+        return parts.join('\n');
+      }
       return outStr || 'تم التنفيذ بنجاح.';
     }
     const errStr = typeof r?.error === 'string' ? r.error : Array.isArray(r?.logs) ? r.logs.join('\n') : 'فشل التنفيذ.';
@@ -237,6 +372,17 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       } else if (/422\b/.test(errStr)) {
         parts.push('- هذا عادةً يعني أن الاسم غير متاح/غير صالح. جرّب اسم مختلف أو تحقق من صلاحيات التوكن.');
       }
+      return parts.join('\n');
+    }
+    if (toolName === 'shell_execute') {
+      const exitCode = typeof (r as any)?.output?.exitCode === 'number' ? Number((r as any).output.exitCode) : undefined;
+      const reason = typeof (r as any)?.output?.reason === 'string' ? String((r as any).output.reason).trim() : '';
+      const stderr = typeof (r as any)?.output?.stderr === 'string' ? String((r as any).output.stderr).trim() : '';
+      const stderrHead = stderr ? stderr.split('\n').slice(0, 12).join('\n') : '';
+      const parts = [`❌ فشل تنفيذ الأمر.${typeof exitCode === 'number' ? ` (exit ${exitCode})` : ''}`];
+      if (reason) parts.push(`- السبب: ${reason}`);
+      if (!reason && errStr) parts.push(`- السبب: ${errStr}`);
+      if (stderrHead) parts.push(`\n${stderrHead}`);
       return parts.join('\n');
     }
     return `فشل التنفيذ: ${errStr}`;
@@ -317,7 +463,6 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       const title = dom ? extractTitleFromHtml(dom) : '';
       const site = inferSiteLabel(url, dom);
       const domLen = dom ? dom.length : 0;
-      const hasScreenshot = Boolean((out as any).screenshot || (out as any).screenshotHref);
       const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
       const u = String(url || '').toLowerCase();
       const domLower = String(dom || '').toLowerCase();
@@ -331,7 +476,6 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       if (title) summary.title = title;
       if (loginLike) summary.pageType = 'login';
       if (domLen) summary.domLength = domLen;
-      if (hasScreenshot) summary.hasScreenshot = true;
       if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
       return summary;
     };
@@ -554,6 +698,23 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         const input = (plan as any).input;
         if (!input || typeof input !== 'object') (plan as any).input = {};
         if (!(plan as any).input.sessionId) (plan as any).input.sessionId = browserSessionId.trim();
+      }
+
+      const isMultiStepBrowserInstruction = (s: string) => {
+        const t = String(s || '');
+        return /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+          t,
+        );
+      };
+
+      if (String(plan?.name || '') === 'browser_run') {
+        const acts = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+        const onlyGoto =
+          acts.length === 1 && String(acts[0]?.type || '').toLowerCase() === 'goto' && typeof acts[0]?.url === 'string' && acts[0].url.trim();
+        if (onlyGoto && isMultiStepBrowserInstruction(lastUserText)) {
+          const sid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+          if (sid) (plan as any).input = { sessionId: sid, instructionText: lastUserText };
+        }
       }
 
       if (String(plan?.name || '') === 'git_ops') {

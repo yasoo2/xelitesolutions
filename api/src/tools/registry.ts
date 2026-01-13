@@ -655,12 +655,14 @@ export const tools: ToolDefinition[] = [
   },
   {
     name: 'browser_run',
+    description: 'Execute browser actions, or compile instructionText into a multi-step plan.',
     version: '1.0.0',
     tags: ['browser', 'web', 'actions'],
     inputSchema: {
       type: 'object',
       properties: {
         sessionId: { type: 'string' },
+        instructionText: { type: 'string' },
         actions: {
           type: 'array',
           items: {
@@ -684,7 +686,8 @@ export const tools: ToolDefinition[] = [
         },
         userId: { type: 'string' },
       },
-      required: ['sessionId', 'actions'],
+      required: ['sessionId'],
+      anyOf: [{ required: ['actions'] }, { required: ['instructionText'] }],
     },
     outputSchema: {
       type: 'object',
@@ -695,6 +698,7 @@ export const tools: ToolDefinition[] = [
         dom: { type: 'string' },
         screenshotHref: { type: 'string' },
         summary: { type: 'string' },
+        missingSecrets: { type: 'array', items: { type: 'string' } },
       },
     },
     permissions: ['internet', 'execute'],
@@ -707,6 +711,8 @@ export const tools: ToolDefinition[] = [
       const sid = String(input?.sessionId || '').trim();
       if (!sid) return { ok: false, error: 'sessionId_required', logs };
       const userId = String(input?.userId || input?.__userId || '').trim();
+
+      const instructionText = String(input?.instructionText || '').trim();
       const rawActs = Array.isArray(input?.actions) ? input.actions : [];
       const actions = rawActs.map((a: any) => {
         if (a && typeof a === 'object' && String(a.type || '').toLowerCase() === 'goto') {
@@ -715,7 +721,28 @@ export const tools: ToolDefinition[] = [
         }
         return a;
       });
-      const exec = await executePlannedActions({ userId, sessionId: sid, actions: actions as any });
+
+      let execOk = false;
+      let execSummary = '';
+      let missingSecrets: string[] | undefined = undefined;
+
+      if (instructionText && (!Array.isArray(actions) || actions.length === 0)) {
+        const r = await (await import('../browser/runner')).runBrowserInstruction({ userId, sessionId: sid, instructionText });
+        if (r && typeof r === 'object' && (r as any).ok) {
+          execOk = Boolean((r as any).result?.ok);
+          execSummary = String((r as any).result?.summary || '');
+        } else {
+          execOk = false;
+          execSummary = String((r as any)?.error || '');
+          const ms = (r as any)?.missingSecrets;
+          if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
+        }
+      } else {
+        const r: any = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
+        execOk = Boolean(r?.ok);
+        execSummary = String(r?.summary || '');
+      }
+
       const s = await getBrowserSession(sid);
       touchSession(sid);
       const pageUrl = s.page.url();
@@ -726,13 +753,13 @@ export const tools: ToolDefinition[] = [
       const full = path.join(ARTIFACT_DIR, fname);
       try { fs.writeFileSync(full, buf); } catch {}
       const href = `/artifacts/${encodeURIComponent(fname)}`;
-      logs.push(`browser_run sid=${sid} steps=${Array.isArray(actions) ? actions.length : 0}`);
+      logs.push(`browser_run sid=${sid} steps=${Array.isArray(actions) ? actions.length : 0} compiled=${instructionText ? 1 : 0}`);
       return {
-        ok: !!exec?.ok,
-        output: { sessionId: sid, pageUrl, title, dom, screenshotHref: href, summary: String(exec?.summary || '') },
+        ok: execOk,
+        output: { sessionId: sid, pageUrl, title, dom, screenshotHref: href, summary: execSummary, missingSecrets },
         logs,
         artifacts: [{ name: 'Screenshot', href }],
-        error: exec?.ok ? undefined : 'browser_run_failed',
+        error: execOk ? undefined : missingSecrets && missingSecrets.length ? 'missing_secrets' : 'browser_run_failed',
       };
     },
   },
@@ -5196,18 +5223,59 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
       return { ok: true, output: { files }, logs };
     }
     if (name === 'shell_execute') {
+      const startedAt = Date.now();
       const command = String(input?.command ?? '');
       let cwdInput = String(input?.cwd ?? '');
       const timeoutVal = Number(input?.timeout ?? 30000);
       const dryRun = !!input?.dryRun;
 
+      const redactCmd = (s: string) => {
+        let out = String(s || '');
+        out = out.replace(/(authorization\s*:\s*bearer\s+)[^\s]+/gi, '$1[REDACTED]');
+        out = out.replace(/(\btoken\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+        out = out.replace(/(\bpassword\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+        out = out.replace(/(\bapi[_-]?key\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+        out = out.replace(/(\bsecret\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+        out = out.replace(/(\b--token\s+)[^\s]+/gi, '$1[REDACTED]');
+        out = out.replace(/(\b--password\s+)[^\s]+/gi, '$1[REDACTED]');
+        out = out.replace(/(ghp_[A-Za-z0-9]{20,})/g, '[REDACTED]');
+        out = out.replace(/(github_pat_[A-Za-z0-9_]{20,})/g, '[REDACTED]');
+        out = out.replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]');
+        out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]');
+        return out;
+      };
+
       if (dryRun) {
-        return { ok: true, output: { dryRun: true, command, cwd: cwdInput, exitCode: 0, stdout: `[dry run] command: ${command}`, stderr: '' }, logs: [`dryRun: ${command}`] };
+        const safeCmd = redactCmd(command);
+        return {
+          ok: true,
+          output: {
+            dryRun: true,
+            status: 'success',
+            reason: 'dry_run',
+            command: safeCmd,
+            cwd: cwdInput,
+            exitCode: 0,
+            stdout: `[dry run] command: ${safeCmd}`,
+            stderr: '',
+            durationMs: 0,
+          },
+          logs: [`dryRun: ${safeCmd}`],
+        };
       }
 
       // Safety: simplistic check
       if (command.includes('rm -rf /') || command.includes('sudo')) {
-         return { ok: false, error: 'Command not allowed', logs };
+         const safeCmd = redactCmd(command);
+         const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(process.cwd(), cwdInput)) : process.cwd();
+         const durationMs = Date.now() - startedAt;
+         logs.push(`exec=${safeCmd} blocked=1`);
+         return {
+           ok: false,
+           error: 'command_not_allowed',
+           output: { status: 'failed', reason: 'command_not_allowed', stdout: '', stderr: '', exitCode: 1, cwd: workDir, durationMs },
+           logs,
+         };
       }
       
       // Persistent CWD logic
@@ -5247,11 +5315,32 @@ export async function executeTool(name: string, input: any): Promise<ToolExecuti
             }
         }
 
-        logs.push(`exec=${command} cwd=${workDir} exit=0`);
-        return { ok: true, output: { stdout, stderr, exitCode: 0, cwd: workDir }, logs };
+        const durationMs = Date.now() - startedAt;
+        logs.push(`exec=${redactCmd(command)} cwd=${workDir} exit=0`);
+        return {
+          ok: true,
+          output: {
+            status: 'success',
+            reason: 'ok',
+            stdout: redactCmd(stdout),
+            stderr: redactCmd(stderr),
+            exitCode: 0,
+            cwd: workDir,
+            durationMs,
+          },
+          logs,
+        };
       } catch (err: any) {
-        logs.push(`exec=${command} err=${err.message}`);
-        return { ok: false, output: { stdout: err.stdout, stderr: err.stderr, exitCode: err.code || 1 }, logs };
+        const durationMs = Date.now() - startedAt;
+        const exitCode = typeof err?.code === 'number' ? err.code : 1;
+        const stderrRaw = typeof err?.stderr === 'string' ? err.stderr : '';
+        const stdoutRaw = typeof err?.stdout === 'string' ? err.stdout : '';
+        const reasonRaw = String((stderrRaw || stdoutRaw || err?.message || 'Command failed') ?? '').trim().split('\n')[0].slice(0, 300);
+        const stderr = redactCmd(stderrRaw);
+        const stdout = redactCmd(stdoutRaw);
+        const reason = redactCmd(reasonRaw);
+        logs.push(`exec=${redactCmd(command)} err=${redactCmd(String(err.message || 'command_failed'))}`);
+        return { ok: false, error: reason || 'command_failed', output: { status: 'failed', reason, stdout, stderr, exitCode, cwd: workDir, durationMs }, logs };
       }
     }
     if (name === 'check_syntax') {

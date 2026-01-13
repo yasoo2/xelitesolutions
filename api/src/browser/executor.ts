@@ -120,11 +120,15 @@ export async function executePlannedActions(params: {
       const name = String(a?.type || 'unknown');
       const sid = stepId(i);
       try {
+        const rawText = name === 'type' ? String(a?.text || '') : '';
+        const secretMatch = name === 'type' ? rawText.match(SECRET_TOKEN_RE) : null;
         const summary =
           name === 'goto'
             ? `goto ${String(a?.url || '').trim()}`
             : name === 'type'
-              ? `type ${String(a?.text || '').slice(0, 60)}`
+              ? secretMatch
+                ? `type (secret:${String(secretMatch[1] || '').trim() || 'KEY'})`
+                : `type (len=${rawText.length})`
               : name;
         broadcastBrowserEvent(sessionId, { type: 'action_sent', ts: now(), actionId: sid, actionType: name, summary });
       } catch {}

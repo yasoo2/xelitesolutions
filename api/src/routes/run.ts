@@ -521,6 +521,73 @@ function redactToolInputForStorage(name: string, input: any) {
     return { ...input, structure: redactedStructure, _fileCount: keys.length };
   }
 
+  if (name === 'shell_execute') {
+    const cmd = typeof (input as any).command === 'string' ? (input as any).command : '';
+    const redactCmd = (s: string) => {
+      let out = String(s || '');
+      out = out.replace(/(authorization\s*:\s*bearer\s+)[^\s]+/gi, '$1[REDACTED]');
+      out = out.replace(/(\btoken\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+      out = out.replace(/(\bpassword\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+      out = out.replace(/(\bapi[_-]?key\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+      out = out.replace(/(\bsecret\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+      out = out.replace(/(\b--token\s+)[^\s]+/gi, '$1[REDACTED]');
+      out = out.replace(/(\b--password\s+)[^\s]+/gi, '$1[REDACTED]');
+      out = out.replace(/(ghp_[A-Za-z0-9]{20,})/g, '[REDACTED]');
+      out = out.replace(/(github_pat_[A-Za-z0-9_]{20,})/g, '[REDACTED]');
+      out = out.replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]');
+      out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]');
+      return out;
+    };
+    return { ...(input as any), command: redactCmd(cmd) };
+  }
+
+  if (name === 'http_fetch') {
+    const url = typeof (input as any).url === 'string' ? String((input as any).url) : '';
+    const headersRaw = (input as any).headers;
+    if (headersRaw && typeof headersRaw === 'object' && !Array.isArray(headersRaw)) {
+      const headers: any = { ...headersRaw };
+      for (const k of Object.keys(headers)) {
+        if (/^authorization$/i.test(k)) headers[k] = '[REDACTED]';
+      }
+      return { ...(input as any), url, headers };
+    }
+    return input;
+  }
+
+  if (name === 'browser_run') {
+    const sessionId = typeof (input as any).sessionId === 'string' ? (input as any).sessionId : undefined;
+    const instructionText = typeof (input as any).instructionText === 'string' ? String((input as any).instructionText) : undefined;
+    const actions = Array.isArray((input as any).actions) ? (input as any).actions : [];
+    const redactedActions = actions.map((a: any) => {
+      const t = String(a?.type || '').toLowerCase();
+      if (t === 'type') {
+        const text = typeof a?.text === 'string' ? a.text : typeof a?.value === 'string' ? a.value : '';
+        return { ...a, text: `[redacted:${String(text || '').length}]`, value: undefined };
+      }
+      if (t === 'fillform') {
+        const fields = Array.isArray(a?.fields) ? a.fields : [];
+        const nextFields = fields.map((f: any) => {
+          const label = String(f?.label || '').toLowerCase();
+          const selector = String(f?.selector || '').toLowerCase();
+          const combined = `${label} ${selector}`;
+          const v = f?.value == null ? '' : String(f.value);
+          const shouldRedact =
+            Boolean(a?.sensitive) ||
+            Boolean(f?.sensitive) ||
+            /(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(combined);
+          if (!shouldRedact) return f;
+          return { ...f, value: `[redacted:${v.length}]` };
+        });
+        return { ...a, fields: nextFields };
+      }
+      return a;
+    });
+    const out: any = { ...(input as any), ...(sessionId ? { sessionId } : {}) };
+    if (instructionText) out.instructionText = instructionText;
+    if (Array.isArray(actions)) out.actions = redactedActions;
+    return out;
+  }
+
   return input;
 }
 
@@ -1936,6 +2003,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       if (!(plan as any).input.sessionId) (plan as any).input.sessionId = browserSessionId.trim();
     }
 
+    const isMultiStepBrowserInstruction = (s: string) => {
+      const t = String(s || '');
+      return /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+        t,
+      );
+    };
+
+    if (String(plan?.name || '') === 'browser_run') {
+      const acts = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+      const onlyGoto =
+        acts.length === 1 && String(acts[0]?.type || '').toLowerCase() === 'goto' && typeof acts[0]?.url === 'string' && acts[0].url.trim();
+      if (onlyGoto && isMultiStepBrowserInstruction(userTextForOverrides)) {
+        const sid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+        if (sid) (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
+      }
+    }
+
     ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
 
     if (plan?.name === 'browser_run') {
@@ -2131,7 +2215,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const title = dom ? extractTitleFromHtml(dom) : '';
       const site = inferSiteLabel(url, dom);
       const domLen = dom ? dom.length : 0;
-      const hasScreenshot = Boolean((out as any).screenshot || (out as any).screenshotHref);
       const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
       const u = String(url || '').toLowerCase();
       const domLower = String(dom || '').toLowerCase();
@@ -2145,7 +2228,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       if (title) summary.title = title;
       if (loginLike) summary.pageType = 'login';
       if (domLen) summary.domLength = domLen;
-      if (hasScreenshot) summary.hasScreenshot = true;
       if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
       return summary;
     };
@@ -2191,8 +2273,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     
     // Emit artifacts if any
     if (result.artifacts && Array.isArray(result.artifacts)) {
+      const suppressChatArtifacts = /^browser_/.test(String(plan?.name || ''));
       for (const art of result.artifacts) {
-        ev({ type: 'artifact_created', data: art });
+        if (!suppressChatArtifacts) ev({ type: 'artifact_created', data: art });
         if (useMock) {
           try { store.addArtifact(runId, String(art.name || 'artifact'), String(art.href || '')); } catch {}
         } else {
@@ -2828,7 +2911,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const title = dom ? extractTitleFromHtmlFinal(dom) : '';
     const site = inferSiteLabelFinal(url, dom);
     const domLen = dom ? dom.length : 0;
-    const hasScreenshot = Boolean((out as any).screenshot || (out as any).screenshotHref);
     const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
     const u = String(url || '').toLowerCase();
     const domLower = String(dom || '').toLowerCase();
@@ -2842,7 +2924,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (title) summary.title = title;
     if (loginLike) summary.pageType = 'login';
     if (domLen) summary.domLength = domLen;
-    if (hasScreenshot) summary.hasScreenshot = true;
     if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
     return summary;
   };
