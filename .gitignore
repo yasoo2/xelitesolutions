@@ -13,6 +13,8 @@ services/**/dist/
 .env
 api/.env
 web/.env
+web/.env.local
+**/.env.local
 
 # logs
 *.log

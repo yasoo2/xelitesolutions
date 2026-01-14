@@ -37,8 +37,24 @@ function inferWsUrl(apiUrl: string) {
 
 const runtimeConfig: any = (window as any).JOE_CONFIG || {};
 
-const apiEnv = cleanUrl(runtimeConfig.API_URL || (import.meta as any).env?.VITE_API_URL);
-const wsEnv = cleanUrl(runtimeConfig.WS_URL || (import.meta as any).env?.VITE_WS_URL);
+const apiEnvRaw = cleanUrl(runtimeConfig.API_URL || (import.meta as any).env?.VITE_API_URL);
+const wsEnvRaw = cleanUrl(runtimeConfig.WS_URL || (import.meta as any).env?.VITE_WS_URL);
+
+const hostname = window.location.hostname;
+const isLocalHost =
+  hostname === 'localhost' ||
+  hostname === '127.0.0.1' ||
+  hostname === '0.0.0.0' ||
+  hostname.endsWith('.local');
+
+const pointsToLocalhost = (u: string) => {
+  const s = String(u || '').trim().toLowerCase();
+  if (!s) return false;
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/.test(s);
+};
+
+const apiEnv = !isLocalHost && pointsToLocalhost(apiEnvRaw) ? '' : apiEnvRaw;
+const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')) ? '' : wsEnvRaw;
 
 const API_URL = apiEnv || inferApiUrl();
 const WS_URL = wsEnv || inferWsUrl(API_URL);
