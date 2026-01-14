@@ -3,11 +3,13 @@
 # Default values
 API_URL=${VITE_API_URL:-"https://api.xelitesolutions.com"}
 WS_URL=${VITE_WS_URL:-""}
+FEATURE_BROWSER_CHROME=${FEATURE_BROWSER_CHROME:-${VITE_FEATURE_BROWSER_CHROME:-"0"}}
 
 # Write config.js
 echo "window.JOE_CONFIG = {
   API_URL: \"$API_URL\",
-  WS_URL: \"$WS_URL\"
+  WS_URL: \"$WS_URL\",
+  FEATURE_BROWSER_CHROME: \"$FEATURE_BROWSER_CHROME\"
 };" > /usr/share/nginx/html/config.js
 
 chmod 644 /usr/share/nginx/html/config.js

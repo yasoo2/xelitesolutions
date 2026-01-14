@@ -4,7 +4,7 @@ import FileExplorer from '../components/FileExplorer';
 import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL as API } from '../config';
+import { API_URL as API, FEATURE_BROWSER_CHROME } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -132,7 +132,7 @@ export default function Joe() {
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   const [showBoxes, setShowBoxes] = useState(true);
-  const featureChrome = String((import.meta as any)?.env?.VITE_FEATURE_BROWSER_CHROME || '').trim() === '1';
+  const featureChrome = FEATURE_BROWSER_CHROME;
 
   const makeBrowserSessionId = useCallback(
     (kind: 'agent' | 'chat') => {
