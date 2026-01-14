@@ -15,7 +15,9 @@ type WsEvent =
   | { type: 'final_failed'; ts: number; summary: string; reason: string }
   | { type: 'debug_snapshot'; ts: number; compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string };
 
-export default function ModernBrowserStream({ sessionId }: { sessionId: string }) {
+type Props = { sessionId: string; showBoxes?: boolean };
+
+export default function ModernBrowserStream({ sessionId, showBoxes = true }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cursorElRef = useRef<HTMLDivElement>(null);
@@ -254,8 +256,8 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
           canvas.width = msg.w;
           canvas.height = msg.h;
           ctx.drawImage(img, 0, 0, msg.w, msg.h);
-          const curBoxes = boxesRef.current || [];
-          if (curBoxes.length) {
+          const curBoxes = showBoxes ? (boxesRef.current || []) : [];
+          if (showBoxes && curBoxes.length) {
             ctx.save();
             ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
             ctx.lineWidth = 2;
@@ -276,7 +278,7 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
         return;
       }
       if (msg.type === 'highlight_boxes') {
-        setBoxes(msg.boxes || []);
+        setBoxes(showBoxes ? (msg.boxes || []) : []);
         return;
       }
       if (msg.type === 'action_sent' || msg.type === 'action_ack' || msg.type === 'action_done' || msg.type === 'action_error') {

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
 
 import { useSessionStore } from '../store/sessionStore';
+import BrowserChrome from '../components/BrowserChrome';
 
 export default function Joe() {
   const {
@@ -130,6 +131,8 @@ export default function Joe() {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
+  const [showBoxes, setShowBoxes] = useState(true);
+  const featureChrome = String((import.meta as any)?.env?.VITE_FEATURE_BROWSER_CHROME || '').trim() === '1';
 
   const makeBrowserSessionId = useCallback(
     (kind: 'agent' | 'chat') => {
@@ -1069,11 +1072,19 @@ export default function Joe() {
               ) : null}
             </div>
 
-            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+              {featureChrome && agentBrowserSessionId ? (
+                <BrowserChrome
+                  sessionId={agentBrowserSessionId}
+                  onToggleControl={() => {}}
+                  onToggleBoxes={() => setShowBoxes((v) => !v)}
+                  showBoxes={showBoxes}
+                />
+              ) : null}
               <div className="agent-browser-stream" style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
                 {agentBrowserSessionId ? (
                   <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading browser…</div>}>
-                    <ModernBrowserStreamLazy sessionId={agentBrowserSessionId} />
+                    <ModernBrowserStreamLazy sessionId={agentBrowserSessionId} showBoxes={showBoxes} />
                   </Suspense>
                 ) : (
                   <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-primary)' }}>

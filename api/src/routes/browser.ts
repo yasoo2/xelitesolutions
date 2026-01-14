@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { runBrowserInstruction } from '../browser/runner';
 import { executePlannedActions } from '../browser/executor';
-import { stopSession } from '../browser/manager';
+import { stopSession, getBrowserSession } from '../browser/manager';
 
 const router = Router();
 
@@ -66,6 +66,66 @@ router.post('/stop', authenticate as any, async (req: Request, res: Response) =>
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'browser_stop_failed' });
+  }
+});
+
+router.post('/nav/back', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const sid = String(req.body?.sessionId || '').trim();
+    if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    const s = await getBrowserSession(sid);
+    let ok = false;
+    try {
+      const r = await s.page.goBack({ waitUntil: 'domcontentloaded' });
+      ok = !!r;
+    } catch {}
+    return res.json({ ok });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'nav_back_failed' });
+  }
+});
+
+router.post('/nav/forward', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const sid = String(req.body?.sessionId || '').trim();
+    if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    const s = await getBrowserSession(sid);
+    let ok = false;
+    try {
+      const r = await s.page.goForward({ waitUntil: 'domcontentloaded' });
+      ok = !!r;
+    } catch {}
+    return res.json({ ok });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'nav_forward_failed' });
+  }
+});
+
+router.post('/nav/refresh', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const sid = String(req.body?.sessionId || '').trim();
+    if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    const s = await getBrowserSession(sid);
+    try { await s.page.reload({ waitUntil: 'domcontentloaded' }); } catch {}
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'nav_refresh_failed' });
+  }
+});
+
+router.post('/nav/goto', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const sid = String(req.body?.sessionId || '').trim();
+    const raw = String(req.body?.url || '').trim();
+    if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    if (!raw) return res.status(400).json({ error: 'url required' });
+    const s = await getBrowserSession(sid);
+    let u = raw;
+    if (!/^[a-z]+:\/\//i.test(u)) u = `https://${u}`;
+    try { await s.page.goto(u, { waitUntil: 'domcontentloaded' }); } catch {}
+    return res.json({ ok: true, url: s.page.url() });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'nav_goto_failed' });
   }
 });
 
