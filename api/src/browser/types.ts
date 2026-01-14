@@ -91,3 +91,38 @@ export type BrowserWsEvent =
   | FinalReportEvent
   | FinalStatusEvent
   | DebugSnapshotEvent;
+
+export type ElementType =
+  | 'input'
+  | 'textarea'
+  | 'button'
+  | 'link'
+  | 'select'
+  | 'image'
+  | 'text'
+  | 'form'
+  | 'table'
+  | 'unknown';
+
+export type DetectedElement = {
+  id: string;
+  type: ElementType;
+  selector: string;
+  text: string;
+  value?: string;
+  placeholder?: string;
+  visible: boolean;
+  position: { x: number; y: number; width: number; height: number };
+  attributes: Record<string, string>;
+};
+
+export type PageData = {
+  title: string;
+  url: string;
+  elements: DetectedElement[];
+  forms: Array<{ id: string; fields: DetectedElement[]; submitButton?: DetectedElement }>;
+  tables: Array<{ id: string; headers: string[]; rows: string[][] }>;
+  links: Array<{ text: string; href: string; selector: string }>;
+  images: Array<{ src: string; alt: string; selector: string }>;
+  text: string;
+};
