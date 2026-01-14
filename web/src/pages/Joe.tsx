@@ -4,7 +4,7 @@ import FileExplorer from '../components/FileExplorer';
 import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL as API, FEATURE_BROWSER_CHROME } from '../config';
+import { API_URL as API, getBrowserChromeEnabled } from '../config';
 import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -134,7 +134,7 @@ export default function Joe() {
   const [composerHeight, setComposerHeight] = useState(0);
   const [showBoxes, setShowBoxes] = useState(true);
   const [controlOpen, setControlOpen] = useState(false);
-  const featureChrome = FEATURE_BROWSER_CHROME;
+  const featureChrome = getBrowserChromeEnabled();
 
   const makeBrowserSessionId = useCallback(
     (kind: 'agent' | 'chat') => {
@@ -1085,6 +1085,7 @@ export default function Joe() {
               ) : null}
               {featureChrome ? (
                 <BrowserControlPanel
+                  sessionId={String(agentSelected || '').trim()}
                   open={controlOpen}
                   onClose={() => setControlOpen(false)}
                   showBoxes={showBoxes}

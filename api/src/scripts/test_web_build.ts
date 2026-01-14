@@ -399,8 +399,11 @@ async function runUiE2e() {
     await waitForBrowserEvent((m) => m?.type === 'action_sent' && String(m?.actionType || '') === 'type', 12000, 'action_sent_type');
     await waitForBrowserEvent((m) => m?.type === 'action_done' && String(m?.actionType || '') === 'type', 12000, 'action_done_type');
 
+    browserEvents.length = 0;
     await clickViewport(remoteW / 2, remoteH / 2 + 43);
-    await new Promise((r) => setTimeout(r, 600));
+    await waitForBrowserEvent((m) => m?.type === 'action_sent' && String(m?.actionType || '') === 'click', 12000, 'action_sent_click_apply');
+    await waitForBrowserEvent((m) => m?.type === 'action_done' && String(m?.actionType || '') === 'click', 12000, 'action_done_click_apply');
+    await new Promise((r) => setTimeout(r, 150));
 
     const domAfter = (await fetchState()).dom;
     const hasClicked = domAfter.includes('data-clicked="abc"') || domAfter.includes("data-clicked='abc'");

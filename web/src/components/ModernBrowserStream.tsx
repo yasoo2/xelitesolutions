@@ -165,6 +165,32 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     } catch {}
   };
 
+  useEffect(() => {
+    const toggleDetails = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail || {};
+      const open = (detail as any)?.open;
+      if (typeof open === 'boolean') {
+        setDetailsOpen(open);
+        return;
+      }
+      setDetailsOpen((v) => !v);
+    };
+    const openDetails = () => setDetailsOpen(true);
+    const closeDetails = () => setDetailsOpen(false);
+    const cancel = () => cancelPending();
+
+    window.addEventListener('browser:details_toggle', toggleDetails as any);
+    window.addEventListener('browser:details_open', openDetails as any);
+    window.addEventListener('browser:details_close', closeDetails as any);
+    window.addEventListener('browser:cancel_pending', cancel as any);
+    return () => {
+      window.removeEventListener('browser:details_toggle', toggleDetails as any);
+      window.removeEventListener('browser:details_open', openDetails as any);
+      window.removeEventListener('browser:details_close', closeDetails as any);
+      window.removeEventListener('browser:cancel_pending', cancel as any);
+    };
+  }, []);
+
   const drainQueue = async () => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;

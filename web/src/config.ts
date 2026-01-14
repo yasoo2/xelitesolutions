@@ -64,20 +64,23 @@ const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')
 
 const API_URL = apiEnv || inferApiUrl();
 const WS_URL = wsEnv || inferWsUrl(API_URL);
-const queryChrome = (() => {
+const readQueryChrome = () => {
   try {
     return new URLSearchParams(window.location.search).get('chrome') || '';
   } catch {
     return '';
   }
-})();
-const storedChrome = (() => {
+};
+const readStoredChrome = () => {
   try {
     return localStorage.getItem('FEATURE_BROWSER_CHROME') || '';
   } catch {
     return '';
   }
-})();
+};
+
+const queryChrome = readQueryChrome();
+const storedChrome = readStoredChrome();
 const FEATURE_BROWSER_CHROME =
   chromeFlagRaw === '1' ||
   chromeFlagRaw === 'true' ||
@@ -86,4 +89,17 @@ const FEATURE_BROWSER_CHROME =
   storedChrome === '1' ||
   storedChrome.toLowerCase() === 'true';
 
-export { API_URL, WS_URL, FEATURE_BROWSER_CHROME };
+function getBrowserChromeEnabled() {
+  const q = readQueryChrome();
+  const s = readStoredChrome();
+  return (
+    chromeFlagRaw === '1' ||
+    chromeFlagRaw === 'true' ||
+    q === '1' ||
+    q.toLowerCase() === 'true' ||
+    s === '1' ||
+    s.toLowerCase() === 'true'
+  );
+}
+
+export { API_URL, WS_URL, FEATURE_BROWSER_CHROME, getBrowserChromeEnabled };

@@ -1418,10 +1418,24 @@ router.patch('/:id/state', authenticate as any, async (req: Request, res: Respon
     return res.json({ ok: true });
 });
 
+router.get('/:id/run-config', authenticate as any, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Missing sessionId' });
+  try {
+    const cfg = getSessionRunConfig(id) || ({} as any);
+    return res.json({ ok: true, config: cfg });
+  } catch {
+    return res.status(500).json({ error: 'Failed to load run config' });
+  }
+});
+
 router.post('/:id/run-config', authenticate as any, async (req: Request, res: Response) => {
   const id = String(req.params.id || '').trim();
-  const autoApproveAll = req.body?.autoApproveAll === true || req.body?.autoApproveAll === 'true';
-  const autoApproveSafe = req.body?.autoApproveSafe === true || req.body?.autoApproveSafe === 'true';
+  const body = (req.body && typeof req.body === 'object') ? req.body : ({} as any);
+  const hasAutoApproveAll = Object.prototype.hasOwnProperty.call(body, 'autoApproveAll');
+  const hasAutoApproveSafe = Object.prototype.hasOwnProperty.call(body, 'autoApproveSafe');
+  const autoApproveAll = hasAutoApproveAll ? (body as any).autoApproveAll === true || (body as any).autoApproveAll === 'true' : undefined;
+  const autoApproveSafe = hasAutoApproveSafe ? (body as any).autoApproveSafe === true || (body as any).autoApproveSafe === 'true' : undefined;
   const provider = typeof req.body?.provider === 'string' ? req.body.provider : undefined;
   const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey : undefined;
   const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl : undefined;
@@ -1429,7 +1443,13 @@ router.post('/:id/run-config', authenticate as any, async (req: Request, res: Re
   const kind = req.body?.kind === 'agent' ? 'agent' : req.body?.kind === 'chat' ? 'chat' : undefined;
   if (!id) return res.status(400).json({ error: 'Missing sessionId' });
   try {
+    const authRole = String((req as any)?.auth?.role || '');
     const cur = getSessionRunConfig(id) || ({} as any);
+    const nextAutoApproveAll = typeof autoApproveAll === 'boolean' ? autoApproveAll : Boolean(cur.autoApproveAll);
+    const nextAutoApproveSafe = typeof autoApproveSafe === 'boolean' ? autoApproveSafe : Boolean(cur.autoApproveSafe);
+    if (nextAutoApproveAll && authRole !== 'OWNER') {
+      return res.status(403).json({ error: 'Only OWNER can enable autoApproveAll' });
+    }
     setSessionRunConfig(id, {
       provider: provider ?? cur.provider,
       apiKey: apiKey ?? cur.apiKey,
@@ -1437,8 +1457,8 @@ router.post('/:id/run-config', authenticate as any, async (req: Request, res: Re
       model: model ?? cur.model,
       kind: kind ?? cur.kind,
       browserSessionId: cur.browserSessionId,
-      autoApproveAll: autoApproveAll || cur.autoApproveAll,
-      autoApproveSafe: autoApproveSafe || cur.autoApproveSafe,
+      autoApproveAll: nextAutoApproveAll,
+      autoApproveSafe: nextAutoApproveSafe,
     });
     const next = getSessionRunConfig(id);
     return res.json({ ok: true, config: next });
