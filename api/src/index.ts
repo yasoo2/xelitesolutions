@@ -101,6 +101,8 @@ async function main() {
   }));
   app.use(express.json({ limit: '10mb' }));
 
+  app.all('/api/webviewClick', (_req, res) => res.status(204).end());
+
   app.use(morgan('dev'));
 
   app.get('/health', (_req, res) => res.json({ status: 'OK' }));

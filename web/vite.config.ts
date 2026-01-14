@@ -2,7 +2,18 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'webview-click-shim',
+      configureServer(server) {
+        server.middlewares.use('/api/webviewClick', (_req, res) => {
+          res.statusCode = 204;
+          res.end();
+        });
+      },
+    },
+  ],
   server: {
     host: '0.0.0.0',
     port: 5173,
