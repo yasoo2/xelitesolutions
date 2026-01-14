@@ -448,8 +448,20 @@ export async function executePlannedActions(params: {
             continue;
           }
 
-          setStreamMask(sessionId, []);
-          const before = await screenshotJpegBase64(page);
+          const isSensitiveType =
+            name === 'type' &&
+            (typeof a?.selector === 'string'
+              ? /type\s*=\s*["']password["']|password|current-password/i.test(String(a.selector))
+              : typeof a?.name === 'string'
+                ? /password|كلمة المرور/i.test(String(a.name))
+                : false);
+          if (isSensitiveType) {
+            mask = [loc.first()];
+            setStreamMask(sessionId, mask);
+          } else {
+            setStreamMask(sessionId, []);
+          }
+          const before = await screenshotJpegBase64(page, isSensitiveType ? mask : undefined);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
           try {
@@ -476,13 +488,15 @@ export async function executePlannedActions(params: {
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
               } catch {}
+              if (isSensitiveType) setStreamMask(sessionId, []);
               continue;
             }
           }
 
           await page.waitForTimeout(250);
-          const after = await screenshotJpegBase64(page);
+          const after = await screenshotJpegBase64(page, isSensitiveType ? mask : undefined);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+          if (isSensitiveType) setStreamMask(sessionId, []);
 
           if (cfg.strictSameSite && s.allowedOrigin) {
             const cur = page.url();

@@ -726,6 +726,18 @@ export const tools: ToolDefinition[] = [
       if (!sid) return { ok: false, error: 'sessionId_required', logs };
       const userId = String(input?.userId || input?.__userId || '').trim();
 
+      const classifyBrowserRuntimeError = (e: any) => {
+        const msg = String(e?.message || e || '').trim();
+        const lower = msg.toLowerCase();
+        if (/executable doesn't exist|playwright install/i.test(msg)) return { code: 'chromium_missing', message: msg };
+        if (/no such file or directory/i.test(msg) && /chrome|chromium/i.test(lower)) return { code: 'chromium_missing', message: msg };
+        if (/target page, context or browser has been closed/i.test(msg)) return { code: 'browser_closed', message: msg };
+        if (/xvfb|display|cannot open display|missing x server/i.test(lower)) return { code: 'display_missing', message: msg };
+        if (/sandbox|setuid/i.test(lower)) return { code: 'sandbox_blocked', message: msg };
+        if (/glibc|gtk|nss|gbm|fontconfig/i.test(lower)) return { code: 'deps_missing', message: msg };
+        return { code: 'browser_failed', message: msg || 'browser_failed' };
+      };
+
       const instructionText = String(input?.instructionText || '').trim();
       const rawActs = Array.isArray(input?.actions) ? input.actions : [];
       const actions = rawActs.map((a: any) => {
@@ -800,7 +812,14 @@ export const tools: ToolDefinition[] = [
         } else {
           execOk = false;
           execError = String((r as any)?.error || '').trim() || 'browser_run_failed';
-          execSummary = execError;
+          const detail = (r as any)?.detail;
+          if (execError === 'browser_unavailable' && detail && typeof detail === 'object') {
+            const code = String(detail?.code || '').trim();
+            const msg = String(detail?.message || '').trim();
+            execSummary = `${code || 'browser_unavailable'}: ${msg || execError}`.slice(0, 600);
+          } else {
+            execSummary = execError;
+          }
           const ms = (r as any)?.missingSecrets;
           if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
           try {
@@ -826,7 +845,9 @@ export const tools: ToolDefinition[] = [
           r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
         } catch (e: any) {
           execOk = false;
-          execSummary = String(e?.message || e || 'browser_run_failed');
+          const c = classifyBrowserRuntimeError(e);
+          execError = 'browser_unavailable';
+          execSummary = `${c.code}: ${c.message}`.slice(0, 600);
           try {
             const { broadcastBrowserEvent } = await import('../browser/wsHub');
             broadcastBrowserEvent(sid, {
@@ -850,11 +871,22 @@ export const tools: ToolDefinition[] = [
         }
       }
 
-      const s = await getBrowserSession(sid);
-      touchSession(sid);
-      const pageUrl = s.page.url();
-      const title = await s.page.title();
-      const dom = await s.page.content();
+      let pageUrl = '';
+      let title = '';
+      let dom = '';
+      try {
+        const s = await getBrowserSession(sid);
+        touchSession(sid);
+        pageUrl = s.page.url();
+        title = await s.page.title();
+        dom = await s.page.content();
+      } catch (e: any) {
+        const c = classifyBrowserRuntimeError(e);
+        execOk = false;
+        execError = execError || 'browser_unavailable';
+        execSummary = execSummary || `${c.code}: ${c.message}`.slice(0, 600);
+        logs.push(`browser_run state_fetch_failed=${String(c.code || 'browser_failed')}`);
+      }
       let href = '';
       let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
       try {

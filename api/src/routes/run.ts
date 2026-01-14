@@ -903,6 +903,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const hasAnyKey = Boolean((typeof apiKey === 'string' && apiKey.trim()) || (typeof process.env.OPENAI_API_KEY === 'string' && process.env.OPENAI_API_KEY.trim()));
   let missingApiKey = false;
   const rawUserTextForKeyBypass = String(text || '');
+  const xeliteMacro = (() => {
+    const s = rawUserTextForKeyBypass;
+    const domain = s.match(/\b(?:https?:\/\/)?(?:www\.)?(xelitesolutions\.(?:co|com))(?:\/[^\s"'<>]*)?\b/i);
+    if (!domain) return null;
+    const hasStartNow = /\bstart\s+now\b/i.test(s) || /ستارت\s+ناو/i.test(s);
+    if (!hasStartNow) return null;
+    const emailMatch = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    if (!emailMatch) return null;
+    const email = String(emailMatch[0] || '').trim();
+    if (!email) return null;
+    const after = s.slice((emailMatch.index || 0) + email.length);
+    const pw = String((after.match(/^\s+([^\s"'<>]{3,64})/) || [])[1] || '').trim();
+    if (!pw) return null;
+    const rawUrl = String(domain[0] || '').trim();
+    const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    return { url, email, password: pw };
+  })();
+  const allowNoKeyForXeliteMacro = Boolean(xeliteMacro);
   const allowNoKeyForQuickBrowserOpen = (() => {
     const s = rawUserTextForKeyBypass;
     if (!s.trim()) return false;
@@ -934,7 +952,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     });
   }
   if (!hasAnyKey) {
-    missingApiKey = !allowNoKeyForQuickBrowserOpen;
+    missingApiKey = !(allowNoKeyForQuickBrowserOpen || allowNoKeyForXeliteMacro);
   }
   if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
     return res.status(400).json({
@@ -1247,7 +1265,56 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   try {
       const rawUserText = String(text || '');
       const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
-      if (isGreetingOnly(rawUserText) && !hasAttachments) {
+      if (!hasAnyKey && xeliteMacro && !hasAttachments) {
+        const sid =
+          typeof browserSessionId === 'string' && browserSessionId.trim()
+            ? browserSessionId.trim()
+            : userId
+              ? `browser:${String(userId).trim()}:xelitesolutions`
+              : `browser:anon:${Date.now()}`;
+        initialPlan = {
+          name: 'browser_run',
+          input: {
+            sessionId: sid,
+            actions: [
+              { type: 'goto', url: xeliteMacro.url },
+              { type: 'wait', ms: 450 },
+              { type: 'click', text: 'Start Now', optional: true },
+              { type: 'click', text: 'Start now', optional: true },
+              { type: 'click', text: 'Get Started', optional: true },
+              { type: 'wait', ms: 900, optional: true },
+              { type: 'click', text: 'Sign in', optional: true },
+              { type: 'click', text: 'Log in', optional: true },
+              { type: 'click', text: 'Login', optional: true },
+              { type: 'click', text: 'تسجيل الدخول', optional: true },
+              { type: 'wait', ms: 700, optional: true },
+              {
+                type: 'type',
+                selector:
+                  'input[type="email"],input[autocomplete="email"],input[name*="email" i],input[id*="email" i]',
+                text: xeliteMacro.email,
+                optional: true,
+              },
+              { type: 'type', role: 'textbox', name: 'Email', text: xeliteMacro.email, optional: true },
+              { type: 'type', role: 'textbox', name: 'E-mail', text: xeliteMacro.email, optional: true },
+              { type: 'type', role: 'textbox', name: 'البريد الإلكتروني', text: xeliteMacro.email, optional: true },
+              {
+                type: 'type',
+                selector:
+                  'input[type="password"],input[autocomplete="current-password"],input[name*="pass" i],input[id*="pass" i]',
+                text: xeliteMacro.password,
+                optional: true,
+              },
+              { type: 'type', role: 'textbox', name: 'Password', text: xeliteMacro.password, optional: true },
+              { type: 'type', role: 'textbox', name: 'كلمة المرور', text: xeliteMacro.password, optional: true },
+              { type: 'click', text: 'Sign in', optional: true },
+              { type: 'click', text: 'Login', optional: true },
+              { type: 'click', text: 'تسجيل الدخول', optional: true },
+              { type: 'wait', ms: 800, optional: true },
+            ],
+          },
+        } as any;
+      } else if (isGreetingOnly(rawUserText) && !hasAttachments) {
         initialPlan = { name: 'echo', input: { text: greetingReply(rawUserText) } };
       } else {
         const wantsLocation = isLocationLikeQuery(rawUserText);
