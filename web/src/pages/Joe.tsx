@@ -12,6 +12,7 @@ const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserSt
 
 import { useSessionStore } from '../store/sessionStore';
 import BrowserChrome from '../components/BrowserChrome';
+import BrowserControlPanel from '../components/BrowserControlPanel';
 
 export default function Joe() {
   const {
@@ -132,6 +133,7 @@ export default function Joe() {
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   const [showBoxes, setShowBoxes] = useState(true);
+  const [controlOpen, setControlOpen] = useState(false);
   const featureChrome = FEATURE_BROWSER_CHROME;
 
   const makeBrowserSessionId = useCallback(
@@ -1076,9 +1078,17 @@ export default function Joe() {
               {featureChrome && agentBrowserSessionId ? (
                 <BrowserChrome
                   sessionId={agentBrowserSessionId}
-                  onToggleControl={() => {}}
+                  onToggleControl={() => setControlOpen(true)}
                   onToggleBoxes={() => setShowBoxes((v) => !v)}
                   showBoxes={showBoxes}
+                />
+              ) : null}
+              {featureChrome ? (
+                <BrowserControlPanel
+                  open={controlOpen}
+                  onClose={() => setControlOpen(false)}
+                  showBoxes={showBoxes}
+                  onToggleBoxes={() => setShowBoxes((v) => !v)}
                 />
               ) : null}
               <div className="agent-browser-stream" style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>

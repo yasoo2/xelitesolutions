@@ -15,6 +15,7 @@ api/.env
 web/.env
 web/.env.local
 **/.env.local
+**/tsconfig.tsbuildinfo
 
 # logs
 *.log

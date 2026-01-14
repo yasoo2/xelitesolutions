@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_URL } from '../config';
-import { ChevronLeft, ChevronRight, RotateCcw, Settings, Plus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, Settings } from 'lucide-react';
 
 type Props = {
   sessionId: string;
