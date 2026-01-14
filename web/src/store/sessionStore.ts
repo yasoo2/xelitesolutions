@@ -15,6 +15,45 @@ export interface Folder {
   name: string;
 }
 
+async function ensureToken() {
+  const existing = (() => {
+    try {
+      return localStorage.getItem('token');
+    } catch {
+      return null;
+    }
+  })();
+  if (existing) return existing;
+
+  const host = (() => {
+    try {
+      return window.location.hostname || '';
+    } catch {
+      return '';
+    }
+  })();
+  const isLocal =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '0.0.0.0' ||
+    host.endsWith('.local');
+  if (!isLocal) return null;
+
+  try {
+    const res = await fetch(`${API}/auth/dev`, { method: 'POST' });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    const token = typeof data?.token === 'string' ? data.token : '';
+    if (!token) return null;
+    try {
+      localStorage.setItem('token', token);
+    } catch {}
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 interface SessionState {
   sessions: Session[];
   agentSessions: Session[];
@@ -41,18 +80,29 @@ export const useSessionStore = create<SessionState>((set) => ({
   setSelected: (id: string | null) => set({ selected: id }),
   setAgentSelected: (id: string | null) => set({ agentSelected: id }),
   loadAllSessions: async () => {
-    const token = localStorage.getItem('token');
+    const token = await ensureToken();
     if (!token) {
       set({ sessions: [], agentSessions: [] });
       return;
     }
     try {
-      const res = await fetch(`${API}/sessions?kind=chat,agent`, { headers: { Authorization: `Bearer ${token}` } });
+      const doFetch = (t: string) => fetch(`${API}/sessions?kind=chat,agent`, { headers: { Authorization: `Bearer ${t}` } });
+      let res = await doFetch(token);
       if (res.status === 401) {
-        localStorage.removeItem('token');
-        set({ sessions: [], agentSessions: [] });
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        return;
+        try { localStorage.removeItem('token'); } catch {}
+        const retryToken = await ensureToken();
+        if (!retryToken) {
+          set({ sessions: [], agentSessions: [] });
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          return;
+        }
+        res = await doFetch(retryToken);
+        if (res.status === 401) {
+          try { localStorage.removeItem('token'); } catch {}
+          set({ sessions: [], agentSessions: [] });
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          return;
+        }
       }
       const data = await res.json();
       const allSessions = (data.sessions || []).map((s: any) => ({ ...s, id: s.id || s._id }));
@@ -72,18 +122,29 @@ export const useSessionStore = create<SessionState>((set) => ({
     }
   },
   loadFolders: async () => {
-    const token = localStorage.getItem('token');
+    const token = await ensureToken();
     if (!token) {
       set({ folders: [] });
       return;
     }
     try {
-      const res = await fetch(`${API}/folders`, { headers: { Authorization: `Bearer ${token}` } });
+      const doFetch = (t: string) => fetch(`${API}/folders`, { headers: { Authorization: `Bearer ${t}` } });
+      let res = await doFetch(token);
       if (res.status === 401) {
-        localStorage.removeItem('token');
-        set({ folders: [] });
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        return;
+        try { localStorage.removeItem('token'); } catch {}
+        const retryToken = await ensureToken();
+        if (!retryToken) {
+          set({ folders: [] });
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          return;
+        }
+        res = await doFetch(retryToken);
+        if (res.status === 401) {
+          try { localStorage.removeItem('token'); } catch {}
+          set({ folders: [] });
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          return;
+        }
       }
       if (res.ok) {
         const data = await res.json();
