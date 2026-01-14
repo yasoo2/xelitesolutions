@@ -111,26 +111,44 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
       s,
     );
   const wantsYahoo = /(yahoo|ياهو)/i.test(s);
+  const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s);
+  const wantsPricing = /(price|pricing|سعر|الاسعار|الأسعار|تكلفة|cost)/i.test(s);
+  const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(s);
+  const wantsRender = /(render\.com|\brender\b|ريندر)/i.test(s);
+  const wantsGithub = /(github|جيتهاب|قيتهب|كتهاب|كيتهاب)/i.test(s);
+  const wantsYoutube = /(youtube|يوتيوب)/i.test(s);
+  const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(s);
+  const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(s);
+  const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s);
+  const wantsExplicitGoogle =
+    /(google|جوجل)/i.test(s) || /(ابحث|بحث|search|find|lookup)\s+(?:في|على|ب)\s*(?:google|جوجل)/i.test(s);
+  const hasSearchIntent = /(ابحث|بحث|search|find|lookup)/i.test(s);
 
   const url =
     extractUrl(s) ||
-    (/(google|جوجل)/i.test(s) || /(ابحث|بحث|search|find|lookup)/i.test(s)
-      ? 'https://www.google.com'
-      : /(youtube|يوتيوب)/i.test(s)
-        ? 'https://www.youtube.com'
-        : wantsYahoo
-          ? 'https://www.yahoo.com'
-        : /(github|جيتهاب|قيتهب)/i.test(s)
-          ? 'https://github.com'
-          : /(openai|اوبن\s*اي)/i.test(s)
-            ? 'https://platform.openai.com/'
-            : /(x\.com|\btwitter\b|تويتر)/i.test(s)
-              ? 'https://x.com'
-              : /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(s)
-                ? 'https://www.facebook.com'
-                : /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s)
-                  ? 'https://www.linkedin.com'
-                  : null);
+    (wantsOpenAI
+      ? wantsPricing
+        ? 'https://openai.com/pricing'
+        : 'https://platform.openai.com/'
+      : wantsRender
+        ? 'https://render.com'
+        : wantsMicrosoft
+          ? 'https://www.microsoft.com'
+          : wantsGithub
+            ? 'https://github.com'
+            : wantsYoutube
+              ? 'https://www.youtube.com'
+              : wantsX
+                ? 'https://x.com'
+                : wantsFacebook
+                  ? 'https://www.facebook.com'
+                  : wantsLinkedIn
+                    ? 'https://www.linkedin.com'
+                    : wantsYahoo
+                      ? 'https://www.yahoo.com'
+                      : wantsExplicitGoogle
+                        ? 'https://www.google.com'
+                        : null);
   if (url) actions.push({ type: 'goto', url });
 
   const clickMatches = [
@@ -191,6 +209,7 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
   if (wantsUiAudit) actions.push({ type: 'ui_audit' });
 
   if (actions.length === 0) return [{ type: 'ui_audit' }];
+  if (hasSearchIntent && !wantsExplicitGoogle && actions.length === 1 && actions[0]?.type === 'goto') return actions;
   return actions;
 }
 
@@ -281,7 +300,12 @@ export async function runBrowserInstruction(params: {
     action_count: 0,
     stop_reason: '',
   };
+  const allowDebugSnapshot = (() => {
+    const raw = String(process.env.BROWSER_DEBUG_SNAPSHOT || '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'y', 'on'].includes(raw);
+  })();
   const emitDebugSnapshot = () => {
+    if (!allowDebugSnapshot) return;
     try {
       broadcastBrowserEvent(sessionId, {
         type: 'debug_snapshot',

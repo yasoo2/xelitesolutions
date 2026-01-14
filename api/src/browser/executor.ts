@@ -35,6 +35,30 @@ function isSameSiteAllowed(allowedOrigin: string | null, nextUrl: string) {
   }
 }
 
+function normalizeUrlForGoto(raw: any, baseUrl?: string) {
+  let s = String(raw ?? '').trim();
+  s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
+  if (!s) return s;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^\/\//.test(s)) return `https:${s}`;
+  if (/^\//.test(s)) {
+    try {
+      if (baseUrl) return new URL(s, baseUrl).toString();
+    } catch {}
+    return s;
+  }
+  const candidate = s.replace(/^\/\//, '');
+  const isLocal =
+    /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+    /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+    /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+  const looksDomain =
+    /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
+  if (isLocal) return `http://${candidate}`;
+  if (looksDomain) return `https://${candidate}`;
+  return s;
+}
+
 function locatorForAction(page: Page, a: any): Locator | null {
   if (a?.selector) return page.locator(String(a.selector));
   if (a?.role && a?.name) return (page as any).getByRole(String(a.role), { name: String(a.name) });
@@ -124,7 +148,7 @@ export async function executePlannedActions(params: {
         const secretMatch = name === 'type' ? rawText.match(SECRET_TOKEN_RE) : null;
         const summary =
           name === 'goto'
-            ? `goto ${String(a?.url || '').trim()}`
+            ? `goto ${normalizeUrlForGoto(a?.url, (() => { try { return page.url(); } catch { return ''; } })()).trim()}`
             : name === 'type'
               ? secretMatch
                 ? `type (secret:${String(secretMatch[1] || '').trim() || 'KEY'})`
@@ -141,7 +165,7 @@ export async function executePlannedActions(params: {
       try {
         if (name === 'goto') {
           const optional = Boolean(a?.optional);
-          const url = String(a?.url || '').trim();
+          const url = normalizeUrlForGoto(a?.url, (() => { try { return page.url(); } catch { return ''; } })());
           if (!url) {
             if (optional) {
               broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { skipped: true } });
