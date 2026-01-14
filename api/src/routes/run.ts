@@ -16,6 +16,7 @@ import { Message } from '../models/message';
 import { FileModel } from '../models/file';
 import { MemoryService } from '../services/memory';
 import { MemoryItem } from '../models/memoryItem';
+import { rewriteInlineLoginCredentialsToSecrets } from '../browser/secrets';
 
 const router = Router();
 
@@ -1384,6 +1385,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   // Save User Message to DB
   let persistedUserText = redactSecretsFromString(String(text || ''));
+  try {
+    const r = rewriteInlineLoginCredentialsToSecrets(String(text || ''));
+    if (r.ok) persistedUserText = redactSecretsFromString(String(r.sanitizedText || persistedUserText));
+  } catch {}
   try {
     const pw = String(xeliteMacro?.password || '').trim();
     if (pw) persistedUserText = persistedUserText.split(pw).join('[REDACTED]');

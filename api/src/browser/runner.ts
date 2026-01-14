@@ -1,11 +1,11 @@
 import type { BrowserWsEvent } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
-import { resolveSecretsInText, redactSecretsFromString } from './secrets';
+import { resolveSecretsInText, redactSecretsFromString, rewriteInlineLoginCredentialsToSecrets } from './secrets';
 import { planNextStep } from '../llm';
 import { executePlannedActions } from './executor';
 import { stopSession } from './manager';
-import { getSessionRunConfig } from '../services/secrets';
+import { getSessionRunConfig, setSessionSecretEncrypted } from '../services/secrets';
 
 function now() {
   return Date.now();
@@ -274,7 +274,17 @@ export async function runBrowserInstruction(params: {
   if (!sessionId) throw new Error('sessionId_required');
   if (!instructionTextRaw) throw new Error('instructionText_required');
 
-  const secretsCheck = await resolveSecretsInText(userId, instructionTextRaw);
+  let instructionText = instructionTextRaw;
+  try {
+    const r = rewriteInlineLoginCredentialsToSecrets(instructionTextRaw);
+    if (r.ok) {
+      if (r.email) setSessionSecretEncrypted(sessionId, 'JOE_LOGIN_EMAIL', r.email, 60 * 60);
+      if (r.password) setSessionSecretEncrypted(sessionId, 'JOE_LOGIN_PASSWORD', r.password, 60 * 60);
+      instructionText = String(r.sanitizedText || instructionTextRaw).trim();
+    }
+  } catch {}
+
+  const secretsCheck = await resolveSecretsInText(userId, sessionId, instructionText);
   if (!secretsCheck.ok) {
     const msg = `missing_secrets: ${secretsCheck.missing.join(', ')}`;
     const ev: BrowserWsEvent = {
@@ -291,7 +301,7 @@ export async function runBrowserInstruction(params: {
   }
 
   const cfg = DEFAULT_BROWSER_CONFIG;
-  const safeInstruction = redactSecretsFromString(instructionTextRaw);
+  const safeInstruction = redactSecretsFromString(instructionText);
   const closeAfterRun = shouldCloseAfterRun();
   const debugBase = {
     instruction: safeInstruction,

@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { getBrowserSession, setStreamMask, startStreaming, touchSession, withBrowserConcurrency } from './manager';
-import { getUserSecret } from '../services/secrets';
+import { getSessionSecret, getUserSecret } from '../services/secrets';
 
 type Action =
   | { type: 'goto'; url: string; optional?: boolean }
@@ -88,6 +88,83 @@ function locatorForAction(page: Page, a: any): Locator | null {
   if (a?.selector) return page.locator(String(a.selector));
   if (a?.role && a?.name) return (page as any).getByRole(String(a.role), { name: String(a.name) });
   if (a?.text) return page.getByText(String(a.text), { exact: false });
+  return null;
+}
+
+async function findCredentialField(page: Page, kind: 'email' | 'password') {
+  const css =
+    kind === 'email'
+      ? [
+          'input[type="email"]',
+          'input[autocomplete="email"]',
+          'input[name*="email" i]',
+          'input[id*="email" i]',
+          'input[placeholder*="email" i]',
+          'input[aria-label*="email" i]',
+          'input[placeholder*="mail" i]',
+          'input[aria-label*="mail" i]',
+          'input[placeholder*="ايميل" i]',
+          'input[placeholder*="إيميل" i]',
+          'input[placeholder*="البريد" i]',
+          'input[aria-label*="ايميل" i]',
+          'input[aria-label*="إيميل" i]',
+          'input[aria-label*="البريد" i]',
+        ]
+      : [
+          'input[type="password"]',
+          'input[autocomplete="current-password"]',
+          'input[autocomplete="new-password"]',
+          'input[name*="pass" i]',
+          'input[id*="pass" i]',
+          'input[placeholder*="pass" i]',
+          'input[aria-label*="pass" i]',
+          'input[placeholder*="password" i]',
+          'input[aria-label*="password" i]',
+          'input[placeholder*="كلمة" i]',
+          'input[placeholder*="المرور" i]',
+          'input[placeholder*="باسورد" i]',
+          'input[aria-label*="كلمة" i]',
+          'input[aria-label*="المرور" i]',
+          'input[aria-label*="باسورد" i]',
+        ];
+
+  for (const sel of css) {
+    try {
+      const loc = page.locator(sel).first();
+      if ((await loc.count().catch(() => 0)) === 0) continue;
+      await loc.waitFor({ state: 'visible', timeout: 800 }).catch(() => null);
+      if (await loc.isVisible().catch(() => false)) return page.locator(sel);
+    } catch {}
+  }
+
+  const labels =
+    kind === 'email'
+      ? [/email/i, /e-mail/i, /mail/i, /البريد/i, /ايميل/i, /إيميل/i]
+      : [/password/i, /passcode/i, /كلمة\s*المرور/i, /باسورد/i, /الباسورد/i];
+
+  for (const r of labels) {
+    try {
+      const loc = page.getByLabel(r, { exact: false }).first();
+      if ((await loc.count().catch(() => 0)) === 0) continue;
+      await loc.waitFor({ state: 'visible', timeout: 800 }).catch(() => null);
+      if (await loc.isVisible().catch(() => false)) return loc;
+    } catch {}
+  }
+
+  const roleNames =
+    kind === 'email'
+      ? [/email/i, /e-mail/i, /mail/i, /البريد/i, /ايميل/i, /إيميل/i]
+      : [/password/i, /passcode/i, /كلمة\s*المرور/i, /باسورد/i, /الباسورد/i];
+
+  for (const r of roleNames) {
+    try {
+      const loc = (page as any).getByRole('textbox', { name: r }).first();
+      if ((await loc.count().catch(() => 0)) === 0) continue;
+      await loc.waitFor({ state: 'visible', timeout: 800 }).catch(() => null);
+      if (await loc.isVisible().catch(() => false)) return loc;
+    } catch {}
+  }
+
   return null;
 }
 
@@ -420,7 +497,78 @@ export async function executePlannedActions(params: {
             const textRaw = String(a?.text || '');
             if (textRaw && !a?.selector && !a?.role && !a?.name && !a?.textTarget) {
               const secretMatch = textRaw.match(SECRET_TOKEN_RE);
-              if (!secretMatch) {
+              if (secretMatch) {
+                const secretKey = String(secretMatch[1] || '').trim();
+                const secretValue =
+                  (secretKey ? getSessionSecret(sessionId, secretKey) : null) ||
+                  (secretKey ? await getUserSecret(userId, 'internal', secretKey) : null) ||
+                  '';
+                if (!secretValue) {
+                  results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `missing_secret:${secretKey}` });
+                  broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `missing_secret:${secretKey}` });
+                  try {
+                    broadcastBrowserEvent(sessionId, {
+                      type: 'action_error',
+                      ts: now(),
+                      actionId: sid,
+                      actionType: name,
+                      reason: 'unknown',
+                      error: `missing_secret:${secretKey}`,
+                    });
+                  } catch {}
+                  continue;
+                }
+
+                const optional = Boolean(a?.optional);
+                const kind =
+                  /(?:^|_)EMAIL(?:$|_)/i.test(secretKey) ? ('email' as const) : /(?:^|_)PASSWORD(?:$|_)/i.test(secretKey) ? ('password' as const) : null;
+                const fieldLoc = kind ? await findCredentialField(page, kind) : null;
+                const count = fieldLoc ? await fieldLoc.count().catch(() => 0) : 0;
+                if (!fieldLoc || !count) {
+                  if (optional) {
+                    broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { skipped: true } });
+                    results.push({ stepId: sid, name, ok: true });
+                    try {
+                      broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+                    } catch {}
+                    continue;
+                  }
+                  results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'no_locator' });
+                  broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'element_not_found', message: 'no_locator' });
+                  try {
+                    broadcastBrowserEvent(sessionId, {
+                      type: 'action_error',
+                      ts: now(),
+                      actionId: sid,
+                      actionType: name,
+                      reason: 'element_not_found',
+                      error: 'no_locator',
+                    });
+                  } catch {}
+                  continue;
+                }
+
+                const isSensitive = kind === 'password';
+                if (isSensitive) {
+                  mask = [fieldLoc.first()];
+                  setStreamMask(sessionId, mask);
+                } else {
+                  setStreamMask(sessionId, []);
+                }
+                const before = await screenshotJpegBase64(page, isSensitive ? mask : undefined);
+                evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+                await fieldLoc.first().click({ timeout: cfg.actionTimeoutMs });
+                await fieldLoc.first().fill(secretValue, { timeout: cfg.actionTimeoutMs });
+                const after = await screenshotJpegBase64(page, isSensitive ? mask : undefined);
+                evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+                if (isSensitive) setStreamMask(sessionId, []);
+                broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+                results.push({ stepId: sid, name, ok: true });
+                try {
+                  broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+                } catch {}
+                continue;
+              } else {
                 setStreamMask(sessionId, []);
                 const before = await screenshotJpegBase64(page);
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
@@ -504,7 +652,10 @@ export async function executePlannedActions(params: {
           const secretMatch = name === 'type' ? textRaw.match(SECRET_TOKEN_RE) : null;
           if (secretMatch) {
             const secretKey = String(secretMatch[1] || '').trim();
-            const secretValue = (await getUserSecret(userId, 'internal', secretKey)) || '';
+            const secretValue =
+              getSessionSecret(sessionId, secretKey) ||
+              (await getUserSecret(userId, 'internal', secretKey)) ||
+              '';
             if (!secretValue) {
               results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `missing_secret:${secretKey}` });
               broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `missing_secret:${secretKey}` });

@@ -1,5 +1,6 @@
 
 import assert from 'node:assert/strict';
+import { rewriteInlineLoginCredentialsToSecrets } from '../browser/secrets';
 
 function pickToolFromText(text: string) {
   const t = text.toLowerCase();
@@ -111,3 +112,19 @@ assert.equal(isSimpleBrowserOpenRequestText('افتح جوجل ثم ابحث ع�
 assert.equal(isSimpleBrowserOpenRequestText('افتح https://www.google.com ثم ابحث عن سعر الدولار'), false);
 assert.equal(isSimpleBrowserOpenRequestText('open google then search for exchange rates'), false);
 assert.equal(isSimpleBrowserOpenRequestText('في اي عام قامت الثوره الفرنسية؟'), false);
+
+{
+  const r = rewriteInlineLoginCredentialsToSecrets('قم بادخال الايميل والباسورد info.auraaluxury@gmail.com younes2025');
+  assert.equal(r.ok, true);
+  assert.equal(r.email, 'info.auraaluxury@gmail.com');
+  assert.equal(r.password, 'younes2025');
+  assert.ok(r.sanitizedText.includes('{{SECRET:JOE_LOGIN_EMAIL}}'));
+  assert.ok(r.sanitizedText.includes('{{SECRET:JOE_LOGIN_PASSWORD}}'));
+}
+
+{
+  const r = rewriteInlineLoginCredentialsToSecrets('تسجيل الدخول\nالايميل: "info.auraaluxury@gmail.com"\nكلمة المرور: "younes2025"');
+  assert.equal(r.ok, true);
+  assert.equal(r.email, 'info.auraaluxury@gmail.com');
+  assert.equal(r.password, 'younes2025');
+}
