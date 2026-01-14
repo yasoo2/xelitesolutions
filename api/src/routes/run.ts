@@ -21,6 +21,7 @@ const router = Router();
 
 const loopPauseThrottle = new Map<string, number>();
 const rateLimitCooldown = new Map<string, number>();
+const projectDetectThrottle = new Map<string, number>();
 const browserRunGuard = new Map<
   string,
   {
@@ -673,25 +674,134 @@ function normalizeArabicQuery(input: string) {
     .trim();
 }
 
+function isProjectRelatedRequest(raw: string): boolean {
+  const s = String(raw || '').trim();
+  if (!s) return false;
+  if (detectWorkflow(s)) return true;
+
+  const t = normalizeArabicQuery(s);
+  const en =
+    /(repo|repository|project|workspace|code|bug|error|stack|trace|function|class|file|folder|directory|path|npm|node|tsc|eslint|lint|build|deploy|compile|test|git|branch|commit|merge|pull\s+request|pr|issue|api|endpoint|backend|frontend)/i.test(
+      s,
+    );
+  const ar =
+    /(مستودع|ريبو|مشروع|الكود|كود|برمجه|برمجة|خطا|خطأ|باك|خلفي|واجهة|فرونت|ملف|مجلد|مسار|نصبه|تنصيب|بناء|اختبار|تصحيح|ديباغ|جت|جيت|كوميت|برنش|دمج|API|واجهه\s+برمجه|واجهة\s+برمجه)/.test(
+      t,
+    );
+  const explicitTool = /(project_detect|analyze_codebase|grep|file_read|file_edit|ls|npm_install|npm_build)/i.test(s);
+  return Boolean(en || ar || explicitTool);
+}
+
+function isEmptyProjectDetectOutput(out: any): boolean {
+  if (!out || typeof out !== 'object') return true;
+  const node = Array.isArray(out.nodeProjects) ? out.nodeProjects : [];
+  const py = Array.isArray(out.pythonProjects) ? out.pythonProjects : [];
+  const go = Array.isArray(out.goProjects) ? out.goProjects : [];
+  return node.length === 0 && py.length === 0 && go.length === 0;
+}
+
+function fallbackPlanWhenPlannerUnavailable(params: {
+  userText: string;
+  sessionId: string;
+  history?: Array<{ role: string; content: any }>;
+  preferNonLLM?: boolean;
+  stopProjectDetectRepeats?: boolean;
+}): any {
+  const userText = String(params.userText || '');
+  const sessionId = String(params.sessionId || '');
+  const history = Array.isArray(params.history) ? params.history : undefined;
+  const preferNonLLM = Boolean(params.preferNonLLM);
+  const stopProjectDetectRepeats = params.stopProjectDetectRepeats !== false;
+
+  if (isLocationLikeQuery(userText)) {
+    return { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+  }
+  if (isWeatherLikeQuery(userText)) {
+    const city = extractWeatherCity(userText);
+    const q = isArabicText(userText) ? `كم درجة الحرارة الآن في ${city}؟` : `current temperature in ${city} now`;
+    if (preferNonLLM) return { name: 'web_search', input: { query: q } } as any;
+    return { name: 'central_answer', input: { question: q } } as any;
+  }
+  if (isGeneralKnowledgeQuestion(userText)) {
+    if (preferNonLLM) return { name: 'web_search', input: { query: userText } } as any;
+    return { name: 'central_answer', input: { question: userText } } as any;
+  }
+
+  const wantsProject = isProjectRelatedRequest(userText);
+  if (!wantsProject) {
+    return {
+      name: 'echo',
+      input: {
+        text: isArabicText(userText)
+          ? '⚠️ التخطيط الذكي غير متاح مؤقتًا، ولا توجد قاعدة واضحة لتنفيذ هذا الطلب الآن.\nأعد المحاولة بعد دقائق أو اكتب الطلب بصيغة محددة (مثال: ابحث عن… / افتح… / اقرأ ملف…).'
+          : '⚠️ Smart planning is temporarily unavailable and there’s no safe fallback for this request.\nPlease retry in a couple minutes or use a more explicit request (e.g., search/open/read file).',
+      },
+    } as any;
+  }
+
+  if (history) {
+    const hasProjectDetect = historyHasToolCall(history as any, 'project_detect');
+    const hasAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
+    if (hasProjectDetect && !hasAnalyze) {
+      return { name: 'analyze_codebase', input: { path: '.' } } as any;
+    }
+    if (hasProjectDetect && hasAnalyze) {
+      return {
+        name: 'echo',
+        input: {
+          text: isArabicText(userText)
+            ? '⚠️ تم فحص المشروع وتحليله مسبقًا، ولا يمكن اتخاذ خطوة أدوات آمنة بدون تخطيط ذكي.\nاذكر الملف/المجلد المطلوب أو أعد المحاولة بعد دقائق.'
+            : '⚠️ Project scan/analysis already ran; no safe next tool step without smart planning.\nSpecify a file/folder or retry in a couple minutes.',
+        },
+      } as any;
+    }
+  }
+
+  if (stopProjectDetectRepeats) {
+    const key = sessionId;
+    const now = Date.now();
+    const last = projectDetectThrottle.get(key) || 0;
+    if (last && now - last < 120000) {
+      return {
+        name: 'echo',
+        input: {
+          text: isArabicText(userText)
+            ? '⚠️ تم إيقاف فحص المشروع المتكرر لتجنّب الدوران.\nأعد المحاولة بعد دقائق.'
+            : '⚠️ Repeated project scanning was stopped to avoid loops.\nPlease retry in a couple minutes.',
+        },
+      } as any;
+    }
+    projectDetectThrottle.set(key, now);
+  }
+
+  return { name: 'project_detect', input: { path: '.' } } as any;
+}
+
 function isGeneralKnowledgeQuestion(text: string) {
   const raw = String(text || '').trim();
   if (!raw) return false;
   const t = normalizeArabicQuery(raw);
+  if (detectWorkflow(raw)) return false;
   const hasQuestionMark = /[?؟]/.test(raw);
   const arQ =
     /^(من|ما|ماذا|متي|متى|اين|أين|اين|كيف|هل|لماذا)\b/.test(t) ||
     /(في\s*(اي|أي)\s*عام)\b/.test(t) ||
     /(ما\s*(هو|هي|هي)\b)/.test(t);
   const enQ = /^(what|when|where|why|how|who|which)\b/i.test(raw);
+  const requestVerbAr =
+    /^(?:اريد|أريد|ابي|ابغى|عايز|عاوز|اعطني|اعطيني|هات|قدم|اكتب(?:لي)?|اكتب\s+لي)\b/.test(t);
+  const requestVerbEn = /^(?:write|draft|tell\s+me|give\s+me)\b/i.test(raw);
+  const aboutMarker = /\b(?:عن|حول)\b/.test(t) || /\b(?:about|on)\b/i.test(raw);
+  const infoRequest = (requestVerbAr || requestVerbEn) && aboutMarker;
   const actionKeyword =
-    /(open|start|launch|browse|visit|go to|click|type|run|execute|افتح|شغل|ابدأ|ادخل|اذهب|انقر|اضغط|اكتب|نفذ|قم\s+ب)/i.test(
+    /(open|start|launch|browse|visit|go to|click|run|execute|افتح|شغل|ابدأ|ادخل|اذهب|انقر|اضغط|نفذ|قم\s+ب)/i.test(
       raw,
     );
   const toolishKeyword =
-    /(browser|web|preview|متصفح|المتصفح|terminal|command|ترمينال|أمر|npm|node|git|repo|repository|ملف|مجلد|path|مسار|build|lint|typecheck)/i.test(
+    /(browser|web|preview|متصفح|المتصفح|terminal|command|ترمينال|أمر|npm|node|git|repo|repository|ملف|مجلد|path|مسار|build|lint|typecheck|code|كود|برمجه|برمجة|داله|دالة|function|class|typescript|javascript|python|java|golang|rust|api|endpoint|debug|bug|خطا|خطأ)/i.test(
       raw,
     );
-  return Boolean((hasQuestionMark || arQ || enQ) && !actionKeyword && !toolishKeyword);
+  return Boolean((hasQuestionMark || arQ || enQ || infoRequest) && !toolishKeyword && !actionKeyword);
 }
 
 function containsBuilderPlanText(raw: string): boolean {
@@ -1564,11 +1674,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
         if (Date.now() < coolUntil) {
             const userTextForCooldown = String(text || '');
-            if (isGeneralKnowledgeQuestion(userTextForCooldown)) {
-              plan = { name: 'central_answer', input: { question: userTextForCooldown } } as any;
-            } else {
-              plan = { name: 'project_detect', input: { path: '.' } } as any;
-            }
+            plan = fallbackPlanWhenPlannerUnavailable({
+              userText: userTextForCooldown,
+              sessionId: String(sessionId),
+              history: history as any,
+              preferNonLLM: true,
+            }) as any;
         } else {
         // Plan next step with history
         try {
@@ -1611,18 +1722,21 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 const query = qMatch ? qMatch[1] : userTextForOverrides;
                 plan = { name: 'web_search', input: { query } } as any;
               } else {
-                plan = { name: 'project_detect', input: { path: '.' } } as any;
+                plan = fallbackPlanWhenPlannerUnavailable({
+                  userText: userTextForOverrides,
+                  sessionId: String(sessionId),
+                  preferNonLLM: true,
+                }) as any;
               }
             }
             if (!plan) {
               const userTextForOverrides = String(text || '');
-              if (isLocationLikeQuery(userTextForOverrides)) {
-                plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
-              } else if (isGeneralKnowledgeQuestion(userTextForOverrides)) {
-                plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
-              } else {
-                plan = null;
-              }
+              plan = fallbackPlanWhenPlannerUnavailable({
+                userText: userTextForOverrides,
+                sessionId: String(sessionId),
+                history: history as any,
+                preferNonLLM: true,
+              }) as any;
             }
         }
         }
@@ -1640,7 +1754,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       if (isGeneralKnowledgeQuestion(String(text || ''))) {
         plan = { name: 'central_answer', input: { question: String(text || '') } } as any;
       } else {
-        plan = { name: 'project_detect', input: { path: '.' } } as any;
+        plan = fallbackPlanWhenPlannerUnavailable({
+          userText: String(text || ''),
+          sessionId: String(sessionId),
+          history: history as any,
+          preferNonLLM: false,
+        }) as any;
       }
     }
     
@@ -1743,8 +1862,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
     
     // Safety: Prevent immediate repeats of same tool execution
-    if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch'].includes(planName)) {
+    if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer'].includes(planName)) {
         const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
+
         if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
             const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
             const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
@@ -1900,6 +2020,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     ) {
       plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
       planName = 'central_answer';
+    }
+
+    if (planName === 'project_detect' && historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
+      const hasAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
+      if (!hasAnalyze) {
+        plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+        planName = 'analyze_codebase';
+      } else {
+        plan = {
+          name: 'echo',
+          input: {
+            text: isArabicText(userTextForOverrides)
+              ? '⚠️ فحص المشروع لم يعثر على مشاريع قابلة للتعرّف (package.json/pyproject/go.mod).\nاذكر مسار مجلد المشروع داخل المستودع أو اطلب قراءة/بحث ملف معيّن.'
+              : '⚠️ Project scan found no recognizable projects (package.json/pyproject/go.mod).\nProvide the project folder path inside the repo, or ask to read/search a specific file.',
+          },
+        } as any;
+        planName = 'echo';
+      }
     }
     
     const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
@@ -2639,6 +2777,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                    role: 'assistant', 
                    content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${safeOutput('file_read', subResult.output)}` 
                });
+           }
+       } else if (isEmptyProjectDetectOutput(out) && !historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
+           history.push({ role: 'assistant', content: 'PROJECT_DETECT_EMPTY' } as any);
+           try {
+             if (useMock) {
+               store.addMessage(sessionId, 'assistant', 'PROJECT_DETECT_EMPTY', runId);
+             } else {
+               await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
+             }
+           } catch {}
+
+           if (!pendingPlan) {
+             pendingPlan = { name: 'analyze_codebase', input: { path: '.' } } as any;
            }
        }
     }
