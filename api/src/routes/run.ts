@@ -2957,6 +2957,49 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         assistantTextEmitted = true;
         break;
       }
+      if (err === 'browser_unavailable' || err === 'worker_unhealthy') {
+        try {
+          const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+          const key = browserRunGuardKey(String(sessionId), bid, String(runId));
+          browserRunGuard.delete(key);
+        } catch {}
+        const code = String((result as any)?.detail?.code || '').trim();
+        const detailMsg = String((result as any)?.detail?.message || '').trim();
+        const hint = (() => {
+          const c = (code || '').toLowerCase();
+          const m = (detailMsg || '').toLowerCase();
+          if (c === 'display_missing' || /xvfb|display|cannot open display/i.test(m)) {
+            return isArabicText(userTextForOverrides)
+              ? 'على الخادم: شغّل Playwright بوضع headed عبر Xvfb (مثال: xvfb-run) أو فعّل headless.'
+              : 'On the server: run headed Playwright under Xvfb (e.g. xvfb-run) or enable headless.';
+          }
+          if (c === 'chromium_missing' || /playwright install|executable doesn't exist/i.test(m)) {
+            return isArabicText(userTextForOverrides)
+              ? 'ثبّت متصفحات Playwright على الخادم (مثال: npx playwright install --with-deps).'
+              : 'Install Playwright browsers on the server (e.g. npx playwright install --with-deps).';
+          }
+          if (c === 'deps_missing' || /gtk|nss|gbm|fontconfig|glibc/i.test(m)) {
+            return isArabicText(userTextForOverrides)
+              ? 'نقص مكتبات نظام لتشغيل Chromium. ثبّت الاعتماديات المطلوبة (Playwright --with-deps).'
+              : 'Missing system deps for Chromium. Install Playwright dependencies (--with-deps).';
+          }
+          if (c === 'sandbox_blocked' || /no-sandbox|setuid/i.test(m)) {
+            return isArabicText(userTextForOverrides)
+              ? 'السندبوكس مرفوض. جرّب تفعيل BROWSER_NO_SANDBOX=1 على الخادم.'
+              : 'Sandbox blocked. Try setting BROWSER_NO_SANDBOX=1 on the server.';
+          }
+          return isArabicText(userTextForOverrides)
+            ? 'تحقق من خدمة المتصفح/Playwright على الخادم ثم أعد المحاولة.'
+            : 'Check the browser/Playwright worker on the server and retry.';
+        })();
+        const msg = isArabicText(userTextForOverrides)
+          ? `⚠️ خدمة المتصفح غير متاحة حالياً.\n${code ? `- السبب: ${code}\n` : ''}${hint}`
+          : `⚠️ Browser service is currently unavailable.\n${code ? `- reason: ${code}\n` : ''}${hint}`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
       const missingSecrets = Array.isArray((result as any)?.missingSecrets) ? ((result as any).missingSecrets as any[]).map((x) => String(x || '').trim()).filter(Boolean) : [];
       if (err === 'missing_secrets' || err.startsWith('missing_secrets') || missingSecrets.length) {
         try {

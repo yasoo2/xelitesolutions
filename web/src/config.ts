@@ -64,6 +64,26 @@ const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')
 
 const API_URL = apiEnv || inferApiUrl();
 const WS_URL = wsEnv || inferWsUrl(API_URL);
-const FEATURE_BROWSER_CHROME = chromeFlagRaw === '1' || chromeFlagRaw === 'true';
+const queryChrome = (() => {
+  try {
+    return new URLSearchParams(window.location.search).get('chrome') || '';
+  } catch {
+    return '';
+  }
+})();
+const storedChrome = (() => {
+  try {
+    return localStorage.getItem('FEATURE_BROWSER_CHROME') || '';
+  } catch {
+    return '';
+  }
+})();
+const FEATURE_BROWSER_CHROME =
+  chromeFlagRaw === '1' ||
+  chromeFlagRaw === 'true' ||
+  queryChrome === '1' ||
+  queryChrome.toLowerCase() === 'true' ||
+  storedChrome === '1' ||
+  storedChrome.toLowerCase() === 'true';
 
 export { API_URL, WS_URL, FEATURE_BROWSER_CHROME };
