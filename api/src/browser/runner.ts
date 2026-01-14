@@ -297,7 +297,7 @@ export async function runBrowserInstruction(params: {
     };
     broadcastBrowserEvent(sessionId, ev);
     broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: msg, reason: 'missing_secrets' });
-    return { ok: false as const, error: msg, missingSecrets: secretsCheck.missing };
+    return { ok: false as const, error: 'missing_secrets', missingSecrets: secretsCheck.missing };
   }
 
   const cfg = DEFAULT_BROWSER_CONFIG;

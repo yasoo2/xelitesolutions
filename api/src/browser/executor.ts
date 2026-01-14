@@ -99,6 +99,11 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
           'input[autocomplete="email"]',
           'input[name*="email" i]',
           'input[id*="email" i]',
+          'input[name="login"]',
+          'input#login_field',
+          'input[id*="login" i]',
+          'input[name*="user" i]',
+          'input[id*="user" i]',
           'input[placeholder*="email" i]',
           'input[aria-label*="email" i]',
           'input[placeholder*="mail" i]',
@@ -139,8 +144,8 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
 
   const labels =
     kind === 'email'
-      ? [/email/i, /e-mail/i, /mail/i, /البريد/i, /ايميل/i, /إيميل/i]
-      : [/password/i, /passcode/i, /كلمة\s*المرور/i, /باسورد/i, /الباسورد/i];
+      ? [/email/i, /e-mail/i, /mail/i, /user(name)?/i, /login/i, /البريد/i, /ايميل/i, /إيميل/i]
+      : [/password/i, /passcode/i, /كلمة\s*المرور/i, /باسورد/i, /باسوورد/i, /الباسورد/i, /الباسوورد/i];
 
   for (const r of labels) {
     try {
@@ -153,8 +158,8 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
 
   const roleNames =
     kind === 'email'
-      ? [/email/i, /e-mail/i, /mail/i, /البريد/i, /ايميل/i, /إيميل/i]
-      : [/password/i, /passcode/i, /كلمة\s*المرور/i, /باسورد/i, /الباسورد/i];
+      ? [/email/i, /e-mail/i, /mail/i, /user(name)?/i, /login/i, /البريد/i, /ايميل/i, /إيميل/i]
+      : [/password/i, /passcode/i, /كلمة\s*المرور/i, /باسورد/i, /باسوورد/i, /الباسورد/i, /الباسوورد/i];
 
   for (const r of roleNames) {
     try {

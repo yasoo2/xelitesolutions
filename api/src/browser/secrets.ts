@@ -55,7 +55,9 @@ export function rewriteInlineLoginCredentialsToSecrets(rawText: string) {
   const email = cleanTrailingPunctuation(String(emailMatch?.[0] || '').trim());
 
   const pwByKeyword =
-    raw.match(/(?:\bpassword\b|\bpass\b|\bpasscode\b|كلمة\s*المرور|باسورد|الباسورد)\s*[:=：]?\s*("[^"]+"|'[^']+'|“[^”]+”|[^\s"'“”<>]{3,128})/i)?.[1] ||
+    raw.match(
+      /(?:\bpassword\b|\bpass(?:code)?\b|كلمة\s*المرور|رمز\s*المرور|باسورد|باسوورد|الباسورد|الباسوورد)\s*(?:هو|هي|is)?\s*[:=：]?\s*("[^"]+"|'[^']+'|“[^”]+”|[^\s"'“”<>]{3,128})/i,
+    )?.[1] ||
     '';
   let password = cleanTrailingPunctuation(stripWrappingQuotes(pwByKeyword));
   if (password && !isLikelyPasswordToken(password)) password = '';
@@ -63,9 +65,18 @@ export function rewriteInlineLoginCredentialsToSecrets(rawText: string) {
   if (!password && emailMatch) {
     const idx = typeof emailMatch.index === 'number' ? emailMatch.index : raw.indexOf(email);
     const after = idx >= 0 ? raw.slice(idx + email.length) : '';
-    const nextToken = after.match(/^\s*[:=,-]?\s*("[^"]+"|'[^']+'|“[^”]+”|[^\s"'“”<>]{3,128})/)?.[1] || '';
-    const candidate = cleanTrailingPunctuation(stripWrappingQuotes(nextToken));
-    if (isLikelyPasswordToken(candidate)) password = candidate;
+    const pwAfterKeyword =
+      after.match(
+        /(?:\bpassword\b|\bpass(?:code)?\b|كلمة\s*المرور|رمز\s*المرور|باسورد|باسوورد|الباسورد|الباسوورد)\s*(?:هو|هي|is)?\s*[:=：]?\s*("[^"]+"|'[^']+'|“[^”]+”|[^\s"'“”<>]{3,128})/i,
+      )?.[1] || '';
+    const candidate1 = cleanTrailingPunctuation(stripWrappingQuotes(pwAfterKeyword));
+    if (isLikelyPasswordToken(candidate1)) {
+      password = candidate1;
+    } else {
+      const nextToken = after.match(/^\s*[:=,-]?\s*("[^"]+"|'[^']+'|“[^”]+”|[^\s"'“”<>]{3,128})/)?.[1] || '';
+      const candidate2 = cleanTrailingPunctuation(stripWrappingQuotes(nextToken));
+      if (isLikelyPasswordToken(candidate2)) password = candidate2;
+    }
   }
 
   if (!email && !password) return { ok: false as const, email: '', password: '', sanitizedText: rawText };

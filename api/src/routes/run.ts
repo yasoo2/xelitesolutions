@@ -2897,10 +2897,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         assistantTextEmitted = true;
         break;
       }
-      if (err === 'missing_secrets') {
+      const missingSecrets = Array.isArray((result as any)?.missingSecrets) ? ((result as any).missingSecrets as any[]).map((x) => String(x || '').trim()).filter(Boolean) : [];
+      if (err === 'missing_secrets' || err.startsWith('missing_secrets') || missingSecrets.length) {
+        try {
+          const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+          const key = browserRunGuardKey(String(sessionId), bid, String(runId));
+          browserRunGuard.delete(key);
+        } catch {}
+        const keysLine = missingSecrets.length ? `\n- الأسرار المطلوبة: ${missingSecrets.join(', ')}` : '';
         const msg = isArabicText(userTextForOverrides)
-          ? `⚠️ لا يمكن إكمال خطوة المتصفح لأن هناك بيانات دخول/أسرار ناقصة.\nأدخل الأسرار المطلوبة من نافذة التوكن ثم أعد إرسال نفس الأمر.`
-          : `⚠️ Browser step needs missing secrets.\nProvide the required secrets, then re-run the same command.`;
+          ? `⚠️ لا يمكن إكمال خطوة المتصفح لأن هناك بيانات دخول/أسرار ناقصة.${keysLine}\nأدخل الأسرار المطلوبة من نافذة التوكن أو اكتب بيانات الدخول (الإيميل/كلمة المرور) داخل رسالتك ثم أعد إرسال نفس الأمر.`
+          : `⚠️ Browser step needs missing secrets.${keysLine}\nProvide the required secrets or include credentials in your message, then re-run the same command.`;
         forcedText = msg;
         ev({ type: 'text', data: msg });
         assistantTextEmitted = true;

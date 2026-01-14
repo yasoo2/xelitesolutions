@@ -128,3 +128,12 @@ assert.equal(isSimpleBrowserOpenRequestText('في اي عام قامت الثو�
   assert.equal(r.email, 'info.auraaluxury@gmail.com');
   assert.equal(r.password, 'younes2025');
 }
+
+{
+  const r = rewriteInlineLoginCredentialsToSecrets('قم بالتسجيل الدخول بواسطة الايميل younes.sowady2011@gmail.com. والباسوورد هو younes2025');
+  assert.equal(r.ok, true);
+  assert.equal(r.email, 'younes.sowady2011@gmail.com');
+  assert.equal(r.password, 'younes2025');
+  assert.ok(r.sanitizedText.includes('{{SECRET:JOE_LOGIN_EMAIL}}'));
+  assert.ok(r.sanitizedText.includes('{{SECRET:JOE_LOGIN_PASSWORD}}'));
+}
