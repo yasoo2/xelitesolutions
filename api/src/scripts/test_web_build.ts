@@ -313,8 +313,9 @@ async function runUiE2e() {
     const clickViewport = async (vx: number, vy: number) => {
       const x = Math.max(0, Math.min(Math.max(1, remoteW) - 1, Math.round(vx)));
       const y = Math.max(0, Math.min(Math.max(1, remoteH) - 1, Math.round(vy)));
-      const cx = box.x + box.width * (x / remoteW);
-      const cy = box.y + box.height * (y / remoteH);
+      const liveBox = (await canvas.boundingBox()) || box;
+      const cx = liveBox.x + liveBox.width * (x / remoteW);
+      const cy = liveBox.y + liveBox.height * (y / remoteH);
       await page.mouse.click(cx, cy);
     };
 
