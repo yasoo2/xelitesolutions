@@ -102,7 +102,7 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
       const ny = cur.y + (ty - cur.y) * follow;
       cursorPosPxRef.current = { x: nx, y: ny };
 
-      el.style.transform = `translate3d(${nx}px, ${ny}px, 0) translate(-50%, -50%)`;
+      el.style.transform = `translate3d(${nx}px, ${ny}px, 0) translate(-2px, -2px)`;
       if (!cursorVisibleRef.current) {
         el.style.opacity = '1';
         cursorVisibleRef.current = true;
@@ -332,8 +332,8 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
     <div ref={rootRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0b0b' }}>
       <style>{`
         .browser-cursor {
-          width: 44px;
-          height: 44px;
+          width: 26px;
+          height: 26px;
           position: absolute;
           top: 0;
           left: 0;
@@ -341,50 +341,19 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
           pointer-events: none;
           z-index: 6;
           will-change: transform, opacity;
-          filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
         }
-        .browser-cursor-ring {
-          position: absolute;
-          inset: 0;
-          border-radius: 999px;
-          border: 3px solid rgba(255, 0, 92, 0.9);
-          box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25), 0 0 24px rgba(255, 0, 92, 0.35);
-          animation: cursorPulse 1.15s ease-in-out infinite;
+        .browser-cursor-svg {
+          width: 100%;
+          height: 100%;
+          display: block;
+          filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.38)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.22));
         }
-        .browser-cursor-dot {
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          width: 12px;
-          height: 12px;
-          transform: translate(-50%, -50%);
-          border-radius: 999px;
-          background: radial-gradient(circle at 30% 30%, #fff 0%, #ffd100 28%, #ff006a 68%, #b000ff 100%);
-          box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35), 0 10px 18px rgba(0, 0, 0, 0.28);
-        }
-        .browser-cursor-cross-x, .browser-cursor-cross-y {
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          background: rgba(255, 255, 255, 0.85);
-          box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
-        }
-        .browser-cursor-cross-x {
-          width: 22px;
-          height: 2px;
-          transform: translate(-50%, -50%);
-          border-radius: 999px;
-        }
-        .browser-cursor-cross-y {
-          width: 2px;
-          height: 22px;
-          transform: translate(-50%, -50%);
-          border-radius: 999px;
-        }
-        @keyframes cursorPulse {
-          0% { transform: scale(0.92); opacity: 0.78; }
-          55% { transform: scale(1.05); opacity: 1; }
-          100% { transform: scale(0.92); opacity: 0.78; }
+        .browser-cursor-path {
+          fill: rgba(255, 255, 255, 0.98);
+          stroke: rgba(0, 0, 0, 0.9);
+          stroke-width: 2.25;
+          stroke-linejoin: round;
+          stroke-linecap: round;
         }
       `}</style>
       <canvas
@@ -438,10 +407,9 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
         style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
       />
       <div ref={cursorElRef} className="browser-cursor" aria-hidden="true">
-        <div className="browser-cursor-ring" />
-        <div className="browser-cursor-cross-x" />
-        <div className="browser-cursor-cross-y" />
-        <div className="browser-cursor-dot" />
+        <svg className="browser-cursor-svg" viewBox="0 0 24 24">
+          <path className="browser-cursor-path" d="M3.5 2.2 L3.5 19.6 L8.6 15.4 L11.5 22.1 L14.3 20.8 L11.3 14.0 L18.7 14.0 Z" />
+        </svg>
       </div>
       <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ padding: '6px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12 }}>
