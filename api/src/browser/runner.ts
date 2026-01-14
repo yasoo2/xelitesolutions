@@ -206,6 +206,39 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
     return base;
   }
 
+  if (wantsGithub && wantsLogin) {
+    const base: Planned['actions'] = [];
+    base.push({ type: 'goto', url: 'https://github.com/login' });
+    base.push({ type: 'wait', ms: 450 });
+    base.push({ type: 'assert', selector: 'input#login_field, input[name="login"], input[autocomplete="username"]' });
+    base.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_EMAIL}}' });
+    base.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_PASSWORD}}' });
+    base.push({
+      type: 'click',
+      selector: 'input[type="submit"][name="commit"], button[type="submit"]:has-text("Sign in"), button:has-text("Sign in")',
+    });
+    base.push({ type: 'wait', ms: 900 });
+    base.push({ type: 'ui_audit', optional: true });
+    return base;
+  }
+
+  if (wantsLogin) {
+    actions.push({ type: 'click', text: 'Sign in', optional: true });
+    actions.push({ type: 'click', text: 'Log in', optional: true });
+    actions.push({ type: 'click', text: 'تسجيل الدخول', optional: true });
+    actions.push({ type: 'click', text: 'تسجيل دخول', optional: true });
+    actions.push({ type: 'wait', ms: 500, optional: true });
+    actions.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_EMAIL}}', optional: true });
+    actions.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_PASSWORD}}', optional: true });
+    actions.push({ type: 'click', selector: 'button[type="submit"], input[type="submit"]', optional: true });
+    actions.push({ type: 'click', text: 'Sign in', optional: true });
+    actions.push({ type: 'click', text: 'Log in', optional: true });
+    actions.push({ type: 'click', text: 'تسجيل الدخول', optional: true });
+    actions.push({ type: 'wait', ms: 900, optional: true });
+    actions.push({ type: 'ui_audit', optional: true });
+    return actions;
+  }
+
   if (wantsUiAudit) actions.push({ type: 'ui_audit' });
 
   if (actions.length === 0) return [{ type: 'ui_audit' }];
@@ -231,7 +264,10 @@ function extractUrl(text: string) {
 function shouldFastOpen(text: string) {
   const s = String(text || '').trim();
   if (!s) return false;
-  const hasOtherSteps = /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق)/i.test(s);
+  const hasOtherSteps =
+    /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق|login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول)/i.test(
+      s,
+    );
   if (hasOtherSteps) return false;
   const hasOpenKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
   const u = extractUrl(s);
@@ -396,7 +432,10 @@ export async function runBrowserInstruction(params: {
     debugBase.actions_json = deepRedactForDebug(planned.actions);
     debugBase.action_count = planned.actions.length;
     debugBase.stop_reason = 'compiled';
-    const multiStepHint = /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق)/i.test(safeInstruction);
+    const multiStepHint =
+      /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق|login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول)/i.test(
+        safeInstruction,
+      );
     if (multiStepHint && planned.actions.length < 2) {
       const fallback = fallbackActionsFromInstruction(safeInstruction).slice(0, cfg.maxSteps);
       if (fallback.length > planned.actions.length) {
@@ -405,6 +444,23 @@ export async function runBrowserInstruction(params: {
         debugBase.actions_json = deepRedactForDebug(planned.actions);
         debugBase.action_count = planned.actions.length;
         debugBase.stop_reason = 'fallback_override';
+      }
+    }
+    const wantsLogin =
+      /(login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول|دخول)/i.test(safeInstruction) ||
+      /\{\{\s*SECRET\s*:\s*JOE_LOGIN_(?:EMAIL|PASSWORD)\s*\}\}/i.test(safeInstruction);
+    const hasTypeOrClick = planned.actions.some((a: any) => {
+      const t = String(a?.type || '').toLowerCase();
+      return t === 'type' || t === 'click';
+    });
+    if (wantsLogin && (!hasTypeOrClick || planned.actions.length < 4)) {
+      const fallback = fallbackActionsFromInstruction(safeInstruction).slice(0, cfg.maxSteps);
+      if (fallback.length > planned.actions.length) {
+        planned = { actions: fallback };
+        debugBase.compiled_plan_json = planned.actions.map((a: any) => ({ type: String(a?.type || 'unknown') }));
+        debugBase.actions_json = deepRedactForDebug(planned.actions);
+        debugBase.action_count = planned.actions.length;
+        debugBase.stop_reason = 'fallback_override_login';
       }
     }
     if (planned.actions.length === 0) {

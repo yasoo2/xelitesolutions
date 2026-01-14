@@ -1612,6 +1612,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let endAfterBrowserState = false;
   let simpleBrowserOpenLabel = '';
   let simpleBrowserOpenUrl = '';
+  let lastBrowserRunSummary = '';
+  let lastBrowserRunPageUrl = '';
 
   const normalizeUrlForGoto = (raw: any) => {
     let s = String(raw ?? '').trim();
@@ -2886,6 +2888,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         : result;
     ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result: eventResult } });
 
+    if (String(plan?.name || '') === 'browser_run') {
+      lastBrowserRunSummary = String((result as any)?.output?.summary || '').trim();
+      lastBrowserRunPageUrl = String((result as any)?.output?.pageUrl || '').trim();
+    }
+    if (String(plan?.name || '') === 'browser_open') {
+      lastBrowserRunSummary = '';
+      lastBrowserRunPageUrl = '';
+    }
+
     if (!result.ok && String(plan?.name || '') === 'browser_run') {
       const err = String((result as any)?.error || '').trim();
       if (err === 'timeout') {
@@ -2928,6 +2939,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         assistantTextEmitted = true;
         break;
       }
+
+      const summary = String((result as any)?.output?.summary || '').trim();
+      const url = String((result as any)?.output?.pageUrl || '').trim();
+      const msg = isArabicText(userTextForOverrides)
+        ? `${summary ? summary : `❌ فشل تنفيذ مهمة المتصفح. السبب: ${err || 'unknown'}`}${url ? `\n- الرابط الحالي: ${url}` : ''}\nأعد إرسال الأمر بعد تصحيح البيانات أو أعطني رابط صفحة تسجيل الدخول مباشرة.`
+        : `${summary ? summary : `❌ Browser task failed. Reason: ${err || 'unknown'}`}${url ? `\n- Current URL: ${url}` : ''}\nRe-run after fixing credentials or provide the login page URL directly.`;
+      forcedText = msg;
+      ev({ type: 'text', data: msg });
+      assistantTextEmitted = true;
+      break;
     }
 
     if (!result.ok && isStrictSameSiteUiTask && /^browser_/.test(String(plan?.name || '')) && isCrossSiteBlockedError(result.error)) {
@@ -2942,13 +2963,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     if (result.ok && String(plan?.name || '') === 'browser_get_state' && endAfterBrowserState) {
+      const url = String((result as any)?.output?.url || '').trim() || lastBrowserRunPageUrl;
       const msg = isSimpleBrowserOpenRequest
         ? isArabicText(initialUserTextForOpen)
           ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} في المتصفح.`
           : `Opened ${simpleBrowserOpenLabel || 'the site'} in the browser.`
         : isArabicText(userTextForOverrides)
-          ? `تم تنفيذ خطوات المتصفح.\nأرسل التعليمات التالية.`
-          : `Browser steps completed.\nSend the next instruction.`;
+          ? `${lastBrowserRunSummary ? lastBrowserRunSummary : 'تم تنفيذ خطوات المتصفح.'}${url ? `\n- الرابط الحالي: ${url}` : ''}`
+          : `${lastBrowserRunSummary ? lastBrowserRunSummary : 'Browser steps completed.'}${url ? `\n- Current URL: ${url}` : ''}`;
       endAfterBrowserState = false;
       pendingPlan = { name: 'echo', input: { text: msg } } as any;
     }

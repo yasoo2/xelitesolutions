@@ -748,6 +748,43 @@ export const tools: ToolDefinition[] = [
         return a;
       });
 
+      const loginAttempt =
+        /(login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول)/i.test(instructionText) ||
+        rawActs.some((a: any) => {
+          if (!a || typeof a !== 'object') return false;
+          if (String(a.type || '').toLowerCase() !== 'type') return false;
+          return /\{\{\s*SECRET\s*:\s*JOE_LOGIN_(?:EMAIL|PASSWORD)\s*\}\}/i.test(String((a as any).text || ''));
+        });
+
+      const analyzeLoginOutcome = (pageUrl: string, dom: string) => {
+        const url = String(pageUrl || '');
+        const u = url.toLowerCase();
+        const d = String(dom || '');
+        const dl = d.toLowerCase();
+
+        const github = /(^|\.)github\.com\b/i.test(u);
+        const userLoginMeta = d.match(/<meta[^>]+name=["']user-login["'][^>]+content=["']([^"']+)["']/i)?.[1]?.trim() || '';
+        const dataLogin = d.match(/\bdata-login=["']([^"']+)["']/i)?.[1]?.trim() || '';
+        const user = userLoginMeta || dataLogin;
+
+        const needs2fa =
+          /two-factor|two_factor|otp|authentication code/i.test(u) ||
+          /two-factor|two factor|authentication code|verification code|two_factor|otp/i.test(dl);
+        const badCreds =
+          /incorrect username or password|incorrect password|invalid username or password|account or password|invalid login/i.test(dl) ||
+          /تعذّر|غير صحيح|خطأ|كلمة المرور غير صحيحة/i.test(d);
+        const onLoginPage =
+          /\/login\b|\/session\b|\/signin\b|\/sign-in\b/i.test(u) ||
+          (/login_field/i.test(dl) && /type=["']password["']/.test(dl)) ||
+          /sign in to github/i.test(dl);
+
+        if (user && !onLoginPage && !needs2fa) return { state: 'logged_in' as const, user };
+        if (needs2fa) return { state: 'needs_2fa' as const, user: user || '' };
+        if (badCreds) return { state: 'login_failed' as const, user: user || '' };
+        if (onLoginPage) return { state: 'login_page' as const, user: user || '' };
+        return { state: 'unknown' as const, user: user || '' };
+      };
+
       let execOk = false;
       let execSummary = '';
       let missingSecrets: string[] | undefined = undefined;
@@ -901,6 +938,28 @@ export const tools: ToolDefinition[] = [
         execSummary = execSummary || `${c.code}: ${c.message}`.slice(0, 600);
         logs.push(`browser_run state_fetch_failed=${String(c.code || 'browser_failed')}`);
       }
+
+      if (loginAttempt && pageUrl && dom) {
+        const a = analyzeLoginOutcome(pageUrl, dom);
+        if (a.state === 'logged_in') {
+          execOk = true;
+          execError = undefined;
+          execSummary = a.user ? `✅ تم تسجيل الدخول بنجاح. الحساب: ${a.user}` : '✅ تم تسجيل الدخول بنجاح.';
+        } else if (a.state === 'needs_2fa') {
+          execOk = false;
+          execError = 'login_2fa_required';
+          execSummary = '⚠️ تم الوصول لخطوة المصادقة الثنائية (2FA). أدخل كود التحقق ثم أعد إرسال الأمر.';
+        } else if (a.state === 'login_failed') {
+          execOk = false;
+          execError = 'login_failed';
+          execSummary = '❌ فشل تسجيل الدخول: اسم المستخدم/الإيميل أو كلمة المرور غير صحيحة.';
+        } else if (a.state === 'login_page') {
+          execOk = false;
+          execError = execError || 'login_not_completed';
+          execSummary = execSummary || '⚠️ ما زلت على صفحة تسجيل الدخول ولم يظهر نجاح الدخول بعد.';
+        }
+      }
+
       let href = '';
       let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
       try {

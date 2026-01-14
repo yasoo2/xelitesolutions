@@ -560,6 +560,15 @@ export async function executePlannedActions(params: {
                 } else {
                   setStreamMask(sessionId, []);
                 }
+                const b = await boxFor(fieldLoc);
+                if (b) {
+                  const cx = Math.round(b.x + b.width / 2);
+                  const cy = Math.round(b.y + b.height / 2);
+                  try {
+                    broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: cx, y: cy });
+                    broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: now(), boxes: [{ ...b, label: 'type' }] });
+                  } catch {}
+                }
                 const before = await screenshotJpegBase64(page, isSensitive ? mask : undefined);
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
                 await fieldLoc.first().click({ timeout: cfg.actionTimeoutMs });
