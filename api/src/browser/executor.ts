@@ -39,11 +39,32 @@ function normalizeUrlForGoto(raw: any, baseUrl?: string) {
   let s = String(raw ?? '').trim();
   s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
   if (!s) return s;
-  if (/^https?:\/\//i.test(s)) return s;
+  const fixKnownHosts = (u: string) => {
+    const input = String(u || '').trim();
+    if (!input) return input;
+    try {
+      const parsed = new URL(input);
+      const host = String(parsed.hostname || '').trim().toLowerCase();
+      const hadWww = /^www\./i.test(host);
+      const hostNoWww = host.replace(/^www\./i, '');
+      const isXeliteLike =
+        (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
+        /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
+      if (isXeliteLike) {
+        const tld = /\.com$/i.test(hostNoWww) ? 'com' : 'co';
+        parsed.hostname = `${hadWww ? 'www.' : ''}xelitesolutions.${tld}`;
+        return parsed.toString();
+      }
+      return input;
+    } catch {
+      return input;
+    }
+  };
+  if (/^https?:\/\//i.test(s)) return fixKnownHosts(s);
   if (/^\/\//.test(s)) return `https:${s}`;
   if (/^\//.test(s)) {
     try {
-      if (baseUrl) return new URL(s, baseUrl).toString();
+      if (baseUrl) return fixKnownHosts(new URL(s, baseUrl).toString());
     } catch {}
     return s;
   }
@@ -55,7 +76,11 @@ function normalizeUrlForGoto(raw: any, baseUrl?: string) {
   const looksDomain =
     /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
   if (isLocal) return `http://${candidate}`;
-  if (looksDomain) return `https://${candidate}`;
+  if (looksDomain) return fixKnownHosts(`https://${candidate}`);
+  if (/^xelite/i.test(candidate) && /solution/i.test(candidate)) {
+    if (!/\./.test(candidate)) return 'https://xelitesolutions.co';
+    return fixKnownHosts(`https://${candidate}`);
+  }
   return s;
 }
 
@@ -209,7 +234,71 @@ export async function executePlannedActions(params: {
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs });
+          const navReason = (msg: string): FailureReason => {
+            const m = String(msg || '').toLowerCase();
+            if (/err_name_not_resolved|enotfound|dns|name not resolved/.test(m)) return 'dns_failed';
+            if (/err_cert|ssl|tls|certificate|net::err/.test(m)) return 'navigation_failed';
+            if (/timeout/i.test(m)) return 'timeout';
+            return 'navigation_failed';
+          };
+          const gotoCandidates = (() => {
+            const out: string[] = [];
+            const push = (u: string) => {
+              const v = String(u || '').trim();
+              if (!v) return;
+              if (!out.includes(v)) out.push(v);
+            };
+            push(url);
+            try {
+              const u = new URL(url);
+              const hostNoWww = u.hostname.replace(/^www\./i, '');
+              const isXeliteLike =
+                (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
+                /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
+              if (isXeliteLike) {
+                u.hostname = hostNoWww.endsWith('.com') ? 'xelitesolutions.com' : 'xelitesolutions.co';
+                push(u.toString());
+                u.hostname = 'www.' + u.hostname.replace(/^www\./i, '');
+                push(u.toString());
+                u.hostname = u.hostname.replace(/xelitesolutions\.(?:co|com)/i, 'xelitesolutions.co');
+                push(u.toString());
+                u.hostname = u.hostname.replace(/xelitesolutions\.co/i, 'xelitesolutions.com');
+                push(u.toString());
+              } else {
+                if (!/^www\./i.test(u.hostname) && u.hostname.includes('.')) {
+                  u.hostname = `www.${u.hostname}`;
+                  push(u.toString());
+                }
+              }
+              if (u.protocol === 'https:') {
+                u.protocol = 'http:';
+                push(u.toString());
+              }
+            } catch {}
+            return out.slice(0, 6);
+          })();
+
+          let navigated = false;
+          let lastErr = '';
+          for (const u of gotoCandidates) {
+            try {
+              await page.goto(u, { waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs });
+              navigated = true;
+              break;
+            } catch (e: any) {
+              lastErr = String(e?.message || e || '');
+            }
+          }
+          if (!navigated) {
+            const msg = lastErr.trim() || 'navigation_failed';
+            const reason = navReason(msg);
+            results.push({ stepId: sid, name, ok: false, reason, message: msg.slice(0, 600) });
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg.slice(0, 600) });
+            try {
+              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg.slice(0, 600) });
+            } catch {}
+            continue;
+          }
           await page.waitForTimeout(250);
 
           const after = await screenshotJpegBase64(page);

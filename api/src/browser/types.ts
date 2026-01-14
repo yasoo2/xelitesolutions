@@ -13,6 +13,8 @@ export type FailureReason =
   | 'iframe_or_shadow_dom'
   | 'timeout'
   | 'same_site_blocked'
+  | 'dns_failed'
+  | 'navigation_failed'
   | 'unknown';
 
 export type StepEvent =

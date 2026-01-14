@@ -557,7 +557,26 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         let s = String(raw ?? '').trim();
         s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
         if (!s) return s;
-        if (/^https?:\/\//i.test(s)) return s;
+        const fixXelite = (url: string) => {
+          const input = String(url || '').trim();
+          if (!input) return input;
+          try {
+            const u = new URL(input);
+            const host = String(u.hostname || '').trim().toLowerCase();
+            const hadWww = /^www\./i.test(host);
+            const hostNoWww = host.replace(/^www\./i, '');
+            const isXeliteLike =
+              (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
+              /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
+            if (!isXeliteLike) return input;
+            const tld = /\.com$/i.test(hostNoWww) ? 'com' : 'co';
+            u.hostname = `${hadWww ? 'www.' : ''}xelitesolutions.${tld}`;
+            return u.toString();
+          } catch {
+            return input;
+          }
+        };
+        if (/^https?:\/\//i.test(s)) return fixXelite(s);
         if (/^\/\//.test(s)) return `https:${s}`;
         if (/^\//.test(s)) return s;
         const candidate = s.replace(/^\/\//, '');
@@ -568,7 +587,8 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         const looksDomain =
           /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
         if (isLocal) return `http://${candidate}`;
-        if (looksDomain) return `https://${candidate}`;
+        if (looksDomain) return fixXelite(`https://${candidate}`);
+        if (/^xelite/i.test(candidate) && /solution/i.test(candidate) && !/\./.test(candidate)) return 'https://xelitesolutions.co';
         return s;
       };
       const hostKeyFromHost = (host: string) => {
