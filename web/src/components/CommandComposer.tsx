@@ -42,6 +42,7 @@ import {
   Trash2,
   Zap,
   ArrowUp,
+  Square,
   Send,
   Copy,
   RotateCcw,
@@ -1919,6 +1920,73 @@ export default function CommandComposer({
     }
   }
 
+  async function stopCurrentRun() {
+    const token = (() => {
+      try {
+        return localStorage.getItem('token');
+      } catch {
+        return null;
+      }
+    })();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const rid = String(activeRunId || '').trim();
+    const sid = String(sessionId || '').trim();
+    const bid = String(browserSessionId || '').trim();
+    const pendingBid = String(pendingBrowserRetryRef.current?.sessionId || '').trim();
+
+    const reqs: Array<Promise<any>> = [];
+    if (rid) {
+      reqs.push(
+        fetch(`${API}/runs/stop`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ runId: rid, ...(sid ? { sessionId: sid } : {}) }),
+        }).catch(() => null),
+      );
+    }
+    if (bid) {
+      reqs.push(
+        fetch(`${API}/api/browser/stop`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ sessionId: bid }),
+        }).catch(() => null),
+      );
+    } else if (pendingBid) {
+      reqs.push(
+        fetch(`${API}/api/browser/stop`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ sessionId: pendingBid }),
+        }).catch(() => null),
+      );
+    }
+
+    if (reqs.length) {
+      try {
+        await Promise.allSettled(reqs);
+      } catch {}
+    }
+
+    pendingBrowserRetryRef.current = null;
+    setApproval(null);
+    setSecretPrompt(null);
+    clearToolTimers();
+    clearDraftTimer();
+    setDraftActive(false);
+    setDraftText('');
+    stopDraft();
+    setStatus('idle');
+    setIsThinking(false);
+    setActiveToolName(null);
+    setToolVisible(false);
+    setThinkingGlimpse('');
+  }
+
   async function approve(decision: 'approved' | 'denied') {
     if (!approval) return;
     const token = localStorage.getItem('token');
@@ -3170,6 +3238,10 @@ export default function CommandComposer({
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
+                if (status !== 'idle' || !!approval || !!secretPrompt) {
+                  stopCurrentRun();
+                  return;
+                }
                 run();
               }
             }}
@@ -3211,12 +3283,18 @@ export default function CommandComposer({
                 {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
               </button>
               <button 
-                className="send-btn" 
-                onClick={() => run()}
-                disabled={!text.trim() || !!approval}
-                title={t('send')}
+                className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`} 
+                onClick={() => {
+                  if (status !== 'idle' || !!approval || !!secretPrompt) {
+                    stopCurrentRun();
+                    return;
+                  }
+                  run();
+                }}
+                disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (!text.trim() || !!approval)}
+                title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
               >
-                <ArrowUp size={20} />
+                {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={18} /> : <ArrowUp size={20} />}
               </button>
             </div>
           </div>

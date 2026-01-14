@@ -17,12 +17,14 @@ import { FileModel } from '../models/file';
 import { MemoryService } from '../services/memory';
 import { MemoryItem } from '../models/memoryItem';
 import { rewriteInlineLoginCredentialsToSecrets } from '../browser/secrets';
+import { stopSession } from '../browser/manager';
 
 const router = Router();
 
 const loopPauseThrottle = new Map<string, number>();
 const rateLimitCooldown = new Map<string, number>();
 const projectDetectThrottle = new Map<string, number>();
+const cancelledRuns = new Map<string, { at: number; reason?: string }>();
 const browserRunGuard = new Map<
   string,
   {
@@ -35,6 +37,32 @@ const browserRunGuard = new Map<
 
 const BROWSER_RUN_MAX_PER_SESSION = 6;
 const BROWSER_RUN_MIN_INTERVAL_MS = 7000;
+
+function isRunCancelled(runId: string): boolean {
+  const rid = String(runId || '').trim();
+  if (!rid) return false;
+  return cancelledRuns.has(rid);
+}
+
+router.post('/stop', authenticateOptional as any, async (req: Request, res: Response) => {
+  try {
+    const runId = String(req.body?.runId || '').trim();
+    const browserSessionId = String(req.body?.browserSessionId || '').trim();
+    if (!runId) return res.status(400).json({ error: 'runId required' });
+
+    cancelledRuns.set(runId, { at: Date.now(), reason: 'user_stop' });
+
+    if (browserSessionId) {
+      try {
+        await stopSession(browserSessionId);
+      } catch {}
+    }
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: safeErrorMessage(err) || 'stop_failed' });
+  }
+});
 
 function browserRunGuardKey(sessionId: string, browserSessionId: string, runId: string) {
   const bid = String(browserSessionId || '').trim();
@@ -1806,6 +1834,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   }
 
   while (steps < MAX_STEPS) {
+    if (isRunCancelled(runId)) {
+      forcedText = '⛔ تم إيقاف التنفيذ.';
+      lastResult = { ok: false, error: 'stopped' };
+      break;
+    }
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
     
     // Optimization: Reuse initial plan if available for the first step to reduce latency
@@ -1835,6 +1868,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               }) as any;
           } else {
           try {
+              if (isRunCancelled(runId)) {
+                forcedText = '⛔ تم إيقاف التنفيذ.';
+                lastResult = { ok: false, error: 'stopped' };
+                break;
+              }
               plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
           } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
@@ -2670,9 +2708,20 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           : `⚠️ Blocked a rapid re-call of browser_run.\nI’ll auto-retry after about ${waitSec}s.`;
         ev({ type: 'text', data: msg });
         await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+        if (isRunCancelled(runId)) {
+          forcedText = '⛔ تم إيقاف التنفيذ.';
+          lastResult = { ok: false, error: 'stopped' };
+          break;
+        }
       }
       const now = Date.now();
       browserRunGuard.set(key, { totalCount: nextTotal, lastAt: now, lastSig: sig, sigCount: nextSigCount });
+    }
+
+    if (isRunCancelled(runId)) {
+      forcedText = '⛔ تم إيقاف التنفيذ.';
+      lastResult = { ok: false, error: 'stopped' };
+      break;
     }
 
     const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
@@ -3565,11 +3614,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   
   if (useMock) {
     store.addMessage(sessionId, 'assistant', finalContent, runId);
-    store.updateRun(runId, { status: 'done' });
+    store.updateRun(runId, { status: lastResult?.ok ? 'done' : 'failed' });
   } else {
     await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
-    await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
+    await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed' } });
   }
+  cancelledRuns.delete(String(runId));
   
   return res.json({
     runId,
