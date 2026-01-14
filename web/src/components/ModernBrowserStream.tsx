@@ -257,7 +257,7 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
           const curBoxes = boxesRef.current || [];
           if (curBoxes.length) {
             ctx.save();
-            ctx.strokeStyle = 'rgba(37, 99, 235, 0.9)';
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
             ctx.lineWidth = 2;
             for (const b of curBoxes) {
               ctx.strokeRect(b.x, b.y, b.width, b.height);

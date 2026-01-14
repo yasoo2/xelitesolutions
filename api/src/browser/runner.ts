@@ -4,7 +4,7 @@ import { broadcastBrowserEvent } from './wsHub';
 import { resolveSecretsInText, redactSecretsFromString, rewriteInlineLoginCredentialsToSecrets } from './secrets';
 import { planNextStep } from '../llm';
 import { executePlannedActions } from './executor';
-import { stopSession } from './manager';
+import { getBrowserSession, stopSession, touchSession } from './manager';
 import { getSessionRunConfig, setSessionSecretEncrypted } from '../services/secrets';
 
 function now() {
@@ -14,8 +14,8 @@ function now() {
 type Planned = {
   actions: Array<
     | { type: 'goto'; url: string; optional?: boolean }
-    | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean }
-    | { type: 'type'; selector?: string; role?: string; name?: string; text: string; optional?: boolean }
+    | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; x?: number; y?: number; optional?: boolean }
+    | { type: 'type'; selector?: string; role?: string; name?: string; text: string; x?: number; y?: number; optional?: boolean }
     | { type: 'scroll'; direction: 'down' | 'up'; amount?: number; optional?: boolean }
     | { type: 'wait'; ms: number; optional?: boolean }
     | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
@@ -35,13 +35,14 @@ Rules:
 - Use Arabic labels/text matching when applicable.
 - If the user asks for login/sign-in, use {{SECRET:JOE_LOGIN_EMAIL}} and {{SECRET:JOE_LOGIN_PASSWORD}} for credentials (never invent or expand secrets).
 - If a secret token appears like {{SECRET:...}}, keep it as-is in output (do not expand).
+- If UI_GROUNDING_JSON is provided, prefer selecting targets using (x,y) coordinates from element boxes.
 - If the instruction clearly includes multiple steps (e.g., open + click + login + type), output the full multi-step sequence. Do not output only a single goto unless the user only asked to open a page.
 - Max 80 actions.
 
 Allowed action types:
 - {"type":"goto","url":"https://example.com"}
-- {"type":"click","text":"Start Now"} OR {"type":"click","role":"button","name":"Start Now"} OR {"type":"click","selector":"..."}
-- {"type":"type","selector":"...","text":"..."} OR {"type":"type","role":"textbox","name":"Email","text":"..."}
+- {"type":"click","text":"Start Now"} OR {"type":"click","role":"button","name":"Start Now"} OR {"type":"click","selector":"..."} OR {"type":"click","x":120,"y":240}
+- {"type":"type","selector":"...","text":"..."} OR {"type":"type","role":"textbox","name":"Email","text":"..."} OR {"type":"type","x":120,"y":240,"text":"..."}
 - {"type":"scroll","direction":"down","amount":800}
 - {"type":"wait","ms":1000}
 - {"type":"assert","text":"..."} OR {"type":"assert","selector":"..."}
@@ -68,6 +69,196 @@ function deepRedactForDebug(v: any): any {
     return out;
   }
   return redactSecretsFromString(String(v));
+}
+
+async function collectUiGroundingSnapshot(sessionId: string) {
+  const sid = String(sessionId || '').trim();
+  if (!sid) return null;
+  try {
+    const s = await getBrowserSession(sid);
+    touchSession(sid);
+    const page = s.page;
+    const viewport = { w: s.viewport?.w || 0, h: s.viewport?.h || 0 };
+    const url = (() => {
+      try {
+        return page.url();
+      } catch {
+        return '';
+      }
+    })();
+    const raw = await page.evaluate(() => {
+      const maxTextLen = 120;
+      const maxAttrLen = 120;
+      const clampText = (v: any) =>
+        String(v || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, maxTextLen);
+
+      const isVisible = (el: Element, rect: DOMRect) => {
+        if (rect.width < 2 || rect.height < 2) return false;
+        const s = window.getComputedStyle(el as any);
+        if (!s) return false;
+        if (s.display === 'none' || s.visibility === 'hidden') return false;
+        const o = Number(s.opacity || '1');
+        if (Number.isFinite(o) && o < 0.02) return false;
+        if ((el as any).hasAttribute?.('hidden')) return false;
+        return true;
+      };
+
+      const pickAttr = (el: Element, name: string) => {
+        try {
+          const v = (el as any).getAttribute?.(name);
+          if (typeof v !== 'string') return '';
+          return v.slice(0, maxAttrLen);
+        } catch {
+          return '';
+        }
+      };
+
+      const tag = (el: Element) => String((el as any).tagName || '').toLowerCase();
+      const role = (el: Element) => pickAttr(el, 'role');
+
+      const kindOf = (el: Element) => {
+        const t = tag(el);
+        const r = role(el);
+        if (t === 'button') return 'button';
+        if (t === 'a' && pickAttr(el, 'href')) return 'link';
+        if (t === 'input') {
+          const ty = pickAttr(el, 'type').toLowerCase();
+          if (ty === 'submit' || ty === 'button' || ty === 'reset') return 'button';
+          return 'input';
+        }
+        if (t === 'textarea') return 'textarea';
+        if (t === 'select') return 'select';
+        if (t === 'img') return 'image';
+        if (r === 'button') return 'button';
+        if (r === 'link') return 'link';
+        if (r === 'textbox') return 'input';
+        if ((el as any).isContentEditable) return 'input';
+        const txt = clampText((el as any).innerText || '');
+        if (txt) return 'text';
+        return 'unknown';
+      };
+
+      const elements: any[] = [];
+      const candidates = Array.from(
+        document.querySelectorAll(
+          [
+            'a[href]',
+            'button',
+            'input',
+            'textarea',
+            'select',
+            '[role="button"]',
+            '[role="link"]',
+            '[role="textbox"]',
+            '[contenteditable="true"]',
+            '[tabindex]',
+            'label',
+            'summary',
+            'h1,h2,h3,h4,h5,h6,p,li,span',
+          ].join(','),
+        ),
+      );
+
+      for (const el of candidates) {
+        try {
+          const rect = (el as any).getBoundingClientRect?.();
+          if (!rect) continue;
+          if (!isVisible(el, rect)) continue;
+          const k = kindOf(el);
+          if (k === 'unknown') continue;
+
+          const t = tag(el);
+          const text =
+            k === 'input' || k === 'textarea' || k === 'select'
+              ? clampText((el as any).value || pickAttr(el, 'placeholder') || pickAttr(el, 'aria-label') || '')
+              : clampText((el as any).innerText || pickAttr(el, 'aria-label') || pickAttr(el, 'title') || '');
+
+          if (k === 'text') {
+            if (!text) continue;
+            if (text.length > 80) continue;
+            const childCount = (el as any).children?.length || 0;
+            if (childCount > 3) continue;
+          }
+
+          const ariaLabel = pickAttr(el, 'aria-label');
+          const placeholder = t === 'input' || t === 'textarea' ? pickAttr(el, 'placeholder') : '';
+          const nameAttr = pickAttr(el, 'name');
+          const idAttr = pickAttr(el, 'id');
+          const href = t === 'a' ? pickAttr(el, 'href') : '';
+          const typeAttr = t === 'input' ? pickAttr(el, 'type') : '';
+
+          elements.push({
+            kind: k,
+            tag: t,
+            role: role(el),
+            text,
+            ariaLabel,
+            placeholder,
+            nameAttr,
+            idAttr,
+            href,
+            typeAttr,
+            rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          });
+        } catch {}
+      }
+
+      const byPos = (a: any, b: any) => (a.rect.y === b.rect.y ? a.rect.x - b.rect.x : a.rect.y - b.rect.y);
+      elements.sort(byPos);
+
+      const viewport = {
+        w: window.innerWidth || 0,
+        h: window.innerHeight || 0,
+        scrollX: window.scrollX || 0,
+        scrollY: window.scrollY || 0,
+        dpr: window.devicePixelRatio || 1,
+      };
+
+      return { viewport, elements: elements.slice(0, 180) };
+    });
+
+    const els = Array.isArray(raw?.elements) ? raw.elements : [];
+    const elements = els.map((e: any, i: number) => {
+      const rect = e?.rect || {};
+      const x = Number(rect?.x || 0);
+      const y = Number(rect?.y || 0);
+      const w = Number(rect?.width || 0);
+      const h = Number(rect?.height || 0);
+      const cx = Math.round(x + w / 2);
+      const cy = Math.round(y + h / 2);
+      return {
+        id: `e${i + 1}`,
+        kind: String(e?.kind || 'unknown'),
+        tag: String(e?.tag || ''),
+        role: String(e?.role || ''),
+        text: String(e?.text || ''),
+        ariaLabel: String(e?.ariaLabel || ''),
+        placeholder: String(e?.placeholder || ''),
+        nameAttr: String(e?.nameAttr || ''),
+        idAttr: String(e?.idAttr || ''),
+        href: String(e?.href || ''),
+        typeAttr: String(e?.typeAttr || ''),
+        rect: { x, y, width: w, height: h },
+        center: { x: cx, y: cy },
+      };
+    });
+
+    const boxes = elements.slice(0, 160).map((e: any) => ({
+      x: e.rect.x,
+      y: e.rect.y,
+      width: e.rect.width,
+      height: e.rect.height,
+      label: `${e.id}:${e.kind}`,
+    }));
+    broadcastBrowserEvent(sid, { type: 'highlight_boxes', ts: now(), boxes } as any);
+
+    return { url, viewport, elements };
+  } catch {
+    return null;
+  }
 }
 
 function plannedFromUnknown(r: any): Planned | null {
@@ -408,10 +599,28 @@ export async function runBrowserInstruction(params: {
     const runCfg = getSessionRunConfig(sessionId);
     const providerKey = String(runCfg?.provider || '').trim().toLowerCase();
     const provider = providerKey && providerKey !== 'llm' ? providerKey : 'openai';
+    const wantsGrounding =
+      /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق|login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول|ابحث|بحث|search|find|lookup)/i.test(
+        safeInstruction,
+      );
+    const navUrl = extractUrl(safeInstruction);
+    const hasOpenKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(safeInstruction);
+    if (wantsGrounding && navUrl && hasOpenKeyword) {
+      try {
+        const s = await getBrowserSession(sessionId);
+        touchSession(sessionId);
+        await s.page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs });
+        await s.page.waitForTimeout(350);
+      } catch {}
+    }
+    const grounding = wantsGrounding ? await collectUiGroundingSnapshot(sessionId) : null;
+    const groundingJson = grounding ? (() => { try { return JSON.stringify(grounding); } catch { return ''; } })() : '';
+    const urlBlock = grounding?.url ? `\n\nCURRENT_URL:\n${String(grounding.url).slice(0, 800)}` : '';
+    const groundingBlock = groundingJson ? `${urlBlock}\n\nUI_GROUNDING_JSON:\n${groundingJson.slice(0, 24000)}` : urlBlock;
     const r = await planNextStep(
       [
         { role: 'system', content: COMPILER_SYSTEM },
-        { role: 'user', content: safeInstruction },
+        { role: 'user', content: safeInstruction + groundingBlock },
       ],
       {
         provider,

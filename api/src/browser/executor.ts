@@ -499,6 +499,79 @@ export async function executePlannedActions(params: {
           }
 
           if (name === 'type') {
+            const xNum = Number(a?.x);
+            const yNum = Number(a?.y);
+            if (Number.isFinite(xNum) && Number.isFinite(yNum) && !a?.selector && !a?.role && !a?.name && !a?.textTarget) {
+              const x = Math.max(0, Math.round(xNum));
+              const y = Math.max(0, Math.round(yNum));
+              const raw = String(a?.text || '');
+              const secretMatch = raw.match(SECRET_TOKEN_RE);
+              const secretKey = secretMatch ? String(secretMatch[1] || '').trim() : '';
+              const secretIsPassword = secretKey ? /(?:^|_)PASSWORD(?:$|_)/i.test(secretKey) : false;
+              if (!secretIsPassword) {
+                let textToType = raw;
+                if (secretMatch) {
+                  const secretValue =
+                    (secretKey ? getSessionSecret(sessionId, secretKey) : null) ||
+                    (secretKey ? await getUserSecret(userId, 'internal', secretKey) : null) ||
+                    '';
+                  if (!secretValue) {
+                    results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `missing_secret:${secretKey}` });
+                    broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `missing_secret:${secretKey}` });
+                    try {
+                      broadcastBrowserEvent(sessionId, {
+                        type: 'action_error',
+                        ts: now(),
+                        actionId: sid,
+                        actionType: name,
+                        reason: 'unknown',
+                        error: `missing_secret:${secretKey}`,
+                      });
+                    } catch {}
+                    continue;
+                  }
+                  textToType = secretValue;
+                }
+
+                try {
+                  broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x, y });
+                  broadcastBrowserEvent(sessionId, {
+                    type: 'highlight_boxes',
+                    ts: now(),
+                    boxes: [{ x: Math.max(0, x - 6), y: Math.max(0, y - 6), width: 12, height: 12, label: 'type' }],
+                  });
+                } catch {}
+
+                setStreamMask(sessionId, []);
+                const before = await screenshotJpegBase64(page);
+                evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+
+                await page.mouse.click(x, y);
+                try {
+                  await page.keyboard.press('Meta+A');
+                } catch {
+                  try {
+                    await page.keyboard.press('Control+A');
+                  } catch {}
+                }
+                try {
+                  await page.keyboard.press('Backspace');
+                } catch {}
+                await page.keyboard.type(textToType, { delay: 10 });
+
+                await page.waitForTimeout(120);
+                const after = await screenshotJpegBase64(page);
+                evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+
+                broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+                results.push({ stepId: sid, name, ok: true });
+                try {
+                  broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+                } catch {}
+                continue;
+              }
+            }
+
             const textRaw = String(a?.text || '');
             if (textRaw && !a?.selector && !a?.role && !a?.name && !a?.textTarget) {
               const secretMatch = textRaw.match(SECRET_TOKEN_RE);
