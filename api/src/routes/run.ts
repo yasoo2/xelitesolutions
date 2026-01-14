@@ -730,6 +730,26 @@ function isEmptyProjectDetectOutput(out: any): boolean {
   return node.length === 0 && py.length === 0 && go.length === 0;
 }
 
+function formatWebSearchResultsText(query: string, output: any, isArabic: boolean) {
+  const q = String(query || '').trim();
+  const results = Array.isArray(output?.results) ? output.results : [];
+  const top = results.slice(0, 6).map((r: any) => ({
+    title: String(r?.title || '').trim(),
+    url: String(r?.url || '').trim(),
+    description: String(r?.description || '').replace(/\s+/g, ' ').trim(),
+  })).filter((x: any) => x.title && x.url);
+
+  if (!top.length) return isArabic ? 'لم أجد نتائج بحث واضحة.' : 'I couldn’t find clear search results.';
+
+  const lines: string[] = [];
+  if (q) lines.push(isArabic ? `نتائج بحث عن: ${q}` : `Search results for: ${q}`);
+  for (const r of top) {
+    const desc = r.description ? ` — ${r.description.slice(0, 180)}` : '';
+    lines.push(`- ${r.title} (${r.url})${desc}`);
+  }
+  return lines.join('\n');
+}
+
 function fallbackPlanWhenPlannerUnavailable(params: {
   userText: string;
   sessionId: string;
@@ -781,6 +801,22 @@ function fallbackPlanWhenPlannerUnavailable(params: {
         .slice(0, 40);
     } catch {}
     return `browser:${base}:${hostKey || 'site'}`;
+  };
+  const isContinueRequest = (() => {
+    const t = userText.trim();
+    if (!t) return true;
+    return /^(continue|go on|carry on|resume|اكمل|إكمل|كمل|كمّل|تابع|واصل|اكملها|كملها)$/i.test(t);
+  })();
+  const extractLastBrowserSessionIdFromHistory = (h: any[] | undefined) => {
+    if (!h || !Array.isArray(h)) return '';
+    for (let i = h.length - 1; i >= 0; i--) {
+      const item = h[i];
+      const c = typeof item?.content === 'string' ? item.content : JSON.stringify(item?.content || '');
+      const m = c.match(/"sessionId"\s*:\s*"([^"]+)"/);
+      const sid = String(m?.[1] || '').trim();
+      if (sid && /^browser:/.test(sid)) return sid;
+    }
+    return '';
   };
 
   if (isLocationLikeQuery(userText)) {
@@ -856,12 +892,19 @@ function fallbackPlanWhenPlannerUnavailable(params: {
 
   const wantsProject = isProjectRelatedRequest(userText);
   if (!wantsProject) {
+    if (history && isContinueRequest) {
+      const sid = extractLastBrowserSessionIdFromHistory(history);
+      if (sid) return { name: 'browser_get_state', input: { sessionId: sid } } as any;
+    }
+    if (preferNonLLM && userText.trim()) {
+      return { name: 'web_search', input: { query: userText } } as any;
+    }
     return {
       name: 'echo',
       input: {
         text: isArabicText(userText)
-          ? '⚠️ التخطيط الذكي غير متاح مؤقتًا، ولا توجد قاعدة واضحة لتنفيذ هذا الطلب الآن.\nأعد المحاولة بعد دقائق أو اكتب الطلب بصيغة محددة (مثال: ابحث عن… / افتح… / اقرأ ملف…).'
-          : '⚠️ Smart planning is temporarily unavailable and there’s no safe fallback for this request.\nPlease retry in a couple minutes or use a more explicit request (e.g., search/open/read file).',
+          ? '⚠️ التخطيط الذكي غير متاح مؤقتًا.\nأرسل طلبًا محددًا (مثال: ابحث عن… / افتح… / اقرأ ملف…).'
+          : '⚠️ Smart planning is temporarily unavailable.\nSend a more explicit request (e.g., search/open/read file).',
       },
     } as any;
   }
@@ -1614,6 +1657,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let simpleBrowserOpenUrl = '';
   let lastBrowserRunSummary = '';
   let lastBrowserRunPageUrl = '';
+  let plannerUnavailableMode = false;
 
   const normalizeUrlForGoto = (raw: any) => {
     let s = String(raw ?? '').trim();
@@ -1863,6 +1907,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       break;
     }
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
+    plannerUnavailableMode = false;
     
     // Optimization: Reuse initial plan if available for the first step to reduce latency
     if (pendingPlan) {
@@ -1874,6 +1919,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } else {
         const userTextForCooldown = String(text || '');
         if (!hasAnyKey || providerKey === 'llm') {
+          plannerUnavailableMode = true;
           plan = fallbackPlanWhenPlannerUnavailable({
             userText: userTextForCooldown,
             sessionId: String(sessionId),
@@ -1883,6 +1929,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         } else {
           const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
           if (Date.now() < coolUntil) {
+              plannerUnavailableMode = true;
               plan = fallbackPlanWhenPlannerUnavailable({
                 userText: userTextForCooldown,
                 sessionId: String(sessionId),
@@ -1918,6 +1965,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
             if (isProviderRateLimitError(err, lastPlanError)) {
               rateLimitCooldown.set(String(sessionId), Date.now() + 3 * 60 * 1000);
+              plannerUnavailableMode = true;
               const userTextForOverrides = String(text || '');
               const userTextNorm = normalizeArabicQuery(userTextForOverrides);
               if (isLocationLikeQuery(userTextForOverrides)) {
@@ -1927,9 +1975,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 const q = isArabicText(userTextForOverrides)
                   ? `كم درجة الحرارة الآن في ${city}؟`
                   : `current temperature in ${city} now`;
-                plan = { name: 'central_answer', input: { question: q } } as any;
+                plan = { name: 'web_search', input: { query: q } } as any;
               } else if (isGeneralKnowledgeQuestion(userTextForOverrides)) {
-                plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
+                plan = { name: 'web_search', input: { query: userTextForOverrides } } as any;
               } else if (/(ابحث|بحث|search|find|lookup|اعطني|اعطيني|معلومات|info)/.test(userTextNorm) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\b/.test(userTextNorm)) {
                 const qMatch = userTextForOverrides.match(/(?:عن|حول)\s+(.+)/i);
                 const query = qMatch ? qMatch[1] : userTextForOverrides;
@@ -1944,6 +1992,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
             if (!plan) {
               const userTextForOverrides = String(text || '');
+              plannerUnavailableMode = true;
               plan = fallbackPlanWhenPlannerUnavailable({
                 userText: userTextForOverrides,
                 sessionId: String(sessionId),
@@ -2991,6 +3040,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         assistantTextEmitted = true;
         break;
       }
+    }
+    if (plannerUnavailableMode && result.ok && plan?.name === 'web_search' && !pendingPlan) {
+      const msg = formatWebSearchResultsText(String((plan as any)?.input?.query || '').trim(), (result as any)?.output, isArabicText(userTextForOverrides));
+      forcedText = msg;
+      ev({ type: 'text', data: msg });
+      assistantTextEmitted = true;
+      break;
     }
     // After browser actions, capture page state for accurate reading/sync
     if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
