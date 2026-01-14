@@ -713,6 +713,46 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   const preferNonLLM = Boolean(params.preferNonLLM);
   const stopProjectDetectRepeats = params.stopProjectDetectRepeats !== false;
 
+  const hasUrl =
+    /https?:\/\/[^\s"'<>]+/i.test(userText) ||
+    /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(userText);
+  const openKeyword =
+    /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+      userText,
+    );
+  const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(userText);
+  const multiStepKeyword =
+    /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+      userText,
+    );
+  const extractUrlCandidate = (text: string) => {
+    const http = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
+    if (http) return http;
+    const m = text.match(
+      /(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i,
+    );
+    const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+    if (!candidate) return '';
+    const isLocal =
+      /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+      /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+      /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+    return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+  };
+  const browserSessionIdFromUrl = (url: string) => {
+    const base = String(sessionId || 's').replace(/[^a-z0-9_-]/gi, '_').slice(0, 32) || 's';
+    let hostKey = 'site';
+    try {
+      const u = new URL(url);
+      hostKey = String(u.hostname || 'site')
+        .toLowerCase()
+        .replace(/^www\./i, '')
+        .replace(/[^a-z0-9_-]/gi, '_')
+        .slice(0, 40);
+    } catch {}
+    return `browser:${base}:${hostKey || 'site'}`;
+  };
+
   if (isLocationLikeQuery(userText)) {
     return { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
   }
@@ -725,6 +765,63 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   if (isGeneralKnowledgeQuestion(userText)) {
     if (preferNonLLM) return { name: 'web_search', input: { query: userText } } as any;
     return { name: 'central_answer', input: { question: userText } } as any;
+  }
+
+  const wantsSearch =
+    /(ابحث|بحث|search|find|lookup)\b/i.test(userText) ||
+    /(google|جوجل|duckduck|duck\s*duck)/i.test(userText);
+  if (wantsSearch) {
+    return { name: 'web_search', input: { query: userText } } as any;
+  }
+
+  const wantsFileRead = /(read|اقرأ|قراءة)\s*(file|ملف)\s+/i.test(userText);
+  if (wantsFileRead) {
+    const m = userText.match(/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i);
+    const filePath = m && m[3] ? String(m[3]).trim() : '';
+    if (filePath) return { name: 'file_read', input: { filePath } } as any;
+  }
+  const wantsLs = /(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userText) || /^ls$/i.test(userText.trim());
+  if (wantsLs) return { name: 'ls', input: { path: '.' } } as any;
+
+  const wantsBrowser = Boolean(hasUrl || openKeyword || browserKeyword);
+  if (wantsBrowser) {
+    const directUrl = extractUrlCandidate(userText);
+    const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(userText);
+    const wantsYoutube = /(youtube|يوتيوب)/i.test(userText);
+    const wantsGoogle = /(google|جوجل)/i.test(userText);
+    const wantsYahoo = /(yahoo|ياهو)/i.test(userText);
+    const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(userText);
+    const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(userText);
+    const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(userText);
+    const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(userText);
+    const desiredUrl =
+      (directUrl || '').trim() ||
+      (wantsGithub
+        ? 'https://github.com'
+        : wantsYoutube
+          ? 'https://www.youtube.com'
+          : wantsGoogle
+            ? 'https://www.google.com'
+            : wantsYahoo
+              ? 'https://www.yahoo.com'
+              : wantsLinkedIn
+                ? 'https://www.linkedin.com'
+                : wantsFacebook
+                  ? 'https://www.facebook.com'
+                  : wantsX
+                    ? 'https://x.com'
+                    : wantsMicrosoft
+                      ? 'https://www.microsoft.com'
+                      : '');
+
+    if (multiStepKeyword) {
+      const sid = browserSessionIdFromUrl(desiredUrl || directUrl || 'https://example.com');
+      return { name: 'browser_run', input: { sessionId: sid, instructionText: userText } } as any;
+    }
+    if (desiredUrl) {
+      const sid = browserSessionIdFromUrl(desiredUrl);
+      return { name: 'browser_open', input: { url: desiredUrl, sessionId: sid } } as any;
+    }
   }
 
   const wantsProject = isProjectRelatedRequest(userText);
@@ -901,7 +998,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const providerKey = String(provider || 'openai').trim().toLowerCase();
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   const hasAnyKey = Boolean((typeof apiKey === 'string' && apiKey.trim()) || (typeof process.env.OPENAI_API_KEY === 'string' && process.env.OPENAI_API_KEY.trim()));
-  let missingApiKey = false;
   const rawUserTextForKeyBypass = String(text || '');
   const xeliteMacro = (() => {
     const s = rawUserTextForKeyBypass;
@@ -909,56 +1005,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (!domain) return null;
     const hasStartNow = /\bstart\s+now\b/i.test(s) || /ستارت\s+ناو/i.test(s);
     if (!hasStartNow) return null;
-    const emailMatch = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    if (!emailMatch) return null;
-    const email = String(emailMatch[0] || '').trim();
-    if (!email) return null;
-    const after = s.slice((emailMatch.index || 0) + email.length);
-    const pw = String((after.match(/^\s+([^\s"'<>]{3,64})/) || [])[1] || '').trim();
-    if (!pw) return null;
     const rawUrl = String(domain[0] || '').trim();
     const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
-    return { url, email, password: pw };
+    const emailMatch = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    const email = String(emailMatch?.[0] || '').trim();
+    const after = emailMatch ? s.slice((emailMatch.index || 0) + email.length) : '';
+    const pw = String((after.match(/^\s+([^\s"'<>]{3,64})/) || [])[1] || '').trim();
+    return { url, email: email || undefined, password: pw || undefined };
   })();
-  const allowNoKeyForXeliteMacro = Boolean(xeliteMacro);
-  const allowNoKeyForQuickBrowserOpen = (() => {
-    const s = rawUserTextForKeyBypass;
-    if (!s.trim()) return false;
-    const hasUrl =
-      /https?:\/\/[^\s"'<>]+/i.test(s) ||
-      /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
-    const hasSiteKeyword = /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s);
-    if (!hasUrl && !hasSiteKeyword) return false;
-    const openKeyword =
-      /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
-        s,
-      );
-    const multiStepKeyword =
-      /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
-        s,
-      );
-    if (multiStepKeyword) return false;
-    if (openKeyword) return true;
-    const u = s.trim();
-    if (hasUrl && (u === (u.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || '') || u.toLowerCase() === (u.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || '').toLowerCase())) {
-      return true;
-    }
-    return false;
-  })();
-
-  if (providerKey === 'llm') {
-    return res.status(400).json({
-      error: '⚠️ مزوّد llm المحلي مُعطّل. اختر مزوّدًا من زر المزودين وأدخل API Key.',
-    });
-  }
-  if (!hasAnyKey) {
-    missingApiKey = !(allowNoKeyForQuickBrowserOpen || allowNoKeyForXeliteMacro);
-  }
-  if (providerKey && providerKey !== 'openai' && !hasBaseUrl) {
-    return res.status(400).json({
-      error: `⚠️ المزوّد "${providerKey}" يحتاج Base URL متوافق مع OpenAI (أو اختر OpenAI).`,
-    });
-  }
 
   // 1. Process Attachments
   let attachedText = '';
@@ -1141,38 +1195,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     });
   } catch {}
 
-  if (missingApiKey) {
-    const msg = [
-      '⚠️ يلزم إدخال API Key للمزوّد قبل التنفيذ.',
-      `- المزود: ${providerKey || 'openai'}`,
-      '- أدخل المفتاح في نافذة التوكن وأرسله.',
-    ].join('\n');
-    const ev = (e: LiveEvent) => broadcast({ ...e, runId });
-    ev({ type: 'text', data: msg });
-    ev({
-      type: 'secret_required',
-      data: {
-        sessionId,
-        runId,
-        provider: providerKey || 'openai',
-        key: 'LLM_API_KEY',
-        label: 'LLM API Key',
-        reason: 'Missing API Key',
-      },
-    });
-    if (useMock) {
-      store.updateRun(runId, { status: 'blocked' as any });
-    } else {
-      try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
-    }
-    return res.json({
-      runId,
-      sessionId,
-      blocked: true,
-      secretRequired: true,
-      secret: { provider: providerKey || 'openai', key: 'LLM_API_KEY', label: 'LLM API Key' },
-    });
-  }
 
   const systemPromptEventId = `system_prompt:${sessionId}`;
   let systemPromptCreated = false;
@@ -1266,6 +1288,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const rawUserText = String(text || '');
       const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
       if (xeliteMacro && !hasAttachments) {
+        const canUseUserSecrets = Boolean(String(userId || '').trim() && !useMock);
+        const wantsDirectCreds = Boolean(String(xeliteMacro.email || '').trim() && String(xeliteMacro.password || '').trim());
+        const xeliteEmailText = canUseUserSecrets ? '{{SECRET:XELITE_LOGIN_EMAIL}}' : wantsDirectCreds ? String(xeliteMacro.email) : '';
+        const xelitePasswordText = canUseUserSecrets ? '{{SECRET:XELITE_LOGIN_PASSWORD}}' : wantsDirectCreds ? String(xeliteMacro.password) : '';
+        const includeLoginActions = Boolean(String(xeliteEmailText || '').trim() && String(xelitePasswordText || '').trim());
         const sid =
           typeof browserSessionId === 'string' && browserSessionId.trim()
             ? browserSessionId.trim()
@@ -1283,34 +1310,38 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               { type: 'click', text: 'Start now', optional: true },
               { type: 'click', text: 'Get Started', optional: true },
               { type: 'wait', ms: 900, optional: true },
-              { type: 'click', text: 'Sign in', optional: true },
-              { type: 'click', text: 'Log in', optional: true },
-              { type: 'click', text: 'Login', optional: true },
-              { type: 'click', text: 'تسجيل الدخول', optional: true },
-              { type: 'wait', ms: 700, optional: true },
-              {
-                type: 'type',
-                selector:
-                  'input[type="email"],input[autocomplete="email"],input[name*="email" i],input[id*="email" i]',
-                text: xeliteMacro.email,
-                optional: true,
-              },
-              { type: 'type', role: 'textbox', name: 'Email', text: xeliteMacro.email, optional: true },
-              { type: 'type', role: 'textbox', name: 'E-mail', text: xeliteMacro.email, optional: true },
-              { type: 'type', role: 'textbox', name: 'البريد الإلكتروني', text: xeliteMacro.email, optional: true },
-              {
-                type: 'type',
-                selector:
-                  'input[type="password"],input[autocomplete="current-password"],input[name*="pass" i],input[id*="pass" i]',
-                text: xeliteMacro.password,
-                optional: true,
-              },
-              { type: 'type', role: 'textbox', name: 'Password', text: xeliteMacro.password, optional: true },
-              { type: 'type', role: 'textbox', name: 'كلمة المرور', text: xeliteMacro.password, optional: true },
-              { type: 'click', text: 'Sign in', optional: true },
-              { type: 'click', text: 'Login', optional: true },
-              { type: 'click', text: 'تسجيل الدخول', optional: true },
-              { type: 'wait', ms: 800, optional: true },
+              ...(includeLoginActions
+                ? ([
+                    { type: 'click', text: 'Sign in', optional: true },
+                    { type: 'click', text: 'Log in', optional: true },
+                    { type: 'click', text: 'Login', optional: true },
+                    { type: 'click', text: 'تسجيل الدخول', optional: true },
+                    { type: 'wait', ms: 700, optional: true },
+                    {
+                      type: 'type',
+                      selector:
+                        'input[type="email"],input[autocomplete="email"],input[name*="email" i],input[id*="email" i]',
+                      text: xeliteEmailText,
+                      optional: true,
+                    },
+                    { type: 'type', role: 'textbox', name: 'Email', text: xeliteEmailText, optional: true },
+                    { type: 'type', role: 'textbox', name: 'E-mail', text: xeliteEmailText, optional: true },
+                    { type: 'type', role: 'textbox', name: 'البريد الإلكتروني', text: xeliteEmailText, optional: true },
+                    {
+                      type: 'type',
+                      selector:
+                        'input[type="password"],input[autocomplete="current-password"],input[name*="pass" i],input[id*="pass" i]',
+                      text: xelitePasswordText,
+                      optional: true,
+                    },
+                    { type: 'type', role: 'textbox', name: 'Password', text: xelitePasswordText, optional: true },
+                    { type: 'type', role: 'textbox', name: 'كلمة المرور', text: xelitePasswordText, optional: true },
+                    { type: 'click', text: 'Sign in', optional: true },
+                    { type: 'click', text: 'Login', optional: true },
+                    { type: 'click', text: 'تسجيل الدخول', optional: true },
+                    { type: 'wait', ms: 800, optional: true },
+                  ] as any[])
+                : []),
             ],
           },
         } as any;
@@ -1326,11 +1357,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           initialPlan = { name: 'payments_create_checkout_session', input: { amount: p.amount, currency: p.currency, productName: p.productName } } as any;
         }
         if (!initialPlan) {
-          // Use full history for planning to ensure context awareness
-          initialPlan = await planNextStep(
-            history,
-            { provider, apiKey, baseUrl, model, throwOnError: true }
-          );
+          if (!hasAnyKey || providerKey === 'llm') {
+            initialPlan = fallbackPlanWhenPlannerUnavailable({
+              userText: rawUserText,
+              sessionId: String(sessionId),
+              history: history as any,
+              preferNonLLM: true,
+            }) as any;
+          } else {
+            initialPlan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
+          }
         }
       }
   } catch (err) {
@@ -1347,7 +1383,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   }
 
   // Save User Message to DB
-  const persistedUserText = redactSecretsFromString(String(text || ''));
+  let persistedUserText = redactSecretsFromString(String(text || ''));
+  try {
+    const pw = String(xeliteMacro?.password || '').trim();
+    if (pw) persistedUserText = persistedUserText.split(pw).join('[REDACTED]');
+  } catch {}
   if (useMock) {
     store.addMessage(sessionId, 'user', persistedUserText, runId);
   } else {
@@ -1369,7 +1409,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         type: 'step_started',
         data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) },
       });
-      const result = await executeTool(initialPlan.name, initialPlan.input);
+      const callInput =
+        userId && initialPlan.input && typeof initialPlan.input === 'object'
+          ? { ...(initialPlan.input as any), userId: String(userId) }
+          : initialPlan.input;
+      const result = await executeTool(initialPlan.name, callInput);
       ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
       if (result.artifacts) {
         for (const a of result.artifacts) {
@@ -1382,8 +1426,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       ev({ type: 'run_finished', data: { runId, ok: result.ok } });
       return res.json({ ok: true, runId, result });
     }
+    const approvalPlanInput = redactToolInputForStorage(initialPlan.name, initialPlan.input);
     if (useMock) {
-      const ap = store.createApproval(runId, String(text || ''), risk, initialPlan.name, initialPlan.input);
+      const ap = store.createApproval(runId, String(text || ''), risk, initialPlan.name, approvalPlanInput);
       ev({ type: 'approval_required', data: { id: ap.id, runId, risk, action: text } });
       store.updateRun(runId, { status: 'blocked' });
       // store plan context for continuation
@@ -1391,7 +1436,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       planContext.set(ap.id, { runId, name: initialPlan.name, input: initialPlan.input });
       if (autoAll || (auto && safe)) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
-        const result = await executeTool(initialPlan.name, initialPlan.input);
+        const callInput =
+          userId && initialPlan.input && typeof initialPlan.input === 'object'
+            ? { ...(initialPlan.input as any), userId: String(userId) }
+            : initialPlan.input;
+        const result = await executeTool(initialPlan.name, callInput);
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
         if (result.artifacts) {
           for (const a of result.artifacts) {
@@ -1413,7 +1462,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       planContext.set(ap._id.toString(), { runId, name: initialPlan.name, input: initialPlan.input });
       if (autoAll || (auto && safe)) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
-        const result = await executeTool(initialPlan.name, initialPlan.input);
+        const callInput =
+          userId && initialPlan.input && typeof initialPlan.input === 'object'
+            ? { ...(initialPlan.input as any), userId: String(userId) }
+            : initialPlan.input;
+        const result = await executeTool(initialPlan.name, callInput);
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
         if (result.artifacts) {
           // Persist artifacts in DB using Artifact model if needed
@@ -1758,20 +1811,27 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         plan = initialPlan;
         initialPlan = null; // Prevent reuse
     } else {
-        const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
-        if (Date.now() < coolUntil) {
-            const userTextForCooldown = String(text || '');
-            plan = fallbackPlanWhenPlannerUnavailable({
-              userText: userTextForCooldown,
-              sessionId: String(sessionId),
-              history: history as any,
-              preferNonLLM: true,
-            }) as any;
+        const userTextForCooldown = String(text || '');
+        if (!hasAnyKey || providerKey === 'llm') {
+          plan = fallbackPlanWhenPlannerUnavailable({
+            userText: userTextForCooldown,
+            sessionId: String(sessionId),
+            history: history as any,
+            preferNonLLM: true,
+          }) as any;
         } else {
-        // Plan next step with history
-        try {
-            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
-        } catch (err: any) {
+          const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
+          if (Date.now() < coolUntil) {
+              plan = fallbackPlanWhenPlannerUnavailable({
+                userText: userTextForCooldown,
+                sessionId: String(sessionId),
+                history: history as any,
+                preferNonLLM: true,
+              }) as any;
+          } else {
+          try {
+              plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
+          } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
             const status = errorStatusCode(err);
             console.warn(`LLM planning error (status=${status}):`, lastPlanError);
@@ -1825,7 +1885,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 preferNonLLM: true,
               }) as any;
             }
-        }
+          }
+          }
         }
     }
 

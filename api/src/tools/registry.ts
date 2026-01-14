@@ -761,6 +761,16 @@ export const tools: ToolDefinition[] = [
         if (!failedCount) {
           return { error: 'some_steps_failed', summary: String(res?.summary || 'فشل تنفيذ بعض الخطوات.').trim() };
         }
+        const missing = new Set<string>();
+        for (const s of failed) {
+          const msg = String(s?.message || s?.error || '').trim();
+          const m = msg.match(/missing_secret:([A-Z0-9_]+)/);
+          if (m && m[1]) missing.add(String(m[1]).trim());
+        }
+        if (missing.size) {
+          const keys = Array.from(missing);
+          return { error: 'missing_secrets', summary: `missing_secrets: ${keys.join(', ')}`, missingSecrets: keys };
+        }
         const counts = new Map<string, number>();
         for (const s of failed) {
           const r = String(s?.reason || 'unknown').trim() || 'unknown';
@@ -792,6 +802,8 @@ export const tools: ToolDefinition[] = [
             const derived = deriveExecFailure(inner);
             execError = derived.error;
             execSummary = derived.summary;
+            const ms = (derived as any)?.missingSecrets;
+            if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
           }
           try {
             const dbg = (r as any)?.debug;
@@ -868,6 +880,8 @@ export const tools: ToolDefinition[] = [
           const derived = deriveExecFailure(r);
           execError = derived.error;
           execSummary = derived.summary;
+          const ms = (derived as any)?.missingSecrets;
+          if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
         }
       }
 
