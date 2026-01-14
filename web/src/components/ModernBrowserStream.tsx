@@ -316,6 +316,14 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         setFinal({ ok: false, summary: s });
         return;
       }
+      if ((msg as any).type === 'session_status') {
+        try {
+          const d = (msg as any);
+          const det = { url: String(d?.url || ''), sessionId: String(d?.sessionId || '') };
+          window.dispatchEvent(new CustomEvent('browser:session_status', { detail: det }));
+        } catch {}
+        return;
+      }
       if (msg.type === 'debug_snapshot') {
         setDebug({
           compiledPlanJson: (msg as any).compiledPlanJson,
