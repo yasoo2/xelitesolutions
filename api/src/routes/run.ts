@@ -1915,6 +1915,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const userTextForOverrides = String(text || '');
     const userTextNorm = normalizeArabicQuery(userTextForOverrides);
     const wantsLocationEarly = isLocationLikeQuery(userTextForOverrides);
+    let browserIntentThisTurn = false;
     if (wantsLocationEarly) {
       plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
       planName = 'http_fetch';
@@ -1949,6 +1950,26 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword || (testKeyword && hasUrl));
       if (openKeyword && githubKeyword && analysisKeyword) wantsBrowser = false;
       if (openKeyword && isFileOp) wantsBrowser = false;
+      browserIntentThisTurn = wantsBrowser;
+
+      const looksLikeInPageBrowserAction =
+        !hasUrl &&
+        !openKeyword &&
+        /(click|انقر|اضغط|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize|اقرأ|read|حدد|select|اختر|ابحث\s+داخل\s+الصفحة)/i.test(
+          s,
+        );
+      if (
+        kind === 'agent' &&
+        !wantsBrowser &&
+        looksLikeInPageBrowserAction &&
+        typeof browserSessionId === 'string' &&
+        browserSessionId.trim() &&
+        !/^browser_/.test(planName)
+      ) {
+        plan = { name: 'browser_run', input: { sessionId: browserSessionId.trim(), instructionText: s } } as any;
+        planName = 'browser_run';
+        browserIntentThisTurn = true;
+      }
 
       if (wantsBrowser && !/^browser_/.test(planName)) {
         const directUrl = extractedUrl;
@@ -2839,9 +2860,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     if (result.ok && String(plan?.name || '') === 'browser_get_state' && endAfterBrowserState) {
-      const msg = isArabicText(initialUserTextForOpen)
-        ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} في المتصفح.`
-        : `Opened ${simpleBrowserOpenLabel || 'the site'} in the browser.`;
+      const msg = isSimpleBrowserOpenRequest
+        ? isArabicText(initialUserTextForOpen)
+          ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} في المتصفح.`
+          : `Opened ${simpleBrowserOpenLabel || 'the site'} in the browser.`
+        : isArabicText(userTextForOverrides)
+          ? `تم تنفيذ خطوات المتصفح.\nأرسل التعليمات التالية.`
+          : `Browser steps completed.\nSend the next instruction.`;
       endAfterBrowserState = false;
       pendingPlan = { name: 'echo', input: { text: msg } } as any;
     }
@@ -2867,7 +2892,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
       const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
       if (sidNext && !pendingPlan) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
-      if (isSimpleBrowserOpenRequest && steps === 0) endAfterBrowserState = true;
+      if (kind === 'agent' && browserIntentThisTurn) endAfterBrowserState = true;
     }
     // Auto post-scaffold steps: install and build
     if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
