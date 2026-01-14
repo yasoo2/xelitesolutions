@@ -18,6 +18,7 @@ import { MemoryService } from '../services/memory';
 import { MemoryItem } from '../models/memoryItem';
 import { rewriteInlineLoginCredentialsToSecrets } from '../browser/secrets';
 import { stopSession } from '../browser/manager';
+import { setSessionSecretEncrypted } from '../services/secrets';
 
 const router = Router();
 
@@ -1036,11 +1037,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (!hasStartNow) return null;
     const rawUrl = String(domain[0] || '').trim();
     const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
-    const emailMatch = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    const email = String(emailMatch?.[0] || '').trim();
-    const after = emailMatch ? s.slice((emailMatch.index || 0) + email.length) : '';
-    const pw = String((after.match(/^\s+([^\s"'<>]{3,64})/) || [])[1] || '').trim();
-    return { url, email: email || undefined, password: pw || undefined };
+    let email = '';
+    let password = '';
+    try {
+      const r = rewriteInlineLoginCredentialsToSecrets(s);
+      if (r.ok) {
+        email = String(r.email || '').trim();
+        password = String(r.password || '').trim();
+      }
+    } catch {}
+
+    if (!email) {
+      const emailMatch = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+      email = String(emailMatch?.[0] || '').trim().replace(/[)\].,;:!?،؛]+$/g, '');
+    }
+
+    return { url, email: email || undefined, password: password || undefined };
   })();
 
   // 1. Process Attachments
@@ -1317,17 +1329,26 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const rawUserText = String(text || '');
       const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
       if (xeliteMacro && !hasAttachments) {
-        const canUseUserSecrets = Boolean(String(userId || '').trim() && !useMock);
-        const wantsDirectCreds = Boolean(String(xeliteMacro.email || '').trim() && String(xeliteMacro.password || '').trim());
-        const xeliteEmailText = canUseUserSecrets ? '{{SECRET:XELITE_LOGIN_EMAIL}}' : wantsDirectCreds ? String(xeliteMacro.email) : '';
-        const xelitePasswordText = canUseUserSecrets ? '{{SECRET:XELITE_LOGIN_PASSWORD}}' : wantsDirectCreds ? String(xeliteMacro.password) : '';
-        const includeLoginActions = Boolean(String(xeliteEmailText || '').trim() && String(xelitePasswordText || '').trim());
         const sid =
           typeof browserSessionId === 'string' && browserSessionId.trim()
             ? browserSessionId.trim()
             : userId
               ? `browser:${String(userId).trim()}:xelitesolutions`
               : `browser:anon:${Date.now()}`;
+
+        try {
+          const email = String(xeliteMacro.email || '').trim();
+          const password = String(xeliteMacro.password || '').trim();
+          if (email) setSessionSecretEncrypted(sid, 'JOE_LOGIN_EMAIL', email, 60 * 60);
+          if (password) setSessionSecretEncrypted(sid, 'JOE_LOGIN_PASSWORD', password, 60 * 60);
+        } catch {}
+
+        const canUseUserSecrets = Boolean(String(userId || '').trim() && !useMock);
+        const hasInlineCreds = Boolean(String(xeliteMacro.email || '').trim() && String(xeliteMacro.password || '').trim());
+        const useSecretTokens = canUseUserSecrets || hasInlineCreds;
+        const xeliteEmailText = useSecretTokens ? '{{SECRET:JOE_LOGIN_EMAIL}}' : '';
+        const xelitePasswordText = useSecretTokens ? '{{SECRET:JOE_LOGIN_PASSWORD}}' : '';
+        const includeLoginActions = Boolean(String(xeliteEmailText || '').trim() && String(xelitePasswordText || '').trim());
         initialPlan = {
           name: 'browser_run',
           input: {
