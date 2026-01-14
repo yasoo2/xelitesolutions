@@ -21,13 +21,14 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   const cursorElRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const [w, setW] = useState(1280);
-  const [h, setH] = useState(800);
+  const [h, setH] = useState(720);
   const [boxes, setBoxes] = useState<Array<{ x: number; y: number; width: number; height: number; label?: string }>>([]);
   const [lastStep, setLastStep] = useState<string>('');
   const [final, setFinal] = useState<{ ok: boolean; summary: string } | null>(null);
   const [debug, setDebug] = useState<{ compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [queueLen, setQueueLen] = useState(0);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
@@ -42,7 +43,7 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   const abortRef = useRef<AbortController | null>(null);
   const cancelSeqRef = useRef(0);
   const viewSizeRef = useRef({ w: 1, h: 1 });
-  const frameSizeRef = useRef({ w: 1280, h: 800 });
+  const frameSizeRef = useRef({ w: 1280, h: 720 });
   const cursorTargetNormRef = useRef<{ x: number; y: number } | null>(null);
   const cursorPosPxRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -329,8 +330,9 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
   }, [wsUrl]);
 
   return (
-    <div ref={rootRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0b0b' }}>
-      <style>{`
+    <div style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
+      <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+        <style>{`
         .browser-cursor {
           width: 26px;
           height: 26px;
@@ -356,153 +358,144 @@ export default function ModernBrowserStream({ sessionId }: { sessionId: string }
           stroke-linecap: round;
         }
       `}</style>
-      <canvas
-        ref={canvasRef}
-        tabIndex={0}
-        onMouseDown={(e) => {
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          try {
-            canvas.focus();
-          } catch {}
-          const rect = canvas.getBoundingClientRect();
-          const rx = (e.clientX - rect.left) / Math.max(1, rect.width);
-          const ry = (e.clientY - rect.top) / Math.max(1, rect.height);
-          const x = Math.max(0, Math.min(w - 1, Math.round(rx * w)));
-          const y = Math.max(0, Math.min(h - 1, Math.round(ry * h)));
-          void flushType().finally(() => {
-            enqueueActions([{ type: 'click', x, y }]);
-          });
-        }}
-        onKeyDown={(e) => {
-          const key = String((e as any)?.key || '');
-          if (key === 'Escape') {
-            e.preventDefault();
-            cancelPending();
-            return;
-          }
-          if (key === 'Enter') {
-            e.preventDefault();
+        <canvas
+          ref={canvasRef}
+          tabIndex={0}
+          onMouseDown={(e) => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            try {
+              canvas.focus();
+            } catch {}
+            const rect = canvas.getBoundingClientRect();
+            const rx = (e.clientX - rect.left) / Math.max(1, rect.width);
+            const ry = (e.clientY - rect.top) / Math.max(1, rect.height);
+            const x = Math.max(0, Math.min(w - 1, Math.round(rx * w)));
+            const y = Math.max(0, Math.min(h - 1, Math.round(ry * h)));
             void flushType().finally(() => {
-              enqueueActions([{ type: 'type', text: '\n' }]);
+              enqueueActions([{ type: 'click', x, y }]);
             });
-            return;
-          }
-          if (key === 'Tab') {
-            e.preventDefault();
-            void flushType().finally(() => {
-              enqueueActions([{ type: 'type', text: '\t' }]);
-            });
-            return;
-          }
-          if (key.length === 1) {
-            e.preventDefault();
-            pendingTypeRef.current += key;
-            const dt = Date.now() - lastSendAtRef.current;
-            const delay = dt > 700 ? 30 : 90;
-            if (flushTimerRef.current) window.clearTimeout(flushTimerRef.current);
-            flushTimerRef.current = window.setTimeout(() => void flushType(), delay);
-          }
-        }}
-        style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
-      />
-      <div ref={cursorElRef} className="browser-cursor" aria-hidden="true">
-        <svg className="browser-cursor-svg" viewBox="0 0 24 24">
-          <path className="browser-cursor-path" d="M3.5 2.2 L3.5 19.6 L8.6 15.4 L11.5 22.1 L14.3 20.8 L11.3 14.0 L18.7 14.0 Z" />
-        </svg>
-      </div>
-      <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ padding: '6px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12 }}>
-          {status} · {w}×{h} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
+          }}
+          onKeyDown={(e) => {
+            const key = String((e as any)?.key || '');
+            if (key === 'Escape') {
+              e.preventDefault();
+              cancelPending();
+              return;
+            }
+            if (key === 'Enter') {
+              e.preventDefault();
+              void flushType().finally(() => {
+                enqueueActions([{ type: 'type', text: '\n' }]);
+              });
+              return;
+            }
+            if (key === 'Tab') {
+              e.preventDefault();
+              void flushType().finally(() => {
+                enqueueActions([{ type: 'type', text: '\t' }]);
+              });
+              return;
+            }
+            if (key.length === 1) {
+              e.preventDefault();
+              pendingTypeRef.current += key;
+              const dt = Date.now() - lastSendAtRef.current;
+              const delay = dt > 700 ? 30 : 90;
+              if (flushTimerRef.current) window.clearTimeout(flushTimerRef.current);
+              flushTimerRef.current = window.setTimeout(() => void flushType(), delay);
+            }
+          }}
+          style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
+        />
+        <div ref={cursorElRef} className="browser-cursor" aria-hidden="true">
+          <svg className="browser-cursor-svg" viewBox="0 0 24 24">
+            <path className="browser-cursor-path" d="M3.5 2.2 L3.5 19.6 L8.6 15.4 L11.5 22.1 L14.3 20.8 L11.3 14.0 L18.7 14.0 Z" />
+          </svg>
         </div>
-        {busy || queueLen ? (
-          <button
-            onClick={() => cancelPending()}
-            style={{
-              padding: '6px 10px',
-              borderRadius: 10,
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: 'rgba(239,68,68,0.25)',
-              color: '#fff',
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
-          >
-            إلغاء
-          </button>
+      </div>
+      <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ color: '#fff', fontSize: 12, opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {status} · {w}×{h} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '0 0 auto' }}>
+            {busy || queueLen ? (
+              <button
+                onClick={() => cancelPending()}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'rgba(239,68,68,0.25)',
+                  color: '#fff',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                إلغاء
+              </button>
+            ) : null}
+            {actions.length || final || debug ? (
+              <button
+                onClick={() => setDetailsOpen((v) => !v)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: detailsOpen ? 'rgba(37, 99, 235, 0.22)' : 'rgba(255,255,255,0.06)',
+                  color: '#fff',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                {detailsOpen ? 'إخفاء السجل' : 'عرض السجل'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {detailsOpen ? (
+          <div style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+            {final ? (
+              <div style={{ flex: '1 1 320px', minWidth: 260, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: final.ok ? 'rgba(16,185,129,0.16)' : 'rgba(239,68,68,0.16)', color: '#fff', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                {final.summary}
+              </div>
+            ) : null}
+            {actions.length ? (
+              <div style={{ flex: '2 1 520px', minWidth: 320, maxHeight: 220, overflow: 'auto', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.35)', color: '#fff', fontSize: 12, lineHeight: 1.35, whiteSpace: 'pre-wrap' }}>
+                {actions
+                  .slice(-30)
+                  .map((a) => {
+                    const label = a.summary ? `${a.actionType} · ${a.summary}` : a.actionType;
+                    const tail = a.type === 'action_error' ? ` · ${String(a.reason || a.error || '').slice(0, 160)}` : '';
+                    return `${a.type} · ${a.actionId} · ${label}${tail}`;
+                  })
+                  .join('\n')}
+              </div>
+            ) : null}
+            {debug ? (
+              <div style={{ flex: '2 1 520px', minWidth: 320, maxHeight: 220, overflow: 'auto', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.35)', color: '#fff', fontSize: 12, lineHeight: 1.35, whiteSpace: 'pre-wrap' }}>
+                {(() => {
+                  const safe = (v: any) => {
+                    try {
+                      return JSON.stringify(v, null, 2);
+                    } catch {
+                      return '"[unserializable]"';
+                    }
+                  };
+                  const parts = [
+                    `stop_reason=${String(debug.stopReason || '')}`,
+                    `action_count=${String(debug.actionCount || 0)}`,
+                    `compiled_plan_json=${safe(debug.compiledPlanJson)}`,
+                    `actions_json=${safe(debug.actionsJson)}`,
+                  ];
+                  return parts.join('\n');
+                })()}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
-      {actions.length ? (
-        <div
-          style={{
-            position: 'absolute',
-            top: 10,
-            right: 10,
-            width: 360,
-            maxWidth: '48%',
-            maxHeight: '55%',
-            overflow: 'auto',
-            padding: '8px 10px',
-            borderRadius: 10,
-            background: 'rgba(0,0,0,0.55)',
-            color: '#fff',
-            fontSize: 12,
-            lineHeight: 1.35,
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {actions
-            .slice(-30)
-            .map((a) => {
-              const label = a.summary ? `${a.actionType} · ${a.summary}` : a.actionType;
-              const tail = a.type === 'action_error' ? ` · ${String(a.reason || a.error || '').slice(0, 160)}` : '';
-              return `${a.type} · ${a.actionId} · ${label}${tail}`;
-            })
-            .join('\n')}
-        </div>
-      ) : null}
-      {final ? (
-        <div style={{ position: 'absolute', bottom: 10, left: 10, padding: '8px 10px', borderRadius: 10, background: final.ok ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)', color: '#fff', fontSize: 12 }}>
-          {final.summary}
-        </div>
-      ) : null}
-      {debug ? (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 10,
-            right: 10,
-            width: 420,
-            maxWidth: '55%',
-            maxHeight: '55%',
-            overflow: 'auto',
-            padding: '8px 10px',
-            borderRadius: 10,
-            background: 'rgba(0,0,0,0.55)',
-            color: '#fff',
-            fontSize: 12,
-            lineHeight: 1.35,
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {(() => {
-            const safe = (v: any) => {
-              try {
-                return JSON.stringify(v, null, 2);
-              } catch {
-                return '"[unserializable]"';
-              }
-            };
-            const parts = [
-              `stop_reason=${String(debug.stopReason || '')}`,
-              `action_count=${String(debug.actionCount || 0)}`,
-              `compiled_plan_json=${safe(debug.compiledPlanJson)}`,
-              `actions_json=${safe(debug.actionsJson)}`,
-            ];
-            return parts.join('\n');
-          })()}
-        </div>
-      ) : null}
     </div>
   );
 }

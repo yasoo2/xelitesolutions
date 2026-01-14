@@ -123,6 +123,7 @@ export default function Joe() {
   const [searchResults, setSearchResults] = useState<Array<any>>([]);
   const [isNarrow, setIsNarrow] = useState(false);
   const [agentSessionsOpen, setAgentSessionsOpen] = useState(false);
+  const [agentSidebarOpen, setAgentSidebarOpen] = useState(true);
   const [agentComposerOpen, setAgentComposerOpen] = useState(false);
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
@@ -982,7 +983,7 @@ export default function Joe() {
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
             <div
               style={{
-                width: isNarrow ? '100%' : 280,
+                width: isNarrow ? '100%' : agentSidebarOpen ? 280 : 44,
                 flex: isNarrow ? `0 0 ${agentSessionsOpen ? '35%' : '44px'}` : '0 0 auto',
                 height: isNarrow && !agentSessionsOpen ? 44 : undefined,
                 minHeight: 0,
@@ -994,26 +995,53 @@ export default function Joe() {
                 flexDirection: 'column',
               }}
             >
-              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>جلسات الوكيل</div>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderBottom: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: isNarrow ? 'space-between' : agentSidebarOpen ? 'space-between' : 'center',
+                  gap: 8,
+                }}
+              >
+                {isNarrow || agentSidebarOpen ? (
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>جلسات الوكيل</div>
+                ) : null}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {isNarrow ? (
+                  <button
+                    onClick={() => {
+                      if (isNarrow) setAgentSessionsOpen((v) => !v);
+                      else setAgentSidebarOpen((v) => !v);
+                    }}
+                    style={{
+                      width: 30,
+                      height: 28,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 10,
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(255,255,255,0.03)',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                    }}
+                    title={isNarrow ? (agentSessionsOpen ? 'إخفاء' : 'إظهار') : agentSidebarOpen ? 'إخفاء' : 'إظهار'}
+                    aria-label={isNarrow ? (agentSessionsOpen ? 'إخفاء' : 'إظهار') : agentSidebarOpen ? 'إخفاء' : 'إظهار'}
+                  >
+                    {isNarrow ? (agentSessionsOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />) : agentSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+                  </button>
+                  {isNarrow || agentSidebarOpen ? (
                     <button
-                      onClick={() => setAgentSessionsOpen(v => !v)}
-                      style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                      onClick={() => setAgentSelected(null)}
+                      style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
                     >
-                      {agentSessionsOpen ? 'إخفاء' : 'إظهار'}
+                      جلسة جديدة
                     </button>
                   ) : null}
-                  <button
-                    onClick={() => setAgentSelected(null)}
-                    style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                  >
-                    جلسة جديدة
-                  </button>
                 </div>
               </div>
-              {(!isNarrow || agentSessionsOpen) ? (
+              {(isNarrow ? agentSessionsOpen : agentSidebarOpen) ? (
                 <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
                   {agentSessions.length === 0 ? (
                     <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 13 }}>لا توجد جلسات بعد</div>
