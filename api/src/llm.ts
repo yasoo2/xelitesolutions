@@ -31,12 +31,10 @@ const getActiveApiKey = () => dynamicApiKey || apiKey || 'dummy';
 const getActiveApiKeyStrict = () => dynamicApiKey || apiKey || '';
 
 const openai = new OpenAI({
-  apiKey: getActiveApiKey(), 
+  apiKey: getActiveApiKey(),
   baseURL: process.env.OPENAI_BASE_URL,
 });
 
-// Filter out noop tools to save tokens and confusion
-const activeTools = tools.filter(t => !t.name.startsWith('noop_'));
 
 const MAX_PROVIDER_TOOLS = 128;
 const PRIORITY_TOOL_NAMES: string[] = [
@@ -74,12 +72,12 @@ const PRIORITY_TOOL_NAMES: string[] = [
 ];
 
 function selectToolDefsForProvider(
-  all: typeof activeTools,
+  all: typeof tools,
   limit: number,
   messages: { role: 'user' | 'assistant' | 'system'; content: string | any[] }[]
 ) {
   const byName = new Map(all.map(t => [t.name, t] as const));
-  const selected: (typeof activeTools)[number][] = [];
+  const selected: typeof tools = [];
   const seen = new Set<string>();
 
   const routingTextRaw = messages
@@ -262,30 +260,30 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
 export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
-    if (!String(getActiveApiKeyStrict() || '').trim()) {
-        throw new Error('NO_API_KEY_CONFIGURED');
-    }
-    const msgs = [
-        { role: 'system', content: 'You are a helpful assistant.' },
-        ...context,
-        { role: 'user', content: prompt }
-    ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+  if (!String(getActiveApiKeyStrict() || '').trim()) {
+    throw new Error('NO_API_KEY_CONFIGURED');
+  }
+  const msgs = [
+    { role: 'system', content: 'You are a helpful assistant.' },
+    ...context,
+    { role: 'user', content: prompt }
+  ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
-    try {
-        const completion = await getOpenAIClient().chat.completions.create({
-            model: process.env.OPENAI_MODEL || 'gpt-4o',
-            messages: msgs,
-        });
-        return completion.choices[0]?.message?.content || '';
-    } catch (e: any) {
-        throw new Error(`LLM call failed: ${e.message}`);
-    }
+  try {
+    const completion = await getOpenAIClient().chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      messages: msgs,
+    });
+    return completion.choices[0]?.message?.content || '';
+  } catch (e: any) {
+    throw new Error(`LLM call failed: ${e.message}`);
+  }
 }
 
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
-) : Promise<{ name: string; input: any; thought?: string | null } | null> {
+): Promise<{ name: string; input: any; thought?: string | null } | null> {
   const providerKey = String(options?.provider || '').trim().toLowerCase();
   const optKey = String(options?.apiKey || '').trim();
   const envKey = String(process.env.OPENAI_API_KEY || '').trim();
@@ -313,341 +311,342 @@ export async function planNextStep(
   }
 
   if (shouldMock) {
-       console.info('[LLM] Using Mock Planner');
-      const lastMsg = messages[messages.length - 1];
-      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user') || lastMsg;
-      const rawText =
-        typeof lastUserMsg.content === 'string' ? lastUserMsg.content : JSON.stringify(lastUserMsg.content || '');
-      const content = rawText.toLowerCase();
-      
-      // Check history for actions
-      const historyTextRaw = messages
-        .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
-        .join('\n');
-      const historyStr = historyTextRaw.toLowerCase();
-      const extractLatestToolOutput = (toolName: string) => {
-        const marker = `tool call: ${toolName}`.toLowerCase();
-        const idx = historyStr.lastIndexOf(marker);
-        if (idx < 0) return null;
-        const tail = historyTextRaw.slice(idx);
-        const m = tail.match(/Output:\s*(.+)/i);
-        const raw = String(m?.[1] || '').trim();
-        if (!raw) return null;
-        try { return JSON.parse(raw); } catch { return raw; }
-      };
+    console.info('[LLM] Using Mock Planner');
+    const lastMsg = messages[messages.length - 1];
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user') || lastMsg;
+    const rawText =
+      typeof lastUserMsg.content === 'string' ? lastUserMsg.content : JSON.stringify(lastUserMsg.content || '');
+    const content = rawText.toLowerCase();
 
-      const wantsWeather = /(?:\bweather\b|forecast|temperature|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حراره|الحرارة|الجو|الأجواء|الاجواء)/i.test(rawText);
-      const wantsNow = /(?:\bnow\b|\bcurrent\b|الآن|الان|حاليا|حالياً)/i.test(rawText);
-      const wantsToday = /(?:\btoday\b|اليوم)/i.test(rawText);
-      const isArabicInput = /[\u0600-\u06FF]/.test(rawText);
-      const hasWebSearch =
-        historyStr.includes('tool call: web_search') ||
-        historyStr.includes(`tool 'web_search' executed`) ||
-        historyStr.includes('"name":"web_search"');
+    // Check history for actions
+    const historyTextRaw = messages
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
+      .join('\n');
+    const historyStr = historyTextRaw.toLowerCase();
+    const extractLatestToolOutput = (toolName: string) => {
+      const marker = `tool call: ${toolName}`.toLowerCase();
+      const idx = historyStr.lastIndexOf(marker);
+      if (idx < 0) return null;
+      const tail = historyTextRaw.slice(idx);
+      const m = tail.match(/Output:\s*(.+)/i);
+      const raw = String(m?.[1] || '').trim();
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch { return raw; }
+    };
 
-      if (wantsWeather) {
-        const city =
-          /(?:istanbul|إسطنبول|اسطنبول)/i.test(rawText)
-            ? 'Istanbul'
-            : (() => {
-                const m =
-                  rawText.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
-                  rawText.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس)/i);
-                return String(m?.[1] || 'Istanbul').trim();
-              })();
+    const wantsWeather = /(?:\bweather\b|forecast|temperature|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حراره|الحرارة|الجو|الأجواء|الاجواء)/i.test(rawText);
+    const wantsNow = /(?:\bnow\b|\bcurrent\b|الآن|الان|حاليا|حالياً)/i.test(rawText);
+    const wantsToday = /(?:\btoday\b|اليوم)/i.test(rawText);
+    const isArabicInput = /[\u0600-\u06FF]/.test(rawText);
+    const hasWebSearch =
+      historyStr.includes('tool call: web_search') ||
+      historyStr.includes(`tool 'web_search' executed`) ||
+      historyStr.includes('"name":"web_search"');
 
-        if (!hasWebSearch) {
-          const cityQuery =
-            /istanbul/i.test(city) ? (isArabicInput ? 'إسطنبول' : 'Istanbul') : city;
-          const q = isArabicInput
-            ? `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${cityQuery}`
-            : `${wantsNow ? 'current temperature' : 'current weather'} ${cityQuery} ${wantsNow ? 'now' : wantsToday ? 'today' : 'today'}`;
-          return { name: 'web_search', input: { query: q } };
-        }
+    if (wantsWeather) {
+      const city =
+        /(?:istanbul|إسطنبول|اسطنبول)/i.test(rawText)
+          ? 'Istanbul'
+          : (() => {
+            const m =
+              rawText.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
+              rawText.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس)/i);
+            return String(m?.[1] || 'Istanbul').trim();
+          })();
 
-        const out: any = extractLatestToolOutput('web_search');
-        const results = Array.isArray(out?.results) ? out.results : [];
-        const top = results[0];
-        if (top?.description && top?.url) {
-          const desc = String(top.description).replace(/^\s*\*\*ANSWER\*\*:\s*/i, '').trim();
-          return {
-            name: 'echo',
-            input: {
-              text: `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${/istanbul/i.test(city) ? 'إسطنبول' : city} بحسب ${String(top.title || 'المصدر')}:\n${desc}\nالمصدر: ${String(top.url)}`
-            }
-          };
-        }
-        if (top?.url) {
-          return {
-            name: 'echo',
-            input: {
-              text: `لم أستطع استخراج تفاصيل دقيقة من النتائج، لكن هذه أفضل نتيجة متاحة الآن:\n${String(top.title || '')}\n${String(top.url)}`
-            }
-          };
-        }
-        return { name: 'echo', input: { text: 'تعذّر الحصول على نتائج طقس حالياً.' } };
-      }
-      const hasOpened =
-        historyStr.includes('tool call: browser_open') ||
-        historyStr.includes(`tool 'browser_open' executed`) ||
-        historyStr.includes('tool call: browser_run') ||
-        historyStr.includes(`tool 'browser_run' executed`) ||
-        historyStr.includes('"name":"browser_open"') ||
-        historyStr.includes('"name":"browser_run"');
-      const hasClicked =
-        (historyStr.includes('tool call: browser_run') || historyStr.includes(`tool 'browser_run' executed`) || historyStr.includes('"name":"browser_run"')) &&
-        historyStr.includes('click');
-      const hasAnalyzed =
-        historyStr.includes('tool call: browser_get_state') ||
-        historyStr.includes(`tool 'browser_get_state' executed`) ||
-        historyStr.includes('"name":"browser_get_state"');
-      const sessionIdMatch =
-        historyTextRaw.match(/"sessionId"\s*:\s*"([^"]+)"/) ||
-        historyTextRaw.match(/\bsessionId\b\s*[:=]\s*["']([^"']+)["']/i);
-      const sessionId = sessionIdMatch?.[1];
-
-      const extractUrlCandidate = (s: string) => {
-        const http = s.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
-        if (http) return http;
-        const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
-        const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
-        if (!candidate) return undefined;
-        const isLocal =
-          /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-          /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-          /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-        return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
-      };
-      let url = extractUrlCandidate(rawText);
-
-      const extractQuoted = (s: string) => {
-        const m = s.match(/["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/);
-        return m?.[1];
-      };
-
-      const writeEn =
-        rawText.match(/write\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i) ||
-        rawText.match(/create\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i);
-      const writeAr =
-        rawText.match(/(?:اكتب|انشئ|أنشئ|سوي|سوِّ|قم\s+بإنشاء)\s+(?:ملف|فايل)\s*(?:باسم|اسم)\s+([^\s"'`]+)(?:\s+(?:بمحتوى|محتوى)\s+(.+))?/i);
-      const write = writeEn || writeAr;
-      if (write) {
-        const filename = String(write[1] || 'verify.txt').trim();
-        const tail = String(write[2] || '').trim();
-        const quoted = tail ? extractQuoted(tail) : undefined;
-        const contentValue = String(quoted || tail || 'verified');
-        return { name: 'file_write', input: { filename, content: contentValue } };
+      if (!hasWebSearch) {
+        const cityQuery =
+          /istanbul/i.test(city) ? (isArabicInput ? 'إسطنبول' : 'Istanbul') : city;
+        const q = isArabicInput
+          ? `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${cityQuery}`
+          : `${wantsNow ? 'current temperature' : 'current weather'} ${cityQuery} ${wantsNow ? 'now' : wantsToday ? 'today' : 'today'}`;
+        return { name: 'web_search', input: { query: q } };
       }
 
-      const readEn = rawText.match(/read\s+(?:the\s+)?file\s+([^\s"'`]+)/i);
-      const readAr = rawText.match(/(?:اقرأ|اقراء|اعرض|افتح)\s+(?:ملف|فايل)\s+([^\s"'`]+)/i);
-      const read = readEn || readAr;
-      if (read) {
-        const filename = String(read[1] || '').trim();
-        if (filename) return { name: 'file_read', input: { filename } };
-      }
-
-      const saveAs =
-        rawText.match(/save\s+(?:it\s+)?as\s+["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i) ||
-        rawText.match(/(?:احفظ|حفظ|قم\s+بحفظ)(?:ه|ها|هذا)?\s*(?:باسم|اسم)\s*["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i);
-      if (saveAs) {
-        const filename = String(saveAs[1] || '').trim();
-        if (filename) {
-          const wantsHtml =
-            /\.html?$/i.test(filename) ||
-            /single-file\s+html|landing\s+page|<html/i.test(rawText);
-          const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
-          const full = path.isAbsolute(filename) ? filename : path.join(artifactDir, filename);
-          if (wantsHtml) {
-            const html = [
-              '<!doctype html>',
-              '<html lang="en">',
-              '<head>',
-              '  <meta charset="utf-8" />',
-              '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-              '  <title>Xelite Coffee</title>',
-              '  <style>',
-              '    :root {',
-              '      --bg: #0b0e14;',
-              '      --panel: #121827;',
-              '      --text: #e6e9ef;',
-              '      --muted: #aab3c5;',
-              '      --accent: #7c5cff;',
-              '      --accent2: #20c997;',
-              '      --border: rgba(255,255,255,0.10);',
-              '      --shadow: 0 20px 60px rgba(0,0,0,0.45);',
-              '    }',
-              '    * { box-sizing: border-box; }',
-              '    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, Noto Sans, sans-serif; background: radial-gradient(1000px 600px at 20% -10%, rgba(124,92,255,0.35), transparent 60%), radial-gradient(900px 600px at 100% 0%, rgba(32,201,151,0.18), transparent 55%), var(--bg); color: var(--text); }',
-              '    a { color: inherit; }',
-              '    .container { max-width: 1100px; margin: 0 auto; padding: 28px 18px 56px; }',
-              '    .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border: 1px solid var(--border); background: rgba(18,24,39,0.6); backdrop-filter: blur(10px); border-radius: 16px; }',
-              '    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; }',
-              '    .dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 0 6px rgba(124,92,255,0.12); }',
-              '    .nav a { text-decoration: none; padding: 10px 12px; border-radius: 12px; color: var(--muted); }',
-              '    .nav a:hover { background: rgba(255,255,255,0.06); color: var(--text); }',
-              '    .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; margin-top: 18px; }',
-              '    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }',
-              '    .card { border: 1px solid var(--border); background: rgba(18,24,39,0.62); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); }',
-              '    .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 13px; }',
-              '    h1 { margin: 14px 0 8px; font-size: clamp(34px, 4.3vw, 54px); line-height: 1.06; letter-spacing: -0.6px; }',
-              '    .subtitle { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 62ch; }',
-              '    .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }',
-              '    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); text-decoration: none; font-weight: 600; }',
-              '    .btn.primary { background: linear-gradient(135deg, rgba(124,92,255,0.95), rgba(32,201,151,0.75)); border-color: rgba(255,255,255,0.14); }',
-              '    .btn:hover { filter: brightness(1.05); }',
-              '    .panel { display: grid; gap: 12px; }',
-              '    .stat { border: 1px solid var(--border); background: rgba(11,14,20,0.35); border-radius: 18px; padding: 14px; }',
-              '    .stat b { display: block; font-size: 14px; }',
-              '    .stat span { color: var(--muted); font-size: 13px; }',
-              '    .features { margin-top: 18px; }',
-              '    .features h2 { margin: 0 0 10px; font-size: 20px; }',
-              '    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }',
-              '    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }',
-              '    .feature { border: 1px solid var(--border); background: rgba(11,14,20,0.32); border-radius: 18px; padding: 16px; }',
-              '    .feature h3 { margin: 0 0 6px; font-size: 15px; }',
-              '    .feature p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }',
-              '    footer { margin-top: 18px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }',
-              '    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace; }',
-              '  </style>',
-              '</head>',
-              '<body>',
-              '  <div class="container">',
-              '    <div class="nav">',
-              '      <div class="brand"><span class="dot"></span><span>Xelite Coffee</span></div>',
-              '      <div style="display:flex; gap:6px; flex-wrap:wrap;">',
-              '        <a href="#features">Features</a>',
-              '        <a href="#menu">Menu</a>',
-              '        <a href="#visit">Visit</a>',
-              '      </div>',
-              '    </div>',
-              '',
-              '    <section class="hero">',
-              '      <div class="card">',
-              '        <div class="kicker"><span class="mono">☕</span><span>Dark roast. Bright ideas.</span></div>',
-              '        <h1>Code &amp; Caffeine</h1>',
-              '        <p class="subtitle">A modern coffee experience designed for builders. Rich espresso, calm ambience, fast Wi‑Fi, and a space that respects focus.</p>',
-              '        <div class="cta">',
-              '          <a class="btn primary" href="#visit">Get your first cup</a>',
-              '          <a class="btn" href="#features">Explore features</a>',
-              '        </div>',
-              '      </div>',
-              '      <div class="card panel">',
-              '        <div class="stat"><b>Signature</b><span>Espresso + oat + cocoa, perfectly balanced.</span></div>',
-              '        <div class="stat"><b>Speed</b><span>Order ahead and pick up in under 2 minutes.</span></div>',
-              '        <div class="stat"><b>Vibe</b><span>Low-noise seating, warm lighting, and power at every table.</span></div>',
-              '      </div>',
-              '    </section>',
-              '',
-              '    <section id="features" class="features card">',
-              '      <h2>Features</h2>',
-              '      <div class="grid">',
-              '        <div class="feature"><h3>Developer-Friendly</h3><p>Comfortable seating, outlets everywhere, and a layout built for deep work.</p></div>',
-              '        <div class="feature"><h3>Quality Beans</h3><p>Small-batch roasts with consistent flavor—every cup is crafted, not rushed.</p></div>',
-              '        <div class="feature"><h3>Fast Service</h3><p>Clean, efficient workflows so you get coffee quickly and keep momentum.</p></div>',
-              '      </div>',
-              '    </section>',
-              '',
-              '    <footer class="card" id="visit">',
-              '      <div>© <span id="y"></span> Xelite Coffee. All rights reserved.</div>',
-              '      <div class="mono">Open daily • 7:00–22:00 • Downtown</div>',
-              '    </footer>',
-              '  </div>',
-              '  <script>document.getElementById(\"y\").textContent=String(new Date().getFullYear());</script>',
-              '</body>',
-              '</html>',
-              '',
-            ].join('\\n');
-            return { name: 'file_write', input: { filename: full, content: html } };
-          }
-        }
-      }
-
-      const wantsLs =
-        /(?:list|show)\s+files/i.test(rawText) ||
-        /(?:ls\b)/i.test(rawText) ||
-        /(?:اعرض|اظهر|أظهر)\s+(?:ال)?ملفات/i.test(rawText) ||
-        /قائمة\s+الملفات/i.test(rawText);
-      if (wantsLs) return { name: 'ls', input: { path: '.' } };
-      const wantsOpen =
-        /\bopen\b/i.test(rawText) ||
-        /افتح|افتحي|افتحوا|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|افتح المتصفح|افتح الموقع|واجهة الوكيل/i.test(
-          rawText,
-        );
-
-      const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes('youtube.com');
-      const wantsSearch =
-        /ابحث|بحث|search/i.test(rawText) ||
-        /ضيعة\s+ضايعة/i.test(rawText) ||
-        /شغل|شغّل|تشغيل|play/i.test(rawText);
-
-      if (wantsYouTube && wantsSearch) {
-        const qMatch =
-          rawText.match(/ابحث(?:\s+عن)?\s+(.+?)(?:\s+(?:وشغل|وشغّل|وشغل|شغل|تشغيل)|$)/i) ||
-          rawText.match(/search\s+for\s+(.+?)(?:\s+and\s+play|$)/i);
-        const query = String(qMatch?.[1] || 'ضيعة ضايعة').trim() || 'ضيعة ضايعة';
-        return { name: 'echo', input: { text: `ميزة التصفح القديمة أزيلت. سأحتاج تشغيل نظام المتصفح الجديد لتنفيذ: ${query}` } };
-      }
-
-      if (wantsOpen) {
-        const explicitBrowser = /(\b(browser|web)\b|متصفح)/i.test(rawText);
-        const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(rawText);
-        const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(rawText);
-        if (githubKeyword && analysisKeyword && !explicitBrowser && !url) {
-          return {
-            name: 'echo',
-            input: { text: 'سأقوم بتحليل الكود محلياً دون فتح المتصفح.' },
-          };
-        }
-        if (!url) {
-          if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
-        }
-        
+      const out: any = extractLatestToolOutput('web_search');
+      const results = Array.isArray(out?.results) ? out.results : [];
+      const top = results[0];
+      if (top?.description && top?.url) {
+        const desc = String(top.description).replace(/^\s*\*\*ANSWER\*\*:\s*/i, '').trim();
         return {
           name: 'echo',
-          input: { text: 'ميزة التصفح القديمة أزيلت. استخدم واجهة المتصفح الجديدة لتنفيذ خطوات داخل موقع.' },
+          input: {
+            text: `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${/istanbul/i.test(city) ? 'إسطنبول' : city} بحسب ${String(top.title || 'المصدر')}:\n${desc}\nالمصدر: ${String(top.url)}`
+          }
         };
       }
-
-      // Simple Heuristics for the GitHub Test
-      if (historyStr.includes('github.com') && historyStr.includes('open') && !historyStr.includes('package.json')) {
-          return {
-              name: 'echo',
-              input: { text: 'سأحلل ملفات المشروع محلياً بدون استخدام المتصفح.' }
-          };
-      }
-      if (historyStr.includes('package.json')) {
-           return {
-               name: 'echo',
-               input: { text: 'سأقرأ package.json من ملفات المشروع مباشرة.' }
-           };
-      }
-      
-      // Yahoo flow (Mock)
-      if (content.includes('yahoo') || historyStr.includes('yahoo')) {
-          const hasYahooExtract =
-            (historyStr.includes('tool call: html_extract') || historyStr.includes(`tool 'html_extract' executed`) || historyStr.includes('"name":"html_extract"')) &&
-            historyStr.includes('yahoo.com');
-          if (!hasYahooExtract) {
-              return {
-                  name: 'html_extract',
-                  input: { url: 'https://www.yahoo.com' }
-              };
-          }
-          return {
-              name: 'echo',
-              input: { text: "Yahoo analyzed." }
-          };
-      }
-      
-      // Default fallback
-      return {
+      if (top?.url) {
+        return {
           name: 'echo',
-          input: { text: "I'm running in MOCK mode. I saw: " + content }
+          input: {
+            text: `لم أستطع استخراج تفاصيل دقيقة من النتائج، لكن هذه أفضل نتيجة متاحة الآن:\n${String(top.title || '')}\n${String(top.url)}`
+          }
+        };
+      }
+      return { name: 'echo', input: { text: 'تعذّر الحصول على نتائج طقس حالياً.' } };
+    }
+    const hasOpened =
+      historyStr.includes('tool call: browser_open') ||
+      historyStr.includes(`tool 'browser_open' executed`) ||
+      historyStr.includes('tool call: browser_run') ||
+      historyStr.includes(`tool 'browser_run' executed`) ||
+      historyStr.includes('"name":"browser_open"') ||
+      historyStr.includes('"name":"browser_run"');
+    const hasClicked =
+      (historyStr.includes('tool call: browser_run') || historyStr.includes(`tool 'browser_run' executed`) || historyStr.includes('"name":"browser_run"')) &&
+      historyStr.includes('click');
+    const hasAnalyzed =
+      historyStr.includes('tool call: browser_get_state') ||
+      historyStr.includes(`tool 'browser_get_state' executed`) ||
+      historyStr.includes('"name":"browser_get_state"');
+    const sessionIdMatch =
+      historyTextRaw.match(/"sessionId"\s*:\s*"([^"]+)"/) ||
+      historyTextRaw.match(/\bsessionId\b\s*[:=]\s*["']([^"']+)["']/i);
+    const sessionId = sessionIdMatch?.[1];
+
+    const extractUrlCandidate = (s: string) => {
+      const http = s.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
+      if (http) return http;
+      const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+      const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+      if (!candidate) return undefined;
+      const isLocal =
+        /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+        /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+        /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+      return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+    };
+    let url = extractUrlCandidate(rawText);
+
+    const extractQuoted = (s: string) => {
+      const m = s.match(/["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/);
+      return m?.[1];
+    };
+
+    const writeEn =
+      rawText.match(/write\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i) ||
+      rawText.match(/create\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i);
+    const writeAr =
+      rawText.match(/(?:اكتب|انشئ|أنشئ|سوي|سوِّ|قم\s+بإنشاء)\s+(?:ملف|فايل)\s*(?:باسم|اسم)\s+([^\s"'`]+)(?:\s+(?:بمحتوى|محتوى)\s+(.+))?/i);
+    const write = writeEn || writeAr;
+    if (write) {
+      const filename = String(write[1] || 'verify.txt').trim();
+      const tail = String(write[2] || '').trim();
+      const quoted = tail ? extractQuoted(tail) : undefined;
+      const contentValue = String(quoted || tail || 'verified');
+      return { name: 'file_write', input: { filename, content: contentValue } };
+    }
+
+    const readEn = rawText.match(/read\s+(?:the\s+)?file\s+([^\s"'`]+)/i);
+    const readAr = rawText.match(/(?:اقرأ|اقراء|اعرض|افتح)\s+(?:ملف|فايل)\s+([^\s"'`]+)/i);
+    const read = readEn || readAr;
+    if (read) {
+      const filename = String(read[1] || '').trim();
+      if (filename) return { name: 'file_read', input: { filename } };
+    }
+
+    const saveAs =
+      rawText.match(/save\s+(?:it\s+)?as\s+["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i) ||
+      rawText.match(/(?:احفظ|حفظ|قم\s+بحفظ)(?:ه|ها|هذا)?\s*(?:باسم|اسم)\s*["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i);
+    if (saveAs) {
+      const filename = String(saveAs[1] || '').trim();
+      if (filename) {
+        const wantsHtml =
+          /\.html?$/i.test(filename) ||
+          /single-file\s+html|landing\s+page|<html/i.test(rawText);
+        const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+        const full = path.isAbsolute(filename) ? filename : path.join(artifactDir, filename);
+        if (wantsHtml) {
+          const html = [
+            '<!doctype html>',
+            '<html lang="en">',
+            '<head>',
+            '  <meta charset="utf-8" />',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            '  <title>Xelite Coffee</title>',
+            '  <style>',
+            '    :root {',
+            '      --bg: #0b0e14;',
+            '      --panel: #121827;',
+            '      --text: #e6e9ef;',
+            '      --muted: #aab3c5;',
+            '      --accent: #7c5cff;',
+            '      --accent2: #20c997;',
+            '      --border: rgba(255,255,255,0.10);',
+            '      --shadow: 0 20px 60px rgba(0,0,0,0.45);',
+            '    }',
+            '    * { box-sizing: border-box; }',
+            '    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, Noto Sans, sans-serif; background: radial-gradient(1000px 600px at 20% -10%, rgba(124,92,255,0.35), transparent 60%), radial-gradient(900px 600px at 100% 0%, rgba(32,201,151,0.18), transparent 55%), var(--bg); color: var(--text); }',
+            '    a { color: inherit; }',
+            '    .container { max-width: 1100px; margin: 0 auto; padding: 28px 18px 56px; }',
+            '    .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border: 1px solid var(--border); background: rgba(18,24,39,0.6); backdrop-filter: blur(10px); border-radius: 16px; }',
+            '    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; }',
+            '    .dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 0 6px rgba(124,92,255,0.12); }',
+            '    .nav a { text-decoration: none; padding: 10px 12px; border-radius: 12px; color: var(--muted); }',
+            '    .nav a:hover { background: rgba(255,255,255,0.06); color: var(--text); }',
+            '    .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; margin-top: 18px; }',
+            '    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }',
+            '    .card { border: 1px solid var(--border); background: rgba(18,24,39,0.62); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); }',
+            '    .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 13px; }',
+            '    h1 { margin: 14px 0 8px; font-size: clamp(34px, 4.3vw, 54px); line-height: 1.06; letter-spacing: -0.6px; }',
+            '    .subtitle { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 62ch; }',
+            '    .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }',
+            '    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); text-decoration: none; font-weight: 600; }',
+            '    .btn.primary { background: linear-gradient(135deg, rgba(124,92,255,0.95), rgba(32,201,151,0.75)); border-color: rgba(255,255,255,0.14); }',
+            '    .btn:hover { filter: brightness(1.05); }',
+            '    .panel { display: grid; gap: 12px; }',
+            '    .stat { border: 1px solid var(--border); background: rgba(11,14,20,0.35); border-radius: 18px; padding: 14px; }',
+            '    .stat b { display: block; font-size: 14px; }',
+            '    .stat span { color: var(--muted); font-size: 13px; }',
+            '    .features { margin-top: 18px; }',
+            '    .features h2 { margin: 0 0 10px; font-size: 20px; }',
+            '    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }',
+            '    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }',
+            '    .feature { border: 1px solid var(--border); background: rgba(11,14,20,0.32); border-radius: 18px; padding: 16px; }',
+            '    .feature h3 { margin: 0 0 6px; font-size: 15px; }',
+            '    .feature p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }',
+            '    footer { margin-top: 18px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }',
+            '    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace; }',
+            '  </style>',
+            '</head>',
+            '<body>',
+            '  <div class="container">',
+            '    <div class="nav">',
+            '      <div class="brand"><span class="dot"></span><span>Xelite Coffee</span></div>',
+            '      <div style="display:flex; gap:6px; flex-wrap:wrap;">',
+            '        <a href="#features">Features</a>',
+            '        <a href="#menu">Menu</a>',
+            '        <a href="#visit">Visit</a>',
+            '      </div>',
+            '    </div>',
+            '',
+            '    <section class="hero">',
+            '      <div class="card">',
+            '        <div class="kicker"><span class="mono">☕</span><span>Dark roast. Bright ideas.</span></div>',
+            '        <h1>Code &amp; Caffeine</h1>',
+            '        <p class="subtitle">A modern coffee experience designed for builders. Rich espresso, calm ambience, fast Wi‑Fi, and a space that respects focus.</p>',
+            '        <div class="cta">',
+            '          <a class="btn primary" href="#visit">Get your first cup</a>',
+            '          <a class="btn" href="#features">Explore features</a>',
+            '        </div>',
+            '      </div>',
+            '      <div class="card panel">',
+            '        <div class="stat"><b>Signature</b><span>Espresso + oat + cocoa, perfectly balanced.</span></div>',
+            '        <div class="stat"><b>Speed</b><span>Order ahead and pick up in under 2 minutes.</span></div>',
+            '        <div class="stat"><b>Vibe</b><span>Low-noise seating, warm lighting, and power at every table.</span></div>',
+            '      </div>',
+            '    </section>',
+            '',
+            '    <section id="features" class="features card">',
+            '      <h2>Features</h2>',
+            '      <div class="grid">',
+            '        <div class="feature"><h3>Developer-Friendly</h3><p>Comfortable seating, outlets everywhere, and a layout built for deep work.</p></div>',
+            '        <div class="feature"><h3>Quality Beans</h3><p>Small-batch roasts with consistent flavor—every cup is crafted, not rushed.</p></div>',
+            '        <div class="feature"><h3>Fast Service</h3><p>Clean, efficient workflows so you get coffee quickly and keep momentum.</p></div>',
+            '      </div>',
+            '    </section>',
+            '',
+            '    <footer class="card" id="visit">',
+            '      <div>© <span id="y"></span> Xelite Coffee. All rights reserved.</div>',
+            '      <div class="mono">Open daily • 7:00–22:00 • Downtown</div>',
+            '    </footer>',
+            '  </div>',
+            '  <script>document.getElementById(\"y\").textContent=String(new Date().getFullYear());</script>',
+            '</body>',
+            '</html>',
+            '',
+          ].join('\\n');
+          return { name: 'file_write', input: { filename: full, content: html } };
+        }
+      }
+    }
+
+    const wantsLs =
+      /(?:list|show)\s+files/i.test(rawText) ||
+      /(?:ls\b)/i.test(rawText) ||
+      /(?:اعرض|اظهر|أظهر)\s+(?:ال)?ملفات/i.test(rawText) ||
+      /قائمة\s+الملفات/i.test(rawText);
+    if (wantsLs) return { name: 'ls', input: { path: '.' } };
+    const wantsOpen =
+      /\bopen\b/i.test(rawText) ||
+      /افتح|افتحي|افتحوا|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|افتح المتصفح|افتح الموقع|واجهة الوكيل/i.test(
+        rawText,
+      );
+
+    const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes('youtube.com');
+    const wantsSearch =
+      /ابحث|بحث|search/i.test(rawText) ||
+      /ضيعة\s+ضايعة/i.test(rawText) ||
+      /شغل|شغّل|تشغيل|play/i.test(rawText);
+
+    if (wantsYouTube && wantsSearch) {
+      const qMatch =
+        rawText.match(/ابحث(?:\s+عن)?\s+(.+?)(?:\s+(?:وشغل|وشغّل|وشغل|شغل|تشغيل)|$)/i) ||
+        rawText.match(/search\s+for\s+(.+?)(?:\s+and\s+play|$)/i);
+      const query = String(qMatch?.[1] || 'ضيعة ضايعة').trim() || 'ضيعة ضايعة';
+      return { name: 'echo', input: { text: `ميزة التصفح القديمة أزيلت. سأحتاج تشغيل نظام المتصفح الجديد لتنفيذ: ${query}` } };
+    }
+
+    if (wantsOpen) {
+      const explicitBrowser = /(\b(browser|web)\b|متصفح)/i.test(rawText);
+      const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(rawText);
+      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(rawText);
+      if (githubKeyword && analysisKeyword && !explicitBrowser && !url) {
+        return {
+          name: 'echo',
+          input: { text: 'سأقوم بتحليل الكود محلياً دون فتح المتصفح.' },
+        };
+      }
+      if (!url) {
+        if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
+      }
+
+      return {
+        name: 'echo',
+        input: { text: 'ميزة التصفح القديمة أزيلت. استخدم واجهة المتصفح الجديدة لتنفيذ خطوات داخل موقع.' },
       };
+    }
+
+    // Simple Heuristics for the GitHub Test
+    if (historyStr.includes('github.com') && historyStr.includes('open') && !historyStr.includes('package.json')) {
+      return {
+        name: 'echo',
+        input: { text: 'سأحلل ملفات المشروع محلياً بدون استخدام المتصفح.' }
+      };
+    }
+    if (historyStr.includes('package.json')) {
+      return {
+        name: 'echo',
+        input: { text: 'سأقرأ package.json من ملفات المشروع مباشرة.' }
+      };
+    }
+
+    // Yahoo flow (Mock)
+    if (content.includes('yahoo') || historyStr.includes('yahoo')) {
+      const hasYahooExtract =
+        (historyStr.includes('tool call: html_extract') || historyStr.includes(`tool 'html_extract' executed`) || historyStr.includes('"name":"html_extract"')) &&
+        historyStr.includes('yahoo.com');
+      if (!hasYahooExtract) {
+        return {
+          name: 'html_extract',
+          input: { url: 'https://www.yahoo.com' }
+        };
+      }
+      return {
+        name: 'echo',
+        input: { text: "Yahoo analyzed." }
+      };
+    }
+
+    // Default fallback
+    return {
+      name: 'echo',
+      input: { text: "I'm running in MOCK mode. I saw: " + content }
+    };
   }
 
   // 1. Prepare tools for OpenAI
+  const activeTools = tools.filter(t => !t.name.startsWith('noop_'));
   const selectedToolDefs = selectToolDefsForProvider(activeTools, MAX_PROVIDER_TOOLS, messages);
   const aiTools: OpenAI.Chat.Completions.ChatCompletionTool[] = selectedToolDefs.map(t => ({
     type: 'function',
@@ -660,9 +659,9 @@ export async function planNextStep(
 
   // 2. Add a system prompt if not present
   let msgs = [
-    { 
-      role: 'system', 
-      content: getSystemPrompt() 
+    {
+      role: 'system',
+      content: getSystemPrompt()
     },
     ...messages
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
@@ -671,69 +670,69 @@ export async function planNextStep(
   // Estimate total characters to prevent 429 Rate Limit errors (approx 4 chars/token).
   // If we exceed ~80,000 chars (approx 20k tokens), we must truncate older messages.
   const CHAR_LIMIT = 80000;
-  
+
   // Strategy 0: Aggressively prune OLD tool outputs (keep only the last 2 tool outputs full)
   // This is critical for "Chat" speed where old file reads are irrelevant.
   const toolOutputIndices: number[] = [];
   msgs.forEach((m, idx) => {
-      // In OpenAI format, tool output has role 'tool'
-      if (m.role === 'tool' || (m.role === 'function' as any)) {
-          toolOutputIndices.push(idx);
-      }
+    // In OpenAI format, tool output has role 'tool'
+    if (m.role === 'tool' || (m.role === 'function' as any)) {
+      toolOutputIndices.push(idx);
+    }
   });
 
   // Keep the last 3 tool outputs intact, truncate older ones
   const KEEP_TOOL_OUTPUTS = 3;
   if (toolOutputIndices.length > KEEP_TOOL_OUTPUTS) {
-      const indicesToTruncate = toolOutputIndices.slice(0, toolOutputIndices.length - KEEP_TOOL_OUTPUTS);
-      const truncateSet = new Set(indicesToTruncate);
-      
-      msgs = msgs.map((m, idx) => {
-          if (truncateSet.has(idx)) {
-               return { 
-                   ...m, 
-                   content: '(Tool output suppressed to save context)' 
-               };
-          }
-          return m;
-      });
+    const indicesToTruncate = toolOutputIndices.slice(0, toolOutputIndices.length - KEEP_TOOL_OUTPUTS);
+    const truncateSet = new Set(indicesToTruncate);
+
+    msgs = msgs.map((m, idx) => {
+      if (truncateSet.has(idx)) {
+        return {
+          ...m,
+          content: '(Tool output suppressed to save context)'
+        };
+      }
+      return m;
+    });
   }
 
   let currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
 
   if (currentChars > CHAR_LIMIT) {
-     console.warn(`[LLM] Context too large (${currentChars} chars). Truncating history...`);
-     
-     // Strategy 1: Truncate very long individual messages (likely tool outputs)
-     msgs = msgs.map(m => {
-       if (m.role === 'system') return m; // Keep system prompt intact
-       
-       let content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-       const MAX_MSG_LEN = 60000;
-       if (content.length > MAX_MSG_LEN) {
-          // Keep start and end to preserve some context
-          content = content.slice(0, 25000) + `\n\n...[Content Truncated (${content.length - MAX_MSG_LEN} chars removed) to save tokens]...\n\n` + content.slice(-25000);
-       }
-       return { ...m, content };
-     });
+    console.warn(`[LLM] Context too large (${currentChars} chars). Truncating history...`);
 
-     // Recalculate
-     currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
+    // Strategy 1: Truncate very long individual messages (likely tool outputs)
+    msgs = msgs.map(m => {
+      if (m.role === 'system') return m; // Keep system prompt intact
 
-     // Strategy 2: If still too large, remove middle messages (sliding window)
-     if (currentChars > CHAR_LIMIT) {
-       const keepCount = 6; // Keep first system + last 5 messages
-       if (msgs.length > keepCount) {
-         const removedCount = msgs.length - keepCount;
-         const system = msgs[0];
-         const recent = msgs.slice(-5);
-         msgs = [
-           system,
-           { role: 'system', content: `(System Note: ${removedCount} previous messages were removed from context to fit within token limits.)` },
-           ...recent
-         ];
-       }
-     }
+      let content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      const MAX_MSG_LEN = 60000;
+      if (content.length > MAX_MSG_LEN) {
+        // Keep start and end to preserve some context
+        content = content.slice(0, 25000) + `\n\n...[Content Truncated (${content.length - MAX_MSG_LEN} chars removed) to save tokens]...\n\n` + content.slice(-25000);
+      }
+      return { ...m, content };
+    });
+
+    // Recalculate
+    currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
+
+    // Strategy 2: If still too large, remove middle messages (sliding window)
+    if (currentChars > CHAR_LIMIT) {
+      const keepCount = 6; // Keep first system + last 5 messages
+      if (msgs.length > keepCount) {
+        const removedCount = msgs.length - keepCount;
+        const system = msgs[0];
+        const recent = msgs.slice(-5);
+        msgs = [
+          system,
+          { role: 'system', content: `(System Note: ${removedCount} previous messages were removed from context to fit within token limits.)` },
+          ...recent
+        ];
+      }
+    }
   }
 
   try {
@@ -741,7 +740,7 @@ export async function planNextStep(
       model: options?.model || process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
       tools: aiTools,
-      tool_choice: 'auto', 
+      tool_choice: 'auto',
     });
 
     const choice = completion.choices[0];
@@ -781,7 +780,7 @@ export async function planNextStep(
 
 export async function generateSessionTitle(messages: { role: string; content: string }[]) {
   if (!messages || messages.length === 0) return 'New Session';
-  
+
   const msgs = [
     {
       role: 'system',
@@ -812,7 +811,7 @@ function getOpenAIClient() {
 
 export async function generateSummary(messages: { role: string; content: string }[]) {
   if (!messages || messages.length === 0) return 'No content to summarize.';
-  
+
   const msgs = [
     {
       role: 'system',
