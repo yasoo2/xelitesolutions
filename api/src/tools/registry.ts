@@ -13,6 +13,11 @@ import { Readability } from '@mozilla/readability';
 import { getBrowserSession, screenshotSessionJpeg, startStreaming, touchSession } from '../browser/manager';
 import { executePlannedActions } from '../browser/executor';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
+import { MemoryTool } from './definitions/MemoryTool';
+import { ArchitectTool } from './definitions/ArchitectTool';
+import { VisualQATool } from './definitions/VisualQATool';
+import { GenesisToolDef } from './definitions/GenesisTool';
+import { GenesisAgent } from '../agents/GenesisAgent';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -533,6 +538,145 @@ export const tools: ToolDefinition[] = [
   },
   // Use the modern class-based tool
   browserRunTool,
+  MemoryTool,
+  ArchitectTool,
+  VisualQATool,
+  {
+    ...GenesisToolDef,
+    permissions: GenesisToolDef.permissions as any,
+    sideEffects: GenesisToolDef.sideEffects as any,
+    execute: async (input) => {
+      const logs: string[] = [];
+      const goal = input.goal;
+      logs.push(`🌌 Genesis Activated: "${goal}"`);
+
+      try {
+        // 1. Summon Genesis Agent to Plan & Convert
+        const genesis = new GenesisAgent();
+        const { plan, steps } = await genesis.orchestrate(goal);
+
+        logs.push(`📜 Plan Generated (${plan.length} chars)`);
+        logs.push(`🔨 Steps Derived: ${steps.length}`);
+        logs.push(...steps.map((s, i) => `   ${i + 1}. ${s.name} (${s.tool})`));
+
+        // 2. Execute via TaskLoop (re-using the logic or tool)
+        // We find the task_loop tool in the *current* array? 
+        // No, 'tools' is const being defined right now, so we can't reference it easily without access to 'tools'.
+        // But we have access to 'executeTool' in the closure scope of this file (at top level? No, executeTool is defined below or imported?)
+        // Wait, executeTool is defined in this file?
+        // Let's check registry.ts context. 'executeTool' is typically exported or available.
+        // If not, we can reference the 'task_loop' definition if we extract it.
+        // Or simpler: We just call `executeTool` directly if it's available in scope.
+        // Looking at previous 'TaskLoop' implementation, I used `executeTool` inside it.
+        // So `executeTool` MUST be available in the scope of the `execute` function if I defined it inside `registry.ts`.
+        // However, `executeTool` is usually defined *after* the tools array or imported.
+        // If it's imported from '../tools/executor' or similar, we are good.
+        // If it's defined *in* registry.ts, we might have a hoisting issue if 'tools' depends on it.
+        // Let's assume `executeTool` is available via import or hoist.
+        // Correction: In `TaskLoop`, I used `executeTool`. If that compiled/ran (in verification), then `executeTool` is available.
+        // So I can use it here too.
+
+        // However, I want to use `task_loop` tool itself to handle the loop logic (retries, etc).
+        // I can call `executeTool('task_loop', { goal, steps })`.
+
+        logs.push(`🚀 Handing off to TaskLoop...`);
+        const loopResult = await executeTool('task_loop', {
+          goal: `Genesis Execution: ${goal}`,
+          steps: steps,
+          maxIterations: 50
+        });
+
+        return {
+          ok: loopResult.ok,
+          output: {
+            plan,
+            execution: loopResult.output
+          },
+          logs: [...logs, ...(loopResult.logs || [])]
+        };
+
+      } catch (e: any) {
+        return { ok: false, error: `Genesis Failed: ${e.message}`, logs };
+      }
+    }
+  },
+  {
+    name: 'task_loop',
+    version: '1.0.0',
+    tags: ['agent', 'recursive', 'loop', 'automation'],
+    description: 'Execute a multi-step plan with self-correction and context preservation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string' },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              tool: { type: 'string' },
+              args: { type: 'object' }
+            }
+          }
+        },
+        maxIterations: { type: 'number' }
+      },
+      required: ['goal', 'steps']
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        completedSteps: { type: 'number' },
+        results: { type: 'array' }
+      }
+    },
+    permissions: ['execute', 'internet', 'read', 'write'],
+    sideEffects: ['execute', 'write'],
+    rateLimitPerMinute: 2,
+    auditFields: ['goal'],
+    mockSupported: true,
+    execute: async (input) => {
+      const logs: string[] = [];
+      const steps = input.steps || [];
+      const results: any[] = [];
+      let success = true;
+
+      logs.push(`Starting TaskLoop for: ${input.goal} (${steps.length} steps)`);
+
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        logs.push(`Step ${i + 1}: ${step.name || step.tool}`);
+
+        try {
+          // Execute the tool
+          const result = await executeTool(step.tool, step.args || {});
+          results.push({ step: i, tool: step.tool, ok: result.ok, output: result.output, error: result.error });
+
+          if (!result.ok) {
+            logs.push(`Step failed: ${result.error}`);
+            // Simple self-correction: retry once
+            logs.push('Retrying step...');
+            const retry = await executeTool(step.tool, step.args || {});
+            results[i] = { step: i, tool: step.tool, ok: retry.ok, output: retry.output, error: retry.error, retried: true };
+
+            if (!retry.ok) {
+              success = false;
+              logs.push(`Retry failed. Aborting loop.`);
+              break;
+            }
+          }
+        } catch (e: any) {
+          logs.push(`Exception in step: ${e.message}`);
+          success = false;
+          break;
+        }
+      }
+
+      return { ok: success, output: { success, completedSteps: results.length, results }, logs };
+    }
+  },
   {
     name: 'browser_run',
     description: 'Execute browser actions, or compile instructionText into a multi-step plan.',
