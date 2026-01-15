@@ -5,7 +5,7 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
@@ -13,6 +13,7 @@ const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserSt
 import { useSessionStore } from '../store/sessionStore';
 import BrowserChrome from '../components/BrowserChrome';
 import BrowserControlPanel from '../components/BrowserControlPanel';
+const MemoryPanelLazy = lazy(() => import('../components/MemoryPanel'));
 
 export default function Joe() {
   const {
@@ -58,7 +59,7 @@ export default function Joe() {
   useEffect(() => {
     // Skip auto-detection in production
     if (isProduction) return;
-    
+
     async function detect() {
       if (didDetectPreviewRef.current) return;
       didDetectPreviewRef.current = true;
@@ -74,7 +75,7 @@ export default function Joe() {
         try {
           const bo = new URL(b).origin;
           if (bo === window.location.origin) continue;
-        } catch {}
+        } catch { }
         const ok = await pingUrl(b);
         if (ok) {
           setPreviewUrl(b);
@@ -87,7 +88,7 @@ export default function Joe() {
   useEffect(() => {
     // Skip auto-detection in production
     if (isProduction || !autoDetectPreview) return;
-    
+
     let alive = true;
     const bases = [
       'http://localhost:5173/',
@@ -103,7 +104,7 @@ export default function Joe() {
         try {
           const bo = new URL(b).origin;
           if (bo === window.location.origin) continue;
-        } catch {}
+        } catch { }
         const ok = await pingUrl(b);
         if (ok) {
           if (b !== previewUrl) setPreviewUrl(b);
@@ -186,7 +187,7 @@ export default function Joe() {
           body: JSON.stringify({ sessionId: sid }),
           keepalive: true,
         });
-      } catch {}
+      } catch { }
     };
   }, [API]);
 
@@ -210,7 +211,7 @@ export default function Joe() {
 
       try {
         (window as any).__joeBrowserSession = { sessionId: sid };
-      } catch {}
+      } catch { }
 
       const token = localStorage.getItem('token');
       try {
@@ -222,13 +223,13 @@ export default function Joe() {
           },
           body: JSON.stringify({ sessionId: sid, url }),
         });
-      } catch {}
+      } catch { }
     };
 
     window.addEventListener('joe:browser_open_request', handler as any);
     return () => window.removeEventListener('joe:browser_open_request', handler as any);
   }, [API, mode, agentBrowserSessionId, activeBrowserSession?.sessionId, makeBrowserSessionId]);
-  
+
   // ===== نظام عرض سلسلة التفكير والحوار الداخلي =====
   const [thinkingChain, setThinkingChain] = useState<Array<{
     id: string;
@@ -238,14 +239,14 @@ export default function Joe() {
     details?: any;
   }>>([]);
   const [showThinkingPanel, setShowThinkingPanel] = useState(true);
-  const [rightPanelTab, setRightPanelTab] = useState<'thinking' | 'files'>('thinking');
+  const [rightPanelTab, setRightPanelTab] = useState<'thinking' | 'files' | 'memory'>('thinking');
   const [agentPanelTab, setAgentPanelTab] = useState<'commands' | 'thinking'>('commands');
   const [liveSteps, setLiveSteps] = useState<any[]>([]);
   const thinkingPanelRef = useRef<HTMLDivElement>(null);
   const stepStatusByKeyRef = useRef<Map<string, string>>(new Map());
 
   const openedPaymentsRef = useRef<Set<string>>(new Set());
-  
+
   // ===== معالج أحداث سلسلة التفكير =====
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -279,7 +280,10 @@ export default function Joe() {
   }, [activeSessionKey, mode]);
 
   useEffect(() => {
-    if (rightPanelTab === 'thinking' && !showThinkingPanel && showFiles) setRightPanelTab('files');
+    if (rightPanelTab === 'thinking' && !showThinkingPanel) {
+      if (showFiles) setRightPanelTab('files');
+      else setRightPanelTab('memory');
+    }
     if (rightPanelTab === 'files' && !showFiles && showThinkingPanel) setRightPanelTab('thinking');
   }, [rightPanelTab, showFiles, showThinkingPanel]);
 
@@ -427,7 +431,7 @@ export default function Joe() {
     setComposerHeight(el?.offsetHeight || 0);
   }, [mode, showSidebar, agentComposerOpen, showFiles, selected]);
 
-  useEffect(() => {}, [isNarrow, composerHeight]);
+  useEffect(() => { }, [isNarrow, composerHeight]);
 
   useEffect(() => {
     const release = SocketService.subscribe((event: any) => {
@@ -438,7 +442,7 @@ export default function Joe() {
         const isStripe = /stripe\.com/i.test(href) || /checkout/i.test(name);
         if (isStripe && href && !openedPaymentsRef.current.has(href)) {
           openedPaymentsRef.current.add(href);
-          try { window.open(href, '_blank', 'noopener,noreferrer'); } catch {}
+          try { window.open(href, '_blank', 'noopener,noreferrer'); } catch { }
         }
       } else if (type === 'step_done') {
         const name = String(event?.data?.name || '');
@@ -447,7 +451,7 @@ export default function Joe() {
           const url = String(event?.data?.result?.output?.checkoutUrl || '');
           if (url && !openedPaymentsRef.current.has(url)) {
             openedPaymentsRef.current.add(url);
-            try { window.open(url, '_blank', 'noopener,noreferrer'); } catch {}
+            try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { }
           }
         }
       }
@@ -502,7 +506,7 @@ export default function Joe() {
     }
   }
 
-  useEffect(() => { 
+  useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return;
     loadAllSessions();
@@ -590,7 +594,7 @@ export default function Joe() {
   async function mergeSessions(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
     if (!confirm('Are you sure you want to merge these sessions? This cannot be undone.')) return;
-    
+
     const token = localStorage.getItem('token');
     if (!token) {
       window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -609,14 +613,14 @@ export default function Joe() {
       window.dispatchEvent(new CustomEvent('auth:unauthorized'));
       return;
     }
-    
+
     if (res.ok) {
       await loadAllSessions();
       if (selected === sourceId) setSelected(targetId);
     }
   }
 
-  
+
 
 
 
@@ -730,192 +734,192 @@ export default function Joe() {
               <PanelLeftClose size={20} />
             </button>
           </div>
-          
+
           <div className="search-box-container">
             <div className="search-input-wrapper">
-               <Search size={14} className="search-icon" />
-               <input 
-                 type="text" 
-                 placeholder="بحث في المحادثات..." 
-                 value={searchQuery}
-                 onChange={(e) => setSearchQuery(e.target.value)}
-                 className="search-input"
-               />
+              <Search size={14} className="search-icon" />
+              <input
+                type="text"
+                placeholder="بحث في المحادثات..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="search-input"
+              />
             </div>
           </div>
 
           {!searchQuery ? (
-          <>
-          <div className="section-header-container">
-            <div className="section-title">المجلدات</div>
-            <button 
-              onClick={createFolder}
-              className="action-icon-btn"
-              title="مجلد جديد"
-              disabled={loadingStates.creatingFolder}
-            >
-              {loadingStates.creatingFolder ? 'جاري...' : <FolderPlus size={16} />}
-            </button>
-          </div>
-
-          <div className="session-list">
-            {folders.map(folder => (
-              <div 
-                key={folder._id}
-                className="folder-container"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  (e.currentTarget as HTMLElement).style.background = 'var(--accent-glow)';
-                }}
-                onDragLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = 'transparent';
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  (e.currentTarget as HTMLElement).style.background = 'transparent';
-                  const sessionId = e.dataTransfer.getData('sessionId');
-                  if (sessionId) moveSessionToFolder(sessionId, folder._id);
-                }}
-              >
-                <div 
-                  className="folder-header" 
-                  onClick={() => setExpandedFolders(p => ({ ...p, [folder._id]: !p[folder._id] }))}
+            <>
+              <div className="section-header-container">
+                <div className="section-title">المجلدات</div>
+                <button
+                  onClick={createFolder}
+                  className="action-icon-btn"
+                  title="مجلد جديد"
+                  disabled={loadingStates.creatingFolder}
                 >
-                  {expandedFolders[folder._id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  <Folder size={16} className="folder-icon" />
-                  <span className="folder-name">{folder.name}</span>
-                  <button 
-                     onClick={(e) => { e.stopPropagation(); if (confirm('هل أنت متأكد من حذف هذا المجلد؟')) deleteFolder(folder._id); }}
-                     className="action-icon-btn folder-delete-btn"
-                     title="حذف المجلد"
-                     disabled={loadingStates[`deleting-folder-${folder._id}`]}
+                  {loadingStates.creatingFolder ? 'جاري...' : <FolderPlus size={16} />}
+                </button>
+              </div>
+
+              <div className="session-list">
+                {folders.map(folder => (
+                  <div
+                    key={folder._id}
+                    className="folder-container"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      (e.currentTarget as HTMLElement).style.background = 'var(--accent-glow)';
+                    }}
+                    onDragLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      const sessionId = e.dataTransfer.getData('sessionId');
+                      if (sessionId) moveSessionToFolder(sessionId, folder._id);
+                    }}
                   >
-                    {loadingStates[`deleting-folder-${folder._id}`] ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  </button>
-                </div>
-                {expandedFolders[folder._id] && (
-                  <div className="folder-content">
-                    {sessions.filter(s => s.folderId === folder._id).map(s => (
-                       <div 
-                         key={s.id}
-                         draggable
-                         onDragStart={(e) => {
-                           e.dataTransfer.setData('sessionId', s.id);
-                         }}
-                       >
-                         <SessionItem 
-                           session={s}
-                           isActive={selected === s.id}
-                           isLoading={loadingStates[`deleting-session-${s.id}`]}
-                           folders={folders}
-                           onMoveToFolder={(folderId) => moveSessionToFolder(s.id, folderId)}
-                           showInlineDelete
-                           onSelect={() => {
-                             setSelected(s.id);
-                             setSearchQuery('');
-                             if (isNarrow) setShowSidebar(false);
-                           }}
-                           onDelete={() => {
-                             if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
-                             deleteSession(s.id);
-                             if (selected === s.id) setSelected(null);
-                           }}
-                           onPin={() => togglePin(s.id, !!s.isPinned)}
-                           onShare={() => shareSession(s.id)}
-                         />
-                       </div>
-                    ))}
-                    {sessions.filter(s => s.folderId === folder._id).length === 0 && (
-                      <div className="empty-folder-msg">مجلد فارغ</div>
+                    <div
+                      className="folder-header"
+                      onClick={() => setExpandedFolders(p => ({ ...p, [folder._id]: !p[folder._id] }))}
+                    >
+                      {expandedFolders[folder._id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      <Folder size={16} className="folder-icon" />
+                      <span className="folder-name">{folder.name}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (confirm('هل أنت متأكد من حذف هذا المجلد؟')) deleteFolder(folder._id); }}
+                        className="action-icon-btn folder-delete-btn"
+                        title="حذف المجلد"
+                        disabled={loadingStates[`deleting-folder-${folder._id}`]}
+                      >
+                        {loadingStates[`deleting-folder-${folder._id}`] ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    </div>
+                    {expandedFolders[folder._id] && (
+                      <div className="folder-content">
+                        {sessions.filter(s => s.folderId === folder._id).map(s => (
+                          <div
+                            key={s.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('sessionId', s.id);
+                            }}
+                          >
+                            <SessionItem
+                              session={s}
+                              isActive={selected === s.id}
+                              isLoading={loadingStates[`deleting-session-${s.id}`]}
+                              folders={folders}
+                              onMoveToFolder={(folderId) => moveSessionToFolder(s.id, folderId)}
+                              showInlineDelete
+                              onSelect={() => {
+                                setSelected(s.id);
+                                setSearchQuery('');
+                                if (isNarrow) setShowSidebar(false);
+                              }}
+                              onDelete={() => {
+                                if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+                                deleteSession(s.id);
+                                if (selected === s.id) setSelected(null);
+                              }}
+                              onPin={() => togglePin(s.id, !!s.isPinned)}
+                              onShare={() => shareSession(s.id)}
+                            />
+                          </div>
+                        ))}
+                        {sessions.filter(s => s.folderId === folder._id).length === 0 && (
+                          <div className="empty-folder-msg">مجلد فارغ</div>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            ))}
+                ))}
 
-            <div 
-              className="section-header-container"
-              onDragOver={(e) => {
-                 e.preventDefault();
-                 e.dataTransfer.dropEffect = 'move';
-              }}
-              onDrop={(e) => {
-                 e.preventDefault();
-                 const sessionId = e.dataTransfer.getData('sessionId');
-                 if (sessionId) moveSessionToFolder(sessionId, null);
-              }}
-            >
-              <div className="section-title">جلسات أخرى</div>
-            </div>
-            {sessions.filter(s => !s.folderId).map(s => (
-              <div 
-                key={s.id} 
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('sessionId', s.id);
-                  e.dataTransfer.effectAllowed = 'move';
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const sourceId = e.dataTransfer.getData('sessionId');
-                  if (sourceId && sourceId !== s.id) {
-                     // Check if source session has no folder, otherwise move it here
-                     // But we also support merge. Let's prioritize folder move if dropped on a folder, merge if dropped on session
-                     // Actually, if we drop on session, it's merge. If we drop on "Other Sessions" header, it's move to root.
-                     // But here we are dropping on a session item.
-                     mergeSessions(sourceId, s.id);
-                  }
-                }}
-              >
-                <SessionItem 
-                  session={s}
-                  isActive={selected === s.id}
-                  folders={folders}
-                  onMoveToFolder={(folderId) => moveSessionToFolder(s.id, folderId)}
-                  onSelect={() => {
-                    setSelected(s.id);
-                    if (isNarrow) setShowSidebar(false);
+                <div
+                  className="section-header-container"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
                   }}
-                  onDelete={() => {
-                    if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
-                    deleteSession(s.id);
-                    if (selected === s.id) setSelected(null);
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const sessionId = e.dataTransfer.getData('sessionId');
+                    if (sessionId) moveSessionToFolder(sessionId, null);
                   }}
-                  onPin={() => togglePin(s.id, !!s.isPinned)}
-                  onShare={() => shareSession(s.id)}
-                />
+                >
+                  <div className="section-title">جلسات أخرى</div>
+                </div>
+                {sessions.filter(s => !s.folderId).map(s => (
+                  <div
+                    key={s.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('sessionId', s.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const sourceId = e.dataTransfer.getData('sessionId');
+                      if (sourceId && sourceId !== s.id) {
+                        // Check if source session has no folder, otherwise move it here
+                        // But we also support merge. Let's prioritize folder move if dropped on a folder, merge if dropped on session
+                        // Actually, if we drop on session, it's merge. If we drop on "Other Sessions" header, it's move to root.
+                        // But here we are dropping on a session item.
+                        mergeSessions(sourceId, s.id);
+                      }
+                    }}
+                  >
+                    <SessionItem
+                      session={s}
+                      isActive={selected === s.id}
+                      folders={folders}
+                      onMoveToFolder={(folderId) => moveSessionToFolder(s.id, folderId)}
+                      onSelect={() => {
+                        setSelected(s.id);
+                        if (isNarrow) setShowSidebar(false);
+                      }}
+                      onDelete={() => {
+                        if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+                        deleteSession(s.id);
+                        if (selected === s.id) setSelected(null);
+                      }}
+                      onPin={() => togglePin(s.id, !!s.isPinned)}
+                      onShare={() => shareSession(s.id)}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          </>
+            </>
           ) : (
             <div className="session-list">
-               {searchResults.length === 0 ? (
-                 <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                   لا توجد نتائج
-                 </div>
-               ) : (
-                 searchResults.map(r => (
-                   <button 
-                     key={r.messageId} 
-                     className="search-result-item"
-                     onClick={() => {
-                       setSelected(r.sessionId);
-                       setSearchQuery(''); // Clear search on select
-                       if (isNarrow) setShowSidebar(false);
-                     }}
-                   >
-                     <div className="result-session-title">{r.sessionTitle}</div>
-                     <div className="result-content">{r.content}</div>
-                     <div className="result-date">{new Date(r.createdAt).toLocaleDateString()}</div>
-                   </button>
-                 ))
-               )}
+              {searchResults.length === 0 ? (
+                <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                  لا توجد نتائج
+                </div>
+              ) : (
+                searchResults.map(r => (
+                  <button
+                    key={r.messageId}
+                    className="search-result-item"
+                    onClick={() => {
+                      setSelected(r.sessionId);
+                      setSearchQuery(''); // Clear search on select
+                      if (isNarrow) setShowSidebar(false);
+                    }}
+                  >
+                    <div className="result-session-title">{r.sessionTitle}</div>
+                    <div className="result-content">{r.content}</div>
+                    <div className="result-date">{new Date(r.createdAt).toLocaleDateString()}</div>
+                  </button>
+                ))
+              )}
             </div>
           )}
 
@@ -933,12 +937,12 @@ export default function Joe() {
       )}
 
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        
+
 
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', paddingTop: 56 }}>
           <div className="mode-switch mode-switch-floating">
             <div className="mode-fabs">
-              <button 
+              <button
                 onClick={() => setMode('agent')}
                 className={`mode-fab ${mode === 'agent' ? 'active' : ''}`}
                 title="Agent Mode"
@@ -946,7 +950,7 @@ export default function Joe() {
                 <Bot size={16} />
                 <span className="mode-fab-label">الوكيل</span>
               </button>
-              <button 
+              <button
                 onClick={() => setMode('chat')}
                 className={`mode-fab ${mode === 'chat' ? 'active' : ''}`}
                 title="Chat Mode"
@@ -954,7 +958,7 @@ export default function Joe() {
                 <MessageSquare size={16} />
                 <span className="mode-fab-label">المحادثة</span>
               </button>
-              <button 
+              <button
                 onClick={() => setShowFiles(v => {
                   const next = !v;
                   if (next) setRightPanelTab('files');
@@ -966,7 +970,7 @@ export default function Joe() {
                 <Folder size={16} />
                 <span className="mode-fab-label">الملفات</span>
               </button>
-              <button 
+              <button
                 onClick={() => setShowThinkingPanel(v => {
                   const next = !v;
                   if (next) {
@@ -983,286 +987,300 @@ export default function Joe() {
               </button>
             </div>
           </div>
-          
-        {mode === 'agent' && (
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
-            <div
-              style={{
-                width: isNarrow ? '100%' : agentSidebarOpen ? 280 : 44,
-                flex: isNarrow ? `0 0 ${agentSessionsOpen ? '35%' : '44px'}` : '0 0 auto',
-                height: isNarrow && !agentSessionsOpen ? 44 : undefined,
-                minHeight: 0,
-                overflow: 'hidden',
-                borderRight: isNarrow ? undefined : '1px solid var(--border-color)',
-                borderBottom: isNarrow ? '1px solid var(--border-color)' : undefined,
-                background: 'var(--bg-secondary)',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
+
+          {mode === 'agent' && (
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: isNarrow ? 'column' : 'row' }}>
               <div
                 style={{
-                  padding: '10px 12px',
-                  borderBottom: '1px solid var(--border-color)',
+                  width: isNarrow ? '100%' : agentSidebarOpen ? 280 : 44,
+                  flex: isNarrow ? `0 0 ${agentSessionsOpen ? '35%' : '44px'}` : '0 0 auto',
+                  height: isNarrow && !agentSessionsOpen ? 44 : undefined,
+                  minHeight: 0,
+                  overflow: 'hidden',
+                  borderRight: isNarrow ? undefined : '1px solid var(--border-color)',
+                  borderBottom: isNarrow ? '1px solid var(--border-color)' : undefined,
+                  background: 'var(--bg-secondary)',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: isNarrow ? 'space-between' : agentSidebarOpen ? 'space-between' : 'center',
-                  gap: 8,
+                  flexDirection: 'column',
                 }}
               >
-                {isNarrow || agentSidebarOpen ? (
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>جلسات الوكيل</div>
-                ) : null}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button
-                    onClick={() => {
-                      if (isNarrow) setAgentSessionsOpen((v) => !v);
-                      else setAgentSidebarOpen((v) => !v);
-                    }}
-                    style={{
-                      width: 30,
-                      height: 28,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 10,
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(255,255,255,0.03)',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer',
-                    }}
-                    title={isNarrow ? (agentSessionsOpen ? 'إخفاء' : 'إظهار') : agentSidebarOpen ? 'إخفاء' : 'إظهار'}
-                    aria-label={isNarrow ? (agentSessionsOpen ? 'إخفاء' : 'إظهار') : agentSidebarOpen ? 'إخفاء' : 'إظهار'}
-                  >
-                    {isNarrow ? (agentSessionsOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />) : agentSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
-                  </button>
+                <div
+                  style={{
+                    padding: '10px 12px',
+                    borderBottom: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: isNarrow ? 'space-between' : agentSidebarOpen ? 'space-between' : 'center',
+                    gap: 8,
+                  }}
+                >
                   {isNarrow || agentSidebarOpen ? (
-                    <button
-                      onClick={() => setAgentSelected(null)}
-                      style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                    >
-                      جلسة جديدة
-                    </button>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>جلسات الوكيل</div>
                   ) : null}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      onClick={() => {
+                        if (isNarrow) setAgentSessionsOpen((v) => !v);
+                        else setAgentSidebarOpen((v) => !v);
+                      }}
+                      style={{
+                        width: 30,
+                        height: 28,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 10,
+                        border: '1px solid var(--border-color)',
+                        background: 'rgba(255,255,255,0.03)',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer',
+                      }}
+                      title={isNarrow ? (agentSessionsOpen ? 'إخفاء' : 'إظهار') : agentSidebarOpen ? 'إخفاء' : 'إظهار'}
+                      aria-label={isNarrow ? (agentSessionsOpen ? 'إخفاء' : 'إظهار') : agentSidebarOpen ? 'إخفاء' : 'إظهار'}
+                    >
+                      {isNarrow ? (agentSessionsOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />) : agentSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+                    </button>
+                    {isNarrow || agentSidebarOpen ? (
+                      <button
+                        onClick={() => setAgentSelected(null)}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        جلسة جديدة
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
+                {(isNarrow ? agentSessionsOpen : agentSidebarOpen) ? (
+                  <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
+                    {agentSessions.length === 0 ? (
+                      <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 13 }}>لا توجد جلسات بعد</div>
+                    ) : (
+                      agentSessions.map((s) => (
+                        <SessionItem
+                          key={s.id}
+                          session={s}
+                          isActive={agentSelected === s.id}
+                          onSelect={() => {
+                            setAgentSelected(s.id);
+                            if (isNarrow) setAgentSessionsOpen(false);
+                          }}
+                          onDelete={() => {
+                            if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
+                            deleteSession(s.id);
+                            if (agentSelected === s.id) setAgentSelected(null);
+                          }}
+                          onPin={() => toggleAgentPin(s.id, !!s.isPinned)}
+                          onShare={() => shareSession(s.id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                ) : null}
               </div>
-              {(isNarrow ? agentSessionsOpen : agentSidebarOpen) ? (
-                <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
-                  {agentSessions.length === 0 ? (
-                    <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 13 }}>لا توجد جلسات بعد</div>
+
+              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                {featureChrome && agentBrowserSessionId ? (
+                  <BrowserChrome
+                    sessionId={agentBrowserSessionId}
+                    onToggleControl={() => setControlOpen(true)}
+                    onToggleBoxes={() => setShowBoxes((v) => !v)}
+                    showBoxes={showBoxes}
+                  />
+                ) : null}
+                {featureChrome ? (
+                  <BrowserControlPanel
+                    sessionId={String(agentSelected || '').trim()}
+                    open={controlOpen}
+                    onClose={() => setControlOpen(false)}
+                    showBoxes={showBoxes}
+                    onToggleBoxes={() => setShowBoxes((v) => !v)}
+                  />
+                ) : null}
+                <div className="agent-browser-stream" style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
+                  {agentBrowserSessionId ? (
+                    <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading browser…</div>}>
+                      <ModernBrowserStreamLazy sessionId={agentBrowserSessionId} showBoxes={showBoxes} />
+                    </Suspense>
                   ) : (
-                    agentSessions.map((s) => (
-                      <SessionItem
-                        key={s.id}
-                        session={s}
-                        isActive={agentSelected === s.id}
-                        onSelect={() => {
-                          setAgentSelected(s.id);
-                          if (isNarrow) setAgentSessionsOpen(false);
-                        }}
-                        onDelete={() => {
-                          if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
-                          deleteSession(s.id);
-                          if (agentSelected === s.id) setAgentSelected(null);
-                        }}
-                        onPin={() => toggleAgentPin(s.id, !!s.isPinned)}
-                        onShare={() => shareSession(s.id)}
-                      />
-                    ))
+                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-primary)' }}>
+                      سيتم تشغيل المتصفح الحي تلقائياً عند أول مهمة تتطلب ذلك.
+                    </div>
                   )}
                 </div>
-              ) : null}
-            </div>
+              </div>
 
-            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-              {featureChrome && agentBrowserSessionId ? (
-                <BrowserChrome
-                  sessionId={agentBrowserSessionId}
-                  onToggleControl={() => setControlOpen(true)}
-                  onToggleBoxes={() => setShowBoxes((v) => !v)}
-                  showBoxes={showBoxes}
-                />
-              ) : null}
-              {featureChrome ? (
-                <BrowserControlPanel
-                  sessionId={String(agentSelected || '').trim()}
-                  open={controlOpen}
-                  onClose={() => setControlOpen(false)}
-                  showBoxes={showBoxes}
-                  onToggleBoxes={() => setShowBoxes((v) => !v)}
-                />
-              ) : null}
-              <div className="agent-browser-stream" style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
-                {agentBrowserSessionId ? (
-                  <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading browser…</div>}>
-                    <ModernBrowserStreamLazy sessionId={agentBrowserSessionId} showBoxes={showBoxes} />
-                  </Suspense>
-                ) : (
-                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-primary)' }}>
-                    سيتم تشغيل المتصفح الحي تلقائياً عند أول مهمة تتطلب ذلك.
+              <div
+                style={{
+                  width: isNarrow ? '100%' : 420,
+                  flex: isNarrow ? `0 0 ${agentComposerOpen ? '45%' : '44px'}` : '0 0 auto',
+                  height: isNarrow ? (agentComposerOpen ? undefined : 44) : '100%',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                  borderLeft: isNarrow ? undefined : '1px solid var(--border-color)',
+                  borderTop: isNarrow ? '1px solid var(--border-color)' : undefined,
+                  background: 'var(--bg-secondary)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      onClick={() => setAgentPanelTab('commands')}
+                      style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: agentPanelTab === 'commands' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      الأوامر
+                    </button>
+                    {showThinkingPanel ? (
+                      <button
+                        onClick={() => setAgentPanelTab('thinking')}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: agentPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Activity size={14} /> التفكير
+                      </button>
+                    ) : null}
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div
-              style={{
-                width: isNarrow ? '100%' : 420,
-                flex: isNarrow ? `0 0 ${agentComposerOpen ? '45%' : '44px'}` : '0 0 auto',
-                height: isNarrow ? (agentComposerOpen ? undefined : 44) : '100%',
-                minHeight: 0,
-                overflow: 'hidden',
-                borderLeft: isNarrow ? undefined : '1px solid var(--border-color)',
-                borderTop: isNarrow ? '1px solid var(--border-color)' : undefined,
-                background: 'var(--bg-secondary)',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button
-                    onClick={() => setAgentPanelTab('commands')}
-                    style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: agentPanelTab === 'commands' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    الأوامر
-                  </button>
-                  {showThinkingPanel ? (
-                    <button
-                      onClick={() => setAgentPanelTab('thinking')}
-                      style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: agentPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    >
-                      <Activity size={14} /> التفكير
-                    </button>
-                  ) : null}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {isNarrow ? (
+                      <button
+                        onClick={() => setAgentComposerOpen(v => !v)}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        {agentComposerOpen ? 'إخفاء' : 'إظهار'}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {isNarrow ? (
-                    <button
-                      onClick={() => setAgentComposerOpen(v => !v)}
-                      style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                    >
-                      {agentComposerOpen ? 'إخفاء' : 'إظهار'}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {(!isNarrow || agentComposerOpen) ? (
-                <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
-                  <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                    {agentPanelTab === 'thinking' && showThinkingPanel ? (
-                      renderThinkingPanel()
-                    ) : (
-                      <CommandComposer
-                        sessionId={agentSelected || undefined}
-                        sessionKind="agent"
-                        browserSessionId={agentBrowserSessionId}
-                        onStepsUpdate={handleStepsUpdate}
-                        onSessionCreated={async (id) => {
+                {(!isNarrow || agentComposerOpen) ? (
+                  <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                      {agentPanelTab === 'thinking' && showThinkingPanel ? (
+                        renderThinkingPanel()
+                      ) : (
+                        <CommandComposer
+                          sessionId={agentSelected || undefined}
+                          sessionKind="agent"
+                          browserSessionId={agentBrowserSessionId}
+                          onStepsUpdate={handleStepsUpdate}
+                          onSessionCreated={async (id) => {
                             await loadAllSessions();
                             setAgentSelected(id);
                           }}
-                      />
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        )}
-        {mode === 'chat' && (
-        <>
-          <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
-              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
-                  {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
-                  <CommandComposer
-                    key={selected || 'new'}
-                    sessionId={selected || undefined}
-                    sessionKind="chat"
-                    previewBaseUrl={previewUrl}
-                    onStepsUpdate={handleStepsUpdate}
-                    onSessionCreated={async (id) => {
-                        await loadAllSessions();
-                        setSelected(id);
-                      }}
-                  />
-                </div>
-              </div>
-            </div>
-            {(showFiles || showThinkingPanel) ? (
-              <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-                <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {showThinkingPanel ? (
-                      <button
-                        onClick={() => setRightPanelTab('thinking')}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      >
-                        <Activity size={14} /> سلسلة التفكير
-                      </button>
-                    ) : null}
-                    {showFiles ? (
-                      <button
-                        onClick={() => setRightPanelTab('files')}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      >
-                        <Folder size={14} /> الملفات
-                      </button>
-                    ) : null}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {rightPanelTab === 'thinking' && showThinkingPanel ? (
-                      <button
-                        onClick={() => {
-                          setThinkingChain([]);
-                          stepStatusByKeyRef.current = new Map();
-                        }}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                      >
-                        مسح
-                      </button>
-                    ) : null}
-                    {rightPanelTab === 'thinking' ? (
-                      <button
-                        onClick={() => setShowThinkingPanel(false)}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                      >
-                        إخفاء
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setShowFiles(false)}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                      >
-                        إخفاء
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                  {rightPanelTab === 'files' && showFiles ? (
-                    <div style={{ height: '100%', overflow: 'auto' }}>
-                      <FileExplorer />
+                        />
+                      )}
                     </div>
-                  ) : null}
-
-                  {rightPanelTab === 'thinking' && showThinkingPanel ? (
-                    renderThinkingPanel()
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        </>
-      )}
+            </div>
+          )}
+          {mode === 'chat' && (
+            <>
+              <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
+                      {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
+                      <CommandComposer
+                        key={selected || 'new'}
+                        sessionId={selected || undefined}
+                        sessionKind="chat"
+                        previewBaseUrl={previewUrl}
+                        onStepsUpdate={handleStepsUpdate}
+                        onSessionCreated={async (id) => {
+                          await loadAllSessions();
+                          setSelected(id);
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {(showFiles || showThinkingPanel) ? (
+                  <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+                    <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {showThinkingPanel ? (
+                          <button
+                            onClick={() => setRightPanelTab('thinking')}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <Activity size={14} /> سلسلة التفكير
+                          </button>
+                        ) : null}
+                        {showFiles ? (
+                          <button
+                            onClick={() => setRightPanelTab('files')}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <Folder size={14} /> الملفات
+                          </button>
+                        ) : null}
+                        {true ? (
+                          <button
+                            onClick={() => setRightPanelTab('memory')}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'memory' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <Brain size={14} /> الذاكرة
+                          </button>
+                        ) : null}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {rightPanelTab === 'thinking' && showThinkingPanel ? (
+                          <button
+                            onClick={() => {
+                              setThinkingChain([]);
+                              stepStatusByKeyRef.current = new Map();
+                            }}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                          >
+                            مسح
+                          </button>
+                        ) : null}
+                        {rightPanelTab === 'thinking' ? (
+                          <button
+                            onClick={() => setShowThinkingPanel(false)}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                          >
+                            إخفاء
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setShowFiles(false)}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                          >
+                            إخفاء
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                      {rightPanelTab === 'files' && showFiles ? (
+                        <div style={{ height: '100%', overflow: 'auto' }}>
+                          <FileExplorer />
+                        </div>
+                      ) : null}
+
+                      {rightPanelTab === 'thinking' && showThinkingPanel ? (
+                        renderThinkingPanel()
+                      ) : null}
+
+                      {rightPanelTab === 'memory' ? (
+                        <Suspense fallback={<div className="flex justify-center p-4">Loading...</div>}>
+                          <MemoryPanelLazy sessionId={selected || undefined} />
+                        </Suspense>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </>
+          )}
         </div>
       </main>
     </div>

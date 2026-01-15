@@ -641,11 +641,11 @@ export const tools: ToolDefinition[] = [
     mockSupported: true,
     execute: async (input) => {
       const logs: string[] = [];
-      const steps = input.steps || [];
+      const steps = Array.isArray(input.tasks) ? input.tasks : (input.steps || []);
       const results: any[] = [];
       let success = true;
 
-      logs.push(`Starting TaskLoop for: ${input.goal} (${steps.length} steps)`);
+      logs.push(`Starting TaskLoop for: ${input.goal || 'unspecified'} (${steps.length} steps)`);
 
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];

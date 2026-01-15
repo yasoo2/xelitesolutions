@@ -15,13 +15,13 @@ interface IWindow extends Window {
 
 const { webkitSpeechRecognition, SpeechRecognition } = window as unknown as IWindow;
 
-import { 
-  Terminal, 
-  FileText, 
-  Cpu, 
-  CheckCircle2, 
-  XCircle, 
-  Loader2, 
+import {
+  Terminal,
+  FileText,
+  Cpu,
+  CheckCircle2,
+  XCircle,
+  Loader2,
   FileCode,
   Link as LinkIcon,
   ChevronDown,
@@ -78,88 +78,88 @@ const ChatBubble = forwardRef(
     },
     ref: any
   ) => {
-  const { t } = useTranslation();
-  let content = event.data.text || event.data;
-  let options: any[] = [];
-  const [copied, setCopied] = useState(false);
-  const copyTimerRef = useRef<number | null>(null);
-  const bubbleVariant: 'user' | 'ai' | 'system' = variant || (isUser ? 'user' : 'ai');
+    const { t } = useTranslation();
+    let content = event.data.text || event.data;
+    let options: any[] = [];
+    const [copied, setCopied] = useState(false);
+    const copyTimerRef = useRef<number | null>(null);
+    const bubbleVariant: 'user' | 'ai' | 'system' = variant || (isUser ? 'user' : 'ai');
 
-  useEffect(() => {
-    return () => {
-      if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
+    useEffect(() => {
+      return () => {
+        if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
+      };
+    }, []);
+
+    const fmtTime = (t?: number) => {
+      const d = new Date(typeof t === 'number' ? t : Date.now());
+      try {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return '';
+      }
     };
-  }, []);
 
-  const fmtTime = (t?: number) => {
-    const d = new Date(typeof t === 'number' ? t : Date.now());
-    try {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '';
-    }
-  };
+    const senderLabel = bubbleVariant === 'user' ? 'أنت' : bubbleVariant === 'system' ? 'النظام' : 'Joe';
+    const SenderIcon = bubbleVariant === 'user' ? User : bubbleVariant === 'system' ? ShieldCheck : Bot;
+    const showHeader = bubbleVariant !== 'user';
+    const showAvatar = bubbleVariant !== 'user';
+    const showCopy = bubbleVariant !== 'user';
 
-  const senderLabel = bubbleVariant === 'user' ? 'أنت' : bubbleVariant === 'system' ? 'النظام' : 'Joe';
-  const SenderIcon = bubbleVariant === 'user' ? User : bubbleVariant === 'system' ? ShieldCheck : Bot;
-  const showHeader = bubbleVariant !== 'user';
-  const showAvatar = bubbleVariant !== 'user';
-  const showCopy = bubbleVariant !== 'user';
+    const rawText =
+      typeof content === 'string' ? content : content && typeof content === 'object' ? JSON.stringify(content) : String(content ?? '');
+    const canCopy = Boolean(rawText && rawText.trim());
+    const doCopy = async () => {
+      if (!canCopy) return;
+      try {
+        await navigator.clipboard.writeText(rawText);
+        setCopied(true);
+        if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = window.setTimeout(() => setCopied(false), 1200);
+      } catch { }
+    };
 
-  const rawText =
-    typeof content === 'string' ? content : content && typeof content === 'object' ? JSON.stringify(content) : String(content ?? '');
-  const canCopy = Boolean(rawText && rawText.trim());
-  const doCopy = async () => {
-    if (!canCopy) return;
-    try {
-      await navigator.clipboard.writeText(rawText);
-      setCopied(true);
-      if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = window.setTimeout(() => setCopied(false), 1200);
-    } catch {}
-  };
-
-  if (!isUser && typeof content === 'string' && content.includes(':::options')) {
+    if (!isUser && typeof content === 'string' && content.includes(':::options')) {
       const extractFirstJsonValue = (s: string) => {
-          const start = s.search(/[\[{]/);
-          if (start < 0) return null;
-          const stack: string[] = [];
-          const openToClose: Record<string, string> = { '{': '}', '[': ']' };
-          let inStr = false;
-          let esc = false;
-          for (let i = start; i < s.length; i++) {
-              const ch = s[i];
-              if (inStr) {
-                  if (esc) {
-                      esc = false;
-                      continue;
-                  }
-                  if (ch === '\\') {
-                      esc = true;
-                      continue;
-                  }
-                  if (ch === '"') inStr = false;
-                  continue;
-              }
-              if (ch === '"') {
-                  inStr = true;
-                  continue;
-              }
-              if (ch === '{' || ch === '[') {
-                  stack.push(openToClose[ch]);
-                  continue;
-              }
-              if (ch === '}' || ch === ']') {
-                  if (stack.length === 0) return null;
-                  const expected = stack[stack.length - 1];
-                  if (ch !== expected) return null;
-                  stack.pop();
-                  if (stack.length === 0) {
-                      return { start, jsonText: s.slice(start, i + 1), rest: s.slice(i + 1) };
-                  }
-              }
+        const start = s.search(/[\[{]/);
+        if (start < 0) return null;
+        const stack: string[] = [];
+        const openToClose: Record<string, string> = { '{': '}', '[': ']' };
+        let inStr = false;
+        let esc = false;
+        for (let i = start; i < s.length; i++) {
+          const ch = s[i];
+          if (inStr) {
+            if (esc) {
+              esc = false;
+              continue;
+            }
+            if (ch === '\\') {
+              esc = true;
+              continue;
+            }
+            if (ch === '"') inStr = false;
+            continue;
           }
-          return null;
+          if (ch === '"') {
+            inStr = true;
+            continue;
+          }
+          if (ch === '{' || ch === '[') {
+            stack.push(openToClose[ch]);
+            continue;
+          }
+          if (ch === '}' || ch === ']') {
+            if (stack.length === 0) return null;
+            const expected = stack[stack.length - 1];
+            if (ch !== expected) return null;
+            stack.pop();
+            if (stack.length === 0) {
+              return { start, jsonText: s.slice(start, i + 1), rest: s.slice(i + 1) };
+            }
+          }
+        }
+        return null;
       };
 
       const extracted: any[] = [];
@@ -169,233 +169,233 @@ const ChatBubble = forwardRef(
       let lastIndex = 0;
       const keptParts: string[] = [];
       while ((match = re.exec(content))) {
-          keptParts.push(content.slice(lastIndex, match.index));
-          lastIndex = re.lastIndex;
-          const block = String(match[1] ?? '').trim();
-          if (!block) continue;
-          try {
-              const parsed = JSON.parse(block);
-              if (Array.isArray(parsed)) extracted.push(...parsed);
-              else if (parsed) extracted.push(parsed);
-          } catch {}
+        keptParts.push(content.slice(lastIndex, match.index));
+        lastIndex = re.lastIndex;
+        const block = String(match[1] ?? '').trim();
+        if (!block) continue;
+        try {
+          const parsed = JSON.parse(block);
+          if (Array.isArray(parsed)) extracted.push(...parsed);
+          else if (parsed) extracted.push(parsed);
+        } catch { }
       }
       if (lastIndex > 0) {
-          keptParts.push(content.slice(lastIndex));
-          cleaned = keptParts.join('').trimEnd();
+        keptParts.push(content.slice(lastIndex));
+        cleaned = keptParts.join('').trimEnd();
       }
 
       if (extracted.length === 0) {
-          const idx = content.indexOf(':::options');
-          const prefix = content.slice(0, idx).trimEnd();
-          const after = content.slice(idx + ':::options'.length);
-          const first = extractFirstJsonValue(after);
-          if (first) {
-              try {
-                  const parsed = JSON.parse(first.jsonText);
-                  if (Array.isArray(parsed)) extracted.push(...parsed);
-                  else if (parsed) extracted.push(parsed);
-                  cleaned = prefix;
-              } catch {}
-          }
+        const idx = content.indexOf(':::options');
+        const prefix = content.slice(0, idx).trimEnd();
+        const after = content.slice(idx + ':::options'.length);
+        const first = extractFirstJsonValue(after);
+        if (first) {
+          try {
+            const parsed = JSON.parse(first.jsonText);
+            if (Array.isArray(parsed)) extracted.push(...parsed);
+            else if (parsed) extracted.push(parsed);
+            cleaned = prefix;
+          } catch { }
+        }
       }
 
       if (extracted.length > 0) {
-          options = extracted;
-          content = cleaned;
+        options = extracted;
+        content = cleaned;
       }
-  }
+    }
 
-  if (!isUser) {
-    const looksLikeBrowserSummary = (v: any) => {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
-      if (typeof (v as any).site !== 'string') return false;
-      const hasAnyField =
-        typeof (v as any).url === 'string' ||
-        typeof (v as any).title === 'string' ||
-        typeof (v as any).pageType === 'string' ||
-        typeof (v as any).hasScreenshot === 'boolean' ||
-        typeof (v as any).redactionEnabled === 'boolean' ||
-        typeof (v as any).domLength === 'number';
-      return hasAnyField;
-    };
+    if (!isUser) {
+      const looksLikeBrowserSummary = (v: any) => {
+        if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+        if (typeof (v as any).site !== 'string') return false;
+        const hasAnyField =
+          typeof (v as any).url === 'string' ||
+          typeof (v as any).title === 'string' ||
+          typeof (v as any).pageType === 'string' ||
+          typeof (v as any).hasScreenshot === 'boolean' ||
+          typeof (v as any).redactionEnabled === 'boolean' ||
+          typeof (v as any).domLength === 'number';
+        return hasAnyField;
+      };
 
-    const formatBrowserSummary = (v: any) => {
-      const site = typeof v.site === 'string' && v.site.trim() ? v.site.trim() : t('browserSummaryUnknownSite');
-      const title = typeof v.title === 'string' && v.title.trim() ? v.title.trim() : '';
-      const url = typeof v.url === 'string' && v.url.trim() ? v.url.trim() : '';
-      const pageType = typeof v.pageType === 'string' ? v.pageType.trim().toLowerCase() : '';
-      const isLogin = pageType === 'login';
-      const hasScreenshot = Boolean(v.hasScreenshot);
-      const redactionEnabled = typeof v.redactionEnabled === 'boolean' ? v.redactionEnabled : undefined;
+      const formatBrowserSummary = (v: any) => {
+        const site = typeof v.site === 'string' && v.site.trim() ? v.site.trim() : t('browserSummaryUnknownSite');
+        const title = typeof v.title === 'string' && v.title.trim() ? v.title.trim() : '';
+        const url = typeof v.url === 'string' && v.url.trim() ? v.url.trim() : '';
+        const pageType = typeof v.pageType === 'string' ? v.pageType.trim().toLowerCase() : '';
+        const isLogin = pageType === 'login';
+        const hasScreenshot = Boolean(v.hasScreenshot);
+        const redactionEnabled = typeof v.redactionEnabled === 'boolean' ? v.redactionEnabled : undefined;
 
-      const lines: string[] = [];
-      let header = `${t('browserSummaryPrefix')}: ${site}`;
-      if (title) header += ` — ${title}`;
-      if (isLogin) header += ` (${t('browserSummaryPageTypeLogin')})`;
-      lines.push(header);
+        const lines: string[] = [];
+        let header = `${t('browserSummaryPrefix')}: ${site}`;
+        if (title) header += ` — ${title}`;
+        if (isLogin) header += ` (${t('browserSummaryPageTypeLogin')})`;
+        lines.push(header);
 
-      if (url) lines.push(`${t('browserSummaryUrlLabel')}: ${url.replace(/`+/g, '').trim()}`);
-      if (hasScreenshot) lines.push(t('browserSummaryScreenshotTaken'));
-      if (typeof redactionEnabled === 'boolean') {
-        lines.push(`${t('browserSummaryRedactionLabel')}: ${redactionEnabled ? t('yes') : t('no')}`);
-      }
+        if (url) lines.push(`${t('browserSummaryUrlLabel')}: ${url.replace(/`+/g, '').trim()}`);
+        if (hasScreenshot) lines.push(t('browserSummaryScreenshotTaken'));
+        if (typeof redactionEnabled === 'boolean') {
+          lines.push(`${t('browserSummaryRedactionLabel')}: ${redactionEnabled ? t('yes') : t('no')}`);
+        }
 
-      return lines.join('\n');
-    };
+        return lines.join('\n');
+      };
 
-    const extractFirstJsonObject = (s: string) => {
-      const start = s.indexOf('{');
-      if (start < 0) return null;
-      const stack: string[] = [];
-      let inStr = false;
-      let esc = false;
-      for (let i = start; i < s.length; i++) {
-        const ch = s[i];
-        if (inStr) {
-          if (esc) {
-            esc = false;
+      const extractFirstJsonObject = (s: string) => {
+        const start = s.indexOf('{');
+        if (start < 0) return null;
+        const stack: string[] = [];
+        let inStr = false;
+        let esc = false;
+        for (let i = start; i < s.length; i++) {
+          const ch = s[i];
+          if (inStr) {
+            if (esc) {
+              esc = false;
+              continue;
+            }
+            if (ch === '\\') {
+              esc = true;
+              continue;
+            }
+            if (ch === '"') inStr = false;
             continue;
           }
-          if (ch === '\\') {
-            esc = true;
+          if (ch === '"') {
+            inStr = true;
             continue;
           }
-          if (ch === '"') inStr = false;
-          continue;
-        }
-        if (ch === '"') {
-          inStr = true;
-          continue;
-        }
-        if (ch === '{') {
-          stack.push('}');
-          continue;
-        }
-        if (ch === '}') {
-          if (!stack.length) return null;
-          stack.pop();
-          if (!stack.length) {
-            return { start, jsonText: s.slice(start, i + 1), end: i + 1 };
+          if (ch === '{') {
+            stack.push('}');
+            continue;
+          }
+          if (ch === '}') {
+            if (!stack.length) return null;
+            stack.pop();
+            if (!stack.length) {
+              return { start, jsonText: s.slice(start, i + 1), end: i + 1 };
+            }
           }
         }
-      }
-      return null;
-    };
+        return null;
+      };
 
-    const humanizeBrowserSummaryInText = (text: string) => {
-      const m = extractFirstJsonObject(text);
-      if (!m) return text;
-      try {
-        const parsed = JSON.parse(m.jsonText);
-        if (!looksLikeBrowserSummary(parsed)) return text;
-        const formatted = formatBrowserSummary(parsed);
-        const before = text.slice(0, m.start);
-        const after = text.slice(m.end);
-        const combined = `${before}${formatted}${after}`;
-        return combined.replace(/\n{3,}/g, '\n\n').trim();
-      } catch {
-        return text;
-      }
-    };
+      const humanizeBrowserSummaryInText = (text: string) => {
+        const m = extractFirstJsonObject(text);
+        if (!m) return text;
+        try {
+          const parsed = JSON.parse(m.jsonText);
+          if (!looksLikeBrowserSummary(parsed)) return text;
+          const formatted = formatBrowserSummary(parsed);
+          const before = text.slice(0, m.start);
+          const after = text.slice(m.end);
+          const combined = `${before}${formatted}${after}`;
+          return combined.replace(/\n{3,}/g, '\n\n').trim();
+        } catch {
+          return text;
+        }
+      };
 
-    if (typeof content === 'string') content = humanizeBrowserSummaryInText(content);
-    else if (looksLikeBrowserSummary(content)) content = formatBrowserSummary(content);
-  }
+      if (typeof content === 'string') content = humanizeBrowserSummaryInText(content);
+      else if (looksLikeBrowserSummary(content)) content = formatBrowserSummary(content);
+    }
 
-  return (
-    <motion.div 
-      ref={ref}
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className={`chat-bubble-wrapper ${bubbleVariant}`}
-    >
-      {showAvatar ? (
-        <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
-          <SenderIcon size={16} />
-        </div>
-      ) : null}
-      <div className={`chat-bubble ${bubbleVariant}${tone ? ` tone-${tone}` : ''}`}>
-        {showHeader ? (
-          <div className="chat-bubble-header">
-            <div className="chat-bubble-sender">{senderLabel}</div>
-            <div className="chat-bubble-actions">
-              <div className="chat-bubble-time">
-                <Clock size={14} />
-                <span>{fmtTime(ts)}</span>
-              </div>
-              {showCopy ? (
-                <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
-                  {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
-                </button>
-              ) : null}
-            </div>
+    return (
+      <motion.div
+        ref={ref}
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className={`chat-bubble-wrapper ${bubbleVariant}`}
+      >
+        {showAvatar ? (
+          <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
+            <SenderIcon size={16} />
           </div>
         ) : null}
-
-        <div className="chat-bubble-content" dir="auto">
-          {bubbleVariant === 'user' ? (
-            <div>{content}</div>
-          ) : (
-            <>
-              <ReactMarkdown
-                components={{
-                  h1: ({ node, ...props }) => <h1 {...props} />,
-                  h2: ({ node, ...props }) => <h2 {...props} />,
-                  h3: ({ node, ...props }) => <h3 {...props} />,
-                  ul: ({ node, ...props }) => <ul {...props} />,
-                  ol: ({ node, ...props }) => <ol {...props} />,
-                  li: ({ node, ...props }) => <li {...props} />,
-                  p: ({ node, ...props }) => <p {...props} />,
-                  blockquote: ({ node, ...props }) => <blockquote {...props} />,
-                  a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
-                  code({ className, children, ...props }: any) {
-                    const { inline, node, ...rest } = props as any;
-                    const match = /language-(\w+)/.exec(className || '');
-                    return !inline && match ? (
-                      <SyntaxHighlighter style={vscDarkPlus as any} language={match[1]} PreTag="div" dir="ltr" {...rest}>
-                        {String(children).replace(/\n$/, '')}
-                      </SyntaxHighlighter>
-                    ) : (
-                      <code className={className} {...rest}>
-                        {children}
-                      </code>
-                    );
-                  },
-                }}
-              >
-                {content || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
-              </ReactMarkdown>
-
-              {options.length > 0 && (
-                <div className="options-container">
-                  {options.map((opt: any, idx: number) => (
-                    <button key={idx} onClick={() => onOptionClick?.(opt.query)} className="option-btn">
-                      <span className="option-icon">✨</span> {opt.label}
-                    </button>
-                  ))}
+        <div className={`chat-bubble ${bubbleVariant}${tone ? ` tone-${tone}` : ''}`}>
+          {showHeader ? (
+            <div className="chat-bubble-header">
+              <div className="chat-bubble-sender">{senderLabel}</div>
+              <div className="chat-bubble-actions">
+                <div className="chat-bubble-time">
+                  <Clock size={14} />
+                  <span>{fmtTime(ts)}</span>
                 </div>
-              )}
-            </>
-          )}
+                {showCopy ? (
+                  <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
+                    {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
-          {isTyping ? (
-            <div className="typing-dots" aria-label="Typing">
-              <span className="typing-dot" />
-              <span className="typing-dot" />
-              <span className="typing-dot" />
+          <div className="chat-bubble-content" dir="auto">
+            {bubbleVariant === 'user' ? (
+              <div>{content}</div>
+            ) : (
+              <>
+                <ReactMarkdown
+                  components={{
+                    h1: ({ node, ...props }) => <h1 {...props} />,
+                    h2: ({ node, ...props }) => <h2 {...props} />,
+                    h3: ({ node, ...props }) => <h3 {...props} />,
+                    ul: ({ node, ...props }) => <ul {...props} />,
+                    ol: ({ node, ...props }) => <ol {...props} />,
+                    li: ({ node, ...props }) => <li {...props} />,
+                    p: ({ node, ...props }) => <p {...props} />,
+                    blockquote: ({ node, ...props }) => <blockquote {...props} />,
+                    a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                    code({ className, children, ...props }: any) {
+                      const { inline, node, ...rest } = props as any;
+                      const match = /language-(\w+)/.exec(className || '');
+                      return !inline && match ? (
+                        <SyntaxHighlighter style={vscDarkPlus as any} language={match[1]} PreTag="div" dir="ltr" {...rest}>
+                          {String(children).replace(/\n$/, '')}
+                        </SyntaxHighlighter>
+                      ) : (
+                        <code className={className} {...rest}>
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
+                >
+                  {content || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
+                </ReactMarkdown>
+
+                {options.length > 0 && (
+                  <div className="options-container">
+                    {options.map((opt: any, idx: number) => (
+                      <button key={idx} onClick={() => onOptionClick?.(opt.query)} className="option-btn">
+                        <span className="option-icon">✨</span> {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {isTyping ? (
+              <div className="typing-dots" aria-label="Typing">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </div>
+            ) : null}
+          </div>
+
+          {!showHeader ? (
+            <div className="chat-bubble-footer" aria-hidden="true">
+              <span className="chat-bubble-time-inline">{fmtTime(ts)}</span>
             </div>
           ) : null}
         </div>
-
-        {!showHeader ? (
-          <div className="chat-bubble-footer" aria-hidden="true">
-            <span className="chat-bubble-time-inline">{fmtTime(ts)}</span>
-          </div>
-        ) : null}
-      </div>
-    </motion.div>
-  );
+      </motion.div>
+    );
   }
 );
 
@@ -471,7 +471,9 @@ export default function CommandComposer({
   const [thinkingGlimpse, setThinkingGlimpse] = useState('');
   const [draftText, setDraftText] = useState('');
   const [draftActive, setDraftActive] = useState(false);
-  
+  const [thinkingStyle, setThinkingStyle] = useState<'rapid' | 'deep' | 'balanced'>('rapid');
+  const [selectedAgent, setSelectedAgent] = useState<'planner' | 'builder' | 'debugger' | 'auto'>('auto');
+
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
   const wsRef = useRef<WebSocket | null>(null);
@@ -482,7 +484,7 @@ export default function CommandComposer({
   const autoScrollRef = useRef<boolean>(true);
   const lastJoeAutoScrollKeyRef = useRef<string>('');
   const scrollRafRef = useRef<number | null>(null);
-  const stepStartTimes = useRef<{[key: string]: number}>({});
+  const stepStartTimes = useRef<{ [key: string]: number }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastLiveSeqRef = useRef<number>(0);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
@@ -514,7 +516,7 @@ export default function CommandComposer({
           if (baseProviders[k]) baseProviders[k] = { ...baseProviders[k], ...parsed[k] };
         });
       }
-    } catch {}
+    } catch { }
 
     const pickFirstKeyedProvider = () => {
       for (const [k, p] of Object.entries(baseProviders)) {
@@ -537,7 +539,7 @@ export default function CommandComposer({
 
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
   const [activeProvider, setActiveProvider] = useState(initialProviderState.activeProvider);
-  const [showKey, setShowKey] = useState<{[key: string]: boolean}>({});
+  const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
   const getToolLabel = (tool: string, input: any) => {
@@ -848,50 +850,50 @@ export default function CommandComposer({
     }
     if (onStepsUpdate) onStepsUpdate(derived.steps);
     if (onMessagesUpdate) onMessagesUpdate(events);
-    
+
     // Auto-speak new assistant messages if voice mode is on
     if (isVoiceMode && events.length > 0) {
-        const last = events[events.length - 1];
-        if (last.type === 'text' && last.data.text) {
-            speak(last.data.text);
-        }
+      const last = events[events.length - 1];
+      if (last.type === 'text' && last.data.text) {
+        speak(last.data.text);
+      }
     }
   }, [events, derived.steps, isVoiceMode, onMessagesUpdate, onStepsUpdate, isThinking]);
 
   const speak = async (text: string) => {
     if (!isVoiceMode) return;
     stopSpeaking();
-    
+
     setIsSpeaking(true);
 
     // 1. Try OpenAI TTS first
     try {
       const token = localStorage.getItem('token');
       if (token) {
-         const res = await fetch(`${API}/audio/speech`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ text, voice: 'onyx' })
-         });
-         
-         if (res.status === 401) {
-            handleUnauthorized();
-            setIsSpeaking(false);
-            return;
-         }
-         if (res.ok) {
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audio.onended = () => setIsSpeaking(false);
-            audio.onerror = () => setIsSpeaking(false);
-            audio.play();
-            (window as any).currentAudio = audio; // Keep ref to stop it
-            return;
-         }
+        const res = await fetch(`${API}/audio/speech`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ text, voice: 'onyx' })
+        });
+
+        if (res.status === 401) {
+          handleUnauthorized();
+          setIsSpeaking(false);
+          return;
+        }
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.onended = () => setIsSpeaking(false);
+          audio.onerror = () => setIsSpeaking(false);
+          audio.play();
+          (window as any).currentAudio = audio; // Keep ref to stop it
+          return;
+        }
       }
     } catch (e) {
       console.warn('Backend TTS failed, falling back to browser', e);
@@ -903,8 +905,8 @@ export default function CommandComposer({
     utterance.lang = isArabic ? 'ar-SA' : 'en-US';
     const voices = window.speechSynthesis.getVoices();
     if (isArabic) {
-        const arVoice = voices.find(v => v.lang.includes('ar') && v.name.includes('Google')) || voices.find(v => v.lang.includes('ar'));
-        if (arVoice) utterance.voice = arVoice;
+      const arVoice = voices.find(v => v.lang.includes('ar') && v.name.includes('Google')) || voices.find(v => v.lang.includes('ar'));
+      if (arVoice) utterance.voice = arVoice;
     }
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
@@ -915,8 +917,8 @@ export default function CommandComposer({
   const stopSpeaking = () => {
     window.speechSynthesis.cancel();
     if ((window as any).currentAudio) {
-        (window as any).currentAudio.pause();
-        (window as any).currentAudio = null;
+      (window as any).currentAudio.pause();
+      (window as any).currentAudio = null;
     }
     setIsSpeaking(false);
   };
@@ -924,10 +926,10 @@ export default function CommandComposer({
   useEffect(() => {
     window.speechSynthesis.getVoices();
     window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices();
+      window.speechSynthesis.getVoices();
     };
     return () => {
-        stopSpeaking();
+      stopSpeaking();
     };
   }, []);
 
@@ -1092,7 +1094,7 @@ export default function CommandComposer({
     try {
       if (wsRef.current) {
         if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
-        try { wsRef.current.close(); } catch {}
+        try { wsRef.current.close(); } catch { }
       }
       const primaryUrl = WS;
       const fallbackUrl = `${API.replace(/^http/, 'ws')}/ws`;
@@ -1167,7 +1169,7 @@ export default function CommandComposer({
                     host.endsWith('.pages.dev') ||
                     host.endsWith('.web.app');
                   if (looksLocal || looksPreviewHost) shouldAutoOpen = true;
-                } catch {}
+                } catch { }
 
                 if (!shouldAutoOpen) {
                   if (lowerKind.includes('deploy') || lowerKind.includes('preview')) shouldAutoOpen = true;
@@ -1179,30 +1181,30 @@ export default function CommandComposer({
                 lastAutoOpenedHrefRef.current = href;
                 try {
                   window.open(href, '_blank', 'noopener,noreferrer');
-                } catch {}
+                } catch { }
               }
             }
           }
-          
+
           if (msg.type === 'approval_required') {
             const data = msg.data || {};
             const { id, risk, action } = data;
             const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
             if (id) {
-                const sig = `${String(id)}:${String(runId || '')}`;
-                if (lastGateSigRef.current.approval === sig) return;
-                lastGateSigRef.current.approval = sig;
-                setApproval({ id, runId, risk, action });
-                const actionText = String(action || '').trim();
-                const riskText = String(risk || '').trim();
-                const lines = [
-                  t('approvalGateTitle', 'Approval is required before continuing.'),
-                  actionText ? `- ${t('action', 'Action')}: ${actionText}` : '',
-                  riskText ? `- ${t('risk', 'Risk')}: ${riskText}` : '',
-                  '',
-                  t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
-                ].filter(Boolean);
-                setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
+              const sig = `${String(id)}:${String(runId || '')}`;
+              if (lastGateSigRef.current.approval === sig) return;
+              lastGateSigRef.current.approval = sig;
+              setApproval({ id, runId, risk, action });
+              const actionText = String(action || '').trim();
+              const riskText = String(risk || '').trim();
+              const lines = [
+                t('approvalGateTitle', 'Approval is required before continuing.'),
+                actionText ? `- ${t('action', 'Action')}: ${actionText}` : '',
+                riskText ? `- ${t('risk', 'Risk')}: ${riskText}` : '',
+                '',
+                t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
+              ].filter(Boolean);
+              setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
             }
           }
 
@@ -1276,10 +1278,10 @@ export default function CommandComposer({
                 ? msg.data
                 : msg?.data != null
                   ? (() => {
-                      try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
-                    })()
+                    try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
+                  })()
                   : '';
-            
+
             // Strict deduplication: Ignore runId, focus on content. 
             // If the exact same text arrives within 10 seconds, ignore it.
             const sig = rawSigPart.trim();
@@ -1306,7 +1308,7 @@ export default function CommandComposer({
                     const p = JSON.parse(content);
                     content = p.text || p.output || content;
                   }
-                } catch {}
+                } catch { }
 
                 const cleaned = cleanAssistantText(content);
                 const finalText = String(cleaned || content || '').trimEnd();
@@ -1398,13 +1400,13 @@ export default function CommandComposer({
 
           // Reset thinking state on disconnect to avoid stuck UI
           if (isThinkingRef.current || statusRef.current !== 'idle') {
-             setStatus('idle');
-             setIsThinking(false);
-             setActiveToolName(null);
-             setToolVisible(false);
-             setThinkingGlimpse('');
-             clearToolTimers();
-             clearDraftTimer();
+            setStatus('idle');
+            setIsThinking(false);
+            setActiveToolName(null);
+            setToolVisible(false);
+            setThinkingGlimpse('');
+            clearToolTimers();
+            clearDraftTimer();
           }
 
           const triedFallback = (ws as any)?.__triedFallback === true;
@@ -1415,7 +1417,7 @@ export default function CommandComposer({
               wsRef.current = fws;
               attach(fws, false);
               return;
-            } catch {}
+            } catch { }
           }
 
           reconnectTimerRef.current = window.setTimeout(() => connectWS(), 2000);
@@ -1424,15 +1426,15 @@ export default function CommandComposer({
         ws.onerror = () => {
           if (wsRef.current !== ws) return;
           setIsConnected(false);
-          
+
           if (isThinkingRef.current || statusRef.current !== 'idle') {
-             setStatus('idle');
-             setIsThinking(false);
-             setActiveToolName(null);
-             setToolVisible(false);
-             setThinkingGlimpse('');
-             clearToolTimers();
-             clearDraftTimer();
+            setStatus('idle');
+            setIsThinking(false);
+            setActiveToolName(null);
+            setToolVisible(false);
+            setThinkingGlimpse('');
+            clearToolTimers();
+            clearDraftTimer();
           }
         };
       };
@@ -1494,7 +1496,7 @@ export default function CommandComposer({
         const data = await res.json();
         if (Array.isArray(data.events)) {
           setEvents(data.events);
-        } 
+        }
       }
     } catch (e) {
       console.error('Failed to load history', e);
@@ -1505,7 +1507,7 @@ export default function CommandComposer({
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
     setIsUploading(true);
-    
+
     try {
       const token = localStorage.getItem('token');
       const formData = new FormData();
@@ -1718,18 +1720,18 @@ export default function CommandComposer({
       if (b) return { sessionId: b };
       return { sessionId: `browser:${sid}` };
     };
-    
+
     // Optimistic update
     const tempId = Date.now().toString();
     setEvents(prev => [
       ...prev,
       { type: 'user_input', data: inputText, id: tempId, ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
     ]);
-    
+
     if (!overrideText) {
-        setText(''); 
+      setText('');
     }
-    setAttachedFiles([]); 
+    setAttachedFiles([]);
 
     const token = localStorage.getItem('token');
     try {
@@ -1753,7 +1755,7 @@ export default function CommandComposer({
               parsed.host = base.host;
               return parsed.toString();
             }
-          } catch {}
+          } catch { }
           return u;
         };
 
@@ -1769,8 +1771,8 @@ export default function CommandComposer({
 
         const desiredUrl = normalizePreviewUrl(
           directUrl ||
-            extractedUrl ||
-            (wantsPreview ? previewCandidate : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com')
+          extractedUrl ||
+          (wantsPreview ? previewCandidate : wantsYoutube ? 'https://www.youtube.com' : wantsGithub ? 'https://github.com' : 'https://www.google.com')
         );
         try {
           const opened = await ensureBrowserSession();
@@ -1795,9 +1797,9 @@ export default function CommandComposer({
             pendingBrowserRetryRef.current = { url: desiredUrl, sessionId: sid };
             if (looksLikeUnreachableWorker) {
               // Legacy prompt removed
-              } else {
+            } else {
               // Legacy prompt removed
-              }
+            }
           }
         }
       }
@@ -1817,23 +1819,27 @@ export default function CommandComposer({
         providerCfgToSend = providers[valid];
       }
 
+      const payload: any = {
+        type: 'run_start',
+        text: inputText,
+        sessionId,
+        browserSessionId: effectiveBrowserSessionId || undefined,
+        files: attachedFiles.map(f => f.id),
+        provider: providerToSend,
+        model: providerCfgToSend?.model,
+        apiKey: providerCfgToSend?.apiKey,
+        baseUrl: providerCfgToSend?.baseUrl,
+        thinkingStyle,
+        agent: selectedAgent
+      };
+
       const res = await fetch(`${API}/runs/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ 
-          text: inputText, 
-          sessionId,
-          sessionKind,
-          ...(sessionKind === 'agent' && effectiveBrowserSessionId ? { browserSessionId: effectiveBrowserSessionId } : {}),
-          fileIds: attachedFiles.map(f => f.id),
-          provider: providerToSend,
-          apiKey: providerCfgToSend?.apiKey,
-          baseUrl: providerCfgToSend?.baseUrl,
-          model: providerCfgToSend?.model
-        }),
+        body: JSON.stringify(payload),
       });
       const raw = await res.text();
       let data: any = null;
@@ -1894,13 +1900,13 @@ export default function CommandComposer({
           setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
         }
       }
-      
+
       if (!isConnected && data?.result) {
-         const r = data.result;
-         if (r?.output) {
-             const txt = typeof r.output === 'string' ? r.output : JSON.stringify(r.output);
-             setEvents(prev => [...prev, { type: 'text', data: txt }]);
-         }
+        const r = data.result;
+        if (r?.output) {
+          const txt = typeof r.output === 'string' ? r.output : JSON.stringify(r.output);
+          setEvents(prev => [...prev, { type: 'text', data: txt }]);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -1969,7 +1975,7 @@ export default function CommandComposer({
     if (reqs.length) {
       try {
         await Promise.allSettled(reqs);
-      } catch {}
+      } catch { }
     }
 
     pendingBrowserRetryRef.current = null;
@@ -2009,75 +2015,75 @@ export default function CommandComposer({
   const checkConnection = async (key: string) => {
     const p = providers[key];
     setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, lastError: undefined } }));
-    
+
     const token = localStorage.getItem('token');
     try {
-        const res = await fetch(`${API}/runs/verify`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-                provider: key,
-                apiKey: p.apiKey,
-                baseUrl: p.baseUrl,
-                model: p.model
-            })
-        });
-        
-        if (res.status === 401) {
-            handleUnauthorized();
-            throw new Error(t('unauthorized', 'Unauthorized'));
-        }
-        const data = await res.json();
-        
-        if (res.ok) {
-            setProviders(prev => ({ 
-                ...prev, 
-                [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined } 
-            }));
-            setActiveProvider(key);
-        } else {
-            throw new Error(data.error || 'Connection failed');
-        }
-    } catch (err: any) {
-        setProviders(prev => ({ 
-            ...prev, 
-            [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: err.message } 
+      const res = await fetch(`${API}/runs/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          provider: key,
+          apiKey: p.apiKey,
+          baseUrl: p.baseUrl,
+          model: p.model
+        })
+      });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        throw new Error(t('unauthorized', 'Unauthorized'));
+      }
+      const data = await res.json();
+
+      if (res.ok) {
+        setProviders(prev => ({
+          ...prev,
+          [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined }
         }));
+        setActiveProvider(key);
+      } else {
+        throw new Error(data.error || 'Connection failed');
+      }
+    } catch (err: any) {
+      setProviders(prev => ({
+        ...prev,
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: err.message }
+      }));
     }
   };
 
   const deleteProviderKey = (key: string) => {
     if (confirm('Are you sure you want to remove the API key?')) {
-        setProviders(prev => ({ 
-            ...prev, 
-            [key]: { ...prev[key], apiKey: '', isConnected: false } 
-        }));
-        setActiveProvider('openai');
+      setProviders(prev => ({
+        ...prev,
+        [key]: { ...prev[key], apiKey: '', isConnected: false }
+      }));
+      setActiveProvider('openai');
     }
   };
 
   const handleDisconnect = async (key: string) => {
     if (!confirm('Are you sure you want to disconnect?')) return;
-    
-    setProviders(prev => ({ 
-        ...prev, 
-        [key]: { ...prev[key], isConnected: false, isVerifying: false } 
+
+    setProviders(prev => ({
+      ...prev,
+      [key]: { ...prev[key], isConnected: false, isVerifying: false }
     }));
 
     try {
-        const token = localStorage.getItem('token');
-        await fetch(`${API}/providers/clear`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            }
-        });
+      const token = localStorage.getItem('token');
+      await fetch(`${API}/providers/clear`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        }
+      });
     } catch (e) {
-        console.error('Failed to clear provider on backend', e);
+      console.error('Failed to clear provider on backend', e);
     }
   };
 
@@ -2189,20 +2195,20 @@ export default function CommandComposer({
       const str =
         typeof value === 'string'
           ? (() => {
-              if (!technical) {
-                const m = extractFirstJsonObject(value);
-                if (m) {
-                  try {
-                    const parsed = JSON.parse(m.jsonText);
-                    if (looksLikeBrowserSummary(parsed)) {
-                      const formatted = formatBrowserSummary(parsed);
-                      return `${value.slice(0, m.start)}${formatted}${value.slice(m.end)}`.trim();
-                    }
-                  } catch {}
-                }
+            if (!technical) {
+              const m = extractFirstJsonObject(value);
+              if (m) {
+                try {
+                  const parsed = JSON.parse(m.jsonText);
+                  if (looksLikeBrowserSummary(parsed)) {
+                    const formatted = formatBrowserSummary(parsed);
+                    return `${value.slice(0, m.start)}${formatted}${value.slice(m.end)}`.trim();
+                  }
+                } catch { }
               }
-              return value;
-            })()
+            }
+            return value;
+          })()
           : value == null
             ? ''
             : JSON.stringify(value, null, 2);
@@ -2509,369 +2515,369 @@ export default function CommandComposer({
     <div className="composer">
       <div className="events" ref={eventsScrollRef}>
         <div className="events-content" ref={eventsContentRef}>
-        {events.length === 0 && (
-          <div className="empty-state-hero">
-            <div className="hero-logo-container">
-              <div className="hero-logo-glow"></div>
-              <div className="hero-logo-content">
-                <div className="brand-mark brand-mark-hero" aria-hidden="true" />
+          {events.length === 0 && (
+            <div className="empty-state-hero">
+              <div className="hero-logo-container">
+                <div className="hero-logo-glow"></div>
+                <div className="hero-logo-content">
+                  <div className="brand-mark brand-mark-hero" aria-hidden="true" />
+                </div>
+              </div>
+
+              <h1 className="hero-title">
+                <span className="hero-title-main">Build Faster.</span>
+                <span className="hero-title-sub">Think Deeper.</span>
+              </h1>
+
+              <p className="hero-subtitle">
+                Your elite autonomous pair programmer is ready to engineer the future.
+              </p>
+
+              <div className="hero-suggestions">
+                <button className="hero-card" onClick={() => setText('Create a full-stack React & Node.js application with authentication')}>
+                  <div className="hero-card-icon"><Zap size={24} /></div>
+                  <div className="hero-card-content">
+                    <h3>Full Stack App</h3>
+                    <p>React, Node.js, Auth, & DB</p>
+                  </div>
+                </button>
+
+                <button className="hero-card" onClick={() => setText('Analyze this codebase and suggest architectural improvements')}>
+                  <div className="hero-card-icon"><Search size={24} /></div>
+                  <div className="hero-card-content">
+                    <h3>Deep Analysis</h3>
+                    <p>Architecture & Performance</p>
+                  </div>
+                </button>
+
+                <button className="hero-card" onClick={() => setText('Write a Python script to automate data scraping')}>
+                  <div className="hero-card-icon"><Terminal size={24} /></div>
+                  <div className="hero-card-content">
+                    <h3>Automation</h3>
+                    <p>Python Scripts & Tools</p>
+                  </div>
+                </button>
+
+                <button className="hero-card" onClick={() => setText('Debug the current error in the console')}>
+                  <div className="hero-card-icon"><Cpu size={24} /></div>
+                  <div className="hero-card-content">
+                    <h3>Smart Debug</h3>
+                    <p>Fix errors instantly</p>
+                  </div>
+                </button>
               </div>
             </div>
-            
-            <h1 className="hero-title">
-              <span className="hero-title-main">Build Faster.</span>
-              <span className="hero-title-sub">Think Deeper.</span>
-            </h1>
-            
-            <p className="hero-subtitle">
-              Your elite autonomous pair programmer is ready to engineer the future.
-            </p>
+          )}
 
-            <div className="hero-suggestions">
-              <button className="hero-card" onClick={() => setText('Create a full-stack React & Node.js application with authentication')}>
-                <div className="hero-card-icon"><Zap size={24} /></div>
-                <div className="hero-card-content">
-                  <h3>Full Stack App</h3>
-                  <p>React, Node.js, Auth, & DB</p>
-                </div>
-              </button>
-              
-              <button className="hero-card" onClick={() => setText('Analyze this codebase and suggest architectural improvements')}>
-                <div className="hero-card-icon"><Search size={24} /></div>
-                <div className="hero-card-content">
-                  <h3>Deep Analysis</h3>
-                  <p>Architecture & Performance</p>
-                </div>
-              </button>
-              
-              <button className="hero-card" onClick={() => setText('Write a Python script to automate data scraping')}>
-                <div className="hero-card-icon"><Terminal size={24} /></div>
-                <div className="hero-card-content">
-                  <h3>Automation</h3>
-                  <p>Python Scripts & Tools</p>
-                </div>
-              </button>
-              
-              <button className="hero-card" onClick={() => setText('Debug the current error in the console')}>
-                <div className="hero-card-icon"><Cpu size={24} /></div>
-                <div className="hero-card-content">
-                  <h3>Smart Debug</h3>
-                  <p>Fix errors instantly</p>
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
-        
-        <AnimatePresence mode="popLayout">
-        {renderItems.map((item) => {
-          if (item.kind === 'activity') {
-            if (!showToolUi) return null;
-            const rid = item.runId || 'no-run';
-            const steps = stepsByRunId.get(rid) || [];
-            const visibleSteps = steps.filter((s: any) => {
-              const name = String(s?.name || '');
-              return name !== 'plan' && !name.startsWith('thinking_step_');
-            });
-            const logs = logsByRunId.get(rid) || [];
+          <AnimatePresence mode="popLayout">
+            {renderItems.map((item) => {
+              if (item.kind === 'activity') {
+                if (!showToolUi) return null;
+                const rid = item.runId || 'no-run';
+                const steps = stepsByRunId.get(rid) || [];
+                const visibleSteps = steps.filter((s: any) => {
+                  const name = String(s?.name || '');
+                  return name !== 'plan' && !name.startsWith('thinking_step_');
+                });
+                const logs = logsByRunId.get(rid) || [];
 
-            const status = (() => {
-              if (visibleSteps.some((s: any) => s?.status === 'running')) return 'running';
-              if (visibleSteps.some((s: any) => s?.status === 'failed')) return 'failed';
-              if (visibleSteps.length > 0) return 'done';
-              return 'idle';
-            })();
+                const status = (() => {
+                  if (visibleSteps.some((s: any) => s?.status === 'running')) return 'running';
+                  if (visibleSteps.some((s: any) => s?.status === 'failed')) return 'failed';
+                  if (visibleSteps.length > 0) return 'done';
+                  return 'idle';
+                })();
 
-            const expanded = !!expandedRuns[rid];
-            const toggleRun = () => {
-              setRunExpandMode((prev) => ({ ...prev, [rid]: 'manual' }));
-              setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
-            };
+                const expanded = !!expandedRuns[rid];
+                const toggleRun = () => {
+                  setRunExpandMode((prev) => ({ ...prev, [rid]: 'manual' }));
+                  setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
+                };
 
-            const totalDuration = visibleSteps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
-            const failedCount = visibleSteps.filter((s: any) => s?.status === 'failed').length;
-            const doneCount = visibleSteps.filter((s: any) => s?.status === 'done').length;
+                const totalDuration = visibleSteps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
+                const failedCount = visibleSteps.filter((s: any) => s?.status === 'failed').length;
+                const doneCount = visibleSteps.filter((s: any) => s?.status === 'done').length;
 
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="message-row joe"
-              >
-                <div className="activity-card" onClick={toggleRun}>
-                  <div className="activity-header">
-                    <div className="activity-title">
-                      <Cpu size={18} className="text-accent" />
-                      <span>{steps.length ? t('agentActivity') : t('initializing')}</span>
-                    </div>
-                    <div className="activity-meta">
-                      {status === 'running' && <Loader2 size={14} className="spin text-accent" />}
-                      {status === 'done' && <CheckCircle2 size={14} className="text-success" />}
-                      {status === 'failed' && <XCircle size={14} className="text-danger" />}
-                      <span>{visibleSteps.length} {t('stepsLabel')}</span>
-                      {totalDuration > 0 && <span>• {(totalDuration / 1000).toFixed(1)}s</span>}
-                      {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    </div>
-                  </div>
+                return (
+                  <motion.div
+                    key={item.key}
+                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="message-row joe"
+                  >
+                    <div className="activity-card" onClick={toggleRun}>
+                      <div className="activity-header">
+                        <div className="activity-title">
+                          <Cpu size={18} className="text-accent" />
+                          <span>{steps.length ? t('agentActivity') : t('initializing')}</span>
+                        </div>
+                        <div className="activity-meta">
+                          {status === 'running' && <Loader2 size={14} className="spin text-accent" />}
+                          {status === 'done' && <CheckCircle2 size={14} className="text-success" />}
+                          {status === 'failed' && <XCircle size={14} className="text-danger" />}
+                          <span>{visibleSteps.length} {t('stepsLabel')}</span>
+                          {totalDuration > 0 && <span>• {(totalDuration / 1000).toFixed(1)}s</span>}
+                          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </div>
+                      </div>
 
-                  <AnimatePresence>
-                    {expanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="activity-body"
-                      >
-                        {visibleSteps.map((s: any) => {
-                          const stepName = String(s?.name || '');
-                          const toolName = getToolNameFromStep(stepName);
-                          const meta = toolName
-                            ? toolUi(toolName)
-                            : { label: t('stepLabel'), Icon: Sparkles, color: 'var(--text-secondary)' };
-                          const isExpandedStep = !!expandedStepKeys[s.key];
-                          const toggleStep = (ev: any) => {
-                            ev.stopPropagation();
-                            setExpandedStepKeys((prev) => ({ ...prev, [s.key]: !prev[s.key] }));
-                          };
+                      <AnimatePresence>
+                        {expanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="activity-body"
+                          >
+                            {visibleSteps.map((s: any) => {
+                              const stepName = String(s?.name || '');
+                              const toolName = getToolNameFromStep(stepName);
+                              const meta = toolName
+                                ? toolUi(toolName)
+                                : { label: t('stepLabel'), Icon: Sparkles, color: 'var(--text-secondary)' };
+                              const isExpandedStep = !!expandedStepKeys[s.key];
+                              const toggleStep = (ev: any) => {
+                                ev.stopPropagation();
+                                setExpandedStepKeys((prev) => ({ ...prev, [s.key]: !prev[s.key] }));
+                              };
 
-                          const ok = s.status === 'done';
-                          const failed = s.status === 'failed';
-                          const running = s.status === 'running';
-                          const dur = typeof s.duration === 'number' ? s.duration : undefined;
-                          const title = (() => {
-                            if (stepName === 'plan') return t('tools.plan');
-                            if (stepName.startsWith('thinking_step_')) {
-                              const n = stepName.replace('thinking_step_', '');
-                              return t('planNumber', { n });
-                            }
-                            if (toolName) {
-                              const generic = t('toolCategoryGeneric');
-                              const toolLabel = /^browser_/i.test(toolName)
-                                ? toolName
-                                : meta.label === generic
-                                  ? toolName
-                                  : meta.label;
-                              return t('executePrefix', { tool: toolLabel });
-                            }
-                            return s.displayName || formatStepDisplayName(stepName);
-                          })();
-                          const input = s.input;
-                          const result = s.result;
-                          const output = result?.output;
-                          const logs = logsByRunId.get(rid) || [];
+                              const ok = s.status === 'done';
+                              const failed = s.status === 'failed';
+                              const running = s.status === 'running';
+                              const dur = typeof s.duration === 'number' ? s.duration : undefined;
+                              const title = (() => {
+                                if (stepName === 'plan') return t('tools.plan');
+                                if (stepName.startsWith('thinking_step_')) {
+                                  const n = stepName.replace('thinking_step_', '');
+                                  return t('planNumber', { n });
+                                }
+                                if (toolName) {
+                                  const generic = t('toolCategoryGeneric');
+                                  const toolLabel = /^browser_/i.test(toolName)
+                                    ? toolName
+                                    : meta.label === generic
+                                      ? toolName
+                                      : meta.label;
+                                  return t('executePrefix', { tool: toolLabel });
+                                }
+                                return s.displayName || formatStepDisplayName(stepName);
+                              })();
+                              const input = s.input;
+                              const result = s.result;
+                              const output = result?.output;
+                              const logs = logsByRunId.get(rid) || [];
 
-                          return (
-                            <div key={s.key} className="step-item">
-                              <div className="step-header" onClick={toggleStep}>
-                                <div className="step-title">
-                                  <meta.Icon size={16} style={{ color: meta.color }} />
-                                  <span style={{ color: ok ? 'var(--text-primary)' : failed ? 'var(--accent-danger)' : 'var(--accent-primary)' }}>
-                                    {title}
-                                  </span>
+                              return (
+                                <div key={s.key} className="step-item">
+                                  <div className="step-header" onClick={toggleStep}>
+                                    <div className="step-title">
+                                      <meta.Icon size={16} style={{ color: meta.color }} />
+                                      <span style={{ color: ok ? 'var(--text-primary)' : failed ? 'var(--accent-danger)' : 'var(--accent-primary)' }}>
+                                        {title}
+                                      </span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <span className={`step-badge ${ok ? 'success' : failed ? 'danger' : 'running'}`}>
+                                        {running ? t('statusRunning') : ok ? t('statusDone') : t('statusFailed')}
+                                      </span>
+                                      {dur && <span className="text-xs text-muted">{(dur / 1000).toFixed(1)}s</span>}
+                                      {isExpandedStep ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    </div>
+                                  </div>
+
+                                  <AnimatePresence>
+                                    {isExpandedStep && (
+                                      <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        className="step-details"
+                                      >
+                                        {input && (
+                                          <div className="mb-2">
+                                            <div className="text-xs font-bold text-muted mb-1">{t('inputs')}</div>
+                                            <div className="text-xs text-secondary whitespace-pre-wrap">
+                                              {formatValue(input, 1600, { technical: showTechnicalByRunId[rid] })}
+                                            </div>
+                                          </div>
+                                        )}
+                                        {output && (
+                                          <div>
+                                            <div className="text-xs font-bold text-muted mb-1">{t('outputs')}</div>
+                                            <div className="text-xs text-secondary whitespace-pre-wrap">
+                                              {formatValue(output, 1600, { technical: showTechnicalByRunId[rid] })}
+                                            </div>
+                                          </div>
+                                        )}
+                                        {s.error && (
+                                          <div className="mt-2 text-danger text-xs whitespace-pre-wrap">
+                                            {t('errorPrefix')}: {String(s.error)}
+                                          </div>
+                                        )}
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <span className={`step-badge ${ok ? 'success' : failed ? 'danger' : 'running'}`}>
-                                    {running ? t('statusRunning') : ok ? t('statusDone') : t('statusFailed')}
-                                  </span>
-                                  {dur && <span className="text-xs text-muted">{(dur / 1000).toFixed(1)}s</span>}
-                                  {isExpandedStep ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              );
+                            })}
+
+                            <div className="step-item">
+                              <div
+                                className="step-header"
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }));
+                                }}
+                              >
+                                <div className="step-title">
+                                  {showTechnicalByRunId[rid] ? <EyeOff size={16} /> : <Eye size={16} />}
+                                  <span>{showTechnicalByRunId[rid] ? t('hideTechnicalDetails') : t('showTechnicalDetails')}</span>
                                 </div>
                               </div>
-
-                              <AnimatePresence>
-                                {isExpandedStep && (
-                                  <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    className="step-details"
-                                  >
-                                    {input && (
-                                      <div className="mb-2">
-                                        <div className="text-xs font-bold text-muted mb-1">{t('inputs')}</div>
-                                        <div className="text-xs text-secondary whitespace-pre-wrap">
-                                          {formatValue(input, 1600, { technical: showTechnicalByRunId[rid] })}
-                                        </div>
-                                      </div>
-                                    )}
-                                    {output && (
-                                      <div>
-                                        <div className="text-xs font-bold text-muted mb-1">{t('outputs')}</div>
-                                        <div className="text-xs text-secondary whitespace-pre-wrap">
-                                          {formatValue(output, 1600, { technical: showTechnicalByRunId[rid] })}
-                                        </div>
-                                      </div>
-                                    )}
-                                    {s.error && (
-                                      <div className="mt-2 text-danger text-xs whitespace-pre-wrap">
-                                        {t('errorPrefix')}: {String(s.error)}
-                                      </div>
-                                    )}
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
+                              {showTechnicalByRunId[rid] ? (
+                                <div className="log-viewer" dir="ltr">
+                                  {logs.length ? formatSystemLogs(logs) : t('systemLogsEmpty')}
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted" style={{ padding: '0.5rem 0.75rem' }} dir="auto">
+                                  {t('technicalDetailsHidden')}
+                                </div>
+                              )}
                             </div>
-                          );
-                        })}
-                        
-                        <div className="step-item">
-                          <div
-                            className="step-header"
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }));
-                            }}
-                          >
-                            <div className="step-title">
-                              {showTechnicalByRunId[rid] ? <EyeOff size={16} /> : <Eye size={16} />}
-                              <span>{showTechnicalByRunId[rid] ? t('hideTechnicalDetails') : t('showTechnicalDetails')}</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </motion.div>
+                );
+              }
+
+              if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} variant="user" ts={item.e?.ts} />;
+
+              if (item.kind === 'error') {
+                const msg = typeof item.e?.data === 'string' ? item.e.data : String(item.e?.data ?? '');
+                return (
+                  <ChatBubble
+                    key={item.key}
+                    event={{ data: { text: `⚠️ ${msg}` } }}
+                    isUser={false}
+                    variant="system"
+                    tone="danger"
+                    ts={item.e?.ts}
+                  />
+                );
+              }
+
+              if (item.kind === 'text') {
+                let content = item.e?.data;
+                try {
+                  if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                    const p = JSON.parse(content);
+                    content = p.text || p.output || content;
+                  }
+                } catch { }
+
+                const cleaned = cleanAssistantText(content);
+                if (!cleaned) return null;
+                const system = isSystemNoticeText(cleaned);
+                return (
+                  <ChatBubble
+                    key={item.key}
+                    event={{ data: { text: cleaned } }}
+                    isUser={false}
+                    variant={system ? 'system' : 'ai'}
+                    tone={system ? 'info' : 'normal'}
+                    ts={item.e?.ts}
+                    onOptionClick={(q) => run(q)}
+                  />
+                );
+              }
+
+              if (item.kind === 'artifact') {
+                const e = item.e;
+                const href = e?.data?.href;
+                const nameStr = String(e?.data?.name || '');
+                const hrefStr = typeof href === 'string' ? href : '';
+                const looksLikeBrowserScreenshot =
+                  nameStr.trim().toLowerCase() === 'screenshot' || /\/artifacts\/(browser-|health-browser-)/i.test(hrefStr);
+                if (!attachScreenshots && looksLikeBrowserScreenshot) return null;
+                const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.href || '');
+                const isVideo = /\.(mp4|webm|mov)$/i.test(e?.data?.name || '') || /\.(mp4|webm|mov)$/i.test(e?.data?.href || '');
+
+                if (isImage) {
+                  return (
+                    <motion.div key={item.key} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="message-row joe">
+                      <div className="image-generation-frame">
+                        <div className="scanline-overlay"></div>
+                        <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
+                      </div>
+                    </motion.div>
+                  );
+                }
+
+                return (
+                  <motion.div key={item.key} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message-row joe">
+                    <div className="event-artifact">
+                      {isVideo ? (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <VideoIcon size={16} className="artifact-icon" />
+                            <div className="artifact-title">{t('artifacts.video')}</div>
+                          </div>
+                          <video controls src={e.data.href} style={{ width: '100%', borderRadius: 8 }} />
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <FileCode size={20} className="artifact-icon" />
+                            <div className="artifact-info">
+                              <div className="artifact-title">{t('artifacts.file')}</div>
+                              <div className="artifact-name">{e.data.name}</div>
                             </div>
                           </div>
-                          {showTechnicalByRunId[rid] ? (
-                            <div className="log-viewer" dir="ltr">
-                              {logs.length ? formatSystemLogs(logs) : t('systemLogsEmpty')}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-muted" style={{ padding: '0.5rem 0.75rem' }} dir="auto">
-                              {t('technicalDetailsHidden')}
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
-            );
-          }
-
-          if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} variant="user" ts={item.e?.ts} />;
-
-          if (item.kind === 'error') {
-            const msg = typeof item.e?.data === 'string' ? item.e.data : String(item.e?.data ?? '');
-            return (
-              <ChatBubble
-                key={item.key}
-                event={{ data: { text: `⚠️ ${msg}` } }}
-                isUser={false}
-                variant="system"
-                tone="danger"
-                ts={item.e?.ts}
-              />
-            );
-          }
-
-          if (item.kind === 'text') {
-            let content = item.e?.data;
-            try {
-              if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                const p = JSON.parse(content);
-                content = p.text || p.output || content;
+                        </>
+                      )}
+                      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                        <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
+                          <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
+                        </a>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
               }
-            } catch {}
 
-            const cleaned = cleanAssistantText(content);
-            if (!cleaned) return null;
-            const system = isSystemNoticeText(cleaned);
-            return (
-              <ChatBubble
-                key={item.key}
-                event={{ data: { text: cleaned } }}
-                isUser={false}
-                variant={system ? 'system' : 'ai'}
-                tone={system ? 'info' : 'normal'}
-                ts={item.e?.ts}
-                onOptionClick={(q) => run(q)}
-              />
-            );
-          }
+              return null;
+            })}
+            {status === 'answering' && draftActive && draftText ? (
+              <div data-joe-draft="1">
+                <ChatBubble key="draft:typing" event={{ data: { text: draftText } }} isUser={false} variant="ai" ts={Date.now()} isTyping={true} />
+              </div>
+            ) : null}
+          </AnimatePresence>
 
-          if (item.kind === 'artifact') {
-            const e = item.e;
-            const href = e?.data?.href;
-            const nameStr = String(e?.data?.name || '');
-            const hrefStr = typeof href === 'string' ? href : '';
-            const looksLikeBrowserScreenshot =
-              nameStr.trim().toLowerCase() === 'screenshot' || /\/artifacts\/(browser-|health-browser-)/i.test(hrefStr);
-            if (!attachScreenshots && looksLikeBrowserScreenshot) return null;
-            const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.href || '');
-            const isVideo = /\.(mp4|webm|mov)$/i.test(e?.data?.name || '') || /\.(mp4|webm|mov)$/i.test(e?.data?.href || '');
-
-            if (isImage) {
-              return (
-                <motion.div key={item.key} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="message-row joe">
-                  <div className="image-generation-frame">
-                    <div className="scanline-overlay"></div>
-                    <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
-                  </div>
-                </motion.div>
-              );
-            }
-
-            return (
-              <motion.div key={item.key} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message-row joe">
-                <div className="event-artifact">
-                  {isVideo ? (
-                    <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <VideoIcon size={16} className="artifact-icon" />
-                        <div className="artifact-title">{t('artifacts.video')}</div>
-                      </div>
-                      <video controls src={e.data.href} style={{ width: '100%', borderRadius: 8 }} />
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <FileCode size={20} className="artifact-icon" />
-                        <div className="artifact-info">
-                          <div className="artifact-title">{t('artifacts.file')}</div>
-                          <div className="artifact-name">{e.data.name}</div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-                    <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
-                      <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
-                    </a>
+          {isThinking && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="message-row joe"
+            >
+              <div className="px-3 py-2" dir="auto">
+                {/* Thinking Header with Glow */}
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.6)' }}></div>
+                  <div className="text-[11px] font-medium tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 10px rgba(var(--accent-primary-rgb), 0.3)' }}>
+                    {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Thinking…')}
                   </div>
                 </div>
-              </motion.div>
-            );
-          }
-
-          return null;
-        })}
-        {status === 'answering' && draftActive && draftText ? (
-          <div data-joe-draft="1">
-            <ChatBubble key="draft:typing" event={{ data: { text: draftText } }} isUser={false} variant="ai" ts={Date.now()} isTyping={true} />
-          </div>
-        ) : null}
-        </AnimatePresence>
-
-        {isThinking && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="message-row joe"
-          >
-            <div className="px-3 py-2" dir="auto">
-              {/* Thinking Header with Glow */}
-              <div className="flex items-center gap-2 mb-1">
-                 <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.6)' }}></div>
-                 <div className="text-[11px] font-medium tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 10px rgba(var(--accent-primary-rgb), 0.3)' }}>
-                    {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Thinking…')}
-                 </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-        <div ref={endRef} />
+            </motion.div>
+          )}
+          <div ref={endRef} />
+        </div>
       </div>
-      </div>
-      
+
       {null}
 
 
@@ -2879,219 +2885,219 @@ export default function CommandComposer({
       {/* AI Providers Modal */}
       {showProviders && (
         <div className="providers-modal-overlay" onClick={() => setShowProviders(false)}>
-            <div className="providers-modal" onClick={e => e.stopPropagation()}>
-                {/* Left Sidebar */}
-                <div className="providers-left">
-                    <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Cpu size={18} /> Providers
-                    </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {Object.entries(providers).map(([key, p]) => (
-                            <button key={key} onClick={() => setActiveProvider(key)} style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '10px 12px', borderRadius: 8, border: 'none',
-                                background: activeProvider === key ? 'var(--bg-primary, var(--bg-card))' : 'transparent',
-                                color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
-                                cursor: 'pointer', textAlign: 'left',
-                                fontWeight: activeProvider === key ? 600 : 400,
-                                transition: 'all 0.2s'
-                            }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ 
-                                        width: 8, height: 8, borderRadius: '50%',
-                                        background: p.isConnected ? 'var(--accent-success)' : (p.apiKey ? 'var(--accent-secondary)' : '#71717a'),
-                                        boxShadow: p.isConnected ? '0 0 8px rgba(34, 197, 94, 0.6)' : p.apiKey ? '0 0 8px rgba(var(--accent-secondary-rgb), 0.45)' : 'none'
-                                    }} />
-                                    {p.name.split(' ')[0]}
-                                </span>
-                                {activeProvider === key && <ChevronRight size={14} />}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Right Content */}
-                <div className="providers-right">
-                    {providers[activeProvider] && (
-                        <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-                                <div>
-                                    <h2 style={{ margin: 0, fontSize: 20 }}>{providers[activeProvider].name}</h2>
-                                    <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <div style={{ 
-                                            padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                                            background: providers[activeProvider].isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                            color: providers[activeProvider].isConnected ? '#22c55e' : '#ef4444'
-                                        }}>
-                                            {providers[activeProvider].isConnected ? 'CONNECTED' : 'DISCONNECTED'}
-                                        </div>
-                                        {providers[activeProvider].isVerifying && <Loader2 size={12} className="spin" />}
-                                    </div>
-                                </div>
-                                <button onClick={() => setShowProviders(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                                    <X size={20} />
-                                </button>
-                            </div>
-
-                            <div style={{ flex: 1 }}>
-                                <div style={{ marginBottom: 20 }}>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
-                                        <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
-                                            <div style={{ position: 'relative', flex: 1 }}>
-                                                <input 
-                                                    type={showKey[activeProvider] ? "text" : "password"} 
-                                                    value={providers[activeProvider].apiKey}
-                                                    onChange={(e) => {
-                                                        const newKey = e.target.value;
-                                                        setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
-                                                        // Send API key to server for OpenAI
-                                                        if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
-                                                            fetch(`${API}/providers/openai/key`, {
-                                                                method: 'POST',
-                                                                headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ apiKey: newKey.trim() })
-                                                            }).catch(err => console.error('Failed to send API key to server:', err));
-                                                        }
-                                                    }}
-                                                    placeholder="sk-..."
-                                                    style={{ 
-                                                        width: '100%', padding: '10px 12px', borderRadius: 8, 
-                                                        border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                                                        color: 'var(--text-primary)', outline: 'none', fontSize: 14
-                                                    }}
-                                                />
-                                                <button 
-                                                    onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
-                                                    style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5 }}
-                                                >
-                                                    {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                </button>
-                                            </div>
-                                            <button 
-                                                onClick={() => {
-                                                    deleteProviderKey(activeProvider);
-                                                    // Clear API key on server for OpenAI
-                                                    if (activeProvider === 'openai') {
-                                                        fetch(`${API}/providers/clear`, {
-                                                            method: 'POST',
-                                                            headers: { 'Content-Type': 'application/json' }
-                                                        }).catch(err => console.error('Failed to clear API key on server:', err));
-                                                    }
-                                                }}
-                                                title="Clear Key"
-                                                style={{ 
-                                                    padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)', 
-                                                    background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer' 
-                                                }}
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Model ID</label>
-                                        <input 
-                                            type="text" 
-                                            value={providers[activeProvider].model || ''}
-                                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
-                                            placeholder="gpt-4o"
-                                            style={{ 
-                                                width: '100%', padding: '10px 12px', borderRadius: 8, 
-                                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                                                color: 'var(--text-primary)', outline: 'none', fontSize: 14
-                                            }}
-                                        />
-                                    </div>
-                                    {activeProvider === 'grok' && (
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Base URL</label>
-                                            <input 
-                                                type="text" 
-                                                value={providers[activeProvider].baseUrl || ''}
-                                                onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
-                                                placeholder="https://api..."
-                                                style={{ 
-                                                    width: '100%', padding: '10px 12px', borderRadius: 8, 
-                                                    border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                                                    color: 'var(--text-primary)', outline: 'none', fontSize: 14
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {providers[activeProvider].lastError && (
-                                    <div style={{ 
-                                        padding: 12, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', 
-                                        border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 13,
-                                        marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8
-                                    }}>
-                                        <XCircle size={16} />
-                                        {providers[activeProvider].lastError}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div style={{ display: 'flex', gap: 12, paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
-                                <button 
-                                    onClick={() => checkConnection(activeProvider)}
-                                    disabled={providers[activeProvider].isVerifying}
-                                    style={{ 
-                                        flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                                        background: providers[activeProvider].isConnected ? '#22c55e' : 'var(--accent-primary)',
-                                        color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                        opacity: providers[activeProvider].isVerifying ? 0.7 : 1
-                                    }}
-                                >
-                                    {providers[activeProvider].isVerifying ? (
-                                        <>
-                                            <Loader2 size={18} className="spin" /> Verifying...
-                                        </>
-                                    ) : providers[activeProvider].isConnected ? (
-                                        <>
-                                            <CheckCircle2 size={18} /> Verified & Active
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Zap size={18} /> Connect & Activate
-                                        </>
-                                    )}
-                                </button>
-                                
-                                <button 
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleDisconnect(activeProvider);
-                                    }}
-                                    disabled={!providers[activeProvider].isConnected}
-                                    title="Disconnect Provider"
-                                    style={{ 
-                                        padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-color)',
-                                        background: 'var(--bg-secondary)',
-                                        color: providers[activeProvider].isConnected ? '#ef4444' : 'var(--text-muted)', 
-                                        fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                        opacity: !providers[activeProvider].isConnected ? 0.5 : 1
-                                    }}
-                                >
-                                    <Power size={18} />
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
+          <div className="providers-modal" onClick={e => e.stopPropagation()}>
+            {/* Left Sidebar */}
+            <div className="providers-left">
+              <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Cpu size={18} /> Providers
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {Object.entries(providers).map(([key, p]) => (
+                  <button key={key} onClick={() => setActiveProvider(key)} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: 8, border: 'none',
+                    background: activeProvider === key ? 'var(--bg-primary, var(--bg-card))' : 'transparent',
+                    color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
+                    cursor: 'pointer', textAlign: 'left',
+                    fontWeight: activeProvider === key ? 600 : 400,
+                    transition: 'all 0.2s'
+                  }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: p.isConnected ? 'var(--accent-success)' : (p.apiKey ? 'var(--accent-secondary)' : '#71717a'),
+                        boxShadow: p.isConnected ? '0 0 8px rgba(34, 197, 94, 0.6)' : p.apiKey ? '0 0 8px rgba(var(--accent-secondary-rgb), 0.45)' : 'none'
+                      }} />
+                      {p.name.split(' ')[0]}
+                    </span>
+                    {activeProvider === key && <ChevronRight size={14} />}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Right Content */}
+            <div className="providers-right">
+              {providers[activeProvider] && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: 20 }}>{providers[activeProvider].name}</h2>
+                      <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{
+                          padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                          background: providers[activeProvider].isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                          color: providers[activeProvider].isConnected ? '#22c55e' : '#ef4444'
+                        }}>
+                          {providers[activeProvider].isConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                        </div>
+                        {providers[activeProvider].isVerifying && <Loader2 size={12} className="spin" />}
+                      </div>
+                    </div>
+                    <button onClick={() => setShowProviders(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  <div style={{ flex: 1 }}>
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
+                      <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
+                        <div style={{ position: 'relative', flex: 1 }}>
+                          <input
+                            type={showKey[activeProvider] ? "text" : "password"}
+                            value={providers[activeProvider].apiKey}
+                            onChange={(e) => {
+                              const newKey = e.target.value;
+                              setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
+                              // Send API key to server for OpenAI
+                              if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
+                                fetch(`${API}/providers/openai/key`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ apiKey: newKey.trim() })
+                                }).catch(err => console.error('Failed to send API key to server:', err));
+                              }
+                            }}
+                            placeholder="sk-..."
+                            style={{
+                              width: '100%', padding: '10px 12px', borderRadius: 8,
+                              border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                              color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                            }}
+                          />
+                          <button
+                            onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
+                            style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5 }}
+                          >
+                            {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => {
+                            deleteProviderKey(activeProvider);
+                            // Clear API key on server for OpenAI
+                            if (activeProvider === 'openai') {
+                              fetch(`${API}/providers/clear`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' }
+                              }).catch(err => console.error('Failed to clear API key on server:', err));
+                            }
+                          }}
+                          title="Clear Key"
+                          style={{
+                            padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
+                            background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
+                          }}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Model ID</label>
+                        <input
+                          type="text"
+                          value={providers[activeProvider].model || ''}
+                          onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
+                          placeholder="gpt-4o"
+                          style={{
+                            width: '100%', padding: '10px 12px', borderRadius: 8,
+                            border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                            color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                          }}
+                        />
+                      </div>
+                      {activeProvider === 'grok' && (
+                        <div>
+                          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Base URL</label>
+                          <input
+                            type="text"
+                            value={providers[activeProvider].baseUrl || ''}
+                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
+                            placeholder="https://api..."
+                            style={{
+                              width: '100%', padding: '10px 12px', borderRadius: 8,
+                              border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                              color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {providers[activeProvider].lastError && (
+                      <div style={{
+                        padding: 12, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 13,
+                        marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8
+                      }}>
+                        <XCircle size={16} />
+                        {providers[activeProvider].lastError}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 12, paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
+                    <button
+                      onClick={() => checkConnection(activeProvider)}
+                      disabled={providers[activeProvider].isVerifying}
+                      style={{
+                        flex: 1, padding: '12px', borderRadius: 8, border: 'none',
+                        background: providers[activeProvider].isConnected ? '#22c55e' : 'var(--accent-primary)',
+                        color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        opacity: providers[activeProvider].isVerifying ? 0.7 : 1
+                      }}
+                    >
+                      {providers[activeProvider].isVerifying ? (
+                        <>
+                          <Loader2 size={18} className="spin" /> Verifying...
+                        </>
+                      ) : providers[activeProvider].isConnected ? (
+                        <>
+                          <CheckCircle2 size={18} /> Verified & Active
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={18} /> Connect & Activate
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDisconnect(activeProvider);
+                      }}
+                      disabled={!providers[activeProvider].isConnected}
+                      title="Disconnect Provider"
+                      style={{
+                        padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-color)',
+                        background: 'var(--bg-secondary)',
+                        color: providers[activeProvider].isConnected ? '#ef4444' : 'var(--text-muted)',
+                        fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        opacity: !providers[activeProvider].isConnected ? 0.5 : 1
+                      }}
+                    >
+                      <Power size={18} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       {secretPrompt && (
         <div className="modal">
           <div className="panel" style={{ width: 400, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
               <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
                 <Lock size={24} />
               </div>
@@ -3100,15 +3106,15 @@ export default function CommandComposer({
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GitHub / Service Token</div>
               </div>
             </div>
-            
+
             <div style={{ marginBottom: 20 }}>
               <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 8, lineHeight: 1.5 }}>
                 {t('secretGateInstruction', 'Please enter your Personal Access Token to continue.')}
               </p>
               {secretPrompt.reason && (
-                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-card)', padding: 8, borderRadius: 6, marginBottom: 12 }}>
-                    {secretPrompt.reason}
-                 </div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-card)', padding: 8, borderRadius: 6, marginBottom: 12 }}>
+                  {secretPrompt.reason}
+                </div>
               )}
               <div style={{ position: 'relative' }}>
                 <input
@@ -3117,32 +3123,32 @@ export default function CommandComposer({
                   placeholder="ghp_xxxxxxxxxxxx"
                   onKeyDown={async (e) => {
                     if (e.key === 'Enter') {
-                        const val = (e.target as HTMLInputElement).value;
-                        if (val) {
-                             const sid = secretPrompt.sessionId;
-                             const key = secretPrompt.key;
-                             const provider = secretPrompt.provider;
-                             setSecretPrompt(null);
-                             setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
-                            
-                             const token = localStorage.getItem('token');
-                             try {
-                                const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                                  body: JSON.stringify({ key, value: val, ...(provider ? { provider } : {}) }),
-                                });
-                                if (res.status === 401) {
-                                  handleUnauthorized();
-                                  return;
-                                }
-                                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                                setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
-                                pendingBrowserRetryRef.current = null;
-                             } catch (err) {
-                                setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
-                             }
+                      const val = (e.target as HTMLInputElement).value;
+                      if (val) {
+                        const sid = secretPrompt.sessionId;
+                        const key = secretPrompt.key;
+                        const provider = secretPrompt.provider;
+                        setSecretPrompt(null);
+                        setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
+
+                        const token = localStorage.getItem('token');
+                        try {
+                          const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                            body: JSON.stringify({ key, value: val, ...(provider ? { provider } : {}) }),
+                          });
+                          if (res.status === 401) {
+                            handleUnauthorized();
+                            return;
+                          }
+                          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                          setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
+                          pendingBrowserRetryRef.current = null;
+                        } catch (err) {
+                          setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
                         }
+                      }
                     }
                   }}
                   style={{
@@ -3154,13 +3160,13 @@ export default function CommandComposer({
                 <Key size={16} style={{ position: 'absolute', left: 12, top: 14, color: 'var(--text-secondary)' }} />
               </div>
               <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                 <ShieldCheck size={12} />
-                 <span>Your token is sent securely and not stored permanently.</span>
+                <ShieldCheck size={12} />
+                <span>Your token is sent securely and not stored permanently.</span>
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button 
+              <button
                 onClick={() => setSecretPrompt(null)}
                 style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
               >
@@ -3227,99 +3233,140 @@ export default function CommandComposer({
           ) : null}
         </AnimatePresence>
         <div className="input-area">
-        <div className="input-container">
-          <textarea 
-            className="main-input"
-            value={text} 
-            onChange={(e) => setText(e.target.value)} 
-            placeholder={t('inputPlaceholder')}
-            dir="auto"
-            disabled={!!approval}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (status !== 'idle' || !!approval || !!secretPrompt) {
-                  stopCurrentRun();
-                  return;
-                }
-                run();
-              }
-            }}
-          />
-          <div className="input-actions">
-            <div className="connection-status" title={isConnected ? t('connected') : t('connecting')}>
-              <div className={`status-dot ${isConnected ? 'connected' : ''}`} />
-              <span className="status-text">
-                {isConnected ? t('connected') : t('connecting')}
-              </span>
+          <div style={{ display: 'flex', gap: 16, padding: '0 4px 8px 4px', alignItems: 'center' }}>
+            {/* Agent Selector */}
+            <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', padding: 3, borderRadius: 8 }}>
+              {(['auto', 'planner', 'builder', 'debugger'] as const).map(agent => (
+                <button
+                  key={agent}
+                  onClick={() => setSelectedAgent(agent)}
+                  style={{
+                    padding: '4px 8px', fontSize: 11, borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: selectedAgent === agent ? 'rgba(var(--accent-primary-rgb), 0.15)' : 'transparent',
+                    color: selectedAgent === agent ? 'var(--accent-primary)' : 'var(--text-muted)',
+                    fontWeight: selectedAgent === agent ? 600 : 400,
+                    transition: 'all 0.2s', textTransform: 'capitalize'
+                  }}
+                >
+                  {agent}
+                </button>
+              ))}
             </div>
-            <div className="right-actions">
-               <button
-                 className="action-btn"
-                 onClick={() => setShowProviders(true)}
-                 title="AI Providers"
-               >
-                 <Cpu size={20} />
-               </button>
-              <input 
-                type="file" 
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-              />
-              <button 
-                className="action-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title={t('attachFile') || "Attach file"}
-                disabled={isUploading}
-              >
-                {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
-              </button>
-              <button 
-                className={`action-btn ${isVoiceMode ? 'active' : ''}`}
-                onClick={() => setIsVoiceMode(!isVoiceMode)}
-                title="Voice Mode"
-              >
-                {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
-              </button>
-              <button 
-                className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`} 
-                onClick={() => {
+
+            <div style={{ width: 1, height: 16, background: 'var(--border-color)' }}></div>
+
+            {/* Thinking Style Selector */}
+            <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', padding: 3, borderRadius: 8 }}>
+              {(['rapid', 'balanced', 'deep'] as const).map(style => (
+                <button
+                  key={style}
+                  onClick={() => setThinkingStyle(style)}
+                  style={{
+                    padding: '4px 8px', fontSize: 11, borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: thinkingStyle === style ? 'rgba(var(--accent-primary-rgb), 0.15)' : 'transparent',
+                    color: thinkingStyle === style ? 'var(--accent-primary)' : 'var(--text-muted)',
+                    fontWeight: thinkingStyle === style ? 600 : 400,
+                    transition: 'all 0.2s', textTransform: 'capitalize'
+                  }}
+                >
+                  {style}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="input-container">
+            <textarea
+              className="main-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={t('inputPlaceholder')}
+              dir="auto"
+              disabled={!!approval}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
                   if (status !== 'idle' || !!approval || !!secretPrompt) {
                     stopCurrentRun();
                     return;
                   }
                   run();
-                }}
-                disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (!text.trim() || !!approval)}
-                title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
-              >
-                {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={18} /> : <ArrowUp size={20} />}
-              </button>
+                }
+              }}
+            />
+            <div className="input-actions">
+              <div className="connection-status" title={isConnected ? t('connected') : t('connecting')}>
+                <div className={`status-dot ${isConnected ? 'connected' : ''}`} />
+                <span className="status-text">
+                  {isConnected ? t('connected') : t('connecting')}
+                </span>
+              </div>
+              <div className="right-actions">
+                <button
+                  className="action-btn"
+                  onClick={() => setShowProviders(true)}
+                  title="AI Providers"
+                >
+                  <Cpu size={20} />
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  className="action-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  title={t('attachFile') || "Attach file"}
+                  disabled={isUploading}
+                >
+                  {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
+                </button>
+                <button
+                  className={`action-btn ${isVoiceMode ? 'active' : ''}`}
+                  onClick={() => setIsVoiceMode(!isVoiceMode)}
+                  title="Voice Mode"
+                >
+                  {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
+                </button>
+                <button
+                  className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
+                  onClick={() => {
+                    if (status !== 'idle' || !!approval || !!secretPrompt) {
+                      stopCurrentRun();
+                      return;
+                    }
+                    run();
+                  }}
+                  disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (!text.trim() || !!approval)}
+                  title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+                >
+                  {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={18} /> : <ArrowUp size={20} />}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {isVoiceMode && (
-             <div className="voice-controls">
-                 <button 
-                     className={`voice-record-btn ${isListening ? 'listening' : ''}`}
-                     onClick={toggleListening}
-                 >
-                     {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
-                 </button>
-                 <div className="voice-info">
-                     <span className="voice-status">{isListening ? 'Listening...' : 'Tap to Speak'}</span>
-                     <span className="voice-lang">Arabic (SA) / English (US)</span>
-                 </div>
-                 
-                 <button className="action-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
-                     <Volume2 size={18} />
-                 </button>
-             </div>
-        )}
+          {isVoiceMode && (
+            <div className="voice-controls">
+              <button
+                className={`voice-record-btn ${isListening ? 'listening' : ''}`}
+                onClick={toggleListening}
+              >
+                {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
+              </button>
+              <div className="voice-info">
+                <span className="voice-status">{isListening ? 'Listening...' : 'Tap to Speak'}</span>
+                <span className="voice-lang">Arabic (SA) / English (US)</span>
+              </div>
+
+              <button className="action-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
+                <Volume2 size={18} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  </div>
   );
 }
