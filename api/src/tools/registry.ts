@@ -18,6 +18,7 @@ import { ArchitectTool } from './definitions/ArchitectTool';
 import { VisualQATool } from './definitions/VisualQATool';
 import { GenesisToolDef } from './definitions/GenesisTool';
 import { GenesisAgent } from '../agents/GenesisAgent';
+import { handleShellCommand, handleGitCommand, handleFsCommand } from './handlers';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -535,6 +536,7 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 120,
     auditFields: ['text'],
     mockSupported: true,
+    execute: async (input) => ({ ok: true, output: { text: input.text }, logs: [] }),
   },
   // Use the modern class-based tool
   browserRunTool,
@@ -1096,6 +1098,9 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 60,
     auditFields: ['filename'],
     mockSupported: false,
+    async execute(input) {
+      return handleFsCommand('write', input.filename, input.content);
+    },
   },
   {
     name: 'grep_search',
@@ -1335,6 +1340,9 @@ export const tools: ToolDefinition[] = [
     rateLimitPerMinute: 60,
     auditFields: ['operation'],
     mockSupported: true,
+    async execute(input) {
+      return handleGitCommand(input.operation, input.args || []);
+    },
   },
   {
     name: 'github_create_repo',
@@ -2943,13 +2951,22 @@ export const tools: ToolDefinition[] = [
         stderr: { type: 'string' },
         exitCode: { type: 'number' },
         cwd: { type: 'string' },
+        command: { type: 'string' },
+        dryRun: { type: 'boolean' },
       },
     },
     permissions: ['execute'],
     sideEffects: ['execute'],
     rateLimitPerMinute: 60,
     auditFields: ['command', 'cwd'],
-    mockSupported: true,
+    mockSupported: false,
+    async execute(input) {
+      const cmd = String(input?.command || '').trim();
+      const cwd = String(input?.cwd || '').trim() || undefined;
+      const timeout = Number(input?.timeout ?? 60000);
+      const dryRun = input?.dryRun === true;
+      return handleShellCommand(cmd, [], cwd, timeout, dryRun);
+    },
   },
   {
     name: 'read_file_tree',
@@ -3290,6 +3307,7 @@ function addGeneratedTool(t: ToolDefinition) {
   if (!t?.name) return;
   if (tools.length + generatedTools.length >= TARGET_TOOL_COUNT) return;
   if (hasToolName(t.name)) return;
+  if (!t.description) t.description = `Auto-generated tool: ${t.name}`;
   generatedTools.push(t);
 }
 
@@ -3309,7 +3327,7 @@ function makeShellTool(opts: {
     name: opts.name,
     version: '1.0.0',
     tags: opts.tags,
-    description: opts.description,
+    description: opts.description || `Execute ${opts.name} command`,
     inputSchema: { ...opts.inputSchema, properties: { ...opts.inputSchema.properties, dryRun: { type: 'boolean' } } },
     outputSchema: {
       type: 'object',
