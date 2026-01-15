@@ -89,6 +89,27 @@ const resources = {
         file: 'File',
         openNewWindow: 'Open in new window'
       },
+      memory: {
+        title: 'Memory',
+        tabs: {
+          project: 'Project',
+          session: 'Session',
+          user: 'User'
+        },
+        searchPlaceholder: 'Search memory...',
+        delete: 'Delete',
+        edit: 'Edit',
+        empty: 'No memories found.'
+      },
+      sidebar: {
+        newChat: 'New Chat',
+        searchPlaceholder: 'Search chats...',
+        folders: 'Folders',
+        otherSessions: 'Other Sessions',
+        emptyFolder: 'Empty folder',
+        noResults: 'No results',
+        deleteAll: 'Delete all sessions'
+      },
       agentActivity: 'Agent Activity',
       initializing: 'Initializing...',
       stepsLabel: 'Steps',
@@ -238,6 +259,27 @@ const resources = {
         file: 'ملف',
         openNewWindow: 'فتح في نافذة جديدة'
       },
+      memory: {
+        title: 'الذاكرة',
+        tabs: {
+          project: 'المشروع',
+          session: 'الجلسة',
+          user: 'المستخدم'
+        },
+        searchPlaceholder: 'بحث في الذاكرة...',
+        delete: 'حذف',
+        edit: 'تعديل',
+        empty: 'لا توجد ذكريات.'
+      },
+      sidebar: {
+        newChat: 'محادثة جديدة',
+        searchPlaceholder: 'بحث في المحادثات...',
+        folders: 'المجلدات',
+        otherSessions: 'جلسات أخرى',
+        emptyFolder: 'مجلد فارغ',
+        noResults: 'لا توجد نتائج',
+        deleteAll: 'حذف جميع الجلسات'
+      },
       agentActivity: 'نشاط الوكيل',
       initializing: 'جارٍ التحضير...',
       stepsLabel: 'خطوات',
@@ -366,6 +408,27 @@ const resources = {
         video: 'Vidéo',
         file: 'Fichier',
         openNewWindow: 'Ouvrir dans une nouvelle fenêtre'
+      },
+      memory: {
+        title: 'Mémoire',
+        tabs: {
+          project: 'Projet',
+          session: 'Session',
+          user: 'Utilisateur'
+        },
+        searchPlaceholder: 'Rechercher dans la mémoire...',
+        delete: 'Supprimer',
+        edit: 'Modifier',
+        empty: 'Aucune mémoire trouvée.'
+      },
+      sidebar: {
+        newChat: 'Nouvelle discussion',
+        searchPlaceholder: 'Rechercher des discussions...',
+        folders: 'Dossiers',
+        otherSessions: 'Autres sessions',
+        emptyFolder: 'Dossier vide',
+        noResults: 'Aucun résultat',
+        deleteAll: 'Supprimer toutes les sessions'
       },
       agentActivity: 'Activité de l’agent',
       initializing: 'Initialisation...',
@@ -496,6 +559,27 @@ const resources = {
         file: 'Datei',
         openNewWindow: 'In neuem Fenster öffnen'
       },
+      memory: {
+        title: 'Gedächtnis',
+        tabs: {
+          project: 'Projekt',
+          session: 'Sitzung',
+          user: 'Benutzer'
+        },
+        searchPlaceholder: 'Gedächtnis durchsuchen...',
+        delete: 'Löschen',
+        edit: 'Bearbeiten',
+        empty: 'Keine Erinnerungen gefunden.'
+      },
+      sidebar: {
+        newChat: 'Neuer Chat',
+        searchPlaceholder: 'Chats durchsuchen...',
+        folders: 'Ordner',
+        otherSessions: 'Andere Sitzungen',
+        emptyFolder: 'Leerer Ordner',
+        noResults: 'Keine Ergebnisse',
+        deleteAll: 'Alle Sitzungen löschen'
+      },
       agentActivity: 'Agent-Aktivität',
       initializing: 'Initialisierung...',
       stepsLabel: 'Schritte',
@@ -606,6 +690,27 @@ const resources = {
         file: 'Файл',
         openNewWindow: 'Открыть в новом окне'
       },
+      memory: {
+        title: 'Память',
+        tabs: {
+          project: 'Проект',
+          session: 'Сессия',
+          user: 'Пользователь'
+        },
+        searchPlaceholder: 'Поиск памяти...',
+        delete: 'Удалить',
+        edit: 'Редактировать',
+        empty: 'Воспоминаний не найдено.'
+      },
+      sidebar: {
+        newChat: 'Новый чат',
+        searchPlaceholder: 'Поиск чатов...',
+        folders: 'Папки',
+        otherSessions: 'Другие сессии',
+        emptyFolder: 'Пустая папка',
+        noResults: 'Нет результатов',
+        deleteAll: 'Удалить все сессии'
+      },
       unauthorized: 'Нет доступа',
       browserDefaultSearchText: 'Вред курения',
       browserBlockedUrl: 'Открытие заблокировано: {{url}}',
@@ -696,6 +801,27 @@ const resources = {
         video: 'Video',
         file: 'Archivo',
         openNewWindow: 'Abrir en nueva ventana'
+      },
+      memory: {
+        title: 'Memoria',
+        tabs: {
+          project: 'Proyecto',
+          session: 'Sesión',
+          user: 'Usuario'
+        },
+        searchPlaceholder: 'Buscar memoria...',
+        delete: 'Eliminar',
+        edit: 'Editar',
+        empty: 'No se encontraron recuerdos.'
+      },
+      sidebar: {
+        newChat: 'Nuevo chat',
+        searchPlaceholder: 'Buscar chats...',
+        folders: 'Carpetas',
+        otherSessions: 'Otras sesiones',
+        emptyFolder: 'Carpeta vacía',
+        noResults: 'Sin resultados',
+        deleteAll: 'Eliminar todas las sesiones'
       },
       unauthorized: 'No autorizado',
       browserDefaultSearchText: 'Daños del tabaco',

@@ -363,7 +363,7 @@ export default function Joe() {
       <div className="joe-thinking-panel">
         <div className="joe-thinking-summary">
           <div className="joe-thinking-summary-row">
-            <div className="joe-thinking-summary-title">الحالة المباشرة</div>
+            <div className="joe-thinking-summary-title">{t('liveSteps', 'Live Steps')}</div>
             <div className="joe-thinking-summary-badges">
               <span className="joe-thinking-badge">{t('statusRunning', 'قيد التنفيذ')}: {running}</span>
               <span className="joe-thinking-badge">{t('statusDone', 'تم')}: {done}</span>
@@ -377,7 +377,7 @@ export default function Joe() {
 
         <div ref={thinkingPanelRef} className="joe-thinking-list" dir="auto">
           {thinkingChain.length === 0 ? (
-            <div className="joe-thinking-empty">ستظهر هنا الخطوات والأحداث أثناء تنفيذ الطلب.</div>
+            <div className="joe-thinking-empty">{t('waitingForActivity', 'Waiting for activity...')}</div>
           ) : (
             thinkingChain.map((item) => {
               const time = new Date(item.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -487,7 +487,7 @@ export default function Joe() {
       const res = await fetch(`${API}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: 'جلسة جديدة' }),
+        body: JSON.stringify({ title: t('sidebar.newChat', 'New Chat') }),
       });
       if (res.status === 401) {
         localStorage.removeItem('token');
@@ -566,7 +566,7 @@ export default function Joe() {
   }, [isNarrow]);
 
   async function createFolder() {
-    const name = prompt('اسم المجلد الجديد:');
+    const name = prompt(t('sidebar.newFolderPrompt', 'New Folder Name:'));
     if (!name) return;
     await createFolderAction(name);
   }
@@ -728,7 +728,7 @@ export default function Joe() {
         <aside className={`sidebar ${showSidebar ? 'open' : 'closed'}`} aria-hidden={!showSidebar}>
           <div className="sidebar-header">
             <button className="new-chat-btn" onClick={createSession} disabled={isCreatingChatSession}>
-              <span>+</span> محادثة جديدة
+              <span>+</span> {t('sidebar.newChat', 'New Chat')}
             </button>
             <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
               <PanelLeftClose size={20} />
@@ -740,7 +740,7 @@ export default function Joe() {
               <Search size={14} className="search-icon" />
               <input
                 type="text"
-                placeholder="بحث في المحادثات..."
+                placeholder={t('sidebar.searchPlaceholder', 'Search chats...')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="search-input"
@@ -751,7 +751,7 @@ export default function Joe() {
           {!searchQuery ? (
             <>
               <div className="section-header-container">
-                <div className="section-title">المجلدات</div>
+                <div className="section-title">{t('sidebar.folders', 'Folders')}</div>
                 <button
                   onClick={createFolder}
                   className="action-icon-btn"
@@ -831,7 +831,7 @@ export default function Joe() {
                           </div>
                         ))}
                         {sessions.filter(s => s.folderId === folder._id).length === 0 && (
-                          <div className="empty-folder-msg">مجلد فارغ</div>
+                          <div className="empty-folder-msg">{t('sidebar.emptyFolder', 'Empty folder')}</div>
                         )}
                       </div>
                     )}
@@ -850,7 +850,7 @@ export default function Joe() {
                     if (sessionId) moveSessionToFolder(sessionId, null);
                   }}
                 >
-                  <div className="section-title">جلسات أخرى</div>
+                  <div className="section-title">{t('sidebar.otherSessions', 'Other Sessions')}</div>
                 </div>
                 {sessions.filter(s => !s.folderId).map(s => (
                   <div
@@ -901,7 +901,7 @@ export default function Joe() {
             <div className="session-list">
               {searchResults.length === 0 ? (
                 <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                  لا توجد نتائج
+                  {t('sidebar.noResults', 'No results')}
                 </div>
               ) : (
                 searchResults.map(r => (
@@ -925,7 +925,7 @@ export default function Joe() {
 
           <div className="sidebar-footer">
             <button className="delete-all-btn" onClick={deleteAllSessions}>
-              <Trash2 size={16} /> حذف جميع الجلسات
+              <Trash2 size={16} /> {t('sidebar.deleteAll', 'Delete all sessions')}
             </button>
           </div>
         </aside>
@@ -1187,11 +1187,6 @@ export default function Joe() {
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
                       {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
                       <CommandComposer
-                        key={selected || 'new'}
-                        sessionId={selected || undefined}
-                        sessionKind="chat"
-                        previewBaseUrl={previewUrl}
-                        onStepsUpdate={handleStepsUpdate}
                         onSessionCreated={async (id) => {
                           await loadAllSessions();
                           setSelected(id);
@@ -1209,7 +1204,7 @@ export default function Joe() {
                             onClick={() => setRightPanelTab('thinking')}
                             style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                           >
-                            <Activity size={14} /> سلسلة التفكير
+                            <Activity size={14} /> {t('liveSteps', 'Thinking Chain')}
                           </button>
                         ) : null}
                         {showFiles ? (
@@ -1217,7 +1212,7 @@ export default function Joe() {
                             onClick={() => setRightPanelTab('files')}
                             style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                           >
-                            <Folder size={14} /> الملفات
+                            <Folder size={14} /> {t('tools.file_read', 'Files')}
                           </button>
                         ) : null}
                         {true ? (
@@ -1225,7 +1220,7 @@ export default function Joe() {
                             onClick={() => setRightPanelTab('memory')}
                             style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'memory' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                           >
-                            <Brain size={14} /> الذاكرة
+                            <Brain size={14} /> {t('memory.title', 'Memory')}
                           </button>
                         ) : null}
                       </div>
@@ -1238,7 +1233,7 @@ export default function Joe() {
                             }}
                             style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
                           >
-                            مسح
+                            {t('tools.clear', 'Clear')}
                           </button>
                         ) : null}
                         {rightPanelTab === 'thinking' ? (
@@ -1246,14 +1241,14 @@ export default function Joe() {
                             onClick={() => setShowThinkingPanel(false)}
                             style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
                           >
-                            إخفاء
+                            {t('close', 'Hide')}
                           </button>
                         ) : (
                           <button
                             onClick={() => setShowFiles(false)}
                             style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
                           >
-                            إخفاء
+                            {t('close', 'Hide')}
                           </button>
                         )}
                       </div>
