@@ -2592,11 +2592,79 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     };
 
     if (String(plan?.name || '') === 'browser_run') {
+      const sid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+      const rawActs = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+      const hasGoto = rawActs.some(
+        (a: any) => String(a?.type || '').toLowerCase() === 'goto' && typeof a?.url === 'string' && a.url.trim(),
+      );
+      const instructionTextInPlan = String((plan as any)?.input?.instructionText || '').trim();
+      const urlCandidate = (() => {
+        const m1 = userTextForOverrides.match(/https?:\/\/[^\s"'<>]+/i);
+        if (m1 && m1[0]) return m1[0].trim();
+        const m2 = userTextForOverrides.match(
+          /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?/i,
+        );
+        if (m2 && m2[0]) return m2[0].trim();
+        return '';
+      })();
+      const hasUrlInUserText = Boolean(urlCandidate);
+      const openKeyword =
+        /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+          userTextForOverrides,
+        );
+      const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(userTextForOverrides);
+      const mentionsKnownSite =
+        /(yahoo|ياهو|youtube|يوتيوب|github|جيتهاب|قيتهب|كتهاب|كيتهاب|google|جوجل|microsoft|مايكروسوفت|مايكروسوت|x\.com|\btwitter\b|تويتر|facebook|فيس\s*بوك|الفيس\s*بوك|linkedin|لينكد\s*ان|لينكدإن)/i.test(
+          userTextForOverrides,
+        );
+      const looksLikeOpenIntent = Boolean(hasUrlInUserText || openKeyword || browserKeyword || mentionsKnownSite);
+
+      if (sid && !instructionTextInPlan && rawActs.length === 0) {
+        (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
+      } else if (sid && rawActs.length > 0 && !hasGoto && looksLikeOpenIntent) {
+        const directUrl = urlCandidate;
+        const wantsYahoo = /(yahoo|ياهو)/i.test(userTextForOverrides);
+        const wantsYoutube = /youtube|يوتيوب/i.test(userTextForOverrides);
+        const wantsGithub = /(github|جيتهاب|قيتهب|كتهاب|كيتهاب)/i.test(userTextForOverrides);
+        const wantsGoogle = /google|جوجل/i.test(userTextForOverrides);
+        const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(userTextForOverrides);
+        const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(userTextForOverrides);
+        const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(userTextForOverrides);
+        const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(userTextForOverrides);
+        const desiredUrlRaw =
+          directUrl ||
+          (wantsYahoo
+            ? 'https://www.yahoo.com'
+            : wantsYoutube
+              ? 'https://www.youtube.com'
+              : wantsGithub
+                ? 'https://github.com'
+                : wantsGoogle
+                  ? 'https://www.google.com'
+                  : wantsMicrosoft
+                    ? 'https://www.microsoft.com'
+                    : wantsX
+                      ? 'https://x.com'
+                      : wantsFacebook
+                        ? 'https://www.facebook.com'
+                        : wantsLinkedIn
+                          ? 'https://www.linkedin.com'
+                          : '');
+        const url = normalizeUrlForGoto(desiredUrlRaw);
+        if (url) {
+          (plan as any).input = {
+            sessionId: sid,
+            actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }, ...rawActs],
+          };
+        } else if (!instructionTextInPlan) {
+          (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
+        }
+      }
+
       const acts = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
       const onlyGoto =
         acts.length === 1 && String(acts[0]?.type || '').toLowerCase() === 'goto' && typeof acts[0]?.url === 'string' && acts[0].url.trim();
       if (onlyGoto && isMultiStepBrowserInstruction(userTextForOverrides)) {
-        const sid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
         if (sid) (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
       }
     }

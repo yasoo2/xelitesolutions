@@ -748,6 +748,8 @@ export const tools: ToolDefinition[] = [
         return a;
       });
 
+      if (!instructionText && actions.length === 0) return { ok: false, error: 'actions_or_instruction_required', logs };
+
       const loginAttempt =
         /(login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول)/i.test(instructionText) ||
         rawActs.some((a: any) => {
