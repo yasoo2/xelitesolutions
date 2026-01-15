@@ -347,12 +347,7 @@ export const tools: ToolDefinition[] = [
     }
   },
   // Use the modern class-based tool
-  browserRunTool,
-
-  // ... (keep other tools like browser_open, browser_get_state etc if they are distinct, or remove if browser_run covers them)
-  // browser_run covers a lot, but let's keep the others if they are simple wrappers.
-  // Actually,looking at the file, browser_run was big. I will just replace IT.
-  // ... (cleaned up)
+  // browserRunTool, // Already added below
 
   {
     name: 'website_full_pipeline',
@@ -536,110 +531,8 @@ export const tools: ToolDefinition[] = [
     auditFields: ['text'],
     mockSupported: true,
   },
-  {
-    name: 'browser_open',
-    version: '1.0.0',
-    tags: ['browser', 'web', 'preview'],
-    inputSchema: {
-      type: 'object',
-      properties: { url: { type: 'string' }, sessionId: { type: 'string' }, userId: { type: 'string' } },
-      required: ['url'],
-    },
-    outputSchema: {
-      type: 'object',
-      properties: {
-        sessionId: { type: 'string' },
-        url: { type: 'string' },
-        title: { type: 'string' },
-        dom: { type: 'string' },
-        screenshotHref: { type: 'string' },
-      },
-    },
-    permissions: ['internet', 'execute'],
-    sideEffects: ['execute', 'internet'],
-    rateLimitPerMinute: 30,
-    auditFields: ['url'],
-    mockSupported: false,
-    async execute(input) {
-      const logs: string[] = [];
-      const raw = String(input?.url || '').trim();
-      const cleaned = raw.replace(/[`]/g, '').trim();
-      const url = normalizeBrowserUrl(cleaned);
-      const userId = String(input?.userId || input?.__userId || '').trim();
-      const sidRaw = String(input?.sessionId || '').trim();
-      const sid = sidRaw || (userId ? `browser:${userId}` : `browser:${Date.now()}`);
-      const s = await getBrowserSession(sid);
-      await s.page.goto(url, { waitUntil: 'domcontentloaded' });
-      touchSession(sid);
-      const dom = await s.page.content();
-      const title = await s.page.title();
-      let href = '';
-      let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
-      try {
-        const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 5000 });
-        const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
-        const full = path.join(ARTIFACT_DIR, fname);
-        try { fs.writeFileSync(full, buf); } catch { }
-        href = `/artifacts/${encodeURIComponent(fname)}`;
-        artifacts = [{ name: 'Screenshot', href }];
-      } catch (e: any) {
-        logs.push(`browser_open screenshot_failed=${String(e?.message || e || 'unknown')}`);
-      }
-      logs.push(`browser_open sid=${sid} url=${url}`);
-      startStreaming(sid);
-      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts };
-    },
-  },
-  {
-    name: 'browser_get_state',
-    version: '1.0.0',
-    tags: ['browser', 'web', 'preview'],
-    inputSchema: {
-      type: 'object',
-      properties: { sessionId: { type: 'string' } },
-      required: ['sessionId'],
-    },
-    outputSchema: {
-      type: 'object',
-      properties: {
-        sessionId: { type: 'string' },
-        url: { type: 'string' },
-        title: { type: 'string' },
-        dom: { type: 'string' },
-        screenshotHref: { type: 'string' },
-      },
-    },
-    permissions: ['read'],
-    sideEffects: [],
-    rateLimitPerMinute: 60,
-    auditFields: ['sessionId'],
-    mockSupported: false,
-    async execute(input) {
-      const logs: string[] = [];
-      const sid = String(input?.sessionId || '').trim();
-      if (!sid) return { ok: false, error: 'sessionId_required', logs };
-      const s = await getBrowserSession(sid);
-      touchSession(sid);
-      const url = s.page.url();
-      const title = await s.page.title();
-      const dom = await s.page.content();
-      let href = '';
-      let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
-      try {
-        const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 1500 });
-        const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
-        const full = path.join(ARTIFACT_DIR, fname);
-        try { fs.writeFileSync(full, buf); } catch { }
-        href = `/artifacts/${encodeURIComponent(fname)}`;
-        artifacts = [{ name: 'Screenshot', href }];
-      } catch (e: any) {
-        logs.push(`browser_get_state screenshot_failed=${String(e?.message || e || 'unknown')}`);
-      }
-      logs.push(`browser_get_state sid=${sid} url=${url}`);
-      startStreaming(sid);
-      return { ok: true, output: { sessionId: sid, url, title, dom, screenshotHref: href }, logs, artifacts };
-    },
-  },
+  // Use the modern class-based tool
+  browserRunTool,
   {
     name: 'browser_run',
     description: 'Execute browser actions, or compile instructionText into a multi-step plan.',
