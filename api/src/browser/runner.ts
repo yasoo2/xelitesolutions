@@ -15,6 +15,7 @@ type Planned = {
   actions: Array<
     | { type: 'goto'; url: string; optional?: boolean }
     | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; x?: number; y?: number; optional?: boolean }
+    | { type: 'hover'; selector?: string; role?: string; name?: string; text?: string; x?: number; y?: number; optional?: boolean }
     | { type: 'type'; selector?: string; role?: string; name?: string; text: string; x?: number; y?: number; optional?: boolean }
     | { type: 'scroll'; direction: 'down' | 'up'; amount?: number; optional?: boolean }
     | { type: 'wait'; ms: number; optional?: boolean }
@@ -42,6 +43,7 @@ Rules:
 Allowed action types:
 - {"type":"goto","url":"https://example.com"}
 - {"type":"click","text":"Start Now"} OR {"type":"click","role":"button","name":"Start Now"} OR {"type":"click","selector":"..."} OR {"type":"click","x":120,"y":240}
+- {"type":"hover","text":"Menu"} OR {"type":"hover","selector":"..."} OR {"type":"hover","x":120,"y":240}
 - {"type":"type","selector":"...","text":"..."} OR {"type":"type","role":"textbox","name":"Email","text":"..."} OR {"type":"type","x":120,"y":240,"text":"..."}
 - {"type":"scroll","direction":"down","amount":800}
 - {"type":"wait","ms":1000}
@@ -203,7 +205,7 @@ async function collectUiGroundingSnapshot(sessionId: string) {
             typeAttr,
             rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           });
-        } catch {}
+        } catch { }
       }
 
       const byPos = (a: any, b: any) => (a.rect.y === b.rect.y ? a.rect.x - b.rect.x : a.rect.y - b.rect.y);
@@ -285,7 +287,7 @@ function plannedFromUnknown(r: any): Planned | null {
       if (parsed && typeof parsed === 'object' && Array.isArray((parsed as any).actions)) {
         return { actions: (parsed as any).actions };
       }
-    } catch {}
+    } catch { }
   }
 
   return null;
@@ -509,7 +511,7 @@ export async function runBrowserInstruction(params: {
       if (r.password) setSessionSecretEncrypted(sessionId, 'JOE_LOGIN_PASSWORD', r.password, 60 * 60);
       instructionText = String(r.sanitizedText || instructionTextRaw).trim();
     }
-  } catch {}
+  } catch { }
 
   const secretsCheck = await resolveSecretsInText(userId, sessionId, instructionText);
   if (!secretsCheck.ok) {
@@ -552,7 +554,7 @@ export async function runBrowserInstruction(params: {
         actionCount: Number(debugBase.action_count || 0),
         stopReason: String(debugBase.stop_reason || ''),
       } as any);
-    } catch {}
+    } catch { }
   };
 
   if (shouldFastOpen(safeInstruction)) {
@@ -569,13 +571,13 @@ export async function runBrowserInstruction(params: {
           actions: [{ type: 'goto', url }, { type: 'wait', ms: 450 }] as any,
         });
         if (closeAfterRun) {
-          try { await stopSession(sessionId); } catch {}
+          try { await stopSession(sessionId); } catch { }
         }
         emitDebugSnapshot();
         return { ok: true as const, result: exec, debug: debugBase };
       } catch (e: any) {
         const c = classifyBrowserRuntimeError(e);
-        try { await stopSession(sessionId); } catch {}
+        try { await stopSession(sessionId); } catch { }
         const ev: BrowserWsEvent = {
           type: 'final_report',
           ts: now(),
@@ -611,7 +613,7 @@ export async function runBrowserInstruction(params: {
         touchSession(sessionId);
         await s.page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs });
         await s.page.waitForTimeout(350);
-      } catch {}
+      } catch { }
     }
     const grounding = wantsGrounding ? await collectUiGroundingSnapshot(sessionId) : null;
     const groundingJson = grounding ? (() => { try { return JSON.stringify(grounding); } catch { return ''; } })() : '';
@@ -683,7 +685,7 @@ export async function runBrowserInstruction(params: {
           reason: 'unknown',
           error: summary,
         } as any);
-      } catch {}
+      } catch { }
       const ev: BrowserWsEvent = { type: 'final_report', ts: now(), ok: false, summary, steps: [], evidence: [] };
       broadcastBrowserEvent(sessionId, ev);
       broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'plan_to_actions_empty' });
@@ -712,7 +714,7 @@ export async function runBrowserInstruction(params: {
           reason: 'unknown',
           error: summary,
         } as any);
-      } catch {}
+      } catch { }
       const ev: BrowserWsEvent = { type: 'final_report', ts: now(), ok: false, summary, steps: [], evidence: [] };
       broadcastBrowserEvent(sessionId, ev);
       broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'compiler_failed' });
@@ -729,14 +731,14 @@ export async function runBrowserInstruction(params: {
       actions: planned.actions as any,
     });
     if (closeAfterRun) {
-      try { await stopSession(sessionId); } catch {}
+      try { await stopSession(sessionId); } catch { }
     }
     debugBase.stop_reason = debugBase.stop_reason || 'executed';
     emitDebugSnapshot();
     return { ok: true as const, result: exec, debug: debugBase };
   } catch (e: any) {
     const c = classifyBrowserRuntimeError(e);
-    try { await stopSession(sessionId); } catch {}
+    try { await stopSession(sessionId); } catch { }
     if (c.code === 'browser_closed') {
       try {
         const exec2 = await executePlannedActions({
@@ -745,14 +747,14 @@ export async function runBrowserInstruction(params: {
           actions: planned.actions as any,
         });
         if (closeAfterRun) {
-          try { await stopSession(sessionId); } catch {}
+          try { await stopSession(sessionId); } catch { }
         }
         debugBase.stop_reason = 'browser_closed_retried';
         emitDebugSnapshot();
         return { ok: true as const, result: exec2, debug: debugBase };
       } catch (e2: any) {
         const c2 = classifyBrowserRuntimeError(e2);
-        try { await stopSession(sessionId); } catch {}
+        try { await stopSession(sessionId); } catch { }
         const ev2: BrowserWsEvent = {
           type: 'final_report',
           ts: now(),
