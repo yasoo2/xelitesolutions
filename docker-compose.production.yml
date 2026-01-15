@@ -17,8 +17,9 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017/joe
       - PORT=3000
+      - JWT_SECRET=prod_secret_73821038_secure_key
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: [ "CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -35,9 +36,24 @@ services:
     env_file:
       - /opt/joe/env/web.env
     environment:
-      - VITE_API_URL=https://api.xelitesolutions.com
+      #- VITE_API_URL=https://api.xelitesolutions.com
+      - NODE_ENV=production
     networks:
       - joe-network
+
+  browser-worker:
+    build: ./services/joe-browser-worker
+    container_name: joe_browser_worker
+    restart: always
+    environment:
+      - PORT=7070
+      - WORKER_API_KEY=joe_secret_browser_key
+    networks:
+      - joe-network
+    deploy:
+      resources:
+        limits:
+          memory: 4G
 
   nginx:
     image: nginx:alpine
@@ -71,6 +87,7 @@ services:
 
 volumes:
   mongo_data:
+
 
 networks:
   joe-network:

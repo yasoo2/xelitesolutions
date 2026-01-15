@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const allowedOriginsDefault = [
- 'https://xelitesolutions.com',
+  'https://xelitesolutions.com',
   'https://www.xelitesolutions.com',
   'https://api.xelitesolutions.com',
   'https://ws.xelitesolutions.com',
@@ -18,6 +18,9 @@ const allowedOriginsDefault = [
 export const config = {
   port: Number(process.env.PORT) || 3000,
   mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/joe',
-  jwtSecret: process.env.JWT_SECRET || 'change-me',
+  jwtSecret: process.env.JWT_SECRET || (() => {
+    console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
+    return require('crypto').randomBytes(32).toString('hex');
+  })(),
   allowedOrigins: (process.env.ALLOWED_ORIGINS?.split(',').map(s => s.trim()) || allowedOriginsDefault),
 };
