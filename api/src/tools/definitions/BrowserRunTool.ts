@@ -1,5 +1,6 @@
 
 import { BaseTool } from '../base';
+import { ToolPermission } from '../types';
 import { executePlannedActions } from '../../browser/executor';
 import { runBrowserInstruction } from '../../browser/runner';
 import { getBrowserSession, screenshotSessionJpeg, startStreaming, touchSession } from '../../browser/manager';
@@ -60,8 +61,9 @@ export class BrowserRunTool extends BaseTool {
         },
     };
 
-    permissions = ['internet', 'execute'];
-    sideEffects = ['execute', 'internet'];
+
+    permissions: ToolPermission[] = ['internet', 'execute'];
+    sideEffects: ToolPermission[] = ['execute', 'internet'];
     rateLimitPerMinute = 30;
     auditFields = ['sessionId'];
 

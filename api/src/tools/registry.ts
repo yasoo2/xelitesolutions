@@ -300,15 +300,14 @@ async function readJsonWithTimeout(resp: any, timeoutMs: number, logs: string[])
   }
 }
 
-import { BrowserRunTool } from './definitions/BrowserRunTool';
+
 
 // ... (keep other imports)
 
 // Instantiate modern tools
 const browserRunTool = new BrowserRunTool();
 
-// Instantiate modern tools
-const browserRunTool = new BrowserRunTool();
+
 
 export const tools: ToolDefinition[] = [
   // ... (keep other tools)
@@ -337,11 +336,14 @@ export const tools: ToolDefinition[] = [
         sessionId: { type: 'string' }
       }
     },
-    permissions: ['payments'],
-    sideEffects: ['financial'],
+    rateLimitPerMinute: 60,
+    auditFields: ['amount', 'currency'],
+    mockSupported: true,
+    permissions: ['execute'],
+    sideEffects: ['execute'],
     execute: async (input) => {
       // ... (keep existing implementation)
-      return { ok: false, error: 'not_implemented_mock' };
+      return { ok: false, error: 'not_implemented_mock', logs: [] };
     }
   },
   // Use the modern class-based tool
