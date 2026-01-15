@@ -680,6 +680,47 @@ export const tools: ToolDefinition[] = [
     }
   },
   {
+    name: 'browser_open',
+    description: 'Open a URL in the browser session. This is a convenience wrapper around browser_run with a single goto action.',
+    version: '1.0.0',
+    tags: ['browser', 'web', 'navigation'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The URL to navigate to' },
+        sessionId: { type: 'string', description: 'Browser session identifier' },
+      },
+      required: ['url', 'sessionId'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        pageUrl: { type: 'string' },
+        title: { type: 'string' },
+        dom: { type: 'string' },
+        screenshotHref: { type: 'string' },
+      },
+    },
+    permissions: ['internet', 'execute'],
+    sideEffects: ['execute', 'internet'],
+    rateLimitPerMinute: 30,
+    auditFields: ['url', 'sessionId'],
+    mockSupported: false,
+    async execute(input) {
+      const url = String(input?.url || '').trim();
+      const sessionId = String(input?.sessionId || '').trim();
+      if (!url) return { ok: false, error: 'url_required', logs: ['browser_open: url is required'] };
+      if (!sessionId) return { ok: false, error: 'sessionId_required', logs: ['browser_open: sessionId is required'] };
+      // Delegate to browser_run with a single goto action
+      return executeTool('browser_run', {
+        sessionId,
+        actions: [{ type: 'goto', url }],
+        userId: input?.userId || input?.__userId,
+      });
+    },
+  },
+  {
     name: 'browser_run',
     description: 'Execute browser actions, or compile instructionText into a multi-step plan.',
     version: '1.0.0',
