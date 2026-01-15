@@ -12,9 +12,8 @@ services:
     build: ./api
     container_name: joe_api
     restart: always
-    env_file:
-      - /opt/joe/env/api.env
     environment:
+      - NODE_ENV=production
       - MONGO_URI=mongodb://mongo:27017/joe
       - PORT=3000
       - JWT_SECRET=prod_secret_73821038_secure_key
@@ -35,8 +34,6 @@ services:
     build: ./web
     container_name: joe_web
     restart: always
-    env_file:
-      - /opt/joe/env/web.env
     environment:
       #- VITE_API_URL=https://api.xelitesolutions.com
       - NODE_ENV=production
