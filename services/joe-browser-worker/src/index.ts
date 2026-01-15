@@ -30,6 +30,8 @@ app.post('/browser/start', async (req, res) => {
 
         browserServer = await chromium.launchServer({
             headless: true,
+            port: 5050,
+            wsPath: 'ws',
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
 
@@ -60,6 +62,8 @@ app.listen(PORT, async () => {
     try {
         browserServer = await chromium.launchServer({
             headless: true,
+            port: 5050,
+            wsPath: 'ws',
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
         console.log('Browser Server auto-started at', browserServer.wsEndpoint());

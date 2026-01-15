@@ -165,13 +165,33 @@ function ensureCleanupLoop() {
   }, tickMs);
   try {
     (cleanupTimer as any).unref?.();
-  } catch {}
+  } catch { }
 }
 
 async function createSession(sessionId: string) {
   const cfg = DEFAULT_BROWSER_CONFIG;
   const viewport = getBrowserViewport();
-  const browser = await chromium.launch(getChromiumLaunchOptions());
+
+  let browser: Browser;
+  const wsEndpoint = process.env.BROWSER_WS_ENDPOINT || '';
+  const apiKey = process.env.WORKER_API_KEY || '';
+
+  if (wsEndpoint) {
+    // Determine connection URL (with auth if needed)
+    // If wsEndpoint is the base URL (http://host:port), we might need to fetch the WS URL first or use connect({ wsEndpoint }) if it's direct.
+    // However, playwright expects a direct WS url. 
+    // Usually browser-worker returns { wsEndpoint: '...' } on start. But usually we want a persistent connection.
+    // If the worker exposes `ws://host:port`, we use that.
+
+    // Assuming standard Playwright server or compatible wrapper
+    // If we have an API key, we might need to pass it in headers.
+    browser = await chromium.connect(wsEndpoint, {
+      headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
+    });
+  } else {
+    browser = await chromium.launch(getChromiumLaunchOptions());
+  }
+
   const context = await browser.newContext({
     viewport: { width: viewport.w, height: viewport.h },
     locale: 'ar',
@@ -197,7 +217,7 @@ async function createSession(sessionId: string) {
     if (frame !== page.mainFrame()) return;
     try {
       broadcastStatus(sessionId, state, { workerStatus: 'idle' });
-    } catch {}
+    } catch { }
     try {
       const u = new URL(frame.url());
       const origin = u.origin;
@@ -216,17 +236,17 @@ async function createSession(sessionId: string) {
         });
         try {
           broadcastStatus(sessionId, state, { workerStatus: 'idle', blockingReason: 'same_site_blocked' });
-        } catch {}
+        } catch { }
         try {
           void page.goBack({ waitUntil: 'domcontentloaded' });
-        } catch {}
+        } catch { }
       }
-    } catch {}
+    } catch { }
   });
 
   try {
     broadcastStatus(sessionId, state, { workerStatus: 'idle' });
-  } catch {}
+  } catch { }
 
   return state;
 }
@@ -263,7 +283,7 @@ export function startStreaming(sessionId: string) {
   s.lastUsedAt = Date.now();
   try {
     broadcastStatus(sid, s, { workerStatus: 'idle' });
-  } catch {}
+  } catch { }
   const cfg = DEFAULT_BROWSER_CONFIG;
   const intervalMs = Math.max(50, Math.floor(1000 / Math.max(1, cfg.streamFps)));
   s.streamTimer = setInterval(async () => {
@@ -284,7 +304,7 @@ export function startStreaming(sessionId: string) {
         h: s.viewport.h,
       });
       s.lastUsedAt = Date.now();
-    } catch {}
+    } catch { }
   }, intervalMs);
 }
 
@@ -294,12 +314,12 @@ export function stopStreaming(sessionId: string) {
   if (!s) return;
   s.streaming = false;
   if (s.streamTimer) {
-    try { clearInterval(s.streamTimer); } catch {}
+    try { clearInterval(s.streamTimer); } catch { }
     s.streamTimer = null;
   }
   try {
     broadcastStatus(sid, s, { workerStatus: 'idle' });
-  } catch {}
+  } catch { }
 }
 
 export async function stopSession(sessionId: string) {
@@ -309,11 +329,11 @@ export async function stopSession(sessionId: string) {
   sessions.delete(sid);
   s.streaming = false;
   if (s.streamTimer) {
-    try { clearInterval(s.streamTimer); } catch {}
+    try { clearInterval(s.streamTimer); } catch { }
     s.streamTimer = null;
   }
-  try { await s.context.close(); } catch {}
-  try { await s.browser.close(); } catch {}
+  try { await s.context.close(); } catch { }
+  try { await s.browser.close(); } catch { }
 }
 
 export async function healthcheckBrowser() {
@@ -330,19 +350,19 @@ export async function healthcheckBrowser() {
       const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
       try {
         if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
-      } catch {}
+      } catch { }
       const fname = `health-browser-${Date.now()}.jpg`;
       const full = path.join(artifactDir, fname);
       try {
         fs.writeFileSync(full, buf);
-      } catch {}
+      } catch { }
       const href = `/artifacts/${encodeURIComponent(fname)}`;
       return { ok: true as const, ms: Date.now() - startedAt, url, screenshotHref: href };
     } finally {
-      try { await context.close(); } catch {}
+      try { await context.close(); } catch { }
     }
   } finally {
-    try { await browser.close(); } catch {}
+    try { await browser.close(); } catch { }
   }
   return { ok: true as const, ms: Date.now() - startedAt };
 }
