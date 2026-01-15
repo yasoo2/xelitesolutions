@@ -7,8 +7,10 @@ import { getSessionSecret, getUserSecret } from '../services/secrets';
 
 type Action =
   | { type: 'goto'; url: string; optional?: boolean }
-  | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean }
-  | { type: 'type'; selector?: string; role?: string; name?: string; text: string; optional?: boolean }
+  | { type: 'goto'; url: string; optional?: boolean }
+  | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean; x?: number; y?: number }
+  | { type: 'hover'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean; x?: number; y?: number }
+  | { type: 'type'; selector?: string; role?: string; name?: string; text: string; optional?: boolean; x?: number; y?: number }
   | { type: 'scroll'; direction: 'down' | 'up'; amount?: number; optional?: boolean }
   | { type: 'wait'; ms: number; optional?: boolean }
   | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
@@ -65,7 +67,7 @@ function normalizeUrlForGoto(raw: any, baseUrl?: string) {
   if (/^\//.test(s)) {
     try {
       if (baseUrl) return fixKnownHosts(new URL(s, baseUrl).toString());
-    } catch {}
+    } catch { }
     return s;
   }
   const candidate = s.replace(/^\/\//, '');
@@ -95,43 +97,43 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
   const css =
     kind === 'email'
       ? [
-          'input[type="email"]',
-          'input[autocomplete="email"]',
-          'input[name*="email" i]',
-          'input[id*="email" i]',
-          'input[name="login"]',
-          'input#login_field',
-          'input[id*="login" i]',
-          'input[name*="user" i]',
-          'input[id*="user" i]',
-          'input[placeholder*="email" i]',
-          'input[aria-label*="email" i]',
-          'input[placeholder*="mail" i]',
-          'input[aria-label*="mail" i]',
-          'input[placeholder*="ايميل" i]',
-          'input[placeholder*="إيميل" i]',
-          'input[placeholder*="البريد" i]',
-          'input[aria-label*="ايميل" i]',
-          'input[aria-label*="إيميل" i]',
-          'input[aria-label*="البريد" i]',
-        ]
+        'input[type="email"]',
+        'input[autocomplete="email"]',
+        'input[name*="email" i]',
+        'input[id*="email" i]',
+        'input[name="login"]',
+        'input#login_field',
+        'input[id*="login" i]',
+        'input[name*="user" i]',
+        'input[id*="user" i]',
+        'input[placeholder*="email" i]',
+        'input[aria-label*="email" i]',
+        'input[placeholder*="mail" i]',
+        'input[aria-label*="mail" i]',
+        'input[placeholder*="ايميل" i]',
+        'input[placeholder*="إيميل" i]',
+        'input[placeholder*="البريد" i]',
+        'input[aria-label*="ايميل" i]',
+        'input[aria-label*="إيميل" i]',
+        'input[aria-label*="البريد" i]',
+      ]
       : [
-          'input[type="password"]',
-          'input[autocomplete="current-password"]',
-          'input[autocomplete="new-password"]',
-          'input[name*="pass" i]',
-          'input[id*="pass" i]',
-          'input[placeholder*="pass" i]',
-          'input[aria-label*="pass" i]',
-          'input[placeholder*="password" i]',
-          'input[aria-label*="password" i]',
-          'input[placeholder*="كلمة" i]',
-          'input[placeholder*="المرور" i]',
-          'input[placeholder*="باسورد" i]',
-          'input[aria-label*="كلمة" i]',
-          'input[aria-label*="المرور" i]',
-          'input[aria-label*="باسورد" i]',
-        ];
+        'input[type="password"]',
+        'input[autocomplete="current-password"]',
+        'input[autocomplete="new-password"]',
+        'input[name*="pass" i]',
+        'input[id*="pass" i]',
+        'input[placeholder*="pass" i]',
+        'input[aria-label*="pass" i]',
+        'input[placeholder*="password" i]',
+        'input[aria-label*="password" i]',
+        'input[placeholder*="كلمة" i]',
+        'input[placeholder*="المرور" i]',
+        'input[placeholder*="باسورد" i]',
+        'input[aria-label*="كلمة" i]',
+        'input[aria-label*="المرور" i]',
+        'input[aria-label*="باسورد" i]',
+      ];
 
   for (const sel of css) {
     try {
@@ -139,7 +141,7 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
       if ((await loc.count().catch(() => 0)) === 0) continue;
       await loc.waitFor({ state: 'visible', timeout: 800 }).catch(() => null);
       if (await loc.isVisible().catch(() => false)) return page.locator(sel);
-    } catch {}
+    } catch { }
   }
 
   const labels =
@@ -153,7 +155,7 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
       if ((await loc.count().catch(() => 0)) === 0) continue;
       await loc.waitFor({ state: 'visible', timeout: 800 }).catch(() => null);
       if (await loc.isVisible().catch(() => false)) return loc;
-    } catch {}
+    } catch { }
   }
 
   const roleNames =
@@ -167,7 +169,7 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
       if ((await loc.count().catch(() => 0)) === 0) continue;
       await loc.waitFor({ state: 'visible', timeout: 800 }).catch(() => null);
       if (await loc.isVisible().catch(() => false)) return loc;
-    } catch {}
+    } catch { }
   }
 
   return null;
@@ -176,7 +178,7 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
 async function boxFor(locator: Locator) {
   try {
     await locator.first().scrollIntoViewIfNeeded();
-  } catch {}
+  } catch { }
   try {
     const b = await locator.first().boundingBox();
     if (!b) return null;
@@ -204,7 +206,7 @@ async function tryDismissOverlays(page: Page) {
       if ((await loc.count()) === 0) continue;
       await loc.click({ timeout: 1500 });
       await page.waitForTimeout(250);
-    } catch {}
+    } catch { }
   }
 }
 
@@ -241,7 +243,7 @@ export async function executePlannedActions(params: {
         url: page.url(),
         workerStatus: 'running',
       });
-    } catch {}
+    } catch { }
     const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
@@ -262,11 +264,11 @@ export async function executePlannedActions(params: {
                 : `type (len=${rawText.length})`
               : name;
         broadcastBrowserEvent(sessionId, { type: 'action_sent', ts: now(), actionId: sid, actionType: name, summary });
-      } catch {}
+      } catch { }
       broadcastBrowserEvent(sessionId, { type: 'step_start', stepId: sid, name, ts: now() });
       try {
         broadcastBrowserEvent(sessionId, { type: 'action_ack', ts: now(), actionId: sid, actionType: name });
-      } catch {}
+      } catch { }
 
       let mask: Locator[] = [];
       try {
@@ -279,7 +281,7 @@ export async function executePlannedActions(params: {
               results.push({ stepId: sid, name, ok: true });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-              } catch {}
+              } catch { }
               continue;
             }
             results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'missing_url' });
@@ -292,7 +294,7 @@ export async function executePlannedActions(params: {
               results.push({ stepId: sid, name, ok: true });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-              } catch {}
+              } catch { }
               continue;
             }
             results.push({ stepId: sid, name, ok: false, reason: 'same_site_blocked', message: url });
@@ -306,7 +308,7 @@ export async function executePlannedActions(params: {
                 reason: 'same_site_blocked',
                 error: 'cross_site_blocked',
               });
-            } catch {}
+            } catch { }
             continue;
           }
           broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: 30, y: 20 });
@@ -356,7 +358,7 @@ export async function executePlannedActions(params: {
                 u.protocol = 'http:';
                 push(u.toString());
               }
-            } catch {}
+            } catch { }
             return out.slice(0, 6);
           })();
 
@@ -378,7 +380,7 @@ export async function executePlannedActions(params: {
             broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg.slice(0, 600) });
             try {
               broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg.slice(0, 600) });
-            } catch {}
+            } catch { }
             continue;
           }
           await page.waitForTimeout(250);
@@ -390,7 +392,7 @@ export async function executePlannedActions(params: {
           results.push({ stepId: sid, name, ok: true });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-          } catch {}
+          } catch { }
           continue;
         }
 
@@ -405,7 +407,7 @@ export async function executePlannedActions(params: {
           results.push({ stepId: sid, name, ok: true });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-          } catch {}
+          } catch { }
           continue;
         }
 
@@ -422,7 +424,31 @@ export async function executePlannedActions(params: {
           results.push({ stepId: sid, name, ok: true });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-          } catch {}
+          } catch { }
+          continue;
+        }
+
+        if (name === 'hover') {
+          const loc = locatorForAction(page, a);
+          if (loc && (await loc.count().catch(() => 0)) > 0) {
+            const b = await boxFor(loc);
+            if (b) {
+              const cx = Math.round(b.x + b.width / 2);
+              const cy = Math.round(b.y + b.height / 2);
+              broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: cx, y: cy });
+              broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: now(), boxes: [{ ...b, label: 'hover' }] });
+              try { await page.mouse.move(cx, cy, { steps: 15 }); } catch { }
+            }
+            try { await loc.first().hover({ timeout: cfg.actionTimeoutMs }); } catch { }
+          }
+          await page.waitForTimeout(500);
+          const after = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+          results.push({ stepId: sid, name, ok: true });
+          try {
+            broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
+          } catch { }
           continue;
         }
 
@@ -435,7 +461,7 @@ export async function executePlannedActions(params: {
           results.push({ stepId: sid, name, ok: true });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-          } catch {}
+          } catch { }
           continue;
         }
 
@@ -459,7 +485,7 @@ export async function executePlannedActions(params: {
           results.push({ stepId: sid, name, ok: true });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-          } catch {}
+          } catch { }
           continue;
         }
 
@@ -477,13 +503,16 @@ export async function executePlannedActions(params: {
                   ts: now(),
                   boxes: [{ x: Math.max(0, x - 6), y: Math.max(0, y - 6), width: 12, height: 12, label: 'click' }],
                 });
-              } catch {}
+              } catch { }
 
               setStreamMask(sessionId, []);
               const before = await screenshotJpegBase64(page);
               evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-              await page.mouse.click(x, y);
+              await page.mouse.move(x, y, { steps: 15 });
+              await page.mouse.down();
+              await page.waitForTimeout(60);
+              await page.mouse.up();
 
               await page.waitForTimeout(120);
               const after = await screenshotJpegBase64(page);
@@ -493,7 +522,7 @@ export async function executePlannedActions(params: {
               results.push({ stepId: sid, name, ok: true });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-              } catch {}
+              } catch { }
               continue;
             }
           }
@@ -527,7 +556,7 @@ export async function executePlannedActions(params: {
                         reason: 'unknown',
                         error: `missing_secret:${secretKey}`,
                       });
-                    } catch {}
+                    } catch { }
                     continue;
                   }
                   textToType = secretValue;
@@ -540,7 +569,7 @@ export async function executePlannedActions(params: {
                     ts: now(),
                     boxes: [{ x: Math.max(0, x - 6), y: Math.max(0, y - 6), width: 12, height: 12, label: 'type' }],
                   });
-                } catch {}
+                } catch { }
 
                 setStreamMask(sessionId, []);
                 const before = await screenshotJpegBase64(page);
@@ -552,11 +581,11 @@ export async function executePlannedActions(params: {
                 } catch {
                   try {
                     await page.keyboard.press('Control+A');
-                  } catch {}
+                  } catch { }
                 }
                 try {
                   await page.keyboard.press('Backspace');
-                } catch {}
+                } catch { }
                 await page.keyboard.type(textToType, { delay: 10 });
 
                 await page.waitForTimeout(120);
@@ -567,7 +596,7 @@ export async function executePlannedActions(params: {
                 results.push({ stepId: sid, name, ok: true });
                 try {
                   broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-                } catch {}
+                } catch { }
                 continue;
               }
             }
@@ -593,7 +622,7 @@ export async function executePlannedActions(params: {
                       reason: 'unknown',
                       error: `missing_secret:${secretKey}`,
                     });
-                  } catch {}
+                  } catch { }
                   continue;
                 }
 
@@ -608,7 +637,7 @@ export async function executePlannedActions(params: {
                     results.push({ stepId: sid, name, ok: true });
                     try {
                       broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-                    } catch {}
+                    } catch { }
                     continue;
                   }
                   results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'no_locator' });
@@ -622,7 +651,7 @@ export async function executePlannedActions(params: {
                       reason: 'element_not_found',
                       error: 'no_locator',
                     });
-                  } catch {}
+                  } catch { }
                   continue;
                 }
 
@@ -640,7 +669,7 @@ export async function executePlannedActions(params: {
                   try {
                     broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: cx, y: cy });
                     broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: now(), boxes: [{ ...b, label: 'type' }] });
-                  } catch {}
+                  } catch { }
                 }
                 const before = await screenshotJpegBase64(page, isSensitive ? mask : undefined);
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
@@ -653,7 +682,7 @@ export async function executePlannedActions(params: {
                 results.push({ stepId: sid, name, ok: true });
                 try {
                   broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-                } catch {}
+                } catch { }
                 continue;
               } else {
                 setStreamMask(sessionId, []);
@@ -670,7 +699,7 @@ export async function executePlannedActions(params: {
                 results.push({ stepId: sid, name, ok: true });
                 try {
                   broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-                } catch {}
+                } catch { }
                 continue;
               }
             }
@@ -684,7 +713,7 @@ export async function executePlannedActions(params: {
               results.push({ stepId: sid, name, ok: true });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-              } catch {}
+              } catch { }
               continue;
             }
             results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'no_locator' });
@@ -698,7 +727,7 @@ export async function executePlannedActions(params: {
                 reason: 'element_not_found',
                 error: 'no_locator',
               });
-            } catch {}
+            } catch { }
             continue;
           }
 
@@ -709,7 +738,7 @@ export async function executePlannedActions(params: {
               results.push({ stepId: sid, name, ok: true });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-              } catch {}
+              } catch { }
               continue;
             }
             results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'not_found' });
@@ -723,7 +752,7 @@ export async function executePlannedActions(params: {
                 reason: 'element_not_found',
                 error: 'not_found',
               });
-            } catch {}
+            } catch { }
             continue;
           }
 
@@ -733,6 +762,7 @@ export async function executePlannedActions(params: {
             const cy = Math.round(b.y + b.height / 2);
             broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: cx, y: cy });
             broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: now(), boxes: [{ ...b, label: name }] });
+            try { await page.mouse.move(cx, cy, { steps: 15 }); } catch { }
           }
 
           const textRaw = name === 'type' ? String(a?.text || '') : '';
@@ -755,7 +785,7 @@ export async function executePlannedActions(params: {
                   reason: 'unknown',
                   error: `missing_secret:${secretKey}`,
                 });
-              } catch {}
+              } catch { }
               continue;
             }
             mask = [loc.first()];
@@ -771,7 +801,7 @@ export async function executePlannedActions(params: {
             results.push({ stepId: sid, name, ok: true });
             try {
               broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-            } catch {}
+            } catch { }
             continue;
           }
 
@@ -814,7 +844,7 @@ export async function executePlannedActions(params: {
               results.push({ stepId: sid, name, ok: false, reason, message: msg });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
-              } catch {}
+              } catch { }
               if (isSensitiveType) setStreamMask(sessionId, []);
               continue;
             }
@@ -831,7 +861,7 @@ export async function executePlannedActions(params: {
               const u = new URL(cur);
               if (u.origin !== s.allowedOrigin) {
                 broadcastBrowserEvent(sessionId, { type: 'goto_blocked', stepId: sid, ts: now(), url: cur, reason: 'same_site_blocked', message: 'cross_site_blocked' });
-                try { await page.goBack({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }); } catch {}
+                try { await page.goBack({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }); } catch { }
                 results.push({ stepId: sid, name, ok: false, reason: 'same_site_blocked', message: cur });
                 try {
                   broadcastBrowserEvent(sessionId, {
@@ -842,17 +872,17 @@ export async function executePlannedActions(params: {
                     reason: 'same_site_blocked',
                     error: 'cross_site_blocked',
                   });
-                } catch {}
+                } catch { }
                 continue;
               }
-            } catch {}
+            } catch { }
           }
 
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
           results.push({ stepId: sid, name, ok: true });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
-          } catch {}
+          } catch { }
           continue;
         }
 
@@ -867,7 +897,7 @@ export async function executePlannedActions(params: {
             reason: 'unknown',
             error: 'unsupported_action',
           });
-        } catch {}
+        } catch { }
       } catch (e: any) {
         const msg = String(e?.message || e);
         const reason: FailureReason = /timeout/i.test(msg) ? 'timeout' : 'unknown';
@@ -882,7 +912,7 @@ export async function executePlannedActions(params: {
             reason,
             error: msg,
           });
-        } catch {}
+        } catch { }
         setStreamMask(sessionId, []);
       }
     }
@@ -904,7 +934,7 @@ export async function executePlannedActions(params: {
     }
     try {
       broadcastBrowserEvent(sessionId, { type: 'session_status', ts: now(), sessionId, url: page.url(), workerStatus: 'idle' });
-    } catch {}
+    } catch { }
 
     touchSession(sessionId);
     return { ok, summary, steps: results, evidence };
