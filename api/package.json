@@ -24,6 +24,7 @@
     "@mozilla/readability": "^0.6.0",
     "@types/glob": "^8.1.0",
     "@types/uuid": "^10.0.0",
+    "apache-arrow": "^14.0.2",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

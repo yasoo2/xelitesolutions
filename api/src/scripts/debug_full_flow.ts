@@ -3,6 +3,7 @@
  * Tests the entire flow with detailed logging
  */
 
+export { };
 const API = 'http://localhost:3000';
 
 async function debugFullFlow() {

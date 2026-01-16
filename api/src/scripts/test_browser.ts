@@ -14,6 +14,7 @@ async function main() {
     try {
         // 1. Open a page
         console.log('Navigating to example.com...');
+        if (!browserTool.execute) throw new Error('Browser tool execute method missing');
         const result = await browserTool.execute({
             sessionId,
             instructionText: 'Go to example.com and verify the title',

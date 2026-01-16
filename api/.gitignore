@@ -1,2 +1,10 @@
-.chrome-bin/
-.cache/puppeteer/
+node_modules/
+dist/
+coverage/
+.env
+data/
+*.log
+.DS_Store
+# Ignore compiled js in src (ts project)
+src/**/*.js
+src/**/*.js.map

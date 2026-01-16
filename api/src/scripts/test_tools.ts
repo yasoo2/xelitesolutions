@@ -3,6 +3,7 @@
  * Tests multiple tools to ensure they are working correctly
  */
 
+export { };
 const API = 'http://localhost:3000';
 
 async function getToken() {

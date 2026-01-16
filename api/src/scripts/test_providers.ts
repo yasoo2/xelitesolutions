@@ -10,7 +10,7 @@ async function testRun(name: string, payload: any) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    
+
     if (!res.ok) {
       console.log(`Status: ${res.status} ${res.statusText}`);
       const text = await res.text();
@@ -20,7 +20,7 @@ async function testRun(name: string, payload: any) {
 
     const data = await res.json();
     console.log('Run ID:', data.runId);
-    
+
     // Check status
     // We can't easily listen to WS here without a lib, but we can poll the run status if we had an endpoint
     // For now, we rely on the immediate response or logs
@@ -31,6 +31,7 @@ async function testRun(name: string, payload: any) {
   }
 }
 
+export { };
 async function main() {
   // 1. Test Default (Joe System) - Expected to fail if no env key, or work if heuristic
   await testRun('Default Provider (Joe)', {

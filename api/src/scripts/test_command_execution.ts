@@ -3,6 +3,7 @@
  * Tests sending a command directly to the API to create a calculator app
  */
 
+export { };
 const API = 'http://localhost:3000';
 
 async function testCommandExecution() {

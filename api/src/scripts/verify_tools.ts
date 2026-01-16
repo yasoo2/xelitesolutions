@@ -1,4 +1,5 @@
 
+export { };
 import { tools } from '../tools/registry';
 
 async function main() {
@@ -27,6 +28,7 @@ async function main() {
     if (echoTool) {
         console.log('Testing "echo" tool...');
         try {
+            if (!echoTool.execute) throw new Error("Execute method missing");
             const res = await echoTool.execute({ text: 'Hello JOE' });
             if (res.ok && res.output?.text === 'Hello JOE') {
                 console.log('✅ "echo" tool executed successfully.');

@@ -1,0 +1,32 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Broken UI</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 300px; }
+        h1 { color: #333; }
+        /* BROKEN: Button text is white on white background */
+        .btn { 
+            background-color: #ffffff; 
+            color: #ffffff; 
+            padding: 10px 20px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            cursor: pointer;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Login</h1>
+        <input type="text" placeholder="Username" style="display:block; width:100%; margin-bottom:10px; padding:8px;">
+        <input type="password" placeholder="Password" style="display:block; width:100%; margin-bottom:10px; padding:8px;">
+        <button class="btn">Submit</button>
+    </div>
+</body>
+</html>

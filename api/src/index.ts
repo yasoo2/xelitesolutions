@@ -35,11 +35,11 @@ const logger =
   process.env.NODE_ENV === 'production'
     ? pino()
     : pino({
-        transport: {
-          target: 'pino-pretty',
-          options: { translateTime: 'SYS:standard', colorize: true },
-        },
-  });
+      transport: {
+        target: 'pino-pretty',
+        options: { translateTime: 'SYS:standard', colorize: true },
+      },
+    });
 
 function escapeRegExp(input: string) {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -75,8 +75,12 @@ async function ensureOwnerFromEnv() {
   }
 }
 
+console.log('DEBUG: Modules imported. Calling main...');
+
 async function main() {
+  console.log('DEBUG: main() started');
   const app = express();
+  console.log('DEBUG: express app created');
 
   const allowedOrigins = new Set<string>([
     'https://xelitesolutions.com',
@@ -135,7 +139,7 @@ async function main() {
   app.use('/insta', instaRoutes);
   app.use('/providers', providersRoutes);
   app.use('/api/browser', browserRoutes);
-  
+
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
     const auth = (req as any).auth;
@@ -144,7 +148,7 @@ async function main() {
 
   const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
   if (!fs.existsSync(ARTIFACT_DIR)) {
-    try { fs.mkdirSync(ARTIFACT_DIR, { recursive: true }); } catch {}
+    try { fs.mkdirSync(ARTIFACT_DIR, { recursive: true }); } catch { }
   }
   app.use('/artifacts', express.static(ARTIFACT_DIR));
 
@@ -162,19 +166,22 @@ async function main() {
   }
 
   const server = http.createServer(app);
+  console.log('DEBUG: Attaching WebSocket...');
   attachWebSocket(server);
 
+  console.log('DEBUG: Starting listen...');
   server.listen(config.port, '0.0.0.0', () => {
+    console.log('DEBUG: Server callback triggered');
     logger.info({ port: config.port }, 'API listening');
   });
 
   // Global Error Handler
   process.on('uncaughtException', (err) => {
-      logger.error(err, 'Uncaught Exception');
+    logger.error(err, 'Uncaught Exception');
   });
 
   process.on('unhandledRejection', (reason: any) => {
-      logger.error(reason, 'Unhandled Rejection');
+    logger.error(reason, 'Unhandled Rejection');
   });
 }
 

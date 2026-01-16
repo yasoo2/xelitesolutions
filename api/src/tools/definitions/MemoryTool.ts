@@ -54,7 +54,7 @@ export const MemoryTool: ToolDefinition = {
         if (action === 'recall') {
             const results = await memory.search(content, 5);
             // Map Chroma/VectorDB results to simple format
-            const simpleResults = results.ids[0].map((id, idx) => ({
+            const simpleResults = results.ids[0].map((id: string, idx: number) => ({
                 id: id,
                 content: results.documents[0][idx] || '',
                 score: results.distances ? results.distances[0][idx] : 0

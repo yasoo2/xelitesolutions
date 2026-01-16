@@ -16,9 +16,12 @@ import { BrowserRunTool } from './definitions/BrowserRunTool';
 import { MemoryTool } from './definitions/MemoryTool';
 import { ArchitectTool } from './definitions/ArchitectTool';
 import { VisualQATool } from './definitions/VisualQATool';
+import { ImageGenerationTool } from './definitions/ImageGenerationTool';
+import { CodebaseNavigatorTool } from './definitions/CodebaseNavigatorTool';
 import { GenesisToolDef } from './definitions/GenesisTool';
 import { GenesisAgent } from '../agents/GenesisAgent';
 import { handleShellCommand, handleGitCommand, handleFsCommand } from './handlers';
+import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 if (!fs.existsSync(ARTIFACT_DIR)) {
@@ -543,6 +546,17 @@ export const tools: ToolDefinition[] = [
   MemoryTool,
   ArchitectTool,
   VisualQATool,
+  BulkFileGeneratorTool,
+  {
+    ...ImageGenerationTool,
+    permissions: ImageGenerationTool.permissions as any,
+    sideEffects: ImageGenerationTool.sideEffects as any
+  },
+  {
+    ...CodebaseNavigatorTool,
+    permissions: CodebaseNavigatorTool.permissions as any,
+    sideEffects: CodebaseNavigatorTool.sideEffects as any
+  },
   {
     ...GenesisToolDef,
     permissions: GenesisToolDef.permissions as any,

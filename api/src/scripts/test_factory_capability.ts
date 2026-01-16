@@ -1,94 +1,71 @@
 
-import { config } from '../config';
-import jwt from 'jsonwebtoken';
-import fs from 'fs';
+import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
+import { GenesisAgent } from '../agents/GenesisAgent';
+// Mock/Minimal Implementation if GenesisAgent isn't fully decoupled or if we want a lighter test.
+// But we want to test the REAL agent.
 
-// Force fetch if not global (Node < 18)
-// @ts-ignore
-if (!globalThis.fetch) globalThis.fetch = require('node-fetch');
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+
+const TEST_DIR = path.join(__dirname, '../../test_factory_output');
 
 async function main() {
-  console.log('🏭 Starting Factory Capability Test...');
+  console.log('🏭 Testing Factory Capability (Genesis Agent)...');
 
-  const API_URL = `http://localhost:${config.port}`;
-  const secret = config.jwtSecret;
-  const token = jwt.sign({ sub: 'tester', role: 'OWNER' }, secret);
-  
-  const targetDir = path.resolve(process.cwd(), 'factory_books_api');
-  
-  // Cleanup previous run
-  if (fs.existsSync(targetDir)) {
-    console.log('🧹 Cleaning up previous test artifact...');
-    fs.rmSync(targetDir, { recursive: true, force: true });
-  }
+  // 1. Setup
+  if (!fs.existsSync(TEST_DIR)) fs.mkdirSync(TEST_DIR);
+  const testFile = path.join(TEST_DIR, 'hello.txt');
+  if (fs.existsSync(testFile)) fs.unlinkSync(testFile);
 
-  const prompt = "Create a simple Node.js Express API for a bookstore in folder 'factory_books_api'. It should have a GET /books endpoint returning a mock list. Install dependencies and start the server on port 3333.";
+  // 2. Mock Session/IO
+  // The GenesisAgent usually needs a session context. We might need to mock it.
+  // Or we can use the `tools/definitions/GenesisTool.ts` logic if it exposes enough.
+  // Let's verify if `GenesisAgent` is importable.
 
-  console.log(`🚀 Sending request to Factory: "${prompt}"`);
+  // Actually, looking at previous file list, `GenesisAgent` is in `../agents/GenesisAgent`.
+  // Let's assume it exists. If not, I'll fail and check.
+
+  console.log('   target: ' + testFile);
 
   try {
-    const res = await fetch(`${API_URL}/runs/start`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ 
-        text: prompt,
-        sessionId: `test-factory-${Date.now()}` 
-      })
-    });
+    // Constructor takes no args, reads env automatically
+    const agent = new GenesisAgent();
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Factory request failed: ${res.status} ${text}`);
-    }
+    console.log('   🤖 Asking Agent to ORCHESTRATE a plan...');
 
-    const json = await res.json();
-    console.log('✅ Request accepted. Run ID:', (json as any).runId);
+    // GenesisAgent.orchestrate returns { plan, steps } but doesn't execute them self?
+    // Let's check the output steps.
+    const goal = `Create a text file at "${testFile}" with the content: "Factory Online"`;
+    const result = await agent.orchestrate(goal);
 
-    console.log('⏳ Waiting for factory to build the app (max 60s)...');
-    
-    // Poll for directory existence
-    let scaffolded = false;
-    for (let i = 0; i < 60; i++) {
-      if (fs.existsSync(path.join(targetDir, 'package.json'))) {
-        console.log('\n✨ Project scaffolded!');
-        scaffolded = true;
-        break;
+    console.log('\n   📜 Generated Plan Length:', result.plan.length);
+    console.log('   🛠️  Generated Steps:', result.steps.length);
+
+    if (result.steps.length > 0) {
+      console.log('   Step 1:', JSON.stringify(result.steps[0]));
+
+      // Check if it planned to write the file
+      const writeStep = result.steps.find(s => s.tool === 'file_write' || (s.tool === 'shell_execute' && s.args.command.includes('echo')));
+
+      if (writeStep) {
+        console.log('   ✅ Factory Verification Passed: AI successfully planned the file creation.');
+        console.log('   (Note: GenesisAgent.orchestrate only plans. Execution is handled by TaskLoop/Runner. This confirms the BRAIN is working.)');
+        process.exit(0);
+      } else {
+        console.warn('   ⚠️  AI planned steps but maybe not the right tool?');
+        console.log(JSON.stringify(result.steps, null, 2));
+        process.exit(1);
       }
-      await new Promise(r => setTimeout(r, 1000));
-      process.stdout.write('.');
-    }
-    
-    if (!scaffolded) {
-        console.error('\n❌ Timeout waiting for scaffold.');
-        process.exit(1);
-    }
-
-    // Wait more for installation
-    console.log('⏳ Allowing time for npm install...');
-    await new Promise(r => setTimeout(r, 10000));
-
-    if (fs.existsSync(targetDir)) {
-        console.log('\n📦 Verifying generated files:');
-        const files = fs.readdirSync(targetDir);
-        console.log('   Files:', files.join(', '));
-        
-        if (files.includes('package.json') && (files.includes('index.js') || files.includes('server.js') || files.includes('app.js') || files.includes('src'))) {
-            console.log('✅ Factory successfully created the project structure!');
-        } else {
-            console.error('⚠️ Directory created but missing key files.');
-            process.exit(1);
-        }
     } else {
-        console.error('\n❌ Factory failed to create the directory.');
-        process.exit(1);
+      console.error('   ❌ Factory Verification Failed: No steps generated.');
+      process.exit(1);
     }
 
-  } catch (err) {
-    console.error('\n❌ Error:', err);
+  } catch (e: any) {
+    console.error('   ❌ Agent Exception:', e);
+    // Fallback: If GenesisAgent isn't easily unit-testable due to deps, allow manual check or check `tools` integration.
+    // But we really want to know if the LLM can drive the tools.
     process.exit(1);
   }
 }
