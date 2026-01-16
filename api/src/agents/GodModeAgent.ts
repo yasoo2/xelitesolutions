@@ -14,7 +14,12 @@ export class GodModeAgent {
     private openai: OpenAI;
 
     constructor() {
-        this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        if (OPENAI_API_KEY) {
+            this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        } else {
+            // Placeholder or throw on usage
+            this.openai = null as any;
+        }
     }
 
     async buildSystem(userRequest: string, outputDir: string) {

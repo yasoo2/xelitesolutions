@@ -19,9 +19,9 @@ services:
       - JWT_SECRET=prod_secret_73821038_secure_key
       - BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
       - WORKER_API_KEY=joe_secret_browser_key
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://127.0.0.1:3000/health" ]
+      test: [ "CMD", "node", "healthcheck.js" ]
       interval: 10s
       timeout: 10s
       retries: 5
