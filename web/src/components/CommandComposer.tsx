@@ -6,6 +6,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
+import { AgentActivity } from './AgentActivity';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -2599,156 +2600,17 @@ export default function CommandComposer({
                 const doneCount = visibleSteps.filter((s: any) => s?.status === 'done').length;
 
                 return (
-                  <motion.div
+                  <AgentActivity
                     key={item.key}
-                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    className="message-row joe"
-                  >
-                    <div className="activity-card" onClick={toggleRun}>
-                      <div className="activity-header">
-                        <div className="activity-title">
-                          <Cpu size={18} className="text-accent" />
-                          <span>{steps.length ? t('agentActivity') : t('initializing')}</span>
-                        </div>
-                        <div className="activity-meta">
-                          {status === 'running' && <Loader2 size={14} className="spin text-accent" />}
-                          {status === 'done' && <CheckCircle2 size={14} className="text-success" />}
-                          {status === 'failed' && <XCircle size={14} className="text-danger" />}
-                          <span>{visibleSteps.length} {t('stepsLabel')}</span>
-                          {totalDuration > 0 && <span>• {(totalDuration / 1000).toFixed(1)}s</span>}
-                          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </div>
-                      </div>
-
-                      <AnimatePresence>
-                        {expanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="activity-body"
-                          >
-                            {visibleSteps.map((s: any) => {
-                              const stepName = String(s?.name || '');
-                              const toolName = getToolNameFromStep(stepName);
-                              const meta = toolName
-                                ? toolUi(toolName)
-                                : { label: t('stepLabel'), Icon: Sparkles, color: 'var(--text-secondary)' };
-                              const isExpandedStep = !!expandedStepKeys[s.key];
-                              const toggleStep = (ev: any) => {
-                                ev.stopPropagation();
-                                setExpandedStepKeys((prev) => ({ ...prev, [s.key]: !prev[s.key] }));
-                              };
-
-                              const ok = s.status === 'done';
-                              const failed = s.status === 'failed';
-                              const running = s.status === 'running';
-                              const dur = typeof s.duration === 'number' ? s.duration : undefined;
-                              const title = (() => {
-                                if (stepName === 'plan') return t('tools.plan');
-                                if (stepName.startsWith('thinking_step_')) {
-                                  const n = stepName.replace('thinking_step_', '');
-                                  return t('planNumber', { n });
-                                }
-                                if (toolName) {
-                                  const generic = t('toolCategoryGeneric');
-                                  const toolLabel = /^browser_/i.test(toolName)
-                                    ? toolName
-                                    : meta.label === generic
-                                      ? toolName
-                                      : meta.label;
-                                  return t('executePrefix', { tool: toolLabel });
-                                }
-                                return s.displayName || formatStepDisplayName(stepName);
-                              })();
-                              const input = s.input;
-                              const result = s.result;
-                              const output = result?.output;
-                              const logs = logsByRunId.get(rid) || [];
-
-                              return (
-                                <div key={s.key} className="step-item">
-                                  <div className="step-header" onClick={toggleStep}>
-                                    <div className="step-title">
-                                      <meta.Icon size={16} style={{ color: meta.color }} />
-                                      <span style={{ color: ok ? 'var(--text-primary)' : failed ? 'var(--accent-danger)' : 'var(--accent-primary)' }}>
-                                        {title}
-                                      </span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                      <span className={`step-badge ${ok ? 'success' : failed ? 'danger' : 'running'}`}>
-                                        {running ? t('statusRunning') : ok ? t('statusDone') : t('statusFailed')}
-                                      </span>
-                                      {dur && <span className="text-xs text-muted">{(dur / 1000).toFixed(1)}s</span>}
-                                      {isExpandedStep ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                    </div>
-                                  </div>
-
-                                  <AnimatePresence>
-                                    {isExpandedStep && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        className="step-details"
-                                      >
-                                        {input && (
-                                          <div className="mb-2">
-                                            <div className="text-xs font-bold text-muted mb-1">{t('inputs')}</div>
-                                            <div className="text-xs text-secondary whitespace-pre-wrap">
-                                              {formatValue(input, 1600, { technical: showTechnicalByRunId[rid] })}
-                                            </div>
-                                          </div>
-                                        )}
-                                        {output && (
-                                          <div>
-                                            <div className="text-xs font-bold text-muted mb-1">{t('outputs')}</div>
-                                            <div className="text-xs text-secondary whitespace-pre-wrap">
-                                              {formatValue(output, 1600, { technical: showTechnicalByRunId[rid] })}
-                                            </div>
-                                          </div>
-                                        )}
-                                        {s.error && (
-                                          <div className="mt-2 text-danger text-xs whitespace-pre-wrap">
-                                            {t('errorPrefix')}: {String(s.error)}
-                                          </div>
-                                        )}
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              );
-                            })}
-
-                            <div className="step-item">
-                              <div
-                                className="step-header"
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }));
-                                }}
-                              >
-                                <div className="step-title">
-                                  {showTechnicalByRunId[rid] ? <EyeOff size={16} /> : <Eye size={16} />}
-                                  <span>{showTechnicalByRunId[rid] ? t('hideTechnicalDetails') : t('showTechnicalDetails')}</span>
-                                </div>
-                              </div>
-                              {showTechnicalByRunId[rid] ? (
-                                <div className="log-viewer" dir="ltr">
-                                  {logs.length ? formatSystemLogs(logs) : t('systemLogsEmpty')}
-                                </div>
-                              ) : (
-                                <div className="text-xs text-muted" style={{ padding: '0.5rem 0.75rem' }} dir="auto">
-                                  {t('technicalDetailsHidden')}
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </motion.div>
+                    runId={rid}
+                    steps={visibleSteps}
+                    status={status}
+                    logs={logs}
+                    expanded={expanded}
+                    onToggle={toggleRun}
+                    showTechnical={!!showTechnicalByRunId[rid]}
+                    onToggleTechnical={() => setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }))}
+                  />
                 );
               }
 
