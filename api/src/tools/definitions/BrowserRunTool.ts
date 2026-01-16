@@ -45,7 +45,7 @@ export class BrowserRunTool extends BaseTool {
             userId: { type: 'string' },
         },
         required: ['sessionId'],
-        anyOf: [{ required: ['actions'] }, { required: ['instructionText'] }],
+        // anyOf: [{ required: ['actions'] }, { required: ['instructionText'] }],
     };
 
     outputSchema = {
