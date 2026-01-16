@@ -1,5 +1,6 @@
 @import './theme.css';
 @import './styles/improved-ui.css';
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap');
 
 *,
 *::before,
@@ -16,7 +17,7 @@ body {
 
 body {
   margin: 0;
-  font-family: 'Inter', "Noto Sans Arabic", system-ui, -apple-system, sans-serif;
+  font-family: 'Cairo', 'Inter', "Noto Sans Arabic", system-ui, -apple-system, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -3484,4 +3485,96 @@ html[data-theme="light"] .send-btn {
 .joe-thinking-error .joe-thinking-dot {
   background: rgba(239, 68, 68, 0.95);
   box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
+}
+/* --- Markdown Content Styling (Added for Formatting) --- */
+
+.chat-bubble-content table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 16px 0;
+  font-size: 0.95em;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.chat-bubble-content th {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-weight: 700;
+  padding: 14px 16px;
+  text-align: right; /* Default to right for Arabic */
+  border-bottom: 2px solid var(--border-color);
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chat-bubble-content td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.chat-bubble-content tr:last-child td {
+  border-bottom: none;
+}
+
+.chat-bubble-content tr:hover td {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* List Styling */
+.chat-bubble-content ul, 
+.chat-bubble-content ol {
+  padding-right: 24px; /* Arabic RTL support */
+  margin: 8px 0;
+}
+
+[dir="ltr"] .chat-bubble-content ul, 
+[dir="ltr"] .chat-bubble-content ol {
+    padding-right: 0;
+    padding-left: 24px;
+}
+
+.chat-bubble-content li {
+  margin-bottom: 6px;
+  position: relative;
+}
+
+/* Citation / Link Styling */
+.chat-bubble-content a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px dashed rgba(var(--accent-primary-rgb), 0.5);
+  transition: all 0.2s;
+  padding-bottom: 1px;
+}
+
+.chat-bubble-content a:hover {
+  border-bottom-style: solid;
+  border-bottom-color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb), 0.1);
+  border-radius: 4px;
+}
+
+/* Blockquote */
+.chat-bubble-content blockquote {
+  border-right: 4px solid var(--accent-primary); /* Arabic RTL */
+  margin: 16px 0;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+[dir="ltr"] .chat-bubble-content blockquote {
+    border-right: none;
+    border-left: 4px solid var(--accent-primary);
 }
