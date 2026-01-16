@@ -653,7 +653,12 @@ export async function planNextStep(
     function: {
       name: t.name,
       description: t.description || `Tool: ${t.name}. Tags: ${(Array.isArray((t as any).tags) ? (t as any).tags : []).join(', ')}`,
-      parameters: t.inputSchema as any,
+      parameters: (() => {
+        if (t.name === 'browser_run') {
+          console.log('DEBUG_SCHEMA: browser_run schema:', JSON.stringify(t.inputSchema, null, 2));
+        }
+        return t.inputSchema as any;
+      })(),
     },
   }));
 
