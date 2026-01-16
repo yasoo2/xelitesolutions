@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Types ---
@@ -24,7 +24,7 @@ export interface AgentActivityProps {
     onToggleTechnical?: () => void;
 }
 
-export const AgentActivity: React.FC<AgentActivityProps> = ({ status }) => {
+export const AgentActivity: React.FC<AgentActivityProps> = ({ status, steps }) => {
     // Ephemeral: If done, disappear completely.
     if (status === 'done') return null;
 
@@ -43,6 +43,29 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({ status }) => {
     }
 
     if (status === 'idle') return null;
+
+    // Determine current "Thought" based on active step
+    const currentThought = useMemo(() => {
+        const runningStep = steps.find(s => s.status === 'running');
+        const lastStep = steps[steps.length - 1];
+
+        // Prioritize running step, fallback to last step, fallback to generic
+        const activeStep = runningStep || lastStep;
+
+        if (!activeStep) return "Initializing neural pathways...";
+
+        // Format the thought to sound natural
+        const name = activeStep.displayName || activeStep.name;
+
+        // Map common technical names to cleaner "thoughts"
+        if (name.includes("fs_read")) return "Reading user files...";
+        if (name.includes("fs_write")) return "Writing code updates...";
+        if (name.includes("browser")) return "Browsing external documentation...";
+        if (name.includes("cmd_run")) return "Executing system commands...";
+        if (name.includes("planning")) return "Formulating implementation plan...";
+
+        return `${name}...`;
+    }, [steps]);
 
     // Active "Thinking" State
     return (
@@ -89,34 +112,47 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({ status }) => {
                 </div>
 
                 {/* Text Animation */}
-                <motion.div
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex flex-col items-center gap-1"
-                >
-                    <h3
-                        className="text-sm font-bold tracking-widest uppercase"
-                        style={{ color: '#22d3ee', textShadow: '0 0 10px rgba(34, 211, 238, 0.5)' }}
-                    >
-                        Thinking
-                    </h3>
-                    <div className="flex gap-1 h-1">
-                        {[0, 1, 2].map((i) => (
-
-                            <motion.div
-                                key={i}
-                                className="w-1 h-1 rounded-full bg-white"
-                                animate={{ y: [0, -3, 0], opacity: [0.3, 1, 0.3] }}
-                                transition={{
-                                    duration: 0.6,
-                                    repeat: Infinity,
-                                    delay: i * 0.15,
-                                    ease: "easeInOut"
-                                }}
-                            />
-                        ))}
+                <div className="flex flex-col items-center gap-2 h-14">
+                    <div className="flex flex-col items-center gap-1">
+                        <h3
+                            className="text-sm font-bold tracking-widest uppercase"
+                            style={{ color: '#22d3ee', textShadow: '0 0 10px rgba(34, 211, 238, 0.5)' }}
+                        >
+                            Thinking
+                        </h3>
+                        {/* Loading Dots */}
+                        <div className="flex gap-1 h-1 justify-center">
+                            {[0, 1, 2].map((i) => (
+                                <motion.div
+                                    key={i}
+                                    className="w-1 h-1 rounded-full bg-white"
+                                    animate={{ y: [0, -3, 0], opacity: [0.3, 1, 0.3] }}
+                                    transition={{
+                                        duration: 0.6,
+                                        repeat: Infinity,
+                                        delay: i * 0.15,
+                                        ease: "easeInOut"
+                                    }}
+                                />
+                            ))}
+                        </div>
                     </div>
-                </motion.div>
+
+                    {/* Streaming Thought Text */}
+                    <AnimatePresence mode='wait'>
+                        <motion.div
+                            key={currentThought}
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            transition={{ duration: 0.3 }}
+                            className="text-xs font-mono text-center max-w-md px-4 truncate"
+                            style={{ color: 'var(--text-muted)' }}
+                        >
+                            {currentThought}
+                        </motion.div>
+                    </AnimatePresence>
+                </div>
 
                 {/* Optional: Ambient Glow Background */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-blue-500/5 blur-[50px] rounded-full pointer-events-none -z-10" />
