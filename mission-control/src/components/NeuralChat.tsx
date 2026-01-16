@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Cpu, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAgent, type Message } from '../hooks/useAgent';
+import { useAgent } from '../hooks/useAgent';
 
 export const NeuralChat = () => {
     const { messages, status, sendMessage } = useAgent();
