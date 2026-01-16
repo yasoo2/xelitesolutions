@@ -90,8 +90,10 @@ const StepRow = ({ step }: { step: AgentStep }) => {
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-[15px] font-semibold truncate ${isFailed ? 'text-red-400' : 'text-[var(--text-primary)]'
-                            }`}>
+                        <span
+                            className={`text-[15px] font-semibold truncate ${isFailed ? 'text-red-400' : ''}`}
+                            style={!isFailed ? { color: 'var(--text-primary)' } : undefined}
+                        >
                             {step.displayName || step.name}
                         </span>
                         {step.duration && (
@@ -215,7 +217,10 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
 
                         <div>
                             {/* Explicit text color enforcement using CSS vars for Day/Night mode switch */}
-                            <h3 className="text-lg font-bold text-[color:var(--text-primary)] flex items-center gap-3">
+                            <h3
+                                className="text-lg font-bold flex items-center gap-3"
+                                style={{ color: 'var(--text-primary)' }}
+                            >
                                 {isRunning ? 'Agent Working' : isFailed ? 'Task Interrupted' : 'Task Complete'}
                                 {isRunning && (
                                     <span className="flex h-2.5 w-2.5">
@@ -228,8 +233,13 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                 <span className="bg-[var(--bg-secondary)] px-2 py-0.5 rounded border border-[var(--border-color)]">
                                     {steps.length} Actions
                                 </span>
-                                <span className={`uppercase tracking-wider font-semibold ${isRunning ? 'text-blue-500' : isFailed ? 'text-red-500' : isDone ? 'text-emerald-500' : 'text-[color:var(--text-muted)]'
-                                    }`}>
+                                <span
+                                    className={`uppercase tracking-wider font-semibold ${isRunning ? 'text-blue-500' :
+                                        isFailed ? 'text-red-500' :
+                                            isDone ? 'text-emerald-500' : ''
+                                        }`}
+                                    style={(!isRunning && !isFailed && !isDone) ? { color: 'var(--text-muted)' } : undefined}
+                                >
                                     {status}
                                 </span>
                             </div>

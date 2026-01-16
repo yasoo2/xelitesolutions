@@ -1,4 +1,6 @@
-:root {
+:root,
+html[data-theme="dark"],
+html.dark {
   --accent-primary: #38bdf8;
   --accent-secondary: #ffda00;
   --accent-primary-rgb: 56, 189, 248;
@@ -60,8 +62,13 @@ html[data-theme="light"] {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* =========================================
@@ -82,8 +89,15 @@ html[data-theme="light"] {
 }
 
 @keyframes heroFadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Hero Logo */
@@ -121,7 +135,7 @@ html[data-theme="light"] {
   justify-content: center;
   position: relative;
   z-index: 2;
-  box-shadow: 0 20px 70px rgba(0,0,0,0.28);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.28);
   transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
 }
 
@@ -129,7 +143,7 @@ html[data-theme="light"] {
   transform: translateY(-1px) scale(1.03);
   border-color: rgba(var(--accent-primary-rgb), 0.35);
   background: rgba(255, 255, 255, 0.04);
-  box-shadow: 0 26px 90px rgba(0,0,0,0.34);
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.34);
 }
 
 .hero-logo-text {
@@ -196,7 +210,9 @@ html[data-theme="light"] {
   .hero-suggestions {
     grid-template-columns: 1fr;
   }
-  .hero-title-main, .hero-title-sub {
+
+  .hero-title-main,
+  .hero-title-sub {
     font-size: 36px;
   }
 }
@@ -223,7 +239,7 @@ html[data-theme="light"] {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(45deg, transparent 0%, rgba(255,255,255,0.03) 100%);
+  background: linear-gradient(45deg, transparent 0%, rgba(255, 255, 255, 0.03) 100%);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -231,7 +247,7 @@ html[data-theme="light"] {
 .hero-card:hover {
   transform: translateY(-4px);
   border-color: var(--accent-primary);
-  box-shadow: 0 12px 30px -10px rgba(0,0,0,0.3);
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.3);
 }
 
 .hero-card:hover::before {
@@ -242,8 +258,9 @@ html[data-theme="light"] {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: rgba(var(--accent-rgb), 0.1); /* Fallback */
-  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+  background: rgba(var(--accent-rgb), 0.1);
+  /* Fallback */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -254,7 +271,8 @@ html[data-theme="light"] {
 
 .hero-card:hover .hero-card-icon {
   background: var(--accent-primary);
-  color: #000; /* Assuming dark icon on bright accent */
+  color: #000;
+  /* Assuming dark icon on bright accent */
   border-color: transparent;
 }
 
@@ -278,7 +296,7 @@ html[data-theme="light"] {
 /* Light mode adjustments */
 [data-theme="light"] .hero-card {
   background: #fff;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
 }
 
 [data-theme="light"] .hero-card:hover {
