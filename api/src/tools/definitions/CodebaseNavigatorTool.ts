@@ -54,6 +54,9 @@ export const CodebaseNavigatorTool = {
     mockSupported: false,
 
     execute: async (input: { action: string, targetDir?: string, query?: string, limit?: number, pattern?: string }) => {
+        if (!memory) {
+            memory = new VectorMemory();
+        }
         await memory.init();
 
         if (input.action === 'index') {
