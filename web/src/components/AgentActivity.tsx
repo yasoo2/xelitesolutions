@@ -94,14 +94,18 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({ status }) => {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex flex-col items-center gap-1"
                 >
-                    <h3 className="text-sm font-bold tracking-widest uppercase bg-gradient-to-r from-cyan-400 to-purple-500 text-transparent bg-clip-text">
+                    <h3
+                        className="text-sm font-bold tracking-widest uppercase"
+                        style={{ color: '#22d3ee', textShadow: '0 0 10px rgba(34, 211, 238, 0.5)' }}
+                    >
                         Thinking
                     </h3>
                     <div className="flex gap-1 h-1">
                         {[0, 1, 2].map((i) => (
+
                             <motion.div
                                 key={i}
-                                className="w-1 h-1 bg-gray-500 rounded-full"
+                                className="w-1 h-1 rounded-full bg-white"
                                 animate={{ y: [0, -3, 0], opacity: [0.3, 1, 0.3] }}
                                 transition={{
                                     duration: 0.6,
