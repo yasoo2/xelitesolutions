@@ -3,7 +3,7 @@ import fs from 'fs';
 import { glob } from 'glob';
 import { VectorMemory } from '../../memory/VectorMemory';
 
-const memory = new VectorMemory();
+let memory: VectorMemory | null = null;
 
 export const CodebaseNavigatorTool = {
     name: 'codebase_navigator',

@@ -157,19 +157,6 @@ async function main() {
   }
   app.use('/artifacts', express.static(ARTIFACT_DIR));
 
-  // DB connect (graceful if unavailable locally)
-  try {
-    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
-    logger.info('MongoDB connected');
-    try {
-      await ensureOwnerFromEnv();
-    } catch (e) {
-      logger.error(e, 'Owner bootstrap failed');
-    }
-  } catch (e) {
-    logger.error(e, 'MongoDB connection failed (continuing without DB)');
-  }
-
   const server = http.createServer(app);
   console.log('DEBUG: Attaching WebSocket...');
   attachWebSocket(server);
@@ -179,6 +166,21 @@ async function main() {
     console.log('DEBUG: Server callback triggered');
     logger.info({ port: config.port }, 'API listening');
   });
+
+  // DB connect (Background async)
+  (async () => {
+    try {
+      await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
+      logger.info('MongoDB connected');
+      try {
+        await ensureOwnerFromEnv();
+      } catch (e) {
+        logger.error(e, 'Owner bootstrap failed');
+      }
+    } catch (e) {
+      logger.error(e, 'MongoDB connection failed (continuing without DB)');
+    }
+  })();
 
   // Global Error Handler
   process.on('uncaughtException', (err) => {
