@@ -49,7 +49,7 @@ export const SystemMonitor = () => {
                 </div>
             </div>
 
-            <div className="h-64 w-full">
+            <div className="h-64 w-full min-h-[250px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data}>
                         <defs>

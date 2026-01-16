@@ -1,8 +1,21 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const API_URL = 'http://localhost:3000';
-const WS_URL = 'ws://localhost:3000/ws';
+const getApiUrl = () => {
+    if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+    if (window.location.hostname === 'localhost') return 'http://localhost:3000';
+    return '/api'; // In production, we proxy
+};
+
+const getWsUrl = () => {
+    if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+    if (window.location.hostname === 'localhost') return 'ws://localhost:3000/ws';
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws`; // Proxy handling
+};
+
+const API_URL = getApiUrl();
+const WS_URL = getWsUrl();
 
 export type Message = {
     id: string;
