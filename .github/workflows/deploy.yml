@@ -328,16 +328,16 @@ jobs:
             COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" bash ./scripts/init-letsencrypt.sh
           fi
 
-          echo "Pre-clean potential name conflicts..."
-          for n in joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
-            ids="$(docker ps -aq --filter "name=$n" 2>/dev/null || true)"
-            if [ -n "${ids:-}" ]; then
-              docker rm -f $ids || true
-            fi
-          done
-          
           echo "Docker building..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache
+
+          echo "Tearing down old containers..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans || true
+          # Force cleaning explicit names just in case
+          for n in joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
+            docker rm -f $n 2>/dev/null || true
+          done
+
           echo "Docker restarting..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
