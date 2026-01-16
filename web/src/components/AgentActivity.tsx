@@ -91,8 +91,7 @@ const StepRow = ({ step }: { step: AgentStep }) => {
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                         <span
-                            className={`text-[15px] font-semibold truncate ${isFailed ? 'text-red-400' : ''}`}
-                            style={!isFailed ? { color: 'var(--text-primary)' } : undefined}
+                            className={`text-[15px] font-semibold truncate ${isFailed ? 'text-red-400' : 'agent-text-primary'}`}
                         >
                             {step.displayName || step.name}
                         </span>
@@ -132,10 +131,10 @@ const StepRow = ({ step }: { step: AgentStep }) => {
 
                             {inputStr && (
                                 <div>
-                                    <div className="text-[var(--text-secondary)] font-semibold mb-2 flex items-center gap-2">
+                                    <div className="agent-text-secondary font-semibold mb-2 flex items-center gap-2">
                                         <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Input
                                     </div>
-                                    <div className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl p-3 text-[var(--text-secondary)] whitespace-pre-wrap overflow-x-auto">
+                                    <div className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl p-3 agent-text-secondary whitespace-pre-wrap overflow-x-auto">
                                         {inputStr}
                                     </div>
                                 </div>
@@ -143,7 +142,7 @@ const StepRow = ({ step }: { step: AgentStep }) => {
 
                             {outputStr && !isFailed && (
                                 <div>
-                                    <div className="text-[var(--text-secondary)] font-semibold mb-2 flex items-center gap-2">
+                                    <div className="agent-text-secondary font-semibold mb-2 flex items-center gap-2">
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Output
                                     </div>
                                     <div className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl p-3 text-emerald-400/90 whitespace-pre-wrap overflow-x-auto">
@@ -217,10 +216,7 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
 
                         <div>
                             {/* Explicit text color enforcement using CSS vars for Day/Night mode switch */}
-                            <h3
-                                className="text-lg font-bold flex items-center gap-3"
-                                style={{ color: 'var(--text-primary)' }}
-                            >
+                            <h3 className="text-lg font-bold flex items-center gap-3 agent-text-primary">
                                 {isRunning ? 'Agent Working' : isFailed ? 'Task Interrupted' : 'Task Complete'}
                                 {isRunning && (
                                     <span className="flex h-2.5 w-2.5">
@@ -235,10 +231,9 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                 </span>
                                 <span
                                     className={`uppercase tracking-wider font-semibold ${isRunning ? 'text-blue-500' :
-                                        isFailed ? 'text-red-500' :
-                                            isDone ? 'text-emerald-500' : ''
+                                            isFailed ? 'text-red-500' :
+                                                isDone ? 'text-emerald-500' : 'agent-text-muted'
                                         }`}
-                                    style={(!isRunning && !isFailed && !isDone) ? { color: 'var(--text-muted)' } : undefined}
                                 >
                                     {status}
                                 </span>
@@ -274,7 +269,7 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                         <div className="w-16 h-16 rounded-full bg-[var(--bg-secondary)] flex items-center justify-center animate-pulse">
                                             <Wifi size={28} className="opacity-50" />
                                         </div>
-                                        <div className="text-sm font-medium opacity-70">Waiting for intelligence stream...</div>
+                                        <div className="text-sm font-medium opacity-70 agent-text-secondary">Waiting for intelligence stream...</div>
                                     </div>
                                 )}
                             </div>
@@ -285,10 +280,10 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                     className="flex items-center justify-between px-6 py-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors group"
                                     onClick={onToggleTechnical}
                                 >
-                                    <div className="flex items-center gap-2 text-[var(--text-secondary)] text-xs font-semibold uppercase tracking-wider group-hover:text-[var(--text-primary)]">
+                                    <div className="flex items-center gap-2 agent-text-secondary text-xs font-semibold uppercase tracking-wider group-hover:agent-text-primary">
                                         <Terminal size={14} /> System Logs
                                     </div>
-                                    <div className="text-[10px] px-2 py-1 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)] font-mono border border-[var(--border-color)] group-hover:border-[var(--text-muted)]">
+                                    <div className="text-[10px] px-2 py-1 rounded bg-[var(--bg-secondary)] agent-text-muted font-mono border border-[var(--border-color)] group-hover:border-[var(--text-muted)]">
                                         {logs.length} Lines
                                     </div>
                                 </div>
@@ -304,11 +299,11 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                             <div className="h-full overflow-y-auto p-4 custom-scrollbar space-y-1">
                                                 {logs.length > 0 ? logs.map((log, i) => (
                                                     <div key={i} className="flex gap-3 border-b border-white/5 pb-1 mb-1 last:border-0 hover:bg-white/5 px-2 py-0.5 rounded transition-colors break-words">
-                                                        <span className="text-[var(--text-muted)] opacity-40 select-none w-8 text-right">{(i + 1)}</span>
-                                                        <span className="flex-1 text-[var(--text-primary)] opacity-90">{log}</span>
+                                                        <span className="agent-text-muted opacity-40 select-none w-8 text-right">{(i + 1)}</span>
+                                                        <span className="flex-1 agent-text-primary opacity-90">{log}</span>
                                                     </div>
                                                 )) : (
-                                                    <div className="text-[var(--text-muted)] italic p-2">No system logs available.</div>
+                                                    <div className="agent-text-muted italic p-2">No system logs available.</div>
                                                 )}
                                             </div>
                                         </motion.div>

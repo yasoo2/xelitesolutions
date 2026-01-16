@@ -302,3 +302,16 @@ html[data-theme="light"] {
 [data-theme="light"] .hero-card:hover {
   box-shadow: 0 12px 30px rgba(var(--accent-primary-rgb), 0.15);
 }
+
+/* Forced Utilities for AgentActivity to Override Tailwind/Legacy Styles */
+.agent-text-primary {
+  color: var(--text-primary) !important;
+}
+
+.agent-text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+.agent-text-muted {
+  color: var(--text-muted) !important;
+}
