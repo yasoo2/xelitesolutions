@@ -1301,6 +1301,10 @@ export const tools: ToolDefinition[] = [
                 let abs = href;
                 try {
                   abs = new URL(href, u).toString();
+                  if (abs.includes('duckduckgo.com/l/')) {
+                    const decoded = new URLSearchParams(new URL(abs).search).get('uddg');
+                    if (decoded) abs = decodeURIComponent(decoded);
+                  }
                 } catch { }
                 if (!/^https?:\/\//i.test(abs)) continue;
                 const container = a.closest('.result, [data-testid="result"], article, tr') || a.parentElement;
@@ -1436,11 +1440,10 @@ export const tools: ToolDefinition[] = [
         } catch { }
       })());
 
-      // Wait for parallel searches
-      await Promise.allSettled(searchTasks);
 
-      // 4. Fallback to Bing if we have few results (< 3)
-      if (allResults.length < 3) {
+
+      // 4. Bing Search (Parallel)
+      searchTasks.push((async () => {
         try {
           const bUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=${lang}`;
           const controller = new AbortController();
@@ -1462,14 +1465,16 @@ export const tools: ToolDefinition[] = [
               if (!items.length) items = Array.from(doc.querySelectorAll('.b_algo'));
               const results = items.map(li => {
                 const h2 = li.querySelector('h2 a');
-                const p = li.querySelector('p');
+                const p = li.querySelector('p, .b_caption p, .b_paract');
+                const href = h2?.getAttribute('href');
                 return {
                   title: h2?.textContent?.trim() || '',
-                  url: h2?.getAttribute('href') || '',
+                  url: href || '',
                   description: p?.textContent?.trim() || '',
                   source: 'bing'
                 };
-              }).filter(x => x.url && x.title);
+              }).filter(x => x.url && x.title && x.url.startsWith('http'));
+
               if (results.length) {
                 logs.push(`bing_results=${results.length}`);
                 allResults.push(...results);
@@ -1479,7 +1484,10 @@ export const tools: ToolDefinition[] = [
             clearTimeout(timeoutId);
           }
         } catch (e) { }
-      }
+      })());
+
+      // Wait for parallel searches (including Bing)
+      await Promise.allSettled(searchTasks);
 
       // 5. No browser-based fallback (legacy browser removed)
 

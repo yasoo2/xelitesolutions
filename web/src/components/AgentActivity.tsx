@@ -214,7 +214,8 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                         </div>
 
                         <div>
-                            <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-3">
+                            {/* Explicit text color enforcement using CSS vars for Day/Night mode switch */}
+                            <h3 className="text-lg font-bold text-[color:var(--text-primary)] flex items-center gap-3">
                                 {isRunning ? 'Agent Working' : isFailed ? 'Task Interrupted' : 'Task Complete'}
                                 {isRunning && (
                                     <span className="flex h-2.5 w-2.5">
@@ -223,11 +224,11 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                     </span>
                                 )}
                             </h3>
-                            <div className="flex items-center gap-2 mt-1 text-[13px] font-medium text-[var(--text-secondary)]">
+                            <div className="flex items-center gap-2 mt-1 text-[13px] font-medium text-[color:var(--text-secondary)]">
                                 <span className="bg-[var(--bg-secondary)] px-2 py-0.5 rounded border border-[var(--border-color)]">
                                     {steps.length} Actions
                                 </span>
-                                <span className={`uppercase tracking-wider ${isRunning ? 'text-blue-400' : isFailed ? 'text-red-400' : isDone ? 'text-emerald-400' : 'text-[var(--text-muted)]'
+                                <span className={`uppercase tracking-wider font-semibold ${isRunning ? 'text-blue-500' : isFailed ? 'text-red-500' : isDone ? 'text-emerald-500' : 'text-[color:var(--text-muted)]'
                                     }`}>
                                     {status}
                                 </span>
@@ -237,7 +238,7 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
 
                     <div className={`
                         w-10 h-10 rounded-xl flex items-center justify-center border border-[var(--border-color)]
-                        text-[var(--text-muted)] transition-all duration-300
+                        text-[color:var(--text-muted)] transition-all duration-300
                         group-hover:border-[var(--accent-primary)] group-hover:text-[var(--accent-primary)] group-hover:bg-[rgba(var(--accent-rgb),0.1)]
                     `}>
                         <ChevronDown size={20} className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
