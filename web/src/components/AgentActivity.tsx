@@ -83,13 +83,19 @@ const StepRow = ({ step }: { step: AgentStep }) => {
                 </div>
 
                 {/* Step Name */}
-                <div className="flex-1 font-medium text-[13px] text-[var(--text-primary)] truncate">
+                <div
+                    className="flex-1 font-medium text-[13px] truncate"
+                    style={{ color: 'var(--text-primary)' }}
+                >
                     {step.displayName || step.name}
                 </div>
 
                 {/* Duration */}
                 {step.duration && (
-                    <div className="text-[11px] font-mono text-[var(--text-muted)] opacity-60">
+                    <div
+                        className="text-[11px] font-mono opacity-60"
+                        style={{ color: 'var(--text-muted)' }}
+                    >
                         {(step.duration / 1000).toFixed(1)}s
                     </div>
                 )}
@@ -116,10 +122,16 @@ const StepRow = ({ step }: { step: AgentStep }) => {
 
                             {inputStr && (
                                 <div>
-                                    <div className="text-[var(--text-muted)] mb-1 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-semibold">
+                                    <div
+                                        className="mb-1 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-semibold"
+                                        style={{ color: 'var(--text-muted)' }}
+                                    >
                                         <ArrowRight size={10} /> Input
                                     </div>
-                                    <div className="text-[var(--text-secondary)] whitespace-pre-wrap overflow-x-auto opacity-90 pl-3 border-l-2 border-[var(--border-color)]">
+                                    <div
+                                        className="whitespace-pre-wrap overflow-x-auto opacity-90 pl-3 border-l-2 border-[var(--border-color)]"
+                                        style={{ color: 'var(--text-secondary)' }}
+                                    >
                                         {inputStr}
                                     </div>
                                 </div>
@@ -127,10 +139,16 @@ const StepRow = ({ step }: { step: AgentStep }) => {
 
                             {outputStr && !isFailed && (
                                 <div className="pt-1">
-                                    <div className="text-[var(--text-muted)] mb-1 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-semibold">
+                                    <div
+                                        className="mb-1 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-semibold"
+                                        style={{ color: 'var(--text-muted)' }}
+                                    >
                                         <ArrowRight size={10} /> Output
                                     </div>
-                                    <div className="text-[var(--text-primary)] whitespace-pre-wrap overflow-x-auto pl-3 border-l-2 border-emerald-500/30">
+                                    <div
+                                        className="whitespace-pre-wrap overflow-x-auto pl-3 border-l-2 border-emerald-500/30"
+                                        style={{ color: 'var(--text-primary)' }}
+                                    >
                                         {outputStr}
                                     </div>
                                 </div>
@@ -178,11 +196,16 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
 
                     {/* Title & Status */}
                     <div className="flex items-baseline gap-3">
-                        <span className="text-[14px] font-semibold text-[var(--text-primary)]">
+                        <span
+                            className="text-[14px] font-semibold"
+                            style={{ color: 'var(--text-primary)' }}
+                        >
                             {isRunning ? 'Agent Working...' : 'Activity Log'}
                         </span>
-                        <span className={`text-[11px] font-mono uppercase tracking-wider ${isRunning ? 'text-blue-500' : 'text-[var(--text-muted)]'
-                            }`}>
+                        <span
+                            className={`text-[11px] font-mono uppercase tracking-wider ${isRunning ? 'text-blue-500' : ''}`}
+                            style={!isRunning ? { color: 'var(--text-muted)' } : undefined}
+                        >
                             {status}
                         </span>
                     </div>
@@ -222,10 +245,18 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                     className="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-[var(--bg-hover)]"
                                     onClick={onToggleTechnical}
                                 >
-                                    <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--text-secondary)]">
+                                    <div
+                                        className="flex items-center gap-2 text-[11px] font-medium"
+                                        style={{ color: 'var(--text-secondary)' }}
+                                    >
                                         <Terminal size={12} /> Console Output
                                     </div>
-                                    <span className="text-[10px] font-mono text-[var(--text-muted)]">{logs.length}</span>
+                                    <span
+                                        className="text-[10px] font-mono"
+                                        style={{ color: 'var(--text-muted)' }}
+                                    >
+                                        {logs.length}
+                                    </span>
                                 </div>
                                 <AnimatePresence>
                                     {showTechnical && (
