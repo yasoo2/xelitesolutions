@@ -1,10 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-    Cpu, Loader2, CheckCircle2, XCircle, ChevronRight, ChevronDown,
-    Terminal, Wifi, Globe, Database, Sparkles, AlertTriangle, Eye, EyeOff,
-    Code, FileText, Search, ArrowRight
-} from 'lucide-react';
 
 // --- Types ---
 export interface AgentStep {
@@ -29,259 +24,99 @@ export interface AgentActivityProps {
     onToggleTechnical?: () => void;
 }
 
-// --- Helpers ---
-const formatValue = (val: any, limit = 1000): string => {
-    if (val === undefined || val === null) return '';
-    let s = typeof val === 'string' ? val : JSON.stringify(val, null, 2);
-    if (s.length > limit) s = s.slice(0, limit) + `\n... (${s.length - limit} more chars)`;
-    return s;
-};
+export const AgentActivity: React.FC<AgentActivityProps> = ({ status }) => {
+    // Ephemeral: If done, disappear completely.
+    if (status === 'done') return null;
 
-const getToolIcon = (name: string) => {
-    const n = name.toLowerCase();
-    if (n.includes('browser') || n.includes('web')) return <Globe size={16} />;
-    if (n.includes('database') || n.includes('sql')) return <Database size={16} />;
-    if (n.includes('terminal') || n.includes('exec')) return <Terminal size={16} />;
-    if (n.includes('file') || n.includes('read') || n.includes('write')) return <FileText size={16} />;
-    if (n.includes('code') || n.includes('gen')) return <Code size={16} />;
-    if (n.includes('search')) return <Search size={16} />;
-    return <Cpu size={16} />;
-};
-
-const StepRow = ({ step }: { step: AgentStep }) => {
-    const [open, setOpen] = useState(false);
-    const isFailed = step.status === 'failed';
-    const isRunning = step.status === 'running';
-
-    // Format Inputs/Outputs
-    const inputStr = useMemo(() => formatValue(step.input), [step.input]);
-    const outputStr = useMemo(() => formatValue(step.result?.output || step.result), [step.result]);
-
-    // Parse error
-    const errorDisplay = useMemo(() => {
-        if (!step.error) return null;
-        if (typeof step.error === 'object') return JSON.stringify(step.error, null, 2);
-        try { return JSON.stringify(JSON.parse(step.error), null, 2); } catch { return String(step.error); }
-    }, [step.error]);
-
-    return (
-        <div className="border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-hover)] transition-colors">
-            <div
-                className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
-                onClick={() => setOpen(!open)}
+    // Safety: Minimal error state
+    if (status === 'failed') {
+        return (
+            <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="my-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center justify-center gap-2"
             >
-                {/* Status Indicator (Minimalist Dot) */}
-                <div className="w-4 flex items-center justify-center">
-                    {isRunning ? <Loader2 size={14} className="animate-spin text-blue-500" /> :
-                        isFailed ? <div className="w-2 h-2 rounded-full bg-red-500" /> :
-                            <div className="w-2 h-2 rounded-full bg-emerald-500/50" />}
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                Thinking Interrupted
+            </motion.div>
+        );
+    }
+
+    if (status === 'idle') return null;
+
+    // Active "Thinking" State
+    return (
+        <div className="w-full flex items-center justify-center py-8">
+            <div className="relative flex flex-col items-center justify-center gap-6">
+
+                {/* Visual Orb Container */}
+                <div className="relative w-16 h-16 flex items-center justify-center">
+                    {/* Ring 1: Rotating Outer */}
+                    <motion.div
+                        className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-500 border-r-blue-500"
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2, ease: "linear", repeat: Infinity }}
+                    />
+
+                    {/* Ring 2: Rotating Inner (Counter) */}
+                    <motion.div
+                        className="absolute inset-2 rounded-full border-2 border-transparent border-b-purple-500 border-l-pink-500"
+                        animate={{ rotate: -360 }}
+                        transition={{ duration: 3, ease: "linear", repeat: Infinity }}
+                    />
+
+                    {/* Ring 3: Pulse Ring */}
+                    <motion.div
+                        className="absolute inset-0 rounded-full border border-blue-400/30"
+                        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
+                        transition={{ duration: 2, ease: "easeInOut", repeat: Infinity }}
+                    />
+
+                    {/* Core: Glowing Center */}
+                    <motion.div
+                        className="w-4 h-4 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]"
+                        animate={{
+                            scale: [1, 1.2, 1],
+                            opacity: [0.8, 1, 0.8],
+                            boxShadow: [
+                                "0 0 10px rgba(56, 189, 248, 0.5)",
+                                "0 0 25px rgba(56, 189, 248, 0.8)",
+                                "0 0 10px rgba(56, 189, 248, 0.5)"
+                            ]
+                        }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                    />
                 </div>
 
-                {/* Tool Icon */}
-                <div className="text-[var(--text-muted)] opacity-70">
-                    {getToolIcon(step.name)}
-                </div>
-
-                {/* Step Name */}
-                <div
-                    className="flex-1 font-medium text-[13px] truncate"
-                    style={{ color: 'var(--text-primary)' }}
+                {/* Text Animation */}
+                <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col items-center gap-1"
                 >
-                    {step.displayName || step.name}
-                </div>
-
-                {/* Duration */}
-                {step.duration && (
-                    <div
-                        className="text-[11px] font-mono opacity-60"
-                        style={{ color: 'var(--text-muted)' }}
-                    >
-                        {(step.duration / 1000).toFixed(1)}s
+                    <h3 className="text-sm font-bold tracking-widest uppercase bg-gradient-to-r from-cyan-400 to-purple-500 text-transparent bg-clip-text">
+                        Thinking
+                    </h3>
+                    <div className="flex gap-1 h-1">
+                        {[0, 1, 2].map((i) => (
+                            <motion.div
+                                key={i}
+                                className="w-1 h-1 bg-gray-500 rounded-full"
+                                animate={{ y: [0, -3, 0], opacity: [0.3, 1, 0.3] }}
+                                transition={{
+                                    duration: 0.6,
+                                    repeat: Infinity,
+                                    delay: i * 0.15,
+                                    ease: "easeInOut"
+                                }}
+                            />
+                        ))}
                     </div>
-                )}
+                </motion.div>
 
-                {/* Chevron */}
-                <ChevronRight size={14} className={`text-[var(--text-muted)] transition-transform ${open ? 'rotate-90' : ''}`} />
+                {/* Optional: Ambient Glow Background */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-blue-500/5 blur-[50px] rounded-full pointer-events-none -z-10" />
             </div>
-
-            <AnimatePresence>
-                {open && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden bg-[var(--bg-secondary)]"
-                    >
-                        <div className="p-4 pl-11 space-y-3 text-xs font-mono border-t border-[var(--border-color)]">
-                            {errorDisplay && (
-                                <div className="text-red-400 bg-red-900/10 p-2 rounded border border-red-500/20 whitespace-pre-wrap">
-                                    <div className="font-bold mb-1">Error:</div>
-                                    {errorDisplay}
-                                </div>
-                            )}
-
-                            {inputStr && (
-                                <div>
-                                    <div
-                                        className="mb-1 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-semibold"
-                                        style={{ color: 'var(--text-muted)' }}
-                                    >
-                                        <ArrowRight size={10} /> Input
-                                    </div>
-                                    <div
-                                        className="whitespace-pre-wrap overflow-x-auto opacity-90 pl-3 border-l-2 border-[var(--border-color)]"
-                                        style={{ color: 'var(--text-secondary)' }}
-                                    >
-                                        {inputStr}
-                                    </div>
-                                </div>
-                            )}
-
-                            {outputStr && !isFailed && (
-                                <div className="pt-1">
-                                    <div
-                                        className="mb-1 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-semibold"
-                                        style={{ color: 'var(--text-muted)' }}
-                                    >
-                                        <ArrowRight size={10} /> Output
-                                    </div>
-                                    <div
-                                        className="whitespace-pre-wrap overflow-x-auto pl-3 border-l-2 border-emerald-500/30"
-                                        style={{ color: 'var(--text-primary)' }}
-                                    >
-                                        {outputStr}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
-};
-
-export const AgentActivity: React.FC<AgentActivityProps> = ({
-    steps,
-    status,
-    logs,
-    expanded,
-    onToggle,
-    showTechnical,
-    onToggleTechnical
-}) => {
-    const isRunning = status === 'running';
-    const isFailed = status === 'failed';
-    const isDone = status === 'done';
-
-    return (
-        <div className={`
-            my-4 rounded-lg overflow-hidden border transition-all duration-200
-            bg-[var(--bg-card)] border-[var(--border-color)]
-            ${isRunning ? 'border-blue-500/40 shadow-sm shadow-blue-500/10' : ''}
-        `}>
-            {/* Header - Simple & Clean */}
-            <div
-                onClick={onToggle}
-                className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors select-none"
-            >
-                <div className="flex items-center gap-3">
-                    {/* Status Icon */}
-                    <div className="flex items-center justify-center">
-                        {isRunning ? <Loader2 size={18} className="animate-spin text-blue-500" /> :
-                            isFailed ? <XCircle size={18} className="text-red-500" /> :
-                                isDone ? <CheckCircle2 size={18} className="text-emerald-500" /> :
-                                    <Sparkles size={18} className="text-[var(--text-muted)]" />}
-                    </div>
-
-                    {/* Title & Status */}
-                    <div className="flex items-baseline gap-3">
-                        <span
-                            className="text-[14px] font-semibold"
-                            style={{ color: 'var(--text-primary)' }}
-                        >
-                            {isRunning ? 'Agent Working...' : 'Activity Log'}
-                        </span>
-                        <span
-                            className={`text-[11px] font-mono uppercase tracking-wider ${isRunning ? 'text-blue-500' : ''}`}
-                            style={!isRunning ? { color: 'var(--text-muted)' } : undefined}
-                        >
-                            {status}
-                        </span>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-[var(--text-muted)] bg-[var(--bg-secondary)] px-2 py-0.5 rounded border border-[var(--border-color)]">
-                        {steps.length}
-                    </span>
-                    <ChevronDown size={16} className={`text-[var(--text-muted)] transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
-                </div>
-            </div>
-
-            {/* Content */}
-            <AnimatePresence>
-                {expanded && (
-                    <motion.div
-                        initial={{ height: 0 }}
-                        animate={{ height: 'auto' }}
-                        exit={{ height: 0 }}
-                        className="border-t border-[var(--border-color)]"
-                    >
-                        <div className="max-h-[500px] overflow-y-auto">
-                            {steps.length > 0 ? (
-                                steps.map(step => <StepRow key={step.key} step={step} />)
-                            ) : (
-                                <div className="py-8 flex text-[var(--text-muted)] justify-center text-xs italic">
-                                    No activity recorded yet.
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Logs Footer */}
-                        {logs.length > 0 && (
-                            <div className="border-t border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                                <div
-                                    className="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-[var(--bg-hover)]"
-                                    onClick={onToggleTechnical}
-                                >
-                                    <div
-                                        className="flex items-center gap-2 text-[11px] font-medium"
-                                        style={{ color: 'var(--text-secondary)' }}
-                                    >
-                                        <Terminal size={12} /> Console Output
-                                    </div>
-                                    <span
-                                        className="text-[10px] font-mono"
-                                        style={{ color: 'var(--text-muted)' }}
-                                    >
-                                        {logs.length}
-                                    </span>
-                                </div>
-                                <AnimatePresence>
-                                    {showTechnical && (
-                                        <motion.div
-                                            initial={{ height: 0 }}
-                                            animate={{ height: 200 }}
-                                            exit={{ height: 0 }}
-                                            className="overflow-hidden border-t border-[var(--border-color)] bg-[#0d0d0d]"
-                                        >
-                                            <div className="p-3 h-full overflow-y-auto font-mono text-[10px] text-gray-300 space-y-1">
-                                                {logs.map((log, i) => (
-                                                    <div key={i} className="flex gap-2 opacity-80 hover:opacity-100">
-                                                        <span className="text-gray-600 select-none w-6 text-right">{i + 1}</span>
-                                                        <span className="break-all">{log}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                        )}
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 };
