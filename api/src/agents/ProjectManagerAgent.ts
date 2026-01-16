@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { ArchitectAgent } from './ArchitectAgent';
 import { GenesisAgent } from './GenesisAgent';
+import { TaskExecutor } from './TaskExecutor';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -26,29 +27,40 @@ export class ProjectManagerAgent {
         // distinct package.json if needed
     }
 
+
+
     async execute(goal: string) {
         console.log(`[PM:${this.name}] Starting execution for goal: "${goal}"`);
-
-        // 1. Create a sub-plan using Genesis (which uses Architect internally)
-        // In a true God Mode, PM would have its own specific prompt tuning to manage "files" and "dependencies".
-        // For now, delegating to Genesis is a good proxy for "Get this done".
 
         // Contextualize the goal for the subdirectory
         const contextGoal = `Project: ${this.name}\nDirectory: ${this.rootDir}\nGoal: ${goal}`;
 
         try {
+            // 1. Plan
             const result = await this.genesis.orchestrate(contextGoal);
-            console.log(`[PM:${this.name}] Plan generated. Execution delegated to TaskRunner (mock)...`);
+            console.log(`[PM:${this.name}] Plan generated. Executing ${result.steps.length} steps...`);
 
-            // In the real system, we would run the steps here. 
-            // GenesisAgent returns { plan, steps }.
-            // We need a runner. 
-            // For now, let's assume we just report the plan.
+            // 2. Execute
+            const executor = new TaskExecutor(this.rootDir);
+            const executionResults = [];
+
+            for (const step of result.steps) {
+                console.log(`[PM:${this.name}] Running step: ${step.name}`);
+                const stepResult = await executor.executeStep(step);
+                executionResults.push({ step: step.name, ...stepResult });
+
+                if (!stepResult.success) {
+                    console.error(`[PM:${this.name}] Step failed. Stopping execution.`);
+                    break;
+                    // Future: Add SelfHealingLoop here
+                }
+            }
 
             return {
-                status: 'planned',
+                status: 'completed',
                 plan: result.plan,
-                steps: result.steps
+                steps: result.steps,
+                results: executionResults
             };
         } catch (e: any) {
             console.error(`[PM:${this.name}] Execution failed:`, e);
