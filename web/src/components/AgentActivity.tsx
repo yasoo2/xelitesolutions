@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Cpu, Loader2, CheckCircle2, XCircle, ChevronRight, ChevronDown,
-    Terminal, Wifi, Globe, Database, Sparkles, AlertTriangle, Eye, EyeOff
+    Terminal, Wifi, Globe, Database, Sparkles, AlertTriangle, Eye, EyeOff,
+    Code, FileText, Search
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -39,17 +40,18 @@ const formatValue = (val: any, limit = 1000): string => {
 
 const getToolIcon = (name: string) => {
     const n = name.toLowerCase();
-    if (n.includes('browser') || n.includes('web')) return <Globe size={14} className="text-purple-400" />;
-    if (n.includes('database') || n.includes('sql')) return <Database size={14} className="text-pink-400" />;
-    if (n.includes('terminal') || n.includes('exec')) return <Terminal size={14} className="text-amber-400" />;
-    return <Cpu size={14} className="text-blue-400" />;
+    if (n.includes('browser') || n.includes('web')) return <Globe size={18} />;
+    if (n.includes('database') || n.includes('sql')) return <Database size={18} />;
+    if (n.includes('terminal') || n.includes('exec')) return <Terminal size={18} />;
+    if (n.includes('file') || n.includes('read') || n.includes('write')) return <FileText size={18} />;
+    if (n.includes('code') || n.includes('gen')) return <Code size={18} />;
+    if (n.includes('search')) return <Search size={18} />;
+    return <Cpu size={18} />;
 };
 
 const StepRow = ({ step }: { step: AgentStep }) => {
     const [open, setOpen] = useState(false);
-    const { t } = useTranslation();
 
-    const isDone = step.status === 'done';
     const isFailed = step.status === 'failed';
     const isRunning = step.status === 'running';
 
@@ -59,52 +61,52 @@ const StepRow = ({ step }: { step: AgentStep }) => {
     const inputStr = useMemo(() => formatValue(step.input), [step.input]);
     const outputStr = useMemo(() => formatValue(step.result?.output || step.result), [step.result]);
 
-    // Parse error if it looks like JSON or is an object
+    // Parse error
     const errorDisplay = useMemo(() => {
         if (!step.error) return null;
         if (typeof step.error === 'object') return JSON.stringify(step.error, null, 2);
-        try {
-            const parsed = JSON.parse(step.error);
-            return JSON.stringify(parsed, null, 2);
-        } catch {
-            return String(step.error);
-        }
+        try { return JSON.stringify(JSON.parse(step.error), null, 2); } catch { return String(step.error); }
     }, [step.error]);
 
     return (
-        <div className="border-b border-[var(--border-glass)]/20 last:border-0 hover:bg-[var(--bg-hover)]/30 transition-colors">
+        <div className="group border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-hover)] transition-all duration-200">
             <div
-                className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all ${open ? 'bg-[var(--bg-hover)]/20' : ''}`}
+                className={`flex items-center gap-4 px-5 py-3.5 cursor-pointer ${open ? 'bg-[var(--bg-hover)]' : ''}`}
                 onClick={() => setOpen(!open)}
             >
-                <div className="shrink-0 pt-0.5 relative flex items-center justify-center w-5 h-5">
-                    {isRunning ? (
-                        <>
-                            <div className="absolute inset-0 bg-blue-500/20 blur-sm rounded-full animate-pulse" />
-                            <Loader2 size={16} className="animate-spin text-blue-400 relative z-10" />
-                        </>
-                    ) : isFailed ? (
-                        <XCircle size={16} className="text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.3)]" />
-                    ) : (
-                        <div className="opacity-90 drop-shadow-[0_0_5px_rgba(255,255,255,0.1)]">{icon}</div>
-                    )}
+                {/* Icon Box matching Hero Card style */}
+                <div className={`
+                    shrink-0 w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-300
+                    ${isRunning
+                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
+                        : isFailed
+                            ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                            : 'bg-[rgba(var(--accent-rgb),0.05)] border-[var(--border-color)] text-[var(--accent-primary)] group-hover:bg-[var(--accent-primary)] group-hover:text-black group-hover:border-transparent'}
+                `}>
+                    {isRunning ? <Loader2 size={18} className="animate-spin" /> :
+                        isFailed ? <XCircle size={18} /> :
+                            icon}
                 </div>
 
-                <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center gap-2">
-                        <span className={`text-sm font-medium truncate ${isFailed ? 'text-red-300' : 'text-[var(--text-primary)]'}`}>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                        <span className={`text-[15px] font-semibold truncate ${isFailed ? 'text-red-400' : 'text-[var(--text-primary)]'
+                            }`}>
                             {step.displayName || step.name}
                         </span>
                         {step.duration && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono border border-[var(--border-glass)]">
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--bg-secondary)] text-[var(--text-secondary)] font-mono border border-[var(--border-color)]">
                                 {(step.duration / 1000).toFixed(1)}s
                             </span>
                         )}
                     </div>
                 </div>
 
-                <div className="shrink-0 text-[var(--text-muted)] transition-transform duration-200" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
-                    <ChevronRight size={16} />
+                <div className={`
+                    shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] 
+                    transition-all duration-200 group-hover:bg-[var(--bg-secondary)] group-hover:text-[var(--text-primary)]
+                `}>
+                    <ChevronRight size={18} className={`transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
                 </div>
             </div>
 
@@ -114,35 +116,24 @@ const StepRow = ({ step }: { step: AgentStep }) => {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden bg-[var(--bg-card)]/30"
+                        className="overflow-hidden bg-[var(--bg-secondary)]/30 shadow-inner"
                     >
-                        <div className="p-4 pl-12 text-xs font-mono space-y-4">
+                        <div className="p-5 pl-[4.5rem] space-y-4 text-xs font-mono">
                             {errorDisplay && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: -5 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="relative overflow-hidden rounded-lg bg-red-500/10 border border-red-500/20"
-                                >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-transparent pointer-events-none" />
-                                    <div className="relative p-3">
-                                        <div className="flex items-center gap-2 mb-2 text-red-400 font-semibold uppercase tracking-wider text-[10px]">
-                                            <AlertTriangle size={12} />
-                                            Error Details
-                                        </div>
-                                        <pre className="text-red-200/90 whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
-                                            {errorDisplay}
-                                        </pre>
+                                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 relative overflow-hidden">
+                                    <div className="flex items-center gap-2 mb-2 text-red-400 font-bold uppercase tracking-wider text-[10px]">
+                                        <AlertTriangle size={14} /> Error Details
                                     </div>
-                                </motion.div>
+                                    <pre className="text-red-200 whitespace-pre-wrap">{errorDisplay}</pre>
+                                </div>
                             )}
 
                             {inputStr && (
                                 <div>
-                                    <div className="text-[var(--text-muted)] uppercase tracking-wider text-[10px] mb-1.5 flex items-center gap-2">
-                                        <span className="w-1 h-1 rounded-full bg-blue-500/50" />
-                                        Input Parameters
+                                    <div className="text-[var(--text-secondary)] font-semibold mb-2 flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Input
                                     </div>
-                                    <div className="text-[var(--text-secondary)] bg-[var(--bg-card)] p-2.5 rounded-lg border border-[var(--border-glass)]/50 whitespace-pre-wrap overflow-x-auto selection:bg-blue-500/30">
+                                    <div className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl p-3 text-[var(--text-secondary)] whitespace-pre-wrap overflow-x-auto">
                                         {inputStr}
                                     </div>
                                 </div>
@@ -150,11 +141,10 @@ const StepRow = ({ step }: { step: AgentStep }) => {
 
                             {outputStr && !isFailed && (
                                 <div>
-                                    <div className="text-[var(--text-muted)] uppercase tracking-wider text-[10px] mb-1.5 flex items-center gap-2">
-                                        <span className="w-1 h-1 rounded-full bg-emerald-500/50" />
-                                        Result Output
+                                    <div className="text-[var(--text-secondary)] font-semibold mb-2 flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Output
                                     </div>
-                                    <div className="bg-[var(--bg-card)] text-emerald-300/90 p-2.5 rounded-lg border border-[var(--border-glass)]/50 whitespace-pre-wrap overflow-x-auto selection:bg-emerald-500/30">
+                                    <div className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl p-3 text-emerald-400/90 whitespace-pre-wrap overflow-x-auto">
                                         {outputStr}
                                     </div>
                                 </div>
@@ -176,8 +166,6 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
     showTechnical,
     onToggleTechnical
 }) => {
-    const { t } = useTranslation();
-
     const isRunning = status === 'running';
     const isFailed = status === 'failed';
     const isDone = status === 'done';
@@ -188,105 +176,109 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
     return (
         <motion.div
             layout
-            initial={{ opacity: 0, y: 10, scale: 0.99 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-            className="my-5 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-glass)] shadow-[var(--shadow-glass)] backdrop-blur-xl overflow-hidden ring-1 ring-white/5"
-            style={{
-                boxShadow: isRunning ? '0 0 20px rgba(59, 130, 246, 0.1)' : undefined
-            }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`
+                my-6 rounded-[20px] overflow-hidden transition-all duration-300
+                bg-[var(--bg-card)] border border-[var(--border-color)]
+                ${isRunning ? 'shadow-[0_0_30px_rgba(59,130,246,0.15)] border-blue-500/30' : 'shadow-xl'}
+                ${isFailed ? 'shadow-[0_0_30px_rgba(239,68,68,0.15)] border-red-500/30' : ''}
+            `}
         >
-            {/* Header */}
+            {/* Header / Hero Card Style */}
             <div
                 onClick={onToggle}
-                className={`
-                    relative group flex items-center justify-between px-5 py-3.5 cursor-pointer transition-all duration-300
-                    ${expanded ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'}
-                `}
+                className="relative p-5 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors group select-none"
             >
-                {/* Status Indicator Bar */}
-                <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors duration-500 ${isRunning ? 'bg-blue-500' : isFailed ? 'bg-red-500' : isDone ? 'bg-emerald-500' : 'bg-[var(--border-color)]'
+                {/* Status Bar */}
+                <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors duration-500 ${isRunning ? 'bg-blue-500' : isFailed ? 'bg-red-500' : isDone ? 'bg-emerald-500' : 'bg-[var(--border-color)]'
                     }`} />
 
-                <div className="flex items-center gap-4 pl-2">
-                    <div className={`
-                        p-2 rounded-xl border backdrop-blur-md shadow-inner transition-colors duration-500 flex items-center justify-center
-                        ${isRunning ? 'bg-blue-500/10 border-blue-500/20 shadow-blue-500/5' :
-                            isFailed ? 'bg-red-500/10 border-red-500/20 shadow-red-500/5' :
-                                isDone ? 'bg-emerald-500/10 border-emerald-500/20 shadow-emerald-500/5' :
-                                    'bg-[var(--bg-card)] border-[var(--border-glass)]'}
-                    `}>
-                        <Sparkles size={18} className={`
-                            transition-colors duration-500
-                            ${isRunning ? 'text-blue-400 animate-pulse' :
-                                isFailed ? 'text-red-400' :
-                                    isDone ? 'text-emerald-400' :
-                                        'text-[var(--text-secondary)]'}
-                        `} />
-                    </div>
-                    <div>
-                        <div className="text-[14px] font-semibold text-[var(--text-primary)] flex items-center gap-2.5">
-                            {isRunning ? 'Agent Working...' : isFailed ? 'Task Failed' : 'Task Completed'}
-                            {isRunning && (
-                                <span className="flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                                </span>
-                            )}
+                <div className="flex items-center justify-between pl-3">
+                    <div className="flex items-center gap-5">
+                        {/* Main Status Icon */}
+                        <div className={`
+                            w-12 h-12 rounded-2xl flex items-center justify-center border transition-all duration-500
+                            ${isRunning
+                                ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25 border-transparent scale-110'
+                                : isFailed
+                                    ? 'bg-red-500 text-white shadow-lg shadow-red-500/25 border-transparent'
+                                    : isDone
+                                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25 border-transparent'
+                                        : 'bg-[rgba(var(--accent-rgb),0.1)] text-[var(--accent-primary)] border-[var(--border-color)]'}
+                        `}>
+                            {isRunning ? <Loader2 size={24} className="animate-spin" /> :
+                                isFailed ? <AlertTriangle size={24} /> :
+                                    isDone ? <CheckCircle2 size={24} /> :
+                                        <Sparkles size={24} />}
                         </div>
-                        <div className="text-[11px] text-[var(--text-secondary)] font-medium tracking-wide mt-0.5 flex items-center gap-2">
-                            <span>{steps.length} STEPS</span>
-                            <span className="w-1 h-1 rounded-full bg-[var(--text-muted)]" />
-                            <span className={isRunning ? 'text-blue-400' : isFailed ? 'text-red-400' : isDone ? 'text-emerald-400' : ''}>
-                                {status.toUpperCase()}
-                            </span>
-                        </div>
-                    </div>
-                </div>
 
-                <div className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors bg-[var(--bg-card)]/50 p-1.5 rounded-lg border border-[var(--border-glass)] group-hover:border-[var(--border-light)]">
-                    <div className="transition-transform duration-300" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}>
-                        <ChevronDown size={16} />
+                        <div>
+                            <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-3">
+                                {isRunning ? 'Agent Working' : isFailed ? 'Task Interrupted' : 'Task Complete'}
+                                {isRunning && (
+                                    <span className="flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-blue-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+                                    </span>
+                                )}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-1 text-[13px] font-medium text-[var(--text-secondary)]">
+                                <span className="bg-[var(--bg-secondary)] px-2 py-0.5 rounded border border-[var(--border-color)]">
+                                    {steps.length} Actions
+                                </span>
+                                <span className={`uppercase tracking-wider ${isRunning ? 'text-blue-400' : isFailed ? 'text-red-400' : isDone ? 'text-emerald-400' : 'text-[var(--text-muted)]'
+                                    }`}>
+                                    {status}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className={`
+                        w-10 h-10 rounded-xl flex items-center justify-center border border-[var(--border-color)]
+                        text-[var(--text-muted)] transition-all duration-300
+                        group-hover:border-[var(--accent-primary)] group-hover:text-[var(--accent-primary)] group-hover:bg-[rgba(var(--accent-rgb),0.1)]
+                    `}>
+                        <ChevronDown size={20} className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
                     </div>
                 </div>
             </div>
 
-            {/* Body */}
+            {/* Content Body */}
             <AnimatePresence>
                 {expanded && (
                     <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: 'easeInOut' }}
+                        initial={{ height: 0 }}
+                        animate={{ height: 'auto' }}
+                        exit={{ height: 0 }}
+                        transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}
                     >
-                        <div className="border-t border-[var(--border-glass)]/20 bg-[var(--bg-card)]/20">
-                            {/* Steps List */}
-                            <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                        <div className="border-t border-[var(--border-color)] bg-[rgba(0,0,0,0.2)]">
+                            <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
                                 {steps.length > 0 ? (
-                                    steps.map(step => (
-                                        <StepRow key={step.key} step={step} />
-                                    ))
+                                    steps.map(step => <StepRow key={step.key} step={step} />)
                                 ) : (
-                                    <div className="py-12 flex flex-col items-center justify-center text-[var(--text-muted)] gap-3">
-                                        <Wifi size={24} className="opacity-20 animate-pulse" />
-                                        <div className="text-sm font-medium opacity-60">Initializing neural pathways...</div>
+                                    <div className="py-16 flex flex-col items-center justify-center text-[var(--text-secondary)] gap-4">
+                                        <div className="w-16 h-16 rounded-full bg-[var(--bg-secondary)] flex items-center justify-center animate-pulse">
+                                            <Wifi size={28} className="opacity-50" />
+                                        </div>
+                                        <div className="text-sm font-medium opacity-70">Waiting for intelligence stream...</div>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Technical Details Footer */}
-                            <div className="bg-[var(--bg-glass)] border-t border-[var(--border-glass)]/30 backdrop-blur-md">
+                            {/* Footer / Logs */}
+                            <div className="bg-[var(--bg-dark)] border-t border-[var(--border-color)]">
                                 <div
-                                    className="flex items-center justify-between px-5 py-2.5 cursor-pointer hover:bg-white/[0.02] transition-colors group"
+                                    className="flex items-center justify-between px-6 py-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors group"
                                     onClick={onToggleTechnical}
                                 >
-                                    <div className="flex items-center gap-2 text-[var(--text-muted)] text-xs font-medium group-hover:text-[var(--text-primary)] transition-colors">
-                                        <Terminal size={12} />
-                                        System Logs
+                                    <div className="flex items-center gap-2 text-[var(--text-secondary)] text-xs font-semibold uppercase tracking-wider group-hover:text-[var(--text-primary)]">
+                                        <Terminal size={14} /> System Logs
                                     </div>
-                                    <div className="text-[10px] text-[var(--text-muted)] font-mono group-hover:text-[var(--text-secondary)]">
-                                        {logs.length} lines
+                                    <div className="text-[10px] px-2 py-1 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)] font-mono border border-[var(--border-color)] group-hover:border-[var(--text-muted)]">
+                                        {logs.length} Lines
                                     </div>
                                 </div>
 
@@ -294,18 +286,18 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                     {showTechnical && (
                                         <motion.div
                                             initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: '200px', opacity: 1 }}
+                                            animate={{ height: '240px', opacity: 1 }}
                                             exit={{ height: 0, opacity: 0 }}
-                                            className="border-t border-[var(--border-glass)]/20 bg-black/40 font-mono text-[10px] text-[var(--text-secondary)] overflow-hidden relative"
+                                            className="border-t border-[var(--border-color)] bg-[#000000] font-mono text-[11px] text-[var(--text-secondary)] overflow-hidden relative"
                                         >
                                             <div className="h-full overflow-y-auto p-4 custom-scrollbar space-y-1">
                                                 {logs.length > 0 ? logs.map((log, i) => (
-                                                    <div key={i} className="whitespace-pre-wrap break-all border-b border-white/[0.03] pb-0.5 mb-0.5 last:border-0 hover:text-[var(--text-primary)] hover:bg-white/[0.02] px-1 rounded transition-colors">
-                                                        <span className="text-[var(--text-muted)] mr-2 opacity-50 select-none">{(i + 1).toString().padStart(3, '0')}</span>
-                                                        {log}
+                                                    <div key={i} className="flex gap-3 border-b border-white/5 pb-1 mb-1 last:border-0 hover:bg-white/5 px-2 py-0.5 rounded transition-colors break-words">
+                                                        <span className="text-[var(--text-muted)] opacity-40 select-none w-8 text-right">{(i + 1)}</span>
+                                                        <span className="flex-1 text-[var(--text-primary)] opacity-90">{log}</span>
                                                     </div>
                                                 )) : (
-                                                    <div className="text-[var(--text-muted)] italic">No logs available</div>
+                                                    <div className="text-[var(--text-muted)] italic p-2">No system logs available.</div>
                                                 )}
                                             </div>
                                         </motion.div>
