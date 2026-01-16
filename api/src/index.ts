@@ -122,6 +122,11 @@ async function main() {
 
   // Auth
   app.use('/auth', authRoutes);
+  // Health Check
+  app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', time: new Date().toISOString() });
+  });
+
   app.use('/tools', toolsRoutes);
   app.use('/runs', runRoutes);
   app.use('/run', runDetailsRoutes);
