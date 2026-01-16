@@ -24,8 +24,8 @@ services:
       test: [ "CMD", "node", "healthcheck.js" ]
       interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 120s
     networks:
       - joe-network
     depends_on:
