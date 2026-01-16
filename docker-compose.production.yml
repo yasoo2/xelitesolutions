@@ -26,13 +26,15 @@ services:
       timeout: 10s
       retries: 10
       start_period: 120s
+    volumes:
+      - lance_data:/app/data
     networks:
       - joe-network
     depends_on:
       - mongo
 
   web:
-    build: ./web
+    build: ./mission-control
     container_name: joe_web
     restart: always
     environment:
@@ -87,6 +89,7 @@ services:
 
 volumes:
   mongo_data:
+  lance_data:
 
 
 networks:
