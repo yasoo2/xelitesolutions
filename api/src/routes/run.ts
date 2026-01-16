@@ -56,7 +56,7 @@ router.post('/stop', authenticateOptional as any, async (req: Request, res: Resp
     if (browserSessionId) {
       try {
         await stopSession(browserSessionId);
-      } catch {}
+      } catch { }
     }
 
     return res.json({ ok: true });
@@ -469,13 +469,13 @@ function extractRootFromText(raw: string, fallback: string): string {
   const s = String(raw || '');
   const mV = s.match(/\b(vivos)\b/i);
   if (mV && mV[1]) return mV[1].trim();
-  
+
   const mNamed = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه|named|name it|call it)(?:\s+(?:the|a|an))?(?:\s+(?:project|app|api|site))?\s+(?:['"]?)([A-Za-z0-9._-]{1,100})(?:['"]?)/i);
   if (mNamed && mNamed[1]) return mNamed[1].trim();
-  
+
   const mIn = s.match(/(?:in|into|inside|within|داخل)(?:\s+(?:the|a|an))?(?:\s+(?:folder|directory|dir|مجلد))?\s+(?:['"]?)([A-Za-z0-9._-]{1,100})(?:['"]?)/i);
   if (mIn && mIn[1]) return mIn[1].trim();
-  
+
   const mFi = s.match(/(?:في)\s+([A-Za-z0-9._-]{1,100})/i);
   if (mFi && mFi[1]) return mFi[1].trim();
   return fallback;
@@ -647,7 +647,7 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
   const { provider, apiKey, baseUrl, model } = req.body || {};
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   const providerKey = String(provider || '').trim().toLowerCase();
-  
+
   if (!providerKey || providerKey === 'llm') {
     return res.status(400).json({ error: 'مزود llm المحلي مُعطّل. اختر مزودًا وأدخل API Key.' });
   }
@@ -661,14 +661,14 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
   try {
     // Try a simple planning step
     const result = await planNextStep(
-        [{ role: 'user', content: 'hello' }], 
-        { provider, apiKey, baseUrl, model, throwOnError: true }
+      [{ role: 'user', content: 'hello' }],
+      { provider, apiKey, baseUrl, model, throwOnError: true }
     );
-    
+
     if (result) {
-        return res.json({ status: 'ok', message: 'Connected successfully', result });
+      return res.json({ status: 'ok', message: 'Connected successfully', result });
     } else {
-        return res.status(500).json({ error: 'No response from provider' });
+      return res.status(500).json({ error: 'No response from provider' });
     }
   } catch (err: any) {
     const msg = safeErrorMessage(err);
@@ -799,7 +799,7 @@ function fallbackPlanWhenPlannerUnavailable(params: {
         .replace(/^www\./i, '')
         .replace(/[^a-z0-9_-]/gi, '_')
         .slice(0, 40);
-    } catch {}
+    } catch { }
     return `browser:${base}:${hostKey || 'site'}`;
   };
   const isContinueRequest = (() => {
@@ -1088,7 +1088,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         email = String(r.email || '').trim();
         password = String(r.password || '').trim();
       }
-    } catch {}
+    } catch { }
 
     if (!email) {
       const emailMatch = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
@@ -1101,28 +1101,28 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   // 1. Process Attachments
   let attachedText = '';
   const contentParts: any[] = [];
-  
+
   if (!useMock && fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
     try {
       const files = await FileModel.find({ _id: { $in: fileIds } });
       for (const f of files) {
         if (f.mimeType && f.mimeType.startsWith('image/')) {
-           try {
-              if (fs.existsSync(f.path)) {
-                  const imageBuffer = fs.readFileSync(f.path);
-                  const base64Image = imageBuffer.toString('base64');
-                  contentParts.push({
-                     type: 'image_url',
-                     image_url: {
-                        url: `data:${f.mimeType};base64,${base64Image}`
-                     }
-                  });
-              }
-           } catch (err) {
-              console.error('Failed to read image', err);
-           }
+          try {
+            if (fs.existsSync(f.path)) {
+              const imageBuffer = fs.readFileSync(f.path);
+              const base64Image = imageBuffer.toString('base64');
+              contentParts.push({
+                type: 'image_url',
+                image_url: {
+                  url: `data:${f.mimeType};base64,${base64Image}`
+                }
+              });
+            }
+          } catch (err) {
+            console.error('Failed to read image', err);
+          }
         } else if (f.content) {
-           attachedText += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
+          attachedText += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
         }
       }
     } catch (e) {
@@ -1144,51 +1144,51 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   // Inject Memory
   if (userId && !useMock) {
-      try {
-        const [relevant, recentItems] = await Promise.all([
-          MemoryService.searchMemories(userId, String(text || '')),
-          MemoryItem.find({ userId, scope: 'user' }).sort({ updatedAt: -1 }).limit(20).lean(),
-        ]);
+    try {
+      const [relevant, recentItems] = await Promise.all([
+        MemoryService.searchMemories(userId, String(text || '')),
+        MemoryItem.find({ userId, scope: 'user' }).sort({ updatedAt: -1 }).limit(20).lean(),
+      ]);
 
-        const recent = (recentItems || []).map((item: any) => {
-          const v =
-            typeof item.value === 'string'
-              ? item.value
-              : item.value == null
-                ? ''
-                : JSON.stringify(item.value);
-          return `${item.key}: ${v}`;
-        }).filter(Boolean);
+      const recent = (recentItems || []).map((item: any) => {
+        const v =
+          typeof item.value === 'string'
+            ? item.value
+            : item.value == null
+              ? ''
+              : JSON.stringify(item.value);
+        return `${item.key}: ${v}`;
+      }).filter(Boolean);
 
-        const merged: string[] = [];
-        const seen = new Set<string>();
-        for (const line of [...relevant, ...recent]) {
-          const k = String(line || '');
-          if (!k || seen.has(k)) continue;
-          seen.add(k);
-          merged.push(k);
-          if (merged.length >= 20) break;
-        }
-
-        if (merged.length > 0) {
-          console.info(`[Memory] Injecting ${merged.length} memories (relevant+recent)`);
-          fullPromptText += `\n\n[System Note: Known facts about this user (Memory)]:\n${merged.join('\n')}\n`;
-        }
-      } catch (e) {
-        console.error('[Memory] Search failed', e);
+      const merged: string[] = [];
+      const seen = new Set<string>();
+      for (const line of [...relevant, ...recent]) {
+        const k = String(line || '');
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        merged.push(k);
+        if (merged.length >= 20) break;
       }
-      
-      // Fire-and-forget memory extraction
-      MemoryService.extractAndSaveMemories(userId, String(text || ''), { provider, apiKey, baseUrl, model, sessionId })
-        .catch(err => console.error('[Memory] Extraction failed', err));
+
+      if (merged.length > 0) {
+        console.info(`[Memory] Injecting ${merged.length} memories (relevant+recent)`);
+        fullPromptText += `\n\n[System Note: Known facts about this user (Memory)]:\n${merged.join('\n')}\n`;
+      }
+    } catch (e) {
+      console.error('[Memory] Search failed', e);
+    }
+
+    // Fire-and-forget memory extraction
+    MemoryService.extractAndSaveMemories(userId, String(text || ''), { provider, apiKey, baseUrl, model, sessionId })
+      .catch(err => console.error('[Memory] Extraction failed', err));
   }
 
   let initialContent: string | any[] = fullPromptText;
   if (contentParts.length > 0) {
-      initialContent = [
-          { type: 'text', text: fullPromptText },
-          ...contentParts
-      ];
+    initialContent = [
+      { type: 'text', text: fullPromptText },
+      ...contentParts
+    ];
   }
 
   if (!sessionId) {
@@ -1204,7 +1204,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         { $setOnInsert: { name: tenantName } },
         { upsert: true, new: true }
       );
-      
+
       const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id });
       sessionId = s._id.toString();
     }
@@ -1212,8 +1212,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   // Update session with new files if any
   if (!useMock && fileIds && Array.isArray(fileIds)) {
-     // Optionally link files to session if not already
-     await FileModel.updateMany({ _id: { $in: fileIds } }, { $set: { sessionId } });
+    // Optionally link files to session if not already
+    await FileModel.updateMany({ _id: { $in: fileIds } }, { $set: { sessionId } });
   }
 
   const isAutoTitleCandidate = (title: string) => {
@@ -1249,7 +1249,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const messages = [{ role: 'user', content: seed }];
             const newTitle = await generateSessionTitle(messages);
             if (newTitle && newTitle !== 'New Session') {
-               await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+              await Session.findByIdAndUpdate(sessionId, { title: newTitle });
             }
           }
         }
@@ -1277,7 +1277,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       autoApproveAll: curCfg.autoApproveAll,
       autoApproveSafe: curCfg.autoApproveSafe,
     });
-  } catch {}
+  } catch { }
 
 
   const systemPromptEventId = `system_prompt:${sessionId}`;
@@ -1315,48 +1315,48 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   // Load Conversation History
   let previousMessages: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
   if (sessionId) {
-       if (useMock) {
-           const hist = store.listMessages(sessionId);
-           // Exclude the current message we just added (if any logic added it already? Line 335 adds it)
-           // Store adds it to memory. We want all *previous* interactions.
-           // Store.listMessages returns all. 
-           // We filter out current run messages to avoid duplication with 'initialContent' which is added to history array manually.
-           // And we take the last 50 to ensure context retention.
-           previousMessages = hist.filter(m => m.runId !== runId && m.role !== 'system').slice(-50).map(m => ({ role: m.role as any, content: m.content }));
-       } else {
-           const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: 'system' } })
-               .sort({ createdAt: -1 }) // Get newest first
-               .limit(50); // Last 50 messages
-           // Reverse to chronological order (Old -> New)
-           previousMessages = docs.reverse().map(d => ({ role: d.role as any, content: d.content }));
-       }
-   }
+    if (useMock) {
+      const hist = store.listMessages(sessionId);
+      // Exclude the current message we just added (if any logic added it already? Line 335 adds it)
+      // Store adds it to memory. We want all *previous* interactions.
+      // Store.listMessages returns all. 
+      // We filter out current run messages to avoid duplication with 'initialContent' which is added to history array manually.
+      // And we take the last 50 to ensure context retention.
+      previousMessages = hist.filter(m => m.runId !== runId && m.role !== 'system').slice(-50).map(m => ({ role: m.role as any, content: m.content }));
+    } else {
+      const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: 'system' } })
+        .sort({ createdAt: -1 }) // Get newest first
+        .limit(50); // Last 50 messages
+      // Reverse to chronological order (Old -> New)
+      previousMessages = docs.reverse().map(d => ({ role: d.role as any, content: d.content }));
+    }
+  }
 
   // Merge consecutive user messages to avoid context fragmentation
   // And limit total history size to prevent slow LLM responses
   const MAX_HISTORY_CHARS = 15000; // Approx 4-5k tokens
   let mergedHistory: typeof previousMessages = [];
-  
+
   for (const msg of previousMessages) {
-      const last = mergedHistory[mergedHistory.length - 1];
-      if (last && last.role === 'user' && msg.role === 'user') {
-          last.content += `\n\n[Follow-up]: ${msg.content}`;
-      } else {
-          mergedHistory.push(msg);
-      }
+    const last = mergedHistory[mergedHistory.length - 1];
+    if (last && last.role === 'user' && msg.role === 'user') {
+      last.content += `\n\n[Follow-up]: ${msg.content}`;
+    } else {
+      mergedHistory.push(msg);
+    }
   }
 
   // Truncate history if too long, keeping the most recent messages
   let totalChars = 0;
   const truncatedHistory: typeof mergedHistory = [];
   for (let i = mergedHistory.length - 1; i >= 0; i--) {
-      const msg = mergedHistory[i];
-      const contentLen = typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length;
-      if (totalChars + contentLen > MAX_HISTORY_CHARS) {
-          break;
-      }
-      totalChars += contentLen;
-      truncatedHistory.unshift(msg);
+    const msg = mergedHistory[i];
+    const contentLen = typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length;
+    if (totalChars + contentLen > MAX_HISTORY_CHARS) {
+      break;
+    }
+    totalChars += contentLen;
+    truncatedHistory.unshift(msg);
   }
   mergedHistory = truncatedHistory;
 
@@ -1369,101 +1369,101 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   let initialPlan = null;
   try {
-      const rawUserText = String(text || '');
-      const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
-      if (xeliteMacro && !hasAttachments) {
-        const sid =
-          typeof browserSessionId === 'string' && browserSessionId.trim()
-            ? browserSessionId.trim()
-            : userId
-              ? `browser:${String(userId).trim()}:xelitesolutions`
-              : `browser:anon:${Date.now()}`;
+    const rawUserText = String(text || '');
+    const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
+    if (xeliteMacro && !hasAttachments) {
+      const sid =
+        typeof browserSessionId === 'string' && browserSessionId.trim()
+          ? browserSessionId.trim()
+          : userId
+            ? `browser:${String(userId).trim()}:xelitesolutions`
+            : `browser:anon:${Date.now()}`;
 
-        try {
-          const email = String(xeliteMacro.email || '').trim();
-          const password = String(xeliteMacro.password || '').trim();
-          if (email) setSessionSecretEncrypted(sid, 'JOE_LOGIN_EMAIL', email, 60 * 60);
-          if (password) setSessionSecretEncrypted(sid, 'JOE_LOGIN_PASSWORD', password, 60 * 60);
-        } catch {}
+      try {
+        const email = String(xeliteMacro.email || '').trim();
+        const password = String(xeliteMacro.password || '').trim();
+        if (email) setSessionSecretEncrypted(sid, 'JOE_LOGIN_EMAIL', email, 60 * 60);
+        if (password) setSessionSecretEncrypted(sid, 'JOE_LOGIN_PASSWORD', password, 60 * 60);
+      } catch { }
 
-        const canUseUserSecrets = Boolean(String(userId || '').trim() && !useMock);
-        const hasInlineCreds = Boolean(String(xeliteMacro.email || '').trim() && String(xeliteMacro.password || '').trim());
-        const useSecretTokens = canUseUserSecrets || hasInlineCreds;
-        const xeliteEmailText = useSecretTokens ? '{{SECRET:JOE_LOGIN_EMAIL}}' : '';
-        const xelitePasswordText = useSecretTokens ? '{{SECRET:JOE_LOGIN_PASSWORD}}' : '';
-        const includeLoginActions = Boolean(String(xeliteEmailText || '').trim() && String(xelitePasswordText || '').trim());
-        initialPlan = {
-          name: 'browser_run',
-          input: {
-            sessionId: sid,
-            actions: [
-              { type: 'goto', url: xeliteMacro.url },
-              { type: 'wait', ms: 450 },
-              { type: 'click', text: 'Start Now', optional: true },
-              { type: 'click', text: 'Start now', optional: true },
-              { type: 'click', text: 'Get Started', optional: true },
-              { type: 'wait', ms: 900, optional: true },
-              ...(includeLoginActions
-                ? ([
-                    { type: 'click', text: 'Sign in', optional: true },
-                    { type: 'click', text: 'Log in', optional: true },
-                    { type: 'click', text: 'Login', optional: true },
-                    { type: 'click', text: 'تسجيل الدخول', optional: true },
-                    { type: 'wait', ms: 700, optional: true },
-                    {
-                      type: 'type',
-                      selector:
-                        'input[type="email"],input[autocomplete="email"],input[name*="email" i],input[id*="email" i]',
-                      text: xeliteEmailText,
-                      optional: true,
-                    },
-                    { type: 'type', role: 'textbox', name: 'Email', text: xeliteEmailText, optional: true },
-                    { type: 'type', role: 'textbox', name: 'E-mail', text: xeliteEmailText, optional: true },
-                    { type: 'type', role: 'textbox', name: 'البريد الإلكتروني', text: xeliteEmailText, optional: true },
-                    {
-                      type: 'type',
-                      selector:
-                        'input[type="password"],input[autocomplete="current-password"],input[name*="pass" i],input[id*="pass" i]',
-                      text: xelitePasswordText,
-                      optional: true,
-                    },
-                    { type: 'type', role: 'textbox', name: 'Password', text: xelitePasswordText, optional: true },
-                    { type: 'type', role: 'textbox', name: 'كلمة المرور', text: xelitePasswordText, optional: true },
-                    { type: 'click', text: 'Sign in', optional: true },
-                    { type: 'click', text: 'Login', optional: true },
-                    { type: 'click', text: 'تسجيل الدخول', optional: true },
-                    { type: 'wait', ms: 800, optional: true },
-                  ] as any[])
-                : []),
-            ],
-          },
-        } as any;
-      } else if (isGreetingOnly(rawUserText) && !hasAttachments) {
-        initialPlan = { name: 'echo', input: { text: greetingReply(rawUserText) } };
-      } else {
-        const wantsLocation = isLocationLikeQuery(rawUserText);
-        if (wantsLocation) {
-          initialPlan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
-        }
-        if (!initialPlan && isPaymentRequest(rawUserText)) {
-          const p = extractPaymentParams(rawUserText);
-          initialPlan = { name: 'payments_create_checkout_session', input: { amount: p.amount, currency: p.currency, productName: p.productName } } as any;
-        }
-        if (!initialPlan) {
-          if (!hasAnyKey || providerKey === 'llm') {
-            initialPlan = fallbackPlanWhenPlannerUnavailable({
-              userText: rawUserText,
-              sessionId: String(sessionId),
-              history: history as any,
-              preferNonLLM: true,
-            }) as any;
-          } else {
-            initialPlan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
-          }
+      const canUseUserSecrets = Boolean(String(userId || '').trim() && !useMock);
+      const hasInlineCreds = Boolean(String(xeliteMacro.email || '').trim() && String(xeliteMacro.password || '').trim());
+      const useSecretTokens = canUseUserSecrets || hasInlineCreds;
+      const xeliteEmailText = useSecretTokens ? '{{SECRET:JOE_LOGIN_EMAIL}}' : '';
+      const xelitePasswordText = useSecretTokens ? '{{SECRET:JOE_LOGIN_PASSWORD}}' : '';
+      const includeLoginActions = Boolean(String(xeliteEmailText || '').trim() && String(xelitePasswordText || '').trim());
+      initialPlan = {
+        name: 'browser_run',
+        input: {
+          sessionId: sid,
+          actions: [
+            { type: 'goto', url: xeliteMacro.url },
+            { type: 'wait', ms: 450 },
+            { type: 'click', text: 'Start Now', optional: true },
+            { type: 'click', text: 'Start now', optional: true },
+            { type: 'click', text: 'Get Started', optional: true },
+            { type: 'wait', ms: 900, optional: true },
+            ...(includeLoginActions
+              ? ([
+                { type: 'click', text: 'Sign in', optional: true },
+                { type: 'click', text: 'Log in', optional: true },
+                { type: 'click', text: 'Login', optional: true },
+                { type: 'click', text: 'تسجيل الدخول', optional: true },
+                { type: 'wait', ms: 700, optional: true },
+                {
+                  type: 'type',
+                  selector:
+                    'input[type="email"],input[autocomplete="email"],input[name*="email" i],input[id*="email" i]',
+                  text: xeliteEmailText,
+                  optional: true,
+                },
+                { type: 'type', role: 'textbox', name: 'Email', text: xeliteEmailText, optional: true },
+                { type: 'type', role: 'textbox', name: 'E-mail', text: xeliteEmailText, optional: true },
+                { type: 'type', role: 'textbox', name: 'البريد الإلكتروني', text: xeliteEmailText, optional: true },
+                {
+                  type: 'type',
+                  selector:
+                    'input[type="password"],input[autocomplete="current-password"],input[name*="pass" i],input[id*="pass" i]',
+                  text: xelitePasswordText,
+                  optional: true,
+                },
+                { type: 'type', role: 'textbox', name: 'Password', text: xelitePasswordText, optional: true },
+                { type: 'type', role: 'textbox', name: 'كلمة المرور', text: xelitePasswordText, optional: true },
+                { type: 'click', text: 'Sign in', optional: true },
+                { type: 'click', text: 'Login', optional: true },
+                { type: 'click', text: 'تسجيل الدخول', optional: true },
+                { type: 'wait', ms: 800, optional: true },
+              ] as any[])
+              : []),
+          ],
+        },
+      } as any;
+    } else if (isGreetingOnly(rawUserText) && !hasAttachments) {
+      initialPlan = { name: 'echo', input: { text: greetingReply(rawUserText) } };
+    } else {
+      const wantsLocation = isLocationLikeQuery(rawUserText);
+      if (wantsLocation) {
+        initialPlan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+      }
+      if (!initialPlan && isPaymentRequest(rawUserText)) {
+        const p = extractPaymentParams(rawUserText);
+        initialPlan = { name: 'payments_create_checkout_session', input: { amount: p.amount, currency: p.currency, productName: p.productName } } as any;
+      }
+      if (!initialPlan) {
+        if (!hasAnyKey || providerKey === 'llm') {
+          initialPlan = fallbackPlanWhenPlannerUnavailable({
+            userText: rawUserText,
+            sessionId: String(sessionId),
+            history: history as any,
+            preferNonLLM: true,
+          }) as any;
+        } else {
+          initialPlan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
         }
       }
+    }
   } catch (err) {
-      console.warn('LLM planning error:', safeErrorMessage(err));
+    console.warn('LLM planning error:', safeErrorMessage(err));
   }
 
   ev({ type: 'step_done', data: { name: 'plan', plan: initialPlan } });
@@ -1472,7 +1472,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   } else {
     try {
       await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
-    } catch {}
+    } catch { }
   }
 
   // Save User Message to DB
@@ -1480,11 +1480,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   try {
     const r = rewriteInlineLoginCredentialsToSecrets(String(text || ''));
     if (r.ok) persistedUserText = redactSecretsFromString(String(r.sanitizedText || persistedUserText));
-  } catch {}
+  } catch { }
   try {
     const pw = String(xeliteMacro?.password || '').trim();
     if (pw) persistedUserText = persistedUserText.split(pw).join('[REDACTED]');
-  } catch {}
+  } catch { }
   if (useMock) {
     store.addMessage(sessionId, 'user', persistedUserText, runId);
   } else {
@@ -1631,7 +1631,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   // --- Agent Loop ---
   let steps = 0;
   const MAX_STEPS = 50;
-  
+
   // History already loaded above
 
   // Track executed tools to prevent loops
@@ -1795,7 +1795,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const multiStepKeyword =
       /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
         s,
-    );
+      );
     const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
     const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
     const hasSiteKeyword =
@@ -1840,17 +1840,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       pendingPlan = { name: 'web_search', input: { query: q } } as any;
       pendingBrowserOpenFromSearch = { target: openTarget };
     } else {
-    simpleBrowserOpenUrl =
-      directUrl.trim() ||
-      (simpleBrowserOpenLabel === 'GitHub'
-        ? 'https://github.com'
-        : simpleBrowserOpenLabel === 'Yahoo'
-          ? 'https://www.yahoo.com'
-          : simpleBrowserOpenLabel === 'YouTube'
-            ? 'https://www.youtube.com'
-            : simpleBrowserOpenLabel === 'OpenAI'
-              ? 'https://platform.openai.com/'
-            : 'https://www.google.com');
+      simpleBrowserOpenUrl =
+        directUrl.trim() ||
+        (simpleBrowserOpenLabel === 'GitHub'
+          ? 'https://github.com'
+          : simpleBrowserOpenLabel === 'Yahoo'
+            ? 'https://www.yahoo.com'
+            : simpleBrowserOpenLabel === 'YouTube'
+              ? 'https://www.youtube.com'
+              : simpleBrowserOpenLabel === 'OpenAI'
+                ? 'https://platform.openai.com/'
+                : 'https://www.google.com');
     }
   }
 
@@ -1867,12 +1867,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
   }
 
+  // Auto-route simple Google search requests to web_search tool
   const isSimpleGoogleSearchRequest = (() => {
     const s = String(text || '').trim();
     if (!s) return false;
     const hasGoogle = /(google|جوجل)/i.test(s);
     const hasSearch = /(search|ابحث|بحث|فتش|تفتيش|دور|ابغى\s+بحث|عايز\s+بحث|عاوز\s+بحث)/i.test(s);
     if (!hasGoogle || !hasSearch) return false;
+    // Ensure it is not a complex multi-step instruction
     const multiStepKeyword =
       /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
         s,
@@ -1882,22 +1884,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   })();
 
   if (isSimpleGoogleSearchRequest) {
-    const msg = 'تم تعطيل البحث عبر Google في نظام المتصفح القديم.';
-    ev({ type: 'text', data: msg });
-    ev({ type: 'run_completed', data: { runId, result: { ok: false, error: 'legacy_browser_removed' } } });
-    ev({ type: 'run_finished', data: { runId, ok: false } });
-    if (useMock) {
-      store.addMessage(sessionId, 'assistant', msg, runId);
-      store.updateRun(runId, { status: 'failed' });
-    } else {
-      try {
-        await Message.create({ sessionId, role: 'assistant', content: msg, runId });
-      } catch {}
-      try {
-        await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } });
-      } catch {}
-    }
-    return res.json({ ok: false, runId, sessionId, error: 'legacy_browser_removed' });
+    const s = String(text || '').trim();
+    // Extract query: remove "google", "search", etc.
+    let q = s.replace(/(google|جوجل|search|ابحث|بحث|فتش|تفتيش|دور|عن|في|on|in|for)/gi, ' ').trim();
+    if (!q) q = s;
+    pendingPlan = { name: 'web_search', input: { query: q } } as any;
   }
 
   while (steps < MAX_STEPS) {
@@ -1908,17 +1899,27 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
     ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
     plannerUnavailableMode = false;
-    
+
     // Optimization: Reuse initial plan if available for the first step to reduce latency
     if (pendingPlan) {
-        plan = pendingPlan;
-        pendingPlan = null;
+      plan = pendingPlan;
+      pendingPlan = null;
     } else if (steps === 0 && initialPlan) {
-        plan = initialPlan;
-        initialPlan = null; // Prevent reuse
+      plan = initialPlan;
+      initialPlan = null; // Prevent reuse
     } else {
-        const userTextForCooldown = String(text || '');
-        if (!hasAnyKey || providerKey === 'llm') {
+      const userTextForCooldown = String(text || '');
+      if (!hasAnyKey || providerKey === 'llm') {
+        plannerUnavailableMode = true;
+        plan = fallbackPlanWhenPlannerUnavailable({
+          userText: userTextForCooldown,
+          sessionId: String(sessionId),
+          history: history as any,
+          preferNonLLM: true,
+        }) as any;
+      } else {
+        const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
+        if (Date.now() < coolUntil) {
           plannerUnavailableMode = true;
           plan = fallbackPlanWhenPlannerUnavailable({
             userText: userTextForCooldown,
@@ -1927,28 +1928,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             preferNonLLM: true,
           }) as any;
         } else {
-          const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
-          if (Date.now() < coolUntil) {
-              plannerUnavailableMode = true;
-              plan = fallbackPlanWhenPlannerUnavailable({
-                userText: userTextForCooldown,
-                sessionId: String(sessionId),
-                history: history as any,
-                preferNonLLM: true,
-              }) as any;
-          } else {
           try {
-              if (isRunCancelled(runId)) {
-                forcedText = '⛔ تم إيقاف التنفيذ.';
-                lastResult = { ok: false, error: 'stopped' };
-                break;
-              }
-              plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
+            if (isRunCancelled(runId)) {
+              forcedText = '⛔ تم إيقاف التنفيذ.';
+              lastResult = { ok: false, error: 'stopped' };
+              break;
+            }
+            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
           } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
             const status = errorStatusCode(err);
             console.warn(`LLM planning error (status=${status}):`, lastPlanError);
-            
+
             if (isProviderAuthError(err, lastPlanError)) {
               const msg = '⚠️ **Authentication Failed**\nThe AI provider rejected the API key. Please verify the key and provider endpoint in the settings.';
               ev({ type: 'text', data: msg });
@@ -1957,11 +1948,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               break;
             }
             if (isProviderConfigError(err, lastPlanError)) {
-               const msg = `⚠️ **Configuration Error**\nThe AI provider returned an error (Status: ${status}). This usually means the Model Name is invalid or not available for your API Key.\nDetails: ${lastPlanError}`;
-               ev({ type: 'text', data: msg });
-               forcedText = msg;
-               assistantTextEmitted = true;
-               break;
+              const msg = `⚠️ **Configuration Error**\nThe AI provider returned an error (Status: ${status}). This usually means the Model Name is invalid or not available for your API Key.\nDetails: ${lastPlanError}`;
+              ev({ type: 'text', data: msg });
+              forcedText = msg;
+              assistantTextEmitted = true;
+              break;
             }
             if (isProviderRateLimitError(err, lastPlanError)) {
               rateLimitCooldown.set(String(sessionId), Date.now() + 3 * 60 * 1000);
@@ -2001,8 +1992,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               }) as any;
             }
           }
-          }
         }
+      }
     }
 
     if (!plan) {
@@ -2025,7 +2016,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         }) as any;
       }
     }
-    
+
     let planName = String(plan?.name || '');
     const userTextForOverrides = String(text || '');
     const userTextNorm = normalizeArabicQuery(userTextForOverrides);
@@ -2119,13 +2110,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                     ? 'https://www.google.com'
                     : wantsMicrosoft
                       ? 'https://www.microsoft.com'
-                    : wantsX
-                      ? 'https://x.com'
-                      : wantsFacebook
-                        ? 'https://www.facebook.com'
-                        : wantsLinkedIn
-                          ? 'https://www.linkedin.com'
-                          : '');
+                      : wantsX
+                        ? 'https://x.com'
+                        : wantsFacebook
+                          ? 'https://www.facebook.com'
+                          : wantsLinkedIn
+                            ? 'https://www.linkedin.com'
+                            : '');
         if (desiredUrl) {
           plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
           planName = 'browser_open';
@@ -2144,69 +2135,69 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         }
       }
     }
-    
+
     // Safety: Prevent immediate repeats of same tool execution
     if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer'].includes(planName)) {
-        const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
+      const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
 
-        if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
-            const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
-            const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
-            plan = {
-                name: 'echo',
-                input: {
-                  text: isArabicText(userTextForOverrides)
-                    ? (isGeneral
-                      ? (needsKey
-                        ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
-                        : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
-                      : `تم تكرار نفس الخطوة بدون تقدم (${planName}).\nأعد صياغة الطلب أو حدّد الخطوة التالية بشكل أوضح.`)
-                    : (isGeneral
-                      ? (needsKey
-                        ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
-                        : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
-                      : `The same step repeated without progress (${planName}).\nPlease rephrase or tell me the next concrete action.`),
-                }
-            } as any;
-            planName = 'echo';
-        } else {
-            executedToolSigs.add(sig);
-        }
+      if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
+        const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
+        const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
+        plan = {
+          name: 'echo',
+          input: {
+            text: isArabicText(userTextForOverrides)
+              ? (isGeneral
+                ? (needsKey
+                  ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
+                  : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
+                : `تم تكرار نفس الخطوة بدون تقدم (${planName}).\nأعد صياغة الطلب أو حدّد الخطوة التالية بشكل أوضح.`)
+              : (isGeneral
+                ? (needsKey
+                  ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
+                  : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
+                : `The same step repeated without progress (${planName}).\nPlease rephrase or tell me the next concrete action.`),
+          }
+        } as any;
+        planName = 'echo';
+      } else {
+        executedToolSigs.add(sig);
+      }
     }
-    
+
     // Safety: Prevent infinite thought loops
     if (planName === 'echo' || !planName) {
-        consecutiveThoughtSteps++;
-        if (consecutiveThoughtSteps > 3) {
-             if (!thoughtLoopPauseEmitted) {
-                 const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
-                 const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
-                 const providerLabel = String(providerKey || 'llm').trim() || 'llm';
-                 const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
-                 const keyLabel = apiKey ? 'موجود' : (process.env.OPENAI_API_KEY ? 'موجود (System)' : 'غير موجود');
-                 const baseHost = hostFromUrlMaybe(baseUrl);
-                 const msg = [
-                   `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
-                   `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
-                   `- المفتاح: ${keyLabel}`,
-                   needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
-                   hint ? `${hint}` : ``,
-                 ].filter(Boolean).join('\n');
-                 forcedText = msg;
-                 const now = Date.now();
-                 const last = loopPauseThrottle.get(String(sessionId));
-                 if (!last || now - last > 6000) {
-                     ev({ type: 'text', data: msg });
-                     assistantTextEmitted = true;
-                     loopPauseThrottle.set(String(sessionId), now);
-                 }
-                 thoughtLoopPauseEmitted = true;
-             }
-             break;
+      consecutiveThoughtSteps++;
+      if (consecutiveThoughtSteps > 3) {
+        if (!thoughtLoopPauseEmitted) {
+          const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
+          const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+          const providerLabel = String(providerKey || 'llm').trim() || 'llm';
+          const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
+          const keyLabel = apiKey ? 'موجود' : (process.env.OPENAI_API_KEY ? 'موجود (System)' : 'غير موجود');
+          const baseHost = hostFromUrlMaybe(baseUrl);
+          const msg = [
+            `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
+            `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
+            `- المفتاح: ${keyLabel}`,
+            needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
+            hint ? `${hint}` : ``,
+          ].filter(Boolean).join('\n');
+          forcedText = msg;
+          const now = Date.now();
+          const last = loopPauseThrottle.get(String(sessionId));
+          if (!last || now - last > 6000) {
+            ev({ type: 'text', data: msg });
+            assistantTextEmitted = true;
+            loopPauseThrottle.set(String(sessionId), now);
+          }
+          thoughtLoopPauseEmitted = true;
         }
+        break;
+      }
     } else {
-        consecutiveThoughtSteps = 0;
-        executedTools.add(planName);
+      consecutiveThoughtSteps = 0;
+      executedTools.add(planName);
     }
 
     const isBrowserTool = /^browser_/.test(planName);
@@ -2241,43 +2232,43 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       plan = { name: 'http_fetch', input: { url: `${base}/tools` } } as any;
       planName = 'http_fetch';
     }
-    
-    const wantsShop = isEcommerceRequest(userTextForOverrides);
-      if (wantsShop) {
-        // Extract project name if provided, else default
-        const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
-        const projName = nameMatch ? nameMatch[1] : 'vivos-store';
 
-        if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
-          // Silent execution - no text emitted to chat
-          // ev({ type: 'text', data: md }); 
-          history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
-          try {
-            if (useMock) {
-              store.addMessage(sessionId, 'assistant', 'ECOMMERCE_PLAN_EMITTED', runId);
-            } else {
-              await Message.create({ sessionId, role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED', runId });
-            }
-          } catch {}
-          
-          // Force the smart tool
-          plan = { 
-              name: 'scaffold_full_stack', 
-              input: { 
-                  name: projName, 
-                type: 'ecommerce',
-                features: ['auth', 'products', 'cart'] // Smart default features
-            } 
+    const wantsShop = isEcommerceRequest(userTextForOverrides);
+    if (wantsShop) {
+      // Extract project name if provided, else default
+      const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
+      const projName = nameMatch ? nameMatch[1] : 'vivos-store';
+
+      if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
+        // Silent execution - no text emitted to chat
+        // ev({ type: 'text', data: md }); 
+        history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
+        try {
+          if (useMock) {
+            store.addMessage(sessionId, 'assistant', 'ECOMMERCE_PLAN_EMITTED', runId);
+          } else {
+            await Message.create({ sessionId, role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED', runId });
+          }
+        } catch { }
+
+        // Force the smart tool
+        plan = {
+          name: 'scaffold_full_stack',
+          input: {
+            name: projName,
+            type: 'ecommerce',
+            features: ['auth', 'products', 'cart'] // Smart default features
+          }
         } as any;
         planName = 'scaffold_full_stack';
         pendingPlan = plan; // ensure immediate execution on first loop
       }
-      
+
       // Force execution even if AI tries to think
       if (planName === 'echo' || !planName) {
-          // If we haven't scaffolded yet (and steps > 0), maybe AI missed it?
-          // But if steps=0 we forced it above.
-          // If steps > 0, we assume scaffolding is done.
+        // If we haven't scaffolded yet (and steps > 0), maybe AI missed it?
+        // But if steps=0 we forced it above.
+        // If steps > 0, we assume scaffolding is done.
       }
     }
 
@@ -2323,7 +2314,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         planName = 'echo';
       }
     }
-    
+
     const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
     if (wf && wf.kind !== 'ecommerce' && (!planName || planName === 'echo')) {
       const marker =
@@ -2348,92 +2339,92 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const stepList =
           wf.kind === 'tool_shell'
             ? [
-                `- 1) project_detect: فحص المشروع والمسارات`,
-                `- 2) command_policy_check: فحص أمان الأمر`,
-                `- 3) tool_create_shell: إنشاء الأداة داخل المصنع (Runtime)`,
-                `- 4) quality_run: تشغيل lint للتأكد`,
-                `- 5) echo: إنهاء`,
-              ]
+              `- 1) project_detect: فحص المشروع والمسارات`,
+              `- 2) command_policy_check: فحص أمان الأمر`,
+              `- 3) tool_create_shell: إنشاء الأداة داخل المصنع (Runtime)`,
+              `- 4) quality_run: تشغيل lint للتأكد`,
+              `- 5) echo: إنهاء`,
+            ]
             : [
-                `- 1) project_detect: فحص هيكل المشروع والمسارات`,
-                `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
-                `- 3) scaffold_project: إنشاء هيكل المشروع`,
-                wf.kind === 'static_site' ? `- 4) echo: إنهاء` : `- 4) npm_install: تثبيت الاعتمادات`,
-                wf.kind === 'static_site' ? `- 5) echo: إنهاء` : `- 5) quality_run: lint/test/build إن وجدت`,
-              ];
+              `- 1) project_detect: فحص هيكل المشروع والمسارات`,
+              `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
+              `- 3) scaffold_project: إنشاء هيكل المشروع`,
+              wf.kind === 'static_site' ? `- 4) echo: إنهاء` : `- 4) npm_install: تثبيت الاعتمادات`,
+              wf.kind === 'static_site' ? `- 5) echo: إنهاء` : `- 5) quality_run: lint/test/build إن وجدت`,
+            ];
 
         const contextLine =
           wf.kind === 'tool_shell' && wf.tool
             ? `- الاسم: ${wf.tool.name}\n- الأمر: ${wf.tool.command}`
             : `- المجلد: ${wf.root}`;
 
-      const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
-      if (!containsBuilderPlanText(userTextForOverrides)) {
-        ev({ type: 'text', data: md });
-      }
-      history.push({ role: 'assistant', content: marker } as any);
-      try {
-        if (useMock) {
-          store.addMessage(sessionId, 'assistant', marker, runId);
-        } else {
-          await Message.create({ sessionId, role: 'assistant', content: marker, runId });
+        const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
+        if (!containsBuilderPlanText(userTextForOverrides)) {
+          ev({ type: 'text', data: md });
         }
-      } catch {}
-      
-      // Inject directive for the AI
-      history.push({ 
-        role: 'system', 
-        content: `BUILD DIRECTIVE: You are executing a workflow (${wf.kind}).
+        history.push({ role: 'assistant', content: marker } as any);
+        try {
+          if (useMock) {
+            store.addMessage(sessionId, 'assistant', marker, runId);
+          } else {
+            await Message.create({ sessionId, role: 'assistant', content: marker, runId });
+          }
+        } catch { }
+
+        // Inject directive for the AI
+        history.push({
+          role: 'system',
+          content: `BUILD DIRECTIVE: You are executing a workflow (${wf.kind}).
           Follow the plan shown above. Check history for completed steps.
           For scaffolding, use structure: {} and the system will inject the template.`
         } as any);
       }
-      
+
       // Builder Mode: Start execution if the planner returned echo or empty
       if (!planName || planName === 'echo') {
         const textLower = userTextForOverrides.toLowerCase();
-        
+
         // Handle "Access/Open GitHub" or generic website access requests
         const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
         if (wantsAccess) {
-             plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
-             planName = 'browser_open';
+          plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
+          planName = 'browser_open';
         } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(google|جوجل)/i.test(userTextForOverrides)) {
-             plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
-             planName = 'browser_open';
+          plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
+          planName = 'browser_open';
         } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(youtube|يوتيوب)/i.test(userTextForOverrides)) {
-             plan = { name: 'browser_open', input: { url: 'https://www.youtube.com' } } as any;
-             planName = 'browser_open';
+          plan = { name: 'browser_open', input: { url: 'https://www.youtube.com' } } as any;
+          planName = 'browser_open';
         } else if (/(list|سرد|قائمة)\s*(tools|الأدوات|الادوات)/i.test(userTextForOverrides)) {
-             plan = { name: 'http_fetch', input: { url: 'http://localhost:' + (process.env.PORT || 3000) + '/tools' } } as any;
-             planName = 'http_fetch';
+          plan = { name: 'http_fetch', input: { url: 'http://localhost:' + (process.env.PORT || 3000) + '/tools' } } as any;
+          planName = 'http_fetch';
         } else if (/(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userTextForOverrides) || /^ls$/.test(textLower)) {
-             plan = { name: 'ls', input: { path: '.' } } as any;
-             planName = 'ls';
+          plan = { name: 'ls', input: { path: '.' } } as any;
+          planName = 'ls';
         } else if (/(project|file)\s*(structure|tree|هيكل|شجرة)/i.test(userTextForOverrides)) {
-             plan = { name: 'read_file_tree', input: { path: '.', depth: 3 } } as any;
-             planName = 'read_file_tree';
+          plan = { name: 'read_file_tree', input: { path: '.', depth: 3 } } as any;
+          planName = 'read_file_tree';
         } else if (/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i.test(userTextForOverrides)) {
-             const m = userTextForOverrides.match(/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i);
-             if (m && m[3]) {
-                 plan = { name: 'file_read', input: { filePath: m[3].trim() } } as any;
-                 planName = 'file_read';
-             }
+          const m = userTextForOverrides.match(/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i);
+          if (m && m[3]) {
+            plan = { name: 'file_read', input: { filePath: m[3].trim() } } as any;
+            planName = 'file_read';
+          }
         } else if (/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i.test(userTextForOverrides)) {
-             const m = userTextForOverrides.match(/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i);
-             if (m && m[4]) {
-                 plan = { name: 'grep_search', input: { query: m[4].trim(), path: '.' } } as any;
-                 planName = 'grep_search';
-             }
+          const m = userTextForOverrides.match(/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i);
+          if (m && m[4]) {
+            plan = { name: 'grep_search', input: { query: m[4].trim(), path: '.' } } as any;
+            planName = 'grep_search';
+          }
         } else if (/(open|start|launch|افتح|شغل|ابدأ)\s*(the\s+)?(browser|متصفح|المتصفح)/i.test(userTextForOverrides)) {
-             // Explicit browser open request
-             plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
-             planName = 'browser_open';
+          // Explicit browser open request
+          plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
+          planName = 'browser_open';
         } else {
-             // Do not force project_detect blindly. If no heuristic matches, let the original plan (likely echo) proceed.
-             // This prevents infinite loops when the user asks a question that the LLM answered with text (echo).
-             // plan = { name: 'project_detect', input: { path: '.' } } as any;
-             // planName = 'project_detect';
+          // Do not force project_detect blindly. If no heuristic matches, let the original plan (likely echo) proceed.
+          // This prevents infinite loops when the user asks a question that the LLM answered with text (echo).
+          // plan = { name: 'project_detect', input: { path: '.' } } as any;
+          // planName = 'project_detect';
         }
       }
     }
@@ -2441,10 +2432,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (String(plan?.name || '') === 'github_create_repo') {
       const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
       if (wantsAccess) {
-         plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
-    } else if (!wantsGithubRepo && (!planName || planName === 'echo')) {
+        plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
+      } else if (!wantsGithubRepo && (!planName || planName === 'echo')) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
-    } else if (!requestedRepoName) {
+      } else if (!requestedRepoName) {
         plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
         history.push({ role: 'assistant', content: 'ASKED_FOR_REPO_NAME' } as any);
         try {
@@ -2453,8 +2444,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           } else {
             await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
           }
-        } catch {}
-    }
+        } catch { }
+      }
     }
     if (isBrowserTool) {
       const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
@@ -2532,10 +2523,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const isXelite = /(^|\.)xelitesolutions\.com$/i.test(String(host || ''));
             const fallbackActions = isXelite
               ? [
-                  { type: 'clickText', text: 'Start Now', exact: false, timeoutMs: 9000, attempts: 3 },
-                  { type: 'waitForLoad', state: 'domcontentloaded' },
-                  { type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' },
-                ]
+                { type: 'clickText', text: 'Start Now', exact: false, timeoutMs: 9000, attempts: 3 },
+                { type: 'waitForLoad', state: 'domcontentloaded' },
+                { type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' },
+              ]
               : [{ type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' }];
             plan = { name: 'browser_run', input: { sessionId: sid, actions: fallbackActions } } as any;
           }
@@ -2564,13 +2555,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           } as any;
         }
       } else {
-      plan = {
-        name: 'browser_run',
-        input: {
-          sessionId: browserSessionId.trim(),
-          actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
-        },
-      } as any;
+        plan = {
+          name: 'browser_run',
+          input: {
+            sessionId: browserSessionId.trim(),
+            actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
+          },
+        } as any;
       }
     }
 
@@ -2780,23 +2771,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     // Intercept scaffold_project to inject templates if structure is missing/empty
     if (plan?.name === 'scaffold_project') {
-       const inp = (plan.input as any) || {};
-       if (!inp.structure || Object.keys(inp.structure).length === 0) {
-           const root = extractTargetProjectRoot(userTextForOverrides) || '.';
-           const baseDir = repoBaseDirForTools();
-           if (wantsShop) {
-               (plan as any).input = { structure: buildEcommerceScaffold(root), baseDir };
-               ev({ type: 'text', data: `ℹ️ Injecting E-Commerce scaffold template into empty scaffold_project call.` });
-           } else if (wf) {
-               const structure = wf.kind === 'static_site' ? buildStaticSiteScaffold(wf.root) :
-                                 wf.kind === 'node_api' ? buildNodeApiScaffold(wf.root) :
-                                 wf.kind === 'fullstack' ? buildFullstackScaffold(wf.root) : {};
-               if (Object.keys(structure).length > 0) {
-                   (plan as any).input = { structure, baseDir };
-                   ev({ type: 'text', data: `ℹ️ Injecting ${wf.kind} scaffold template into empty scaffold_project call.` });
-               }
-           }
-       }
+      const inp = (plan.input as any) || {};
+      if (!inp.structure || Object.keys(inp.structure).length === 0) {
+        const root = extractTargetProjectRoot(userTextForOverrides) || '.';
+        const baseDir = repoBaseDirForTools();
+        if (wantsShop) {
+          (plan as any).input = { structure: buildEcommerceScaffold(root), baseDir };
+          ev({ type: 'text', data: `ℹ️ Injecting E-Commerce scaffold template into empty scaffold_project call.` });
+        } else if (wf) {
+          const structure = wf.kind === 'static_site' ? buildStaticSiteScaffold(wf.root) :
+            wf.kind === 'node_api' ? buildNodeApiScaffold(wf.root) :
+              wf.kind === 'fullstack' ? buildFullstackScaffold(wf.root) : {};
+          if (Object.keys(structure).length > 0) {
+            (plan as any).input = { structure, baseDir };
+            ev({ type: 'text', data: `ℹ️ Injecting ${wf.kind} scaffold template into empty scaffold_project call.` });
+          }
+        }
+      }
     }
 
     if (String(plan?.name || '') === 'browser_run') {
@@ -2888,10 +2879,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             autoApproveAll: Boolean(cur.autoApproveAll),
             autoApproveSafe: Boolean(cur.autoApproveSafe),
           });
-        } catch {}
+        } catch { }
       }
     }
-    
+
     // Add result to history to prevent infinite loops
     const MAX_INLINE_CHARS = 1800;
     const truncate = (s: string, max = MAX_INLINE_CHARS) => (s.length > max ? `${s.slice(0, max)}…[truncated]` : s);
@@ -2907,7 +2898,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const host = new URL(u).hostname.replace(/^www\./i, '');
           if (host) return host;
         }
-      } catch {}
+      } catch { }
       const d = String(dom || '');
       if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
       if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
@@ -2969,9 +2960,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
     };
 
-    history.push({ 
-        role: 'assistant', 
-        content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(plan?.name || '', persistedInput)}\nOutput: ${safeOutput(plan?.name || '', result.output || result.error || 'Done')}` 
+    history.push({
+      role: 'assistant',
+      content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(plan?.name || '', persistedInput)}\nOutput: ${safeOutput(plan?.name || '', result.output || result.error || 'Done')}`
     });
 
     lastResult = result;
@@ -2984,7 +2975,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         ev({ type: 'evidence_added', data: { kind: 'log', text: line } });
       }
     }
-    
+
     // Emit artifacts if any
     if (result.artifacts && Array.isArray(result.artifacts)) {
       const suppressChatArtifacts = /^browser_/.test(String(plan?.name || ''));
@@ -2992,9 +2983,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (suppressChatArtifacts) continue;
         ev({ type: 'artifact_created', data: art });
         if (useMock) {
-          try { store.addArtifact(runId, String(art.name || 'artifact'), String(art.href || '')); } catch {}
+          try { store.addArtifact(runId, String(art.name || 'artifact'), String(art.href || '')); } catch { }
         } else {
-          try { await Artifact.create({ runId, name: String(art.name || 'artifact'), href: String(art.href || '') }); } catch {}
+          try { await Artifact.create({ runId, name: String(art.name || 'artifact'), href: String(art.href || '') }); } catch { }
         }
       }
     }
@@ -3030,7 +3021,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
           const key = browserRunGuardKey(String(sessionId), bid, String(runId));
           browserRunGuard.delete(key);
-        } catch {}
+        } catch { }
         const code = String((result as any)?.detail?.code || '').trim();
         const detailMsg = String((result as any)?.detail?.message || '').trim();
         const hint = (() => {
@@ -3074,7 +3065,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
           const key = browserRunGuardKey(String(sessionId), bid, String(runId));
           browserRunGuard.delete(key);
-        } catch {}
+        } catch { }
         const keysLine = missingSecrets.length ? `\n- الأسرار المطلوبة: ${missingSecrets.join(', ')}` : '';
         const msg = isArabicText(userTextForOverrides)
           ? `⚠️ لا يمكن إكمال خطوة المتصفح لأن هناك بيانات دخول/أسرار ناقصة.${keysLine}\nأدخل الأسرار المطلوبة من نافذة التوكن أو اكتب بيانات الدخول (الإيميل/كلمة المرور) داخل رسالتك ثم أعد إرسال نفس الأمر.`
@@ -3191,70 +3182,70 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         postPreviewScheduled = true;
       }
     }
-    
+
     // Stop on fatal errors (403, verification, etc.)
     if (!result.ok && plan?.name === 'image_generate') {
-       const errorMsg = String(result.error || '');
-       const logsStr = (result.logs || []).join('\n');
-       if (errorMsg.includes('403') || errorMsg.includes('verification') || logsStr.includes('error=403')) {
-           const msg = `❌ **Image Generation Failed**\n${errorMsg}\n\nPlease verify your OpenAI organization settings or try a different prompt.`;
-           forcedText = msg;
-           ev({ type: 'text', data: msg });
-           assistantTextEmitted = true;
-           break;
-       }
+      const errorMsg = String(result.error || '');
+      const logsStr = (result.logs || []).join('\n');
+      if (errorMsg.includes('403') || errorMsg.includes('verification') || logsStr.includes('error=403')) {
+        const msg = `❌ **Image Generation Failed**\n${errorMsg}\n\nPlease verify your OpenAI organization settings or try a different prompt.`;
+        forcedText = msg;
+        ev({ type: 'text', data: msg });
+        assistantTextEmitted = true;
+        break;
+      }
     }
 
     if (result.ok && plan?.name === 'project_detect') {
-       const out = result.output as any;
-       // Smart Context: If we found Node projects, try to read the root package.json immediately
-       // to give the AI context about dependencies without wasting a turn.
-       if (out && Array.isArray(out.nodeProjects) && out.nodeProjects.length > 0) {
-           const rootNode = out.nodeProjects[0]; // Usually the first one is relevant
-           const pkgPath = `${rootNode}/package.json`;
-           // Execute file_read silently and inject into history
-           console.log(`[Smart Context] Auto-reading ${pkgPath}`);
-           const subResult = await executeTool('file_read', { filePath: pkgPath });
-           if (subResult.ok) {
-               ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Read] Read ${pkgPath} for context.` } });
-               history.push({ 
-                   role: 'assistant', 
-                   content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${safeOutput('file_read', subResult.output)}` 
-               });
-           }
-       } else if (isEmptyProjectDetectOutput(out) && !historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
-           history.push({ role: 'assistant', content: 'PROJECT_DETECT_EMPTY' } as any);
-           try {
-             if (useMock) {
-               store.addMessage(sessionId, 'assistant', 'PROJECT_DETECT_EMPTY', runId);
-             } else {
-               await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
-             }
-           } catch {}
+      const out = result.output as any;
+      // Smart Context: If we found Node projects, try to read the root package.json immediately
+      // to give the AI context about dependencies without wasting a turn.
+      if (out && Array.isArray(out.nodeProjects) && out.nodeProjects.length > 0) {
+        const rootNode = out.nodeProjects[0]; // Usually the first one is relevant
+        const pkgPath = `${rootNode}/package.json`;
+        // Execute file_read silently and inject into history
+        console.log(`[Smart Context] Auto-reading ${pkgPath}`);
+        const subResult = await executeTool('file_read', { filePath: pkgPath });
+        if (subResult.ok) {
+          ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Read] Read ${pkgPath} for context.` } });
+          history.push({
+            role: 'assistant',
+            content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${safeOutput('file_read', subResult.output)}`
+          });
+        }
+      } else if (isEmptyProjectDetectOutput(out) && !historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
+        history.push({ role: 'assistant', content: 'PROJECT_DETECT_EMPTY' } as any);
+        try {
+          if (useMock) {
+            store.addMessage(sessionId, 'assistant', 'PROJECT_DETECT_EMPTY', runId);
+          } else {
+            await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
+          }
+        } catch { }
 
-           if (!pendingPlan) {
-             pendingPlan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-           }
-       }
+        if (!pendingPlan) {
+          pendingPlan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+        }
+      }
     }
 
     if (!result.ok && plan?.name === 'file_read') {
-       const err = String(result.error || '');
-       if (err.includes('ENOENT') || err.includes('not found')) {
-           // Auto-Correction: File not found? List the directory to help user see what's there.
-           const fpath = String(plan?.input?.filePath || '.');
-           const dir = fpath.includes('/') ? fpath.split('/').slice(0, -1).join('/') || '.' : '.';
-           console.log(`[Auto-Correction] file_read failed for ${fpath}. Listing ${dir}`);
-           const subResult = await executeTool('ls', { path: dir });
-           if (subResult.ok) {
-               ev({ type: 'text', data: `⚠️ لم أجد الملف "${fpath}". إليك محتويات المجلد "${dir}" للمساعدة:` });
-               ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Correction] ls ${dir}: ${JSON.stringify(subResult.output)}` } });
-               history.push({ 
-                   role: 'assistant', 
-                   content: `Tool Call: ls\nInput: {"path":"${dir}"}\nOutput: ${safeOutput('ls', subResult.output)}` 
-               });
-           }
-       }
+      const err = String(result.error || '');
+      if (err.includes('ENOENT') || err.includes('not found')) {
+        // Auto-Correction: File not found? List the directory to help user see what's there.
+        const fpath = String(plan?.input?.filePath || '.');
+        const dir = fpath.includes('/') ? fpath.split('/').slice(0, -1).join('/') || '.' : '.';
+        console.log(`[Auto-Correction] file_read failed for ${fpath}. Listing ${dir}`);
+        const subResult = await executeTool('ls', { path: dir });
+        if (subResult.ok) {
+          ev({ type: 'text', data: `⚠️ لم أجد الملف "${fpath}". إليك محتويات المجلد "${dir}" للمساعدة:` });
+          ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Correction] ls ${dir}: ${JSON.stringify(subResult.output)}` } });
+          history.push({
+            role: 'assistant',
+            content: `Tool Call: ls\nInput: {"path":"${dir}"}\nOutput: ${safeOutput('ls', subResult.output)}`
+          });
+        }
+      }
     }
 
     if (result.ok && plan?.name === 'echo') {
@@ -3273,9 +3264,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       if (href) {
         // Do not emit markdown image to avoid duplication. The UI handles artifact_created event.
         forcedText = `🎨 Image generated successfully.`;
-        ev({ type: 'text', data: forcedText }); 
+        ev({ type: 'text', data: forcedText });
         assistantTextEmitted = true;
-        break; 
+        break;
       }
     }
 
@@ -3425,11 +3416,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             assistantTextEmitted = true;
           }
         }
-        
+
         if (/(ipapi\.co|ipinfo\.io|ip-api\.com)/i.test(u.hostname)) {
           let lat: number | null = null;
           let lon: number | null = null;
-          
+
           const j = (result as any)?.output?.json || {};
           if (typeof j?.latitude === 'number' && typeof j?.longitude === 'number') {
             lat = j.latitude; lon = j.longitude;
@@ -3441,7 +3432,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               lat = parts[0]; lon = parts[1];
             }
           }
-          
+
           if (lat !== null && lon !== null) {
             const mdLoc = [
               `### الإحداثيات التقريبية`,
@@ -3484,7 +3475,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
           }
         }
-      } catch {}
+      } catch { }
     }
     if (result.ok && plan?.name === 'web_search') {
       try {
@@ -3495,7 +3486,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (title || url) {
           ev({ type: 'evidence_added', data: { kind: 'search', text: `${title}${title && url ? ' — ' : ''}${url}` } });
         }
-      } catch {}
+      } catch { }
     }
     if (result.ok && plan?.name === 'html_extract') {
       try {
@@ -3504,7 +3495,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (title || url) {
           ev({ type: 'evidence_added', data: { kind: 'page', text: `${title}${title && url ? ' — ' : ''}${url}` } });
         }
-      } catch {}
+      } catch { }
     }
 
     if (useMock) {
@@ -3553,7 +3544,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (useMock) {
           store.updateRun(runId, { status: 'blocked' as any });
         } else {
-          try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
+          try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
         }
 
         return res.json({
@@ -3568,175 +3559,175 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     if (!result.ok) {
-        const errorMsg = result.error || (result.logs ? result.logs.join('\n') : 'Unknown error');
+      const errorMsg = result.error || (result.logs ? result.logs.join('\n') : 'Unknown error');
 
-        if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
-          const msg = [
-            `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
-            `- أدخل توكن GitHub (Personal Access Token) في نافذة التوكن وأرسله.`,
-            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-          ].join('\n');
+      if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
+        const msg = [
+          `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
+          `- أدخل توكن GitHub (Personal Access Token) في نافذة التوكن وأرسله.`,
+          `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+        ].join('\n');
 
-          ev({ type: 'text', data: msg });
-          ev({
-            type: 'secret_required',
-            data: {
-              sessionId,
-              runId,
-              provider: 'github',
-              key: 'GITHUB_TOKEN',
-              label: 'GitHub Token',
-              reason: 'git push يحتاج مصادقة',
-            },
-          });
-
-          const { setPendingTool } = await import('../services/secrets');
-          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-          if (useMock) {
-            store.updateRun(runId, { status: 'blocked' as any });
-          } else {
-            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
-          }
-
-          return res.json({
-            runId,
+        ev({ type: 'text', data: msg });
+        ev({
+          type: 'secret_required',
+          data: {
             sessionId,
-            blocked: true,
-            secretRequired: true,
-            secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
-          });
-        }
-
-        if (String(plan?.name || '') === 'payments_create_checkout_session' && isStripeAuthError(errorMsg)) {
-          const msg = [
-            `⚠️ مطلوب مفتاح Stripe لإنشاء جلسة دفع.`,
-            `- أدخل STRIPE_API_KEY في نافذة التوكن وأرسله.`,
-            `- سيتم حفظ المفتاح بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-          ].join('\n');
-
-          ev({ type: 'text', data: msg });
-          ev({
-            type: 'secret_required',
-            data: {
-              sessionId,
-              runId,
-              provider: 'stripe',
-              key: 'STRIPE_API_KEY',
-              label: 'Stripe Secret Key',
-              reason: 'إنشاء جلسة دفع يحتاج مصادقة',
-            },
-          });
-
-          const { setPendingTool } = await import('../services/secrets');
-          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-          if (useMock) {
-            store.updateRun(runId, { status: 'blocked' as any });
-          } else {
-            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
-          }
-
-          return res.json({
             runId,
-            sessionId,
-            blocked: true,
-            secretRequired: true,
-            secret: { provider: 'stripe', key: 'STRIPE_API_KEY', label: 'Stripe Secret Key' },
-            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
-          });
-        }
-
-        if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
-          const msg = [
-            `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
-            `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
-            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-          ].join('\n');
-
-          ev({ type: 'text', data: msg });
-          ev({
-            type: 'secret_required',
-            data: {
-              sessionId,
-              runId,
-              provider: 'github',
-              key: 'GITHUB_TOKEN',
-              label: 'GitHub Token',
-              reason: 'إنشاء ريبو يحتاج مصادقة',
-            },
-          });
-
-          const { setPendingTool } = await import('../services/secrets');
-          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-          if (useMock) {
-            store.updateRun(runId, { status: 'blocked' as any });
-          } else {
-            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
-          }
-
-          return res.json({
-            runId,
-            sessionId,
-            blocked: true,
-            secretRequired: true,
-            secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
-          });
-        }
-        if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
-          const msg = [
-            `⚠️ مطلوب توكن GitHub لإنشاء/تعديل ملفات داخل المستودع عبر API.`,
-            `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
-            `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-          ].join('\n');
-
-          ev({ type: 'text', data: msg });
-          ev({
-            type: 'secret_required',
-            data: {
-              sessionId,
-              runId,
-              provider: 'github',
-              key: 'GITHUB_TOKEN',
-              label: 'GitHub Token',
-              reason: 'تعديل ملفات الريبو يحتاج مصادقة',
-            },
-          });
-
-          const { setPendingTool } = await import('../services/secrets');
-          setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-          if (useMock) {
-            store.updateRun(runId, { status: 'blocked' as any });
-          } else {
-            try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch {}
-          }
-
-          return res.json({
-            runId,
-            sessionId,
-            blocked: true,
-            secretRequired: true,
-            secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-            ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
-          });
-        }
-        
-        // Self-Healing Notification
-        ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });
-        assistantTextEmitted = true;
-        
-        history.push({ 
-            role: 'assistant', 
-            content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.` 
+            provider: 'github',
+            key: 'GITHUB_TOKEN',
+            label: 'GitHub Token',
+            reason: 'git push يحتاج مصادقة',
+          },
         });
+
+        const { setPendingTool } = await import('../services/secrets');
+        setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+        if (useMock) {
+          store.updateRun(runId, { status: 'blocked' as any });
+        } else {
+          try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+        }
+
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+        });
+      }
+
+      if (String(plan?.name || '') === 'payments_create_checkout_session' && isStripeAuthError(errorMsg)) {
+        const msg = [
+          `⚠️ مطلوب مفتاح Stripe لإنشاء جلسة دفع.`,
+          `- أدخل STRIPE_API_KEY في نافذة التوكن وأرسله.`,
+          `- سيتم حفظ المفتاح بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+        ].join('\n');
+
+        ev({ type: 'text', data: msg });
+        ev({
+          type: 'secret_required',
+          data: {
+            sessionId,
+            runId,
+            provider: 'stripe',
+            key: 'STRIPE_API_KEY',
+            label: 'Stripe Secret Key',
+            reason: 'إنشاء جلسة دفع يحتاج مصادقة',
+          },
+        });
+
+        const { setPendingTool } = await import('../services/secrets');
+        setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+        if (useMock) {
+          store.updateRun(runId, { status: 'blocked' as any });
+        } else {
+          try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+        }
+
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: 'stripe', key: 'STRIPE_API_KEY', label: 'Stripe Secret Key' },
+          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+        });
+      }
+
+      if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
+        const msg = [
+          `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
+          `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+          `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+        ].join('\n');
+
+        ev({ type: 'text', data: msg });
+        ev({
+          type: 'secret_required',
+          data: {
+            sessionId,
+            runId,
+            provider: 'github',
+            key: 'GITHUB_TOKEN',
+            label: 'GitHub Token',
+            reason: 'إنشاء ريبو يحتاج مصادقة',
+          },
+        });
+
+        const { setPendingTool } = await import('../services/secrets');
+        setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+        if (useMock) {
+          store.updateRun(runId, { status: 'blocked' as any });
+        } else {
+          try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+        }
+
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+        });
+      }
+      if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
+        const msg = [
+          `⚠️ مطلوب توكن GitHub لإنشاء/تعديل ملفات داخل المستودع عبر API.`,
+          `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+          `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+        ].join('\n');
+
+        ev({ type: 'text', data: msg });
+        ev({
+          type: 'secret_required',
+          data: {
+            sessionId,
+            runId,
+            provider: 'github',
+            key: 'GITHUB_TOKEN',
+            label: 'GitHub Token',
+            reason: 'تعديل ملفات الريبو يحتاج مصادقة',
+          },
+        });
+
+        const { setPendingTool } = await import('../services/secrets');
+        setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+        if (useMock) {
+          store.updateRun(runId, { status: 'blocked' as any });
+        } else {
+          try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+        }
+
+        return res.json({
+          runId,
+          sessionId,
+          blocked: true,
+          secretRequired: true,
+          secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
+        });
+      }
+
+      // Self-Healing Notification
+      ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });
+      assistantTextEmitted = true;
+
+      history.push({
+        role: 'assistant',
+        content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.`
+      });
     } else {
-        history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(String(plan?.name || ''), result.output)}` });
+      history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(String(plan?.name || ''), result.output)}` });
     }
-    
+
     steps++;
 
     // If echo, we are done
@@ -3760,7 +3751,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const host = new URL(u).hostname.replace(/^www\./i, '');
         if (host) return host;
       }
-    } catch {}
+    } catch { }
     const d = String(dom || '');
     if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
     if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
@@ -3828,7 +3819,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   ev({ type: 'run_completed', data: { runId, result: lastResult } });
   ev({ type: 'run_finished', data: { runId, status: 'done' } });
-  
+
   if (useMock) {
     store.addMessage(sessionId, 'assistant', finalContent, runId);
     store.updateRun(runId, { status: lastResult?.ok ? 'done' : 'failed' });
@@ -3837,7 +3828,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed' } });
   }
   cancelledRuns.delete(String(runId));
-  
+
   return res.json({
     runId,
     sessionId,
