@@ -491,7 +491,7 @@ function classifyBrowserRuntimeError(e: any) {
 
 function shouldCloseAfterRun() {
   const raw = process.env.BROWSER_CLOSE_AFTER_RUN;
-  if (raw === undefined) return process.env.NODE_ENV === 'production';
+  if (raw === undefined) return false; // Default to FALSE to keep sessions alive
   const s = String(raw).trim().toLowerCase();
   return ['1', 'true', 'yes', 'y', 'on'].includes(s);
 }
