@@ -19,6 +19,9 @@ import { TemplateManagerTool } from './definitions/TemplateManagerTool';
 import { CodeReviewerTool } from './definitions/CodeReviewerTool';
 import { SecurityScannerTool } from './definitions/SecurityScannerTool';
 import { PerformanceAnalyzerTool } from './definitions/PerformanceAnalyzerTool';
+import { GitHubRepoManagerTool } from './definitions/GitHubRepoManagerTool';
+import { GitHubPRTool } from './definitions/GitHubPRTool';
+import { GitHubActionsTool } from './definitions/GitHubActionsTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -115,6 +118,9 @@ export const tools: ToolDefinition[] = [
   new CodeReviewerTool(),
   new SecurityScannerTool(),
   new PerformanceAnalyzerTool(),
+  new GitHubRepoManagerTool(),
+  new GitHubPRTool(),
+  new GitHubActionsTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
