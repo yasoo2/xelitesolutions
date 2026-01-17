@@ -1,4 +1,3 @@
-import * as lancedb from '@lancedb/lancedb';
 import OpenAI from 'openai';
 import path from 'path';
 import fs from 'fs';
@@ -20,8 +19,8 @@ interface MemoryRecord {
 
 export class VectorMemory {
     private openai: OpenAI | null = null;
-    private db: lancedb.Connection | null = null;
-    private table: lancedb.Table | null = null;
+    private db: any = null;
+    private table: any = null;
     private tableName = 'joe_memory';
 
     constructor() {
@@ -32,6 +31,9 @@ export class VectorMemory {
 
     async init() {
         try {
+            console.log('[VectorMemory] Attempting to load LanceDB...');
+            const lancedb = await import('@lancedb/lancedb');
+
             this.db = await lancedb.connect(MEMORY_DB_PATH);
 
             const existingTables = await this.db.tableNames();
@@ -49,7 +51,7 @@ export class VectorMemory {
 
             console.log(`[VectorMemory] Connected to LanceDB at ${MEMORY_DB_PATH}`);
         } catch (e) {
-            console.error('[VectorMemory] Failed to init LanceDB:', e);
+            console.error('[VectorMemory] Failed to init LanceDB (Module might be missing or broken). Memory features disabled.', e);
         }
     }
 
@@ -74,7 +76,11 @@ export class VectorMemory {
 
     async add(id: string, text: string, metadata: Record<string, any> = {}) {
         if (!this.db) await this.init();
-        if (!this.db) throw new Error("Database not initialized");
+        if (!this.db) {
+            // Fail silently or warn if DB is broken
+            console.warn('[VectorMemory] Add skipped: DB not available.');
+            return;
+        }
 
         const vector = await this.createEmbedding(text);
         const record = {
@@ -101,7 +107,7 @@ export class VectorMemory {
 
     async search(query: string, limit: number = 5) {
         if (!this.db) await this.init();
-        if (!this.table) {
+        if (!this.table || !this.db) {
             // Table doesn't exist = no memory
             return { ids: [[]], documents: [[]], distances: [[]] };
         }

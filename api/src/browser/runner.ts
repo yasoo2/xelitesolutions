@@ -20,35 +20,36 @@ type Planned = {
     | { type: 'scroll'; direction: 'down' | 'up'; amount?: number; optional?: boolean }
     | { type: 'wait'; ms: number; optional?: boolean }
     | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
+    | { type: 'key'; key: string; optional?: boolean }
     | { type: 'ui_audit'; optional?: boolean }
   >;
 };
 
 const COMPILER_SYSTEM = `
-You are an instruction compiler for a web browser agent.
-You must output a SINGLE JSON object with shape:
-{ "actions": [ ... ] }
+You are an intelligent, visually-aware browser agent.
+You must output a SINGLE JSON object: { "actions": [ ... ] }
 
-Rules:
-- Deterministic and concise.
-- No Google/search unless explicitly requested.
-- Same-site: you may start by opening a target domain if present.
-- Use Arabic labels/text matching when applicable.
-- If the user asks for login/sign-in, use {{SECRET:JOE_LOGIN_EMAIL}} and {{SECRET:JOE_LOGIN_PASSWORD}} for credentials (never invent or expand secrets).
-- If a secret token appears like {{SECRET:...}}, keep it as-is in output (do not expand).
-- If UI_GROUNDING_JSON is provided, prefer selecting targets using (x,y) coordinates from element boxes.
-- If the instruction clearly includes multiple steps (e.g., open + click + login + type), output the full multi-step sequence. Do not output only a single goto unless the user only asked to open a page.
+Goal: Translate user instructions into precise browser actions using the provided UI_GROUNDING_JSON (snapshot of the page).
+
+Smart Detection Rules:
+- If user says "Login" (or "دخول"), look for semantic visual cues: buttons labeled "Sign in", "Log in", "Profile", or icons/Avatars.
+- If a specific text selector fails, fallback to coordinates (x,y) from the grounding data.
+- For YouTube/Social Media: "Sign in" often hides behind an Avatar or "Accounts" menu. Look for \`[aria-label="Account"]\` or similar.
+- Do NOT stop at the first step if the instruction implies a sequence (e.g., "Go to X and Login" -> goto + wait + click).
+
+Output Config:
 - Max 80 actions.
+- Use explicit selectors when confident, otherwise use coordinates or 'text' match.
+- PREFER \`aria-label\` or \`placeholder\` over strict innerText matching for icons/inputs.
 
-Allowed action types:
-- {"type":"goto","url":"https://example.com"}
-- {"type":"click","text":"Start Now"} OR {"type":"click","role":"button","name":"Start Now"} OR {"type":"click","selector":"..."} OR {"type":"click","x":120,"y":240}
-- {"type":"hover","text":"Menu"} OR {"type":"hover","selector":"..."} OR {"type":"hover","x":120,"y":240}
-- {"type":"type","selector":"...","text":"..."} OR {"type":"type","role":"textbox","name":"Email","text":"..."} OR {"type":"type","x":120,"y":240,"text":"..."}
-- {"type":"scroll","direction":"down","amount":800}
-- {"type":"wait","ms":1000}
-- {"type":"assert","text":"..."} OR {"type":"assert","selector":"..."}
-- {"type":"ui_audit"}
+Action Types:
+- {"type":"goto","url":"..."}
+- {"type":"click","text":"..."} OR {"type":"click","selector":"..."} OR {"type":"click","x":123,"y":456}
+- {"type":"type","text":"...", "selector":"..."} (Always use selector/x,y if possible for inputs)
+- {"type":"scroll","direction":"down","amount":500}
+- {"type":"wait","ms":2000} (Use generous waits for complex apps like YouTube)
+- {"type":"ui_audit"} (If lost or page changed drastically)
+- {"type":"key","key":"Enter"}
 `;
 
 function extractJsonLike(text: string) {
@@ -157,6 +158,11 @@ async function collectUiGroundingSnapshot(sessionId: string) {
             '[role="textbox"]',
             '[contenteditable="true"]',
             '[tabindex]',
+            '[class*="btn"]',
+            '[class*="button"]',
+            '[id*="login"]',
+            '[id*="signin"]',
+            '[aria-label]',
             'label',
             'summary',
             'h1,h2,h3,h4,h5,h6,p,li,span',
@@ -219,7 +225,7 @@ async function collectUiGroundingSnapshot(sessionId: string) {
         dpr: window.devicePixelRatio || 1,
       };
 
-      return { viewport, elements: elements.slice(0, 180) };
+      return { viewport, elements: elements.slice(0, 400) };
     });
 
     const els = Array.isArray(raw?.elements) ? raw.elements : [];
@@ -248,7 +254,7 @@ async function collectUiGroundingSnapshot(sessionId: string) {
       };
     });
 
-    const boxes = elements.slice(0, 160).map((e: any) => ({
+    const boxes = elements.slice(0, 350).map((e: any) => ({
       x: e.rect.x,
       y: e.rect.y,
       width: e.rect.width,
