@@ -2694,7 +2694,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             type: 'step_started',
             data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
           });
-          const result = await executeTool(plan?.name || '', (plan as any)?.input);
+          const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId });
           ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
           if (useMock) store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
           else await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
@@ -2714,7 +2714,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
           if (autoAll || (auto && safe)) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
-            const result = await executeTool(plan?.name || '', plan?.input);
+            const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
             ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
             if (result.artifacts) {
               for (const a of result.artifacts) {
@@ -2741,7 +2741,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
           if (autoAll || (auto && safe)) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
-            const result = await executeTool(plan?.name || '', plan?.input);
+            const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
             ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
             await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
             ev({ type: 'run_finished', data: { runId, ok: result.ok } });
@@ -2859,7 +2859,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
     const callInput =
       userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
-    const result = await executeTool(plan?.name || '', callInput);
+    const result = await executeTool(plan?.name || '', callInput, { sessionId });
     lastExecutedToolSig = `${String(plan?.name || '')}:${JSON.stringify((plan as any)?.input || {})}`;
     lastExecutedToolName = String(plan?.name || '');
     if (result?.ok && plan?.name === 'browser_open') {
