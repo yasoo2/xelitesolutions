@@ -22,6 +22,8 @@ import { PerformanceAnalyzerTool } from './definitions/PerformanceAnalyzerTool';
 import { GitHubRepoManagerTool } from './definitions/GitHubRepoManagerTool';
 import { GitHubPRTool } from './definitions/GitHubPRTool';
 import { GitHubActionsTool } from './definitions/GitHubActionsTool';
+import { CacheManagerTool } from './definitions/CacheManagerTool';
+import { LLMCacheTool } from './definitions/LLMCacheTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -121,6 +123,8 @@ export const tools: ToolDefinition[] = [
   new GitHubRepoManagerTool(),
   new GitHubPRTool(),
   new GitHubActionsTool(),
+  new CacheManagerTool(),
+  new LLMCacheTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
