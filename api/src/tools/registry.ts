@@ -24,6 +24,9 @@ import { GitHubPRTool } from './definitions/GitHubPRTool';
 import { GitHubActionsTool } from './definitions/GitHubActionsTool';
 import { CacheManagerTool } from './definitions/CacheManagerTool';
 import { LLMCacheTool } from './definitions/LLMCacheTool';
+import { MonitoringTool } from './definitions/MonitoringTool';
+import { ErrorRecoveryTool } from './definitions/ErrorRecoveryTool';
+import { PythonBuilderTool } from './definitions/PythonBuilderTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -125,6 +128,9 @@ export const tools: ToolDefinition[] = [
   new GitHubActionsTool(),
   new CacheManagerTool(),
   new LLMCacheTool(),
+  new MonitoringTool(),
+  new ErrorRecoveryTool(),
+  new PythonBuilderTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
