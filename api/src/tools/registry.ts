@@ -11,6 +11,8 @@ import { ArchitectTool } from './definitions/ArchitectTool';
 import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 import { CentralAnswerTool } from './definitions/CentralAnswerTool';
 import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
+import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
+import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -99,6 +101,8 @@ export const tools: ToolDefinition[] = [
   new EchoTool(),
   new CentralAnswerTool(),
   new RequestAnalyzerTool(),
+  new ProjectPlannerTool(),
+  new PhaseExecutorTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
