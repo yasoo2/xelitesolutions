@@ -173,7 +173,24 @@ async function createSession(sessionId: string) {
   const viewport = getBrowserViewport();
 
   let browser: Browser;
-  const wsEndpoint = process.env.BROWSER_WS_ENDPOINT || '';
+  /* MODIFIED: Logging and Fallback */
+  let wsEndpoint = process.env.BROWSER_WS_ENDPOINT || '';
+
+  try {
+    const logPath = path.join(__dirname, '../stream_debug.log');
+    fs.appendFileSync(logPath, `[createSession] Env WS: '${wsEndpoint}'\n`);
+  } catch (e) { }
+
+  if (!wsEndpoint) {
+    // Fallback for Docker environment if env var is missing
+    console.warn('⚠️ BROWSER_WS_ENDPOINT missing, defaulting to ws://browser-worker:5050/ws');
+    wsEndpoint = 'ws://browser-worker:5050/ws';
+    try {
+      const logPath = path.join(__dirname, '../stream_debug.log');
+      fs.appendFileSync(logPath, `[createSession] Using Fallback WS: '${wsEndpoint}'\n`);
+    } catch (e) { }
+  }
+
   const apiKey = process.env.WORKER_API_KEY || '';
 
   if (wsEndpoint) {
@@ -295,6 +312,14 @@ export function startStreaming(sessionId: string) {
         waitForLock: false,
         mask: s.maskLocators.length ? s.maskLocators : undefined,
       });
+
+      // DEBUG LOGGING
+      try {
+        const logPath = path.join(__dirname, '../stream_debug.log');
+        const msg = `[${new Date().toISOString()}] SID=${sid} Streaming Loop. Buf? ${!!buf} Len=${buf?.length}\n`;
+        fs.appendFileSync(logPath, msg);
+      } catch (e) { }
+
       if (!buf) return;
       broadcastBrowserEvent(sid, {
         type: 'stream_frame',

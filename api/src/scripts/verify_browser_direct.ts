@@ -28,9 +28,6 @@ async function verify() {
         try {
             // Scroll down
             await page.mouse.wheel(0, 500);
-            // We can't easily verify the scroll visual effect headlessly without screenshot analysis, 
-            // but if the command doesn't throw, the worker accepted it.
-            // We can check window.scrollY
             await page.waitForTimeout(500);
             const scrollY = await page.evaluate(() => window.scrollY);
             console.log(`✅ Scroll command executed. Window.scrollY: ${scrollY}`);
@@ -38,8 +35,13 @@ async function verify() {
             if (scrollY === 0) {
                 console.warn('⚠️ Warning: Page did not scroll (scrollY is 0). Might be page behavior or content size.');
             }
+
+            console.log('📸 Testing Screenshot...');
+            const buffer = await page.screenshot({ type: 'jpeg', quality: 50 });
+            console.log(`✅ Screenshot captured! Size: ${buffer.length} bytes`);
+
         } catch (e) {
-            console.error('❌ Scroll Action Failed:', e);
+            console.error('❌ Scroll/Screenshot Failed:', e);
         }
 
         await browser.close();
