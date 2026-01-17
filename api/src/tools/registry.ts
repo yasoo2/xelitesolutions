@@ -3913,16 +3913,46 @@ function checkToolRateLimit(bucketKey: string, limitPerMinute: number) {
   return { allowed: true as const };
 }
 
-export async function executeTool(name: string, input: any): Promise<ToolExecutionResult> {
+export async function executeTool(name: string, input: any, context?: any): Promise<ToolExecutionResult> {
   const logs: string[] = [];
   const t0 = Date.now();
-  logs.push(`[${new Date().toISOString()}] start ${name}`);
+  let effectiveName = name;
+  let effectiveInput = { ...input };
+
+  // --- Aliasing & Compatibility Layer ---
+  if (name === 'browser_open') {
+    effectiveName = 'browser_run';
+    const url = effectiveInput.url || effectiveInput.input || '';
+    if (url) {
+      if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
+      effectiveInput.actions.unshift({ type: 'goto', url });
+    }
+    // inject sessionId if missing
+    if (!effectiveInput.sessionId && context?.sessionId) effectiveInput.sessionId = context.sessionId;
+  }
+  if (name === 'browser_get_state') {
+    effectiveName = 'browser_run';
+    // No specific actions needed, browser_run fetches state by default at end
+    if (!effectiveInput.sessionId && context?.sessionId) effectiveInput.sessionId = context.sessionId;
+  }
+  if (effectiveName === 'browser_run' && !effectiveInput.sessionId && context?.sessionId) {
+    effectiveInput.sessionId = context.sessionId;
+  }
+  if (effectiveName === 'visual_qa' && !effectiveInput.sessionId && context?.sessionId) {
+    effectiveInput.sessionId = context.sessionId;
+  }
+  if (effectiveName === 'codebase_navigator' && !effectiveInput.sessionId && context?.sessionId) {
+    effectiveInput.sessionId = context.sessionId;
+  }
+
+  logs.push(`[${new Date().toISOString()}] start ${effectiveName} (orig=${name})`);
   try {
-    const tDef = tools.find(t => t.name === name);
+    const tDef = tools.find(t => t.name === effectiveName);
     if (!tDef) {
       return { ok: false, error: 'unknown_tool', logs };
     }
-    const bucketKey = rateLimitBucketKey(name, input);
+    // Update bucket key to use effective name
+    const bucketKey = rateLimitBucketKey(effectiveName, effectiveInput);
     const rl = checkToolRateLimit(bucketKey, tDef.rateLimitPerMinute);
     if (!rl.allowed) {
       logs.push(
