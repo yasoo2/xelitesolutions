@@ -9,6 +9,7 @@ import { ImageGenerationTool } from './definitions/ImageGenerationTool';
 import { CodebaseNavigatorTool } from './definitions/CodebaseNavigatorTool';
 import { ArchitectTool } from './definitions/ArchitectTool';
 import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
+import { CentralAnswerTool } from './definitions/CentralAnswerTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -95,6 +96,7 @@ export const tools: ToolDefinition[] = [
   new NpmManagerTool(),
   new ScaffoldProjectTool(),
   new EchoTool(),
+  new CentralAnswerTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
