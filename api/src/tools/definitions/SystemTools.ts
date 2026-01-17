@@ -26,6 +26,7 @@ function resolveToolPath(p: string) {
 
 export class EchoTool extends BaseTool {
     name = 'echo';
+    description = 'Return the input text (ping/pong).';
     version = '1.0.0';
     tags = ['utility', 'string'];
     inputSchema = { type: 'object' as const, properties: { text: { type: 'string' } }, required: ['text'] };
@@ -39,6 +40,7 @@ export class EchoTool extends BaseTool {
 
 export class FileEditTool extends BaseTool {
     name = 'file_edit';
+    description = 'Replace text in a file.';
     version = '1.0.0';
     tags = ['fs', 'edit', 'write'];
     inputSchema = {
@@ -78,6 +80,7 @@ export class FileEditTool extends BaseTool {
 
 export class GrepSearchTool extends BaseTool {
     name = 'grep_search';
+    description = 'Search for text patterns in files using grep.';
     version = '1.0.0';
     tags = ['fs', 'search', 'read'];
     inputSchema = {
@@ -136,6 +139,7 @@ export class GrepSearchTool extends BaseTool {
 
 export class NpmManagerTool extends BaseTool {
     name = 'npm_manager';
+    description = 'Manage npm dependencies and run scripts.';
     version = '1.0.0';
     tags = ['npm', 'package', 'install'];
     inputSchema = {
@@ -180,6 +184,7 @@ export class NpmManagerTool extends BaseTool {
 
 export class ScaffoldProjectTool extends BaseTool {
     name = 'scaffold_project';
+    description = 'Scaffold a project structure from a definition object.';
     version = '1.0.0';
     tags = ['scaffold', 'fs', 'generate'];
     inputSchema = {
@@ -222,6 +227,7 @@ export class ScaffoldProjectTool extends BaseTool {
 
 export class ShellExecuteTool extends BaseTool {
     name = 'shell_execute';
+    description = 'Execute shell commands with persistent CWD state.';
     version = '1.0.0';
     tags = ['shell', 'execute', 'terminal'];
     inputSchema = {

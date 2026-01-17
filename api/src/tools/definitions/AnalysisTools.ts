@@ -4,7 +4,7 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import { Analyst } from '../../system/Analyst';
-import { OpenAI } from 'openai'; // Peer dep, or import dynamic? Copy logic from registry
+// import { OpenAI } from 'openai'; // Peer dep, or import dynamic? Copy logic from registry
 
 // Helper reuse
 function repoRoot() {
@@ -23,6 +23,7 @@ function resolveToolPath(p: string) {
 
 export class AnalyzeProjectTool extends BaseTool {
     name = 'analyze_project';
+    description = 'Analyze the project structure and architectural components.';
     version = '1.0.0';
     tags = ['analysis', 'structure', 'architect'];
     inputSchema = { type: 'object' as const, properties: { path: { type: 'string' } }, required: [] };
@@ -42,6 +43,7 @@ export class AnalyzeProjectTool extends BaseTool {
 
 export class AnalyzeCodebaseTool extends BaseTool {
     name = 'analyze_codebase';
+    description = 'Deep analyze of codebase using file structure and LLM summarization.';
     version = '1.0.0';
     tags = ['analysis', 'fs', 'llm'];
     inputSchema = { type: 'object' as const, properties: { path: { type: 'string' } }, required: [] };

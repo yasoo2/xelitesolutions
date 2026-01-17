@@ -50,7 +50,7 @@ export function checkToolRateLimit(bucketKey: string, limitPerMinute: number): {
 export const tools: ToolDefinition[] = [
   // --- Core Browser & Agent ---
   new BrowserRunTool(),
-  new VisualQATool(),
+  VisualQATool,
   MemoryTool,
   ArchitectTool,
 
@@ -98,8 +98,8 @@ export const tools: ToolDefinition[] = [
 
   // --- Automation ---
   new TaskLoopTool(),
-  new BulkFileGeneratorTool(),
-  new CodebaseNavigatorTool() as any, // Cast due to internal definition mismatch if needed
+  BulkFileGeneratorTool,
+  CodebaseNavigatorTool as any, // Cast due to internal definition mismatch if needed
 
   // --- Analysis ---
   new AnalyzeProjectTool(),

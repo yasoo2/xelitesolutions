@@ -12,6 +12,7 @@ const execAsync = util.promisify(exec);
 
 export class GitOpsTool extends BaseTool {
     name = 'git_ops';
+    description = 'Perform git operations (commit, push, pull, etc) with auto-authentication.';
     version = '1.0.0';
     tags = ['git', 'vcs', 'source-control'];
     inputSchema = {
@@ -24,7 +25,7 @@ export class GitOpsTool extends BaseTool {
         },
         required: ['operation']
     };
-    // No specific output schema in registry, generic
+    outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
     permissions: ToolPermission[] = ['execute', 'internet', 'read', 'write'];
     sideEffects: ToolPermission[] = ['execute', 'write', 'internet'];
     rateLimitPerMinute = 30;
@@ -48,7 +49,7 @@ export class GitOpsTool extends BaseTool {
                 }
             }
 
-            const env: Record<string, string> = { ...process.env };
+            const env: any = { ...process.env };
 
             // Handle Authentication via ASKPASS
             const wantsAuth = ['push', 'fetch', 'pull', 'clone'].includes(op);
@@ -94,6 +95,7 @@ export class GitOpsTool extends BaseTool {
 
 export class GitHubRepoCreateTool extends BaseTool {
     name = 'github_repo_create';
+    description = 'Create a new GitHub repository via API.';
     version = '1.0.0';
     tags = ['github', 'api', 'create'];
     inputSchema = {
@@ -101,6 +103,7 @@ export class GitHubRepoCreateTool extends BaseTool {
         properties: { name: { type: 'string' }, description: { type: 'string' }, private: { type: 'boolean' } },
         required: ['name']
     };
+    outputSchema = { type: 'object' as const, properties: { htmlUrl: { type: 'string' }, cloneUrl: { type: 'string' } } };
     permissions: ToolPermission[] = ['internet'];
     sideEffects: ToolPermission[] = ['internet'];
     rateLimitPerMinute = 5;

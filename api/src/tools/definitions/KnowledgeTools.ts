@@ -5,6 +5,7 @@ import { KnowledgeService } from '../../services/knowledge';
 
 export class KnowledgeSearchTool extends BaseTool {
     name = 'knowledge_search';
+    description = 'Search the knowledge base using vector similarity.';
     version = '1.0.0';
     tags = ['knowledge', 'search', 'rag'];
     inputSchema = { type: 'object' as const, properties: { query: { type: 'string' } }, required: ['query'] };
@@ -33,6 +34,7 @@ export class KnowledgeSearchTool extends BaseTool {
 
 export class KnowledgeAddTool extends BaseTool {
     name = 'knowledge_add';
+    description = 'Add a document to the knowledge base.';
     version = '1.0.0';
     tags = ['knowledge', 'add', 'rag'];
     inputSchema = {

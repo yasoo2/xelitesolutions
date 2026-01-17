@@ -3,10 +3,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { Readability } from '@mozilla/readability';
-import Parser from 'rss-parser'; // Need to check if this is installed/used, likely fetch+xml
-// Registry used custom rss logic or library? Let's check registry.
-// Registry uses 'HttpFetch' logic or fetch directly.
-// Let's implement HttpFetchTool and HtmlExtractTool.
+// import Parser from 'rss-parser'; // Removed: not in package.json, usage is dynamic below
 
 function createDom(rawHtml: string, url?: string) {
     const vc = new VirtualConsole();
@@ -16,6 +13,7 @@ function createDom(rawHtml: string, url?: string) {
 
 export class HttpFetchTool extends BaseTool {
     name = 'http_fetch';
+    description = 'Fetch the content of a URL via HTTP GET.';
     version = '1.0.0';
     tags = ['network', 'http'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' } }, required: ['url'] };
@@ -44,6 +42,7 @@ export class HttpFetchTool extends BaseTool {
 
 export class HtmlExtractTool extends BaseTool {
     name = 'html_extract';
+    description = 'Extract metadata, text, and structure from HTML content.';
     version = '1.0.0';
     tags = ['network', 'html', 'extract'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' }, render: { type: 'boolean' } }, required: ['url'] };
@@ -93,6 +92,7 @@ export class HtmlExtractTool extends BaseTool {
 
 export class RssFetchTool extends BaseTool {
     name = 'rss_fetch';
+    description = 'Fetch and parse an RSS feed.';
     version = '1.0.0';
     tags = ['network', 'rss'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' }, limit: { type: 'number' } }, required: ['url'] };
@@ -101,20 +101,14 @@ export class RssFetchTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {
-        // Reuse rss-parser if available, or simple match
-        // Registry implementation was missing in snippet view but likely simple xml parse
-        // I'll implement basic robust fetch
         const url = String(input?.url || '');
         const limit = Number(input?.limit || 10);
         try {
+            // @ts-ignore
             const Parser = (await import('rss-parser')).default;
-            // Note: If rss-parser isn't installed, this throws. 
-            // Assuming it is if registry used it. If registry used raw regex, I should too.
-            // Let's assume safe regex backup if parser fails? 
-            // Actually, I'll attempt dynamic import.
             const parser = new Parser();
             const feed = await parser.parseURL(url);
-            const items = (feed.items || []).slice(0, limit).map(i => ({
+            const items = (feed.items || []).slice(0, limit).map((i: any) => ({
                 title: i.title,
                 link: i.link,
                 pubDate: i.pubDate,
@@ -129,6 +123,7 @@ export class RssFetchTool extends BaseTool {
 
 export class JsonQueryTool extends BaseTool {
     name = 'json_query';
+    description = 'Query a specific value from a JSON object using dot notation path.';
     version = '1.0.0';
     tags = ['data', 'json'];
     inputSchema = { type: 'object' as const, properties: { json: { type: 'object' }, path: { type: 'string' } }, required: ['json', 'path'] };
@@ -137,14 +132,11 @@ export class JsonQueryTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {
-        // Simple dot notation access
         const data = input.json;
         const pathStr = String(input.path || '');
         if (!data) return { ok: false, error: 'json required', logs: [] };
 
         try {
-            // Quick implementation of getting logical path
-            // e.g. "users.0.name"
             const parts = pathStr.split('.').filter(Boolean);
             let current = data;
             for (const p of parts) {
