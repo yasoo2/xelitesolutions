@@ -16,6 +16,9 @@ import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
 import { AutoTesterTool } from './definitions/AutoTesterTool';
 import { TemplateManagerTool } from './definitions/TemplateManagerTool';
+import { CodeReviewerTool } from './definitions/CodeReviewerTool';
+import { SecurityScannerTool } from './definitions/SecurityScannerTool';
+import { PerformanceAnalyzerTool } from './definitions/PerformanceAnalyzerTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -109,6 +112,9 @@ export const tools: ToolDefinition[] = [
   new ProjectStateManagerTool(),
   new AutoTesterTool(),
   new TemplateManagerTool(),
+  new CodeReviewerTool(),
+  new SecurityScannerTool(),
+  new PerformanceAnalyzerTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
