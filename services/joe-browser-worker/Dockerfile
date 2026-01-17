@@ -2,14 +2,11 @@ FROM node:20-bookworm
 
 WORKDIR /app
 
-# Install dependencies for Playwright
-RUN npm install -g playwright
-
-# Install system dependencies
-RUN npx playwright install --with-deps chromium
-
 COPY package*.json ./
 RUN npm install
+
+# Install system dependencies and Chromium matching the local package version
+RUN npx playwright install --with-deps chromium
 
 COPY . .
 
