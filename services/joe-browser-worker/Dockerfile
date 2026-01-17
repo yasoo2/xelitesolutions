@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm install
 
 # Install system dependencies and Chromium matching the local package version
-RUN npx playwright install --with-deps chromium
+RUN npx playwright install --with-deps chromium chromium-headless-shell
 
 COPY . .
 
