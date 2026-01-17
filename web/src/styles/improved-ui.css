@@ -14,6 +14,7 @@
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -25,6 +26,7 @@
     opacity: 0;
     transform: translateY(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -36,6 +38,7 @@
     opacity: 0;
     transform: translateX(-30px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -47,6 +50,7 @@
     opacity: 0;
     transform: translateX(30px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -54,9 +58,12 @@
 }
 
 @keyframes pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 20px rgba(var(--accent-primary-rgb), 0.5);
   }
+
   50% {
     box-shadow: 0 0 40px rgba(var(--accent-primary-rgb), 0.8);
   }
@@ -66,15 +73,19 @@
   0% {
     background-position: -1000px 0;
   }
+
   100% {
     background-position: 1000px 0;
   }
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-10px);
   }
@@ -85,9 +96,11 @@
     opacity: 0;
     transform: scale(0.3);
   }
+
   50% {
     opacity: 1;
   }
+
   100% {
     transform: scale(1);
   }
@@ -263,12 +276,10 @@
 
 .loading {
   animation: shimmer 2s infinite;
-  background: linear-gradient(
-    90deg,
-    #1e293b 0%,
-    #334155 50%,
-    #1e293b 100%
-  );
+  background: linear-gradient(90deg,
+      #1e293b 0%,
+      #334155 50%,
+      #1e293b 100%);
   background-size: 1000px 100%;
 }
 
@@ -474,6 +485,7 @@
    ============================================ */
 
 @media print {
+
   .sidebar,
   .modal-overlay,
   .tooltip {
