@@ -140,7 +140,7 @@ export default function Joe() {
   const makeBrowserSessionId = useCallback(
     (kind: 'agent' | 'chat') => {
       const base = kind === 'agent' ? String(agentSelected || '').trim() : String(selected || '').trim();
-      if (base) return `browser:${base}`;
+      if (base) return base;
       return `browser:${kind}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     },
     [agentSelected, selected],
@@ -156,7 +156,7 @@ export default function Joe() {
     if (mode !== 'agent') return;
     const base = String(agentSelected || '').trim();
     if (!base) return;
-    const desired = `browser:${base}`;
+    const desired = base;
     if (agentBrowserSessionId === desired) return;
     setAgentBrowserSessionId(desired);
   }, [mode, agentSelected, agentBrowserSessionId]);
