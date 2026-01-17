@@ -140,7 +140,8 @@ export async function executeTool(name: string, input: any, context?: any): Prom
     if (url) {
       effectiveInput.actions.unshift({ type: 'goto', url });
     } else if (effectiveInput.actions.length === 0) {
-      effectiveInput.actions.push({ type: 'ui_audit' });
+      // Default to Google if just "Opening Browser" to avoid getting stuck on about:blank
+      effectiveInput.actions.push({ type: 'goto', url: 'https://www.google.com' });
     }
   }
   if (name === 'browser_get_state') {
