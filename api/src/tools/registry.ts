@@ -13,6 +13,7 @@ import { CentralAnswerTool } from './definitions/CentralAnswerTool';
 import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
+import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -103,6 +104,7 @@ export const tools: ToolDefinition[] = [
   new RequestAnalyzerTool(),
   new ProjectPlannerTool(),
   new PhaseExecutorTool(),
+  new ProjectStateManagerTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
