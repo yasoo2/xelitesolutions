@@ -23,7 +23,11 @@ export class RequestAnalyzerTool implements ToolDefinition {
                 description: 'Optional context (session info, previous messages, etc.)',
                 properties: {
                     sessionId: { type: 'string' as const },
-                    previousMessages: { type: 'array' as const }
+                    previousMessages: {
+                        type: 'array' as const,
+                        items: { type: 'object' as const },
+                        description: 'Previous conversation messages'
+                    }
                 }
             }
         },
