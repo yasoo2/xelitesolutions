@@ -3968,7 +3968,7 @@ export async function executeTool(name: string, input: any, context?: any): Prom
       return { ok: false, error: 'rate_limited', output: { retryAfterMs: rl.retryAfterMs }, logs };
     }
     if (tDef && typeof (tDef as any).execute === 'function') {
-      const res = await (tDef as any).execute(input);
+      const res = await (tDef as any).execute(effectiveInput);
       const ok = !!res?.ok;
       const output = res?.output ?? null;
       const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
