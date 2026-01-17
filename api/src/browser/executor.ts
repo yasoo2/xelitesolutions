@@ -416,6 +416,15 @@ export async function executePlannedActions(params: {
           const amount = Math.max(120, Math.min(2400, Number(a?.amount || 800)));
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+
+          // Center mouse first to ensure we scroll the main view
+          try {
+            const vp = page.viewportSize();
+            if (vp) {
+              await page.mouse.move(vp.width / 2, vp.height / 2);
+            }
+          } catch { }
+
           await page.mouse.wheel(0, direction === 'down' ? amount : -amount);
           await page.waitForTimeout(250);
           const after = await screenshotJpegBase64(page);
