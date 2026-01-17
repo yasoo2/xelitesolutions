@@ -1,0 +1,314 @@
+
+import { BaseTool } from '../base';
+import { ToolPermission } from '../types';
+import path from 'path';
+import fs from 'fs';
+import { exec } from 'child_process';
+import util from 'util';
+
+const execAsync = util.promisify(exec);
+
+// Helper
+function repoRoot() {
+    const cwd = process.cwd();
+    return path.basename(cwd) === 'api' ? path.resolve(cwd, '..') : cwd;
+}
+
+function resolveToolPath(p: string) {
+    const root = repoRoot();
+    const val = String(p ?? '').trim();
+    if (!val || val === '.') return root;
+    if (path.isAbsolute(val)) return val;
+    const fromCwd = path.resolve(process.cwd(), val);
+    if (fs.existsSync(fromCwd)) return fromCwd;
+    return path.resolve(root, val);
+}
+
+export class EchoTool extends BaseTool {
+    name = 'echo';
+    version = '1.0.0';
+    tags = ['utility', 'string'];
+    inputSchema = { type: 'object' as const, properties: { text: { type: 'string' } }, required: ['text'] };
+    outputSchema = { type: 'object' as const, properties: { text: { type: 'string' } } };
+    permissions: ToolPermission[] = [];
+    sideEffects: ToolPermission[] = [];
+    rateLimitPerMinute = 120;
+    auditFields = ['text'];
+    async execute(input: any) { return { ok: true, output: { text: input.text }, logs: [] }; }
+}
+
+export class FileEditTool extends BaseTool {
+    name = 'file_edit';
+    version = '1.0.0';
+    tags = ['fs', 'edit', 'write'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            filename: { type: 'string' },
+            find: { type: 'string' },
+            replace: { type: 'string' }
+        },
+        required: ['filename', 'find', 'replace']
+    };
+    outputSchema = { type: 'object' as const, properties: { success: { type: 'boolean' } } };
+    permissions: ToolPermission[] = ['write', 'read'];
+    sideEffects: ToolPermission[] = ['write'];
+    rateLimitPerMinute = 60;
+    auditFields = ['filename'];
+
+    async execute(input: any) {
+        const logs: string[] = [];
+        const filename = String(input?.filename ?? '');
+        const find = String(input?.find ?? '');
+        const replace = String(input?.replace ?? '');
+        const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+
+        if (!fs.existsSync(full)) return { ok: false, error: 'File not found', logs };
+
+        let content = fs.readFileSync(full, 'utf-8');
+        if (!content.includes(find)) {
+            return { ok: false, error: 'Text to replace not found', logs };
+        }
+        content = content.replace(find, replace);
+        fs.writeFileSync(full, content);
+        logs.push(`edit=${filename}`);
+        return { ok: true, output: { success: true }, logs };
+    }
+}
+
+export class GrepSearchTool extends BaseTool {
+    name = 'grep_search';
+    version = '1.0.0';
+    tags = ['fs', 'search', 'read'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            query: { type: 'string' },
+            path: { type: 'string' },
+            include: { type: 'string' },
+            exclude: { type: 'string' }
+        },
+        required: ['query']
+    };
+    outputSchema = { type: 'object' as const, properties: { matches: { type: 'array' }, count: { type: 'number' } } };
+    permissions: ToolPermission[] = ['read', 'execute']; // Execute because it runs grep
+    sideEffects: ToolPermission[] = [];
+    rateLimitPerMinute = 60;
+    auditFields = ['query', 'path'];
+
+    async execute(input: any) {
+        const logs: string[] = [];
+        const query = String(input?.query ?? '');
+        const searchPath = String(input?.path ?? '.');
+        const include = String(input?.include ?? '');
+        const exclude = String(input?.exclude ?? '');
+
+        const root = repoRoot();
+        const workDir = path.isAbsolute(searchPath) ? searchPath : path.resolve(root, searchPath);
+
+        // Escape quotes
+        let cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${workDir}"`;
+
+        if (include) {
+            cmd += ` --include="${include}"`;
+        }
+        if (exclude) {
+            cmd += ` --exclude-dir="${exclude}"`;
+        } else {
+            cmd += ` --exclude-dir="node_modules" --exclude-dir=".git" --exclude-dir="dist" --exclude-dir="build"`;
+        }
+
+        logs.push(`grep.cmd=${cmd}`);
+        try {
+            const { stdout } = await execAsync(cmd, { maxBuffer: 1024 * 1024 * 5 });
+            const lines = stdout.split('\n').filter(Boolean).slice(0, 100);
+            return { ok: true, output: { matches: lines, count: lines.length, truncated: lines.length === 100 }, logs };
+        } catch (err: any) {
+            // grep exit code 1 means no match
+            if (err.code === 1) {
+                return { ok: true, output: { matches: [], count: 0 }, logs };
+            }
+            logs.push(`grep.error=${err.message}`);
+            return { ok: false, error: err.message, logs };
+        }
+    }
+}
+
+export class NpmManagerTool extends BaseTool {
+    name = 'npm_manager';
+    version = '1.0.0';
+    tags = ['npm', 'package', 'install'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' } },
+        required: ['command']
+    };
+    permissions: ToolPermission[] = ['execute', 'write', 'internet'];
+    sideEffects: ToolPermission[] = ['execute', 'write', 'internet'];
+    rateLimitPerMinute = 10;
+
+    async execute(input: any) {
+        const logs: string[] = [];
+        const cmd = String(input?.command);
+        const pkgs = (input?.packages as string[]) || [];
+        const isDev = !!input?.dev;
+
+        try {
+            let fullCmd = `npm ${cmd}`;
+            if (pkgs.length > 0) fullCmd += ` ${pkgs.join(' ')}`;
+            if (isDev && (cmd === 'install' || cmd === 'i')) fullCmd += ' -D';
+
+            logs.push(`npm.cmd=${fullCmd}`);
+            const { stdout } = await execAsync(fullCmd, { cwd: process.cwd() });
+
+            if ((cmd === 'install' || cmd === 'i') && pkgs.length > 0) {
+                const typesToInstall = pkgs.filter(p => !p.startsWith('@types/')).map(p => `@types/${p.split('@')[0]}`);
+                if (typesToInstall.length) {
+                    try {
+                        await execAsync(`npm install -D ${typesToInstall.join(' ')}`, { cwd: process.cwd() });
+                        logs.push(`npm.auto_types=${typesToInstall.join(' ')}`);
+                    } catch { }
+                }
+            }
+
+            return { ok: true, output: { output: stdout }, logs };
+        } catch (e: any) {
+            return { ok: false, error: e.message || e.stderr, logs };
+        }
+    }
+}
+
+export class ScaffoldProjectTool extends BaseTool {
+    name = 'scaffold_project';
+    version = '1.0.0';
+    tags = ['scaffold', 'fs', 'generate'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: { structure: { type: 'object' }, baseDir: { type: 'string' } },
+        required: ['structure']
+    };
+    permissions: ToolPermission[] = ['write'];
+    sideEffects: ToolPermission[] = ['write'];
+
+    async execute(input: any) {
+        const logs: string[] = [];
+        const structure = input?.structure || {};
+        const baseDir = String(input?.baseDir || '.');
+        const resolvedBase = path.isAbsolute(baseDir) ? baseDir : path.resolve(process.cwd(), baseDir);
+        const created: string[] = [];
+        const errors: string[] = [];
+
+        for (const [relativePath, content] of Object.entries(structure)) {
+            const fullPath = path.join(resolvedBase, relativePath);
+            try {
+                if (content === null) {
+                    if (!fs.existsSync(fullPath)) {
+                        fs.mkdirSync(fullPath, { recursive: true });
+                        created.push(`${relativePath}/`);
+                    }
+                } else {
+                    const dir = path.dirname(fullPath);
+                    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                    fs.writeFileSync(fullPath, String(content));
+                    created.push(relativePath);
+                }
+            } catch (e: any) {
+                errors.push(`${relativePath}: ${e.message}`);
+            }
+        }
+        return { ok: errors.length === 0, output: { created, errors }, logs };
+    }
+}
+
+export class ShellExecuteTool extends BaseTool {
+    name = 'shell_execute';
+    version = '1.0.0';
+    tags = ['shell', 'execute', 'terminal'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            command: { type: 'string' },
+            cwd: { type: 'string' },
+            timeout: { type: 'number' },
+            dryRun: { type: 'boolean' }
+        },
+        required: ['command']
+    };
+    outputSchema = { type: 'object' as const, properties: { status: { type: 'string' }, stdout: { type: 'string' }, stderr: { type: 'string' }, exitCode: { type: 'number' } } };
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = ['execute'];
+    rateLimitPerMinute = 20;
+    auditFields = ['command', 'cwd'];
+
+    async execute(input: any) {
+        const startedAt = Date.now();
+        const logs: string[] = [];
+        const command = String(input?.command ?? '');
+        let cwdInput = String(input?.cwd ?? '');
+        const timeoutVal = Number(input?.timeout ?? 30000);
+        const dryRun = !!input?.dryRun;
+
+        const redactCmd = (s: string) => {
+            let out = String(s || '');
+            out = out.replace(/(authorization\s*:\s*bearer\s+)[^\s]+/gi, '$1[REDACTED]');
+            out = out.replace(/(\btoken\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+            out = out.replace(/(\bpassword\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+            out = out.replace(/(\bapi[_-]?key\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+            out = out.replace(/(\bsecret\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
+            out = out.replace(/(\b--token\s+)[^\s]+/gi, '$1[REDACTED]');
+            return out; // Shortened for brevity
+        };
+
+        if (dryRun) {
+            const safeCmd = redactCmd(command);
+            return { ok: true, output: { dryRun: true, status: 'success', command: safeCmd, stdout: `[dry run] ${safeCmd}`, exitCode: 0 }, logs: [`dryRun: ${safeCmd}`] };
+        }
+
+        // Simplistic safety
+        if (command.includes('rm -rf /') || command.includes('sudo')) {
+            const safeCmd = redactCmd(command);
+            logs.push(`exec=${safeCmd} blocked=1`);
+            return { ok: false, error: 'command_not_allowed', logs };
+        }
+
+        // Persistent CWD
+        const stateFile = path.join(process.cwd(), '.joe', 'shell_state.json');
+        if (!cwdInput && fs.existsSync(stateFile)) {
+            try {
+                const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+                if (state.cwd && fs.existsSync(state.cwd)) cwdInput = state.cwd;
+            } catch { }
+        }
+
+        const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(process.cwd(), cwdInput)) : process.cwd();
+
+        try {
+            const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal, maxBuffer: 20 * 1024 * 1024 });
+
+            // Update CWD if cd
+            if (command.trim().startsWith('cd ')) {
+                const target = command.trim().split(/\s+/)[1];
+                if (target) {
+                    const newCwd = path.resolve(workDir, target);
+                    if (fs.existsSync(newCwd)) {
+                        try {
+                            if (!fs.existsSync(path.dirname(stateFile))) fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+                            fs.writeFileSync(stateFile, JSON.stringify({ cwd: newCwd }));
+                            logs.push(`shell.cwd_updated=${newCwd}`);
+                        } catch { }
+                    }
+                }
+            }
+
+            const durationMs = Date.now() - startedAt;
+            logs.push(`exec=${redactCmd(command)} cwd=${workDir} exit=0`);
+            return { ok: true, output: { status: 'success', stdout, stderr, exitCode: 0, cwd: workDir, durationMs }, logs };
+
+        } catch (e: any) {
+            const durationMs = Date.now() - startedAt;
+            const logCmd = redactCmd(command);
+            logs.push(`exec_error=${logCmd} err=${e.message}`);
+            return { ok: false, error: e.message || 'Command failed', output: { status: 'failed', stdout: e.stdout || '', stderr: e.stderr || e.message, exitCode: e.code || 1, cwd: workDir, durationMs }, logs };
+        }
+    }
+}
