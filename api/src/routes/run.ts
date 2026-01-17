@@ -1250,6 +1250,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const newTitle = await generateSessionTitle(messages);
             if (newTitle && newTitle !== 'New Session') {
               await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+              broadcast('sessions:refresh', { sessionId });
             }
           }
         }

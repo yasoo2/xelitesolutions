@@ -804,7 +804,7 @@ export async function generateSessionTitle(messages: { role: string; content: st
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAIClient().chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
       max_tokens: 20,
