@@ -536,6 +536,28 @@ export async function executePlannedActions(params: {
             }
           }
 
+          // Global type (interactive mode, no selector/coords)
+          if (name === 'type' && !a?.selector && !a?.role && !a?.name && !a?.textTarget && (!Number.isFinite(Number(a?.x)) || !Number.isFinite(Number(a?.y)))) {
+            const text = String(a?.text || '');
+            setStreamMask(sessionId, []);
+            const before = await screenshotJpegBase64(page);
+            evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+
+            if (text === '\n') await page.keyboard.press('Enter');
+            else if (text === '\t') await page.keyboard.press('Tab');
+            else if (text === '\b') await page.keyboard.press('Backspace');
+            else await page.keyboard.type(text);
+
+            await page.waitForTimeout(50);
+            const after = await screenshotJpegBase64(page);
+            evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+            results.push({ stepId: sid, name, ok: true });
+            try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+            continue;
+          }
+
           if (name === 'type') {
             const xNum = Number(a?.x);
             const yNum = Number(a?.y);
