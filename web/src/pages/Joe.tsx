@@ -730,6 +730,14 @@ export default function Joe() {
             <button className="new-chat-btn" onClick={createSession} disabled={isCreatingChatSession}>
               <span>+</span> {t('sidebar.newChat', 'New Chat')}
             </button>
+            <button
+              className="action-icon-btn"
+              onClick={deleteAllSessions}
+              style={{ marginLeft: 'auto', marginRight: '8px' }}
+              title={t('sidebar.deleteAll', 'حذف الكل')}
+            >
+              <Trash2 size={18} />
+            </button>
             <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
               <PanelLeftClose size={20} />
             </button>

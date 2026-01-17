@@ -48,7 +48,7 @@ function inferSiteLabel(url: string, dom: string) {
       const host = new URL(u).hostname.replace(/^www\./i, '');
       if (host) return host;
     }
-  } catch {}
+  } catch { }
   const d = String(dom || '');
   if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
   if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
@@ -296,7 +296,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       (key === 'GITHUB_TOKEN' ? 'github' : key === 'HTTP_BEARER_TOKEN' ? 'generic' : 'generic');
     try {
       await setUserSecretEncrypted(String(userId), provider, key, value);
-    } catch {}
+    } catch { }
     if (key === 'LLM_API_KEY') {
       try {
         const { getSessionRunConfig, setSessionRunConfig } = await import('../services/secrets');
@@ -311,7 +311,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           autoApproveAll: Boolean(cur.autoApproveAll),
           autoApproveSafe: Boolean(cur.autoApproveSafe),
         });
-      } catch {}
+      } catch { }
     }
   }
 
@@ -321,7 +321,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   if (useMock) {
     store.updateRun(pending.runId, { status: 'running' as any });
   } else {
-    try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch {}
+    try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch { }
   }
 
   const redactedPendingInput = redactToolInputForStorage(pending.name, pending.input);
@@ -407,10 +407,10 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
         ok: result.ok,
         logs: result.logs,
       });
-    } catch {}
+    } catch { }
     try {
       await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
-    } catch {}
+    } catch { }
   }
 
   const runCfg = getSessionRunConfig(sessionId);
@@ -419,7 +419,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     try {
       const s = await Session.findById(sessionId).select({ kind: 1 }).lean();
       if (s?.kind === 'agent') kind = 'agent';
-    } catch {}
+    } catch { }
   }
 
   const provider = typeof runCfg?.provider === 'string' ? runCfg.provider : undefined;
@@ -446,7 +446,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           const host = new URL(u).hostname.replace(/^www\./i, '');
           if (host) return host;
         }
-      } catch {}
+      } catch { }
       const d = String(dom || '');
       if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
       if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
@@ -522,9 +522,9 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       return docs
         .reverse()
         .map((d: any) => ({ role: d.role as any, content: d.content })) as Array<{
-        role: 'user' | 'assistant' | 'system';
-        content: string | any[];
-      }>;
+          role: 'user' | 'assistant' | 'system';
+          content: string | any[];
+        }>;
     };
 
     const history = await loadHistory();
@@ -537,107 +537,107 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     });
 
     let steps = 0;
-      let lastResult: any = null;
-      let lastToolName = '';
-      let forcedText: string | null = null;
-      let assistantTextEmitted = false;
-      let finalOk = true;
-      const lastUserText = (() => {
-        for (let i = history.length - 1; i >= 0; i--) {
-          const m = history[i];
-          if (m && m.role === 'user') {
-            if (typeof m.content === 'string') return m.content;
-            try { return JSON.stringify(m.content || ''); } catch { return String(m.content || ''); }
-          }
+    let lastResult: any = null;
+    let lastToolName = '';
+    let forcedText: string | null = null;
+    let assistantTextEmitted = false;
+    let finalOk = true;
+    const lastUserText = (() => {
+      for (let i = history.length - 1; i >= 0; i--) {
+        const m = history[i];
+        if (m && m.role === 'user') {
+          if (typeof m.content === 'string') return m.content;
+          try { return JSON.stringify(m.content || ''); } catch { return String(m.content || ''); }
         }
-        return '';
-      })();
-      const isArabicText = (s: any) => /[\u0600-\u06FF]/.test(String(s || ''));
-      const normalizeUrlForGoto = (raw: any) => {
-        let s = String(raw ?? '').trim();
-        s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
-        if (!s) return s;
-        const fixXelite = (url: string) => {
-          const input = String(url || '').trim();
-          if (!input) return input;
-          try {
-            const u = new URL(input);
-            const host = String(u.hostname || '').trim().toLowerCase();
-            const hadWww = /^www\./i.test(host);
-            const hostNoWww = host.replace(/^www\./i, '');
-            const isXeliteLike =
-              (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
-              /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
-            if (!isXeliteLike) return input;
-            const tld = /\.com$/i.test(hostNoWww) ? 'com' : 'co';
-            u.hostname = `${hadWww ? 'www.' : ''}xelitesolutions.${tld}`;
-            return u.toString();
-          } catch {
-            return input;
-          }
-        };
-        if (/^https?:\/\//i.test(s)) return fixXelite(s);
-        if (/^\/\//.test(s)) return `https:${s}`;
-        if (/^\//.test(s)) return s;
-        const candidate = s.replace(/^\/\//, '');
-        const isLocal =
-          /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-          /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-          /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-        const looksDomain =
-          /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
-        if (isLocal) return `http://${candidate}`;
-        if (looksDomain) return fixXelite(`https://${candidate}`);
-        if (/^xelite/i.test(candidate) && /solution/i.test(candidate) && !/\./.test(candidate)) return 'https://xelitesolutions.co';
-        return s;
+      }
+      return '';
+    })();
+    const isArabicText = (s: any) => /[\u0600-\u06FF]/.test(String(s || ''));
+    const normalizeUrlForGoto = (raw: any) => {
+      let s = String(raw ?? '').trim();
+      s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
+      if (!s) return s;
+      const fixXelite = (url: string) => {
+        const input = String(url || '').trim();
+        if (!input) return input;
+        try {
+          const u = new URL(input);
+          const host = String(u.hostname || '').trim().toLowerCase();
+          const hadWww = /^www\./i.test(host);
+          const hostNoWww = host.replace(/^www\./i, '');
+          const isXeliteLike =
+            (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
+            /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
+          if (!isXeliteLike) return input;
+          const tld = /\.com$/i.test(hostNoWww) ? 'com' : 'co';
+          u.hostname = `${hadWww ? 'www.' : ''}xelitesolutions.${tld}`;
+          return u.toString();
+        } catch {
+          return input;
+        }
       };
-      const hostKeyFromHost = (host: string) => {
-        const h = String(host || '').toLowerCase().trim();
-        if (!h) return '';
-        return h.startsWith('www.') ? h.slice(4) : h;
-      };
-      const isSameSiteHost = (targetHost: string, lockHost: string) => {
-        const t = hostKeyFromHost(targetHost);
-        const l = hostKeyFromHost(lockHost);
-        if (!t || !l) return false;
-        if (t === l) return true;
-        return t.endsWith(`.${l}`);
-      };
-      const urlToHost = (u: string) => {
-        try { return new URL(u).hostname || ''; } catch { return ''; }
-      };
-      const urlToOrigin = (u: string) => {
-        try { return new URL(u).origin || ''; } catch { return ''; }
-      };
-      const isCrossSiteBlockedError = (err: any) => {
-        const s = String(err || '');
-        if (!s) return false;
-        if (/cross_site_blocked/i.test(s)) return true;
-        if (/browser navigation blocked/i.test(s)) return true;
-        return false;
-      };
-      let browserHostLock = '';
-      let browserOriginLock = '';
-      const updateBrowserLockFromOutput = (out: any) => {
-        const url = typeof out?.url === 'string' ? out.url : typeof out?.pageUrl === 'string' ? out.pageUrl : '';
-        const host = url ? urlToHost(url) : '';
-        if (host) browserHostLock = hostKeyFromHost(host);
-        const origin = url ? urlToOrigin(url) : '';
-        if (origin) browserOriginLock = origin;
-      };
-      const isStrictSameSiteUiTask = (() => {
-        const s = String(lastUserText || '');
-        if (/strict_same_site_ui/i.test(s)) return true;
-        const strictByDefault = ['1', 'true', 'yes', 'y', 'on'].includes(
-          String(process.env.STRICT_SAME_SITE_UI || '').trim().toLowerCase(),
-        );
-        if (!strictByDefault) return false;
-        const looksLoginOrForm =
-          /(login|log\s*in|sign\s*in|password|email|form|تسجيل\s*الدخول|سجل\s*دخول|كلمة\s*المرور|البريد|نموذج)/i.test(s);
-        const asksSearch =
-          /(google|جوجل|search|ابحث|بحث|lookup|find|duckduck|duck\s*duck)/i.test(s);
-        return Boolean(looksLoginOrForm && !asksSearch);
-      })();
+      if (/^https?:\/\//i.test(s)) return fixXelite(s);
+      if (/^\/\//.test(s)) return `https:${s}`;
+      if (/^\//.test(s)) return s;
+      const candidate = s.replace(/^\/\//, '');
+      const isLocal =
+        /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+        /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+        /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+      const looksDomain =
+        /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
+      if (isLocal) return `http://${candidate}`;
+      if (looksDomain) return fixXelite(`https://${candidate}`);
+      if (/^xelite/i.test(candidate) && /solution/i.test(candidate) && !/\./.test(candidate)) return 'https://xelitesolutions.co';
+      return s;
+    };
+    const hostKeyFromHost = (host: string) => {
+      const h = String(host || '').toLowerCase().trim();
+      if (!h) return '';
+      return h.startsWith('www.') ? h.slice(4) : h;
+    };
+    const isSameSiteHost = (targetHost: string, lockHost: string) => {
+      const t = hostKeyFromHost(targetHost);
+      const l = hostKeyFromHost(lockHost);
+      if (!t || !l) return false;
+      if (t === l) return true;
+      return t.endsWith(`.${l}`);
+    };
+    const urlToHost = (u: string) => {
+      try { return new URL(u).hostname || ''; } catch { return ''; }
+    };
+    const urlToOrigin = (u: string) => {
+      try { return new URL(u).origin || ''; } catch { return ''; }
+    };
+    const isCrossSiteBlockedError = (err: any) => {
+      const s = String(err || '');
+      if (!s) return false;
+      if (/cross_site_blocked/i.test(s)) return true;
+      if (/browser navigation blocked/i.test(s)) return true;
+      return false;
+    };
+    let browserHostLock = '';
+    let browserOriginLock = '';
+    const updateBrowserLockFromOutput = (out: any) => {
+      const url = typeof out?.url === 'string' ? out.url : typeof out?.pageUrl === 'string' ? out.pageUrl : '';
+      const host = url ? urlToHost(url) : '';
+      if (host) browserHostLock = hostKeyFromHost(host);
+      const origin = url ? urlToOrigin(url) : '';
+      if (origin) browserOriginLock = origin;
+    };
+    const isStrictSameSiteUiTask = (() => {
+      const s = String(lastUserText || '');
+      if (/strict_same_site_ui/i.test(s)) return true;
+      const strictByDefault = ['1', 'true', 'yes', 'y', 'on'].includes(
+        String(process.env.STRICT_SAME_SITE_UI || '').trim().toLowerCase(),
+      );
+      if (!strictByDefault) return false;
+      const looksLoginOrForm =
+        /(login|log\s*in|sign\s*in|password|email|form|تسجيل\s*الدخول|سجل\s*دخول|كلمة\s*المرور|البريد|نموذج)/i.test(s);
+      const asksSearch =
+        /(google|جوجل|search|ابحث|بحث|lookup|find|duckduck|duck\s*duck)/i.test(s);
+      return Boolean(looksLoginOrForm && !asksSearch);
+    })();
 
     while (steps < MAX_STEPS) {
       broadcast({ type: 'step_started', runId: pending.runId, data: { name: `thinking_step_${steps + 1}` } });
@@ -713,10 +713,10 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
               const isXelite = /(^|\.)xelitesolutions\.com$/i.test(String(host || ''));
               const fallbackActions = isXelite
                 ? [
-                    { type: 'clickText', text: 'Start Now', exact: false, timeoutMs: 9000, attempts: 3 },
-                    { type: 'waitForLoad', state: 'domcontentloaded' },
-                    { type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' },
-                  ]
+                  { type: 'clickText', text: 'Start Now', exact: false, timeoutMs: 9000, attempts: 3 },
+                  { type: 'waitForLoad', state: 'domcontentloaded' },
+                  { type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' },
+                ]
                 : [{ type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' }];
               plan = { name: 'browser_run', input: { sessionId: sid, actions: fallbackActions } } as any;
             } else if (sid) {
@@ -813,7 +813,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           }
           const ap = await Approval.create({ runId: pending.runId, action: actionText, risk, status: 'pending' });
           broadcast({ type: 'approval_required', runId: pending.runId, data: { id: ap._id.toString(), runId: pending.runId, risk, action: actionText } });
-          try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch { }
           planContext.set(ap._id.toString(), { runId: pending.runId, name: plan?.name || '', input: plan?.input });
           return { blocked: true, approvalId: ap._id.toString() };
         }
@@ -842,7 +842,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
               autoApproveAll: Boolean(cur.autoApproveAll),
               autoApproveSafe: Boolean(cur.autoApproveSafe),
             });
-          } catch {}
+          } catch { }
         }
       }
 
@@ -866,7 +866,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           });
           setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
           if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
-          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch { }
           return { blocked: true, secretRequired: true, secret: { provider: 'generic', key: 'HTTP_BEARER_TOKEN', label: 'Bearer Token' } };
         }
       }
@@ -893,19 +893,19 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
             ok: stepResult.ok,
             logs: stepResult.logs || [],
           });
-        } catch {}
+        } catch { }
       }
 
       const toolCallSummary = `Tool Call: ${plan?.name}\nInput: ${safeOutput(plan?.name || '', persistedInput)}\nOutput: ${safeOutput(
         plan?.name || '',
         stepResult.output || stepResult.error || 'Done'
       )}`;
-        history.push({ role: 'assistant', content: toolCallSummary });
-        lastToolName = String(plan?.name || '');
-        lastResult = stepResult;
-        if (stepResult?.ok && /^browser_/.test(String(plan?.name || ''))) {
-          updateBrowserLockFromOutput((stepResult as any)?.output);
-        }
+      history.push({ role: 'assistant', content: toolCallSummary });
+      lastToolName = String(plan?.name || '');
+      lastResult = stepResult;
+      if (stepResult?.ok && /^browser_/.test(String(plan?.name || ''))) {
+        updateBrowserLockFromOutput((stepResult as any)?.output);
+      }
 
       if (!stepResult.ok) {
         if (isStrictSameSiteUiTask && /^browser_/.test(String(plan?.name || '')) && isCrossSiteBlockedError(stepResult.error)) {
@@ -931,7 +931,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           });
           setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
           if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
-          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch { }
           return { blocked: true, secretRequired: true, secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' } };
         }
         if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
@@ -948,7 +948,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           });
           setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
           if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
-          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch { }
           return { blocked: true, secretRequired: true, secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' } };
         }
         if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
@@ -965,7 +965,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
           });
           setPendingTool(String(sessionId), { runId: pending.runId, name: String(plan?.name || ''), input: plan?.input });
           if (useMock) store.updateRun(pending.runId, { status: 'blocked' as any });
-          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch {}
+          else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'blocked' } }); } catch { }
           return { blocked: true, secretRequired: true, secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' } };
         }
         forcedText = `فشل التنفيذ: ${errorMsg}`;
@@ -981,26 +981,26 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
       }
     }
 
-      const finalContent =
-        forcedText ||
-        (() => {
-          const raw = (lastResult as any)?.output ?? (lastResult as any)?.error ?? 'No output';
-          const sanitized = sanitizeForInline(lastToolName, raw);
-          if (typeof sanitized === 'string') return sanitized;
-          try {
-            return JSON.stringify(sanitized);
-          } catch {
-            return 'Output too large';
-          }
-        })();
+    const finalContent =
+      forcedText ||
+      (() => {
+        const raw = (lastResult as any)?.output ?? (lastResult as any)?.error ?? 'No output';
+        const sanitized = sanitizeForInline(lastToolName, raw);
+        if (typeof sanitized === 'string') return sanitized;
+        try {
+          return JSON.stringify(sanitized);
+        } catch {
+          return 'Output too large';
+        }
+      })();
     if (!assistantTextEmitted) broadcast({ type: 'text', runId: pending.runId, data: finalContent });
 
     if (useMock) {
       store.addMessage(sessionId, 'assistant', finalContent, pending.runId);
       store.updateRun(pending.runId, { status: finalOk ? ('done' as any) : ('failed' as any) });
     } else {
-      try { await Message.create({ sessionId, role: 'assistant', content: finalContent, runId: pending.runId }); } catch {}
-      try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: finalOk ? 'done' : 'failed' } }); } catch {}
+      try { await Message.create({ sessionId, role: 'assistant', content: finalContent, runId: pending.runId }); } catch { }
+      try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: finalOk ? 'done' : 'failed' } }); } catch { }
     }
     broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: finalOk } });
     return { done: true, ok: finalOk };
@@ -1008,7 +1008,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
 
   if (!result.ok) {
     if (useMock) store.updateRun(pending.runId, { status: 'failed' as any });
-    else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'failed' } }); } catch {}
+    else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'failed' } }); } catch { }
     broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: false } });
     return res.json({ ok: true, resumed: true, result });
   }
@@ -1021,7 +1021,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
     } catch (e: any) {
       const msg = safeErrorMessage(e);
       if (useMock) store.updateRun(pending.runId, { status: 'failed' as any });
-      else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'failed' } }); } catch {}
+      else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'failed' } }); } catch { }
       broadcast({ type: 'text', runId: pending.runId, data: `❌ توقف الاستكمال بعد التوكن: ${msg}` });
       broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: false } });
       return res.json({ ok: true, resumed: true, continued: false, error: msg });
@@ -1029,7 +1029,7 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
   }
 
   if (useMock) store.updateRun(pending.runId, { status: 'done' as any });
-  else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'done' } }); } catch {}
+  else try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'done' } }); } catch { }
   broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: true } });
   return res.json({ ok: true, resumed: true, result });
 });
@@ -1038,13 +1038,13 @@ router.post('/:id/secrets', authenticate as any, async (req: Request, res: Respo
 router.get('/:id/messages', authenticate as any, async (req: Request, res: Response) => {
   const { id } = req.params;
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
-  
+
   try {
     if (useMock) {
       const messages = store.listMessages(id).filter(m => m.role !== 'system');
       return res.json({ messages });
     }
-    
+
     const messages = await Message.find({ sessionId: id, role: { $ne: 'system' } }).sort({ createdAt: 1 }).lean();
     res.json({ messages });
   } catch (e) {
@@ -1064,33 +1064,33 @@ router.get('/:id/context', authenticate as any, async (req: Request, res: Respon
     let memories: any[] = [];
 
     if (useMock) {
-        summary = store.getSummary(id)?.content || '';
-        recentMessages = store.listMessages(id).filter(m => m.role !== 'system').slice(-10);
+      summary = store.getSummary(id)?.content || '';
+      recentMessages = store.listMessages(id).filter(m => m.role !== 'system').slice(-10);
     } else {
-        const sumDoc = await Summary.findOne({ sessionId: id });
-        summary = sumDoc?.content || '';
-        
-        recentMessages = await Message.find({ sessionId: id, role: { $ne: 'system' } })
-            .sort({ createdAt: -1 })
-            .limit(10)
-            .lean();
-        // reverse to show in order
-        recentMessages.reverse();
+      const sumDoc = await Summary.findOne({ sessionId: id });
+      summary = sumDoc?.content || '';
 
-        if (userId) {
-            memories = await MemoryItem.find({ userId }).sort({ createdAt: -1 }).lean();
-        }
+      recentMessages = await Message.find({ sessionId: id, role: { $ne: 'system' } })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean();
+      // reverse to show in order
+      recentMessages.reverse();
+
+      if (userId) {
+        memories = await MemoryItem.find({ userId }).sort({ createdAt: -1 }).lean();
+      }
     }
 
     res.json({
-        systemPrompt: SYSTEM_PROMPT,
-        summary,
-        recentMessages,
-        memories
+      systemPrompt: SYSTEM_PROMPT,
+      summary,
+      recentMessages,
+      memories
     });
   } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: 'Failed to fetch context' });
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch context' });
   }
 });
 
@@ -1098,7 +1098,7 @@ router.get('/:id/context', authenticate as any, async (req: Request, res: Respon
 router.get('/:id/summary', authenticate as any, async (req: Request, res: Response) => {
   const { id } = req.params;
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
-  
+
   if (useMock) {
     const s = store.getSummary(id);
     return res.json({ summary: s });
@@ -1116,7 +1116,7 @@ router.get('/:id/summary', authenticate as any, async (req: Request, res: Respon
 router.post('/:id/summarize', authenticate as any, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { content } = req.body;
-  
+
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
   if (useMock) {
     store.upsertSummary(id, content);
@@ -1144,28 +1144,28 @@ router.post('/:id/summarize/auto', authenticate as any, async (req: Request, res
     // Check if we have messages
     let messages: any[] = [];
     if (useMock) {
-        messages = store.listMessages(id);
+      messages = store.listMessages(id);
     } else {
-        messages = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).limit(100);
+      messages = await Message.find({ sessionId: id }).sort({ createdAt: 1 }).limit(100);
     }
-    
+
     if (messages.length === 0) return res.json({ ok: true });
 
-    const msgsForLLM = messages.map(m => ({ 
-        role: m.role || 'user', 
-        content: String(m.content || '') 
+    const msgsForLLM = messages.map(m => ({
+      role: m.role || 'user',
+      content: String(m.content || '')
     }));
-    
+
     const summaryContent = await generateSummary(msgsForLLM);
-    
+
     if (useMock) {
-        store.upsertSummary(id, summaryContent);
+      store.upsertSummary(id, summaryContent);
     } else {
-        await Summary.findOneAndUpdate(
-            { sessionId: id },
-            { content: summaryContent },
-            { upsert: true, new: true }
-        );
+      await Summary.findOneAndUpdate(
+        { sessionId: id },
+        { content: summaryContent },
+        { upsert: true, new: true }
+      );
     }
 
     res.json({ ok: true, summary: summaryContent });
@@ -1275,45 +1275,45 @@ router.get('/:id/history', authenticate as any, async (req: Request, res: Respon
 router.get('/:id/analytics', authenticate as any, async (req: Request, res: Response) => {
   const { id } = req.params;
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
-  
+
   if (useMock) {
     const session = store.getSession(id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
     const msgs = store.listMessages(id);
     const runs = store.listRuns(id);
-    
+
     let totalSteps = 0;
     let successfulRuns = 0;
     const runIds: string[] = [];
-    
+
     runs.forEach(r => {
-        totalSteps += r.steps?.length || 0;
-        if (r.status === 'done') successfulRuns++;
-        runIds.push(r.id);
+      totalSteps += r.steps?.length || 0;
+      if (r.status === 'done') successfulRuns++;
+      runIds.push(r.id);
     });
 
     const allExecs = store.listExecs(); // Get all execs then filter
     const tools = allExecs.filter(e => runIds.includes(e.runId));
-    
+
     const toolUsage: Record<string, number> = {};
     let toolErrors = 0;
-    
+
     tools.forEach(t => {
-        toolUsage[t.name] = (toolUsage[t.name] || 0) + 1;
-        if (!t.ok) toolErrors++;
+      toolUsage[t.name] = (toolUsage[t.name] || 0) + 1;
+      if (!t.ok) toolErrors++;
     });
 
-    return res.json({ 
-        duration: (session.lastUpdatedAt || Date.now()) - (session.lastUpdatedAt || Date.now()), // Mock duration 0 for now
-        messageCount: msgs.length, 
-        runCount: runs.length, 
-        totalSteps,
-        successfulRuns,
-        successRate: runs.length > 0 ? (successfulRuns / runs.length) * 100 : 0,
-        toolUsage,
-        totalToolCalls: tools.length,
-        toolErrorRate: tools.length > 0 ? (toolErrors / tools.length) * 100 : 0
+    return res.json({
+      duration: (session.lastUpdatedAt || Date.now()) - (session.lastUpdatedAt || Date.now()), // Mock duration 0 for now
+      messageCount: msgs.length,
+      runCount: runs.length,
+      totalSteps,
+      successfulRuns,
+      successRate: runs.length > 0 ? (successfulRuns / runs.length) * 100 : 0,
+      toolUsage,
+      totalToolCalls: tools.length,
+      toolErrorRate: tools.length > 0 ? (toolErrors / tools.length) * 100 : 0
     });
   }
 
@@ -1324,40 +1324,40 @@ router.get('/:id/analytics', authenticate as any, async (req: Request, res: Resp
     const messageCount = await Message.countDocuments({ sessionId: id });
     const runs = await Run.find({ sessionId: id });
     const runCount = runs.length;
-    
+
     // Calculate steps and tool usage
     let totalSteps = 0;
     let successfulRuns = 0;
-    
+
     runs.forEach(r => {
-        totalSteps += r.steps?.length || 0;
-        if (r.status === 'done') successfulRuns++;
+      totalSteps += r.steps?.length || 0;
+      if (r.status === 'done') successfulRuns++;
     });
 
     // Get tool executions for this session's runs
     const runIds = runs.map(r => r._id);
     const tools = await ToolExecution.find({ runId: { $in: runIds } });
-    
+
     const toolUsage: Record<string, number> = {};
     let toolErrors = 0;
-    
+
     tools.forEach(t => {
-        toolUsage[t.name] = (toolUsage[t.name] || 0) + 1;
-        if (!t.ok) toolErrors++;
+      toolUsage[t.name] = (toolUsage[t.name] || 0) + 1;
+      if (!t.ok) toolErrors++;
     });
 
     const duration = session.lastUpdatedAt.getTime() - session.createdAt.getTime();
 
     return res.json({
-        duration, // in ms
-        messageCount,
-        runCount,
-        totalSteps,
-        successfulRuns,
-        successRate: runCount > 0 ? (successfulRuns / runCount) * 100 : 0,
-        toolUsage,
-        totalToolCalls: tools.length,
-        toolErrorRate: tools.length > 0 ? (toolErrors / tools.length) * 100 : 0
+      duration, // in ms
+      messageCount,
+      runCount,
+      totalSteps,
+      successfulRuns,
+      successRate: runCount > 0 ? (successfulRuns / runCount) * 100 : 0,
+      toolUsage,
+      totalToolCalls: tools.length,
+      toolErrorRate: tools.length > 0 ? (toolErrors / tools.length) * 100 : 0
     });
   } catch (error) {
     console.error('Analytics error:', error);
@@ -1365,15 +1365,26 @@ router.get('/:id/analytics', authenticate as any, async (req: Request, res: Resp
   }
 });
 
-router.delete('/', authenticate as any, async (_req: Request, res: Response) => {
+router.delete('/', authenticate as any, async (req: Request, res: Response) => {
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  const userId = (req as any).auth?.sub;
+  if (!userId && !useMock) return res.status(401).json({ error: 'Unauthorized' });
+
   if (useMock) {
     // store.clearAll();
     return res.json({ ok: true });
   }
-  await Session.deleteMany({});
-  await Message.deleteMany({});
-  await Run.deleteMany({});
+
+  await Session.deleteMany({ userId });
+  // Technically should find sessions first to get IDs for run/message deletion, 
+  // but for now we assume Message/Run linkage is by sessionId. 
+  // However, deleting messages blindly is risky if session IDs collide (unlikely with ObjectId).
+  // Better: find sessions first.
+  const sessions = await Session.find({ userId }).select('_id');
+  const ids = sessions.map(s => s._id);
+  await Message.deleteMany({ sessionId: { $in: ids } });
+  await Run.deleteMany({ sessionId: { $in: ids } });
+
   return res.json({ ok: true });
 });
 
@@ -1402,20 +1413,20 @@ router.delete('/:id', authenticate as any, async (req: Request, res: Response) =
 });
 
 router.patch('/:id/state', authenticate as any, async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const { terminalState } = req.body;
-    
-    const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
-    if (useMock) return res.json({ ok: true });
-    
-    await Session.findByIdAndUpdate(id, {
-        $set: {
-            terminalState,
-            lastUpdatedAt: new Date()
-        }
-    });
-    
-    return res.json({ ok: true });
+  const { id } = req.params;
+  const { terminalState } = req.body;
+
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+  if (useMock) return res.json({ ok: true });
+
+  await Session.findByIdAndUpdate(id, {
+    $set: {
+      terminalState,
+      lastUpdatedAt: new Date()
+    }
+  });
+
+  return res.json({ ok: true });
 });
 
 router.get('/:id/run-config', authenticate as any, async (req: Request, res: Response) => {
