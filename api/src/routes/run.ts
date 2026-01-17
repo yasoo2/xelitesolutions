@@ -521,6 +521,87 @@ function detectWorkflow(raw: string): { kind: WorkflowKind; root: string; tool?:
   return { kind, root };
 }
 
+/**
+ * Advanced workflow detection using RequestAnalyzer for complex requests
+ * Falls back to simple keyword-based detection for basic requests
+ */
+async function detectWorkflowAdvanced(
+  raw: string,
+  options?: { useAnalyzer?: boolean }
+): Promise<{ kind: WorkflowKind; root: string; tool?: { name: string; command: string }; analysis?: any } | null> {
+  const s = String(raw || '');
+  if (!s.trim()) return null;
+
+  // Quick checks first (no LLM needed)
+  if (isEcommerceRequest(s)) return { kind: 'ecommerce', root: extractTargetProjectRoot(s) };
+
+  const tool = extractToolSpec(s);
+  if (tool) return { kind: 'tool_shell', root: 'api', tool };
+
+  // Determine if request is complex enough to warrant LLM analysis
+  const isComplexRequest = (text: string): boolean => {
+    const wordCount = text.split(/\s+/).length;
+    const hasMultipleFeatures = (text.match(/\b(module|feature|system|component|page|api|database|auth)\b/gi) || []).length >= 3;
+    const hasDetailedRequirements = wordCount > 50 || hasMultipleFeatures;
+    const mentionsMultipleTech = (text.match(/\b(react|vue|angular|node|python|mongodb|postgres|api|frontend|backend)\b/gi) || []).length >= 2;
+
+    return hasDetailedRequirements || mentionsMultipleTech;
+  };
+
+  // Use RequestAnalyzer for complex requests
+  if (options?.useAnalyzer !== false && isComplexRequest(s)) {
+    try {
+      const { executeTool } = await import('../tools/registry');
+      const result = await executeTool('request_analyzer', { userRequest: s });
+
+      if (result.ok && result.output) {
+        const analysis = result.output;
+
+        // Map analysis to workflow kind
+        const kindMapping: Record<string, WorkflowKind> = {
+          'fullstack': 'fullstack',
+          'api': 'node_api',
+          'website': 'static_site',
+          'dashboard': 'fullstack',
+          'cms': 'fullstack',
+          'ecommerce': 'ecommerce',
+          'mobile': 'fullstack', // For now, treat as fullstack
+          'other': 'fullstack'
+        };
+
+        const kind = kindMapping[analysis.projectType] || 'fullstack';
+        const root = extractRootFromText(s, analysis.projectType === 'api' ? 'api-service' : 'app');
+
+        return {
+          kind,
+          root,
+          analysis // Include full analysis for later use
+        };
+      }
+    } catch (error) {
+      console.warn('[detectWorkflowAdvanced] RequestAnalyzer failed, falling back to simple detection:', error);
+      // Fall through to simple detection
+    }
+  }
+
+  // Fallback to simple keyword-based detection
+  const t = normalizeArabicQuery(s);
+  const wantsWebsite = /(website|site|landing|webpage|page)/i.test(s) || /(موقع|صفحه|صفحة|واجهه|واجهة)/.test(t);
+  const wantsApi = /(api|backend|server)/i.test(s) || /(باك|خلفي|خلفيه|خلفية|سيرفر|خادم|واجهه\s+برمجه|واجهة\s+برمجه)/.test(t);
+  const wantsApp = /(app|application|system)/i.test(s) || /(تطبيق|نظام|منصه|منصة)/.test(t);
+  if (!wantsWebsite && !wantsApi && !wantsApp) return null;
+
+  const kind: WorkflowKind =
+    wantsWebsite && wantsApi ? 'fullstack' : wantsApi ? 'node_api' : wantsWebsite ? 'static_site' : 'fullstack';
+  const root =
+    kind === 'static_site'
+      ? extractRootFromText(s, 'website')
+      : kind === 'node_api'
+        ? extractRootFromText(s, 'api-service')
+        : extractRootFromText(s, 'app');
+  return { kind, root };
+}
+
 function repoBaseDirForTools(): string {
   return path.basename(process.cwd()) === 'api' ? '..' : '.';
 }
@@ -2316,7 +2397,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
     }
 
-    const wf = !wantsShop ? detectWorkflow(userTextForOverrides) : null;
+    const wf = !wantsShop ? await detectWorkflowAdvanced(userTextForOverrides, { useAnalyzer: true }) : null;
     if (wf && wf.kind !== 'ecommerce' && (!planName || planName === 'echo')) {
       const marker =
         wf.kind === 'tool_shell' && wf.tool
