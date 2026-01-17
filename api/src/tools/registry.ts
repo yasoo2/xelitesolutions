@@ -27,6 +27,12 @@ import { LLMCacheTool } from './definitions/LLMCacheTool';
 import { MonitoringTool } from './definitions/MonitoringTool';
 import { ErrorRecoveryTool } from './definitions/ErrorRecoveryTool';
 import { PythonBuilderTool } from './definitions/PythonBuilderTool';
+import { LoggerTool } from './definitions/LoggerTool';
+import { AlertManagerTool } from './definitions/AlertManagerTool';
+import { RetryManagerTool } from './definitions/RetryManagerTool';
+import { FallbackTool } from './definitions/FallbackTool';
+import { JavaBuilderTool } from './definitions/JavaBuilderTool';
+import { GoBuilderTool } from './definitions/GoBuilderTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -131,6 +137,12 @@ export const tools: ToolDefinition[] = [
   new MonitoringTool(),
   new ErrorRecoveryTool(),
   new PythonBuilderTool(),
+  new LoggerTool(),
+  new AlertManagerTool(),
+  new RetryManagerTool(),
+  new FallbackTool(),
+  new JavaBuilderTool(),
+  new GoBuilderTool(),
 
   // --- Automation ---
   new TaskLoopTool(),

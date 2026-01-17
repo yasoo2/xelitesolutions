@@ -58,7 +58,7 @@ export class ProjectStateManagerTool implements ToolDefinition {
     };
 
     permissions = [];
-    sideEffects = ['write'];
+    sideEffects = ['write' as const];
     rateLimitPerMinute = 30;
     auditFields = ['projectId', 'action'];
     mockSupported = false;

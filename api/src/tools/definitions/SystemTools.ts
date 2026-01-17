@@ -147,6 +147,7 @@ export class NpmManagerTool extends BaseTool {
         properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' } },
         required: ['command']
     };
+    outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
     permissions: ToolPermission[] = ['execute', 'write', 'internet'];
     sideEffects: ToolPermission[] = ['execute', 'write', 'internet'];
     rateLimitPerMinute = 10;
@@ -192,6 +193,7 @@ export class ScaffoldProjectTool extends BaseTool {
         properties: { structure: { type: 'object' }, baseDir: { type: 'string' } },
         required: ['structure']
     };
+    outputSchema = { type: 'object' as const, properties: { created: { type: 'array' }, errors: { type: 'array' } } };
     permissions: ToolPermission[] = ['write'];
     sideEffects: ToolPermission[] = ['write'];
 
