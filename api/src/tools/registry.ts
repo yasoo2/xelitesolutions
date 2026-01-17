@@ -3920,29 +3920,36 @@ export async function executeTool(name: string, input: any, context?: any): Prom
   let effectiveInput = { ...input };
 
   // --- Aliasing & Compatibility Layer ---
+  const contextSessionId = context?.sessionId;
+
   if (name === 'browser_open') {
     effectiveName = 'browser_run';
     const url = effectiveInput.url || effectiveInput.input || '';
+    if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
     if (url) {
-      if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
       effectiveInput.actions.unshift({ type: 'goto', url });
+    } else if (effectiveInput.actions.length === 0) {
+      effectiveInput.actions.push({ type: 'ui_audit' });
     }
-    // inject sessionId if missing
-    if (!effectiveInput.sessionId && context?.sessionId) effectiveInput.sessionId = context.sessionId;
   }
   if (name === 'browser_get_state') {
     effectiveName = 'browser_run';
-    // No specific actions needed, browser_run fetches state by default at end
-    if (!effectiveInput.sessionId && context?.sessionId) effectiveInput.sessionId = context.sessionId;
+    if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
+    if (effectiveInput.actions.length === 0) {
+      effectiveInput.actions.push({ type: 'ui_audit' });
+    }
   }
-  if (effectiveName === 'browser_run' && !effectiveInput.sessionId && context?.sessionId) {
-    effectiveInput.sessionId = context.sessionId;
+  if (name === 'browser_snapshot') {
+    effectiveName = 'browser_run';
+    if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
+    if (effectiveInput.actions.length === 0) {
+      effectiveInput.actions.push({ type: 'ui_audit' });
+    }
   }
-  if (effectiveName === 'visual_qa' && !effectiveInput.sessionId && context?.sessionId) {
-    effectiveInput.sessionId = context.sessionId;
-  }
-  if (effectiveName === 'codebase_navigator' && !effectiveInput.sessionId && context?.sessionId) {
-    effectiveInput.sessionId = context.sessionId;
+
+  // Universal Session Injection
+  if ((effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') && !effectiveInput.sessionId && contextSessionId) {
+    effectiveInput.sessionId = contextSessionId;
   }
 
   logs.push(`[${new Date().toISOString()}] start ${effectiveName} (orig=${name})`);
