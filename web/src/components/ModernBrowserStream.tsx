@@ -51,6 +51,9 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const rafRef = useRef<number | null>(null);
   const lastRafTsRef = useRef<number>(0);
   const cursorVisibleRef = useRef(false);
+  const scrollAccRef = useRef(0);
+  const scrollTimerRef = useRef<number | null>(null);
+
   useEffect(() => {
     boxesRef.current = boxes;
   }, [boxes]);
@@ -74,7 +77,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     return () => {
       try {
         ro.disconnect();
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -118,7 +121,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       if (rafRef.current) {
         try {
           window.cancelAnimationFrame(rafRef.current);
-        } catch {}
+        } catch { }
       }
       rafRef.current = null;
     };
@@ -144,7 +147,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         body: JSON.stringify({ sessionId: sid, actions: acts }),
         signal,
       });
-    } catch {}
+    } catch { }
   };
 
   const syncQueueLen = () => {
@@ -162,7 +165,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     syncQueueLen();
     try {
       abortRef.current?.abort();
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -258,12 +261,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         const candidate =
           parsed && typeof parsed === 'object'
             ? (typeof (parsed as any)?.type === 'string'
-                ? parsed
-                : typeof (parsed as any)?.event?.type === 'string'
-                  ? (parsed as any).event
-                  : typeof (parsed as any)?.data?.type === 'string'
-                    ? (parsed as any).data
-                    : null)
+              ? parsed
+              : typeof (parsed as any)?.event?.type === 'string'
+                ? (parsed as any).event
+                : typeof (parsed as any)?.data?.type === 'string'
+                  ? (parsed as any).data
+                  : null)
             : null;
         msg = candidate as any;
       } catch {
@@ -347,7 +350,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           const d = (msg as any);
           const det = { url: String(d?.url || ''), sessionId: String(d?.sessionId || '') };
           window.dispatchEvent(new CustomEvent('browser:session_status', { detail: det }));
-        } catch {}
+        } catch { }
         return;
       }
       if (msg.type === 'debug_snapshot') {
@@ -361,7 +364,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       }
     };
     return () => {
-      try { ws.close(); } catch {}
+      try { ws.close(); } catch { }
     };
   }, [wsUrl]);
 
@@ -402,7 +405,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             if (!canvas) return;
             try {
               canvas.focus();
-            } catch {}
+            } catch { }
             const rect = canvas.getBoundingClientRect();
             const rx = (e.clientX - rect.left) / Math.max(1, rect.width);
             const ry = (e.clientY - rect.top) / Math.max(1, rect.height);
@@ -440,6 +443,30 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
               const delay = dt > 700 ? 30 : 90;
               if (flushTimerRef.current) window.clearTimeout(flushTimerRef.current);
               flushTimerRef.current = window.setTimeout(() => void flushType(), delay);
+            }
+          }}
+          onWheel={(e) => {
+            // Check if we are scrolling vertically
+            const dy = e.deltaY;
+            if (!dy) return;
+
+            // Accumulate delta
+            scrollAccRef.current += dy;
+
+            // Schedule flush if not scheduled
+            if (!scrollTimerRef.current) {
+              scrollTimerRef.current = window.setTimeout(() => {
+                const total = scrollAccRef.current;
+                scrollAccRef.current = 0;
+                scrollTimerRef.current = null;
+
+                if (Math.abs(total) < 20) return; // Minimum threshold
+                const direction = total > 0 ? 'down' : 'up';
+                // Apply a multiplier for better feel, or use raw pixels if browser matches mapping
+                const amount = Math.min(2000, Math.floor(Math.abs(total)));
+
+                enqueueActions([{ type: 'scroll', direction, amount }]);
+              }, 150); // 150ms throttle window
             }
           }}
           style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
