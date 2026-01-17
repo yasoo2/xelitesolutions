@@ -91,9 +91,20 @@ export const CodebaseNavigatorTool = {
                         continue;
                     }
 
-                    // Add to memory
-                    // TODO: Implement chunking for large files into multiple vectors
-                    await memory.add(fullPath, content, { type: 'code', path: fullPath });
+                    // Chunk large files into multiple vectors for better search
+                    if (content.length > 5000) {
+                        const chunkSize = 5000;
+                        for (let i = 0; i < content.length; i += chunkSize) {
+                            const chunk = content.substring(i, i + chunkSize);
+                            await memory.add(`${fullPath}#chunk${Math.floor(i / chunkSize)}`, chunk, {
+                                type: 'code',
+                                path: fullPath,
+                                chunkIndex: Math.floor(i / chunkSize)
+                            });
+                        }
+                    } else {
+                        await memory.add(fullPath, content, { type: 'code', path: fullPath });
+                    }
                     count++;
                 } catch (err: any) {
                     // Ignore read errors

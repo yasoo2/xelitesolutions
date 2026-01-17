@@ -30,7 +30,7 @@ import { EchoTool, FileEditTool, GrepSearchTool, NpmManagerTool, ScaffoldProject
 import { AnalyzeProjectTool, AnalyzeCodebaseTool } from './definitions/AnalysisTools';
 import { HttpFetchTool, HtmlExtractTool, RssFetchTool, JsonQueryTool } from './definitions/ContentTools';
 import { KnowledgeSearchTool, KnowledgeAddTool } from './definitions/KnowledgeTools';
-import { GitOpsTool, GitHubRepoCreateTool } from './definitions/GitTools';
+import { GitOpsTool } from './definitions/GitTools';
 
 // Rate Limiting Logic (Preserved)
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -143,7 +143,6 @@ export const tools: ToolDefinition[] = [
 
   // --- Git ---
   new GitOpsTool(),
-  new GitHubRepoCreateTool(),
 
   // --- Media ---
   { ...ImageGenerationTool, permissions: ImageGenerationTool.permissions as any, sideEffects: ImageGenerationTool.sideEffects as any },

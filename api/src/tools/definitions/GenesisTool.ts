@@ -1,20 +1,11 @@
 import { ToolDefinition } from '../types';
 import { GenesisAgent } from '../../agents/GenesisAgent';
-// We need to import TaskLoop to execute it, or use the registry's method if available. 
-// Since TaskLoop is in the registry, we can't import it easily without circular deps if we import 'tools'.
-// Instead, we'll return the steps and let the caller (or TaskLoop itself) handle it?
-// Standard pattern: Tools return outputs.
-// BETTER: GenesisTool *CALLS* TaskLoop via the `input.executeTool` callback if we passed it?
-// Actually, `execute` definition in usage usually doesn't have `executeTool` passed in `ToolDefinition` signature in this codebase (based on previous files).
-// Wait, `BrowserRunTool` imports `executePlannedActions`.
-// `TaskLoop` was defined IN registry.ts to access `executeTool`.
-// `GenesisTool` also needs access to `executeTool` or `TaskLoop`.
-// Solution: Define GenesisTool IN registry.ts like TaskLoop, or export a factory.
-// For now, let's create the definition file, but we might need to inline it in registry.ts or inject executeTool.
-// Let's stick to the inline pattern in registry.ts for Orchestrators to keep it simple and safe.
-// So this file is just a placeholder/reference for the plan? 
-// No, I'll write the logic here but note that it needs integration.
-// Actually, I'll export a class or function and use it in registry.ts.
+
+/**
+ * GenesisTool - Autonomous "God Mode" builder
+ * Takes a high-level goal, plans it, and executes the full build loop
+ * Note: Execute implementation is injected in registry.ts due to dependency on executeTool
+ */
 
 export const GenesisToolDef = {
     name: 'genesis_build',
