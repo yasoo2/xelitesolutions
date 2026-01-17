@@ -10,6 +10,7 @@ import { CodebaseNavigatorTool } from './definitions/CodebaseNavigatorTool';
 import { ArchitectTool } from './definitions/ArchitectTool';
 import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 import { CentralAnswerTool } from './definitions/CentralAnswerTool';
+import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -97,6 +98,7 @@ export const tools: ToolDefinition[] = [
   new ScaffoldProjectTool(),
   new EchoTool(),
   new CentralAnswerTool(),
+  new RequestAnalyzerTool(),
 
   // --- Automation ---
   new TaskLoopTool(),
