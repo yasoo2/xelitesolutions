@@ -14,6 +14,7 @@ import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
+import { AutoTesterTool } from './definitions/AutoTesterTool';
 
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
@@ -105,6 +106,7 @@ export const tools: ToolDefinition[] = [
   new ProjectPlannerTool(),
   new PhaseExecutorTool(),
   new ProjectStateManagerTool(),
+  new AutoTesterTool(),
 
   // --- Automation ---
   new TaskLoopTool(),

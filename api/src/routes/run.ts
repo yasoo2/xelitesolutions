@@ -2445,6 +2445,52 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ev({ type: 'text', data: md });
         }
         history.push({ role: 'assistant', content: marker } as any);
+
+        // PHASE 2-3 INTEGRATION: Use ProjectPlanner for complex projects
+        if (wf.analysis && wf.analysis.complexity && ['complex', 'very_complex'].includes(wf.analysis.complexity)) {
+          try {
+            // Create execution plan
+            const { executeTool } = await import('../tools/registry');
+            const planResult = await executeTool('project_planner', {
+              projectDescription: userTextForOverrides,
+              analysis: wf.analysis
+            });
+
+            if (planResult.ok && planResult.output) {
+              const plan = planResult.output;
+              const projectId = `${sessionId}-${Date.now()}`;
+
+              // Initialize state manager
+              await executeTool('project_state_manager', {
+                action: 'init',
+                projectId,
+                state: {
+                  projectName: plan.projectName,
+                  totalPhases: plan.totalPhases,
+                  pendingTasks: plan.phases?.flatMap((p: any) => p.tasks || []) || []
+                }
+              });
+
+              // Store plan in history for reference
+              history.push({
+                role: 'assistant',
+                content: `PROJECT_PLAN:${projectId}:${JSON.stringify(plan)}`
+              } as any);
+
+              // Inform user about the plan
+              const planSummary = `📋 **خطة المشروع**: ${plan.projectName}\n` +
+                `- عدد المراحل: ${plan.totalPhases}\n` +
+                `- الوقت المقدر: ${plan.estimatedDuration}\n` +
+                `- المرحلة الأولى: ${plan.phases?.[0]?.name || 'غير محدد'}\n\n` +
+                `سأبدأ التنفيذ المرحلي الآن...`;
+              ev({ type: 'text', data: planSummary });
+            }
+          } catch (planError) {
+            // Fallback to normal execution if planning fails
+            console.warn('[Integration] ProjectPlanner failed:', planError);
+          }
+        }
+
         try {
           if (useMock) {
             store.addMessage(sessionId, 'assistant', marker, runId);
