@@ -18,10 +18,14 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - MONGO_URI=mongodb://mongo:27017/joe
+      - BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
+      - WORKER_API_KEY=joe_secret_browser_key
     env_file:
       - .env
     command: sh -lc "npm ci --include=dev && npm run build && npm run start"
-    depends_on: [ mongo ]
+    depends_on:
+      - mongo
+      - browser-worker
     ports:
       - "3000:3000"
     healthcheck:
@@ -31,6 +35,25 @@ services:
       retries: 10
       start_period: 180s
     networks: [ joe_net ]
+
+  browser-worker:
+    build:
+      context: ./services/joe-browser-worker
+      dockerfile: Dockerfile
+    container_name: joe_browser_worker
+    restart: unless-stopped
+    environment:
+      - PORT=7070
+      - WORKER_API_KEY=joe_secret_browser_key
+      - BROWSER_HEADLESS=true
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    networks:
+      - joe_net
+    ports:
+      - "5050:5050"
+      - "7070:7070"
 
   web:
     build:

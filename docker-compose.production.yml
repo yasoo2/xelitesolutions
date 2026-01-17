@@ -50,6 +50,9 @@ services:
     environment:
       - PORT=7070
       - WORKER_API_KEY=joe_secret_browser_key
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - joe-network
     deploy:
