@@ -46,32 +46,62 @@ export const BulkFileGeneratorTool: ToolDefinition = {
         const errors: string[] = [];
         const logs: string[] = [];
 
-        console.log(`[BulkGen] Processing ${files.length} files in ${cwd}...`);
+        const totalFiles = files.length;
+        logs.push(`[BulkGen] Processing ${totalFiles} files in ${cwd}...`);
 
-        for (const file of files) {
-            try {
-                const targetPath = path.isAbsolute(file.path) ? file.path : path.resolve(cwd, file.path);
+        // PHASE 5 ENHANCEMENT: Support for large batches (50+ files)
+        const BATCH_SIZE = 10;
+        let processed = 0;
 
-                // Security check: Ensure we are not writing outside allowed dirs? 
-                // For "God Mode" we assume trusted agent for now, but in prod we restrict.
+        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+            const batch = files.slice(i, i + BATCH_SIZE);
 
-                const dir = path.dirname(targetPath);
-                if (!fs.existsSync(dir)) {
-                    fs.mkdirSync(dir, { recursive: true });
+            for (const file of batch) {
+                try {
+                    const targetPath = path.isAbsolute(file.path) ? file.path : path.resolve(cwd, file.path);
+
+                    // Security check: Ensure we are not writing outside allowed dirs
+                    // For "God Mode" we assume trusted agent for now, but in prod we restrict.
+
+                    const dir = path.dirname(targetPath);
+                    if (!fs.existsSync(dir)) {
+                        fs.mkdirSync(dir, { recursive: true });
+                    }
+
+                    fs.writeFileSync(targetPath, file.content, 'utf-8');
+                    created.push(targetPath);
+                    processed++;
+
+                    // Progress reporting every 10 files
+                    if (processed % 10 === 0) {
+                        logs.push(`Progress: ${processed}/${totalFiles} files (${Math.round(processed / totalFiles * 100)}%)`);
+                    }
+                } catch (e: any) {
+                    errors.push(`Failed to write ${file.path}: ${e.message}`);
+                    logs.push(`Error: ${file.path} - ${e.message}`);
                 }
+            }
 
-                fs.writeFileSync(targetPath, file.content, 'utf-8');
-                created.push(targetPath);
-                logs.push(`Write: ${targetPath}`);
-            } catch (e: any) {
-                errors.push(`Failed to write ${file.path}: ${e.message}`);
-                logs.push(`Error: ${file.path} - ${e.message}`);
+            // Small delay between batches to avoid overwhelming the system
+            if (i + BATCH_SIZE < files.length) {
+                await new Promise(resolve => setTimeout(resolve, 10));
             }
         }
 
+        logs.push(`[BulkGen] Complete: ${created.length} created, ${errors.length} errors`);
+
         return {
             ok: errors.length === 0,
-            output: { success: errors.length === 0, created, errors },
+            output: {
+                success: errors.length === 0,
+                created,
+                errors,
+                stats: {
+                    total: totalFiles,
+                    created: created.length,
+                    failed: errors.length
+                }
+            },
             logs
         };
     }
