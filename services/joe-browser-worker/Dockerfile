@@ -17,5 +17,6 @@ COPY . .
 RUN npm run build
 
 EXPOSE 7070
+EXPOSE 5050
 
 CMD ["npm", "start"]

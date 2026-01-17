@@ -64,6 +64,7 @@ app.listen(PORT, async () => {
             headless: true,
             port: 5050,
             wsPath: 'ws',
+            host: '0.0.0.0', // Critical for Docker visibility
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
         console.log('Browser Server auto-started at', browserServer.wsEndpoint());
