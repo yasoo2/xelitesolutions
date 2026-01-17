@@ -3559,7 +3559,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     if (!result.ok) {
-      const errorMsg = result.error || (result.logs ? result.logs.join('\n') : 'Unknown error');
+      let errorMsg = String(result.error || '');
+      if ((result as any).detail) {
+        try {
+          const det = (result as any).detail;
+          errorMsg += `\nDetail: ${typeof det === 'object' ? JSON.stringify(det) : String(det)}`;
+        } catch { }
+      }
+      if (!errorMsg && result.logs) errorMsg = result.logs.join('\n');
+      if (!errorMsg) errorMsg = 'Unknown error';
 
       if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
         const msg = [
@@ -3717,7 +3725,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
 
       // Self-Healing Notification
-      ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'. Analyzing fix...` });
+      ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'.\nAnalyzing fix...\n\n**Error Details:**\n_${String(errorMsg).slice(0, 300)}_` });
       assistantTextEmitted = true;
 
       history.push({
