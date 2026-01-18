@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Sun, Moon, LogIn, LogOut, Globe, ChevronDown } from 'lucide-react';
+import { Sun, Moon, LogIn, LogOut, Globe, ChevronDown, LayoutDashboard } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 
 const LANGUAGES = [
@@ -63,12 +63,22 @@ export default function TopBar() {
         </div>
       </div>
       <div className="spacer" />
-      
+
       <div className="topbar-actions">
-        
+
+
+        {/* Admin Dashboard Link */}
+        <button
+          className="action-btn"
+          onClick={() => window.open('/dashboard', '_blank')}
+          title="Admin Dashboard"
+        >
+          <LayoutDashboard size={20} />
+        </button>
+
         {/* Language Dropdown */}
         <div className="lang-dropdown" ref={langMenuRef}>
-          <button 
+          <button
             className={`lang-btn ${isLangOpen ? 'active' : ''}`}
             onClick={() => setIsLangOpen(!isLangOpen)}
           >
@@ -76,7 +86,7 @@ export default function TopBar() {
             <span className="lang-label">{currentLangLabel}</span>
             <ChevronDown size={16} className={`chevron ${isLangOpen ? 'open' : ''}`} />
           </button>
-          
+
           {isLangOpen && (
             <div className="lang-menu">
               {LANGUAGES.map((l) => (
@@ -109,15 +119,15 @@ export default function TopBar() {
         </button>
 
         {/* Login/Logout Button */}
-        <button 
+        <button
           className="action-btn"
           onClick={() => {
             if (localStorage.getItem('token')) {
               setIsConfirmOpen(true);
             } else {
-                nav('/login');
+              nav('/login');
             }
-          }} 
+          }}
           title={localStorage.getItem('token') ? t('logout', 'Logout') : t('login')}
         >
           {localStorage.getItem('token') ? <LogOut size={20} /> : <LogIn size={20} />}

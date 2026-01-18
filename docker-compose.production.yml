@@ -33,6 +33,13 @@ services:
     depends_on:
       - mongo
 
+  dashboard:
+    build: ./dashboard
+    container_name: joe_dashboard
+    restart: always
+    networks:
+      - joe-network
+
   web:
     build: ./web
     container_name: joe_web

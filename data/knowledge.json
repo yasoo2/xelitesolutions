@@ -1,0 +1,12 @@
+[
+  {
+    "id": "02b00c73-f379-47fb-bd0c-e7226e03067b",
+    "filename": "fix_pattern_1768697815482.txt",
+    "content": "Error: Error: Cannot find module 'missing-lib'\nFix: npm install <module>",
+    "tags": [
+      "error-fix",
+      "missing_dependency"
+    ],
+    "createdAt": 1768697815483
+  }
+]
