@@ -612,7 +612,7 @@ export default function Joe() {
       {mode === 'chat' && (
         <aside className={`sidebar ${showSidebar ? 'open' : 'closed'}`} aria-hidden={!showSidebar}>
           <div className="sidebar-header">
-            <button className="new-chat-btn" onClick={createSession} disabled={isCreatingChatSession}>
+            <button className="new-chat-btn" onClick={() => createSession()} disabled={isCreatingChatSession}>
               <span>+</span> {t('sidebar.newChat', 'New Chat')}
             </button>
             <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
