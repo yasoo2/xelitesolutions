@@ -45,6 +45,24 @@ function isRunCancelled(runId: string): boolean {
   return cancelledRuns.has(rid);
 }
 
+
+router.get('/', async (req: Request, res: Response) => {
+  const limit = parseInt(String(req.query.limit || '10'));
+  const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+
+  if (useMock) {
+    const runs = store.listRuns().slice(0, limit);
+    return res.json(runs);
+  } else {
+    try {
+      const runs = await Run.find().sort({ createdAt: -1 }).limit(limit).lean();
+      return res.json(runs);
+    } catch {
+      return res.json([]);
+    }
+  }
+});
+
 router.post('/stop', authenticateOptional as any, async (req: Request, res: Response) => {
   try {
     const runId = String(req.body?.runId || '').trim();
@@ -1452,8 +1470,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let initialPlan = null;
   try {
     const rawUserText = String(text || '');
+
     const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
-    if (xeliteMacro && !hasAttachments) {
+    if (xeliteMacro && !hasAttachments && !initialPlan) {
       const sid =
         typeof browserSessionId === 'string' && browserSessionId.trim()
           ? browserSessionId.trim()
@@ -1653,7 +1672,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
         ev({ type: 'run_finished', data: { runId, ok: result.ok } });
         planContext.delete(ap._id.toString());
+        // Fix: Explicitly return result here like in mock branch
         return res.json({ ok: true, runId, result });
+      } else {
       }
       return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString(), ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}) });
     }

@@ -8,7 +8,7 @@ const KNOWLEDGE_FILE = path.join(DATA_DIR, 'knowledge.json');
 
 // Ensure directory exists (sync is fine at startup, or make it async if called later)
 if (!fs.existsSync(DATA_DIR)) {
-    try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+    try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { }
 }
 
 export interface Document {
@@ -40,6 +40,7 @@ export const KnowledgeService = {
     getAll: async () => await loadKnowledge(),
 
     add: async (filename: string, content: string, tags: string[] = []) => {
+        console.log(`[KnowledgeService] Adding: ${filename}`);
         const docs = await loadKnowledge();
         const newDoc: Document = {
             id: uuidv4(),
@@ -49,7 +50,12 @@ export const KnowledgeService = {
             createdAt: Date.now()
         };
         docs.push(newDoc);
-        await saveKnowledge(docs);
+        try {
+            await saveKnowledge(docs);
+            console.log(`[KnowledgeService] Saved ${docs.length} docs.`);
+        } catch (e) {
+            console.error('[KnowledgeService] Save failed', e);
+        }
         return newDoc;
     },
 
@@ -60,26 +66,28 @@ export const KnowledgeService = {
     },
 
     search: async (query: string): Promise<{ document: Document, score: number, snippet: string }[]> => {
+        console.log(`[KnowledgeService] Searching: ${query}`);
         const docs = await loadKnowledge();
+        console.log(`[KnowledgeService] Docs in DB: ${docs.length}`);
         const q = query.toLowerCase();
-        
+
         // Simple keyword scoring
         const results = docs.map(doc => {
             const text = doc.content.toLowerCase();
             const filename = doc.filename.toLowerCase();
             let score = 0;
-            
+
             // Exact phrase match
             if (text.includes(q)) score += 10;
             if (filename.includes(q)) score += 5;
-            
+
             // Token match
             const tokens = q.split(/\s+/);
             let matches = 0;
             tokens.forEach(t => {
                 if (text.includes(t)) matches++;
             });
-            
+
             score += matches;
 
             // Find snippet
@@ -90,7 +98,11 @@ export const KnowledgeService = {
             return { document: doc, score, snippet };
         });
 
-        return results.filter(r => r.score > 0).sort((a, b) => b.score - a.score);
+        // Normalize scores roughly 0-1
+        return results
+            .filter(r => r.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .map(r => ({ ...r, score: Math.min(r.score / 10, 1) })); // Simple normalization assumption
     },
 
     parsePDF: async (buffer: Buffer): Promise<string> => {

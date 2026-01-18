@@ -299,6 +299,8 @@ export async function planNextStep(
   const forceMock = String(process.env.LLM_PLAN_MOCK || '').trim() === '1';
   const shouldMock = forceMock || options?.mock === true;
 
+
+
   if (!shouldMock) {
     if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
     if (!optKey && !envKey) throw new Error('NO_API_KEY_CONFIGURED');
