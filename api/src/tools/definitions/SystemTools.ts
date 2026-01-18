@@ -6,7 +6,11 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import util from 'util';
 
+// Background Process Store
+const backgroundProcesses = new Map<string, { pid: number, command: string, startTime: number, process: any }>();
+
 const execAsync = util.promisify(exec);
+const spawn = require('child_process').spawn;
 
 // Helper
 function repoRoot() {
@@ -235,9 +239,9 @@ export class ShellExecuteTool extends BaseTool {
     inputSchema = {
         type: 'object' as const,
         properties: {
-            command: { type: 'string' },
             cwd: { type: 'string' },
             timeout: { type: 'number' },
+            background: { type: 'boolean', description: 'Run command in background (fire and forget)' },
             dryRun: { type: 'boolean' }
         },
         required: ['command']
@@ -254,6 +258,7 @@ export class ShellExecuteTool extends BaseTool {
         const command = String(input?.command ?? '');
         let cwdInput = String(input?.cwd ?? '');
         const timeoutVal = Number(input?.timeout ?? 30000);
+        const background = !!input?.background;
         const dryRun = !!input?.dryRun;
 
         const redactCmd = (s: string) => {
@@ -290,7 +295,39 @@ export class ShellExecuteTool extends BaseTool {
 
         const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(process.cwd(), cwdInput)) : process.cwd();
 
+
+
         try {
+            if (background) {
+                // Background Execution using Spawn
+                const id = 'bg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                const [cmdBin, ...cmdArgs] = command.split(' '); // Basic splitting, might need better parsing for quotes
+
+                // Using shell: true to handle pipes/redirects generically
+                const child = spawn(command, [], {
+                    cwd: workDir,
+                    shell: true,
+                    detached: true,
+                    stdio: 'ignore'
+                });
+
+                child.unref(); // Detach loop
+
+                backgroundProcesses.set(id, {
+                    pid: child.pid,
+                    command: command,
+                    startTime: Date.now(),
+                    process: child
+                });
+
+                logs.push(`exec_bg=${redactCmd(command)} id=${id} pid=${child.pid}`);
+                return {
+                    ok: true,
+                    output: { status: 'background', id, pid: child.pid, message: 'Command started in background.' },
+                    logs
+                };
+            }
+
             const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal, maxBuffer: 20 * 1024 * 1024 });
 
             // Update CWD if cd
@@ -318,5 +355,40 @@ export class ShellExecuteTool extends BaseTool {
             logs.push(`exec_error=${logCmd} err=${e.message}`);
             return { ok: false, error: e.message || 'Command failed', output: { status: 'failed', stdout: e.stdout || '', stderr: e.stderr || e.message, exitCode: e.code || 1, cwd: workDir, durationMs }, logs };
         }
+    }
+}
+
+export class ShellStatusTool extends BaseTool {
+    name = 'shell_check_status';
+    description = 'Check the status of a background command.';
+    version = '1.0.0';
+    tags = ['shell', 'status'];
+    inputSchema = { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] };
+    outputSchema = { type: 'object' as const, properties: { running: { type: 'boolean' } } };
+    permissions: ToolPermission[] = [];
+    sideEffects: ToolPermission[] = [];
+
+    async execute(input: any) {
+        const id = String(input.id);
+        const proc = backgroundProcesses.get(id);
+        if (!proc) return { ok: false, error: 'Process not found', logs: [] };
+
+        // Check if PID is running
+        let running = true;
+        try {
+            process.kill(proc.pid, 0); // signal 0 just checks existence
+        } catch (e) {
+            running = false;
+        }
+
+        if (!running) {
+            backgroundProcesses.delete(id); // Cleanup dead
+        }
+
+        return {
+            ok: true,
+            output: { running, pid: proc.pid, command: proc.command, uptime: Date.now() - proc.startTime },
+            logs: []
+        };
     }
 }

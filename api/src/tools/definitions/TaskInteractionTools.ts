@@ -1,0 +1,267 @@
+
+import { BaseTool } from '../base';
+import { ToolPermission } from '../types';
+import fs from 'fs';
+import path from 'path';
+import { broadcast } from '../../ws';
+import * as pty from 'node-pty';
+
+// Store for persistent terminals
+import type { IPty } from 'node-pty';
+// We use require to avoid build-time issues if type defs missing, but we installed it.
+// @ts-ignore
+import * as pty from 'node-pty';
+
+const terminals = new Map<string, { pty: IPty, history: string[] }>();
+
+/**
+ * TerminalManagerTool: Persistent terminal sessions.
+ * Equivalent to `read_terminal` / `create_terminal`.
+ */
+export class TerminalManagerTool extends BaseTool {
+    name = 'terminal_manager';
+    description = 'Manage persistent interactive terminal sessions (create, read, write, kill, resize).';
+    version = '2.0.0';
+    tags = ['shell', 'terminal', 'persistent', 'interactive'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            action: { type: 'string', enum: ['create', 'read', 'write', 'kill', 'list', 'resize'] },
+            id: { type: 'string' },
+            command: { type: 'string', description: 'For write (input)' },
+            cols: { type: 'number' },
+            rows: { type: 'number' },
+            shell: { type: 'string', default: 'bash' }
+        },
+        required: ['action']
+    };
+    outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = ['execute'];
+
+    async execute(input: any) {
+        const action = input.action;
+        const id = input.id || 'default';
+
+        if (action === 'create') {
+            if (terminals.has(id)) return { ok: false, error: 'Terminal already exists', logs: [] };
+
+            try {
+                const shell = input.shell || (process.platform === 'win32' ? 'powershell.exe' : 'bash');
+                const ptyProcess = pty.spawn(shell, [], {
+                    name: 'xterm-color',
+                    cols: input.cols || 80,
+                    rows: input.rows || 30,
+                    cwd: process.cwd(),
+                    env: process.env
+                });
+
+                const term = { pty: ptyProcess, history: [] as string[] };
+                terminals.set(id, term);
+
+                ptyProcess.onData((data: string) => {
+                    term.history.push(data);
+                    // Keep history manageable
+                    if (term.history.length > 5000) term.history.shift();
+                });
+
+                return { ok: true, output: { id, pid: ptyProcess.pid, message: 'Terminal created.' }, logs: [`term_create=${id}`] };
+            } catch (e: any) {
+                return { ok: false, error: `Failed to spawn PTY: ${e.message}`, logs: [] };
+            }
+        }
+
+        if (action === 'read') {
+            const term = terminals.get(id);
+            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
+            // Return concatenated history
+            return { ok: true, output: { history: term.history.join('') }, logs: [] };
+        }
+
+        if (action === 'write') {
+            const term = terminals.get(id);
+            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
+
+            if (!input.command) return { ok: false, error: 'command input required', logs: [] };
+            term.pty.write(input.command);
+
+            // Wait a bit for output
+            await new Promise(r => setTimeout(r, 200));
+
+            return { ok: true, output: { message: 'Input sent' }, logs: [`term_write=${id}`] };
+        }
+
+        if (action === 'resize') {
+            const term = terminals.get(id);
+            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
+            term.pty.resize(input.cols || 80, input.rows || 30);
+            return { ok: true, output: { message: 'Resized' }, logs: [] };
+        }
+
+        if (action === 'kill') {
+            const term = terminals.get(id);
+            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
+            term.pty.kill();
+            terminals.delete(id);
+            return { ok: true, output: { message: 'Terminal killed' }, logs: [] };
+        }
+
+        if (action === 'list') {
+            return { ok: true, output: { terminals: Array.from(terminals.keys()) }, logs: [] };
+        }
+
+        return { ok: false, error: 'Unknown action', logs: [] };
+    }
+} name = 'read_file';
+description = 'Read file content safely with pagination limits.';
+version = '1.0.0';
+tags = ['fs', 'read', 'safe'];
+inputSchema = {
+    type: 'object' as const,
+    properties: {
+        path: { type: 'string' },
+        startLine: { type: 'number', default: 1 },
+        endLine: { type: 'number', default: 1000 }
+    },
+    required: ['path']
+};
+outputSchema = { type: 'object' as const, properties: { content: { type: 'string' }, totalLines: { type: 'number' } } };
+permissions: ToolPermission[] = ['read'];
+sideEffects: ToolPermission[] = [];
+
+    async execute(input: any) {
+    const filePath = input.path ? (path.isAbsolute(input.path) ? input.path : path.resolve(process.cwd(), input.path)) : '';
+    if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
+
+    try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const lines = content.split('\n');
+        const start = Math.max(0, (input.startLine || 1) - 1);
+        const end = Math.min(lines.length, (input.endLine || 1000));
+
+        return {
+            ok: true,
+            output: {
+                content: lines.slice(start, end).join('\n'),
+                totalLines: lines.length,
+                truncated: lines.length > end
+            },
+            logs: [`read=${filePath} lines=${start + 1}-${end}`]
+        };
+    } catch (e: any) {
+        return { ok: false, error: e.message, logs: [] };
+    }
+}
+}
+
+/**
+ * AskUserTool: Blocking input request.
+ * Equivalent to `notify_user` with input expectation.
+ */
+export class AskUserTool extends BaseTool {
+    name = 'ask_user';
+    description = 'Ask the user a question and wait for a response. Use this if you are blocked or need clarification.';
+    version = '1.0.0';
+    tags = ['user', 'interaction', 'blocking'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            question: { type: 'string' },
+            options: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['question']
+    };
+    outputSchema = { type: 'object' as const, properties: { response: { type: 'string' } } };
+    permissions: ToolPermission[] = [];
+    sideEffects: ToolPermission[] = []; // Technically blocks, but doesn't modify system
+
+    async execute(input: any) {
+        // This is a "Pseudo-blocking" tool in this async context.
+        // In a real agent loop, this would suspend execution.
+        // For Joe, we will broadcast the request and POLL/WAIT for a specific event (or assume the loop handles suspension).
+        // Since AgentLoopService doesn't support suspension yet, we'll simulate it by broadcasting 
+        // and returning a special signal that the agent should 'PAUSE'.
+
+        broadcast({
+            type: 'user_input_request',
+            data: {
+                question: input.question,
+                options: input.options,
+                timestamp: Date.now()
+            }
+        });
+
+        // NOTE: In the current architecture, we can't truly "block" the http request indefinitely without timeout.
+        // So we return a status telling the AgentLoop to entering 'WAITING_FOR_USER' state.
+        return {
+            ok: true,
+            output: { status: 'waiting_for_user_input', message: 'Request sent. Agent loop should now pause.' },
+            logs: [`ask="${input.question}"`]
+        };
+    }
+}
+
+/**
+ * TerminalManagerTool: Persistent terminal sessions.
+ * Equivalent to `read_terminal` / `create_terminal`.
+ */
+export class TerminalManagerTool extends BaseTool {
+    name = 'terminal_manager';
+    description = 'Manage persistent terminal sessions (create, read, write, kill).';
+    version = '1.0.0';
+    tags = ['shell', 'terminal', 'persistent'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            action: { type: 'string', enum: ['create', 'read', 'write', 'kill', 'list'] },
+            id: { type: 'string' },
+            command: { type: 'string', description: 'For write/create' }
+        },
+        required: ['action']
+    };
+    outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = ['execute'];
+
+    async execute(input: any) {
+        const action = input.action;
+        const id = input.id || 'default';
+
+        if (action === 'create') {
+            if (terminals.has(id)) return { ok: false, error: 'Terminal already exists', logs: [] };
+            // Mocking PTY for now if node-pty is not installed, or use actual if enabled
+            // For safety and compatibility, we'll implement a simple buffer store if PTY missing
+            terminals.set(id, { pty: null, history: ['Terminal started.'] });
+            return { ok: true, output: { id, message: 'Terminal created.' }, logs: [] };
+        }
+
+        if (action === 'read') {
+            const term = terminals.get(id);
+            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
+            return { ok: true, output: { history: term.history.join('\n') }, logs: [] };
+        }
+
+        if (action === 'write') {
+            const term = terminals.get(id);
+            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
+            // Simulate execution since we don't have full PTY binding here yet without adding dependencies
+            term.history.push(`$ ${input.command}`);
+            // Simple exec for demo parity
+            try {
+                const { execSync } = require('child_process');
+                const out = execSync(input.command, { encoding: 'utf-8' });
+                term.history.push(out);
+                return { ok: true, output: { output: out }, logs: [] };
+            } catch (e: any) {
+                term.history.push(e.message);
+                return { ok: false, error: e.message, logs: [] };
+            }
+        }
+
+        if (action === 'list') {
+            return { ok: true, output: { terminals: Array.from(terminals.keys()) }, logs: [] };
+        }
+
+        return { ok: false, error: 'Unknown action', logs: [] };
+    }
+}

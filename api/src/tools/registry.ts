@@ -47,6 +47,14 @@ import { GitOpsTool } from './definitions/GitTools';
 import { TerraformManagerTool, KubernetesOpsTool, DockerSwarmOpsTool } from './definitions/InfrastructureTools';
 import { DbSchemaMigratorTool, QueryOptimizerTool, LargeDataSeederTool } from './definitions/DatabaseEnterpriseTools';
 import { SonarAnalysisTool, DependencyAuditorTool, LoadTesterTool } from './definitions/QualityTools';
+import { CodebaseOutlineTool } from './definitions/CodebaseOutlineTool';
+import { SearchApiTool } from './definitions/SearchApiTool';
+import { TaskLifecycleTool } from './definitions/TaskLifecycleTool';
+import { ShellStatusTool } from './definitions/SystemTools';
+import { DirectoryInspectionTool, FileSearchTool, SymbolInspectorTool, AdvancedFileEditTool } from './definitions/UtilityTools';
+import { SafeReadFileTool, AskUserTool, TerminalManagerTool } from './definitions/TaskInteractionTools';
+import { BrowserVisionTool } from './definitions/BrowserVisionTool';
+
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
 // Instantiate all tools
@@ -158,5 +166,18 @@ export const tools: ToolDefinition[] = [
   new LoadTesterTool(),
 
   // --- Media ---
-  { ...ImageGenerationTool, permissions: ImageGenerationTool.permissions as any, sideEffects: ImageGenerationTool.sideEffects as any },
+  // --- Phase 15: God Mode Tools ---
+  new CodebaseOutlineTool(),
+  new SearchApiTool(),
+  new TaskLifecycleTool(),
+  new ShellStatusTool(),
+  new DirectoryInspectionTool(),
+  new FileSearchTool(),
+  new SymbolInspectorTool(),
+  new SymbolInspectorTool(),
+  new AdvancedFileEditTool(),
+  new SafeReadFileTool(),
+  new AskUserTool(),
+  new TerminalManagerTool(),
+  new BrowserVisionTool(),
 ];
