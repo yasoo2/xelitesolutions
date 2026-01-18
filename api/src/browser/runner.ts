@@ -323,6 +323,15 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
     /(google|جوجل)/i.test(s) || /(ابحث|بحث|search|find|lookup)\s+(?:في|على|ب)\s*(?:google|جوجل)/i.test(s);
   const hasSearchIntent = /(ابحث|بحث|search|find|lookup)/i.test(s);
 
+  if (wantsExplicitGoogle && hasSearchIntent) {
+    const queryMatch = s.match(/(?:search|find|lookup|research|بحث|عن|for)\s+["'“”]?([^"“”']+)["'“”]?/i);
+    if (queryMatch && queryMatch[1]) {
+      const q = encodeURIComponent(queryMatch[1].trim());
+      actions.push({ type: 'goto', url: `https://www.google.com/search?q=${q}` });
+      return actions;
+    }
+  }
+
   const url =
     extractUrl(s) ||
     (wantsOpenAI

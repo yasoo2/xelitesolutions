@@ -199,6 +199,10 @@ async function tryDismissOverlays(page: Page) {
     'button:has-text("موافق")',
     'button:has-text("رفض الكل")',
     'button:has-text("Reject all")',
+    'div[role="button"]:has-text("Accept all")',
+    'div[role="button"]:has-text("I agree")',
+    'button:has-text("Before you continue")', // Google sometimes has this as title, button is 'Accept'
+    'button[aria-label="Accept all"]',
   ];
   for (const sel of candidates) {
     try {
