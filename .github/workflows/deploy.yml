@@ -16,10 +16,13 @@ jobs:
       - name: Select SSH port
         id: select_ssh_port
         shell: bash
+        env:
+          HOST_SECRET: ${{ secrets.HOST }}
+          PORT_SECRET: ${{ secrets.PORT }}
         run: |
           set -euo pipefail
-          host="${{ secrets.HOST }}"
-          port_raw="${{ secrets.PORT }}"
+          host="$HOST_SECRET"
+          port_raw="$PORT_SECRET"
           host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
           port_raw="$(printf '%s' "${port_raw:-}" | tr -d '\r' | xargs)"
           if [ -z "${host:-}" ]; then
@@ -99,11 +102,13 @@ jobs:
 
       - name: Add SSH known_hosts
         shell: bash
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           host="${{ steps.select_ssh_port.outputs.host }}"
           port="${{ steps.select_ssh_port.outputs.port }}"
-          known_hosts_fallback="${{ secrets.SSH_KNOWN_HOSTS }}"
+          known_hosts_fallback="$SSH_KNOWN_HOSTS"
           host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
           if [ -z "${host:-}" ]; then
             echo "HOST secret is empty."
