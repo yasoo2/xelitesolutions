@@ -43,6 +43,11 @@ import { HttpFetchTool, HtmlExtractTool, RssFetchTool, JsonQueryTool } from './d
 import { KnowledgeSearchTool, KnowledgeAddTool } from './definitions/KnowledgeTools';
 import { GitOpsTool } from './definitions/GitTools';
 
+// --- Phase 11 Enterprise Tools ---
+import { TerraformManagerTool, KubernetesOpsTool, DockerSwarmOpsTool } from './definitions/InfrastructureTools';
+import { DbSchemaMigratorTool, QueryOptimizerTool, LargeDataSeederTool } from './definitions/DatabaseEnterpriseTools';
+import { SonarAnalysisTool, DependencyAuditorTool, LoadTesterTool } from './definitions/QualityTools';
+
 // Rate Limiting Logic (Preserved)
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
 
@@ -165,6 +170,21 @@ export const tools: ToolDefinition[] = [
 
   // --- Git ---
   new GitOpsTool(),
+
+  // --- Phase 11: Enterprise Infrastructure ---
+  new TerraformManagerTool(),
+  new KubernetesOpsTool(),
+  new DockerSwarmOpsTool(),
+
+  // --- Phase 11: Enterprise Database ---
+  new DbSchemaMigratorTool(),
+  new QueryOptimizerTool(),
+  new LargeDataSeederTool(),
+
+  // --- Phase 11: Enterprise Quality ---
+  new SonarAnalysisTool(),
+  new DependencyAuditorTool(),
+  new LoadTesterTool(),
 
   // --- Media ---
   { ...ImageGenerationTool, permissions: ImageGenerationTool.permissions as any, sideEffects: ImageGenerationTool.sideEffects as any },
