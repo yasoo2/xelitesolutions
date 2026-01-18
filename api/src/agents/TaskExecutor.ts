@@ -2,6 +2,8 @@ import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
+import { tools } from '../tools/registry';
+import { ToolDefinition } from '../tools/types';
 
 const execAsync = util.promisify(exec);
 
@@ -40,7 +42,12 @@ export class TaskExecutor {
                 case 'npm_install':
                     return await this.npmInstall(step.args);
                 default:
-                    throw new Error(`Unknown tool: ${step.tool}`);
+                    // Dynamic Registry Lookup (Universal Tool Execution)
+                    const toolDef = tools.find(t => t.name === step.tool);
+                    if (toolDef) {
+                        return await this.runTool(toolDef, step.args);
+                    }
+                    throw new Error(`Unknown tool: ${step.tool} (Not found in Registry)`);
             }
         } catch (e: any) {
             console.error(`[TaskExecutor] Failed ${step.name}: ${e.message}`);
@@ -113,5 +120,24 @@ export class TaskExecutor {
 
         const { stdout } = await execAsync(cmd, { cwd: this.rootDir });
         return { success: true, output: stdout };
+    }
+
+    private async runTool(tool: any, args: any) {
+        // Most tools expect 'cwd' or 'projectPath' which might be missing in args if the agent assumes implicit context
+        const enhancedArgs = { ...args };
+        if (!enhancedArgs.path && !enhancedArgs.projectPath) {
+            enhancedArgs.path = this.rootDir;
+            enhancedArgs.projectPath = this.rootDir;
+        }
+
+        try {
+            const result = await tool.execute(enhancedArgs);
+            if (!result.ok) {
+                return { success: false, output: `Tool Failed: ${result.error}` };
+            }
+            return { success: true, output: JSON.stringify(result.output, null, 2) };
+        } catch (e: any) {
+            return { success: false, output: `Tool Exception: ${e.message}` };
+        }
     }
 }

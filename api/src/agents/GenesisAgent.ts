@@ -28,11 +28,14 @@ export class GenesisAgent {
         const conversionPrompt = `You are the Genesis Orchestrator.
 Convert this Architectural Plan into a concrete list of Tool Execution Steps for the 'TaskLoop' agent.
 
-Available Tools:
-- scaffold_project: { name, type, features }
-- file_write: { path, content }
-- shell_execute: { command, cwd }
-- npm_install: { package }
+Available Tools (Universal Registry):
+- Core: scaffold_project, file_write, shell_execute, npm_install
+- Analysis: codebase_outline, grep_search, symbol_inspector, analyze_project
+- Quality: security_scanner, code_reviewer, sonar_analysis, load_tester, dependency_auditor
+- DevOps: docker_swarm_ops, kubernetes_ops, terraform_manager, github_actions, github_pr
+- Database: db_schema_migrator, db_data_seeder, query_optimizer
+- Web: web_pipeline, dev_server, browser_action, visual_qa
+- Knowledge: knowledge_search, knowledge_add
 
 Plan:
 ${planMarkdown}
@@ -41,7 +44,7 @@ Output ONLY valid JSON:
 {
   "steps": [
     { "name": "Scaffold", "tool": "scaffold_project", "args": { ... } },
-    { "name": "Create Component", "tool": "file_write", "args": { ... } }
+    { "name": "Check DB", "tool": "db_schema_migrator", "args": { "action": "status" } }
   ]
 }`;
 

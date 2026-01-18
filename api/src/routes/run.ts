@@ -298,190 +298,13 @@ function extractTargetProjectRoot(raw: string): string {
 
 type WorkflowKind = 'ecommerce' | 'static_site' | 'node_api' | 'fullstack' | 'tool_shell';
 
-function buildEcommerceScaffold(root: string) {
-  const backendPkg = {
-    name: `${root}-backend`,
-    version: '1.0.0',
-    private: true,
-    type: 'module',
-    scripts: {
-      start: 'node src/index.js',
-      dev: 'node src/index.js'
-    },
-    dependencies: {
-      express: '^4.18.2',
-      cors: '^2.8.5'
-    }
-  };
-  const beIndexJs =
-    "import express from 'express';\n" +
-    "import cors from 'cors';\n" +
-    "const app = express();\n" +
-    "app.use(cors());\n" +
-    "app.use(express.json());\n" +
-    "const categories=[{id:'electronics',name:'Electronics'},{id:'fashion',name:'Fashion'},{id:'home',name:'Home'}];\n" +
-    "const products=[\n" +
-    " {id:'p1',name:'Wireless Earbuds',price:29.99,category:'electronics',image:'https://placehold.co/200'},\n" +
-    " {id:'p2',name:'Smart Watch',price:49.99,category:'electronics',image:'https://placehold.co/200'},\n" +
-    " {id:'p3',name:'Classic T-Shirt',price:12.5,category:'fashion',image:'https://placehold.co/200'},\n" +
-    " {id:'p4',name:'Coffee Maker',price:39.0,category:'home',image:'https://placehold.co/200'}\n" +
-    "];\n" +
-    "const carts={};\n" +
-    "app.get('/api/categories',(req,res)=>{res.json({ok:true,categories})});\n" +
-    "app.get('/api/products',(req,res)=>{const c=req.query.category;const list=typeof c==='string'?products.filter(p=>p.category===c):products;res.json({ok:true,products:list})});\n" +
-    "app.post('/api/cart',(req,res)=>{const {sessionId,productId,qty}=req.body||{};if(!sessionId||!productId||!qty)return res.status(400).json({error:'bad_request'});const cur=carts[sessionId]||[];const idx=cur.findIndex(i=>i.productId===productId);if(idx>=0){cur[idx].qty+=qty}else{cur.push({productId,qty})}carts[sessionId]=cur;res.json({ok:true,cart:cur})});\n" +
-    "app.get('/api/cart',(req,res)=>{const sid=String(req.query.sessionId||'').trim();res.json({ok:true,cart:carts[sid]||[]})});\n" +
-    "app.post('/api/orders',(req,res)=>{const {sessionId,address}=req.body||{};const cur=carts[sessionId]||[];if(!cur.length)return res.status(400).json({error:'empty_cart'});const total=cur.reduce((sum,i)=>{const p=products.find(p=>p.id===i.productId);return sum+(p?p.price*i.qty:0)},0);carts[sessionId]=[];res.json({ok:true,orderId:'order-'+Date.now(),total,address})});\n" +
-    "const port=process.env.PORT||4000;\n" +
-    "app.listen(port,()=>{console.log('E-commerce API running on',port)});\n";
-  const feIndexHtml =
-    "<!DOCTYPE html>\n" +
-    "<html lang=\"en\">\n" +
-    "<meta charset=\"UTF-8\" />\n" +
-    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n" +
-    "<title>Vivos Shop</title>\n" +
-    "<link rel=\"stylesheet\" href=\"styles.css\" />\n" +
-    "<body>\n" +
-    "<header><h1>Vivos Shop</h1></header>\n" +
-    "<main>\n" +
-    "<section id=\"filters\"><select id=\"category\"></select></section>\n" +
-    "<section id=\"products\" class=\"grid\"></section>\n" +
-    "<aside id=\"cart\"></aside>\n" +
-    "</main>\n" +
-    "<script src=\"app.js\"></script>\n" +
-    "</body>\n" +
-    "</html>\n";
-  const feStyles =
-    "body{font-family:system-ui,Arial,sans-serif;margin:0;padding:0;background:#f6f7f9;color:#111}\n" +
-    "header{background:#1f2937;color:#fff;padding:16px}\n" +
-    "main{display:grid;grid-template-columns:1fr 300px;gap:16px;padding:16px}\n" +
-    ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}\n" +
-    ".card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px;display:flex;flex-direction:column}\n" +
-    ".card img{width:100%;height:120px;object-fit:cover;border-radius:6px}\n" +
-    ".card .name{font-weight:600;margin:8px 0}\n" +
-    ".card .price{color:#16a34a}\n" +
-    "#cart{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px}\n";
-  const feAppJs =
-    "const API=location.hostname==='localhost'||location.hostname==='127.0.0.1'? 'http://localhost:8080' : '';\n" +
-    "const sid=localStorage.getItem('sid')||('sid-'+Math.random().toString(36).slice(2));localStorage.setItem('sid',sid);\n" +
-    "const catSel=document.getElementById('category');const grid=document.getElementById('products');const cart=document.getElementById('cart');\n" +
-    "async function loadCats(){const r=await fetch(API+'/api/categories');const j=await r.json();catSel.innerHTML='<option value=\"\">All</option>'+j.categories.map(c=>`<option value=\"${c.id}\">${c.name}</option>`).join('');}\n" +
-    "async function loadProducts(){const c=catSel.value;const url=c?API+'/api/products?category='+encodeURIComponent(c):API+'/api/products';const r=await fetch(url);const j=await r.json();grid.innerHTML=j.products.map(p=>`\n" +
-    "<div class=\"card\">\n" +
-    "<img src=\"${p.image}\" alt=\"${p.name}\" />\n" +
-    "<div class=\"name\">${p.name}</div>\n" +
-    "<div class=\"price\">$${p.price.toFixed(2)}</div>\n" +
-    "<button data-id=\"${p.id}\">Add to Cart</button>\n" +
-    "</div>`).join('');Array.from(grid.querySelectorAll('button')).forEach(b=>b.onclick=()=>addToCart(b.dataset.id));}\n" +
-    "async function addToCart(id){await fetch(API+'/api/cart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:sid,productId:id,qty:1})});renderCart();}\n" +
-    "async function renderCart(){const r=await fetch(API+'/api/cart?sessionId='+encodeURIComponent(sid));const j=await r.json();cart.innerHTML='<h3>Cart</h3>'+(j.cart||[]).map(i=>`<div>${i.productId} × ${i.qty}</div>`).join('')+`<button id=\"checkout\">Checkout</button>`;const btn=document.getElementById('checkout');if(btn)btn.onclick=checkout;}\n" +
-    "async function checkout(){const r=await fetch(API+'/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:sid,address:'N/A'})});const j=await r.json();alert('Order '+j.orderId+' Total $'+j.total.toFixed(2));renderCart();}\n" +
-    "catSel.onchange=loadProducts;loadCats().then(loadProducts).then(renderCart);\n";
-  const structure: Record<string, string | null> = {};
-  structure[`${root}`] = null;
-  structure[`${root}/backend`] = null;
-  structure[`${root}/backend/package.json`] = JSON.stringify(backendPkg, null, 2) + '\n';
-  structure[`${root}/backend/src`] = null;
-  structure[`${root}/backend/src/index.js`] = beIndexJs;
-  structure[`${root}/frontend`] = null;
-  structure[`${root}/frontend/index.html`] = feIndexHtml;
-  structure[`${root}/frontend/styles.css`] = feStyles;
-  structure[`${root}/frontend/app.js`] = feAppJs;
-  return structure;
-}
 
-function buildStaticSiteScaffold(root: string) {
-  const indexHtml =
-    "<!DOCTYPE html>\n" +
-    "<html lang=\"en\">\n" +
-    "<meta charset=\"UTF-8\" />\n" +
-    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n" +
-    "<title>Website</title>\n" +
-    "<link rel=\"stylesheet\" href=\"styles.css\" />\n" +
-    "<body>\n" +
-    "<header class=\"top\">\n" +
-    "<h1>Website</h1>\n" +
-    "<nav class=\"nav\">\n" +
-    "<a href=\"#features\">Features</a>\n" +
-    "<a href=\"#contact\">Contact</a>\n" +
-    "</nav>\n" +
-    "</header>\n" +
-    "<main class=\"container\">\n" +
-    "<section class=\"hero\">\n" +
-    "<h2>Build fast. Ship faster.</h2>\n" +
-    "<p>Minimal landing page scaffold ready for customization.</p>\n" +
-    "<button id=\"cta\">Get Started</button>\n" +
-    "</section>\n" +
-    "<section id=\"features\" class=\"grid\"></section>\n" +
-    "<section id=\"contact\" class=\"card\">\n" +
-    "<h3>Contact</h3>\n" +
-    "<p>Replace this with your contact form or links.</p>\n" +
-    "</section>\n" +
-    "</main>\n" +
-    "<script src=\"app.js\"></script>\n" +
-    "</body>\n" +
-    "</html>\n";
-  const styles =
-    "body{font-family:system-ui,Arial,sans-serif;margin:0;background:#0b1220;color:#e5e7eb}\n" +
-    ".top{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1f2937}\n" +
-    ".nav a{color:#e5e7eb;margin-left:12px;text-decoration:none;opacity:.85}\n" +
-    ".nav a:hover{opacity:1}\n" +
-    ".container{max-width:1000px;margin:0 auto;padding:20px}\n" +
-    ".hero{padding:24px;border:1px solid #1f2937;border-radius:12px;background:#0f172a}\n" +
-    ".hero button{margin-top:12px;padding:10px 14px;border:0;border-radius:10px;background:#22c55e;color:#052e16;font-weight:700;cursor:pointer}\n" +
-    ".grid{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}\n" +
-    ".card{padding:14px;border:1px solid #1f2937;border-radius:12px;background:#0f172a}\n";
-  const appJs =
-    "const features=[\n" +
-    " {t:'Fast scaffold',d:'Start with a clean structure.'},\n" +
-    " {t:'Tool-driven',d:'Built via Joe tools step-by-step.'},\n" +
-    " {t:'Customizable',d:'Swap content and styles easily.'}\n" +
-    "];\n" +
-    "const grid=document.getElementById('features');\n" +
-    "grid.innerHTML=features.map(f=>`<div class=\"card\"><h3>${f.t}</h3><p>${f.d}</p></div>`).join('');\n" +
-    "document.getElementById('cta').onclick=()=>alert('Ready. Customize this scaffold.');\n";
-  const structure: Record<string, string | null> = {};
-  structure[`${root}`] = null;
-  structure[`${root}/index.html`] = indexHtml;
-  structure[`${root}/styles.css`] = styles;
-  structure[`${root}/app.js`] = appJs;
-  return structure;
-}
 
-function buildNodeApiScaffold(root: string) {
-  const pkg = {
-    name: `${root}-api`,
-    version: '1.0.0',
-    private: true,
-    type: 'module',
-    scripts: { start: 'node src/index.js' },
-    dependencies: { express: '^4.18.2', cors: '^2.8.5' },
-  };
-  const indexJs =
-    "import express from 'express';\n" +
-    "import cors from 'cors';\n" +
-    "const app=express();\n" +
-    "app.use(cors());\n" +
-    "app.use(express.json());\n" +
-    "app.get('/health',(req,res)=>res.json({ok:true,ts:Date.now()}));\n" +
-    "app.get('/api/hello',(req,res)=>res.json({ok:true,message:'hello'}));\n" +
-    "const port=process.env.PORT||4000;\n" +
-    "app.listen(port,()=>console.log('API listening on http://localhost:'+port));\n";
-  const structure: Record<string, string | null> = {};
-  structure[`${root}`] = null;
-  structure[`${root}/package.json`] = JSON.stringify(pkg, null, 2) + '\n';
-  structure[`${root}/src`] = null;
-  structure[`${root}/src/index.js`] = indexJs;
-  return structure;
-}
 
-function buildFullstackScaffold(root: string) {
-  const structure: Record<string, string | null> = {};
-  structure[`${root}`] = null;
-  for (const [k, v] of Object.entries(buildNodeApiScaffold(`${root}/backend`))) structure[k] = v;
-  for (const [k, v] of Object.entries(buildStaticSiteScaffold(`${root}/frontend`))) structure[k] = v;
-  return structure;
-}
+
+
+
+
 
 function extractRootFromText(raw: string, fallback: string): string {
   const s = String(raw || '');
@@ -2932,20 +2755,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (plan?.name === 'scaffold_project') {
       const inp = (plan.input as any) || {};
       if (!inp.structure || Object.keys(inp.structure).length === 0) {
-        const root = extractTargetProjectRoot(userTextForOverrides) || '.';
-        const baseDir = repoBaseDirForTools();
-        if (wantsShop) {
-          (plan as any).input = { structure: buildEcommerceScaffold(root), baseDir };
-          ev({ type: 'text', data: `ℹ️ Injecting E-Commerce scaffold template into empty scaffold_project call.` });
-        } else if (wf) {
-          const structure = wf.kind === 'static_site' ? buildStaticSiteScaffold(wf.root) :
-            wf.kind === 'node_api' ? buildNodeApiScaffold(wf.root) :
-              wf.kind === 'fullstack' ? buildFullstackScaffold(wf.root) : {};
-          if (Object.keys(structure).length > 0) {
-            (plan as any).input = { structure, baseDir };
-            ev({ type: 'text', data: `ℹ️ Injecting ${wf.kind} scaffold template into empty scaffold_project call.` });
-          }
-        }
+        // Legacy template injection has been removed.
+        // The agent must provide the structure explicitly or use 'scaffold' from Universal Registry.
+        ev({ type: 'text', data: `ℹ️ Standard scaffold request (Legacy templates removed).` });
       }
     }
 
