@@ -54,6 +54,7 @@ import { ShellStatusTool } from './definitions/SystemTools';
 import { DirectoryInspectionTool, FileSearchTool, SymbolInspectorTool, AdvancedFileEditTool } from './definitions/UtilityTools';
 import { SafeReadFileTool, AskUserTool, TerminalManagerTool } from './definitions/TaskInteractionTools';
 import { BrowserVisionTool } from './definitions/BrowserVisionTool';
+import { BrowserActionTool } from './definitions/BrowserActionTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -180,4 +181,5 @@ export const tools: ToolDefinition[] = [
   new AskUserTool(),
   new TerminalManagerTool(),
   new BrowserVisionTool(),
+  new BrowserActionTool(),
 ];
