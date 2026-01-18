@@ -5,11 +5,14 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon, Package, GitBranch, Camera } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
 const TerminalPanelLazy = lazy(() => import('../components/TerminalPanel'));
+const PackageManagerLazy = lazy(() => import('../components/PackageManager'));
+const GitPanelLazy = lazy(() => import('../components/GitPanel'));
+const SocialPanelLazy = lazy(() => import('../components/SocialPanel'));
 
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
@@ -138,6 +141,9 @@ export default function Joe() {
   const [showBoxes, setShowBoxes] = useState(true);
   const [controlOpen, setControlOpen] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [showPackages, setShowPackages] = useState(false);
+  const [showGit, setShowGit] = useState(false);
+  const [showSocial, setShowSocial] = useState(false);
   const featureChrome = getBrowserChromeEnabled();
 
   const makeBrowserSessionId = useCallback(
@@ -620,6 +626,15 @@ export default function Joe() {
             <div className="flex gap-1">
               <button className="close-sidebar-btn" onClick={() => setShowTerminal(!showTerminal)} title="Toggle System Terminal">
                 <TerminalIcon size={20} />
+              </button>
+              <button className="close-sidebar-btn" onClick={() => setShowPackages(!showPackages)} title="Package Manager">
+                <Package size={20} />
+              </button>
+              <button className="close-sidebar-btn" onClick={() => setShowGit(!showGit)} title="Source Control">
+                <GitBranch size={20} />
+              </button>
+              <button className="close-sidebar-btn" onClick={() => setShowSocial(!showSocial)} title="Social Feed">
+                <Camera size={20} />
               </button>
               <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
                 <PanelLeftClose size={20} />
@@ -1175,6 +1190,56 @@ export default function Joe() {
         <Suspense fallback={null}>
           <TerminalPanelLazy onClose={() => setShowTerminal(false)} />
         </Suspense>
+      )}
+      {/* Package Manager Modal */}
+      {showPackages && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowPackages(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <PackageManagerLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {/* Git Modal */}
+      {showGit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowGit(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <GitPanelLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {/* Social Modal */}
+      {showSocial && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowSocial(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <SocialPanelLazy />
+            </Suspense>
+          </div>
+        </div>
       )}
     </div>
   );

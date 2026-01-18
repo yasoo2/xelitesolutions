@@ -1,44 +1,32 @@
-import { useState, useEffect } from 'react';
+
+import { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Brain, Trash2, Edit2, Plus, Clock, Tag } from 'lucide-react';
+import { Search, Brain, Trash2, Edit2, Clock, Share2, Grid, Box } from 'lucide-react';
 import { API_URL } from '../config';
 
-interface MemoryItem {
-    id: string;
-    content: string;
-    type: 'session' | 'project' | 'user';
-    timestamp: number;
-    metadata?: any;
-}
+// Lazy load the 3D graph to improve initial performance
+const ForceGraph3D = lazy(() => import('react-force-graph-3d'));
 
 export default function MemoryPanel({ sessionId }: { sessionId?: string }) {
     const { t } = useTranslation();
-    const [items, setItems] = useState<MemoryItem[]>([]);
+    const [items, setItems] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
-    const [activeTab, setActiveTab] = useState<'project' | 'session' | 'user'>('project');
+    const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+    const graphRef = useRef<any>(null);
 
     const loadMemories = async () => {
         const token = localStorage.getItem('token');
         if (!token) return;
         setLoading(true);
         try {
-            // Mocking the fetch for now as the endpoint might be generic or tool-based
-            // ideally we have GET /memory?type=...
-            // For now, let's assume we can search via the tool or a specific endpoint
-            // check backend routes if /memory exists. If not, we might need to add it or use the tool.
-            // Using a direct fetch to a hypothetical endpoint or mocking for UI dev first.
-            // Given the spec says "Memory Panel shows items", we likely need an endpoint.
-            // Let's implement a safe fallback or check API first.
-
-            const res = await fetch(`${API_URL}/memory?sessionId=${sessionId || ''}&type=${activeTab}&q=${search}`, {
+            const res = await fetch(`${API_URL}/memory`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
                 const data = await res.json();
-                setItems(data.items || []);
+                setItems(data.memories || []);
             } else {
-                // Fallback mock for demo if endpoint not ready
                 setItems([]);
             }
         } catch (e) {
@@ -50,86 +38,156 @@ export default function MemoryPanel({ sessionId }: { sessionId?: string }) {
 
     useEffect(() => {
         loadMemories();
-    }, [sessionId, activeTab, search]);
+    }, [sessionId]);
 
     const handleDelete = async (id: string) => {
-        if (!confirm(t('confirmDelete'))) return;
-        // Implement delete logic
+        if (!confirm('Are you sure you want to delete this memory?')) return;
+        const token = localStorage.getItem('token');
+        try {
+            await fetch(`${API_URL}/memory/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            loadMemories();
+        } catch { }
     };
 
+    // Prepare Graph Data
+    const graphData = useMemo(() => {
+        const nodes: any[] = [];
+        const links: any[] = [];
+
+        // Central Nodes
+        nodes.push({ id: 'ROOT', name: 'Brain', val: 20, color: '#ef4444' });
+        nodes.push({ id: 'SESSION', name: 'Current Session', val: 10, color: '#3b82f6' });
+        nodes.push({ id: 'PROJECT', name: 'Project', val: 10, color: '#10b981' });
+
+        links.push({ source: 'ROOT', target: 'SESSION' });
+        links.push({ source: 'ROOT', target: 'PROJECT' });
+
+        items.forEach(item => {
+            const id = item._id;
+            const scope = item.scope || 'user';
+            const label = item.key || 'Memory';
+            const val = 5;
+
+            nodes.push({ id, name: label, val, color: scope === 'session' ? '#60a5fa' : scope === 'project' ? '#34d399' : '#a78bfa', data: item });
+
+            // Link to Scope Hub
+            if (scope === 'session') links.push({ source: 'SESSION', target: id });
+            else if (scope === 'project') links.push({ source: 'PROJECT', target: id });
+            else links.push({ source: 'ROOT', target: id });
+        });
+
+        return { nodes, links };
+    }, [items]);
+
     return (
-        <div className="memory-panel h-full flex flex-col bg-base-200">
-            <div className="p-4 border-b border-base-300">
-                <div className="flex items-center gap-2 mb-4">
-                    <Brain className="text-primary" size={20} />
-                    <h2 className="font-bold text-lg">{t('memory.title')}</h2>
+        <div className="memory-panel h-full flex flex-col bg-[#0f1117] text-white/90">
+            <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Brain className="text-red-500" size={20} />
+                    <h2 className="font-bold text-lg">{t('memory.title', 'Active Memory')}</h2>
                 </div>
-
-                <div className="flex gap-2 mb-4">
-                    {['project', 'session', 'user'].map((tab) => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab as any)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${activeTab === tab
-                                    ? 'bg-primary text-primary-content'
-                                    : 'bg-base-300 text-base-content hover:bg-base-content/10'
-                                }`}
-                        >
-                            {t(`memory.tabs.${tab}`)}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50" size={14} />
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder={t('memory.searchPlaceholder')}
-                        className="w-full bg-base-100 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
+                <div className="flex bg-white/5 rounded-lg p-1">
+                    <button
+                        onClick={() => setViewMode('list')}
+                        className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                        title="List View"
+                    >
+                        <Grid size={16} />
+                    </button>
+                    <button
+                        onClick={() => setViewMode('graph')}
+                        className={`p-1.5 rounded transition-colors ${viewMode === 'graph' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                        title="3D Graph View"
+                    >
+                        <Box size={16} />
+                    </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {loading ? (
-                    <div className="flex justify-center py-8 opacity-50">
-                        <span className="loading loading-spinner" />
+            {viewMode === 'list' && (
+                <div className="p-4 border-b border-white/5">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={14} />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder={t('memory.searchPlaceholder', 'Search memory...')}
+                            className="w-full bg-black/20 text-white border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm focus:border-red-500/50 outline-none"
+                        />
                     </div>
-                ) : items.length === 0 ? (
-                    <div className="text-center py-12 text-base-content/50 text-sm">
-                        {t('memory.empty')}
+                </div>
+            )}
+
+            <div className="flex-1 overflow-hidden relative">
+                {viewMode === 'list' ? (
+                    <div className="h-full overflow-y-auto p-4 space-y-3">
+                        {loading && <div className="text-center py-8 opacity-50">Loading memories...</div>}
+                        {!loading && items.length === 0 && (
+                            <div className="text-center py-12 text-white/30 text-sm">
+                                {t('memory.empty', 'No memories stored yet.')}
+                            </div>
+                        )}
+                        {items
+                            .filter(i => !search || JSON.stringify(i).toLowerCase().includes(search.toLowerCase()))
+                            .map((item) => (
+                                <div key={item._id} className="bg-white/5 p-3 rounded-lg border border-white/5 hover:border-white/10 transition-all group">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className={`w-2 h-2 rounded-full ${item.scope === 'session' ? 'bg-blue-500' : item.scope === 'project' ? 'bg-green-500' : 'bg-purple-500'}`} />
+                                                <span className="font-bold text-sm text-white/90">{item.key}</span>
+                                            </div>
+                                            <p className="text-xs text-white/60 line-clamp-3 font-mono bg-black/20 p-1.5 rounded">
+                                                {typeof item.value === 'object' ? JSON.stringify(item.value) : String(item.value)}
+                                            </p>
+                                        </div>
+                                        <button onClick={() => handleDelete(item._id)} className="p-1 text-white/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2 text-[10px] text-white/30">
+                                        <Clock size={10} />
+                                        <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                                        <span className="bg-white/10 px-1.5 py-0.5 rounded text-white/50 uppercase">{item.scope}</span>
+                                    </div>
+                                </div>
+                            ))}
                     </div>
                 ) : (
-                    items.map((item) => (
-                        <div key={item.id} className="card bg-base-100 p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow group">
-                            <div className="flex justify-between items-start gap-2">
-                                <p className="text-sm leading-relaxed line-clamp-3">{item.content}</p>
-                                <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => handleDelete(item.id)} className="p-1 hover:text-error">
-                                        <Trash2 size={12} />
-                                    </button>
-                                    <button className="p-1 hover:text-primary">
-                                        <Edit2 size={12} />
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between text-[10px] text-base-content/40">
-                                <div className="flex items-center gap-1">
-                                    <Clock size={10} />
-                                    <span>{new Date(item.timestamp).toLocaleDateString()}</span>
-                                </div>
-                                {item.metadata?.tags && (
-                                    <div className="flex gap-1">
-                                        {item.metadata.tags.map((tag: string) => (
-                                            <span key={tag} className="bg-base-200 px-1.5 py-0.5 rounded text-xs">#{tag}</span>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                    <div className="h-full w-full bg-black">
+                        <Suspense fallback={<div className="flex items-center justify-center h-full text-white/30">Loading 3D Engine...</div>}>
+                            <ForceGraph3D
+                                ref={graphRef}
+                                graphData={graphData}
+                                nodeLabel="name"
+                                nodeColor="color"
+                                nodeVal="val"
+                                linkColor={() => '#ffffff20'}
+                                linkWidth={1}
+                                backgroundColor="#000000"
+                                showNavInfo={false}
+                                onNodeClick={(node: any) => {
+                                    // Focus on node
+                                    if (graphRef.current) {
+                                        const distance = 40;
+                                        const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+                                        graphRef.current.cameraPosition(
+                                            { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+                                            node,
+                                            3000
+                                        );
+                                    }
+                                }}
+                            />
+                        </Suspense>
+                        <div className="absolute bottom-4 right-4 bg-black/80 p-2 rounded text-[10px] text-white/40 pointer-events-none">
+                            Left Click: Rotate • Right Click: Pan • Scroll: Zoom • Click Node: Focus
                         </div>
-                    ))
+                    </div>
                 )}
             </div>
         </div>

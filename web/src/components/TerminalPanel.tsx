@@ -111,7 +111,7 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
                 termRef.current?.write(msg.data);
             }
         });
-        return () => unsub();
+        return () => { unsub(); };
     }, [terminalId]);
 
     // Ensure fit on visibility change

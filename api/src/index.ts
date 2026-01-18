@@ -21,7 +21,8 @@ import knowledgeRoutes from './routes/knowledge';
 import systemRoutes from './routes/system';
 import instaRoutes from './routes/insta';
 import providersRoutes from './routes/providers';
-import browserRoutes from './routes/browser';
+import packagesRoutes from './routes/packages';
+import gitRoutes from './routes/git';
 import { healthcheckBrowser } from './browser/manager';
 
 import { authenticate } from './middleware/auth';
@@ -145,6 +146,8 @@ async function main() {
   app.use('/system', systemRoutes);
   app.use('/insta', instaRoutes);
   app.use('/providers', providersRoutes);
+  app.use('/packages', packagesRoutes);
+  app.use('/git', gitRoutes);
   app.use('/api/browser', browserRoutes);
 
   // Example protected route
