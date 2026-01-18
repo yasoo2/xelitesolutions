@@ -100,8 +100,8 @@ export class KubernetesOpsTool extends BaseTool {
             output: { type: 'string' }
         }
     };
-    permissions: ToolPermission[] = ['shell'];
-    sideEffects: ToolPermission[] = ['shell'];
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
         let cmd = String(input.command).trim();
@@ -141,8 +141,8 @@ export class DockerSwarmOpsTool extends BaseTool {
         required: ['action']
     };
     outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
-    permissions: ToolPermission[] = ['shell'];
-    sideEffects: ToolPermission[] = ['shell'];
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
         const action = input.action;

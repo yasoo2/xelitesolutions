@@ -2043,6 +2043,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const status = errorStatusCode(err);
             console.warn(`LLM planning error (status=${status}):`, lastPlanError);
 
+            if (lastPlanError && (lastPlanError.includes('NO_API_KEY_CONFIGURED') || lastPlanError.includes('PROVIDER_LLM_DISABLED'))) {
+              const msg = lastPlanError.includes('PROVIDER_LLM_DISABLED')
+                ? '⚠️ **LLM Disabled**\nThe local LLM provider is disabled. Please select a valid remote provider (OpenAI/Anthropic) in settings.'
+                : '⚠️ **Missing API Key**\nNo API Key configured. Please add your OpenAI/Anthropic API Key in the settings panel.';
+              ev({ type: 'text', data: msg });
+              forcedText = msg;
+              assistantTextEmitted = true;
+              break;
+            }
+
             if (isProviderAuthError(err, lastPlanError)) {
               const msg = '⚠️ **Authentication Failed**\nThe AI provider rejected the API key. Please verify the key and provider endpoint in the settings.';
               ev({ type: 'text', data: msg });
