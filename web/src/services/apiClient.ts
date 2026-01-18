@@ -1,0 +1,92 @@
+import { API_URL } from '../config';
+
+class ApiClient {
+    private get token() {
+        try {
+            return localStorage.getItem('token');
+        } catch {
+            return null;
+        }
+    }
+
+    private get headers() {
+        const h: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+        const t = this.token;
+        if (t) {
+            h['Authorization'] = `Bearer ${t}`;
+        }
+        return h;
+    }
+
+    private async handleResponse(res: Response) {
+        if (res.status === 401) {
+            try {
+                localStorage.removeItem('token');
+            } catch { }
+            window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+            throw new Error('Unauthorized');
+        }
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        // Return json if content-type is json, else text? usually json.
+        const text = await res.text();
+        try {
+            return text ? JSON.parse(text) : {};
+        } catch {
+            return text;
+        }
+    }
+
+    async get(endpoint: string, query?: Record<string, string>) {
+        const url = new URL(`${API_URL}${endpoint}`);
+        if (query) {
+            Object.entries(query).forEach(([k, v]) => url.searchParams.append(k, v));
+        }
+        const res = await fetch(url.toString(), {
+            method: 'GET',
+            headers: this.headers,
+        });
+        return this.handleResponse(res);
+    }
+
+    async post(endpoint: string, body?: any) {
+        const res = await fetch(`${API_URL}${endpoint}`, {
+            method: 'POST',
+            headers: this.headers,
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        return this.handleResponse(res);
+    }
+
+    async put(endpoint: string, body?: any) {
+        const res = await fetch(`${API_URL}${endpoint}`, {
+            method: 'PUT',
+            headers: this.headers,
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        return this.handleResponse(res);
+    }
+
+    async patch(endpoint: string, body?: any) {
+        const res = await fetch(`${API_URL}${endpoint}`, {
+            method: 'PATCH',
+            headers: this.headers,
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        return this.handleResponse(res);
+    }
+
+    async delete(endpoint: string) {
+        const res = await fetch(`${API_URL}${endpoint}`, {
+            method: 'DELETE',
+            headers: this.headers,
+        });
+        return this.handleResponse(res);
+    }
+}
+
+export const api = new ApiClient();

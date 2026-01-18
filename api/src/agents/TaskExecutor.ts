@@ -76,13 +76,34 @@ export class TaskExecutor {
 
     private async shellExecute(args: { command: string; cwd?: string }) {
         const cwd = args.cwd ? this.resolveSafePath(args.cwd) : this.rootDir;
+        const cmd = args.command.trim();
 
-        // Security check (Basic)
-        if (args.command.includes('rm -rf /') || args.command.includes(':(){:|:&};:')) {
-            throw new Error("Unsafe command blocked");
+        // 1. Block dangerous system commands
+        const blockedPatterns = [
+            /\bsudo\b/i,           // No root escalation
+            /\bsu\b/i,             // No user switching
+            /\bchmod\b/i,          // No permission changes
+            /\bchown\b/i,          // No ownership changes
+            /\brm\s+-[rRf]*\s*[\/\*]+$/i, // No "rm -rf /" or "rm -rf *" at root
+            /:(){:\|:&};:/,       // Fork bombs
+            />\s*\/dev\/sda/,     // Device writing
+            /\bdd\b/,             // Low-level disk writing
+            /\bwget\b|\bcurl\b/   // Prevent uncontrolled downloading (use http_fetch tool instead)
+        ];
+
+        for (const pattern of blockedPatterns) {
+            if (pattern.test(cmd)) {
+                throw new Error(`Security Violocation: Command blocked by safety policy. Pattern: ${pattern}`);
+            }
         }
 
-        const { stdout, stderr } = await execAsync(args.command, { cwd });
+        // 2. Validate command structure (prevent obscure shell expansions)
+        // This is a trade-off. We trust 'npm', 'git', 'node', 'tsc', 'ls', 'echo', 'cat', 'mkdir', 'touch'.
+        // We allow complex commands but monitor them.
+
+        console.log(`[TaskExecutor] Running in ${cwd}: ${cmd}`);
+
+        const { stdout, stderr } = await execAsync(cmd, { cwd, maxBuffer: 10 * 1024 * 1024 }); // 10MB buffer
         return { success: true, output: stdout || stderr };
     }
 

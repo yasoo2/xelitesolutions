@@ -84,12 +84,12 @@ router.post('/login', async (req: Request, res: Response) => {
         }
       }
     } else {
-        // Provision in Mock DB
-        let user = mockDb.findUserByEmail(emailNormalized);
-        if (!user) {
-            const passwordHash = await bcrypt.hash(passwordRaw, 10);
-            mockDb.createUser(emailNormalized, passwordHash, 'OWNER');
-        }
+      // Provision in Mock DB
+      let user = mockDb.findUserByEmail(emailNormalized);
+      if (!user) {
+        const passwordHash = await bcrypt.hash(passwordRaw, 10);
+        mockDb.createUser(emailNormalized, passwordHash, 'OWNER');
+      }
     }
   }
 
@@ -125,9 +125,10 @@ router.post('/dev', async (req: Request, res: Response) => {
   const isProd = process.env.NODE_ENV === 'production';
   if (isProd) return res.status(404).json({ error: 'Not found' });
 
-  const host = String(req.headers.host || '').toLowerCase();
   const ra = String((req.socket as any)?.remoteAddress || '').toLowerCase();
   const ip = String((req as any).ip || '').toLowerCase();
+
+  // Strict checking of loopback IP only. Do NOT trust the 'Host' header.
   const isLoopback =
     ra === '127.0.0.1' ||
     ra === '::1' ||
@@ -135,8 +136,8 @@ router.post('/dev', async (req: Request, res: Response) => {
     ip === '127.0.0.1' ||
     ip === '::1' ||
     ip.startsWith('::ffff:127.0.0.1');
-  const isLocalHost = /localhost|127\.0\.0\.1/.test(host);
-  if (!isLoopback && !isLocalHost) return res.status(404).json({ error: 'Not found' });
+
+  if (!isLoopback) return res.status(404).json({ error: 'Not found' });
 
   const token = jwt.sign({ sub: 'dev-user', role: 'OWNER' }, config.jwtSecret, { expiresIn: '7d' });
   return res.json({ token });

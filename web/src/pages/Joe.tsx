@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
 
 import { useSessionStore } from '../store/sessionStore';
+import { useSessionActions } from '../hooks/useSessionActions';
 import BrowserChrome from '../components/BrowserChrome';
 import BrowserControlPanel from '../components/BrowserControlPanel';
 const MemoryPanelLazy = lazy(() => import('../components/MemoryPanel'));
@@ -470,41 +471,23 @@ export default function Joe() {
     return () => window.removeEventListener('auth:unauthorized', onUnauthorized as any);
   }, []);
 
-  const [isCreatingChatSession, setIsCreatingChatSession] = useState(false);
+  // Session Actions Hook
+  const {
+    createSession,
+    isCreatingChatSession,
+    moveSessionToFolder,
+    mergeSessions,
+    deleteAllSessions,
+    togglePin
+  } = useSessionActions();
 
-  async function createSession() {
-    setSearchQuery('');
-    setSearchResults([]);
+  // Alias for toggleAgentPin (as they share same logic essentially, or we can use togglePin directly below in JSX)
+  const toggleAgentPin = togglePin;
 
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
+  // Old isCreatingChatSession state removed (now from hook)
 
-    setIsCreatingChatSession(true);
-    try {
-      const res = await fetch(`${API}/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: t('sidebar.newChat', 'New Chat') }),
-      });
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        return;
-      }
-      const data = await res.json();
-      const id = String(data?.id || data?._id || '').trim();
-      if (!id) return;
 
-      setSelected(id);
-      await loadAllSessions();
-      if (isNarrow) setShowSidebar(false);
-    } finally {
-      setIsCreatingChatSession(false);
-    }
-  }
+  // createSession moved to hook
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -571,116 +554,18 @@ export default function Joe() {
     await createFolderAction(name);
   }
 
-  async function moveSessionToFolder(sessionId: string, folderId: string | null) {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    const res = await fetch(`${API}/sessions/${sessionId}/move`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ folderId }),
-    });
-    if (res.status === 401) {
-      localStorage.removeItem('token');
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    await loadAllSessions();
-  }
+  // moveSessionToFolder moved to hook
 
 
-  async function mergeSessions(sourceId: string, targetId: string) {
-    if (sourceId === targetId) return;
-    if (!confirm('Are you sure you want to merge these sessions? This cannot be undone.')) return;
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    const res = await fetch(`${API}/sessions/merge`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ sourceId, targetId }),
-    });
-    if (res.status === 401) {
-      localStorage.removeItem('token');
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-
-    if (res.ok) {
-      await loadAllSessions();
-      if (selected === sourceId) setSelected(targetId);
-    }
-  }
+  // mergeSessions moved to hook
 
 
 
 
 
-  async function deleteAllSessions() {
-    if (!confirm('هل أنت متأكد من حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) return;
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    const res = await fetch(`${API}/sessions`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.status === 401) {
-      localStorage.removeItem('token');
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    await loadAllSessions();
-    setSelected(null);
-  }
+  // deleteAllSessions moved to hook
 
-  async function togglePin(id: string, currentPinned: boolean) {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    const res = await fetch(`${API}/sessions/${id}/pin`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ isPinned: !currentPinned }),
-    });
-    if (res.status === 401) {
-      localStorage.removeItem('token');
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    await loadAllSessions();
-  }
-
-  async function toggleAgentPin(id: string, currentPinned: boolean) {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    const res = await fetch(`${API}/sessions/${id}/pin`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ isPinned: !currentPinned }),
-    });
-    if (res.status === 401) {
-      localStorage.removeItem('token');
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      return;
-    }
-    await loadAllSessions();
-  }
+  // togglePin and toggleAgentPin moved to hook
 
   function shareSession(id: string) {
     alert('تم نسخ رابط الجلسة');
