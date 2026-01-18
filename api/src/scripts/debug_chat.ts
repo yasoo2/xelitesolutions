@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { planNextStep, getSystemPrompt } from '../llm'; // Adjust path
-import { executeTool } from '../tools/registry';
+import { executeTool } from '../services/ToolService';
 
 async function testChat() {
     console.log("--- Starting Chat Debug ---");
