@@ -5,7 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import { broadcast } from '../../ws';
 // Store for persistent terminals
-const terminals = new Map<string, { pty: any, history: string[] }>();
+export const terminals = new Map<string, { pty: any, history: string[] }>();
+
 
 /**
  * TerminalManagerTool: Persistent terminal sessions.
@@ -62,8 +63,8 @@ export class TerminalManagerTool extends BaseTool {
 
                 ptyProcess.onData((data: string) => {
                     term.history.push(data);
-                    // Keep history manageable
                     if (term.history.length > 5000) term.history.shift();
+                    broadcast({ type: 'terminal_output', id, data });
                 });
 
                 return { ok: true, output: { id, pid: ptyProcess.pid, message: 'Terminal created.' }, logs: [`term_create=${id}`] };

@@ -5,10 +5,11 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
+const TerminalPanelLazy = lazy(() => import('../components/TerminalPanel'));
 
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
@@ -136,6 +137,7 @@ export default function Joe() {
   const [composerHeight, setComposerHeight] = useState(0);
   const [showBoxes, setShowBoxes] = useState(true);
   const [controlOpen, setControlOpen] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
   const featureChrome = getBrowserChromeEnabled();
 
   const makeBrowserSessionId = useCallback(
@@ -615,9 +617,14 @@ export default function Joe() {
             <button className="new-chat-btn" onClick={() => createSession()} disabled={isCreatingChatSession}>
               <span>+</span> {t('sidebar.newChat', 'New Chat')}
             </button>
-            <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
-              <PanelLeftClose size={20} />
-            </button>
+            <div className="flex gap-1">
+              <button className="close-sidebar-btn" onClick={() => setShowTerminal(!showTerminal)} title="Toggle System Terminal">
+                <TerminalIcon size={20} />
+              </button>
+              <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
+                <PanelLeftClose size={20} />
+              </button>
+            </div>
           </div>
 
           <div className="search-box-container">
@@ -1163,6 +1170,12 @@ export default function Joe() {
           )}
         </div>
       </main>
+
+      {showTerminal && (
+        <Suspense fallback={null}>
+          <TerminalPanelLazy onClose={() => setShowTerminal(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

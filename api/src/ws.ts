@@ -47,17 +47,33 @@ export function attachWebSocket(server: Server) {
       }
       if ((ws as any).isAlive === false) {
         clearInterval(pingTimer);
-        try { ws.terminate(); } catch {}
+        try { ws.terminate(); } catch { }
         return;
       }
       (ws as any).isAlive = false;
-      try { ws.ping(); } catch {}
+      try { ws.ping(); } catch { }
     }, 30000);
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
         console.log('[WS] Received message:', msg);
         if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
+
+        // Terminal Streaming Handlers
+        if (msg.type === 'terminal_input') {
+          const { id, data } = msg;
+          import('./tools/definitions/TaskInteractionTools').then(({ terminals }) => {
+            const term = terminals.get(id);
+            if (term) term.pty.write(data);
+          });
+        }
+        if (msg.type === 'terminal_resize') {
+          const { id, cols, rows } = msg;
+          import('./tools/definitions/TaskInteractionTools').then(({ terminals }) => {
+            const term = terminals.get(id);
+            if (term) term.pty.resize(cols, rows);
+          });
+        }
       } catch (e) {
         // ignore non-json
       }
@@ -72,14 +88,14 @@ export function attachWebSocket(server: Server) {
       try {
         socket.write(
           `HTTP/1.1 ${status} ${message}\r\n` +
-            'Connection: close\r\n' +
-            'Content-Type: text/plain\r\n' +
-            `Content-Length: ${Buffer.byteLength(message)}\r\n` +
-            '\r\n' +
-            message
+          'Connection: close\r\n' +
+          'Content-Type: text/plain\r\n' +
+          `Content-Length: ${Buffer.byteLength(message)}\r\n` +
+          '\r\n' +
+          message
         );
-      } catch {}
-      try { socket.destroy(); } catch {}
+      } catch { }
+      try { socket.destroy(); } catch { }
     };
 
     let url: URL;
@@ -128,7 +144,7 @@ export function broadcast(
   const payload = JSON.stringify(normalized);
   liveWssRef.clients.forEach((client: WebSocket) => {
     if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
+      client.send(payload);
     }
   });
 }
