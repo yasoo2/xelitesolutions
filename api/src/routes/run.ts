@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { broadcast, LiveEvent } from '../ws';
-import { executeTool } from '../tools/registry';
+import { executeTool } from '../services/ToolService';
 import { store } from '../mock/store';
 import { ToolExecution } from '../models/toolExecution';
 import { Artifact } from '../models/artifact';

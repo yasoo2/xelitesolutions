@@ -1,6 +1,6 @@
 
 import { BaseTool } from '../base';
-import { executeTool } from '../registry';
+import { executeTool } from '../../services/ToolService';
 import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';

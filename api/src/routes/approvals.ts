@@ -4,7 +4,7 @@ import { Approval } from '../models/approval';
 import { broadcast } from '../ws';
 import { store } from '../mock/store';
 import { planContext } from '../approvals/context';
-import { executeTool } from '../tools/registry';
+import { executeTool } from '../services/ToolService';
 import { Run } from '../models/run';
 import { authenticate } from '../middleware/auth';
 
@@ -103,7 +103,7 @@ function inferSiteLabel(url: string, dom: string) {
       const host = new URL(u).hostname.replace(/^www\./i, '');
       if (host) return host;
     }
-  } catch {}
+  } catch { }
   const d = String(dom || '');
   if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
   if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';

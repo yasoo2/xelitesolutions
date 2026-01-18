@@ -1,5 +1,5 @@
 import { ToolDefinition } from '../types';
-import { executeTool } from '../registry';
+import { executeTool } from '../../services/ToolService';
 
 /**
  * AutoTesterTool - Automated testing and verification

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { executeTool, tools } from '../tools/registry';
+import { tools } from '../tools/registry';
+import { executeTool } from '../services/ToolService';
 import { broadcast, LiveEvent } from '../ws';
 import { authenticate } from '../middleware/auth';
 import { store } from '../mock/store';
@@ -57,10 +58,10 @@ router.post('/run', async (req: Request, res: Response) => {
   } else {
     try {
       await ToolExecution.create({ runId, name: 'echo', input, output: result.output, ok: result.ok, logs: result.logs || [] });
-    } catch {}
+    } catch { }
     try {
       await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-    } catch {}
+    } catch { }
   }
 
   return res.json({ runId, sessionId, result });

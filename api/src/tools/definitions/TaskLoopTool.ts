@@ -1,6 +1,6 @@
 
 import { BaseTool } from '../base';
-import { executeTool } from '../registry'; // Import the dispatcher
+import { executeTool } from '../../services/ToolService'; // Import the dispatcher
 import { ToolPermission } from '../types';
 
 export class TaskLoopTool extends BaseTool {
