@@ -205,6 +205,17 @@ export async function executeTool(name: string, input: any, context?: any): Prom
       effectiveInput.actions.push({ type: 'ui_audit' });
     }
   }
+  if (name === 'web_search') {
+    effectiveName = 'browser_run';
+    const query = effectiveInput.query || effectiveInput.q || effectiveInput.input || '';
+    if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
+    if (query) {
+      effectiveInput.actions.unshift({ type: 'goto', url: `https://www.google.com/search?q=${encodeURIComponent(query)}` });
+      effectiveInput.actions.push({ type: 'wait', ms: 2000 }); // Wait for results
+    } else {
+      effectiveInput.actions.push({ type: 'goto', url: 'https://www.google.com' });
+    }
+  }
 
   // Universal Session Injection
   if ((effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') && !effectiveInput.sessionId && contextSessionId) {
