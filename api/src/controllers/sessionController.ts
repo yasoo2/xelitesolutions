@@ -70,3 +70,40 @@ export async function deleteSession(req: Request, res: Response) {
         return res.status(500).json({ error: 'Failed to delete session' });
     }
 }
+
+export async function togglePin(req: Request, res: Response) {
+    const id = req.params.id;
+    try {
+        if (!useMock()) {
+            const s = await Session.findById(id);
+            if (s) {
+                s.pinned = !s.pinned;
+                await s.save();
+                return res.json(s);
+            }
+        }
+        return res.status(404).json({ error: 'Session not found' });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to toggle pin' });
+    }
+}
+
+export async function moveSession(req: Request, res: Response) {
+    const id = req.params.id;
+    const folderId = req.body.folderId;
+    try {
+        if (!useMock()) {
+            const s = await Session.findByIdAndUpdate(id, { folderId }, { new: true });
+            return res.json(s);
+        }
+        return res.json({ id, folderId, moved: true });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to move session' });
+    }
+}
+
+export async function updateSecrets(req: Request, res: Response) {
+    const id = req.params.id;
+    // Just a stub for now to prevent crash
+    return res.json({ ok: true, message: 'Secrets updated (stub)' });
+}
