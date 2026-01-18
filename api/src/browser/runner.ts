@@ -36,6 +36,7 @@ Smart Detection Rules:
 - If a specific text selector fails, fallback to coordinates (x,y) from the grounding data.
 - For YouTube/Social Media: "Sign in" often hides behind an Avatar or "Accounts" menu. Look for \`[aria-label="Account"]\` or similar.
 - Do NOT stop at the first step if the instruction implies a sequence (e.g., "Go to X and Login" -> goto + wait + click).
+- **CRITICAL**: For requests like "Read", "Summarize", "Translate", "What are the headlines?": just \`{"type":"goto"}\` and \`{"type":"wait","ms":3000}\`. Do NOT click articles or buttons unless explicitly asked. The system reads the page automatically.
 
 Output Config:
 - Max 80 actions.
