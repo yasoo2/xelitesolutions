@@ -26,6 +26,7 @@ import gitRoutes from './routes/git';
 import artRoutes from './routes/art';
 import databaseRoutes from './routes/database';
 import actionsRoutes from './routes/actions';
+import browserRoutes from './routes/browser';
 import { healthcheckBrowser } from './browser/manager';
 
 import { authenticate } from './middleware/auth';
