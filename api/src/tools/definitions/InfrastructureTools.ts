@@ -28,8 +28,8 @@ export class TerraformManagerTool extends BaseTool {
             planSummary: { type: 'string' }
         }
     };
-    permissions: ToolPermission[] = ['shell', 'file_read', 'file_write']; // Needs shell to run binary
-    sideEffects: ToolPermission[] = ['shell'];
+    permissions: ToolPermission[] = ['execute', 'read', 'write']; // Needs shell to run binary
+    sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
         const action = String(input.action).toLowerCase();

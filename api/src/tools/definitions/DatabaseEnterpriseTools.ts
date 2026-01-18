@@ -23,8 +23,8 @@ export class DbSchemaMigratorTool extends BaseTool {
         required: ['action']
     };
     outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
-    permissions: ToolPermission[] = ['shell', 'file_read'];
-    sideEffects: ToolPermission[] = ['shell'];
+    permissions: ToolPermission[] = ['execute', 'read'];
+    sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
         const engine = input.engine || 'prisma';
@@ -115,8 +115,8 @@ export class LargeDataSeederTool extends BaseTool {
         required: ['rows', 'headers', 'outputPath']
     };
     outputSchema = { type: 'object' as const, properties: { fileSize: { type: 'number' } } };
-    permissions: ToolPermission[] = ['file_write'];
-    sideEffects: ToolPermission[] = ['file_write'];
+    permissions: ToolPermission[] = ['write'];
+    sideEffects: ToolPermission[] = ['write'];
 
     async execute(input: any) {
         const rows = input.rows || 1000;

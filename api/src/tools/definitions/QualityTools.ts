@@ -20,8 +20,8 @@ export class SonarAnalysisTool extends BaseTool {
         required: ['projectKey']
     };
     outputSchema = { type: 'object' as const, properties: { summary: { type: 'string' } } };
-    permissions: ToolPermission[] = ['shell', 'internet'];
-    sideEffects: ToolPermission[] = ['shell'];
+    permissions: ToolPermission[] = ['execute', 'internet'];
+    sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
         // Check if sonar-scanner exists
@@ -53,8 +53,8 @@ export class DependencyAuditorTool extends BaseTool {
         }
     };
     outputSchema = { type: 'object' as const, properties: { report: { type: 'string' } } };
-    permissions: ToolPermission[] = ['shell', 'internet'];
-    sideEffects: ToolPermission[] = ['shell'];
+    permissions: ToolPermission[] = ['execute', 'internet'];
+    sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
         const pm = input.packageManager || 'npm';
@@ -87,8 +87,8 @@ export class LoadTesterTool extends BaseTool {
         required: ['url']
     };
     outputSchema = { type: 'object' as const, properties: { summary: { type: 'string' } } };
-    permissions: ToolPermission[] = ['unknown']; // shell/internet
-    sideEffects: ToolPermission[] = ['shell'];
+    permissions: ToolPermission[] = ['execute', 'internet']; // shell/internet
+    sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
         // Since we can't easily install k6 inside the container dynamically without root, 
