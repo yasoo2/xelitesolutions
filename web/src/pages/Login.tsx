@@ -80,23 +80,21 @@ export default function Login() {
       <div className="login-bg-glow-2" />
 
       <div className="login-container">
-        <button 
-          className="login-close-btn" 
+        <button
+          className="login-close-btn"
           onClick={() => nav('/')}
           title={t('close', 'Close')}
         >
           <X size={24} />
         </button>
-        
+
         <div className="login-header">
           <div className="login-logo-wrapper">
-            <div className="login-logo">
-              <div className="brand-mark brand-mark-lg" aria-hidden="true" />
-            </div>
+            {/* 3D Golden Artifact Logo (Large) */}
+            <div className="brand-text-3d" style={{ fontSize: '64px', animationDuration: '8s' }}>JOE</div>
           </div>
-          <div className="login-title">
-            <span className="brand-word">JOE</span>{' '}
-            <span className="brand-ai">AI</span>
+          <div className="brand-ai-badge" style={{ display: 'inline-block', fontSize: '14px', marginTop: '12px' }}>
+            ARTIFICIAL INTELLIGENCE
           </div>
           <div className="login-subtitle">
             <Sparkles size={14} className="text-accent-primary" />
@@ -113,14 +111,14 @@ export default function Login() {
           }}
         >
           {error && <div className="login-error">{error}</div>}
-          
+
           <div className="login-input-group">
             <label className="login-label">{t('email')}</label>
             <div className="login-input-wrapper">
-              <input 
-                className="login-input" 
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
+              <input
+                className="login-input"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 type="email"
                 inputMode="email"
                 autoComplete="email"
@@ -135,16 +133,16 @@ export default function Login() {
           <div className="login-input-group">
             <label className="login-label">{t('password')}</label>
             <div className="login-input-wrapper">
-              <input 
-                className="login-input" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                type={showPassword ? 'text' : 'password'} 
+              <input
+                className="login-input"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 placeholder="••••••••"
               />
               <Lock size={18} className="input-icon-start" />
-              <button 
+              <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="input-icon-end"

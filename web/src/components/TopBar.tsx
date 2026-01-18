@@ -55,12 +55,10 @@ export default function TopBar() {
 
   return (
     <div className="topbar">
-      <div className="brand" onClick={() => nav('/')}>
-        <div className="brand-mark" aria-hidden="true" />
-        <div className="brand-wordmark">
-          <div className="brand-word">JOE</div>
-          <div className="brand-ai">AI</div>
-        </div>
+      <div className="brand brand-artifact" onClick={() => nav('/')} style={{ cursor: 'pointer' }}>
+        {/* Artifact 3D Text Structure */}
+        <div className="brand-text-3d">JOE</div>
+        <div className="brand-ai-badge">AI</div>
       </div>
       <div className="spacer" />
 

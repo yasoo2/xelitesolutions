@@ -35,6 +35,78 @@ body {
   background: var(--accent-primary);
 }
 
+/* =========================================
+   Brand Identity: The Golden Artifact (3D)
+   ========================================= */
+.brand-artifact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  perspective: 1000px;
+}
+
+.brand-text-3d {
+  font-family: 'Cairo', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: -0.5px;
+  color: #ffd700;
+  /* Fallback */
+  background: linear-gradient(135deg,
+      #bf953f 0%,
+      #fcf6ba 25%,
+      #b38728 50%,
+      #fbf5b7 75%,
+      #aa771c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  background-size: 200% auto;
+  animation: shine 5s linear infinite, float 6s ease-in-out infinite;
+  text-shadow:
+    0 1px 0 #cc9933,
+    0 2px 0 #b3862b,
+    0 3px 0 #997325,
+    0 4px 6px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(255, 215, 0, 0.4);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.brand-ai-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  backdrop-filter: blur(4px);
+  text-shadow: none;
+  margin-top: 6px;
+  -webkit-text-fill-color: initial;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0) rotateX(0deg);
+  }
+
+  50% {
+    transform: translateY(-4px) rotateX(5deg);
+  }
+}
+
 body {
   margin: 0;
   font-family: 'Cairo', 'Inter', "Noto Sans Arabic", system-ui, -apple-system, sans-serif;
