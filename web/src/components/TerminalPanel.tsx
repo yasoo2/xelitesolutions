@@ -43,34 +43,7 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
         termRef.current = term;
         fitAddonRef.current = fitAddon;
 
-        // Handle Input
-        term.onData((data) => {
-            SocketService.send({
-                type: 'terminal_input',
-                id: terminalId,
-                data
-            });
-        });
-
-        // Handle Resize
-        const handleResize = () => {
-            if (!fitAddonRef.current) return;
-            fitAddonRef.current.fit();
-            const dims = fitAddonRef.current.proposeDimensions();
-            if (dims) {
-                SocketService.send({
-                    type: 'terminal_resize',
-                    id: terminalId,
-                    cols: dims.cols,
-                    rows: dims.rows
-                });
-            }
-        };
-        window.addEventListener('resize', handleResize);
-
-        // Initial Create Request (via Tool System) - This ensures the backend PTY exists
-        // We use a raw fetch here to bypass the complex agent loop for this specific initialization
-        // OR we trigger it once socket is open.
+        // Initialize connection
         const initTerminal = async () => {
             const token = localStorage.getItem('token');
             try {
@@ -89,18 +62,66 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
                     })
                 });
                 setIsReady(true);
-                term.writeln('\x1b[1;32m✓ Terminal Connection Established\x1b[0m');
-                term.writeln('Welcome to Joe System Shell');
-                handleResize(); // Sync size
+                term.writeln('\x1b[1;32m✓ Joe Shell Ready\x1b[0m');
             } catch (e) {
-                term.writeln('\x1b[1;31m✗ Failed to connect to backend PTY\x1b[0m');
+                term.writeln('\x1b[1;31m✗ Connection Failed\x1b[0m');
             }
         };
         initTerminal();
 
+        // Handle Input
+        term.onData((data) => {
+            SocketService.send({
+                type: 'terminal_input',
+                id: terminalId,
+                data
+            });
+        });
+
+        // Handle Resize with Debounce and Observer (Flattened)
+        if (containerRef.current && termRef.current && fitAddonRef.current) {
+            const performFit = () => {
+                if (!fitAddonRef.current) return;
+                try {
+                    fitAddonRef.current.fit();
+                    const dims = fitAddonRef.current.proposeDimensions();
+                    if (dims && dims.cols && dims.rows) {
+                        SocketService.send({
+                            type: 'terminal_resize',
+                            id: terminalId,
+                            cols: dims.cols,
+                            rows: dims.rows
+                        });
+                    }
+                } catch (e) {
+                    console.error('Terminal fit error:', e);
+                }
+            };
+
+            const resizeObserver = new ResizeObserver(() => {
+                requestAnimationFrame(() => performFit());
+            });
+
+            resizeObserver.observe(containerRef.current);
+
+            // Also fit after transition ends
+            const transitionTimeout = setTimeout(performFit, 350);
+
+            // Add cleanup to the main effect's return
+            const originalCleanup = () => {
+                term.dispose();
+            };
+
+            // Override return to include observer cleanup
+            return () => {
+                resizeObserver.disconnect();
+                clearTimeout(transitionTimeout);
+                originalCleanup();
+            };
+        }
+
         return () => {
             term.dispose();
-            window.removeEventListener('resize', handleResize);
         };
     }, [terminalId]);
 
@@ -116,10 +137,11 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
 
     // Ensure fit on visibility change
     useEffect(() => {
-        if (!isMinimized && fitAddonRef.current) {
-            setTimeout(() => fitAddonRef.current?.fit(), 100);
+        if (!isMinimized && fitAddonRef.current && isReady) {
+            const t = setTimeout(() => fitAddonRef.current?.fit(), 100);
+            return () => clearTimeout(t);
         }
-    }, [isMinimized]);
+    }, [isMinimized, isReady]);
 
     return (
         <div className={`fixed bottom-4 right-4 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden transition-all duration-300 flex flex-col ${isMinimized ? 'w-64 h-12' : 'w-[800px] h-[500px]'}`} style={{ zIndex: 50 }}>
