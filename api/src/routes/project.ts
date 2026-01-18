@@ -57,21 +57,21 @@ async function getAllFiles(dirPath: string, arrayOfFiles: string[] = [], ignore:
   } catch {
     return arrayOfFiles;
   }
-  
+
   const files = await fs.promises.readdir(dirPath);
 
   for (const file of files) {
     if (ignore.includes(file)) continue;
-    
+
     const fullPath = path.join(dirPath, file);
     try {
-        const stat = await fs.promises.stat(fullPath);
-        if (stat.isDirectory()) {
-          arrayOfFiles = await getAllFiles(fullPath, arrayOfFiles, ignore);
-        } else {
-          arrayOfFiles.push(fullPath);
-        }
-    } catch {}
+      const stat = await fs.promises.stat(fullPath);
+      if (stat.isDirectory()) {
+        arrayOfFiles = await getAllFiles(fullPath, arrayOfFiles, ignore);
+      } else {
+        arrayOfFiles.push(fullPath);
+      }
+    } catch { }
   }
 
   return arrayOfFiles;
@@ -79,7 +79,7 @@ async function getAllFiles(dirPath: string, arrayOfFiles: string[] = [], ignore:
 
 function getImports(content: string): string[] {
   const imports: string[] = [];
-  
+
   // Static imports
   const importRegex = /import\s+.*?\s+from\s+['"](.*?)['"]/g;
   let match;
@@ -100,11 +100,11 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
   try {
     const cwdRaw = req.query.path ? String(req.query.path) : WORKSPACE_ROOT;
     const cwd = (await resolvePathInsideWorkspace(cwdRaw)) || WORKSPACE_ROOT;
-    
+
     try {
-        await fs.promises.access(cwd);
+      await fs.promises.access(cwd);
     } catch {
-        return res.json({ nodes: [], links: [] });
+      return res.json({ nodes: [], links: [] });
     }
 
     const files = await getAllFiles(cwd);
@@ -118,15 +118,15 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
     for (const f of files) {
       const relPath = path.relative(cwd, f);
       if (relPath.length > 200) continue;
-      
+
       const id = relPath;
       fileIdMap.set(f, id);
-      
+
       let size = 0;
       try {
-          const stat = await fs.promises.stat(f);
-          size = stat.size;
-      } catch {}
+        const stat = await fs.promises.stat(f);
+        size = stat.size;
+      } catch { }
 
       nodes.push({
         id,
@@ -141,44 +141,44 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
     // Process files in chunks to avoid opening too many at once
     const BATCH_SIZE = 10;
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
-        const batch = files.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(async (f) => {
-            if (!['.ts', '.tsx', '.js', '.jsx', '.css', '.scss'].includes(path.extname(f))) return;
-            
-            try {
-                const content = await fs.promises.readFile(f, 'utf-8');
-                const imports = getImports(content);
-                const sourceId = fileIdMap.get(f);
-                
-                if (!sourceId) return;
+      const batch = files.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (f) => {
+        if (!['.ts', '.tsx', '.js', '.jsx', '.css', '.scss'].includes(path.extname(f))) return;
 
-                imports.forEach(imp => {
-                    // Resolve import to a likely file
-                    // This is a heuristic, real resolution is complex
-                    let targetFile = imp;
-                    if (imp.startsWith('.')) {
-                        targetFile = path.resolve(path.dirname(f), imp);
-                    }
-                    // Try to find matching node
-                    // We need to match it back to one of our nodes
-                    // Check strict match or with extensions
-                    const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.js'];
-                    let foundTargetId = null;
+        try {
+          const content = await fs.promises.readFile(f, 'utf-8');
+          const imports = getImports(content);
+          const sourceId = fileIdMap.get(f);
 
-                    for (const ext of extensions) {
-                        const tryPath = targetFile + ext;
-                        if (fileIdMap.has(tryPath)) {
-                            foundTargetId = fileIdMap.get(tryPath);
-                            break;
-                        }
-                    }
+          if (!sourceId) return;
 
-                    if (foundTargetId) {
-                        links.push({ source: sourceId, target: foundTargetId });
-                    }
-                });
-            } catch (e) {}
-        }));
+          imports.forEach(imp => {
+            // Resolve import to a likely file
+            // This is a heuristic, real resolution is complex
+            let targetFile = imp;
+            if (imp.startsWith('.')) {
+              targetFile = path.resolve(path.dirname(f), imp);
+            }
+            // Try to find matching node
+            // We need to match it back to one of our nodes
+            // Check strict match or with extensions
+            const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.js'];
+            let foundTargetId = null;
+
+            for (const ext of extensions) {
+              const tryPath = targetFile + ext;
+              if (fileIdMap.has(tryPath)) {
+                foundTargetId = fileIdMap.get(tryPath);
+                break;
+              }
+            }
+
+            if (foundTargetId) {
+              links.push({ source: sourceId, target: foundTargetId });
+            }
+          });
+        } catch (e) { }
+      }));
     }
     res.json({ nodes, links });
   } catch (e) {
@@ -187,96 +187,129 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
   }
 });
 
-// File Tree Endpoint
+// File Tree Endpoint (Lazy)
 router.get('/tree', authenticate as any, async (req: Request, res: Response) => {
   try {
     const rootPathRaw = req.query.path ? String(req.query.path) : WORKSPACE_ROOT;
     const rootPath = await resolvePathInsideWorkspace(rootPathRaw);
     if (!rootPath) return res.status(400).json({ error: 'Invalid path' });
-    const depth = Number(req.query.depth || 5);
-    
+
+    // Default to depth 1 for lazy loading
+    // But initially we might want depth 1 to show root
+
     try {
-        await fs.promises.access(rootPath);
+      await fs.promises.access(rootPath);
     } catch {
-        return res.status(404).json({ error: 'Path not found' });
+      return res.status(404).json({ error: 'Path not found' });
     }
 
-    const getTree = async (dir: string, currentDepth: number): Promise<any[]> => {
-        if (currentDepth > depth) return [];
-        const files = await fs.promises.readdir(dir, { withFileTypes: true });
-        
-        // Sort: directories first, then files
-        files.sort((a, b) => {
-            if (a.isDirectory() && !b.isDirectory()) return -1;
-            if (!a.isDirectory() && b.isDirectory()) return 1;
-            return a.name.localeCompare(b.name);
-        });
+    const files = await fs.promises.readdir(rootPath, { withFileTypes: true });
 
-        const result = [];
-        for (const f of files) {
-            if (['node_modules', '.git', 'dist', 'build', '.DS_Store'].includes(f.name)) continue;
-            
-            const fullPath = path.join(dir, f.name);
-            const isDir = f.isDirectory();
-            result.push({
-                name: f.name,
-                path: fullPath,
-                type: isDir ? 'directory' : 'file',
-                children: isDir ? await getTree(fullPath, currentDepth + 1) : undefined
-            });
-        }
-        return result;
-    };
+    // Sort: directories first, then files
+    files.sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1;
+      if (!a.isDirectory() && b.isDirectory()) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
-    const tree = await getTree(rootPath, 0);
+    const tree = [];
+    for (const f of files) {
+      if (['node_modules', '.git', 'dist', 'build', '.DS_Store'].includes(f.name)) continue;
+
+      const fullPath = path.join(rootPath, f.name);
+      const isDir = f.isDirectory();
+      tree.push({
+        name: f.name,
+        path: fullPath,
+        type: isDir ? 'directory' : 'file',
+        // children: undefined (Frontend will fetch looking at type)
+        hasChildren: isDir // Hint for UI to show arrow
+      });
+    }
+
     res.json({ root: rootPath, tree });
   } catch (e) {
     res.status(500).json({ error: 'Tree generation failed' });
   }
 });
 
+// Smart Search Endpoint
+import { exec } from 'child_process';
+import util from 'util';
+const execAsync = util.promisify(exec);
+
+router.get('/search', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const query = String(req.query.q || '').trim();
+    if (!query) return res.json({ results: [] });
+
+    // Use grep to search recursively
+    // Limit 100 results, max depth 5 to prevent overload, ignore hidden
+    const cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${WORKSPACE_ROOT}" --exclude-dir={node_modules,.git,dist,build} | head -n 100`;
+
+    const { stdout } = await execAsync(cmd).catch(() => ({ stdout: '' }));
+
+    const results = stdout.split('\n').filter(Boolean).map(line => {
+      const parts = line.split(':');
+      if (parts.length < 3) return null;
+      const filePath = parts[0];
+      const lineNum = parts[1];
+      const content = parts.slice(2).join(':');
+      return {
+        path: filePath,
+        line: parseInt(lineNum),
+        preview: content.trim()
+      };
+    }).filter(Boolean);
+
+    res.json({ results });
+  } catch (e) {
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
 // File Content Endpoint (Read)
 router.get('/content', authenticate as any, async (req: Request, res: Response) => {
-    try {
-        const filePathRaw = String(req.query.path || '');
-        const filePath = await resolvePathInsideWorkspace(filePathRaw);
-        if (!filePath) {
-            return res.status(404).json({ error: 'File not found' });
-        }
-        try {
-            await fs.promises.access(filePath);
-        } catch {
-            return res.status(404).json({ error: 'File not found' });
-        }
-
-        const content = await fs.promises.readFile(filePath, 'utf-8');
-        res.json({ content });
-    } catch (e) {
-        res.status(500).json({ error: 'Read failed' });
+  try {
+    const filePathRaw = String(req.query.path || '');
+    const filePath = await resolvePathInsideWorkspace(filePathRaw);
+    if (!filePath) {
+      return res.status(404).json({ error: 'File not found' });
     }
+    try {
+      await fs.promises.access(filePath);
+    } catch {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    res.json({ content });
+  } catch (e) {
+    res.status(500).json({ error: 'Read failed' });
+  }
 });
 
 // File Content Endpoint (Write)
 router.post('/content', authenticate as any, async (req: Request, res: Response) => {
-    try {
-        const { path: filePathRaw, content } = req.body;
-        const filePath = await resolvePathInsideWorkspace(String(filePathRaw || ''));
-        if (!filePath) {
-            return res.status(400).json({ error: 'Path required' });
-        }
-
-        try {
-            const stat = await fs.promises.stat(filePath);
-            if (!stat.isFile()) return res.status(400).json({ error: 'Path must be a file' });
-        } catch {
-            return res.status(404).json({ error: 'File not found' });
-        }
-
-        await fs.promises.writeFile(filePath, String(content ?? ''), 'utf-8');
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: 'Write failed' });
+  try {
+    const { path: filePathRaw, content } = req.body;
+    const filePath = await resolvePathInsideWorkspace(String(filePathRaw || ''));
+    if (!filePath) {
+      return res.status(400).json({ error: 'Path required' });
     }
+
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile()) return res.status(400).json({ error: 'Path must be a file' });
+    } catch {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    await fs.promises.writeFile(filePath, String(content ?? ''), 'utf-8');
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Write failed' });
+  }
 });
 
 export default router;
