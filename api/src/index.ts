@@ -23,6 +23,9 @@ import instaRoutes from './routes/insta';
 import providersRoutes from './routes/providers';
 import packagesRoutes from './routes/packages';
 import gitRoutes from './routes/git';
+import artRoutes from './routes/art';
+import databaseRoutes from './routes/database';
+import actionsRoutes from './routes/actions';
 import { healthcheckBrowser } from './browser/manager';
 
 import { authenticate } from './middleware/auth';
@@ -148,6 +151,9 @@ async function main() {
   app.use('/providers', providersRoutes);
   app.use('/packages', packagesRoutes);
   app.use('/git', gitRoutes);
+  app.use('/art', artRoutes);
+  app.use('/database', databaseRoutes);
+  app.use('/actions', actionsRoutes);
   app.use('/api/browser', browserRoutes);
 
   // Example protected route

@@ -5,7 +5,7 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon, Package, GitBranch, Camera } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon, Package, GitBranch, Camera, Wand2, Database, Play } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
@@ -13,6 +13,9 @@ const TerminalPanelLazy = lazy(() => import('../components/TerminalPanel'));
 const PackageManagerLazy = lazy(() => import('../components/PackageManager'));
 const GitPanelLazy = lazy(() => import('../components/GitPanel'));
 const SocialPanelLazy = lazy(() => import('../components/SocialPanel'));
+const ArtStudioLazy = lazy(() => import('../components/ArtStudio'));
+const DatabasePanelLazy = lazy(() => import('../components/DatabasePanel'));
+const ActionsPanelLazy = lazy(() => import('../components/ActionsPanel'));
 
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
@@ -144,6 +147,9 @@ export default function Joe() {
   const [showPackages, setShowPackages] = useState(false);
   const [showGit, setShowGit] = useState(false);
   const [showSocial, setShowSocial] = useState(false);
+  const [showArt, setShowArt] = useState(false);
+  const [showDB, setShowDB] = useState(false);
+  const [showActions, setShowActions] = useState(false);
   const featureChrome = getBrowserChromeEnabled();
 
   const makeBrowserSessionId = useCallback(
@@ -635,6 +641,15 @@ export default function Joe() {
               </button>
               <button className="close-sidebar-btn" onClick={() => setShowSocial(!showSocial)} title="Social Feed">
                 <Camera size={20} />
+              </button>
+              <button className="close-sidebar-btn" onClick={() => setShowArt(!showArt)} title="AI Art Studio">
+                <Wand2 size={20} />
+              </button>
+              <button className="close-sidebar-btn" onClick={() => setShowDB(!showDB)} title="Database Commander">
+                <Database size={20} />
+              </button>
+              <button className="close-sidebar-btn" onClick={() => setShowActions(!showActions)} title="CI/CD Monitor">
+                <Play size={20} />
               </button>
               <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
                 <PanelLeftClose size={20} />
@@ -1237,6 +1252,57 @@ export default function Joe() {
             </button>
             <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
               <SocialPanelLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {/* Art Modal */}
+      {showArt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowArt(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <ArtStudioLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {/* DB Modal */}
+      {showDB && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowDB(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <DatabasePanelLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {/* Actions Modal */}
+      {showActions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowActions(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <ActionsPanelLazy />
             </Suspense>
           </div>
         </div>
