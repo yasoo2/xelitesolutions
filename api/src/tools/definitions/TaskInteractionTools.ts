@@ -4,14 +4,8 @@ import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
 import { broadcast } from '../../ws';
-import type { IPty } from 'node-pty';
-
-// We use require to avoid build-time issues if type defs missing, but we installed it.
-// @ts-ignore
-import * as pty from 'node-pty';
-
 // Store for persistent terminals
-const terminals = new Map<string, { pty: IPty, history: string[] }>();
+const terminals = new Map<string, { pty: any, history: string[] }>();
 
 /**
  * TerminalManagerTool: Persistent terminal sessions.
@@ -46,6 +40,14 @@ export class TerminalManagerTool extends BaseTool {
             if (terminals.has(id)) return { ok: false, error: 'Terminal already exists', logs: [] };
 
             try {
+                let pty: any;
+                try {
+                    // Lazy load node-pty to prevent startup crashes if native bindings fail
+                    pty = require('node-pty');
+                } catch (e) {
+                    return { ok: false, error: 'node-pty module not found or failed to load on this system.', logs: [] };
+                }
+
                 const shell = input.shell || (process.platform === 'win32' ? 'powershell.exe' : 'bash');
                 const ptyProcess = pty.spawn(shell, [], {
                     name: 'xterm-color',
