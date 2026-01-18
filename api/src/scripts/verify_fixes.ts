@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
 import { BrowserRunTool } from '../tools/definitions/BrowserRunTool';
-import { Session } from '../models/Session'; // Assuming model path
+import { Session } from '../models/session'; // Assuming model path
 
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
@@ -21,23 +21,29 @@ async function verify() {
         // Create dummy session
         const userId = 'verify_user_' + Date.now();
         const session = await Session.create({
-            userId,
-            title: 'Verification Session',
+            kind: 'agent',
+            title: 'Verify Fixes Test',
+            userId: 'test-user',
             messages: []
-        });
-        console.log(`Created dummy session: ${session._id}`);
+        } as any);
+        console.log(`Created dummy session: ${(session as any)._id}`);
 
         // Verify it exists
-        const check1 = await Session.findById(session._id);
-        if (!check1) throw new Error('Session creation failed');
-        console.log('Session exists in DB.');
+        const check = await Session.findById((session as any)._id);
+        if (!check) throw new Error('Session not found in DB');
+        console.log('DB Check passed.');
+
+        // Add a message
+        await Session.findByIdAndUpdate((session as any)._id, {
+            $push: { messages: { role: 'user', content: 'test msg' } }
+        });
 
         // Delete
         console.log('Deleting sessions for user...');
         await Session.deleteMany({ userId });
 
         // Verify deletion
-        const check2 = await Session.findById(session._id);
+        const check2 = await Session.findById((session as any)._id);
         if (check2) throw new Error('Session WAS NOT DELETED! Security Risk?');
         console.log('✅ Session Deletion Logic Passed (Backend)');
 

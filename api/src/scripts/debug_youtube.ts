@@ -39,14 +39,14 @@ async function debugYoutube() {
                     console.log(`Selector "${sel}": Not found`);
                 }
             } catch (e) {
-                console.log(`Selector "${sel}": Error - ${e.message}`);
+                console.log(`Selector "${sel}": Error - ${(e as any).message}`);
             }
         }
 
         await browser.close();
 
     } catch (e) {
-        console.error('Debug Failed:', e);
+        console.error('YouTube debug failed:', (e as any).message);
     }
 }
 

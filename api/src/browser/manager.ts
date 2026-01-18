@@ -168,7 +168,7 @@ function ensureCleanupLoop() {
   } catch { }
 }
 
-async function createSession(sessionId: string) {
+export async function createSession(sessionId: string) {
   const cfg = DEFAULT_BROWSER_CONFIG;
   const viewport = getBrowserViewport();
 

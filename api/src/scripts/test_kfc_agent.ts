@@ -17,7 +17,7 @@ function request(method: string, path: string, body: any, token?: string): Promi
                 'Content-Type': 'application/json',
             }
         };
-        if (token && options.headers) options.headers['Authorization'] = `Bearer ${token}`;
+        if (token && options.headers) (options.headers as any)['Authorization'] = `Bearer ${token}`;
 
         const req = http.request(options, (res) => {
             let data = '';

@@ -22,11 +22,8 @@ async function testBrowserSession() {
         const sessionId = 'test-session-' + Date.now();
 
         const session = await createSession(sessionId);
-        console.log('✅ Session created:', sessionId);
-        console.log('📊 Session info:', {
-            id: session.id,
-            status: session.status
-        });
+        console.log(`Session created. ID: ${sessionId}`);
+        console.log('📊 Session initialized.');
 
         // Navigate to a page
         console.log('\n🔗 Navigating to google.com...');

@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
 import { runBrowserInstruction } from '../browser/runner';
-import { Session } from '../models/Session'; // Ensure correct case
+import { Session } from '../models/session'; // Ensure correct case
 
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
@@ -19,11 +19,12 @@ async function verifySmartAgent() {
         // Create dummy session
         const userId = 'smart_test_user';
         const session = await Session.create({
-            userId,
-            title: 'Smart Agent Test',
+            kind: 'agent',
+            title: 'Verify Smart Agent Test',
+            userId: 'test-user',
             messages: []
-        });
-        const sessionId = String(session._id);
+        } as any);
+        const sessionId = String((session as any)._id);
         console.log(`Created session: ${sessionId}`);
 
         // Test Command: "Go to YouTube and find the Sign In button"
