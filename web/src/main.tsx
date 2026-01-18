@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import App from './App';
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
+const Showcase = lazy(() => import('./pages/Showcase'));
 const Joe = lazy(() => import('./pages/Joe'));
 import './theme.css';
 import './global.css';
@@ -22,6 +23,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/" element={<App />}>
           <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
           <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
+          <Route path="showcase" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Showcase /></Suspense>} />
           <Route
             path="joe"
             element={
