@@ -37,7 +37,7 @@ export default function MonitoringPage() {
                 {/* CPU Usage */}
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
                     <h3 className="text-gray-400 text-sm font-medium mb-4">CPU Usage (%)</h3>
-                    <div className="h-64">
+                    <div className="h-64" style={{ minHeight: '250px' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={data}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -56,7 +56,7 @@ export default function MonitoringPage() {
                 {/* Memory Usage */}
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
                     <h3 className="text-gray-400 text-sm font-medium mb-4">Memory Usage (MB)</h3>
-                    <div className="h-64">
+                    <div className="h-64" style={{ minHeight: '250px' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={data}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
