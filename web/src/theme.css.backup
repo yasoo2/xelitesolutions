@@ -1,53 +1,31 @@
 :root,
 html[data-theme="dark"],
 html.dark {
-  /* Obsidian Lux Palette */
-  --accent-primary: #F0B90B;
-  /* Luxury Gold */
-  --accent-secondary: #E2E8F0;
-  /* Platinum Silver */
-  --accent-primary-rgb: 240, 185, 11;
-  --accent-secondary-rgb: 226, 232, 240;
-
-  --accent-rgb: 240, 185, 11;
-  --accent-glow: rgba(240, 185, 11, 0.4);
-
-  --brand-mark-yellow: #F0B90B;
-  --brand-mark-yellow-rgb: 240, 185, 11;
-
+  --accent-primary: #38bdf8;
+  --accent-secondary: #ffda00;
+  --accent-primary-rgb: 56, 189, 248;
+  --accent-secondary-rgb: 255, 218, 0;
+  --accent-rgb: 56, 189, 248;
+  --accent-glow: rgba(56, 189, 248, 0.55);
+  --brand-mark-yellow: #ffda00;
+  --brand-mark-yellow-rgb: 255, 218, 0;
   --accent-danger: #ef4444;
-  --accent-success: #10b981;
-  /* Emerald */
-
-  --bg-dark: #09090b;
-  /* Zinc 950 (Deep Matte Black) */
-  --bg-card: #18181b;
-  /* Zinc 900 (Lighter Matte) */
-  --bg-secondary: rgba(255, 255, 255, 0.03);
-  --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-hover: rgba(240, 185, 11, 0.08);
-  /* Gold tint on hover */
-
-  --text-primary: #f8fafc;
-  /* Slate 50 */
-  --text-secondary: #94a3b8;
-  /* Slate 400 */
-  --text-muted: #64748b;
-  /* Slate 500 */
-
-  --border-color: rgba(240, 185, 11, 0.15);
-  /* Subtle Gold Border */
-  --border-light: rgba(240, 185, 11, 0.25);
-
-  --radius-lg: 12px;
-  /* Sharper corners for luxury feel */
-  --radius-xl: 16px;
-
-  --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 25px 60px -10px rgba(0, 0, 0, 0.7);
-
-  --brand-gradient: linear-gradient(135deg, #F0B90B 0%, #E2E8F0 100%);
-  /* Gold to Silver */
+  --accent-success: #22c55e;
+  --bg-dark: #050a14;
+  --bg-card: rgba(10, 14, 26, 0.76);
+  --bg-secondary: rgba(255, 255, 255, 0.06);
+  --bg-input: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.09);
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.55);
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-light: rgba(255, 255, 255, 0.18);
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 24px 70px rgba(0, 0, 0, 0.55);
+  --brand-gradient: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
 }
 
 html {
@@ -57,34 +35,26 @@ html {
 }
 
 html[data-theme="light"] {
-  /* Light Mode Adaptation of Obsidian Lux (Cream & Gold) */
-  --accent-primary: #d97706;
-  /* Amber 600 */
-  --accent-secondary: #0f172a;
-  /* Slate 900 */
-  --accent-primary-rgb: 217, 119, 6;
-  --accent-secondary-rgb: 15, 23, 42;
-  --accent-rgb: 217, 119, 6;
-  --accent-glow: rgba(217, 119, 6, 0.2);
-  --brand-mark-yellow: #d97706;
-  --brand-mark-yellow-rgb: 217, 119, 6;
-
-  --bg-dark: #f8fafc;
-  /* Slate 50 */
-  --bg-card: #ffffff;
-  --bg-secondary: #f1f5f9;
-  --bg-input: #e2e8f0;
-  --bg-hover: rgba(217, 119, 6, 0.05);
-
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-
-  --border-color: #e2e8f0;
-  --border-light: #cbd5e1;
-
-  --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 25px 50px -10px rgba(0, 0, 0, 0.1);
+  --accent-primary: #38bdf8;
+  --accent-secondary: #ffda00;
+  --accent-primary-rgb: 56, 189, 248;
+  --accent-secondary-rgb: 255, 218, 0;
+  --accent-rgb: 56, 189, 248;
+  --accent-glow: rgba(56, 189, 248, 0.30);
+  --brand-mark-yellow: #ffda00;
+  --brand-mark-yellow-rgb: 255, 218, 0;
+  --bg-dark: #f6f8ff;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-secondary: rgba(15, 23, 42, 0.04);
+  --bg-input: rgba(15, 23, 42, 0.04);
+  --bg-hover: rgba(15, 23, 42, 0.06);
+  --text-primary: rgba(15, 23, 42, 0.92);
+  --text-secondary: rgba(15, 23, 42, 0.72);
+  --text-muted: rgba(15, 23, 42, 0.55);
+  --border-color: rgba(15, 23, 42, 0.12);
+  --border-light: rgba(15, 23, 42, 0.18);
+  --shadow-md: 0 10px 26px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 18px 50px rgba(15, 23, 42, 0.12);
 }
 
 .spin {
@@ -102,7 +72,7 @@ html[data-theme="light"] {
 }
 
 /* =========================================
-   New Hero / Empty State Design (Luxury Edition)
+   New Hero / Empty State Design (Global Website Quality)
    ========================================= */
 
 .empty-state-hero {
@@ -149,16 +119,15 @@ html[data-theme="light"] {
   height: 160%;
   transform: translate(-50%, -50%);
   background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
-  opacity: 0.3;
-  /* Subtle luxury glow */
-  animation: pulseGlow 5s infinite alternate;
+  opacity: 0.4;
+  animation: pulseGlow 4s infinite alternate;
   pointer-events: none;
 }
 
 .hero-logo-content {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(240, 185, 11, 0.05), rgba(0, 0, 0, 0.4));
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 28px;
   border: 1px solid var(--border-color);
   display: flex;
@@ -166,14 +135,15 @@ html[data-theme="light"] {
   justify-content: center;
   position: relative;
   z-index: 2;
-  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.4);
-  transition: all 0.3s ease;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.28);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
 }
 
 .hero-logo-container:hover .hero-logo-content {
-  transform: translateY(-2px) scale(1.02);
-  border-color: var(--accent-primary);
-  box-shadow: 0 26px 90px rgba(240, 185, 11, 0.15);
+  transform: translateY(-1px) scale(1.03);
+  border-color: rgba(var(--accent-primary-rgb), 0.35);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.34);
 }
 
 .hero-logo-text {
@@ -181,13 +151,17 @@ html[data-theme="light"] {
   font-weight: 900;
   color: var(--text-primary);
   letter-spacing: -2px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 18px rgba(var(--accent-primary-rgb), 0.18);
 }
 
 .hero-logo-text span:not(.logo-letter-yellow) {
   background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+[data-theme="light"] .hero-logo-text {
+  text-shadow: 0 0 18px rgba(var(--accent-primary-rgb), 0.12);
 }
 
 /* Hero Typography */
@@ -209,7 +183,7 @@ html[data-theme="light"] {
 .hero-title-sub {
   font-size: 48px;
   font-weight: 800;
-  background: var(--brand-gradient);
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -1px;
@@ -247,7 +221,7 @@ html[data-theme="light"] {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   padding: 20px;
-  border-radius: 12px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -265,15 +239,15 @@ html[data-theme="light"] {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, transparent 0%, rgba(240, 185, 11, 0.05) 100%);
+  background: linear-gradient(45deg, transparent 0%, rgba(255, 255, 255, 0.03) 100%);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
 
 .hero-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
   border-color: var(--accent-primary);
-  box-shadow: 0 10px 40px -10px rgba(240, 185, 11, 0.1);
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.3);
 }
 
 .hero-card:hover::before {
@@ -283,22 +257,27 @@ html[data-theme="light"] {
 .hero-card-icon {
   width: 48px;
   height: 48px;
-  border-radius: 10px;
-  background: rgba(240, 185, 11, 0.1);
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), 0.1);
+  /* Fallback */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--accent-primary);
   flex-shrink: 0;
-  border: 1px solid rgba(240, 185, 11, 0.1);
-  transition: all 0.3s ease;
+  border: 1px solid var(--border-color);
 }
 
 .hero-card:hover .hero-card-icon {
   background: var(--accent-primary);
   color: #000;
+  /* Assuming dark icon on bright accent */
   border-color: transparent;
-  box-shadow: 0 0 15px var(--accent-glow);
+}
+
+[data-theme="light"] .hero-card:hover .hero-card-icon {
+  color: #fff;
 }
 
 .hero-card-content h3 {
@@ -312,4 +291,14 @@ html[data-theme="light"] {
   font-size: 13px;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+/* Light mode adjustments */
+[data-theme="light"] .hero-card {
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .hero-card:hover {
+  box-shadow: 0 12px 30px rgba(var(--accent-primary-rgb), 0.15);
 }

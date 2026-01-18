@@ -127,7 +127,7 @@ export default function Joe() {
     };
   }, [autoDetectPreview, previewUrl, isProduction]);
 
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 1024);
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -253,7 +253,10 @@ export default function Joe() {
     timestamp: number;
     details?: any;
   }>>([]);
-  const [showThinkingPanel, setShowThinkingPanel] = useState(true);
+
+  // Mobile Optimization: Default closed on small screens
+  const isMobileInitial = window.innerWidth < 1024;
+  const [showThinkingPanel, setShowThinkingPanel] = useState(!isMobileInitial);
   const [rightPanelTab, setRightPanelTab] = useState<'thinking' | 'files' | 'memory'>('thinking');
   const [agentPanelTab, setAgentPanelTab] = useState<'commands' | 'thinking'>('commands');
   const [liveSteps, setLiveSteps] = useState<any[]>([]);
@@ -541,10 +544,11 @@ export default function Joe() {
   }, [mode]);
 
   useEffect(() => {
-    const mql = window.matchMedia('(max-width: 900px)');
+    const mql = window.matchMedia('(max-width: 1024px)');
     const apply = () => {
       setIsNarrow(mql.matches);
-      setShowSidebar(!mql.matches);
+      // Don't auto-toggle sidebar here on resize to avoid annoyance, just set narrow state
+      if (mql.matches) setShowSidebar(false);
     };
     apply();
     const onChange = () => apply();
