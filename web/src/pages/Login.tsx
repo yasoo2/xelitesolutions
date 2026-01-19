@@ -184,20 +184,23 @@ export default function Login() {
         },
         socialRow: { display: 'flex', justifyContent: 'center' },
         socialBtn: {
-            width: '48px', height: '48px', borderRadius: '50%',
-            backgroundColor: '#18181b', border: '1px solid #27272a',
+            width: '64px', height: '64px', borderRadius: '50%', // Larger button
+            backgroundColor: '#fff', // White background for standard Google look
+            border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', transition: 'all 0.2s',
-            color: '#a1a1aa',
             position: 'relative' as 'relative',
             overflow: 'hidden' as 'hidden',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)', // Stronger shadow
         },
         socialBtnHoverOverlay: {
-            position: 'absolute' as 'absolute', inset: 0, opacity: 0, transition: 'opacity 0.2s',
+            position: 'absolute' as 'absolute', inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.05)', // Subtle dark overlay on white
+            opacity: 0, transition: 'opacity 0.2s',
         },
         socialBtnIcon: {
-            position: 'relative' as 'relative', zIndex: 10, transition: 'color 0.2s',
+            position: 'relative' as 'relative', zIndex: 10,
+            width: '32px', height: '32px', // Larger standard icon size
         },
         errorAlert: {
             marginBottom: '24px', padding: '12px', borderRadius: '12px',
@@ -277,25 +280,26 @@ export default function Login() {
                         style={S.socialBtn}
                         title="Google"
                         onMouseEnter={(e) => {
-                            const div = e.currentTarget.querySelector('div') as HTMLElement;
-                            const svg = e.currentTarget.querySelector('svg') as any;
+                            const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
                             if (div) div.style.opacity = '1';
-                            if (svg) svg.style.color = '#ef4444';
-                            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-                            e.currentTarget.style.backgroundColor = '#18181b';
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                            e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.4)';
                         }}
                         onMouseLeave={(e) => {
-                            const div = e.currentTarget.querySelector('div') as HTMLElement;
-                            const svg = e.currentTarget.querySelector('svg') as any;
+                            const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
                             if (div) div.style.opacity = '0';
-                            if (svg) svg.style.color = '#a1a1aa';
-                            e.currentTarget.style.borderColor = '#27272a';
-                            e.currentTarget.style.backgroundColor = '#18181b';
+                            e.currentTarget.style.transform = 'scale(1)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
                         }}
                     >
-                        <div style={{ ...S.socialBtnHoverOverlay, backgroundColor: 'rgba(239, 68, 68, 0.1)' }} />
-                        <svg style={{ ...S.socialBtnIcon, width: '20px', height: '20px' }} viewBox="0 0 24 24">
-                            <path fill="currentColor" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81Z" />
+                        <div className="overlay" style={S.socialBtnHoverOverlay} />
+                        {/* Official Google G Logo */}
+                        <svg style={S.socialBtnIcon} viewBox="0 0 48 48">
+                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                            <path fill="none" d="M0 0h48v48H0z" />
                         </svg>
                     </button>
                 </div>
