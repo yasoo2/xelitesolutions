@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
     Terminal, Bot, FileCode2, Database, Shield, Zap,
-    ArrowLeft, Cpu, Globe, Heart, Layers, Sparkles
+    ArrowLeft, CheckCircle
 } from 'lucide-react';
 
 export default function Showcase() {
@@ -10,162 +10,158 @@ export default function Showcase() {
     const nav = useNavigate();
     const isRTL = i18n.language === 'ar';
 
+    // High-Quality Tech Imagery
+    const heroImage = "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=2070"; // Cyberpunk City/Data
+    const terminalImage = "https://images.unsplash.com/photo-1629654297299-c8506221ca97?auto=format&fit=crop&q=80&w=1974"; // Matrix/Code
+    const agentImage = "https://images.unsplash.com/photo-1531746790731-6c087fecd65a?auto=format&fit=crop&q=80&w=2006"; // AI/Robot
+    const teamImage = "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=2070"; // Collaboration
+
     const features = [
         {
-            icon: <Terminal size={32} className="text-accent-primary" />,
+            icon: <Terminal size={24} className="text-accent-primary" />,
             title: isRTL ? 'محطة أوامر ذكية' : 'Intelligent Terminal',
             desc: isRTL
-                ? 'بيئة تنفيذ أوامر متقدمة مع وعي بالسياق، تدعم برمجيات Linux بالكامل.'
-                : 'Context-aware command execution environment with full Linux software support.'
+                ? 'بيئة "باش" كاملة واعية بالسياق، تفهم مشروعك وتنفذ الأوامر بدقة.'
+                : 'Context-aware Bash environment that understands your project.',
+            image: terminalImage
         },
         {
-            icon: <Bot size={32} className="text-purple-400" />,
+            icon: <Bot size={24} className="text-purple-400" />,
             title: isRTL ? 'عملاء أذكياء' : 'Autonomous Agents',
             desc: isRTL
-                ? 'أسراب من العملاء الذكيين القادرين على التخطيط، وكتابة الكود، وإصلاح الأخطاء ذاتياً.'
-                : 'Swarms of intelligent agents capable of planning, coding, and self-repairing.'
-        },
-        {
-            icon: <FileCode2 size={32} className="text-green-400" />,
-            title: isRTL ? 'إدارة ملفات حية' : 'Live File System',
-            desc: isRTL
-                ? 'محرر أكواد متكامل مع مستكشف ملفات مدمج، يدعم السحب والإفلات والبحث الذكي.'
-                : 'Integrated code editor with built-in file explorer, supporting drag-and-drop and smart search.'
-        },
-        {
-            icon: <Database size={32} className="text-yellow-400" />,
-            title: isRTL ? 'قواعد بيانات فورية' : 'Instant Databases',
-            desc: isRTL
-                ? 'إنشاء وإدارة وفحص قواعد البيانات (SQL/NoSQL) بضغطة زر واحدة.'
-                : 'Create, manage, and inspect databases (SQL/NoSQL) with a single click.'
-        },
-        {
-            icon: <Shield size={32} className="text-blue-400" />,
-            title: isRTL ? 'أمان مؤسسي' : 'Enterprise Security',
-            desc: isRTL
-                ? 'حماية متقدمة للشيفرة المصدرية، مع عزل تام للبيئات وصلاحيات دقيقة.'
-                : 'Advanced source code protection with complete environment isolation and granular permissions.'
-        },
-        {
-            icon: <Layers size={32} className="text-pink-400" />,
-            title: isRTL ? 'بنية تحتية مرنة' : 'Scalable Infrastructure',
-            desc: isRTL
-                ? 'مبني على Docker و Microservices لضمان الأداء العالي والتوسع اللامتناهي.'
-                : 'Built on Docker and Microservices to ensure high performance and infinite scalability.'
+                ? 'أسراب من الذكاء الاصطناعي تخطط وتبني وتصلح الأخطاء تلقائياً.'
+                : 'AI swarms that plan, build, and self-repair automatically.',
+            image: agentImage
         }
     ];
 
     return (
-        <div className="min-h-screen bg-[#050a14] text-white overflow-x-hidden">
-            {/* Background Glows */}
-            <div className="fixed top-0 left-0 w-[500px] h-[500px] bg-accent-primary/10 blur-[120px] rounded-full pointer-events-none" />
-            <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-purple-500/10 blur-[120px] rounded-full pointer-events-none" />
+        <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans overflow-x-hidden transition-colors duration-300">
 
             {/* Navigation */}
-            <nav className="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-                <div className="flex items-center gap-3 cursor-pointer" onClick={() => nav('/')}>
-                    <div className="brand-mark brand-mark-sm" />
-                    <div className="font-bold text-xl tracking-tight">JOE <span className="text-accent-primary">AI</span></div>
+            <nav className="fixed top-0 w-full z-50 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border-color)]">
+                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => nav('/')}>
+                        <div className="brand-mark brand-mark-sm" />
+                        <div className="font-bold text-xl tracking-tight">JOE <span className="text-accent-primary">AI</span></div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => nav('/login')}
+                            className="px-6 py-2.5 rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] font-bold hover:opacity-90 transition-all font-medium text-sm"
+                        >
+                            {t('login')}
+                        </button>
+                    </div>
                 </div>
-                <button
-                    onClick={() => nav('/login')}
-                    className="px-6 py-2 rounded-full border border-white/10 hover:bg-white/5 transition-all font-medium text-sm backdrop-blur-md"
-                >
-                    {t('login')}
-                </button>
             </nav>
 
             {/* Hero Section */}
-            <header className="relative z-10 pt-20 pb-32 px-6 text-center max-w-5xl mx-auto">
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent-primary/10 border border-accent-primary/20 text-accent-primary text-xs font-bold tracking-wider mb-8 uppercase animate-fade-in-up">
-                    <Sparkles size={12} />
-                    {isRTL ? 'الجيل القادم من التطوير' : 'The Next Generation of Development'}
-                </div>
-
-                <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-tight animate-fade-in-up delay-100">
-                    {isRTL ? 'وداعاً للبرمجة التقليدية.' : 'Say Goodbye to'} <br />
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ffd700] via-[#bf953f] to-[#aa771c] drop-shadow-lg">
-                        {isRTL ? 'أهلاً بالمستقبل.' : 'Traditional Coding.'}
-                    </span>
-                </h1>
-
-                <p className="text-lg md:text-xl text-slate-400 mb-12 max-w-3xl mx-auto leading-relaxed animate-fade-in-up delay-200">
-                    {isRTL
-                        ? 'نظام "جو" ليس مجرد أداة، بل هو شريكك الذكي في بناء البرمجيات. يدمج بين قوة الذكاء الاصطناعي ومرونة بيئات التطوير السحابية ليمنحك تجربة لم تعهدها من قبل.'
-                        : 'Joe System is not just a tool; it is your intelligent partner in software building. It combines the power of AI with the flexibility of cloud development environments to give you an experience like never before.'}
-                </p>
-
-                <div className="flex flex-wrap items-center justify-center gap-4 animate-fade-in-up delay-300">
-                    <button
-                        onClick={() => nav('/login')}
-                        className="px-8 py-4 rounded-xl bg-gradient-to-r from-accent-primary to-accent-secondary text-black font-bold text-lg hover:transform hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(255,215,0,0.3)] transition-all duration-300"
-                    >
-                        {isRTL ? 'ابدأ رحلتك الآن' : 'Start Your Journey'}
-                    </button>
-                    <button
-                        onClick={() => nav('/')}
-                        className="px-8 py-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium text-lg transition-all flex items-center gap-2"
-                    >
-                        <ArrowLeft size={20} className={isRTL ? 'rotate-180' : ''} />
-                        {isRTL ? 'العودة للرئيسية' : 'Back Home'}
-                    </button>
-                </div>
-            </header>
-
-            {/* Features Grid */}
-            <section className="relative z-10 px-6 pb-32 max-w-7xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {features.map((feat, idx) => (
-                        <div
-                            key={idx}
-                            className="group p-8 rounded-2xl bg-white/5 border border-white/5 hover:border-accent-primary/30 hover:bg-white/[0.07] transition-all duration-300 hover:-translate-y-2 relative overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-br from-accent-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <div className="relative z-10">
-                                <div className="mb-6 p-3 bg-white/5 rounded-xl inline-block group-hover:scale-110 transition-transform duration-300 backdrop-blur-sm">
-                                    {feat.icon}
-                                </div>
-                                <h3 className="text-xl font-bold mb-3 text-white group-hover:text-accent-primary transition-colors">
-                                    {feat.title}
-                                </h3>
-                                <p className="text-slate-400 leading-relaxed text-sm">
-                                    {feat.desc}
-                                </p>
-                            </div>
+            <section className="relative pt-32 pb-20 px-6 overflow-hidden">
+                <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                    <div className="relative z-10 animate-fade-in-up">
+                        <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-[1.1] tracking-tight">
+                            {isRTL ? 'مستقبل البرمجة' : 'The Future of'} <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-primary to-accent-secondary">
+                                {isRTL ? 'بين يديك.' : 'Development.'}
+                            </span>
+                        </h1>
+                        <p className="text-xl text-[var(--text-secondary)] mb-8 leading-relaxed max-w-lg">
+                            {isRTL
+                                ? 'نظام "جو" يدمج قوة الذكاء الاصطناعي مع أدوات التطوير التقليدية لخلق تجربة لا مثيل لها.'
+                                : 'Joe System fuses AI power with traditional dev tools creates an unparalleled experience.'}
+                        </p>
+                        <div className="flex flex-wrap gap-4">
+                            <button
+                                onClick={() => nav('/login')}
+                                className="px-8 py-4 rounded-xl bg-accent-primary text-black font-bold text-lg hover:shadow-lg hover:-translate-y-1 transition-all"
+                            >
+                                {t('start_now')}
+                            </button>
+                            <button
+                                onClick={() => nav('/')}
+                                className="px-8 py-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-hover)] transition-all font-medium flex items-center gap-2"
+                            >
+                                <ArrowLeft size={20} className={isRTL ? 'rotate-180' : ''} />
+                                {isRTL ? 'الرئيسية' : 'Home'}
+                            </button>
                         </div>
-                    ))}
+                    </div>
+
+                    <div className="relative z-0 lg:h-[600px] rounded-3xl overflow-hidden shadow-2xl animate-fade-in-up delay-200 group">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-accent-primary/20 to-purple-500/20 mix-blend-overlay z-10" />
+                        <img
+                            src={heroImage}
+                            alt="Futuristic City"
+                            className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-1000"
+                        />
+                    </div>
                 </div>
             </section>
 
-            {/* Stats / Trust Section */}
-            <section className="relative z-10 py-24 border-y border-white/5 bg-black/20 backdrop-blur-sm">
-                <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-                    <div>
-                        <div className="text-4xl font-bold text-accent-primary mb-2">99%</div>
-                        <div className="text-sm text-slate-500 uppercase tracking-wider">{isRTL ? 'وقت التشغيل' : 'Uptime'}</div>
+            {/* Feature Grid with Real Images */}
+            <section className="py-24 bg-[var(--bg-secondary)]">
+                <div className="max-w-7xl mx-auto px-6">
+                    <div className="text-center mb-16">
+                        <h2 className="text-3xl md:text-5xl font-bold mb-4">{isRTL ? 'قدرات غير محدودة' : 'Limitless Capabilities'}</h2>
+                        <p className="text-[var(--text-secondary)] max-w-2xl mx-auto">
+                            {isRTL ? 'اكتشف الأدوات التي ستغير طريقة عملك للأبد.' : 'Discover the tools that will change how you work forever.'}
+                        </p>
                     </div>
-                    <div>
-                        <div className="text-4xl font-bold text-purple-400 mb-2">10ms</div>
-                        <div className="text-sm text-slate-500 uppercase tracking-wider">{isRTL ? 'الاستجابة' : 'Latency'}</div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {features.map((feat, idx) => (
+                            <div key={idx} className="group relative rounded-3xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border-color)] hover:shadow-xl transition-all h-[400px] flex flex-col">
+                                <div className="h-48 overflow-hidden relative">
+                                    <div className="absolute inset-0 bg-black/20 z-10" />
+                                    <img src={feat.image} alt={feat.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                </div>
+                                <div className="p-8 flex-1 flex flex-col justify-center">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="p-2 rounded-lg bg-[var(--bg-hover)]">{feat.icon}</div>
+                                        <h3 className="text-2xl font-bold">{feat.title}</h3>
+                                    </div>
+                                    <p className="text-[var(--text-secondary)] leading-relaxed">
+                                        {feat.desc}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                    <div>
-                        <div className="text-4xl font-bold text-blue-400 mb-2">256-bit</div>
-                        <div className="text-sm text-slate-500 uppercase tracking-wider">{isRTL ? 'التشفير' : 'Encryption'}</div>
+                </div>
+            </section>
+
+            {/* Text/Content Section */}
+            <section className="py-24">
+                <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+                    <div className="order-2 lg:order-1 rounded-3xl overflow-hidden shadow-2xl h-[500px]">
+                        <img src={teamImage} alt="Team" className="w-full h-full object-cover" />
                     </div>
-                    <div>
-                        <div className="text-4xl font-bold text-green-400 mb-2">24/7</div>
-                        <div className="text-sm text-slate-500 uppercase tracking-wider">{isRTL ? 'دعم ذكي' : 'AI Support'}</div>
+                    <div className="order-1 lg:order-2">
+                        <h2 className="text-4xl font-bold mb-6">{isRTL ? 'مصمم للفرق الطموحة' : 'Built for Ambitious Teams'}</h2>
+                        <p className="text-lg text-[var(--text-secondary)] mb-8 leading-relaxed">
+                            {isRTL
+                                ? 'سواء كنت تعمل بمفردك أو ضمن فريق كبير، يوفر جو بيئة آمنة وسريعة للتعاون الفوري، مع أدوات إدارة صلاحيات وحماية بيانات على مستوى المؤسسات.'
+                                : 'Whether you work alone or in a large team, Joe provides a secure, fast environment for real-time collaboration, with enterprise-grade permission management and data protection.'}
+                        </p>
+                        <ul className="space-y-4">
+                            {[
+                                isRTL ? 'تشفير شامل للبيانات' : 'End-to-End Encryption',
+                                isRTL ? 'بنية تحتية سحابية مرنة' : 'Scalable Cloud Infrastructure',
+                                isRTL ? 'دعم فني ذكي 24/7' : '24/7 Intelligent Support'
+                            ].map((item, i) => (
+                                <li key={i} className="flex items-center gap-3 text-lg font-medium">
+                                    <CheckCircle className="text-green-500" size={20} />
+                                    {item}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 </div>
             </section>
 
             {/* Footer */}
-            <footer className="relative z-10 py-12 px-6 border-t border-white/5 text-center text-slate-500 text-sm">
-                <div className="flex items-center justify-center gap-2 mb-4">
-                    <span>Built with</span>
-                    <Heart size={14} className="text-red-500 fill-red-500" />
-                    <span>by Xelite Solutions</span>
-                </div>
+            <footer className="py-12 border-t border-[var(--border-color)] text-center text-[var(--text-secondary)] bg-[var(--bg-secondary)]">
                 <p>© 2025 Joe System. All rights reserved.</p>
             </footer>
         </div>
