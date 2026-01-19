@@ -2,6 +2,8 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import { TaskExecutor } from './TaskExecutor';
 import { tools } from '../tools/registry';
+import { CortexState, TaskState } from '../services/CortexState';
+import crypto from 'crypto';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -9,11 +11,16 @@ export class ProjectManagerAgent {
     private openai: OpenAI;
     private name: string;
     private rootDir: string;
+    private cortex: CortexState;
+    private taskId: string;
 
-    constructor(name: string, rootDir: string) {
+    constructor(name: string, rootDir: string, taskId?: string) {
         this.name = name;
         this.rootDir = rootDir;
         this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        this.cortex = CortexState.getInstance();
+        // Generate a stable ID based on name if not provided, or use random
+        this.taskId = taskId || crypto.createHash('md5').update(name + rootDir).digest('hex');
     }
 
     async init() {
@@ -23,10 +30,34 @@ export class ProjectManagerAgent {
     }
 
     async execute(goal: string) {
-        console.log(`[PM:${this.name}] 🧠 Starting Autonomous ReAct Loop for: "${goal}"`);
+        console.log(`[PM:${this.name}] 🧠 Starting Autonomous Persistent Agent for: "${goal}"`);
 
-        const MAX_ITERATIONS = 30;
-        const history: any[] = [];
+        // 1. Load or Initialize State
+        let state = this.cortex.getTask(this.taskId);
+
+        if (state && state.status === 'completed') {
+            console.log(`[PM:${this.name}] ✅ Task already completed. Skipping.`);
+            return { status: 'completed', history: state.history, reasoning: "Resumed: Already complete." };
+        }
+
+        if (state && state.status !== 'completed') {
+            console.log(`[PM:${this.name}] 🔄 Resuming existing task (Step ${state.step})...`);
+        } else {
+            // New Task
+            state = {
+                id: this.taskId,
+                goal,
+                status: 'running',
+                step: 0,
+                history: [],
+                rootDir: this.rootDir,
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+            this.cortex.saveTask(state);
+        }
+
+        const MAX_ITERATIONS = 50;
         const executor = new TaskExecutor(this.rootDir);
 
         // Get available tool signatures
@@ -67,10 +98,20 @@ OR
   "done": true
 }`;
 
-        for (let i = 0; i < MAX_ITERATIONS; i++) {
+        // Resume from last step
+        for (let i = state.step; i < MAX_ITERATIONS; i++) {
+
+            // Financial Check
+            if (!this.cortex.recordTransaction(-0.05, `Agent Step ${i}`, this.taskId)) {
+                console.error(`[PM:${this.name}] 🛑 Out of Budget! Stopping.`);
+                state.status = 'paused';
+                this.cortex.saveTask(state);
+                return { status: 'failed', error: 'Insufficient Funds' };
+            }
+
             try {
                 // 1. Decide
-                const prompt = `History:\n${JSON.stringify(history.slice(-5), null, 2)}\n\nWhat is your next move?`;
+                const prompt = `History (Last 5):\n${JSON.stringify(state.history.slice(-5), null, 2)}\n\nWhat is your next move?`;
 
                 const completion = await this.openai.chat.completions.create({
                     model: "gpt-4o",
@@ -90,7 +131,10 @@ OR
 
                 if (decision.done) {
                     console.log(`[PM:${this.name}] ✅ Goal Achieved.`);
-                    return { status: 'completed', history, reasoning: decision.thought };
+                    state.status = 'completed';
+                    state.history.push({ step: i, thought: decision.thought, action: 'DONE' });
+                    this.cortex.saveTask(state);
+                    return { status: 'completed', history: state.history, reasoning: decision.thought };
                 }
 
                 if (!decision.tool) {
@@ -103,26 +147,32 @@ OR
                 const step = { name: `iteration_${i}`, tool: decision.tool, args: decision.args || {} };
                 const result = await executor.executeStep(step);
 
-                // 3. Update History
-                history.push({
+                // 3. Update & Save State
+                state.step = i + 1;
+                state.history.push({
                     step: i + 1,
                     thought: decision.thought,
                     tool: decision.tool,
                     args: decision.args,
                     success: result.success,
-                    output: result.output.slice(0, 1000) // Truncate log for context window
+                    output: result.output.slice(0, 1000)
                 });
 
                 if (!result.success) {
                     console.warn(`[PM:${this.name}] ⚠️ Action Failed: ${result.output}`);
                 }
 
+                this.cortex.saveTask(state); // <--- PERSISTENCE POINT
+
             } catch (e: any) {
                 console.error(`[PM:${this.name}] ❌ Loop Exception:`, e);
-                history.push({ step: i + 1, error: e.message });
+                state.history.push({ step: i + 1, error: e.message });
+                this.cortex.saveTask(state);
             }
         }
 
-        return { status: 'failed', error: 'Max iterations reached', history };
+        state.status = 'failed';
+        this.cortex.saveTask(state);
+        return { status: 'failed', error: 'Max iterations reached', history: state.history };
     }
 }

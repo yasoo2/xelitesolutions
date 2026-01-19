@@ -24,24 +24,46 @@ export class GodModeAgent {
 
     async buildSystem(userRequest: string, outputDir: string) {
         console.log(`\n🌩️  GOD MODE ACTIVATED: "${userRequest}"\n`);
+        console.log(`[GodMode] Deploying agents under: ${outputDir}`);
 
         // 1. High Level Architecture Breakdown
         const breakdown = await this.createSystemBreakdown(userRequest);
         console.log(`[GodMode] Breakdown:`, breakdown);
 
-        const results = [];
+        const activeAgents: ProjectManagerAgent[] = [];
+        const promises: Promise<any>[] = [];
 
-        // 2. Spawn Project Managers
+        // 2. Spawn Project Managers in PARALLEL
         for (const sys of breakdown) {
             const sysPath = path.join(outputDir, sys.dir);
-            const pm = new ProjectManagerAgent(sys.name, sysPath);
-            await pm.init();
 
-            console.log(`[GodMode] Spawning PM for ${sys.name}...`);
-            const subResult = await pm.execute(sys.description);
-            results.push({ system: sys.name, result: subResult });
+            // Create Agent
+            const pm = new ProjectManagerAgent(sys.name, sysPath); // TaskID auto-generated
+            await pm.init();
+            activeAgents.push(pm);
+
+            console.log(`[GodMode] 🚀 Launching Agent for: ${sys.name}...`);
+
+            // Fire and collect promise
+            const p = pm.execute(sys.description).then(res => ({
+                system: sys.name,
+                status: res.status,
+                reasoning: res.reasoning,
+                steps: res.history?.length
+            })).catch(err => ({
+                system: sys.name,
+                status: 'failed',
+                error: err.message
+            }));
+
+            promises.push(p);
         }
 
+        // 3. Wait for the Swarm
+        console.log(`[GodMode] ⏳ Accessing Cortex. Waiting for ${promises.length} agents to complete...`);
+        const results = await Promise.all(promises);
+
+        console.log('[GodMode] All Agents reported back.');
         return {
             status: 'success',
             breakdown,
@@ -60,7 +82,7 @@ Output ONLY valid JSON:
     { "name": "Backend", "dir": "backend", "description": "Node.js API with Express and LanceDB" },
     { "name": "Frontend", "dir": "frontend", "description": "React Dashboard" }
   ]
-}`; // Simplified prompt
+}`;
 
         const completion = await this.openai.chat.completions.create({
             model: "gpt-4o",
