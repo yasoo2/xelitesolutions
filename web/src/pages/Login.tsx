@@ -327,14 +327,18 @@ export default function Login() {
                         style={S.socialBtn}
                         title="Google"
                         onMouseEnter={(e) => {
-                            e.currentTarget.querySelector('div').style.opacity = '1';
-                            e.currentTarget.querySelector('svg').style.color = '#ef4444';
+                            const div = e.currentTarget.querySelector('div') as HTMLElement;
+                            const svg = e.currentTarget.querySelector('svg') as HTMLElement;
+                            if (div) div.style.opacity = '1';
+                            if (svg) svg.style.color = '#ef4444';
                             e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
                             e.currentTarget.style.backgroundColor = '#18181b';
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.querySelector('div').style.opacity = '0';
-                            e.currentTarget.querySelector('svg').style.color = '#a1a1aa';
+                            const div = e.currentTarget.querySelector('div') as HTMLElement;
+                            const svg = e.currentTarget.querySelector('svg') as HTMLElement;
+                            if (div) div.style.opacity = '0';
+                            if (svg) svg.style.color = '#a1a1aa';
                             e.currentTarget.style.borderColor = '#27272a';
                             e.currentTarget.style.backgroundColor = '#18181b';
                         }}
@@ -351,14 +355,18 @@ export default function Login() {
                         style={S.socialBtn}
                         title="Email"
                         onMouseEnter={(e) => {
-                            e.currentTarget.querySelector('div').style.opacity = '1';
-                            e.currentTarget.querySelector('svg').style.color = '#f59e0b';
+                            const div = e.currentTarget.querySelector('div') as HTMLElement;
+                            const svg = e.currentTarget.querySelector('svg') as HTMLElement;
+                            if (div) div.style.opacity = '1';
+                            if (svg) svg.style.color = '#f59e0b';
                             e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.5)';
                             e.currentTarget.style.backgroundColor = '#18181b';
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.querySelector('div').style.opacity = '0';
-                            e.currentTarget.querySelector('svg').style.color = '#a1a1aa';
+                            const div = e.currentTarget.querySelector('div') as HTMLElement;
+                            const svg = e.currentTarget.querySelector('svg') as HTMLElement;
+                            if (div) div.style.opacity = '0';
+                            if (svg) svg.style.color = '#a1a1aa';
                             e.currentTarget.style.borderColor = '#27272a';
                             e.currentTarget.style.backgroundColor = '#18181b';
                         }}
@@ -373,14 +381,18 @@ export default function Login() {
                         style={S.socialBtn}
                         title="Phone"
                         onMouseEnter={(e) => {
-                            e.currentTarget.querySelector('div').style.opacity = '1';
-                            e.currentTarget.querySelector('svg').style.color = '#22c55e';
+                            const div = e.currentTarget.querySelector('div') as HTMLElement;
+                            const svg = e.currentTarget.querySelector('svg') as HTMLElement;
+                            if (div) div.style.opacity = '1';
+                            if (svg) svg.style.color = '#22c55e';
                             e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.5)';
                             e.currentTarget.style.backgroundColor = '#18181b';
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.querySelector('div').style.opacity = '0';
-                            e.currentTarget.querySelector('svg').style.color = '#a1a1aa';
+                            const div = e.currentTarget.querySelector('div') as HTMLElement;
+                            const svg = e.currentTarget.querySelector('svg') as HTMLElement;
+                            if (div) div.style.opacity = '0';
+                            if (svg) svg.style.color = '#a1a1aa';
                             e.currentTarget.style.borderColor = '#27272a';
                             e.currentTarget.style.backgroundColor = '#18181b';
                         }}
