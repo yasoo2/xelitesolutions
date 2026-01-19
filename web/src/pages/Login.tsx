@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import {
   LogIn, UserPlus, Mail, Lock, Eye, EyeOff, Sparkles, X, Loader2,
-  Github, Globe, Smartphone, ArrowRight, User
+  Github, Smartphone, ArrowRight, User
 } from 'lucide-react';
 
 export default function Login() {
@@ -64,36 +64,26 @@ export default function Login() {
     }
   }
 
-  /* =========================================
-     Mock Registration Flow
-     ========================================= */
   const handleNextStep = () => {
-    // In a real flow, checking if user exists would happen here.
-    // For this UI demo, we simulate a "New User" flow leading to Name input.
     if (view === 'email' && email) {
-      // Assume new user for demo purposes if email contains 'new'
       if (email.includes('new')) {
         setView('register-details');
       } else {
         handleLogin();
       }
     } else if (view === 'register-details') {
-      // Mock Registration
       setLoading(true);
       setTimeout(() => {
         setLoading(false);
         alert(`Welcome ${name}! Registration Complete (Mock).`);
-        nav('/joe'); // Bypass for demo
+        nav('/joe');
       }, 1500);
     }
   }
 
-  // Simulated Social Login
   const handleSocialLogin = (provider: 'google' | 'github') => {
     setLoading(true);
-    // In a real app, this would redirect to OAuth endpoints
     setTimeout(() => {
-      // Mock successful login for visual demonstration
       alert(`Redirecting to ${provider} OAuth... (Backend Integration Required)`);
       setLoading(false);
     }, 1000);
@@ -103,74 +93,77 @@ export default function Login() {
      Sub-Components
      ========================================= */
 
-  // 1. Method Selection View
   const SelectionView = () => (
-    <div className="flex flex-col gap-4 animate-fade-in-up">
-      <h2 className="text-2xl font-bold text-center mb-2">
+    <div className="flex flex-col gap-3 animate-fade-in-up">
+      <h2 className="text-xl font-bold text-center mb-1">
         {isRTL ? 'تسجيل الدخول' : 'Sign In'}
       </h2>
 
+      {/* Email Button - Gold/Luxury */}
       <button
         onClick={() => setView('email')}
-        className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-accent-primary/50 transition-all group"
+        className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-[var(--border-color)] hover:border-accent-primary hover:bg-[var(--bg-hover)] transition-all group"
       >
-        <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400 group-hover:scale-110 transition-transform">
-          <Mail size={24} />
+        <div className="p-2 rounded-lg bg-[var(--bg-hover)] text-accent-primary group-hover:scale-110 transition-transform">
+          <Mail size={20} />
         </div>
         <div className="flex-1 text-start">
-          <div className="font-bold">{isRTL ? 'البريد الإلكتروني' : 'Email Address'}</div>
-          <div className="text-xs text-slate-400">user@example.com</div>
+          <div className="font-bold text-sm">{isRTL ? 'البريد الإلكتروني' : 'Email Address'}</div>
         </div>
-        <ArrowRight size={20} className={`text-slate-500 group-hover:text-accent-primary ${isRTL ? 'rotate-180' : ''}`} />
+        <ArrowRight size={16} className={`text-[var(--text-muted)] group-hover:text-accent-primary ${isRTL ? 'rotate-180' : ''}`} />
       </button>
 
+      {/* Phone Button - Gold/Luxury */}
       <button
         onClick={() => setView('phone')}
-        className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-accent-primary/50 transition-all group"
+        className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-[var(--border-color)] hover:border-accent-primary hover:bg-[var(--bg-hover)] transition-all group"
       >
-        <div className="p-2 rounded-lg bg-green-500/20 text-green-400 group-hover:scale-110 transition-transform">
-          <Smartphone size={24} />
+        <div className="p-2 rounded-lg bg-[var(--bg-hover)] text-accent-primary group-hover:scale-110 transition-transform">
+          <Smartphone size={20} />
         </div>
         <div className="flex-1 text-start">
-          <div className="font-bold">{isRTL ? 'رقم الهاتف' : 'Phone Number'}</div>
-          <div className="text-xs text-slate-400">+966 50 000 0000</div>
+          <div className="font-bold text-sm">{isRTL ? 'رقم الهاتف' : 'Phone Number'}</div>
         </div>
-        <ArrowRight size={20} className={`text-slate-500 group-hover:text-accent-primary ${isRTL ? 'rotate-180' : ''}`} />
+        <ArrowRight size={16} className={`text-[var(--text-muted)] group-hover:text-accent-primary ${isRTL ? 'rotate-180' : ''}`} />
       </button>
 
-      <div className="relative my-4">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
-        <div className="relative flex justify-center text-xs uppercase"><span className="bg-[#0f172a] px-2 text-slate-500">Or continue with</span></div>
+      <div className="relative my-3">
+        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--border-color)]"></div></div>
+        <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest"><span className="bg-[var(--bg-card)] px-2 text-[var(--text-muted)]">OR</span></div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        {/* Google Button */}
         <button
           onClick={() => handleSocialLogin('google')}
-          className="flex items-center justify-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
+          className="flex items-center justify-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-[var(--bg-hover)] border border-[var(--border-color)] transition-all group"
         >
-          <Globe size={20} className="text-red-400" />
-          <span>Google</span>
+          <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+            <path fill="currentColor" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81Z" />
+          </svg>
+          <span className="font-semibold text-sm">Google</span>
         </button>
+
+        {/* GitHub Button */}
         <button
           onClick={() => handleSocialLogin('github')}
-          className="flex items-center justify-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
+          className="flex items-center justify-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-[var(--bg-hover)] border border-[var(--border-color)] transition-all group"
         >
-          <Github size={20} />
-          <span>GitHub</span>
+          <Github size={20} className="group-hover:scale-110 transition-transform" />
+          <span className="font-semibold text-sm">GitHub</span>
         </button>
       </div>
     </div>
   );
 
-  // 2. Email Login View
   const EmailView = () => (
     <form
       className="flex flex-col gap-4 animate-fade-in-up"
       onSubmit={(e) => { e.preventDefault(); handleLogin(); }}
     >
-      <div className="flex items-center gap-2 mb-4 cursor-pointer text-slate-400 hover:text-white" onClick={() => setView('selection')}>
-        <ArrowRight size={16} className={isRTL ? '' : 'rotate-180'} />
-        <span className="text-sm">{isRTL ? 'الرجوع' : 'Back'}</span>
+      <div className="flex items-center gap-2 mb-2 cursor-pointer text-[var(--text-muted)] hover:text-accent-primary transition-colors" onClick={() => setView('selection')}>
+        <ArrowRight size={14} className={isRTL ? '' : 'rotate-180'} />
+        <span className="text-sm font-medium">{isRTL ? 'الرجوع' : 'Back'}</span>
       </div>
 
       <div className="login-input-group">
@@ -207,19 +200,18 @@ export default function Login() {
     </form>
   );
 
-  // 3. Phone View (Mock)
   const PhoneView = () => (
     <div className="flex flex-col gap-4 animate-fade-in-up">
-      <div className="flex items-center gap-2 mb-4 cursor-pointer text-slate-400 hover:text-white" onClick={() => setView('selection')}>
-        <ArrowRight size={16} className={isRTL ? '' : 'rotate-180'} />
-        <span className="text-sm">{isRTL ? 'الرجوع' : 'Back'}</span>
+      <div className="flex items-center gap-2 mb-2 cursor-pointer text-[var(--text-muted)] hover:text-accent-primary transition-colors" onClick={() => setView('selection')}>
+        <ArrowRight size={14} className={isRTL ? '' : 'rotate-180'} />
+        <span className="text-sm font-medium">{isRTL ? 'الرجوع' : 'Back'}</span>
       </div>
 
       <div className="login-input-group">
         <label className="login-label">{isRTL ? 'رقم الهاتف' : 'Phone Number'}</label>
         <div className="flex gap-2">
           <select
-            className="bg-zinc-900 border border-slate-700 rounded-xl px-2 text-sm outline-none focus:border-accent-primary"
+            className="bg-[var(--bg-input)] border border-[var(--border-color)] rounded-xl px-2 text-sm outline-none focus:border-accent-primary text-[var(--text-primary)]"
             value={countryCode}
             onChange={(e) => setCountryCode(e.target.value)}
           >
@@ -244,13 +236,12 @@ export default function Login() {
     </div>
   );
 
-  // 4. Name Input (For New Users)
   const NameView = () => (
     <div className="flex flex-col gap-4 animate-fade-in-up">
-      <h2 className="text-xl font-bold text-center mb-2">
+      <h2 className="text-xl font-bold text-center mb-1">
         {isRTL ? 'مرحباً بك!' : 'Welcome!'}
       </h2>
-      <p className="text-center text-slate-400 text-sm mb-4">
+      <p className="text-center text-[var(--text-muted)] text-sm mb-4">
         {isRTL ? 'دعنا نتعرف عليك أكثر' : 'Let us get to know you'}
       </p>
 
@@ -279,15 +270,14 @@ export default function Login() {
 
       <div className="login-container relative overflow-visible">
         <button className="login-close-btn" onClick={() => nav('/')}>
-          <X size={24} />
+          <X size={20} />
         </button>
 
-        {/* Header only shown on main view or compacted elsewhere */}
-        <div className="login-header mb-8">
-          <div className="login-logo-wrapper">
-            <div className="brand-text-3d" style={{ fontSize: '48px', animationDuration: '8s' }}>JOE</div>
+        <div className="login-header mb-6">
+          <div className="login-logo-wrapper mb-2">
+            <div className="brand-text-3d" style={{ fontSize: '42px', animationDuration: '8s' }}>JOE</div>
           </div>
-          <div className="brand-ai-badge inline-block text-[10px] mt-2 tracking-[0.2em]">ACCESS PORTAL</div>
+          <div className="brand-ai-badge inline-block text-[10px] mt-1 tracking-[0.2em]">ACCESS PORTAL</div>
         </div>
 
         {error && <div className="login-error mb-4">{error}</div>}
@@ -296,7 +286,6 @@ export default function Login() {
         {view === 'email' && <EmailView />}
         {view === 'phone' && <PhoneView />}
         {view === 'register-details' && <NameView />}
-
       </div>
     </div>
   );
