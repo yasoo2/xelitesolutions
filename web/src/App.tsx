@@ -26,7 +26,7 @@ export default function App() {
         if (isLogin) nav('/joe');
         window.dispatchEvent(new Event('auth:authorized'));
       }
-    } catch {}
+    } catch { }
   }
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function App() {
   return (
     <div className="app">
       <LiveBackground />
-      {!isLogin && <TopBar />}
+      {location.pathname === '/joe' && <TopBar />}
       <div className="content">
         <Outlet />
       </div>
