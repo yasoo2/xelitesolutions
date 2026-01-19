@@ -12,6 +12,9 @@ export default function Login() {
   const nav = useNavigate();
   const isRTL = i18n.language === 'ar';
 
+  // DEBUG: Tracking Deployment Version
+  console.log('JOE System: Login Page Gold-v3 Loaded');
+
   // State Machine: 'selection' | 'email' | 'phone' | 'register-details'
   const [view, setView] = useState<'selection' | 'email' | 'phone' | 'register-details'>('selection');
 
