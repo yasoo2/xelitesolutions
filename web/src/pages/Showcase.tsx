@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
     Terminal, Bot, FileCode2, Database, Shield, Zap,
-    ArrowLeft, CheckCircle, Smartphone, Globe
+    ArrowLeft, ArrowRight, CheckCircle, Smartphone, Globe
 } from 'lucide-react';
 
 export default function Showcase() {
