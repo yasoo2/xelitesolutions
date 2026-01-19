@@ -26,11 +26,6 @@ export default function Home() {
             <span>{t('start_now', 'Start Now')}</span>
             <ArrowRight size={20} />
           </button>
-
-          <button className="home-btn-secondary" onClick={() => nav('/showcase')}>
-            <span>{t('learn_more', 'Learn More')}</span>
-            <Zap size={18} />
-          </button>
         </div>
       </div>
 
