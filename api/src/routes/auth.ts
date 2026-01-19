@@ -173,6 +173,8 @@ router.post('/google', async (req: Request, res: Response) => {
     }
 
     const payload = await userInfoRes.json();
+    console.log('DEBUG: Google Payload:', JSON.stringify(payload, null, 2));
+
     if (!payload || !payload.email) {
       return res.status(400).json({ error: 'Invalid Google Profile' });
     }
@@ -210,9 +212,12 @@ router.post('/google', async (req: Request, res: Response) => {
         });
       } else {
         // Update existing user with latest Google info if missing or changed
-        if (!user.name || !user.picture) {
-          if (name) user.name = name;
-          if (picture) user.picture = picture;
+        // ALWAYS sync latest Google info to DB
+        // This ensures if user changes picture on Google, it reflects here.
+        // And fixes issues where legacy users had missing/empty fields.
+        if (name || picture) {
+          user.name = name || user.name;
+          user.picture = picture || user.picture;
           await user.save();
         }
       }
