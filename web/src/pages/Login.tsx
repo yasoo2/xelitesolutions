@@ -13,51 +13,15 @@ export default function Login() {
     const nav = useNavigate();
     const isRTL = i18n.language === 'ar';
 
-    // DEBUG: Tracking Deployment Version - v6 (Inline Style Fix)
-    console.log('JOE System: Login Page Gold-v6-Inline Loaded');
+    // DEBUG: Tracking Deployment Version - v7 (Google Only)
+    console.log('JOE System: Login Page Gold-v7-GoogleOnly Loaded');
 
     // State Machine
-    const [view, setView] = useState<'login' | 'register-email' | 'register-phone'>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [countryCode, setCountryCode] = useState('+966');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-
-    // Constants
-    const countryCodes = [
-        { code: '+966', flag: '🇸🇦', name: 'KSA' },
-        { code: '+971', flag: '🇦🇪', name: 'UAE' },
-        { code: '+20', flag: '🇪🇬', name: 'Egypt' },
-        { code: '+965', flag: '🇰🇼', name: 'Kuwait' },
-        { code: '+974', flag: '🇶🇦', name: 'Qatar' },
-        { code: '+973', flag: '🇧🇭', name: 'Bahrain' },
-        { code: '+968', flag: '🇴🇲', name: 'Oman' },
-        { code: '+962', flag: '🇯🇴', name: 'Jordan' },
-        { code: '+961', flag: '🇱🇧', name: 'Lebanon' },
-        { code: '+964', flag: '🇮🇶', name: 'Iraq' },
-        { code: '+212', flag: '🇲🇦', name: 'Morocco' },
-        { code: '+213', flag: '🇩🇿', name: 'Algeria' },
-        { code: '+216', flag: '🇹🇳', name: 'Tunisia' },
-        { code: '+90', flag: '🇹🇷', name: 'Turkey' },
-        { code: '+1', flag: '🇺🇸', name: 'USA/CA' },
-        { code: '+44', flag: '🇬🇧', name: 'UK' },
-        { code: '+49', flag: '🇩🇪', name: 'Germany' },
-        { code: '+33', flag: '🇫🇷', name: 'France' },
-        { code: '+39', flag: '🇮🇹', name: 'Italy' },
-        { code: '+34', flag: '🇪🇸', name: 'Spain' },
-        { code: '+7', flag: '🇷🇺', name: 'Russia' },
-        { code: '+86', flag: '🇨🇳', name: 'China' },
-        { code: '+81', flag: '🇯🇵', name: 'Japan' },
-        { code: '+91', flag: '🇮🇳', name: 'India' },
-        { code: '+92', flag: '🇵🇰', name: 'Pakistan' },
-        { code: '+62', flag: '🇮🇩', name: 'Indonesia' },
-        { code: '+61', flag: '🇦🇺', name: 'Australia' },
-        { code: '+55', flag: '🇧🇷', name: 'Brazil' },
-    ];
 
     // Auth Handlers
     async function handleLogin() {
@@ -65,7 +29,7 @@ export default function Login() {
         setLoading(true);
         try {
             const emailNormalized = email.trim();
-            const res = await fetch(`${API} /auth/login`, {
+            const res = await fetch(`${API}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: emailNormalized, password }),
@@ -85,15 +49,6 @@ export default function Login() {
         } finally {
             setLoading(false);
         }
-    }
-
-    const handleRegister = (type: 'email' | 'phone') => {
-        setLoading(true);
-        setTimeout(() => {
-            setLoading(false);
-            alert(`Registration via ${type} Successful(Mock).Redirecting to Login...`);
-            setView('login');
-        }, 1500);
     }
 
     const handleSocialLogin = (provider: 'google') => {
@@ -227,7 +182,7 @@ export default function Login() {
         footerText: {
             fontSize: '13px', color: '#a1a1aa', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase' as 'uppercase', marginBottom: '20px'
         },
-        socialRow: { display: 'flex', justifyContent: 'center', gap: '16px' },
+        socialRow: { display: 'flex', justifyContent: 'center' },
         socialBtn: {
             width: '48px', height: '48px', borderRadius: '50%',
             backgroundColor: '#18181b', border: '1px solid #27272a',
@@ -244,40 +199,11 @@ export default function Login() {
         socialBtnIcon: {
             position: 'relative' as 'relative', zIndex: 10, transition: 'color 0.2s',
         },
-        backButton: {
-            display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', cursor: 'pointer',
-            color: '#71717a', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' as 'uppercase', letterSpacing: '2px',
-            transition: 'color 0.2s', alignSelf: 'flex-start' as 'flex-start',
-        },
         errorAlert: {
             marginBottom: '24px', padding: '12px', borderRadius: '12px',
             background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
             color: '#f87171', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '12px',
             animation: 'shake 0.5s ease-in-out',
-        },
-        countryCodeSelect: {
-            appearance: 'none' as 'none',
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            border: '1px solid rgba(245, 158, 11, 0.2)',
-            borderRadius: '12px',
-            paddingLeft: '12px',
-            paddingRight: '36px', // Extra space for arrow
-            height: '48px',
-            fontSize: '14px',
-            color: '#fff',
-            outline: 'none',
-            transition: 'all 0.2s',
-            cursor: 'pointer',
-            boxSizing: 'border-box' as 'border-box',
-            width: '100%', // Ensure it fills container
-        },
-        selectArrow: {
-            position: 'absolute' as 'absolute',
-            right: '12px', // Moved inside
-            top: '50%',
-            transform: 'translateY(-50%) rotate(90deg)', // Point Down
-            pointerEvents: 'none' as 'none',
-            color: '#f59e0b', // Amber for visibility
         },
         copyright: {
             position: 'absolute' as 'absolute',
@@ -345,7 +271,7 @@ export default function Login() {
                 </p>
 
                 <div style={S.socialRow}>
-                    {/* Google */}
+                    {/* Google Only */}
                     <button
                         onClick={() => handleSocialLogin('google')}
                         style={S.socialBtn}
@@ -372,184 +298,8 @@ export default function Login() {
                             <path fill="currentColor" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81Z" />
                         </svg>
                     </button>
-
-                    {/* Email */}
-                    <button
-                        onClick={() => setView('register-email')}
-                        style={S.socialBtn}
-                        title="Email"
-                        onMouseEnter={(e) => {
-                            const div = e.currentTarget.querySelector('div') as HTMLElement;
-                            const svg = e.currentTarget.querySelector('svg') as any;
-                            if (div) div.style.opacity = '1';
-                            if (svg) svg.style.color = '#f59e0b';
-                            e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.5)';
-                            e.currentTarget.style.backgroundColor = '#18181b';
-                        }}
-                        onMouseLeave={(e) => {
-                            const div = e.currentTarget.querySelector('div') as HTMLElement;
-                            const svg = e.currentTarget.querySelector('svg') as any;
-                            if (div) div.style.opacity = '0';
-                            if (svg) svg.style.color = '#a1a1aa';
-                            e.currentTarget.style.borderColor = '#27272a';
-                            e.currentTarget.style.backgroundColor = '#18181b';
-                        }}
-                    >
-                        <div style={{ ...S.socialBtnHoverOverlay, backgroundColor: 'rgba(245, 158, 11, 0.1)' }} />
-                        <Mail size={20} style={S.socialBtnIcon} />
-                    </button>
-
-                    {/* Phone */}
-                    <button
-                        onClick={() => setView('register-phone')}
-                        style={S.socialBtn}
-                        title="Phone"
-                        onMouseEnter={(e) => {
-                            const div = e.currentTarget.querySelector('div') as HTMLElement;
-                            const svg = e.currentTarget.querySelector('svg') as any;
-                            if (div) div.style.opacity = '1';
-                            if (svg) svg.style.color = '#22c55e';
-                            e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.5)';
-                            e.currentTarget.style.backgroundColor = '#18181b';
-                        }}
-                        onMouseLeave={(e) => {
-                            const div = e.currentTarget.querySelector('div') as HTMLElement;
-                            const svg = e.currentTarget.querySelector('svg') as any;
-                            if (div) div.style.opacity = '0';
-                            if (svg) svg.style.color = '#a1a1aa';
-                            e.currentTarget.style.borderColor = '#27272a';
-                            e.currentTarget.style.backgroundColor = '#18181b';
-                        }}
-                    >
-                        <div style={{ ...S.socialBtnHoverOverlay, backgroundColor: 'rgba(34, 197, 94, 0.1)' }} />
-                        <Smartphone size={20} style={S.socialBtnIcon} />
-                    </button>
                 </div>
             </div>
-        </div>
-    );
-
-    /* 3. Register Email View */
-    const RegisterEmailView = () => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeUp 0.5s ease-out', width: '100%' }}>
-            <div
-                style={S.backButton}
-                onClick={() => setView('login')}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#f59e0b'}
-                onMouseLeave={(e) => e.currentTarget.style.color = '#71717a'}
-            >
-                <ArrowRight size={14} style={{ transform: isRTL ? 'none' : 'rotate(180deg)' }} />
-                <span>{isRTL ? 'الرجوع' : 'BACK TO LOGIN'}</span>
-            </div>
-
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: '8px', fontFamily: 'Inter, sans-serif', letterSpacing: '0.5px' }}>
-                {isRTL ? 'إنشاء حساب جديد' : 'Create Account'}
-            </h2>
-
-            {/* Name */}
-            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                <label style={S.label}>{isRTL ? 'الاسم' : 'Full Name'}</label>
-                <div style={S.inputWrapper}>
-                    <input
-                        style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '16px' }}
-                        value={name} onChange={e => setName(e.target.value)}
-                        type="text" placeholder="Joe Doe" autoFocus
-                    />
-                    <User size={18} style={S.iconStart} />
-                </div>
-            </div>
-
-            {/* Email */}
-            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                <label style={S.label}>{t('email')}</label>
-                <div style={S.inputWrapper}>
-                    <input
-                        style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '16px' }}
-                        value={email} onChange={e => setEmail(e.target.value)}
-                        type="email" placeholder="you@example.com"
-                    />
-                    <Mail size={18} style={S.iconStart} />
-                </div>
-            </div>
-
-            {/* Password */}
-            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                <label style={S.label}>{t('password')}</label>
-                <div style={S.inputWrapper}>
-                    <input
-                        style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '16px' }}
-                        value={password} onChange={e => setPassword(e.target.value)}
-                        type={showPassword ? 'text' : 'password'} placeholder="••••••••"
-                    />
-                    <Lock size={18} style={S.iconStart} />
-                </div>
-            </div>
-
-            <button
-                onClick={() => handleRegister('email')}
-                disabled={!name || !email || !password || loading}
-                style={{ ...S.submitBtn, opacity: (!name || !email || !password || loading) ? 0.5 : 1, cursor: (!name || !email || !password || loading) ? 'not-allowed' : 'pointer', transform: (!name || !email || !password || loading) ? 'none' : 'translateY(0)', boxShadow: (!name || !email || !password || loading) ? 'none' : S.submitBtn.boxShadow }}
-                onMouseEnter={(e) => { if (!(!name || !email || !password || loading)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                onMouseLeave={(e) => { if (!(!name || !email || !password || loading)) e.currentTarget.style.transform = 'translateY(0)'; }}
-            >
-                {loading ? <Loader2 size={18} className="spin" /> : <User size={18} />}
-                <span>{isRTL ? 'إتمام التسجيل' : 'Complete Registration'}</span>
-            </button>
-        </div>
-    );
-
-    /* 4. Register Phone View */
-    const RegisterPhoneView = () => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeUp 0.5s ease-out', width: '100%' }}>
-            <div
-                style={S.backButton}
-                onClick={() => setView('login')}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#f59e0b'}
-                onMouseLeave={(e) => e.currentTarget.style.color = '#71717a'}
-            >
-                <ArrowRight size={14} style={{ transform: isRTL ? 'none' : 'rotate(180deg)' }} />
-                <span>{isRTL ? 'الرجوع' : 'BACK TO LOGIN'}</span>
-            </div>
-
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: '8px', fontFamily: 'Inter, sans-serif', letterSpacing: '0.5px' }}>
-                {isRTL ? 'التسجيل برقم الهاتف' : 'Phone Registration'}
-            </h2>
-
-            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                <label style={S.label}>{isRTL ? 'رقم الهاتف' : 'Mobile Number'}</label>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    <div style={{ position: 'relative', width: '110px' }}>
-                        <select
-                            style={S.countryCodeSelect}
-                            value={countryCode} onChange={e => setCountryCode(e.target.value)}
-                        >
-                            {countryCodes.map(c => <option key={c.code} value={c.code}>{c.flag} {c.code}</option>)}
-                        </select>
-                        <div style={S.selectArrow}>
-                            <ArrowRight size={10} />
-                        </div>
-                    </div>
-                    <div style={{ ...S.inputWrapper, flex: 1 }}>
-                        <input
-                            style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '16px' }}
-                            value={phone} onChange={e => setPhone(e.target.value)}
-                            type="tel" placeholder="50 000 0000" autoFocus
-                        />
-                        <Smartphone size={18} style={S.iconStart} />
-                    </div>
-                </div>
-            </div>
-
-            <button
-                onClick={() => handleRegister('phone')}
-                disabled={!phone || loading}
-                style={{ ...S.submitBtn, opacity: (!phone || loading) ? 0.5 : 1, cursor: (!phone || loading) ? 'not-allowed' : 'pointer', transform: (!phone || loading) ? 'none' : 'translateY(0)', boxShadow: (!phone || loading) ? 'none' : S.submitBtn.boxShadow }}
-                onMouseEnter={(e) => { if (!(!phone || loading)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                onMouseLeave={(e) => { if (!(!phone || loading)) e.currentTarget.style.transform = 'translateY(0)'; }}
-            >
-                {loading ? <Loader2 size={18} className="spin" /> : <Smartphone size={18} />}
-                <span>{isRTL ? 'إرسال الرمز' : 'Send OTP Code'}</span>
-            </button>
         </div>
     );
 
@@ -599,10 +349,7 @@ export default function Login() {
                     </div>
                 )}
 
-                {/* View Switcher */}
-                {view === 'login' && <LoginForm />}
-                {view === 'register-email' && <RegisterEmailView />}
-                {view === 'register-phone' && <RegisterPhoneView />}
+                <LoginForm />
             </div>
 
             {/* Footer Copyright */}
