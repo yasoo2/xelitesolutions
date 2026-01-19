@@ -81,32 +81,47 @@ export default function Showcase() {
                 </div>
             </section>
 
-            {/* "Boxed" Feature Sections (Alternating) */}
-            <section className="py-24 space-y-24">
+            {/* "Boxed" Feature Sections (Standardized) */}
+            <section className="py-24 space-y-32">
                 {featureSections.map((feat, idx) => (
                     <div key={idx} className="max-w-7xl mx-auto px-6">
-                        <div className={`flex flex-col lg:flex-row items-center gap-12 rounded-3xl p-8 md:p-12 bg-[var(--bg-card)] border border-[var(--border-color)] shadow-xl ${idx % 2 === 1 ? 'lg:flex-row-reverse' : ''} hover:shadow-2xl transition-shadow duration-500`}>
+                        <div className={`flex flex-col lg:flex-row items-center gap-16 ${idx % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
 
-                            {/* Image Box */}
-                            <div className="w-full lg:w-1/2 rounded-2xl overflow-hidden h-[300px] md:h-[400px] relative">
-                                <div className="absolute inset-0 bg-black/10 z-10 mix-blend-multiply" />
-                                <img src={feat.image} alt={feat.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
+                            {/* Image Box (Floating Card Effect) */}
+                            <div className="w-full lg:w-1/2 rounded-3xl overflow-hidden h-[360px] md:h-[480px] relative shadow-2xl border border-[var(--border-color)] group hover:shadow-[0_20px_60px_rgba(var(--accent-primary-rgb),0.2)] transition-all duration-500">
+                                <div className="absolute inset-0 bg-black/5 z-10" />
+                                <img src={feat.image} alt={feat.title} className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-1000" />
+
+                                {/* Floating Badge */}
+                                <div className="absolute bottom-6 left-6 z-20 bg-[var(--bg-card)]/90 backdrop-blur-md px-4 py-2 rounded-full border border-[var(--border-color)] shadow-lg flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
+                                    <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-primary)]">AI Powered</span>
+                                </div>
                             </div>
 
-                            {/* Text Box */}
-                            <div className="w-full lg:w-1/2 text-start">
-                                <div className="inline-flex items-center justify-center p-3 rounded-xl bg-[var(--bg-hover)] border border-[var(--border-color)] mb-6">
-                                    {feat.icon}
-                                </div>
-                                <h2 className="text-3xl md:text-5xl font-bold mb-6">{feat.title}</h2>
-                                <p className="text-xl text-[var(--text-secondary)] leading-relaxed">
-                                    {feat.desc}
-                                </p>
+                            {/* Text Box (Contained/Boxed) */}
+                            <div className="w-full lg:w-1/2">
+                                <div className="relative p-8 md:p-10 rounded-3xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-xl relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-accent-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
 
-                                <button className="mt-8 px-6 py-3 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-hover)] transition-all flex items-center gap-2 font-bold text-accent-primary">
-                                    {isRTL ? 'اكتشف المزيد' : 'Discover More'}
-                                    <ArrowRight size={20} className={isRTL ? 'rotate-180' : ''} />
-                                </button>
+                                    <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[var(--bg-hover)] border border-[var(--border-color)] mb-6 text-accent-primary shadow-sm group-hover:scale-110 transition-transform duration-300">
+                                        {feat.icon}
+                                    </div>
+
+                                    <h2 className="text-3xl md:text-4xl font-bold mb-4 leading-tight">{feat.title}</h2>
+                                    <div className="w-12 h-1 bg-accent-primary rounded-full mb-6" />
+
+                                    <p className="text-lg text-[var(--text-secondary)] leading-relaxed mb-8 max-w-md">
+                                        {feat.desc}
+                                    </p>
+
+                                    <button className="group/btn flex items-center gap-3 text-[var(--text-primary)] font-bold text-sm tracking-wide hover:text-accent-primary transition-colors">
+                                        {isRTL ? 'اقرأ المزيد' : 'READ MORE'}
+                                        <div className="w-8 h-8 rounded-full border border-[var(--border-color)] flex items-center justify-center group-hover/btn:bg-accent-primary group-hover/btn:border-accent-primary group-hover/btn:text-black transition-all">
+                                            <ArrowRight size={16} className={isRTL ? 'rotate-180' : ''} />
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
 
                         </div>
