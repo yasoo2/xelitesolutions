@@ -165,6 +165,8 @@ router.post('/google', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid Google Profile' });
     }
 
+    const name = String(payload.name || '').trim();
+    const picture = String(payload.picture || '').trim();
     const emailNormalized = payload.email.trim().toLowerCase();
 
     // ... (rest of logic is same: Find or Create User) ...
@@ -177,6 +179,9 @@ router.post('/google', async (req: Request, res: Response) => {
         const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
         const isFirstUser = mockDb.countUsers() === 0;
         user = mockDb.createUser(emailNormalized, passwordHash, isFirstUser ? 'OWNER' : 'USER');
+        // MockDB doesn't persist extra fields by default in this simple impl, but we can try attaching it to object
+        user.name = name;
+        user.picture = picture;
       }
     } else {
       user = await User.findOne({ email: emailNormalized });
@@ -188,12 +193,25 @@ router.post('/google', async (req: Request, res: Response) => {
           email: emailNormalized,
           passwordHash,
           role,
+          name,
+          picture
         });
+      } else {
+        // Update existing user with latest Google info if missing or changed
+        if (!user.name || !user.picture) {
+          if (name) user.name = name;
+          if (picture) user.picture = picture;
+          await user.save();
+        }
       }
     }
 
     const appToken = jwt.sign(
-      { sub: useMock ? user.id : user._id.toString(), role: user.role },
+      {
+        sub: useMock ? user.id : user._id.toString(),
+        role: user.role,
+        name: user.name || name // Include name in token for frontend
+      },
       config.jwtSecret,
       { expiresIn: '7d' }
     );

@@ -459,6 +459,28 @@ export default function CommandComposer({
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
+  const [userName, setUserName] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const name = payload.name || payload.email?.split('@')[0] || 'User';
+        setUserName(name);
+
+        // Initial Welcome Message
+        if (events.length === 0) {
+          setEvents([{
+            type: 'text',
+            data: { text: `👋 Welcome back, **${name}**! How can I help you today?` },
+            duration: 0
+          }]);
+        }
+      }
+    } catch (e) { }
+  }, []);
+
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [secretPrompt, setSecretPrompt] = useState<{ sessionId: string; runId?: string; provider?: string; key: string; label?: string; reason?: string } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
