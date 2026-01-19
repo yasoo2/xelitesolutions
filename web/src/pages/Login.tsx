@@ -202,7 +202,7 @@ export default function Login() {
             borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' as 'center',
         },
         footerText: {
-            fontSize: '10px', color: '#71717a', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' as 'uppercase', marginBottom: '16px'
+            fontSize: '13px', color: '#a1a1aa', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase' as 'uppercase', marginBottom: '20px'
         },
         socialRow: { display: 'flex', justifyContent: 'center', gap: '16px' },
         socialBtn: {
