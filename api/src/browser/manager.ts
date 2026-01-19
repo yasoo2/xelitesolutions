@@ -182,13 +182,7 @@ export async function createSession(sessionId: string) {
   } catch (e) { }
 
   if (!wsEndpoint) {
-    // Fallback for Docker environment if env var is missing
-    console.warn('⚠️ BROWSER_WS_ENDPOINT missing, defaulting to ws://browser-worker:5050/ws');
-    wsEndpoint = 'ws://browser-worker:5050/ws';
-    try {
-      const logPath = path.join(__dirname, '../stream_debug.log');
-      fs.appendFileSync(logPath, `[createSession] Using Fallback WS: '${wsEndpoint}'\n`);
-    } catch (e) { }
+    // No WS endpoint provided, will attempt local launch
   }
 
   const apiKey = process.env.WORKER_API_KEY || '';

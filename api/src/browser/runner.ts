@@ -4,7 +4,7 @@ import { broadcastBrowserEvent } from './wsHub';
 import { resolveSecretsInText, redactSecretsFromString, rewriteInlineLoginCredentialsToSecrets } from './secrets';
 import { planNextStep } from '../llm';
 import { executePlannedActions } from './executor';
-import { getBrowserSession, stopSession, touchSession } from './manager';
+import { getBrowserSession, stopSession, touchSession, screenshotSessionJpeg } from './manager';
 import { getSessionRunConfig, setSessionSecretEncrypted } from '../services/secrets';
 
 function now() {
@@ -29,7 +29,7 @@ const COMPILER_SYSTEM = `
 You are an intelligent, visually-aware browser agent.
 You must output a SINGLE JSON object: { "actions": [ ... ] }
 
-Goal: Translate user instructions into precise browser actions using the provided UI_GROUNDING_JSON (snapshot of the page).
+Goal: Translate user instructions into precise browser actions using the provided UI_GROUNDING_JSON (snapshot of the page) and the attached screenshot. You can SEE the page.
 
 Smart Detection Rules:
 - If user says "Login" (or "دخول"), look for semantic visual cues: buttons labeled "Sign in", "Log in", "Profile", or icons/Avatars.
@@ -632,13 +632,30 @@ export async function runBrowserInstruction(params: {
       } catch { }
     }
     const grounding = wantsGrounding ? await collectUiGroundingSnapshot(sessionId) : null;
+    let screenshotBase64: string | null = null;
+    if (wantsGrounding) {
+      try {
+        const buf = await screenshotSessionJpeg(sessionId, { quality: 40, timeoutMs: 3000 });
+        screenshotBase64 = buf.toString('base64');
+      } catch { }
+    }
+
     const groundingJson = grounding ? (() => { try { return JSON.stringify(grounding); } catch { return ''; } })() : '';
     const urlBlock = grounding?.url ? `\n\nCURRENT_URL:\n${String(grounding.url).slice(0, 800)}` : '';
     const groundingBlock = groundingJson ? `${urlBlock}\n\nUI_GROUNDING_JSON:\n${groundingJson.slice(0, 24000)}` : urlBlock;
+
+    const userContent: any[] = [{ type: 'text', text: safeInstruction + groundingBlock }];
+    if (screenshotBase64) {
+      userContent.push({
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` }
+      });
+    }
+
     const r = await planNextStep(
       [
         { role: 'system', content: COMPILER_SYSTEM },
-        { role: 'user', content: safeInstruction + groundingBlock },
+        { role: 'user', content: userContent },
       ],
       {
         provider,

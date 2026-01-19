@@ -4,6 +4,7 @@ import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { getBrowserSession, setStreamMask, startStreaming, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
+import { AdvancedInteractionSystem } from './interactions';
 
 type Action =
   | { type: 'goto'; url: string; optional?: boolean }
@@ -239,6 +240,7 @@ export async function executePlannedActions(params: {
     startStreaming(sessionId);
 
     const page = s.page;
+    const interactions = new AdvancedInteractionSystem();
     try {
       broadcastBrowserEvent(sessionId, {
         type: 'session_status',
@@ -522,10 +524,7 @@ export async function executePlannedActions(params: {
               const before = await screenshotJpegBase64(page);
               evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-              await page.mouse.move(x, y, { steps: 15 });
-              await page.mouse.down();
-              await page.waitForTimeout(60);
-              await page.mouse.up();
+              await interactions.naturalClick(page, 'click', x, y);
 
               await page.waitForTimeout(120);
               const after = await screenshotJpegBase64(page);
@@ -550,7 +549,7 @@ export async function executePlannedActions(params: {
             if (text === '\n') await page.keyboard.press('Enter');
             else if (text === '\t') await page.keyboard.press('Tab');
             else if (text === '\b') await page.keyboard.press('Backspace');
-            else await page.keyboard.type(text);
+            else await interactions.naturalType(page, 'global_type', text);
 
             await page.waitForTimeout(50);
             const after = await screenshotJpegBase64(page);
@@ -610,7 +609,7 @@ export async function executePlannedActions(params: {
                 const before = await screenshotJpegBase64(page);
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-                await page.mouse.click(x, y);
+                await interactions.naturalClick(page, 'type_click', x, y);
                 try {
                   await page.keyboard.press('Meta+A');
                 } catch {
@@ -621,7 +620,7 @@ export async function executePlannedActions(params: {
                 try {
                   await page.keyboard.press('Backspace');
                 } catch { }
-                await page.keyboard.type(textToType, { delay: 10 });
+                await interactions.naturalType(page, 'type_secret', textToType);
 
                 await page.waitForTimeout(120);
                 const after = await screenshotJpegBase64(page);
@@ -724,7 +723,7 @@ export async function executePlannedActions(params: {
                 const before = await screenshotJpegBase64(page);
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-                await page.keyboard.type(textRaw, { delay: 10 });
+                await interactions.naturalType(page, 'type_text', textRaw);
 
                 await page.waitForTimeout(80);
                 const after = await screenshotJpegBase64(page);
@@ -792,12 +791,14 @@ export async function executePlannedActions(params: {
           }
 
           const b = await boxFor(loc);
+          let targetCenter: { x: number; y: number } | null = null;
           if (b) {
             const cx = Math.round(b.x + b.width / 2);
             const cy = Math.round(b.y + b.height / 2);
+            targetCenter = { x: cx, y: cy };
             broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: cx, y: cy });
             broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: now(), boxes: [{ ...b, label: name }] });
-            try { await page.mouse.move(cx, cy, { steps: 15 }); } catch { }
+            try { await interactions.hover(page, name, cx, cy); } catch { }
           }
 
           const textRaw = name === 'type' ? String(a?.text || '') : '';
@@ -858,19 +859,31 @@ export async function executePlannedActions(params: {
 
           try {
             if (name === 'click') {
-              await loc.first().click({ timeout: cfg.actionTimeoutMs });
+              if (targetCenter) await interactions.naturalClick(page, 'selector_click', targetCenter.x, targetCenter.y);
+              else await loc.first().click({ timeout: cfg.actionTimeoutMs });
             } else {
-              await loc.first().click({ timeout: cfg.actionTimeoutMs });
-              await loc.first().fill(textRaw, { timeout: cfg.actionTimeoutMs });
+              if (targetCenter) {
+                await interactions.naturalClick(page, 'type_click', targetCenter.x, targetCenter.y);
+                await interactions.naturalType(page, 'type_text', textRaw);
+              } else {
+                await loc.first().click({ timeout: cfg.actionTimeoutMs });
+                await loc.first().fill(textRaw);
+              }
             }
           } catch (e: any) {
             await tryDismissOverlays(page);
             try {
               if (name === 'click') {
-                await loc.first().click({ timeout: cfg.actionTimeoutMs });
+                if (targetCenter) await interactions.naturalClick(page, 'selector_click_retry', targetCenter.x, targetCenter.y);
+                else await loc.first().click({ timeout: cfg.actionTimeoutMs });
               } else {
-                await loc.first().click({ timeout: cfg.actionTimeoutMs });
-                await loc.first().fill(textRaw, { timeout: cfg.actionTimeoutMs });
+                if (targetCenter) {
+                  await interactions.naturalClick(page, 'type_click_retry', targetCenter.x, targetCenter.y);
+                  await interactions.naturalType(page, 'type_text_retry', textRaw);
+                } else {
+                  await loc.first().click({ timeout: cfg.actionTimeoutMs });
+                  await loc.first().fill(textRaw);
+                }
               }
             } catch (e2: any) {
               const msg = String(e2?.message || e2);

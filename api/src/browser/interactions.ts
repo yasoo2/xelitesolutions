@@ -7,6 +7,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { Page } from 'playwright';
 
 /**
  * بنية التفاعل
@@ -51,13 +52,14 @@ export class AdvancedInteractionSystem extends EventEmitter {
    * حركة موشر طبيعية مع منحنى بيزيه
    */
   async naturalMouseMove(
+    page: Page,
     startX: number,
     startY: number,
     endX: number,
     endY: number,
     duration: number = 500
   ): Promise<void> {
-    this.emit('log', `🖱️ حركة موشر طبيعية من (${startX}, ${startY}) إلى (${endX}, ${endY})`);
+    this.emit('log', `🖱️ Natural mouse move from (${startX}, ${startY}) to (${endX}, ${endY})`);
 
     const steps = Math.ceil(duration / 16); // 60 FPS
     const deltaX = endX - startX;
@@ -65,23 +67,26 @@ export class AdvancedInteractionSystem extends EventEmitter {
 
     for (let i = 0; i <= steps; i++) {
       const progress = i / steps;
-      
+
       // منحنى بيزيه للحركة الطبيعية
       const easeProgress = this.easeInOutCubic(progress);
-      
+
       // إضافة ارتجاج طبيعي
       const jitter = this.humanBehavior ? (Math.random() - 0.5) * 2 : 0;
-      
+
       const currentX = startX + deltaX * easeProgress + jitter;
       const currentY = startY + deltaY * easeProgress + jitter;
 
-      // حساب السرعة
       this.mouseVelocity = {
         x: currentX - this.lastMousePosition.x,
         y: currentY - this.lastMousePosition.y
       };
 
       this.lastMousePosition = { x: currentX, y: currentY };
+
+      try {
+        await page.mouse.move(currentX, currentY);
+      } catch (e) { }
 
       this.emit('mouse-move', {
         x: currentX,
@@ -100,6 +105,7 @@ export class AdvancedInteractionSystem extends EventEmitter {
    * نقر طبيعي مع تأخير
    */
   async naturalClick(
+    page: Page,
     selector: string,
     x: number,
     y: number,
@@ -113,8 +119,9 @@ export class AdvancedInteractionSystem extends EventEmitter {
 
     this.emit('log', `🖱️ نقر طبيعي على ${selector}`);
 
-    // تحريك الموشر إلى الهدف
+    // Move execution
     await this.naturalMouseMove(
+      page,
       this.lastMousePosition.x,
       this.lastMousePosition.y,
       x,
@@ -122,10 +129,15 @@ export class AdvancedInteractionSystem extends EventEmitter {
       300
     );
 
-    // تأخير طبيعي قبل النقر
+    // Natural delay before click
     await this.sleep(delay);
 
-    // محاكاة النقر
+    // Actual Playwright click
+    try {
+      if (rightClick) await page.mouse.click(x, y, { button: 'right' });
+      else await page.mouse.click(x, y, { clickCount: doubleClick ? 2 : 1 });
+    } catch { }
+
     this.emit('click', {
       selector,
       x,
@@ -136,6 +148,7 @@ export class AdvancedInteractionSystem extends EventEmitter {
 
     if (doubleClick) {
       await this.sleep(100);
+      // Already handled by clickCount above, but for event parity:
       this.emit('click', {
         selector,
         x,
@@ -158,6 +171,7 @@ export class AdvancedInteractionSystem extends EventEmitter {
    * كتابة نصية طبيعية مع تأخيرات عشوائية
    */
   async naturalType(
+    page: Page,
     selector: string,
     text: string,
     options: {
@@ -172,29 +186,32 @@ export class AdvancedInteractionSystem extends EventEmitter {
 
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
-      
-      // محاكاة أخطاء طباعية عشوائية
+
+      // Random typos simulation
       if (typos > 0 && Math.random() < typos) {
         const wrongChar = String.fromCharCode(char.charCodeAt(0) + 1);
+        try { await page.keyboard.type(wrongChar); } catch { }
         this.emit('type', {
           selector,
           character: wrongChar,
           isTypo: true
         });
         await this.sleep(this.randomDelay(minDelay, maxDelay));
-        
-        // محاكاة التصحيح
+
+        // Correction
+        try { await page.keyboard.press('Backspace'); } catch { }
         this.emit('backspace', { selector });
         await this.sleep(100);
       }
 
+      try { await page.keyboard.type(char); } catch { }
       this.emit('type', {
         selector,
         character: char,
         progress: ((i + 1) / text.length) * 100
       });
 
-      // تأخير عشوائي طبيعي
+      // Random natural delay
       const delay = this.randomDelay(minDelay, maxDelay);
       await this.sleep(delay);
     }
@@ -250,15 +267,17 @@ export class AdvancedInteractionSystem extends EventEmitter {
    * التحويم على عنصر
    */
   async hover(
+    page: Page,
     selector: string,
     x: number,
     y: number,
     duration: number = 500
   ): Promise<void> {
-    this.emit('log', `🎯 التحويم على ${selector}`);
+    this.emit('log', `🎯 Hovering on ${selector}`);
 
-    // تحريك الموشر إلى العنصر
+    // Move to target
     await this.naturalMouseMove(
+      page,
       this.lastMousePosition.x,
       this.lastMousePosition.y,
       x,
@@ -266,8 +285,12 @@ export class AdvancedInteractionSystem extends EventEmitter {
       300
     );
 
-    // البقاء على العنصر
+    // Dwell
     await this.sleep(duration);
+
+    try { await page.mouse.move(x, y); } catch { } // Ensure Playwright knows we are there
+
+    this.emit('hover', { selector, x, y });
 
     this.emit('hover', { selector, x, y });
 
@@ -284,6 +307,7 @@ export class AdvancedInteractionSystem extends EventEmitter {
    * السحب والإفلات
    */
   async dragAndDrop(
+    page: Page,
     sourceSelector: string,
     targetSelector: string,
     sourceX: number,
@@ -291,10 +315,11 @@ export class AdvancedInteractionSystem extends EventEmitter {
     targetX: number,
     targetY: number
   ): Promise<void> {
-    this.emit('log', `🔄 سحب من ${sourceSelector} إلى ${targetSelector}`);
+    this.emit('log', `🔄 Drag from ${sourceSelector} to ${targetSelector}`);
 
-    // تحريك إلى المصدر
+    // Move to source
     await this.naturalMouseMove(
+      page,
       this.lastMousePosition.x,
       this.lastMousePosition.y,
       sourceX,
@@ -302,14 +327,16 @@ export class AdvancedInteractionSystem extends EventEmitter {
       300
     );
 
-    // محاكاة الضغط
+    // Mouse down
+    try { await page.mouse.down(); } catch { }
     this.emit('mouse-down', { selector: sourceSelector });
     await this.sleep(100);
 
-    // السحب إلى الهدف
-    await this.naturalMouseMove(sourceX, sourceY, targetX, targetY, 500);
+    // Drag to target
+    await this.naturalMouseMove(page, sourceX, sourceY, targetX, targetY, 500);
 
-    // محاكاة الإفلات
+    // Mouse up
+    try { await page.mouse.up(); } catch { }
     this.emit('mouse-up', { selector: targetSelector });
 
     this.interactions.push({
@@ -360,15 +387,16 @@ export class AdvancedInteractionSystem extends EventEmitter {
    * اختيار من قائمة منسدلة
    */
   async selectOption(
+    page: Page,
     selector: string,
     optionValue: string,
     x: number,
     y: number
   ): Promise<void> {
-    this.emit('log', `📋 اختيار من القائمة: ${optionValue}`);
+    this.emit('log', `📋 Selecting option: ${optionValue}`);
 
-    // النقر على القائمة
-    await this.naturalClick(selector, x, y);
+    // Click dropdown
+    await this.naturalClick(page, selector, x, y);
     await this.sleep(300);
 
     // اختيار الخيار
