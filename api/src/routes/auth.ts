@@ -210,6 +210,7 @@ router.post('/google', async (req: Request, res: Response) => {
       {
         sub: useMock ? user.id : user._id.toString(),
         role: user.role,
+        email: user.email || emailNormalized,
         name: user.name || name,
         picture: user.picture || picture
       },
