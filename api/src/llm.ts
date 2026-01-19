@@ -10,30 +10,38 @@ if (apiKey) {
   console.warn('LLM: No OpenAI API Key found in environment variables.');
 }
 
-// Support for dynamic API key from requests
-let dynamicApiKey: string | null = null;
+// Support for dynamic API key from requests (Scoped by User ID)
+const userApiKeys = new Map<string, string>();
 
-export function setDynamicOpenAIKey(key: string) {
+export function setDynamicOpenAIKey(userId: string, key: string) {
   const trimmed = typeof key === 'string' ? key.trim() : '';
-  if (!trimmed) {
-    dynamicApiKey = null;
+  if (!userId) {
+    console.error('LLM: Attempted to set dynamic key without userId');
     return;
   }
-  dynamicApiKey = trimmed;
-  console.info('LLM: Dynamic OpenAI API Key set from client.');
+  if (!trimmed) {
+    userApiKeys.delete(userId);
+    return;
+  }
+  userApiKeys.set(userId, trimmed);
+  console.info(`LLM: Dynamic OpenAI API Key set for user ${userId.slice(0, 4)}...`);
 }
 
-export function getDynamicOpenAIKey(): string | null {
-  return dynamicApiKey;
+export function getDynamicOpenAIKey(userId: string): string | null {
+  if (!userId) return null;
+  return userApiKeys.get(userId) || null;
 }
 
-const getActiveApiKey = () => dynamicApiKey || apiKey || 'dummy';
-const getActiveApiKeyStrict = () => dynamicApiKey || apiKey || '';
+// Helper to get key for a specific user, falling back to env
+export const getApiKeyForUser = (userId: string) => {
+  return userApiKeys.get(userId) || apiKey || '';
+};
 
 const openai = new OpenAI({
-  apiKey: getActiveApiKey(),
+  apiKey: apiKey || 'dummy', // Default client uses env key
   baseURL: process.env.OPENAI_BASE_URL,
 });
+
 
 
 const MAX_PROVIDER_TOOLS = 128;
@@ -213,6 +221,7 @@ export interface PlanOptions {
   baseUrl?: string;
   throwOnError?: boolean;
   mock?: boolean;
+  userId?: string;
 }
 
 export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect. You are the embodiment of speed, precision, and intelligence.
@@ -264,14 +273,18 @@ export const getSystemPrompt = () => {
   return BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}\nCurrent Time: ${time}`;
 };
 
+
 // Deprecated: Use getSystemPrompt() instead
 export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
-export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
-  if (!String(getActiveApiKeyStrict() || '').trim()) {
+export async function callLLM(prompt: string, context: any[] = [], userId?: string): Promise<string> {
+  const key = userId ? getApiKeyForUser(userId) : (apiKey || '');
+
+  if (!String(key).trim()) {
     throw new Error('NO_API_KEY_CONFIGURED');
   }
+
   const msgs = [
     { role: 'system', content: 'You are a helpful assistant.' },
     ...context,
@@ -279,7 +292,18 @@ export async function callLLM(prompt: string, context: any[] = []): Promise<stri
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
   try {
-    const completion = await getOpenAIClient().chat.completions.create({
+    // If we have a specific user key, use a new client instance, otherwise use default
+    let client = openai;
+    if (userId && userApiKeys.has(userId)) {
+      client = new OpenAI({ apiKey: userApiKeys.get(userId), baseURL: process.env.OPENAI_BASE_URL });
+    } else if (apiKey) {
+      // use default
+    } else {
+      // Should have thrown above if empty, but maybe using custom client?
+      client = new OpenAI({ apiKey: key, baseURL: process.env.OPENAI_BASE_URL });
+    }
+
+    const completion = await client.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
     });
@@ -294,7 +318,17 @@ export async function planNextStep(
   options?: PlanOptions
 ): Promise<{ name: string; input: any; thought?: string | null } | null> {
   const providerKey = String(options?.provider || '').trim().toLowerCase();
-  const optKey = String(options?.apiKey || '').trim();
+
+  // Resolve Key: Option > UserMap > Env
+  let resolvedKey = options?.apiKey;
+  if (!resolvedKey && options?.userId) {
+    resolvedKey = getApiKeyForUser(options.userId);
+  }
+  if (!resolvedKey) {
+    resolvedKey = process.env.OPENAI_API_KEY;
+  }
+
+  const optKey = String(resolvedKey || '').trim();
   const envKey = String(process.env.OPENAI_API_KEY || '').trim();
   const forceMock = String(process.env.LLM_PLAN_MOCK || '').trim() === '1';
   const shouldMock = forceMock || options?.mock === true;
@@ -303,19 +337,18 @@ export async function planNextStep(
 
   if (!shouldMock) {
     if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
-    if (!optKey && !envKey) throw new Error('NO_API_KEY_CONFIGURED');
+    if (!optKey) throw new Error('NO_API_KEY_CONFIGURED');
   }
 
   // Determine client to use
   let client = openai;
-  if (!shouldMock && (options?.apiKey || options?.baseUrl)) {
-    const isDefaultKey = !options.apiKey || options.apiKey === process.env.OPENAI_API_KEY;
-    const isDefaultBaseUrl = !options.baseUrl || options.baseUrl === process.env.OPENAI_BASE_URL;
-
-    if (!isDefaultKey || !isDefaultBaseUrl) {
-      const keyToUse = optKey || envKey;
+  if (!shouldMock) {
+    // Always create a fresh client if we have a specific key that might differ from default
+    // Or if checking logic...
+    // Simplest: If we have a resolved key, use it.
+    if (optKey) {
       client = new OpenAI({
-        apiKey: keyToUse,
+        apiKey: optKey,
         baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL,
       });
     }
@@ -817,10 +850,10 @@ export async function generateSessionTitle(messages: { role: string; content: st
     return 'New Session';
   }
 }// Update OpenAI client when API key changes
+// Update OpenAI client when API key changes
 function getOpenAIClient() {
-  const activeKey = getActiveApiKey();
   return new OpenAI({
-    apiKey: activeKey,
+    apiKey: apiKey || 'dummy',
     baseURL: process.env.OPENAI_BASE_URL,
   });
 }

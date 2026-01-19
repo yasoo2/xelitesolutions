@@ -662,6 +662,7 @@ export async function runBrowserInstruction(params: {
         apiKey: runCfg?.apiKey,
         baseUrl: runCfg?.baseUrl,
         model: runCfg?.model,
+        userId,
       } as any,
     );
     compilerUsed = true;

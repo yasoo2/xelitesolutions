@@ -27,8 +27,12 @@ router.post('/openai/key', (req: Request, res: Response) => {
       });
     }
 
-    // Set the dynamic API key
-    setDynamicOpenAIKey(apiKey);
+    // Set the dynamic API key for this user
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'User not authenticated' });
+    }
+    setDynamicOpenAIKey(userId, apiKey);
 
     res.json({
       success: true,
@@ -50,10 +54,14 @@ router.post('/openai/key', (req: Request, res: Response) => {
  */
 router.get('/openai/status', (req: Request, res: Response) => {
   try {
-    const dynamicKey = String(getDynamicOpenAIKey() || '').trim();
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'User not authenticated' });
+    }
+    const dynamicKey = String(getDynamicOpenAIKey(userId) || '').trim();
     const envKey = String(process.env.OPENAI_API_KEY || '').trim();
     const hasKey = Boolean(dynamicKey || envKey);
-    
+
     res.json({
       provider: 'openai',
       configured: hasKey,
@@ -84,8 +92,10 @@ router.post('/openai/test', async (req: Request, res: Response) => {
       });
     }
 
-    // Set the key temporarily for testing
-    setDynamicOpenAIKey(apiKey);
+    // Validating key format
+    if (!apiKey.startsWith('sk-')) {
+      return res.status(400).json({ error: 'Invalid Key', message: 'Key must start with sk-' });
+    }
 
     const testClient = new OpenAI({
       apiKey: apiKey,
@@ -103,7 +113,7 @@ router.post('/openai/test', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error testing OpenAI API:', error);
-    
+
     let errorMessage = 'Failed to connect to OpenAI API';
     if (error.status === 401) {
       errorMessage = 'Invalid API key';
@@ -127,11 +137,14 @@ router.post('/openai/test', async (req: Request, res: Response) => {
  */
 router.post('/clear', (req: Request, res: Response) => {
   try {
-    setDynamicOpenAIKey('');
-    
+    const userId = (req as any).user?.id;
+    if (userId) {
+      setDynamicOpenAIKey(userId, '');
+    }
+
     res.json({
       success: true,
-      message: 'All provider configurations cleared',
+      message: 'Provider configuration cleared',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
