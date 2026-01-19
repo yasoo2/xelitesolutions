@@ -96,6 +96,7 @@ html[data-theme="light"] {
   --shadow-xl: 0 25px 50px -10px rgba(0, 0, 0, 0.1);
 
   /* Brand Identity Tokens (Light Mode - Deep Bronze/Gold) */
+  --brand-gradient: linear-gradient(135deg, #b45309 0%, #d97706 100%);
   --brand-text-gradient: linear-gradient(135deg, #b45309 0%, #d97706 25%, #78350f 50%, #d97706 75%, #b45309 100%);
   --brand-text-shadow:
     0 1px 0 #92400e,
