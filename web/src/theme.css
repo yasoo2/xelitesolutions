@@ -46,8 +46,17 @@ html.dark {
   --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 25px 60px -10px rgba(0, 0, 0, 0.7);
 
-  --brand-gradient: linear-gradient(135deg, #F0B90B 0%, #E2E8F0 100%);
-  /* Gold to Silver */
+  /* Brand Identity Tokens (Dark Mode Default) */
+  --brand-text-gradient: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
+  --brand-text-shadow:
+    0 1px 0 #cc9933,
+    0 2px 0 #b3862b,
+    0 3px 0 #997325,
+    0 4px 6px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(255, 215, 0, 0.4);
+  --brand-badge-bg: rgba(255, 255, 255, 0.1);
+  --brand-badge-text: rgba(255, 255, 255, 0.7);
+  --brand-badge-border: rgba(255, 215, 0, 0.3);
 }
 
 html {
@@ -85,6 +94,18 @@ html[data-theme="light"] {
 
   --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
   --shadow-xl: 0 25px 50px -10px rgba(0, 0, 0, 0.1);
+
+  /* Brand Identity Tokens (Light Mode - Deep Bronze/Gold) */
+  --brand-text-gradient: linear-gradient(135deg, #b45309 0%, #d97706 25%, #78350f 50%, #d97706 75%, #b45309 100%);
+  --brand-text-shadow:
+    0 1px 0 #92400e,
+    0 2px 0 #78350f,
+    0 3px 0 rgba(0, 0, 0, 0.1),
+    0 4px 6px rgba(0, 0, 0, 0.1),
+    0 0 20px rgba(217, 119, 6, 0.2);
+  --brand-badge-bg: rgba(0, 0, 0, 0.05);
+  --brand-badge-text: #475569;
+  --brand-badge-border: rgba(217, 119, 6, 0.3);
 }
 
 .spin {

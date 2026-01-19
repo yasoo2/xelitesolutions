@@ -12,14 +12,10 @@ export default function Home() {
       <div className="home-bg-glow-2" />
 
       <div className="home-content">
-        <div className="home-logo-container">
-          <div className="brand-mark brand-mark-xl" aria-hidden="true" />
+        <div className="home-logo-container mb-6">
+          <div className="brand-text-3d" style={{ fontSize: '80px', lineHeight: 1.2 }}>JOE</div>
+          <div className="brand-ai-badge" style={{ fontSize: '16px', letterSpacing: '4px' }}>ARTIFICIAL INTELLIGENCE</div>
         </div>
-
-        <h1 className="home-title">
-          <span className="brand-word">JOE</span>{' '}
-          <span className="brand-ai brand-ai-xl">AI</span>
-        </h1>
 
         <p className="home-subtitle">
           {t('homeSubtitle', 'Your intelligent coding companion')}
