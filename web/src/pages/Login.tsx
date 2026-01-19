@@ -32,8 +32,31 @@ export default function Login() {
         { code: '+966', flag: '🇸🇦', name: 'KSA' },
         { code: '+971', flag: '🇦🇪', name: 'UAE' },
         { code: '+20', flag: '🇪🇬', name: 'Egypt' },
-        { code: '+1', flag: '🇺🇸', name: 'USA' },
+        { code: '+965', flag: '🇰🇼', name: 'Kuwait' },
+        { code: '+974', flag: '🇶🇦', name: 'Qatar' },
+        { code: '+973', flag: '🇧🇭', name: 'Bahrain' },
+        { code: '+968', flag: '🇴🇲', name: 'Oman' },
+        { code: '+962', flag: '🇯🇴', name: 'Jordan' },
+        { code: '+961', flag: '🇱🇧', name: 'Lebanon' },
+        { code: '+964', flag: '🇮🇶', name: 'Iraq' },
+        { code: '+212', flag: '🇲🇦', name: 'Morocco' },
+        { code: '+213', flag: '🇩🇿', name: 'Algeria' },
+        { code: '+216', flag: '🇹🇳', name: 'Tunisia' },
+        { code: '+90', flag: '🇹🇷', name: 'Turkey' },
+        { code: '+1', flag: '🇺🇸', name: 'USA/CA' },
         { code: '+44', flag: '🇬🇧', name: 'UK' },
+        { code: '+49', flag: '🇩🇪', name: 'Germany' },
+        { code: '+33', flag: '🇫🇷', name: 'France' },
+        { code: '+39', flag: '🇮🇹', name: 'Italy' },
+        { code: '+34', flag: '🇪🇸', name: 'Spain' },
+        { code: '+7', flag: '🇷🇺', name: 'Russia' },
+        { code: '+86', flag: '🇨🇳', name: 'China' },
+        { code: '+81', flag: '🇯🇵', name: 'Japan' },
+        { code: '+91', flag: '🇮🇳', name: 'India' },
+        { code: '+92', flag: '🇵🇰', name: 'Pakistan' },
+        { code: '+62', flag: '🇮🇩', name: 'Indonesia' },
+        { code: '+61', flag: '🇦🇺', name: 'Australia' },
+        { code: '+55', flag: '🇧🇷', name: 'Brazil' },
     ];
 
     // Auth Handlers
@@ -238,7 +261,7 @@ export default function Login() {
             border: '1px solid rgba(245, 158, 11, 0.2)',
             borderRadius: '12px',
             paddingLeft: '12px',
-            paddingRight: '32px', // Space for custom arrow
+            paddingRight: '36px', // Extra space for arrow
             height: '48px',
             fontSize: '14px',
             color: '#fff',
@@ -246,14 +269,15 @@ export default function Login() {
             transition: 'all 0.2s',
             cursor: 'pointer',
             boxSizing: 'border-box' as 'border-box',
+            width: '100%', // Ensure it fills container
         },
         selectArrow: {
             position: 'absolute' as 'absolute',
-            right: '8px',
+            right: '12px', // Moved inside
             top: '50%',
-            transform: 'translateY(-50%) rotate(90deg)',
+            transform: 'translateY(-50%) rotate(90deg)', // Point Down
             pointerEvents: 'none' as 'none',
-            color: '#71717a',
+            color: '#f59e0b', // Amber for visibility
         },
         copyright: {
             position: 'absolute' as 'absolute',
