@@ -68,6 +68,7 @@ const ChatBubble = forwardRef(
       ts,
       onOptionClick,
       isTyping,
+      userPicture,
     }: {
       event: any;
       isUser: boolean;
@@ -76,6 +77,7 @@ const ChatBubble = forwardRef(
       ts?: number;
       onOptionClick?: (text: string) => void;
       isTyping?: boolean;
+      userPicture?: string;
     },
     ref: any
   ) => {
@@ -104,7 +106,7 @@ const ChatBubble = forwardRef(
     const senderLabel = bubbleVariant === 'user' ? 'أنت' : bubbleVariant === 'system' ? 'النظام' : 'Joe';
     const SenderIcon = bubbleVariant === 'user' ? User : bubbleVariant === 'system' ? ShieldCheck : Bot;
     const showHeader = bubbleVariant !== 'user';
-    const showAvatar = bubbleVariant !== 'user';
+    const showAvatar = bubbleVariant !== 'user' || (bubbleVariant === 'user' && !!userPicture);
     const showCopy = bubbleVariant !== 'user';
 
     const rawText =
@@ -313,7 +315,11 @@ const ChatBubble = forwardRef(
       >
         {showAvatar ? (
           <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
-            <SenderIcon size={16} />
+            {bubbleVariant === 'user' && userPicture ? (
+              <img src={userPicture} alt="User" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              <SenderIcon size={16} />
+            )}
           </div>
         ) : null}
         <div className={`chat-bubble ${bubbleVariant}${tone ? ` tone-${tone}` : ''}`}>
@@ -460,6 +466,7 @@ export default function CommandComposer({
   const [isUploading, setIsUploading] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [userName, setUserName] = useState<string>('');
+  const [userPicture, setUserPicture] = useState<string>('');
 
   useEffect(() => {
     try {
@@ -467,7 +474,9 @@ export default function CommandComposer({
       if (token) {
         const payload = JSON.parse(atob(token.split('.')[1]));
         const name = payload.name || payload.email?.split('@')[0] || 'User';
+        const pic = payload.picture || '';
         setUserName(name);
+        if (pic) setUserPicture(pic);
 
         // Initial Welcome Message
         if (events.length === 0) {
@@ -2673,6 +2682,7 @@ export default function CommandComposer({
                     tone={system ? 'info' : 'normal'}
                     ts={item.e?.ts}
                     onOptionClick={(q) => run(q)}
+                    userPicture={userPicture}
                   />
                 );
               }

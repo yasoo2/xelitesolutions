@@ -210,7 +210,8 @@ router.post('/google', async (req: Request, res: Response) => {
       {
         sub: useMock ? user.id : user._id.toString(),
         role: user.role,
-        name: user.name || name // Include name in token for frontend
+        name: user.name || name,
+        picture: user.picture || picture
       },
       config.jwtSecret,
       { expiresIn: '7d' }
