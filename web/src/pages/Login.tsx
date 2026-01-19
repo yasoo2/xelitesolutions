@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import {
     LogIn, Mail, Lock, Eye, EyeOff, X, Loader2,
-    LogIn, Mail, Lock, Eye, EyeOff, X, Loader2,
     Smartphone, ArrowRight, User, AlertCircle
 } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
@@ -57,51 +56,24 @@ export default function Login() {
         onSuccess: async (tokenResponse) => {
             setLoading(true);
             try {
+                // Modified: Only send the access_token, which is what implicit flow returns.
                 const res = await fetch(`${API}/auth/google`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: tokenResponse.credential || tokenResponse.access_token || (tokenResponse as any).id_token }),
+                    body: JSON.stringify({ token: tokenResponse.access_token }),
                 });
 
-                // Note: @react-oauth/google useGoogleLogin with 'implicit' flow returns access_token. 
-                // However, for security we usually use 'id_token' or 'code'. 
-                // Default useGoogleLogin returns access_token. 
-                // Let's actually adjust this to use the `onSuccess` correctly.
+                const raw = await res.text();
+                let data: any = null;
+                try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
 
-                // REVISION: The backend expects an `idToken` to verify using `verifyIdToken`.
-                // Access tokens are verified differently (using userinfo endpoint).
-                // My backend implementation uses `verifyIdToken`.
-                // So I need to use `flow: 'auth-code'` OR ensure I get an ID Token.
-                // Actually, `verifyIdToken` expects a JWT ID Token. `access_token` is opaque.
-                // `useGoogleLogin` by default gives access_token.
-                // `GoogleLogin` component gives credential (JWT).
-                // Since I am using a custom button, I use `useGoogleLogin`. TO GET ID TOKEN:
-                // I should probably use the UserInfo endpoint on the backend if I send access_token.
-                // OR configured useGoogleLogin.
+                if (!res.ok) {
+                    setError(data?.error || raw || 'Google Login Failed');
+                    return;
+                }
 
-                // Let's change backend to fetch UserInfo using the access_token, 
-                // OR change frontend to send access_token and have backend verify it.
-                // WAIT. `verifyIdToken` is for ID Tokens.
-                // If I use `useGoogleLogin`, I get an access_token.
-                // I can use `https://www.googleapis.com/oauth2/v3/userinfo` with the access token.
-
-                // To save backend changes (I just wrote verifyIdToken logic), 
-                // I will try to swap backend logic slightly in a next step IF IT FAILS.
-                // But wait, I can just fetch the user info HERE and send email to backend? NO, that's insecure.
-                // Better approach: Update backend to verify access_token via userinfo endpoint.
-                // BUT, let's look at `useGoogleLogin`.
-
-                // Let's assume for now I will send the access_token to the backend, 
-                // and I need to update the backend to handle `access_token`. 
-                // My backend currently expects `idToken`.
-
-                // Quick Fix: I'll update the backend to try to use the token as an access token if verifyIdToken fails?
-                // No, I'll just change the backend logic in a separate step if needed. 
-                // For now, I'll send what I have.
-                // With `useGoogleLogin`, `tokenResponse` has `access_token`.
-
-                // Let's send the access_token.
-
+                localStorage.setItem('token', data.token);
+                nav('/joe');
             } catch (e) {
                 console.error(e);
                 setError('Google Login Error');
@@ -338,7 +310,7 @@ export default function Login() {
                 <div style={S.socialRow}>
                     {/* Google Only */}
                     <button
-                        onClick={() => handleSocialLogin('google')}
+                        onClick={() => handleSocialLogin()}
                         style={S.socialBtn}
                         title="Google"
                         onMouseEnter={(e) => {
