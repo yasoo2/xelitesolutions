@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
@@ -16,26 +17,34 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<App />}>
-          <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
-          <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
-          <Route path="showcase" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Showcase /></Suspense>} />
-          <Route
-            path="joe"
-            element={
-              <RequireAuth>
-                <Suspense fallback={<div className="route-loading">Loading…</div>}>
-                  <Joe />
-                </Suspense>
-              </RequireAuth>
-            }
-          />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    {GOOGLE_CLIENT_ID ? (
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<App />}>
+              <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
+              <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
+              <Route path="showcase" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Showcase /></Suspense>} />
+              <Route
+                path="joe"
+                element={
+                  <RequireAuth>
+                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                      <Joe />
+                    </Suspense>
+                  </RequireAuth>
+                }
+              />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </GoogleOAuthProvider>
+    ) : (
+      <div style={{ color: 'red', padding: 20 }}>Missing VITE_GOOGLE_CLIENT_ID</div>
+    )}
   </React.StrictMode>
 );

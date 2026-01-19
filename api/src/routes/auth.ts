@@ -5,6 +5,7 @@ import { User } from '../models/user';
 import { config } from '../config';
 import mongoose from 'mongoose';
 import { mockDb } from '../mock/db';
+import { OAuth2Client } from 'google-auth-library';
 
 const router = Router();
 
@@ -141,6 +142,67 @@ router.post('/dev', async (req: Request, res: Response) => {
 
   const token = jwt.sign({ sub: 'dev-user', role: 'OWNER' }, config.jwtSecret, { expiresIn: '7d' });
   return res.json({ token });
+});
+
+/* Google Auth Route */
+router.post('/google', async (req: Request, res: Response) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Missing token' });
+
+  try {
+    // Verify Access Token by fetching UserInfo
+    // This is compatible with 'useGoogleLogin' which returns an access_token.
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!userInfoRes.ok) {
+      return res.status(400).json({ error: 'Invalid Google Token' });
+    }
+
+    const payload = await userInfoRes.json();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ error: 'Invalid Google Profile' });
+    }
+
+    const emailNormalized = payload.email.trim().toLowerCase();
+
+    // ... (rest of logic is same: Find or Create User) ...
+    const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+    let user: any;
+
+    if (useMock) {
+      user = mockDb.findUserByEmail(emailNormalized);
+      if (!user) {
+        const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
+        const isFirstUser = mockDb.countUsers() === 0;
+        user = mockDb.createUser(emailNormalized, passwordHash, isFirstUser ? 'OWNER' : 'USER');
+      }
+    } else {
+      user = await User.findOne({ email: emailNormalized });
+      if (!user) {
+        const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
+        const count = await User.countDocuments();
+        const role = count === 0 ? 'OWNER' : 'USER';
+        user = await User.create({
+          email: emailNormalized,
+          passwordHash,
+          role,
+        });
+      }
+    }
+
+    const appToken = jwt.sign(
+      { sub: useMock ? user.id : user._id.toString(), role: user.role },
+      config.jwtSecret,
+      { expiresIn: '7d' }
+    );
+
+    return res.json({ token: appToken });
+  } catch (error) {
+    console.error('Google Auth Error:', error);
+    return res.status(401).json({ error: 'Google authentication failed' });
+  }
 });
 
 export default router;
