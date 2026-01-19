@@ -107,7 +107,13 @@ router.post('/login', async (req: Request, res: Response) => {
     }
     const ok = await bcrypt.compare(passwordRaw, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ sub: user.id.toString(), role: user.role }, config.jwtSecret, { expiresIn: '7d' });
+    const token = jwt.sign({
+      sub: user.id.toString(),
+      role: user.role,
+      email: user.email,
+      name: user.name || 'User',
+      picture: user.picture || ''
+    }, config.jwtSecret, { expiresIn: '7d' });
     return res.json({ token });
   } else {
     let user = await User.findOne({ email: emailNormalized });
@@ -117,7 +123,13 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const ok = await bcrypt.compare(passwordRaw, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ sub: user._id.toString(), role: user.role }, config.jwtSecret, { expiresIn: '7d' });
+    const token = jwt.sign({
+      sub: user._id.toString(),
+      role: user.role,
+      email: user.email,
+      name: user.name || 'User',
+      picture: user.picture || ''
+    }, config.jwtSecret, { expiresIn: '7d' });
     return res.json({ token });
   }
 });

@@ -35,6 +35,15 @@ export default function TopBar() {
       const token = localStorage.getItem('token');
       if (token) {
         const payload = JSON.parse(atob(token.split('.')[1]));
+
+        // AUTO-FIX: Invalidate legacy tokens that are missing the email field
+        if (!payload.email) {
+          console.warn('Invalidating legacy token (missing email)');
+          localStorage.removeItem('token');
+          nav('/login');
+          return;
+        }
+
         setUser({
           name: payload.name || 'User',
           email: payload.email || 'user@example.com',
