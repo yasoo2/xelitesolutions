@@ -450,10 +450,88 @@ export async function planNextStep(
       return null;
     }
 
-    // Simple complexity analysis based on message length and keywords
+    // Advanced complexity analysis
+    const analyzeComplexity = (message: string): { level: 'simple' | 'medium' | 'complex'; confidence: number; reasoning: string } => {
+      const msg = message.toLowerCase();
+      const length = message.length;
+
+      // Simple patterns (greetings, basic questions)
+      const simplePatterns = [
+        /^(hi|hello|hey|مرحبا|السلام|اهلا)\b/i,
+        /^(how are you|كيف حالك|شلونك)/i,
+        /^(thanks|شكرا|thank you)/i,
+        /^(yes|no|نعم|لا|ok|okay|حسنا)\s*$/i,
+      ];
+
+      // Complex patterns (architecture, analysis, planning)
+      const complexPatterns = [
+        /\b(architect|design|structure|معمارية|تصميم|هيكل)\b/i,
+        /\b(analyze|analysis|تحليل|audit|review|مراجعة)\b/i,
+        /\b(implement|build|create.*system|إنشاء.*نظام|بناء)\b/i,
+        /\b(optimize|performance|أداء|تحسين|تطوير)\b/i,
+        /\b(database|schema|migration|قاعدة\s+بيانات)\b/i,
+        /\b(security|authentication|أمان|مصادقة)\b/i,
+      ];
+
+      // Medium patterns (coding, translation, moderate tasks)
+      const mediumPatterns = [
+        /\b(write.*function|اكتب.*دالة|code|كود|برمجة)\b/i,
+        /\b(translate|ترجم|convert|حول)\b/i,
+        /\b(explain|اشرح|وضح|describe)\b/i,
+        /\b(fix|repair|أصلح|debug)\b/i,
+      ];
+
+      // Check for simple first
+      if (simplePatterns.some(p => p.test(msg)) && length < 50) {
+        return {
+          level: 'simple',
+          confidence: 0.9,
+          reasoning: 'Short greeting or basic question'
+        };
+      }
+
+      // Check for complex
+      const complexMatches = complexPatterns.filter(p => p.test(msg)).length;
+      if (complexMatches >= 2 || (complexMatches >= 1 && length > 200)) {
+        return {
+          level: 'complex',
+          confidence: 0.85,
+          reasoning: 'Multiple complex keywords or long detailed request'
+        };
+      }
+
+      // Check for medium
+      const mediumMatches = mediumPatterns.filter(p => p.test(msg)).length;
+      if (mediumMatches >= 1 || length > 100) {
+        return {
+          level: 'medium',
+          confidence: 0.75,
+          reasoning: 'Coding task or moderate complexity request'
+        };
+      }
+
+      // Default to simple for very short messages
+      if (length < 30) {
+        return {
+          level: 'simple',
+          confidence: 0.6,
+          reasoning: 'Very short message, likely simple'
+        };
+      }
+
+      // Default to medium
+      return {
+        level: 'medium',
+        confidence: 0.5,
+        reasoning: 'Default classification for moderate length'
+      };
+    };
+
     const userMsg = [...messages].reverse().find(m => m.role === 'user');
     const msgContent = typeof userMsg?.content === 'string' ? userMsg.content : '';
-    const isSimple = msgContent.length < 100 && !/\b(code|implement|design|architecture)\b/i.test(msgContent);
+    const analysis = analyzeComplexity(msgContent);
+
+    console.info(`[LLM] Auto Mode: Complexity Analysis - Level: ${analysis.level}, Confidence: ${analysis.confidence}, Reason: ${analysis.reasoning}`);
 
     try {
       const msgs = [
@@ -461,15 +539,20 @@ export async function planNextStep(
         ...messages
       ];
 
-      // Use Pollinations for simple tasks, OpenRouter for complex
-      if (isSimple) {
+      // Route based on complexity
+      if (analysis.level === 'simple') {
         console.info('[LLM] Auto Mode → Pollinations (Simple Task)');
         const text = await hackProvider.chatComplete(msgs, 'openai');
         return { name: 'echo', input: { text: text || 'Auto Mode: Using Joe (Free) for simple task' } };
-      } else {
-        console.info('[LLM] Auto Mode → OpenRouter (Complex Task)');
+      } else if (analysis.level === 'medium') {
+        console.info('[LLM] Auto Mode → OpenRouter Free (Medium Task)');
         const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
-        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter for complex task' } };
+        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter (Free) for medium task' } };
+      } else {
+        // Complex tasks: Use OpenRouter free models for now (can be upgraded to paid if API key is available)
+        console.info('[LLM] Auto Mode → OpenRouter Free (Complex Task)');
+        const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
+        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter (Free) for complex task' } };
       }
     } catch (err: any) {
       console.error('[LLM] Auto Mode Failed:', err);
