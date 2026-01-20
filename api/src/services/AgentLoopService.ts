@@ -188,7 +188,7 @@ export class AgentLoopService {
                 newRunId = r.id;
             } else {
                 const r = await Run.create({ sessionId, status: 'running', type: 'agent' });
-                newRunId = r._id.toString();
+                newRunId = (r as any)._id.toString();
             }
             currentRunId = newRunId; // Update tracking context
 
@@ -214,7 +214,7 @@ export class AgentLoopService {
 
             // Save
             if (useMock()) {
-                store.addExec(newRunId, plan.name, persistedInput, result.output, result.ok, result.logs);
+                store.addExec(newRunId, plan.name, persistedInput, result.output, result.ok, result.logs || []);
                 store.addMessage(sessionId, 'assistant', assistantText, newRunId);
                 store.updateRun(newRunId, { status: result.ok ? 'done' as any : 'failed' as any });
             } else {
