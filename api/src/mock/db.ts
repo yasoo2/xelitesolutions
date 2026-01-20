@@ -3,11 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 type Role = 'OWNER' | 'ADMIN' | 'USER';
-interface MockUser {
-  id: string;
-  email: string;
-  passwordHash: string;
-  role: Role;
+id: string;
+email: string;
+passwordHash: string;
+role: Role;
+name ?: string;
+picture ?: string;
 }
 
 const dbPath = process.env.MOCK_DB_PATH || path.join(os.tmpdir(), 'joe-mock-db.json');

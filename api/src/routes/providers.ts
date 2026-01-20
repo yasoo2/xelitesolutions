@@ -129,12 +129,7 @@ router.post('/openai/test', async (req: Request, res: Response) => {
       details: error.message
     });
   }
-  res.status(error.status || 500).json({
-    error: 'API connection failed',
-    message: errorMessage,
-    details: error.message
-  });
-}
+
 });
 
 import { setActiveProvider, getActiveProvider } from '../llm';
