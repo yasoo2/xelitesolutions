@@ -574,7 +574,7 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
     return res.status(400).json({ error: 'مزود llm المحلي مُعطّل. اختر مزودًا وأدخل API Key.' });
   }
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
-  if (providerKey && providerKey !== 'openai' && !providerKey.includes('joe') && !providerKey.includes('pollinations') && !hasBaseUrl) {
+  if (providerKey && providerKey !== 'openai' && !providerKey.includes('auto') && !providerKey.includes('joe') && !providerKey.includes('hack') && !providerKey.includes('pollinations') && !hasBaseUrl) {
     return res.status(400).json({
       error: `Provider "${providerKey}" requires an OpenAI-compatible Base URL (or select OpenAI).`,
     });
