@@ -171,6 +171,7 @@ export const tools: ToolDefinition[] = [
   new LoadTesterTool(),
 
   // --- Media ---
+  ImageGenerationTool,
   // --- Phase 15: God Mode Tools ---
   new CodebaseOutlineTool(),
   new SearchApiTool(),
