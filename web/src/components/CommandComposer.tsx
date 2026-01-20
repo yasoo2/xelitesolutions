@@ -560,16 +560,14 @@ export default function CommandComposer({
     } catch { }
 
     const pickFirstKeyedProvider = () => {
-      // Prioritize OpenAI or Anthropic if they have keys
-      if (String(baseProviders.openai?.apiKey || '').trim()) return 'openai';
-      if (String(baseProviders.anthropic?.apiKey || '').trim()) return 'anthropic';
-      if (String(baseProviders.gemini?.apiKey || '').trim()) return 'gemini';
-
-      // Fallback to finding any key
-      for (const [k, p] of Object.entries(baseProviders)) {
-        if (String(p?.apiKey || '').trim() && k !== 'joe') return k;
-      }
+      // PRIORITY: Use Joe (Free) by default - always works, no credits needed
       return 'joe';
+
+      // Only switch to paid providers if user explicitly configures them
+      // Uncomment below if you want to auto-switch when keys are added:
+      // if (String(baseProviders.openai?.apiKey || '').trim()) return 'openai';
+      // if (String(baseProviders.anthropic?.apiKey || '').trim()) return 'anthropic';
+      // if (String(baseProviders.gemini?.apiKey || '').trim()) return 'gemini';
     };
 
     try {
