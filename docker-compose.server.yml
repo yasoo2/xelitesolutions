@@ -10,12 +10,11 @@ services:
     networks: [ joe_net ]
 
   api:
-    image: node:20-alpine
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     container_name: joe_api
     restart: unless-stopped
-    working_dir: /app
-    volumes:
-      - ./api:/app
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -24,7 +23,6 @@ services:
       - WORKER_API_KEY=joe_secret_browser_key
     env_file:
       - .env
-    command: sh -lc "npm ci --include=dev && npm run build && npm run start"
     depends_on:
       - mongo
       - browser-worker
