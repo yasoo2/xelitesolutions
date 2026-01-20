@@ -1,29 +1,28 @@
-FROM node:22
+FROM node:20-alpine
+
+# Install Python and build dependencies for native modules
+RUN apk add --no-cache python3 make g++ py3-pip
 
 WORKDIR /app
 
-# Install build dependencies for node-pty (gyp) and Playwright deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    build-essential \
-    xvfb \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
+# Copy package files
 COPY package*.json ./
 
-# Install deps (including node-pty compilation)
-RUN npm ci
+# Install dependencies
+RUN npm ci --include=dev
 
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --with-deps chromium
-
+# Copy source code
 COPY . .
 
+# Build TypeScript
 RUN npm run build
 
+# Expose port
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start application
+CMD ["npm", "run", "start"]
