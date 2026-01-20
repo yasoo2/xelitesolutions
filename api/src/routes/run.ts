@@ -2112,38 +2112,48 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     // Safety: Prevent infinite thought loops
-    if (planName === 'echo' || !planName) {
-      consecutiveThoughtSteps++;
-      if (consecutiveThoughtSteps > 3) {
-        if (!thoughtLoopPauseEmitted) {
-          const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
-          const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
-          const providerLabel = String(providerKey || 'llm').trim() || 'llm';
-          const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
-          const keyLabel = apiKey ? 'موجود' : (process.env.OPENAI_API_KEY ? 'موجود (System)' : 'غير موجود');
-          const baseHost = hostFromUrlMaybe(baseUrl);
-          const msg = [
-            `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
-            `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
-            `- المفتاح: ${keyLabel}`,
-            needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
-            hint ? `${hint}` : ``,
-          ].filter(Boolean).join('\n');
-          forcedText = msg;
-          const now = Date.now();
-          const last = loopPauseThrottle.get(String(sessionId));
-          if (!last || now - last > 6000) {
-            ev({ type: 'text', data: msg });
-            assistantTextEmitted = true;
-            loopPauseThrottle.set(String(sessionId), now);
-          }
-          thoughtLoopPauseEmitted = true;
-        }
-        break;
+    // Safety: Prevent infinite thought loops
+    if (planName === 'echo') {
+      const txt = (plan as any)?.input?.text;
+      // If echo has content (is speaking to user), reset thought steps
+      if (typeof txt === 'string' && txt.trim().length > 2) {
+        consecutiveThoughtSteps = 0;
+      } else {
+        consecutiveThoughtSteps++;
       }
+    } else if (!planName) {
+      consecutiveThoughtSteps++;
     } else {
       consecutiveThoughtSteps = 0;
       executedTools.add(planName);
+    }
+
+    if (consecutiveThoughtSteps > 5) {
+      if (!thoughtLoopPauseEmitted) {
+        const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
+        const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+        const providerLabel = String(providerKey || 'llm').trim() || 'llm';
+        const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
+        const keyLabel = apiKey ? 'موجود' : (process.env.OPENAI_API_KEY ? 'موجود (System)' : 'غير موجود');
+        const baseHost = hostFromUrlMaybe(baseUrl);
+        const msg = [
+          `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
+          `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
+          `- المفتاح: ${keyLabel}`,
+          needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
+          hint ? `${hint}` : ``,
+        ].filter(Boolean).join('\n');
+        forcedText = msg;
+        const now = Date.now();
+        const last = loopPauseThrottle.get(String(sessionId));
+        if (!last || now - last > 6000) {
+          ev({ type: 'text', data: msg });
+          assistantTextEmitted = true;
+          loopPauseThrottle.set(String(sessionId), now);
+        }
+        thoughtLoopPauseEmitted = true;
+      }
+      break;
     }
 
     const isBrowserTool = /^browser_/.test(planName);
