@@ -1,5 +1,9 @@
 
 import { tools } from '../tools/registry';
+import { vectorDb } from '../services/vectorDb';
+import fs from 'fs';
+import path from 'path';
+import { glob } from 'glob';
 import { ToolDefinition } from '../tools/types';
 import { redactSecretsFromString } from '../utils/redaction';
 
@@ -8,7 +12,7 @@ const toolRateBuckets = new Map<string, { minute: number; count: number }>();
 
 function rateLimitBucketKey(name: string, input: any) {
     if (name === 'browser_run' || name === 'browser_open' || name === 'visual_qa') {
-        return `${name}:${input?.sessionId || 'global'}`;
+        return `${name}:${input?.sessionId || 'global'} `;
     }
     return name;
 }
@@ -82,6 +86,45 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     // Universal Session Injection
     if ((effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') && !effectiveInput.sessionId && contextSessionId) {
         effectiveInput.sessionId = contextSessionId;
+    }
+
+    // [NEW] Deep Memory Handlers
+    if (name === 'recall_memory') {
+        try {
+            const results = await vectorDb.search(input.query, input.limit || 5);
+            const output = results.map(r =>
+                `[File: ${r.doc.metadata.filePath}]\nScore: ${r.score.toFixed(2)}\nContent:\n${r.doc.content}`
+            ).join('\n---\n');
+            return { ok: true, output: output || 'No relevant memory found.', logs };
+        } catch (e: any) {
+            return { ok: false, output: `Memory Recall Failed: ${e.message}`, logs };
+        }
+    }
+
+    if (name === 'memorize_codebase') {
+        try {
+            const root = input.directory || process.cwd();
+            const exts = input.extensions || ['ts', 'tsx', 'js', 'json', 'md', 'py', 'css', 'html'];
+            const pattern = `**/*.{${exts.join(',')}}`;
+            const files = await glob(pattern, { cwd: root, ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**'] });
+            console.log(`[Memory] Indexing ${files.length} files...`);
+            await vectorDb.clear();
+            let count = 0;
+            for (const file of files) {
+                const fullPath = path.join(root, file);
+                if (fs.statSync(fullPath).isDirectory()) continue;
+                const content = fs.readFileSync(fullPath, 'utf-8');
+                if (content.length > 50000) {
+                    await vectorDb.addDocument(content.slice(0, 20000), { filePath: file });
+                } else {
+                    await vectorDb.addDocument(content, { filePath: file });
+                }
+                count++;
+            }
+            return { ok: true, output: `Successfully indexed ${count} files into Deep Memory.`, logs };
+        } catch (e: any) {
+            return { ok: false, output: `Memorization Failed: ${e.message}`, logs };
+        }
     }
 
     logs.push(`[${new Date().toISOString()}] start ${effectiveName} (orig=${name})`);
