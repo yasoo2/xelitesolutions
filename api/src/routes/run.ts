@@ -1933,14 +1933,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     if (!plan) {
+      if (!lastPlanError && !plannerUnavailableMode) {
+        // Graceful stop (Planner returned null to signal completion/anti-loop)
+        // ev({ type: 'text', data: '(Thinking stopped)' }); // Optional debug
+        break;
+      }
+
       const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
       const extra = lastPlanError ? `\n\nDetails: ${lastPlanError}${hint ? `\n${hint}` : ''}` : '';
       const msg = lastPlanError && isProviderAuthError(null, lastPlanError)
         ? `⚠️ فشل التحقق من المفتاح\nالمزوّد رفض الـ API Key. تحقق من المفتاح وإعدادات المزود.${extra}`
         : `⚠️ تعذّر التخطيط للخطوة التالية عبر المزود.\nتحقق من المزوّد/الموديل/الـ Base URL ثم أعد المحاولة.${extra}`;
-      ev({ type: 'text', data: msg });
-      forcedText = msg;
-      assistantTextEmitted = true;
+
+      if (lastPlanError) {
+        ev({ type: 'text', data: msg });
+        forcedText = msg;
+        assistantTextEmitted = true;
+      }
+
       if (isGeneralKnowledgeQuestion(String(text || ''))) {
         plan = { name: 'central_answer', input: { question: String(text || '') } } as any;
       } else {
