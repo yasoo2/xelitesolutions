@@ -10,6 +10,10 @@ router.post('/', authenticate as any, SessionController.createSession);
 // List Sessions
 router.get('/', authenticate as any, SessionController.listSessions);
 
+// Search Sessions
+router.get('/search', authenticate as any, SessionController.searchSessions);
+
+
 // Delete Session
 router.delete('/:id', authenticate as any, SessionController.deleteSession);
 

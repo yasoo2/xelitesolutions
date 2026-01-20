@@ -107,3 +107,33 @@ export async function updateSecrets(req: Request, res: Response) {
     // Just a stub for now to prevent crash
     return res.json({ ok: true, message: 'Secrets updated (stub)' });
 }
+
+export async function searchSessions(req: Request, res: Response) {
+    const userId = (req as any).auth?.sub;
+    const query = String(req.query.q || '').trim();
+    const kind = String(req.query.kind || '');
+    if (!query) return res.json([]);
+
+    try {
+        if (useMock()) {
+            const all = store.getSessions();
+            const filtered = all.filter((s: any) =>
+                (s.title || '').toLowerCase().includes(query.toLowerCase()) &&
+                (!kind || s.kind === kind)
+            );
+            return res.json(filtered);
+        }
+
+        const filter: any = {
+            userId,
+            title: { $regex: query, $options: 'i' }
+        };
+        if (kind) {
+            filter.kind = kind;
+        }
+        const sessions = await Session.find(filter).sort({ updatedAt: -1 }).limit(20);
+        return res.json(sessions);
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to search sessions' });
+    }
+}
