@@ -1,227 +1,210 @@
-
-import React, { useState, useEffect } from 'react';
-import { Package, Search, Download, Trash2, Loader2, ArrowRight, CheckCircle, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Package, Download, Trash2, Search, ExternalLink, Loader2, Layers, CheckCircle, AlertCircle } from 'lucide-react';
 import { API_URL } from '../config';
 
-interface PackageInfo {
+interface Pkg {
     name: string;
     version: string;
-    description: string;
-    keywords: string[];
-    date: string;
-    links: { npm: string; repository?: string; homepage?: string };
-    status?: 'installed' | 'installing' | 'error';
-}
-
-interface InstalledPackages {
-    dependencies: Record<string, string>;
-    devDependencies: Record<string, string>;
+    description?: string;
 }
 
 export default function PackageManager() {
-    const [activeTab, setActiveTab] = useState<'installed' | 'search'>('installed');
-    const [installed, setInstalled] = useState<InstalledPackages>({ dependencies: {}, devDependencies: {} });
-    const [loading, setLoading] = useState(false);
+    const [installed, setInstalled] = useState<Pkg[]>([]);
+    const [searchResults, setSearchResults] = useState<Pkg[]>([]);
     const [query, setQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<PackageInfo[]>([]);
+    const [loading, setLoading] = useState(false);
     const [searching, setSearching] = useState(false);
     const [installing, setInstalling] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'installed' | 'browse'>('installed');
 
-    const fetchInstalled = async () => {
+    const loadInstalled = async () => {
         setLoading(true);
         const token = localStorage.getItem('token');
         try {
-            const res = await fetch(`${API_URL}/packages`, {
+            const res = await fetch(`${API_URL}/packages/installed`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
                 const data = await res.json();
-                setInstalled(data);
+                setInstalled(data.packages || []);
             }
         } catch { }
         setLoading(false);
     };
 
     useEffect(() => {
-        fetchInstalled();
+        loadInstalled();
     }, []);
 
-    useEffect(() => {
-        if (!query.trim() || activeTab !== 'search') return;
-        const handler = setTimeout(async () => {
-            setSearching(true);
-            const token = localStorage.getItem('token');
-            try {
-                const res = await fetch(`${API_URL}/packages/search?q=${encodeURIComponent(query)}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                const data = await res.json();
-                setSearchResults(data.results || []);
-            } catch { }
-            setSearching(false);
-        }, 800);
-        return () => clearTimeout(handler);
-    }, [query, activeTab]);
-
-    const handleAction = async (pkgName: string, action: 'install' | 'uninstall' | 'install-dev') => {
-        setInstalling(pkgName);
+    const searchPackages = async () => {
+        if (!query.trim()) return;
+        setSearching(true);
         const token = localStorage.getItem('token');
         try {
-            const res = await fetch(`${API_URL}/packages`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({
-                    package: pkgName,
-                    action: action === 'uninstall' ? 'uninstall' : 'install',
-                    dev: action === 'install-dev'
-                })
+            const res = await fetch(`${API_URL}/packages/search?q=${encodeURIComponent(query)}`, {
+                headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
-                // Refresh installed list
-                await fetchInstalled();
-                // Update search results status if needed (mock for now or refetch)
-            } else {
-                alert('Operation failed. Check server logs.');
+                const data = await res.json();
+                setSearchResults(data.results || []);
             }
-        } catch (e) {
-            alert('Network error');
+        } catch { }
+        setSearching(false);
+    };
+
+    const handleAction = async (name: string, action: 'install' | 'uninstall') => {
+        setInstalling(name);
+        const token = localStorage.getItem('token');
+        try {
+            await fetch(`${API_URL}/packages/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ name })
+            });
+            await loadInstalled();
+            if (action === 'install') setActiveTab('installed');
+            alert(`Successfully ${action}ed ${name}`);
+        } catch {
+            alert(`Failed to ${action} ${name}`);
         }
         setInstalling(null);
     };
 
-    const isInstalled = (name: string) => {
-        return !!(installed.dependencies[name] || installed.devDependencies[name]);
-    };
-
-    const renderItem = (name: string, version: string, type: 'dep' | 'dev') => (
-        <div key={name} className="flex items-center justify-between p-3 bg-white/5 border border-white/5 rounded-lg hover:bg-white/10 transition-colors">
-            <div className="flex items-center gap-3">
-                <div className={`p-2 rounded ${type === 'dep' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'}`}>
-                    <Package size={18} />
-                </div>
-                <div>
-                    <div className="font-medium text-sm text-white/90">{name}</div>
-                    <div className="text-xs text-white/40 font-mono">{version} • {type === 'dep' ? 'Dependency' : 'DevDependency'}</div>
-                </div>
-            </div>
-            <button
-                onClick={() => {
-                    if (confirm(`Uninstall ${name}?`)) handleAction(name, 'uninstall');
-                }}
-                disabled={!!installing}
-                className="p-2 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-white/30 transition-colors"
-                title="Uninstall"
-            >
-                {installing === name ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-            </button>
-        </div>
-    );
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (query && activeTab === 'browse') searchPackages();
+        }, 600);
+        return () => clearTimeout(timer);
+    }, [query, activeTab]);
 
     return (
-        <div className="flex flex-col h-full bg-[#0f1117] text-white/90 select-none">
+        <div className="flex flex-col h-full bg-[#0f1117] text-white font-sans">
             {/* Header */}
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="bg-red-500/20 text-red-500 p-2 rounded-lg">
-                        <Package size={20} />
+            <div className="p-4 border-b border-white/5 sticky top-0 bg-[#0f1117]/80 backdrop-blur z-10 glass-panel border-r-0">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-500 flex items-center justify-center border border-blue-500/20">
+                        <Package size={18} />
                     </div>
                     <div>
-                        <h2 className="font-bold">Package Manager</h2>
-                        <div className="text-xs text-white/40">NPM Registry GUI</div>
+                        <h2 className="font-bold text-sm tracking-wide">PACKAGE MANAGER</h2>
                     </div>
                 </div>
-                <div className="flex bg-white/5 rounded-lg p-1 gap-1">
+
+                <div className="flex p-1 bg-white/5 rounded-xl border border-white/5">
                     <button
                         onClick={() => setActiveTab('installed')}
-                        className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${activeTab === 'installed' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white'}`}
+                        className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'installed' ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white/70'}`}
                     >
-                        Installed
+                        Installed ({installed.length})
                     </button>
                     <button
-                        onClick={() => setActiveTab('search')}
-                        className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${activeTab === 'search' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white'}`}
+                        onClick={() => setActiveTab('browse')}
+                        className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'browse' ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white/70'}`}
                     >
                         Browse Registry
                     </button>
                 </div>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-auto p-4 content-area">
-                {activeTab === 'installed' ? (
-                    <div className="space-y-2">
-                        {loading && <div className="text-center py-10 opacity-50"><Loader2 className="animate-spin mx-auto mb-2" />Loading packages...</div>}
-
-                        {!loading && Object.keys(installed.dependencies).length === 0 && Object.keys(installed.devDependencies).length === 0 && (
-                            <div className="text-center py-20 text-white/30">No packages found.</div>
-                        )}
-
-                        {Object.entries(installed.dependencies).map(([k, v]) => renderItem(k, v, 'dep'))}
-                        {Object.entries(installed.devDependencies).map(([k, v]) => renderItem(k, v, 'dev'))}
+            <div className="flex-1 overflow-y-auto p-4">
+                {activeTab === 'browse' && (
+                    <div className="mb-6 relative">
+                        <input
+                            type="text"
+                            placeholder="Search npm..."
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pl-10 text-sm focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-colors"
+                        />
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                        {searching && <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-blue-500" />}
                     </div>
-                ) : (
-                    <div className="space-y-4">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} />
-                            <input
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                placeholder="Search packages (e.g. react, lodash, three)..."
-                                className="w-full bg-black/20 text-white border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:border-blue-500/50 outline-none transition-colors"
-                            />
-                            {searching && <div className="absolute right-3 top-1/2 -translate-y-1/2"><Loader2 className="animate-spin text-white/30" size={16} /></div>}
-                        </div>
+                )}
 
-                        <div className="space-y-2">
-                            {searchResults.map((pkg) => {
-                                const installedVer = installed.dependencies[pkg.name] || installed.devDependencies[pkg.name];
-                                return (
-                                    <div key={pkg.name} className="flex flex-col gap-2 p-4 bg-white/5 border border-white/5 rounded-xl hover:border-white/10 transition-colors">
-                                        <div className="flex items-start justify-between">
+                <div className="space-y-3">
+                    {activeTab === 'installed' ? (
+                        <>
+                            {loading ? (
+                                <div className="flex justify-center py-10"><Loader2 className="animate-spin opacity-50" /></div>
+                            ) : installed.length === 0 ? (
+                                <div className="text-center py-10 opacity-50">No packages installed</div>
+                            ) : (
+                                installed.map((pkg, i) => (
+                                    <div key={i} className="group bg-white/5 hover:bg-white/[0.07] border border-white/5 hover:border-white/10 rounded-xl p-4 transition-all">
+                                        <div className="flex justify-between items-start mb-2">
                                             <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-bold text-blue-400">{pkg.name}</span>
-                                                    <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] text-white/60">v{pkg.version}</span>
-                                                    {installedVer && <span className="flex items-center gap-1 text-[10px] text-green-400"><CheckCircle size={10} /> Installed</span>}
+                                                <div className="font-bold text-sm text-white/90 flex items-center gap-2">
+                                                    {pkg.name}
+                                                    <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">{pkg.version}</span>
                                                 </div>
-                                                <p className="text-sm text-white/60 mt-1 line-clamp-2">{pkg.description}</p>
+                                                {pkg.description && <div className="text-xs text-white/50 mt-1 line-clamp-1">{pkg.description}</div>}
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                {pkg.links.npm && (
-                                                    <a href={pkg.links.npm} target="_blank" rel="noreferrer" className="p-2 hover:bg-white/10 rounded-lg text-white/30 hover:text-white transition-colors">
-                                                        <ExternalLink size={16} />
-                                                    </a>
-                                                )}
-                                            </div>
+                                            <button
+                                                onClick={() => { if (confirm(`Uninstall ${pkg.name}?`)) handleAction(pkg.name, 'uninstall'); }}
+                                                disabled={!!installing}
+                                                className="p-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                                                title="Uninstall"
+                                            >
+                                                {installing === pkg.name ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                            </button>
                                         </div>
+                                    </div>
+                                ))
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            {query && searchResults.length === 0 && !searching && (
+                                <div className="text-center py-10 opacity-50">No results found</div>
+                            )}
 
-                                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5">
+                            {!query && (
+                                <div className="flex flex-col items-center justify-center py-12 text-white/30 gap-3">
+                                    <Search size={48} className="opacity-20" />
+                                    <p className="text-sm">Search the npm registry...</p>
+                                </div>
+                            )}
+
+                            {searchResults.map((pkg, i) => {
+                                const installedVer = installed.find(p => p.name === pkg.name)?.version;
+                                return (
+                                    <div key={i} className="group bg-white/5 hover:bg-white/[0.07] border border-white/5 hover:border-white/10 rounded-xl p-4 transition-all">
+                                        <div className="flex justify-between items-start gap-4">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-bold text-sm text-white/90 truncate">{pkg.name}</span>
+                                                    {installedVer && <CheckCircle size={12} className="text-green-500" />}
+                                                </div>
+                                                {pkg.description && <div className="text-xs text-white/50 line-clamp-2">{pkg.description}</div>}
+                                                <div className="flex items-center gap-3 mt-3 text-xs text-white/30">
+                                                    <span className="flex items-center gap-1"><Layers size={10} /> {pkg.version}</span>
+                                                </div>
+                                            </div>
                                             <button
                                                 onClick={() => handleAction(pkg.name, 'install')}
                                                 disabled={!!installing || !!installedVer}
-                                                className="flex-1 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${installedVer
+                                                        ? 'bg-green-500/10 text-green-500 cursor-default'
+                                                        : 'bg-white/10 hover:bg-blue-500 hover:text-white text-white/70'
+                                                    }`}
                                             >
-                                                {installing === pkg.name ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                                                Install
-                                            </button>
-                                            <button
-                                                onClick={() => handleAction(pkg.name, 'install-dev')}
-                                                disabled={!!installing || !!installedVer}
-                                                className="flex-1 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                                            >
-                                                {installing === pkg.name ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                                                Install Dev
+                                                {installing === pkg.name ? (
+                                                    <Loader2 size={12} className="animate-spin" />
+                                                ) : installedVer ? (
+                                                    'Installed'
+                                                ) : (
+                                                    <>
+                                                        <Download size={12} /> Install
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     </div>
                                 );
                             })}
-                            {query && !searching && searchResults.length === 0 && (
-                                <div className="text-center py-10 text-white/30">No results found.</div>
-                            )}
-                        </div>
-                    </div>
-                )}
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );

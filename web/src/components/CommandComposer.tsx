@@ -540,7 +540,15 @@ export default function CommandComposer({
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
   const initialProviderState = useMemo(() => {
-    const baseProviders = { ...DEFAULT_PROVIDERS };
+    // Reorder default providers to prioritize OpenAI/Anthropic in UI listing
+    const baseProviders: { [key: string]: ProviderConfig } = {
+      openai: { ...DEFAULT_PROVIDERS.openai },
+      anthropic: { ...DEFAULT_PROVIDERS.anthropic },
+      gemini: { ...DEFAULT_PROVIDERS.gemini },
+      grok: { ...DEFAULT_PROVIDERS.grok },
+      joe: { ...DEFAULT_PROVIDERS.joe }, // Move Joe to end
+    };
+
     try {
       const saved = localStorage.getItem('ai_providers');
       if (saved) {
@@ -552,17 +560,27 @@ export default function CommandComposer({
     } catch { }
 
     const pickFirstKeyedProvider = () => {
+      // Prioritize OpenAI or Anthropic if they have keys
+      if (String(baseProviders.openai?.apiKey || '').trim()) return 'openai';
+      if (String(baseProviders.anthropic?.apiKey || '').trim()) return 'anthropic';
+      if (String(baseProviders.gemini?.apiKey || '').trim()) return 'gemini';
+
+      // Fallback to finding any key
       for (const [k, p] of Object.entries(baseProviders)) {
-        if (String(p?.apiKey || '').trim()) return k;
+        if (String(p?.apiKey || '').trim() && k !== 'joe') return k;
       }
-      return 'openai';
+      return 'joe';
     };
 
     try {
       const savedActive = localStorage.getItem('active_provider');
       if (savedActive && baseProviders[savedActive]) {
-        if (String(baseProviders[savedActive]?.apiKey || '').trim()) return { providers: baseProviders, activeProvider: savedActive };
-        return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
+        // If saved provider has key (or is joe), use it. But if it's joe and we have openai key, upgrade to openai.
+        const hasKey = String(baseProviders[savedActive]?.apiKey || '').trim();
+        if (hasKey) {
+          if (savedActive === 'joe' && String(baseProviders.openai?.apiKey || '').trim()) return { providers: baseProviders, activeProvider: 'openai' };
+          return { providers: baseProviders, activeProvider: savedActive };
+        }
       }
       return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
     } catch {

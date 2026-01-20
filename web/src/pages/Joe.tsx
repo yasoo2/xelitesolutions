@@ -5,7 +5,7 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon, Package, GitBranch, Camera, Wand2, Database, Play } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon, Package, GitBranch, Camera, Wand2, Database, Play, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
@@ -628,35 +628,41 @@ export default function Joe() {
     <div className={`joe-layout ${showSidebar ? 'sidebar-open' : 'sidebar-closed'}`}>
       {mode === 'chat' && showSidebar && isNarrow && <div className="sidebar-backdrop" onClick={() => setShowSidebar(false)} />}
       {mode === 'chat' && (
-        <aside className={`sidebar ${showSidebar ? 'open' : 'closed'}`} aria-hidden={!showSidebar}>
+        <aside className={`sidebar ${showSidebar ? 'open' : 'closed'} glass-panel`} aria-hidden={!showSidebar}>
           <div className="sidebar-header">
-            <button className="new-chat-btn" onClick={() => createSession()} disabled={isCreatingChatSession}>
-              <span>+</span> {t('sidebar.newChat', 'New Chat')}
+            <button className="new-chat-btn premium-btn" onClick={() => createSession()} disabled={isCreatingChatSession}>
+              <Plus size={16} /> {t('sidebar.newChat', 'New Chat')}
             </button>
-            <div className="flex gap-1">
-              <button className="close-sidebar-btn" onClick={() => setShowTerminal(!showTerminal)} title="Toggle System Terminal">
-                <TerminalIcon size={20} />
+
+            <div className="sidebar-section-label">{t('sidebar.apps', 'Apps')}</div>
+            <div className="sidebar-apps-grid">
+              <button className="app-icon-btn" onClick={() => setShowTerminal(!showTerminal)} title="System Terminal">
+                <div className="app-icon-bg bg-emerald-500/10 text-emerald-400"><TerminalIcon size={18} /></div>
+                <span className="app-label">Thermal</span>
               </button>
-              <button className="close-sidebar-btn" onClick={() => setShowPackages(!showPackages)} title="Package Manager">
-                <Package size={20} />
+              <button className="app-icon-btn" onClick={() => setShowSocial(!showSocial)} title="Social Feed">
+                <div className="app-icon-bg bg-pink-500/10 text-pink-400"><Camera size={18} /></div>
+                <span className="app-label">Insta</span>
               </button>
-              <button className="close-sidebar-btn" onClick={() => setShowGit(!showGit)} title="Source Control">
-                <GitBranch size={20} />
+              <button className="app-icon-btn" onClick={() => setShowArt(!showArt)} title="AI Art Studio">
+                <div className="app-icon-bg bg-purple-500/10 text-purple-400"><Wand2 size={18} /></div>
+                <span className="app-label">Art</span>
               </button>
-              <button className="close-sidebar-btn" onClick={() => setShowSocial(!showSocial)} title="Social Feed">
-                <Camera size={20} />
+            </div>
+
+            <div className="sidebar-section-label mt-4">{t('sidebar.system', 'System')}</div>
+            <div className="sidebar-system-grid">
+              <button className="system-icon-btn" onClick={() => setShowPackages(!showPackages)} title="Package Manager">
+                <Package size={16} />
               </button>
-              <button className="close-sidebar-btn" onClick={() => setShowArt(!showArt)} title="AI Art Studio">
-                <Wand2 size={20} />
+              <button className="system-icon-btn" onClick={() => setShowGit(!showGit)} title="Source Control">
+                <GitBranch size={16} />
               </button>
-              <button className="close-sidebar-btn" onClick={() => setShowDB(!showDB)} title="Database Commander">
-                <Database size={20} />
+              <button className="system-icon-btn" onClick={() => setShowDB(!showDB)} title="Database Commander">
+                <Database size={16} />
               </button>
-              <button className="close-sidebar-btn" onClick={() => setShowActions(!showActions)} title="CI/CD Monitor">
-                <Play size={20} />
-              </button>
-              <button className="close-sidebar-btn" onClick={() => setShowSidebar(false)}>
-                <PanelLeftClose size={20} />
+              <button className="system-icon-btn" onClick={() => setShowActions(!showActions)} title="CI/CD Monitor">
+                <Play size={16} />
               </button>
             </div>
           </div>
