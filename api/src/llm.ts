@@ -385,6 +385,15 @@ export async function planNextStep(
 
   if (providerKey.includes('joe') || providerKey.includes('hack') || providerKey.includes('pollinations')) {
     console.info('[LLM] Planning with Hack Provider (Joe/Pollinations)');
+
+    // Anti-Loop Check: If the last message was a tool output (from our previous echo), we assume we're done.
+    const lastMsg = messages[messages.length - 1];
+    const role = lastMsg ? (lastMsg.role as string) : '';
+    if (role === 'tool' || role === 'function') {
+      console.info('[LLM] Joe Hack: Detected tool output, ending turn to avoid loop.');
+      return null;
+    }
+
     try {
       // Pollinations is text-only, so we treat it as an interaction that returns an echo/response
       // This satisfies the connection verification check
