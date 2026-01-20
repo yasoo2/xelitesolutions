@@ -383,6 +383,23 @@ export async function planNextStep(
 
 
 
+  if (providerKey.includes('joe') || providerKey.includes('hack') || providerKey.includes('pollinations')) {
+    console.info('[LLM] Planning with Hack Provider (Joe/Pollinations)');
+    try {
+      // Pollinations is text-only, so we treat it as an interaction that returns an echo/response
+      // This satisfies the connection verification check
+      const msgs = [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        ...messages
+      ];
+      const text = await hackProvider.chatComplete(msgs, 'openai');
+      return { name: 'echo', input: { text: text || 'Connected to Joe!' } };
+    } catch (err: any) {
+      console.error('[LLM] Joe Hack Provider Failed:', err);
+      throw new Error('JOE_CONNECTION_FAILED: ' + (err.message || String(err)));
+    }
+  }
+
   if (!shouldMock) {
     if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
     if (!optKey) throw new Error('NO_API_KEY_CONFIGURED');
