@@ -48,7 +48,7 @@ export async function listSessions(req: Request, res: Response) {
     try {
         if (useMock()) {
             // Basic mock listing not fully implemented in snippet but standard store usage
-            return res.json(store.getSessions()); // Assuming store has this
+            return res.json(store.listSessions()); // Assuming store has this
         }
         const sessions = await Session.find({ userId }).sort({ updatedAt: -1 }).limit(100);
         return res.json(sessions);
@@ -77,7 +77,7 @@ export async function togglePin(req: Request, res: Response) {
         if (!useMock()) {
             const s = await Session.findById(id);
             if (s) {
-                s.pinned = !s.pinned;
+                s.isPinned = !s.isPinned;
                 await s.save();
                 return res.json(s);
             }
@@ -116,7 +116,7 @@ export async function searchSessions(req: Request, res: Response) {
 
     try {
         if (useMock()) {
-            const all = store.getSessions();
+            const all = store.listSessions();
             const filtered = all.filter((s: any) =>
                 (s.title || '').toLowerCase().includes(query.toLowerCase()) &&
                 (!kind || s.kind === kind)

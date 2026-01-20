@@ -392,7 +392,7 @@ async function detectWorkflowAdvanced(
   // Use RequestAnalyzer for complex requests
   if (options?.useAnalyzer !== false && isComplexRequest(s)) {
     try {
-      const { executeTool } = await import('../tools/registry');
+      const { executeTool } = await import('../services/ToolService');
       const result = await executeTool('request_analyzer', { userRequest: s });
 
       if (result.ok && result.output) {
@@ -2304,7 +2304,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (wf.analysis && wf.analysis.complexity && ['complex', 'very_complex'].includes(wf.analysis.complexity)) {
           try {
             // Create execution plan
-            const { executeTool } = await import('../tools/registry');
+            const { executeTool } = await import('../services/ToolService');
             const planResult = await executeTool('project_planner', {
               projectDescription: userTextForOverrides,
               analysis: wf.analysis
