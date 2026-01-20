@@ -28,6 +28,7 @@ services:
       start_period: 120s
     volumes:
       - lance_data:/app/data
+      - deep_memory:/app/.gemini
     networks:
       - joe-network
     depends_on:
@@ -103,6 +104,7 @@ services:
 volumes:
   mongo_data:
   lance_data:
+  deep_memory:
 
 
 networks:
