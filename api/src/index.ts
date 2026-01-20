@@ -35,6 +35,7 @@ import { attachWebSocket } from './ws';
 import path from 'path';
 import fs from 'fs';
 import { User } from './models/user';
+import { executeTool } from './services/ToolService';
 
 const logger =
   process.env.NODE_ENV === 'production'
@@ -177,6 +178,19 @@ async function main() {
   server.listen(config.port, '0.0.0.0', () => {
     console.log('DEBUG: Server callback triggered');
     logger.info({ port: config.port }, 'API listening');
+
+    // [NEW] Deep Memory Auto-Indexing
+    setTimeout(() => {
+      logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
+      executeTool('memorize_codebase', {
+        directory: process.cwd(),
+        extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
+      }).then(res => {
+        logger.info('[DeepMemory] Startup Indexing Complete: ' + (res.ok ? 'Success' : 'Failed'));
+      }).catch(err => {
+        logger.error('[DeepMemory] Startup Indexing Exception: ' + err.message);
+      });
+    }, 5000); // 5 second delay
   });
 
   // DB connect (Background async)
