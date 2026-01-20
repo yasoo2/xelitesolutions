@@ -36,8 +36,8 @@ router.get('/status', authenticate as any, async (req: Request, res: Response) =
         return res.status(500).json({ error: result.error });
     }
 
-    const lines = (result.stdout || '').split('\n').filter(l => l.trim());
-    const files = lines.map(line => {
+    const lines = (result.stdout || '').split('\n').filter((l: string) => l.trim());
+    const files = lines.map((line: string) => {
         const status = line.substring(0, 2);
         const file = line.substring(3).trim();
         return { status, file };
