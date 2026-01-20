@@ -1,8 +1,11 @@
 
 import { ToolDefinition } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
-import { MemoryTool } from './definitions/MemoryTool';
+import { MemoryTools } from './definitions/MemoryTool';
 import { GenesisAgent } from '../agents/GenesisAgent';
+// ...
+// ...
+
 import { GenesisToolDef } from './definitions/GenesisTool';
 import { VisualQATool } from './definitions/VisualQATool';
 import { ImageGenerationTool } from './definitions/ImageGenerationTool';
@@ -63,7 +66,7 @@ export const tools: ToolDefinition[] = [
   // --- Core Browser & Agent ---
   new BrowserRunTool(),
   VisualQATool,
-  MemoryTool,
+  ...MemoryTools,
   ArchitectTool,
 
   // --- Genesis ---
