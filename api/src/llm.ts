@@ -278,7 +278,51 @@ export const getSystemPrompt = () => {
 export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
+import { PollinationsProvider } from './llm/providers/pollinations';
+
+const hackProvider = new PollinationsProvider();
+
+// In-memory store for user provider preference
+// 'joe' = Pollinations (Hack)
+// 'gemini' = Google Gemini (Official)
+// 'openai' = Standard OpenAI
+const activeProviders = new Map<string, string>();
+
+export function setActiveProvider(userId: string, provider: string) {
+  const p = provider.toLowerCase();
+  if (['joe', 'hack', 'pollinations'].includes(p)) activeProviders.set(userId, 'joe');
+  else if (['gemini', 'google'].includes(p)) activeProviders.set(userId, 'gemini');
+  else activeProviders.set(userId, 'openai');
+  console.log(`LLM: User ${userId.slice(0, 4)} switched to provider: ${activeProviders.get(userId)}`);
+}
+
+export function getActiveProvider(userId: string): string {
+  return activeProviders.get(userId) || (process.env.LLM_PROVIDER?.includes('hack') ? 'joe' : 'openai');
+}
+
 export async function callLLM(prompt: string, context: any[] = [], userId?: string): Promise<string> {
+  const currentProvider = userId ? getActiveProvider(userId) : 'openai';
+
+  // Hack Provider (Joe)
+  if (currentProvider === 'joe') {
+    console.log('LLM: Using Hack Provider (Joe/Pollinations)');
+    const msgs = [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      ...context,
+      { role: 'user', content: prompt }
+    ];
+    return hackProvider.chatComplete(msgs, 'openai');
+  }
+
+  // Determine configuration for Official Providers (OpenAI / Gemini)
+  let forcedBaseUrl = process.env.OPENAI_BASE_URL;
+  let forcedModel = process.env.OPENAI_MODEL;
+
+  if (currentProvider === 'gemini') {
+    forcedBaseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+    forcedModel = 'gemini-1.5-flash';
+  }
+
   const key = userId ? getApiKeyForUser(userId) : (apiKey || '');
 
   if (!String(key).trim()) {
@@ -294,17 +338,21 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
   try {
     // If we have a specific user key, use a new client instance, otherwise use default
     let client = openai;
-    if (userId && userApiKeys.has(userId)) {
-      client = new OpenAI({ apiKey: userApiKeys.get(userId), baseURL: process.env.OPENAI_BASE_URL });
-    } else if (apiKey) {
-      // use default
+
+    // Always create fresh client if using Gemini or dynamic key
+    if ((userId && userApiKeys.has(userId)) || currentProvider === 'gemini') {
+      client = new OpenAI({
+        apiKey: userId ? userApiKeys.get(userId) : key,
+        baseURL: forcedBaseUrl || process.env.OPENAI_BASE_URL
+      });
+    } else if (apiKey && !forcedBaseUrl) {
+      // use default client
     } else {
-      // Should have thrown above if empty, but maybe using custom client?
-      client = new OpenAI({ apiKey: key, baseURL: process.env.OPENAI_BASE_URL });
+      client = new OpenAI({ apiKey: key, baseURL: forcedBaseUrl || process.env.OPENAI_BASE_URL });
     }
 
     const completion = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      model: forcedModel || process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
     });
     return completion.choices[0]?.message?.content || '';

@@ -129,6 +129,44 @@ router.post('/openai/test', async (req: Request, res: Response) => {
       details: error.message
     });
   }
+  res.status(error.status || 500).json({
+    error: 'API connection failed',
+    message: errorMessage,
+    details: error.message
+  });
+}
+});
+
+import { setActiveProvider, getActiveProvider } from '../llm';
+
+/**
+ * POST /providers/switch
+ * Switch between AI Providers (joe, gemini, openai)
+ */
+router.post('/switch', (req: Request, res: Response) => {
+  const { provider } = req.body;
+  const userId = (req as any).user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  setActiveProvider(userId, provider);
+  res.json({ success: true, provider: getActiveProvider(userId) });
+});
+
+/**
+ * POST /providers/gemini/key
+ * Set Gemini API Key
+ */
+router.post('/gemini/key', (req: Request, res: Response) => {
+  const { apiKey } = req.body;
+  const userId = (req as any).user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  // Use the same storage as OpenAI key, assuming user switches fully
+  setDynamicOpenAIKey(userId, apiKey);
+  // Auto-switch to gemini
+  setActiveProvider(userId, 'gemini');
+
+  res.json({ success: true, message: 'Gemini Key Configured' });
 });
 
 /**

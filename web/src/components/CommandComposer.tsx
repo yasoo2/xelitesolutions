@@ -418,9 +418,10 @@ interface ProviderConfig {
 }
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
+  joe: { name: 'Joe (Free)', apiKey: 'sk-pollinations-dummy', isConnected: true, model: 'openai', isCustom: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
-  gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-pro' },
+  gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-1.5-flash' },
   grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
 

@@ -7,6 +7,7 @@ import { AgentActivity } from './AgentActivity';
 
 export const NeuralChat = () => {
     const { messages, status, sendMessage, steps } = useAgent();
+    // ... existing state ...
     const [expanded, setExpanded] = useState(true);
     const [input, setInput] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -32,6 +33,7 @@ export const NeuralChat = () => {
                     <Sparkles className="text-purple-400" size={20} />
                     <h2 className="font-bold text-lg neon-text">NEURAL NEXUS</h2>
                 </div>
+
                 <div className="flex items-center gap-2 text-xs">
                     <div className={`w-2 h-2 rounded-full ${status === 'thinking' ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`} />
                     <span className="uppercase text-gray-400">{status === 'idle' ? 'Ready' : status}</span>
