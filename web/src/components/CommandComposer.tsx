@@ -419,6 +419,8 @@ interface ProviderConfig {
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   joe: { name: 'Joe (Free)', apiKey: 'sk-pollinations-dummy', isConnected: true, model: 'openai', isCustom: true },
+  openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemma-2-9b-it:free' },
+  auto: { name: 'Auto (Intelligent)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
   gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-1.5-flash' },
@@ -540,13 +542,15 @@ export default function CommandComposer({
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
   const initialProviderState = useMemo(() => {
-    // Reorder default providers to prioritize OpenAI/Anthropic in UI listing
+    // Reorder providers: Auto first, then OpenRouter, then paid providers, then Joe (Free)
     const baseProviders: { [key: string]: ProviderConfig } = {
+      auto: { ...DEFAULT_PROVIDERS.auto },
+      openrouter: { ...DEFAULT_PROVIDERS.openrouter },
       openai: { ...DEFAULT_PROVIDERS.openai },
       anthropic: { ...DEFAULT_PROVIDERS.anthropic },
       gemini: { ...DEFAULT_PROVIDERS.gemini },
       grok: { ...DEFAULT_PROVIDERS.grok },
-      joe: { ...DEFAULT_PROVIDERS.joe }, // Move Joe to end
+      joe: { ...DEFAULT_PROVIDERS.joe }, // Joe (Free) at the end
     };
 
     try {

@@ -279,11 +279,15 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
 import { PollinationsProvider } from './llm/providers/pollinations';
+import { OpenRouterProvider } from './llm/providers/openrouter';
 
 const hackProvider = new PollinationsProvider();
+const openRouterProvider = new OpenRouterProvider();
 
 // In-memory store for user provider preference
-// 'joe' = Pollinations (Hack)
+// 'joe' = Pollinations (Free)
+// 'openrouter' = OpenRouter (Free/Paid)
+// 'auto' = Intelligent Auto-Selection
 // 'gemini' = Google Gemini (Official)
 // 'openai' = Standard OpenAI
 const activeProviders = new Map<string, string>();
@@ -291,6 +295,8 @@ const activeProviders = new Map<string, string>();
 export function setActiveProvider(userId: string, provider: string) {
   const p = provider.toLowerCase();
   if (['joe', 'hack', 'pollinations'].includes(p)) activeProviders.set(userId, 'joe');
+  else if (['openrouter'].includes(p)) activeProviders.set(userId, 'openrouter');
+  else if (['auto', 'intelligent'].includes(p)) activeProviders.set(userId, 'auto');
   else if (['gemini', 'google'].includes(p)) activeProviders.set(userId, 'gemini');
   else activeProviders.set(userId, 'openai');
   console.log(`LLM: User ${userId.slice(0, 4)} switched to provider: ${activeProviders.get(userId)}`);
@@ -406,6 +412,68 @@ export async function planNextStep(
     } catch (err: any) {
       console.error('[LLM] Joe Hack Provider Failed:', err);
       throw new Error('JOE_CONNECTION_FAILED: ' + (err.message || String(err)));
+    }
+  }
+
+  // OpenRouter Provider
+  if (providerKey.includes('openrouter')) {
+    console.info('[LLM] Planning with OpenRouter Provider');
+
+    const lastMsg = messages[messages.length - 1];
+    const role = lastMsg ? (lastMsg.role as string) : '';
+    if (role === 'tool' || role === 'function') {
+      console.info('[LLM] OpenRouter: Detected tool output, ending turn.');
+      return null;
+    }
+
+    try {
+      const msgs = [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        ...messages
+      ];
+      const text = await openRouterProvider.chatComplete(msgs, options?.model || 'google/gemma-2-9b-it:free');
+      return { name: 'echo', input: { text: text || 'Connected to OpenRouter!' } };
+    } catch (err: any) {
+      console.error('[LLM] OpenRouter Provider Failed:', err);
+      throw new Error('OPENROUTER_CONNECTION_FAILED: ' + (err.message || String(err)));
+    }
+  }
+
+  // Auto Mode - Intelligent Provider Selection
+  if (providerKey.includes('auto')) {
+    console.info('[LLM] Planning with Auto Mode (Intelligent Selection)');
+
+    const lastMsg = messages[messages.length - 1];
+    const role = lastMsg ? (lastMsg.role as string) : '';
+    if (role === 'tool' || role === 'function') {
+      console.info('[LLM] Auto Mode: Detected tool output, ending turn.');
+      return null;
+    }
+
+    // Simple complexity analysis based on message length and keywords
+    const userMsg = [...messages].reverse().find(m => m.role === 'user');
+    const msgContent = typeof userMsg?.content === 'string' ? userMsg.content : '';
+    const isSimple = msgContent.length < 100 && !/\b(code|implement|design|architecture)\b/i.test(msgContent);
+
+    try {
+      const msgs = [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        ...messages
+      ];
+
+      // Use Pollinations for simple tasks, OpenRouter for complex
+      if (isSimple) {
+        console.info('[LLM] Auto Mode → Pollinations (Simple Task)');
+        const text = await hackProvider.chatComplete(msgs, 'openai');
+        return { name: 'echo', input: { text: text || 'Auto Mode: Using Joe (Free) for simple task' } };
+      } else {
+        console.info('[LLM] Auto Mode → OpenRouter (Complex Task)');
+        const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
+        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter for complex task' } };
+      }
+    } catch (err: any) {
+      console.error('[LLM] Auto Mode Failed:', err);
+      throw new Error('AUTO_MODE_FAILED: ' + (err.message || String(err)));
     }
   }
 
