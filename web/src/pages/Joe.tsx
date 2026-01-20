@@ -634,37 +634,7 @@ export default function Joe() {
               <Plus size={16} /> {t('sidebar.newChat', 'New Chat')}
             </button>
 
-            <div className="sidebar-section-label">{t('sidebar.apps', 'Apps')}</div>
-            <div className="sidebar-apps-grid">
-              <button className="app-icon-btn" onClick={() => setShowTerminal(!showTerminal)} title="System Terminal">
-                <div className="app-icon-bg bg-emerald-500/10 text-emerald-400"><TerminalIcon size={18} /></div>
-                <span className="app-label">Thermal</span>
-              </button>
-              <button className="app-icon-btn" onClick={() => setShowSocial(!showSocial)} title="Social Feed">
-                <div className="app-icon-bg bg-pink-500/10 text-pink-400"><Camera size={18} /></div>
-                <span className="app-label">Insta</span>
-              </button>
-              <button className="app-icon-btn" onClick={() => setShowArt(!showArt)} title="AI Art Studio">
-                <div className="app-icon-bg bg-purple-500/10 text-purple-400"><Wand2 size={18} /></div>
-                <span className="app-label">Art</span>
-              </button>
-            </div>
 
-            <div className="sidebar-section-label mt-4">{t('sidebar.system', 'System')}</div>
-            <div className="sidebar-system-grid">
-              <button className="system-icon-btn" onClick={() => setShowPackages(!showPackages)} title="Package Manager">
-                <Package size={16} />
-              </button>
-              <button className="system-icon-btn" onClick={() => setShowGit(!showGit)} title="Source Control">
-                <GitBranch size={16} />
-              </button>
-              <button className="system-icon-btn" onClick={() => setShowDB(!showDB)} title="Database Commander">
-                <Database size={16} />
-              </button>
-              <button className="system-icon-btn" onClick={() => setShowActions(!showActions)} title="CI/CD Monitor">
-                <Play size={16} />
-              </button>
-            </div>
           </div>
 
           <div className="search-box-container">
