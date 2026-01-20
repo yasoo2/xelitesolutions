@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { AgentStep } from '../components/AgentActivity';
 
 const getApiUrl = () => {
     if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -28,6 +29,7 @@ export type Message = {
 export const useAgent = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [status, setStatus] = useState<'idle' | 'thinking' | 'executing' | 'error'>('idle');
+    const [steps, setSteps] = useState<AgentStep[]>([]);
     const wsRef = useRef<WebSocket | null>(null);
     const sessionIdRef = useRef<string | null>(null);
 
@@ -63,15 +65,17 @@ export const useAgent = () => {
                     }]);
                     setStatus('idle');
                 } else if (msg.type === 'step_started') {
-                    setMessages(prev => [...prev, {
-                        id: Date.now().toString(),
-                        role: 'system',
-                        content: `Executing: ${msg.data.tool}`,
-                        type: 'step',
-                        tool: msg.data.tool
-                    }]);
+                    setSteps(prev => {
+                        const next = prev.map(s => ({ ...s, status: 'done' as const }));
+                        return [...next, {
+                            key: Date.now().toString(),
+                            name: msg.data.tool,
+                            status: 'running' as const
+                        }];
+                    });
                     setStatus('executing');
                 } else if (msg.type === 'run_completed') {
+                    setSteps(prev => prev.map(s => ({ ...s, status: 'done' as const })));
                     setStatus('idle');
                 }
             } catch (e) {
@@ -100,6 +104,7 @@ export const useAgent = () => {
             content: text
         }]);
         setStatus('thinking');
+        setSteps([]);
 
         try {
             // We need a session ID. If null, backend should generate one.
@@ -133,5 +138,5 @@ export const useAgent = () => {
         }
     }, [connect]);
 
-    return { messages, status, sendMessage };
+    return { messages, status, sendMessage, steps };
 };
