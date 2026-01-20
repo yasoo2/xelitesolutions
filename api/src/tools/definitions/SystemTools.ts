@@ -82,6 +82,41 @@ export class FileEditTool extends BaseTool {
     }
 }
 
+export class WriteFileTool extends BaseTool {
+    name = 'write_file';
+    description = 'Write content to a file. Overwrites if exists.';
+    version = '1.0.0';
+    tags = ['fs', 'write', 'create'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            filename: { type: 'string' },
+            content: { type: 'string' }
+        },
+        required: ['filename', 'content']
+    };
+    outputSchema = { type: 'object' as const, properties: { success: { type: 'boolean' } } };
+    permissions: ToolPermission[] = ['write'];
+    sideEffects: ToolPermission[] = ['write'];
+    rateLimitPerMinute = 60;
+    auditFields = ['filename'];
+
+    async execute(input: any) {
+        const logs: string[] = [];
+        const filename = String(input?.filename ?? '');
+        const content = String(input?.content ?? '');
+        const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+
+        // Ensure directory exists
+        const dir = path.dirname(full);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+        fs.writeFileSync(full, content);
+        logs.push(`write=${filename}`);
+        return { ok: true, output: { success: true }, logs };
+    }
+}
+
 export class GrepSearchTool extends BaseTool {
     name = 'grep_search';
     description = 'Search for text patterns in files using grep.';
