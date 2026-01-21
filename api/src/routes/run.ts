@@ -751,9 +751,8 @@ function fallbackPlanWhenPlannerUnavailable(params: {
     return { name: 'central_answer', input: { question: q } } as any;
   }
   if (isGeneralKnowledgeQuestion(userText)) {
-    // Always use central_answer (direct LLM response) for general questions
-    // Don't use web_search for simple questions like "من أنت؟" or "كيف حالك؟"
-    return { name: 'central_answer', input: { question: userText } } as any;
+    // Return null to let Auto mode LLM handle the response directly
+    return null;
   }
 
   const wantsSearch =
