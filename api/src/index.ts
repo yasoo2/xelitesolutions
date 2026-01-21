@@ -27,6 +27,7 @@ import artRoutes from './routes/art';
 import databaseRoutes from './routes/database';
 import actionsRoutes from './routes/actions';
 import browserRoutes from './routes/browser';
+import serverRoutes from './routes/servers';
 import { healthcheckBrowser } from './browser/manager';
 
 import { authenticate } from './middleware/auth';
@@ -157,6 +158,7 @@ async function main() {
   app.use('/database', databaseRoutes);
   app.use('/actions', actionsRoutes);
   app.use('/api/browser', browserRoutes);
+  app.use('/api/servers', authenticate, serverRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {

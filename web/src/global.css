@@ -3865,3 +3865,22 @@ html[data-theme="light"] .send-btn {
   border-right: none;
   border-left: 4px solid var(--accent-primary);
 }
+
+/* Enterprise Terminal Utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.terminal-glow {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
+}
+
+.ssh-active {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05));
+  border-color: rgba(16, 185, 129, 0.3);
+}

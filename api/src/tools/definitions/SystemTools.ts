@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import util from 'util';
+import { commandRouter } from '../../terminal/command-router';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, startTime: number, process: any }>();
@@ -275,6 +276,7 @@ export class ShellExecuteTool extends BaseTool {
         type: 'object' as const,
         properties: {
             cwd: { type: 'string' },
+            serverId: { type: 'string', description: 'ID of the remote server to execute on' },
             timeout: { type: 'number' },
             background: { type: 'boolean', description: 'Run command in background (fire and forget)' },
             dryRun: { type: 'boolean' }
@@ -334,11 +336,12 @@ export class ShellExecuteTool extends BaseTool {
 
         try {
             if (background) {
-                // Background Execution using Spawn
+                // Background Execution (Local only for now)
+                if (input.serverId) {
+                    throw new Error('Background execution not yet supported for remote servers');
+                }
                 const id = 'bg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-                const [cmdBin, ...cmdArgs] = command.split(' '); // Basic splitting, might need better parsing for quotes
-
-                // Using shell: true to handle pipes/redirects generically
+                // ... (rest of background logic remains same for local)
                 const child = spawn(command, [], {
                     cwd: workDir,
                     shell: true,
@@ -346,7 +349,7 @@ export class ShellExecuteTool extends BaseTool {
                     stdio: 'ignore'
                 });
 
-                child.unref(); // Detach loop
+                child.unref();
 
                 backgroundProcesses.set(id, {
                     pid: child.pid,
@@ -363,26 +366,31 @@ export class ShellExecuteTool extends BaseTool {
                 };
             }
 
-            const { stdout, stderr } = await execAsync(command, { cwd: workDir, timeout: timeoutVal, maxBuffer: 20 * 1024 * 1024 });
-
-            // Update CWD if cd
-            if (command.trim().startsWith('cd ')) {
-                const target = command.trim().split(/\s+/)[1];
-                if (target) {
-                    const newCwd = path.resolve(workDir, target);
-                    if (fs.existsSync(newCwd)) {
-                        try {
-                            if (!fs.existsSync(path.dirname(stateFile))) fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-                            fs.writeFileSync(stateFile, JSON.stringify({ cwd: newCwd }));
-                            logs.push(`shell.cwd_updated=${newCwd}`);
-                        } catch { }
-                    }
-                }
-            }
+            // Route execution (Local or Remote)
+            const result = await commandRouter.execute({
+                command,
+                serverId: input.serverId,
+                workingDirectory: workDir,
+                timeout: timeoutVal
+            });
 
             const durationMs = Date.now() - startedAt;
-            logs.push(`exec=${redactCmd(command)} cwd=${workDir} exit=0`);
-            return { ok: true, output: { status: 'success', stdout, stderr, exitCode: 0, cwd: workDir, durationMs }, logs };
+            logs.push(`exec=${redactCmd(command)} server=${input.serverId || 'local'} exit=${result.code}`);
+
+            return {
+                ok: result.code === 0,
+                output: {
+                    status: result.code === 0 ? 'success' : 'failed',
+                    stdout: result.stdout,
+                    stderr: result.stderr,
+                    exitCode: result.code,
+                    cwd: workDir,
+                    durationMs,
+                    executedOn: result.executedOn,
+                    serverId: result.serverId
+                },
+                logs
+            };
 
         } catch (e: any) {
             const durationMs = Date.now() - startedAt;

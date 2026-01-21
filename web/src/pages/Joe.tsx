@@ -9,7 +9,7 @@ import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, Chev
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
-const TerminalPanelLazy = lazy(() => import('../components/TerminalPanel'));
+const EnterpriseTerminalPanelLazy = lazy(() => import('../components/terminal/EnterpriseTerminalPanel'));
 const PackageManagerLazy = lazy(() => import('../components/PackageManager'));
 const GitPanelLazy = lazy(() => import('../components/GitPanel'));
 const SocialPanelLazy = lazy(() => import('../components/SocialPanel'));
@@ -1187,7 +1187,7 @@ export default function Joe() {
 
       {showTerminal && (
         <Suspense fallback={null}>
-          <TerminalPanelLazy onClose={() => setShowTerminal(false)} />
+          <EnterpriseTerminalPanelLazy onClose={() => setShowTerminal(false)} />
         </Suspense>
       )}
       {/* Package Manager Modal */}
