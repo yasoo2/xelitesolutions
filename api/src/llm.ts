@@ -539,21 +539,10 @@ export async function planNextStep(
         ...messages
       ];
 
-      // Route based on complexity - Use OpenRouter for all levels for better quality
-      if (analysis.level === 'simple') {
-        console.info('[LLM] Auto Mode → OpenRouter Free (Simple Task)');
-        const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
-        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter for simple task' } };
-      } else if (analysis.level === 'medium') {
-        console.info('[LLM] Auto Mode → OpenRouter Free (Medium Task)');
-        const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
-        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter (Free) for medium task' } };
-      } else {
-        // Complex tasks: Use OpenRouter free models for now (can be upgraded to paid if API key is available)
-        console.info('[LLM] Auto Mode → OpenRouter Free (Complex Task)');
-        const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
-        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter (Free) for complex task' } };
-      }
+      // Use Joe (Free) for all complexity levels - no auth required
+      console.info('[LLM] Auto Mode → Joe (Free) - No API key needed');
+      const text = await hackProvider.chatComplete(msgs, 'openai');
+      return { name: 'echo', input: { text: text || 'Response from Joe (Free)' } };
     } catch (err: any) {
       console.error('[LLM] Auto Mode Failed:', err);
       throw new Error('AUTO_MODE_FAILED: ' + (err.message || String(err)));
