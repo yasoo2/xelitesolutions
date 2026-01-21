@@ -563,6 +563,29 @@ export async function planNextStep(
     }
   }
 
+  // HuggingFace Provider
+  if (providerKey === 'huggingface' || providerKey === 'hf') {
+    console.info('[LLM] Planning with HuggingFace Provider');
+
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role === 'tool' || lastMsg?.role === 'function') {
+      console.info('[LLM] HuggingFace: Tool output detected, ending turn.');
+      return null;
+    }
+
+    try {
+      const msgs = [
+        { role: 'system', content: 'You are a helpful AI assistant.' },
+        ...messages
+      ];
+      const text = await huggingfaceProvider.chatComplete(msgs);
+      return { name: 'echo', input: { text: text || 'Response from HuggingFace' } };
+    } catch (err: any) {
+      console.error('[LLM] HuggingFace Provider Failed:', err);
+      throw new Error('HUGGINGFACE_CONNECTION_FAILED: ' + (err.message || String(err)));
+    }
+  }
+
   // Auto Mode - Enterprise Intelligence (Multi-Model Router + Context + Memory)
   if (providerKey.includes('auto')) {
     console.info('[LLM] 🚀 Auto Mode Enterprise - Full System Activated');
