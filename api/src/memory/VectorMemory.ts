@@ -32,7 +32,7 @@ export class VectorMemory {
     async init() {
         try {
             console.log('[VectorMemory] Attempting to load LanceDB...');
-            const lancedb = await import('@lancedb/lancedb');
+            const lancedb = require('@lancedb/lancedb');
 
             this.db = await lancedb.connect(MEMORY_DB_PATH);
 

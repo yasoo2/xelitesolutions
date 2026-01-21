@@ -80,7 +80,7 @@ export async function setUserSecretEncrypted(
   const k = String(key || '').trim();
   if (!uid || !p || !k) return;
 
-  const { UserSecret } = await import('../models/userSecret');
+  const { UserSecret } = require('../models/userSecret');
   const enc = encrypt(String(value ?? ''));
   const doc: any = {
     userId: uid,
@@ -106,7 +106,7 @@ export async function getUserSecret(
   const p = String(provider || '').trim();
   const k = String(key || '').trim();
   if (!uid || !p || !k) return null;
-  const { UserSecret } = await import('../models/userSecret');
+  const { UserSecret } = require('../models/userSecret');
   const doc: any = await UserSecret.findOne({ userId: uid, provider: p, key: k })
     .select({ value: 1, enc: 1 })
     .lean();

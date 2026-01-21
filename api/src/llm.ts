@@ -612,11 +612,11 @@ export async function planNextStep(
 
     // === ENTERPRISE SYSTEMS ACTIVATION ===
 
-    // 1. Import all enterprise systems
-    const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = await import('./llm/intelligent-router');
-    const { buildConversationContext, analyzeContextualIntent, matchPatternWithContext } = await import('./llm/context-engine');
-    const { longTermMemory } = await import('./memory/long-term-memory');
-    const { orchestrator } = await import('./agents/orchestrator');
+    // 1. Import all enterprise systems (using require to avoid TS1323)
+    const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = require('./llm/intelligent-router');
+    const { buildConversationContext, analyzeContextualIntent, matchPatternWithContext } = require('./llm/context-engine');
+    const { longTermMemory } = require('./memory/long-term-memory');
+    const { orchestrator } = require('./agents/orchestrator');
 
     // 2. Build conversation context
     const userId = options?.userId || 'anonymous';
@@ -677,8 +677,8 @@ export async function planNextStep(
     // === FREE INTELLIGENCE OPTIMIZER ===
     console.info(`[Auto Enterprise] 💬 User query: "${userText.substring(0, 100)}${userText.length > 100 ? '...' : ''}"`);
 
-    // Import optimizer
-    const { generateSmartResponse, freeIntelligenceOptimizer } = await import('./llm/free-intelligence-optimizer');
+    // Import optimizer (using require to avoid TS1323)
+    const { generateSmartResponse, freeIntelligenceOptimizer } = require('./llm/free-intelligence-optimizer');
 
     // 1. Check for instant smart response (no API call needed!)
     console.info('[FREE OPTIMIZER] Checking for instant smart response patterns...');

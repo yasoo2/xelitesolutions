@@ -63,7 +63,7 @@ export function attachWebSocket(server: Server) {
         if (msg.type === 'terminal_input') {
           const { id, data, serverId } = msg;
           if (serverId) {
-            import('./terminal/ssh-manager').then(({ sshManager }) => {
+            Promise.resolve(require('./terminal/ssh-manager')).then(({ sshManager }) => {
               if (!sshManager.isConnected(serverId)) {
                 // Trigger shell creation if not connected? 
                 // Usually connected via REST call first, but we ensure shell exists
@@ -73,7 +73,7 @@ export function attachWebSocket(server: Server) {
               });
             });
           } else {
-            import('./tools/definitions/TaskInteractionTools').then(({ terminals }) => {
+            Promise.resolve(require('./tools/definitions/TaskInteractionTools')).then(({ terminals }) => {
               const term = terminals.get(id);
               if (term) term.pty.write(data);
             });
@@ -82,11 +82,11 @@ export function attachWebSocket(server: Server) {
         if (msg.type === 'terminal_resize') {
           const { id, cols, rows, serverId } = msg;
           if (serverId) {
-            import('./terminal/ssh-manager').then(({ sshManager }) => {
+            Promise.resolve(require('./terminal/ssh-manager')).then(({ sshManager }) => {
               sshManager.resizeShell(id, cols, rows);
             });
           } else {
-            import('./tools/definitions/TaskInteractionTools').then(({ terminals }) => {
+            Promise.resolve(require('./tools/definitions/TaskInteractionTools')).then(({ terminals }) => {
               const term = terminals.get(id);
               if (term) term.pty.resize(cols, rows);
             });

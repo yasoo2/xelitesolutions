@@ -188,7 +188,19 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
         const analyst = hasGroq ? 'llama-3.1-8b-instant' : 'openai'; // Use Pollinations if no Groq
         const provider = hasGroq ? 'groq' : 'hack';
 
-        const systemPrompt = `Analyze the following user request and return a JSON object with:
+        const systemPrompt = `Analyze the following user request and return a JSON object.
+Be extremely strict with complexity:
+- "extreme": Building full applications, complex systems, multi-step deployment, or "from scratch" projects.
+- "high": Complex coding tasks, deep analysis, or multi-module changes.
+- "medium": Browser automation, explaining complex concepts (like Kubernetes), or single component logic.
+- "low": Simple questions, greetings, or basic file reads.
+
+Task Types:
+- "complex_reasoning": For "How does X work?", architecture discussions, or planning.
+- "code_generation": For any request involving writing code.
+- "browser_task": For any web-based automation or search.
+
+Return exactly this JSON structure:
 {
   "type": "simple_chat" | "complex_reasoning" | "code_generation" | "creative" | "data_analysis" | "browser_task",
   "complexity": "low" | "medium" | "high" | "extreme",
@@ -202,7 +214,8 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
             responseText = await callGroq(analyst, [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }]);
         } else {
             if (!hack) {
-                const llm = await import('../llm');
+                // Use require to bypass TS1323 and handle circular dependency
+                const llm = require('../llm');
                 hack = llm.pollinationsProvider;
             }
             responseText = await hack.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'openai');
@@ -354,7 +367,7 @@ export async function routeToModel(
     if (!hasGroqKey && selectedModel.provider === 'groq') {
         console.info('[IntelligentRouter] No Groq key - using FREE Pollinations instead');
         if (!hack) {
-            const llm = await import('../llm');
+            const llm = require('../llm');
             hack = llm.pollinationsProvider;
         }
         return await hack.chatComplete(messages, 'openai');
@@ -368,7 +381,7 @@ export async function routeToModel(
 
         if (selectedModel.provider === 'hack') {
             if (!hack) {
-                const llm = await import('../llm');
+                const llm = require('../llm');
                 hack = llm.pollinationsProvider;
             }
             return await hack.chatComplete(messages, 'openai');
@@ -376,7 +389,7 @@ export async function routeToModel(
 
         if (selectedModel.provider === 'openrouter') {
             if (!openrouter) {
-                const llm = await import('../llm');
+                const llm = require('../llm');
                 openrouter = llm.openRouterProvider;
             }
             return await openrouter.chatComplete(messages, selectedModel.model);
@@ -406,7 +419,7 @@ export async function routeToModel(
         // Final fallback - Always available (FREE)
         console.info('[IntelligentRouter] Final fallback to Pollinations (FREE)');
         if (!hack) {
-            const llm = await import('../llm');
+            const llm = require('../llm');
             hack = llm.pollinationsProvider;
         }
         return await hack.chatComplete(messages, 'openai');

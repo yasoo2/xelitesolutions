@@ -114,7 +114,7 @@ export class AnalyzeCodebaseTool extends BaseTool {
 
         try {
             // Determine client (Assuming OpenAI direct usage as per registry)
-            const OpenAIConstructor = (await import('openai')).default;
+            const OpenAIConstructor = require('openai').default;
             const client = new OpenAIConstructor({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
 
             const completion = await client.chat.completions.create({

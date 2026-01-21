@@ -547,7 +547,7 @@ export async function runBrowserInstruction(params: {
     return { ok: false as const, error: 'missing_secrets', missingSecrets: secretsCheck.missing };
   }
 
-  const cfg = DEFAULT_BROWSER_CONFIG;
+
   const safeInstruction = redactSecretsFromString(instructionText);
   const closeAfterRun = shouldCloseAfterRun();
   const debugBase = {

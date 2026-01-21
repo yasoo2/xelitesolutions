@@ -83,7 +83,7 @@ export const tools: ToolDefinition[] = [
         const { plan, steps } = await genesis.orchestrate(goal);
         logs.push(`📜 Plan Generated (${plan.length} chars)`);
         // Hand off to TaskLoop via ToolService (Dynamic Import to avoid cycle)
-        const { executeTool } = await import('../services/ToolService');
+        const { executeTool } = require('../services/ToolService');
         return executeTool('task_loop', {
           goal: `Genesis Execution: ${goal}`,
           steps: steps,
