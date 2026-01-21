@@ -88,6 +88,15 @@ function selectToolDefsForProvider(
   const selected: typeof tools = [];
   const seen = new Set<string>();
 
+  // ACTUALLY USE CONTEXT ANALYZER (was dead code before!)
+  let contextInfo: any = null;
+  try {
+    const { analyzeContext } = require('./intelligence/context-analyzer');
+    contextInfo = analyzeContext(messages);
+  } catch (e) {
+    console.warn('[selectToolDefsForProvider] Context analyzer failed:', e);
+  }
+
   const routingTextRaw = messages
     .slice(-10)
     .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
@@ -180,6 +189,34 @@ function selectToolDefsForProvider(
     const isComplexTask = routingTextRaw.length > 500 || /(comprehensive|detailed|full|complete|entire)/.test(routingTextRaw);
     if (isComplexTask && (tags.includes('analysis') || name.includes('analyze') || name.includes('scaffold'))) {
       score += 40;
+    }
+
+    // CONTEXT ANALYZER BOOST (actually use it!)
+    if (contextInfo) {
+      // Boost tools suggested by context analyzer
+      const suggested = Array.isArray(contextInfo.suggestedTools) ? contextInfo.suggestedTools : [];
+      if (suggested.includes(name)) {
+        score += 60; // Major boost for context-suggested tools
+      }
+
+      // Task type specific boosts
+      if (contextInfo.taskType === 'coding' && (tags.includes('fs') || tags.includes('shell') || name.includes('file'))) {
+        score += 35;
+      }
+      if (contextInfo.taskType === 'research' && (tags.includes('search') || tags.includes('knowledge'))) {
+        score += 35;
+      }
+      if (contextInfo.taskType === 'browsing' && tags.includes('browser')) {
+        score += 35;
+      }
+      if (contextInfo.taskType === 'debugging' && (name.includes('test') || name.includes('quality') || name.includes('lint'))) {
+        score += 35;
+      }
+
+      // Complexity boost
+      if (contextInfo.complexity === 'complex' && (tags.includes('agent') || tags.includes('scaffold') || tags.includes('analysis'))) {
+        score += 25;
+      }
     }
 
     const boostKeywords = [
