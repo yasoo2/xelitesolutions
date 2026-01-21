@@ -1210,7 +1210,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const ev = (e: LiveEvent) => broadcast({ ...e, runId });
 
   try {
+    // Build messages array for LLM
     const currentSystemPrompt = getSystemPrompt();
+
+    // ENSURE ENHANCED SYSTEM PROMPT IS ALWAYS FIRST
+    const systemMessage: any = { role: 'system', content: currentSystemPrompt };
+
+    // Log to verify prompt is being used
+    console.log('[Run] System prompt applied:', {
+      length: currentSystemPrompt.length,
+      hasTaskAwareness: currentSystemPrompt.includes('TASK-AWARE'),
+      hasErrorRecovery: currentSystemPrompt.includes('ERROR HANDLING')
+    });
     if (useMock) {
       const hist = store.listMessages(sessionId);
       const already = hist.some(m => m.role === 'system');
