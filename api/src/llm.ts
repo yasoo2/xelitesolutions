@@ -88,13 +88,25 @@ function selectToolDefsForProvider(
   const selected: typeof tools = [];
   const seen = new Set<string>();
 
-  // ACTUALLY USE CONTEXT ANALYZER (was dead code before!)
+  // ACTUALLY USE CONTEXT ANALYZER - with proper error handling
   let contextInfo: any = null;
   try {
     const { analyzeContext } = require('./intelligence/context-analyzer');
     contextInfo = analyzeContext(messages);
-  } catch (e) {
-    console.warn('[selectToolDefsForProvider] Context analyzer failed:', e);
+    console.log('[Tool Selection] Context detected:', {
+      taskType: contextInfo?.taskType,
+      complexity: contextInfo?.complexity,
+      toolCount: contextInfo?.suggestedTools?.length || 0
+    });
+  } catch (e: any) {
+    console.error('[Tool Selection] Context analyzer FAILED:', e.message);
+    // Provide basic fallback context
+    contextInfo = {
+      taskType: 'mixed',
+      complexity: 'medium',
+      suggestedTools: [],
+      requiredCapabilities: []
+    };
   }
 
   const routingTextRaw = messages

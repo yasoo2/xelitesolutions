@@ -56,29 +56,47 @@ export function analyzeContext(messages: Array<{ role: string; content: string |
 }
 
 function detectTaskType(text: string): ConversationContext['taskType'] {
+    const lower = text.toLowerCase();
+
     const patterns = {
-        coding: /(code|implement|build|create|function|class|component|file|edit|refactor|optimize)/,
-        research: /(research|find|search|learn|what is|how does|compare|analyze|investigate)/,
-        debugging: /(bug|error|fail|crash|fix|debug|issue|problem|not working|broken)/,
-        browsing: /(browser|website|web|open|login|click|navigate|scrape|automation)/,
-        planning: /(plan|design|architect|structure|organize|strategy|approach)/
+        coding: /(code|implement|build|create|component|function|class|file|edit|refactor|optimize|برمج|كود|انشئ|أنشئ|بناء)/gi,
+        research: /(research|find|search|compare|analyze|investigate|what is|how does|أفضل|مقارنة|ابحث|بحث|قارن|ما هو|كيف)/gi,
+        debugging: /(bug|error|fail|failure|crash|fix|debug|issue|problem|broken|not working|خطأ|مشكلة|عطل|يفشل)/gi,
+        browsing: /(browser|website|web|open|login|click|navigate|scrape|افتح|متصفح|موقع|تصفح)/gi,
+        planning: /(plan|design|architect|structure|organize|strategy|approach|خطة|تصميم|هيكل)/gi
     };
 
     const scores: Record<string, number> = {};
 
+    // Count matches for each type
     for (const [type, pattern] of Object.entries(patterns)) {
-        const matches = text.match(pattern);
+        const matches = lower.match(pattern);
         scores[type] = matches ? matches.length : 0;
     }
 
     const maxScore = Math.max(...Object.values(scores));
     if (maxScore === 0) return 'mixed';
 
-    const dominantTypes = Object.entries(scores).filter(([_, score]) => score === maxScore);
+    // Get all types with max score
+    const topTypes = Object.entries(scores)
+        .filter(([_, score]) => score === maxScore)
+        .map(([type]) => type);
 
-    if (dominantTypes.length > 2) return 'mixed';
+    // If only one dominant type
+    if (topTypes.length === 1) {
+        return topTypes[0] as ConversationContext['taskType'];
+    }
 
-    return dominantTypes[0][0] as ConversationContext['taskType'];
+    // Priority when multiple types have same score
+    // Research and debugging are more specific, prioritize them
+    const priority = ['research', 'debugging', 'coding', 'browsing', 'planning'];
+    for (const type of priority) {
+        if (topTypes.includes(type)) {
+            return type as ConversationContext['taskType'];
+        }
+    }
+
+    return 'mixed';
 }
 
 function detectComplexity(text: string, messageCount: number): ConversationContext['complexity'] {
