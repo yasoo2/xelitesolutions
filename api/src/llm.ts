@@ -390,12 +390,14 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 import { PollinationsProvider } from './llm/providers/pollinations';
 import { OpenRouterProvider } from './llm/providers/openrouter';
+import { HuggingFaceProvider } from './llm/providers/huggingface';
 
 const pollinationsProvider = new PollinationsProvider();
 const openRouterProvider = new OpenRouterProvider();
+const huggingfaceProvider = new HuggingFaceProvider();
 
 // Export for use in intelligent-router
-export { pollinationsProvider, openRouterProvider };
+export { pollinationsProvider, openRouterProvider, huggingfaceProvider };
 
 
 // In-memory store for user provider preference
@@ -408,10 +410,11 @@ const activeProviders = new Map<string, string>();
 
 export function setActiveProvider(userId: string, provider: string) {
   const p = provider.toLowerCase();
-  if (['joe', 'hack', 'pollinations'].includes(p)) activeProviders.set(userId, 'joe');
-  else if (['openrouter'].includes(p)) activeProviders.set(userId, 'openrouter');
+  if (['openrouter'].includes(p)) activeProviders.set(userId, 'openrouter');
   else if (['auto', 'intelligent'].includes(p)) activeProviders.set(userId, 'auto');
+  else if (['huggingface', 'hf'].includes(p)) activeProviders.set(userId, 'huggingface');
   else if (['gemini', 'google'].includes(p)) activeProviders.set(userId, 'gemini');
+  else if (['pollinations'].includes(p)) activeProviders.set(userId, 'pollinations');
   else activeProviders.set(userId, 'openai');
   console.log(`LLM: User ${userId.slice(0, 4)} switched to provider: ${activeProviders.get(userId)}`);
 }

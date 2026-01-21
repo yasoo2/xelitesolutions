@@ -241,11 +241,12 @@ async function callGroq(model: string, messages: any[]): Promise<string> {
 
 /**
  * Intelligent routing with automatic fallback
+ * Works WITHOUT API keys - uses Pollinations as free fallback
  */
 export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
-    availableKeys?: { anthropic?: string; openai?: string; }
+    availableKeys?: { anthropic?: string; openai?: string; groq?: string; }
 ): Promise<string> {
 
     // Analyze if not provided
@@ -258,6 +259,19 @@ export async function routeToModel(
 
     console.info(`[IntelligentRouter] Selected: ${selectedModel.name} for ${taskAnalysis.type} (${taskAnalysis.complexity})`);
 
+    // Check if Groq API key available
+    const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
+
+    // If no Groq key and selected model needs it → use Pollinations directly
+    if (!hasGroqKey && selectedModel.provider === 'groq') {
+        console.info('[IntelligentRouter] No Groq key - using FREE Pollinations instead');
+        if (!hack) {
+            const llm = await import('../llm');
+            hack = llm.pollinationsProvider;
+        }
+        return await hack.chatComplete(messages, 'openai');
+    }
+
     try {
         // Route to appropriate provider
         if (selectedModel.provider === 'groq') {
@@ -267,7 +281,7 @@ export async function routeToModel(
         if (selectedModel.provider === 'hack') {
             if (!hack) {
                 const llm = await import('../llm');
-                hack = llm.hackProvider;
+                hack = llm.pollinationsProvider;
             }
             return await hack.chatComplete(messages, 'openai');
         }
@@ -286,24 +300,26 @@ export async function routeToModel(
     } catch (error: any) {
         console.error(`[IntelligentRouter] ${selectedModel.name} failed, using fallback...`);
 
-        // Fallback cascade: Llama 70B → Llama 8B → Pollinations
-        try {
-            if (selectedModel.model !== MODELS['llama-3.1-70b'].model) {
-                console.info('[IntelligentRouter] Fallback to Llama 3.1 70B');
-                return await callGroq(MODELS['llama-3.1-70b'].model, messages);
-            }
-        } catch { }
+        // Fallback cascade: Try Groq models if key available, otherwise Pollinations
+        if (hasGroqKey) {
+            try {
+                if (selectedModel.model !== MODELS['llama-3.1-70b'].model) {
+                    console.info('[IntelligentRouter] Fallback to Llama 3.1 70B');
+                    return await callGroq(MODELS['llama-3.1-70b'].model, messages);
+                }
+            } catch { }
 
-        try {
-            console.info('[IntelligentRouter] Fallback to Llama 3.1 8B');
-            return await callGroq(MODELS['llama-3.1-8b'].model, messages);
-        } catch { }
+            try {
+                console.info('[IntelligentRouter] Fallback to Llama 3.1 8B');
+                return await callGroq(MODELS['llama-3.1-8b'].model, messages);
+            } catch { }
+        }
 
-        // Final fallback
-        console.info('[IntelligentRouter] Final fallback to Pollinations');
+        // Final fallback - Always available (FREE)
+        console.info('[IntelligentRouter] Final fallback to Pollinations (FREE)');
         if (!hack) {
             const llm = await import('../llm');
-            hack = llm.hackProvider;
+            hack = llm.pollinationsProvider;
         }
         return await hack.chatComplete(messages, 'openai');
     }
