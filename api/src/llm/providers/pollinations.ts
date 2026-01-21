@@ -19,7 +19,7 @@ export class PollinationsProvider {
         });
     }
 
-    async chatComplete(messages: any[], model: string = 'openai'): Promise<string> {
+    async chatComplete(messages: any[], model: string = 'openai', retries: number = 2): Promise<string> {
         try {
             const completion = await this.client.chat.completions.create({
                 model: model,
@@ -31,6 +31,11 @@ export class PollinationsProvider {
 
             return completion.choices[0]?.message?.content || '';
         } catch (error: any) {
+            if (error.status === 429 && retries > 0) {
+                console.warn(`[Pollinations] Rate limited (429), retrying in 2s... (${retries} retries left)`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return this.chatComplete(messages, model, retries - 1);
+            }
             console.error("Pollinations Chat Failed:", error);
             throw new Error(`Pollinations API Failed: ${error.message}`);
         }

@@ -1385,7 +1385,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         initialPlan = { name: 'payments_create_checkout_session', input: { amount: p.amount, currency: p.currency, productName: p.productName } } as any;
       }
       if (!initialPlan) {
-        if (!hasAnyKey || providerKey === 'llm') {
+        const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack' || providerKey === 'joe';
+        if ((!hasAnyKey && !isFreeProvider) || providerKey === 'llm') {
           initialPlan = fallbackPlanWhenPlannerUnavailable({
             userText: rawUserText,
             sessionId: String(sessionId),
