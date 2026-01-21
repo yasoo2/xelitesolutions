@@ -284,6 +284,10 @@ import { OpenRouterProvider } from './llm/providers/openrouter';
 const hackProvider = new PollinationsProvider();
 const openRouterProvider = new OpenRouterProvider();
 
+// Export for use in intelligent-router
+export { hackProvider, openRouterProvider };
+
+
 // In-memory store for user provider preference
 // 'joe' = Pollinations (Free)
 // 'openrouter' = OpenRouter (Free/Paid)

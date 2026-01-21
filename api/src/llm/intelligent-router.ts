@@ -1,11 +1,12 @@
 /**
  * Intelligent Model Router
- * Automatically selects the best AI model based on task type and complexity
- * Supports: Llama 3.1 70B, Mixtral 8x7B, Claude 3.5, GPT-4o
+ * Automatically selects the best AI model based on task type and complexity  
+ * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { hackProvider } from '../providers/HackProvider';
-import { openRouterProvider } from '../providers/OpenRouterProvider';
+// Import fallback providers from parent module
+import type { hackProvider, openRouterProvider } from '../llm';
+let providers: { hack?: typeof hackProvider; openrouter?: typeof openRouterProvider } = {};
 
 export interface ModelConfig {
     name: string;
