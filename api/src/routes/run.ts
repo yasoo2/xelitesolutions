@@ -1302,8 +1302,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   ev({ type: 'step_started', data: { name: 'plan' } });
 
   let initialPlan = null;
+  const rawUserText = String(text || '');
   try {
-    const rawUserText = String(text || '');
 
     const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
     if (xeliteMacro && !hasAttachments && !initialPlan) {
@@ -1452,7 +1452,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       if (!result.ok && providerKey === 'auto') {
         console.info(`[AutoCorrection] Tool ${initialPlan.name} failed. Attempting autonomous fix...`);
         const { suggestCorrection } = await import('../llm/intelligent-router');
-        const correction = await suggestCorrection(result.error || result.message, initialPlan.name, rawUserText);
+        const errorMessage = (result as any).error || (result as any).message || 'Unknown error';
+        const correction = await suggestCorrection(errorMessage, initialPlan.name, rawUserText);
 
         if (correction) {
           console.info(`[AutoCorrection] Retrying with: ${correction.action}`);

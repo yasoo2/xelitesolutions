@@ -3,7 +3,7 @@
  * Tests all enterprise features
  */
 
-import { describe, it, expect } from 'vitest';
+
 
 describe('Joe Enterprise Tests', () => {
 

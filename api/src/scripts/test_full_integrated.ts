@@ -1,5 +1,5 @@
 
-import { executeTool } from '../tools/registry';
+import { executeTool } from '../services/ToolService';
 import { LoggerTool } from '../tools/definitions/LoggerTool';
 import { MonitoringTool } from '../tools/definitions/MonitoringTool';
 import { ErrorRecoveryTool } from '../tools/definitions/ErrorRecoveryTool';
