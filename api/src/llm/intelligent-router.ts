@@ -172,9 +172,12 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
  */
 export async function advancedAnalyzeTask(userMessage: string, history?: any[]): Promise<TaskAnalysis> {
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
+    const length = userMessage.length;
 
-    // Default to regex analysis if no key (to save free model usage)
-    if (!hasGroq && userMessage.length < 50) {
+    // CRITICAL: Skip LLM analysis for simple/short messages to avoid double-hitting free rate limits
+    // Also skip if it's clearly a greeting or very short question
+    if (length < 100 || (!hasGroq && length < 250) || /^(hi|hello|مرحبا|اهلا|سلام)/i.test(userMessage)) {
+        console.info('[IntelligentRouter] Skipping LLM analysis for simple/short request');
         return analyzeTask(userMessage, history);
     }
 

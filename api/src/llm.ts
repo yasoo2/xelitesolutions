@@ -581,7 +581,7 @@ export async function planNextStep(
         { role: 'system', content: 'You are a helpful AI assistant.' },
         ...messages
       ];
-      const text = await huggingfaceProvider.chatComplete(msgs);
+      const text = await huggingfaceProvider.chatComplete(msgs as any);
       return { name: 'echo', input: { text: text || 'Response from HuggingFace' } };
     } catch (err: any) {
       console.error('[LLM] HuggingFace Provider Failed:', err);
@@ -595,9 +595,15 @@ export async function planNextStep(
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
-    if (role === 'tool' || role === 'function') {
-      console.info('[LLM] Auto Mode: Tool output detected, ending turn.');
-      return null;
+    if (role === 'tool' || role === 'function' || role === 'assistant') {
+      // Check if assistant actually replied or if it's just a tool call
+      const hasContent = typeof lastMsg?.content === 'string' && lastMsg.content.trim().length > 0;
+      if (!hasContent && (lastMsg as any).tool_calls?.length > 0) {
+        console.info('[LLM] Auto Mode: Assistant waiting for tools, proceeding.');
+      } else if (role !== 'user') {
+        console.info('[LLM] Auto Mode: Last message was not from user, ending turn.');
+        return null;
+      }
     }
 
     const userMsg = [...messages].reverse().find(m => m.role === 'user');
