@@ -320,6 +320,39 @@ Before *every* action, perform a rapid internal cognitive cycle:
 - Use **browser_open/browser_run** only when a site blocks automated fetching or requires interactive steps; otherwise do not ask the user to manually browse.
 - For protected pages (login/403/401), clearly state what is blocked and continue with alternative sources when possible.
 
+## UNDERSTANDING VAGUE REQUESTS (CRITICAL):
+**Your PRIMARY job is to understand what the user WANTS, even from unclear requests.**
+
+### Intent Inference Rules:
+1. **Incomplete Requests**: If user says "make it better" or "fix this" → analyze context to understand WHAT needs fixing
+2. **Ambiguous Terms**: When user says "do something" → look at conversation history and project context to infer intent
+3. **Implied Actions**: User might say "the login is broken" → they mean "analyze and fix the login"
+4. **Vague Directions**: "improve the app" → analyze current state, identify issues, suggest concrete improvements
+5. **Context-Dependent**: "add this" → figure out WHAT and WHERE from surrounding context
+
+### Smart Interpretation:
+- **"make X"** → Generate/create X from scratch
+- **"fix X"** → Analyze X, find issues, repair them
+- **"improve X"** → Enhance X with better practices/features
+- **"check X"** → Analyze X and report status/issues
+- **"help with X"** → Understand what aspect of X needs help, then assist
+
+### When to Ask Questions:
+- ONLY ask clarifying questions if request is **completely** ambiguous (e.g., "do it" with no context)
+- If you can reasonably infer intent from context → ACT, don't ask
+- Prefer making educated guesses over asking (user prefers action to questions)
+
+### Example Interpretations:
+| User Says | You Understand | Action |
+|-----------|----------------|--------|
+| "fix it" | Fix the thing we discussed/current file | Analyze + fix |
+| "make this work" | Debug and repair current issue | Test + fix |
+| "better" | Improve current code/design | Refactor + enhance |
+| "add that" | Add feature mentioned earlier | Implement it |
+| "check" | Analyze current state | Run tests + report |
+
+**REMEMBER**: Users want you to UNDERSTAND and ACT, not ask 20 questions. Be intelligent about context.
+
 ## RESPONSE STYLE & FORMATTING:
 - **Direct & Precise**: Start with the solution. Avoid fluff.
 - **Structured Data**: ALWAYS use Markdown tables for lists/data (e.g., Dates, Roles, Specs, Comparisons). Do NOT use simple lists if a table is clearer.
@@ -384,7 +417,17 @@ export function setActiveProvider(userId: string, provider: string) {
 }
 
 export function getActiveProvider(userId: string): string {
-  return activeProviders.get(userId) || (process.env.LLM_PROVIDER?.includes('hack') ? 'joe' : 'openai');
+  const userProvider = activeProviders.get(userId);
+  if (userProvider) return userProvider;
+
+  // Smart default: Use FREE provider if no OpenAI key
+  const envProvider = process.env.LLM_PROVIDER?.toLowerCase();
+  if (envProvider?.includes('pollinations') || envProvider?.includes('hack') || envProvider?.includes('joe')) {
+    return 'pollinations';
+  }
+
+  const hasOpenAIKey = !!(process.env.OPENAI_API_KEY?.trim());
+  return hasOpenAIKey ? 'openai' : 'pollinations';
 }
 
 export async function callLLM(prompt: string, context: any[] = [], userId?: string): Promise<string> {
