@@ -350,6 +350,13 @@ export default function Joe() {
 
       if (status === 'running') {
         additions.push({ ...base, type: 'action', content: label });
+
+        // Auto-switch tabs based on the running tool
+        if (name.includes('shell_execute')) {
+          setAgentCentralTab('terminal');
+        } else if (name.startsWith('browser_')) {
+          setAgentCentralTab('browser');
+        }
       } else if (status === 'done') {
         additions.push({ ...base, type: 'result', content: label });
       } else if (status === 'failed') {
@@ -366,7 +373,7 @@ export default function Joe() {
     window.setTimeout(() => {
       thinkingPanelRef.current?.scrollTo({ top: thinkingPanelRef.current.scrollHeight, behavior: 'smooth' });
     }, 80);
-  }, [formatStepLabel]);
+  }, [formatStepLabel, setAgentCentralTab]);
 
   const renderThinkingPanel = useCallback(() => {
     const visible = liveSteps.filter((s: any) => {
