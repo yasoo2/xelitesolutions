@@ -4,9 +4,9 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-// Import fallback providers from parent module
-import type { hackProvider, openRouterProvider } from '../llm';
-let providers: { hack?: typeof hackProvider; openrouter?: typeof openRouterProvider } = {};
+// Use dynamic import to avoid circular dependency
+let hack: any = null;
+let openrouter: any = null;
 
 export interface ModelConfig {
     name: string;
@@ -265,11 +265,19 @@ export async function routeToModel(
         }
 
         if (selectedModel.provider === 'hack') {
-            return await hackProvider.chatComplete(messages, 'openai');
+            if (!hack) {
+                const llm = await import('../llm');
+                hack = llm.hackProvider;
+            }
+            return await hack.chatComplete(messages, 'openai');
         }
 
         if (selectedModel.provider === 'openrouter') {
-            return await openRouterProvider.chatComplete(messages, selectedModel.model);
+            if (!openrouter) {
+                const llm = await import('../llm');
+                openrouter = llm.openRouterProvider;
+            }
+            return await openrouter.chatComplete(messages, selectedModel.model);
         }
 
         // For Anthropic/OpenAI - would need separate implementation
@@ -293,7 +301,11 @@ export async function routeToModel(
 
         // Final fallback
         console.info('[IntelligentRouter] Final fallback to Pollinations');
-        return await hackProvider.chatComplete(messages, 'openai');
+        if (!hack) {
+            const llm = await import('../llm');
+            hack = llm.hackProvider;
+        }
+        return await hack.chatComplete(messages, 'openai');
     }
 }
 
