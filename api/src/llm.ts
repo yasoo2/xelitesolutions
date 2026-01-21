@@ -539,11 +539,11 @@ export async function planNextStep(
         ...messages
       ];
 
-      // Route based on complexity
+      // Route based on complexity - Use OpenRouter for all levels for better quality
       if (analysis.level === 'simple') {
-        console.info('[LLM] Auto Mode → Pollinations (Simple Task)');
-        const text = await hackProvider.chatComplete(msgs, 'openai');
-        return { name: 'echo', input: { text: text || 'Auto Mode: Using Joe (Free) for simple task' } };
+        console.info('[LLM] Auto Mode → OpenRouter Free (Simple Task)');
+        const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
+        return { name: 'echo', input: { text: text || 'Auto Mode: Using OpenRouter for simple task' } };
       } else if (analysis.level === 'medium') {
         console.info('[LLM] Auto Mode → OpenRouter Free (Medium Task)');
         const text = await openRouterProvider.chatComplete(msgs, 'google/gemma-2-9b-it:free');
