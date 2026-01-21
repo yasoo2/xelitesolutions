@@ -513,6 +513,21 @@ export async function planNextStep(
     // Code generation patterns (expanded)
     const codePatterns = /(اكتب|كود|code|function|دالة|class|كلاس|component|كومبوننت|api|endpoint|script|سكريبت|program|برنامج|تطبيق|application|app|نظام|system|sوي|اعمل|ابني|انشئ|طور|build|create|develop|implement|نفذ)/i;
 
+    // === FREE INTELLIGENCE OPTIMIZER ===
+    // Import optimizer
+    const { generateSmartResponse, freeIntelligenceOptimizer } = await import('./llm/free-intelligence-optimizer');
+
+    // 1. Check for instant smart response (no API call needed!)
+    const smartResponse = generateSmartResponse(userText, context);
+    if (smartResponse) {
+      console.info('[FREE OPTIMIZER] 🚀 Instant smart response - no API needed!');
+      return { name: 'echo', input: { text: smartResponse } };
+    }
+
+    // 2. Optimize request for better performance
+    const optimization = await freeIntelligenceOptimizer.optimizeRequest(userText, context);
+    console.info(`[FREE OPTIMIZER] Model suggestion: ${optimization.suggestedModel}`);
+
     try {
       // 1. Browser requests
       if (browserPatterns.open.test(userText) || browserPatterns.hasUrl.test(userText)) {
@@ -601,6 +616,13 @@ Respond in ${analysis.language === 'ar' ? 'Arabic' : analysis.language === 'mixe
       ];
 
       const response = await routeToModel(msgs, analysis);
+
+      // Cache good responses for future use
+      if (response && response.length > 20) {
+        freeIntelligenceOptimizer.cacheResponse(userText, response);
+        console.info('[FREE OPTIMIZER] Response cached for future use');
+      }
+
       return {
         name: 'echo',
         input: { text: response || 'مرحباً! كيف يمكنني مساعدتك؟' }
