@@ -9,6 +9,7 @@ import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, Chev
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
+const AgentCentralPanelLazy = lazy(() => import('../components/AgentCentralPanel'));
 const EnterpriseTerminalPanelLazy = lazy(() => import('../components/terminal/EnterpriseTerminalPanel'));
 const PackageManagerLazy = lazy(() => import('../components/PackageManager'));
 const GitPanelLazy = lazy(() => import('../components/GitPanel'));
@@ -144,6 +145,7 @@ export default function Joe() {
   const [showBoxes, setShowBoxes] = useState(true);
   const [controlOpen, setControlOpen] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [agentCentralTab, setAgentCentralTab] = useState<'browser' | 'terminal' | 'logs' | 'flow'>('browser');
   const [showPackages, setShowPackages] = useState(false);
   const [showGit, setShowGit] = useState(false);
   const [showSocial, setShowSocial] = useState(false);
@@ -998,16 +1000,17 @@ export default function Joe() {
                     onToggleBoxes={() => setShowBoxes((v) => !v)}
                   />
                 ) : null}
-                <div className="agent-browser-stream" style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
-                  {agentBrowserSessionId ? (
-                    <Suspense fallback={<div style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}><Loader size={18} /> Loading browser…</div>}>
-                      <ModernBrowserStreamLazy sessionId={agentBrowserSessionId} showBoxes={showBoxes} />
-                    </Suspense>
-                  ) : (
-                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, color: 'var(--text-primary)' }}>
-                      سيتم تشغيل المتصفح الحي تلقائياً عند أول مهمة تتطلب ذلك.
-                    </div>
-                  )}
+                <div className="agent-central-panel" style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', background: 'var(--bg-secondary)' }}>
+                  <Suspense fallback={<div className="flex h-full items-center justify-center text-slate-400"><Loader size={24} className="animate-spin" /></div>}>
+                    <AgentCentralPanelLazy
+                      sessionId={agentSelected || undefined}
+                      browserSessionId={agentBrowserSessionId}
+                      thinkingChain={thinkingChain}
+                      showBoxes={showBoxes}
+                      activeTab={agentCentralTab}
+                      onTabChange={setAgentCentralTab}
+                    />
+                  </Suspense>
                 </div>
               </div>
 
@@ -1068,8 +1071,8 @@ export default function Joe() {
                             await loadAllSessions();
                             setAgentSelected(id);
                           }}
-                          showTerminal={showTerminal}
-                          onTerminalToggle={() => setShowTerminal(!showTerminal)}
+                          showTerminal={agentCentralTab === 'terminal'}
+                          onTerminalToggle={() => setAgentCentralTab(agentCentralTab === 'terminal' ? 'browser' : 'terminal')}
                         />
                       )}
                     </div>
@@ -1185,7 +1188,7 @@ export default function Joe() {
         </div>
       </main>
 
-      {showTerminal && (
+      {showTerminal && mode === 'chat' && (
         <Suspense fallback={null}>
           <EnterpriseTerminalPanelLazy onClose={() => setShowTerminal(false)} />
         </Suspense>

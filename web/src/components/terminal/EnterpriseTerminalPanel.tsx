@@ -31,9 +31,10 @@ interface TerminalTab {
 
 interface EnterpriseTerminalPanelProps {
     onClose?: () => void;
+    isEmbedded?: boolean;
 }
 
-export default function EnterpriseTerminalPanel({ onClose }: EnterpriseTerminalPanelProps) {
+export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: EnterpriseTerminalPanelProps) {
     const [tabs, setTabs] = useState<TerminalTab[]>([
         { id: 'local', name: 'Localhost', isReady: false }
     ]);
@@ -214,9 +215,11 @@ export default function EnterpriseTerminalPanel({ onClose }: EnterpriseTerminalP
 
     return (
         <div
-            className={`fixed bottom-4 right-4 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden transition-all duration-300 flex flex-col ${isMinimized ? 'w-64 h-12' : 'w-[900px] h-[600px]'
-                }`}
-            style={{ zIndex: 100, backdropFilter: 'blur(10px)' }}
+            className={`${isEmbedded
+                ? 'w-full h-full'
+                : `fixed bottom-4 right-4 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl transition-all duration-300 ${isMinimized ? 'w-64 h-12' : 'w-[900px] h-[600px]'}`
+                } overflow-hidden flex flex-col bg-slate-900`}
+            style={{ zIndex: isEmbedded ? 1 : 100, backdropFilter: isEmbedded ? 'none' : 'blur(10px)' }}
         >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 select-none">
@@ -231,18 +234,22 @@ export default function EnterpriseTerminalPanel({ onClose }: EnterpriseTerminalP
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setIsMinimized(!isMinimized)}
-                        className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 transition-colors"
-                    >
-                        {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
-                    </button>
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-slate-400 transition-colors"
-                    >
-                        <X size={14} />
-                    </button>
+                    {!isEmbedded && (
+                        <>
+                            <button
+                                onClick={() => setIsMinimized(!isMinimized)}
+                                className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 transition-colors"
+                            >
+                                {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+                            </button>
+                            <button
+                                onClick={onClose}
+                                className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-slate-400 transition-colors"
+                            >
+                                <X size={14} />
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -307,8 +314,8 @@ export default function EnterpriseTerminalPanel({ onClose }: EnterpriseTerminalP
                                     key={tab.id}
                                     onClick={() => setActiveTabId(tab.id)}
                                     className={`flex items-center gap-2 px-4 py-2 border-r border-slate-700/50 cursor-pointer transition-all min-w-[120px] max-w-[200px] ${activeTabId === tab.id
-                                            ? 'bg-[#0f172a] border-t-2 border-t-purple-500 text-slate-100'
-                                            : 'bg-slate-800/30 text-slate-400 hover:bg-slate-800/50'
+                                        ? 'bg-[#0f172a] border-t-2 border-t-purple-500 text-slate-100'
+                                        : 'bg-slate-800/30 text-slate-400 hover:bg-slate-800/50'
                                         }`}
                                 >
                                     {tab.serverId ? <Globe size={12} /> : <Monitor size={12} />}
