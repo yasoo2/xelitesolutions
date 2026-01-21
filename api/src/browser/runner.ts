@@ -397,20 +397,20 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
   if (actions.length >= 2 && actions[0]?.type === 'goto') {
     const second = actions[1] as any;
     if (!second || String(second.type || '') !== 'wait') {
-      actions.splice(1, 0, { type: 'wait', ms: 450 });
+      actions.splice(1, 0, { type: 'wait', ms: cfg.defaultWaitMs });
     }
   }
 
   if (wantsYahoo && wantsLogin) {
     const base: Planned['actions'] = [];
     base.push({ type: 'goto', url: 'https://www.yahoo.com' });
-    base.push({ type: 'wait', ms: 450 });
+    base.push({ type: 'wait', ms: cfg.defaultWaitMs });
     base.push({ type: 'click', selector: 'a[href*="login.yahoo.com"]', optional: true });
     base.push({ type: 'click', selector: 'a[href*="signin"],a[href*=\"sign-in\"],a[href*=\"sign_in\"]', optional: true });
     base.push({ type: 'click', text: 'Sign in', optional: true });
     base.push({ type: 'click', text: 'Log in', optional: true });
     base.push({ type: 'click', text: 'تسجيل الدخول', optional: true });
-    base.push({ type: 'wait', ms: 500, optional: true });
+    base.push({ type: 'wait', ms: cfg.shortWaitMs, optional: true });
     base.push({ type: 'assert', selector: '#login-username, input[name=\"username\"], input#login-username' });
     return base;
   }
@@ -418,7 +418,7 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
   if (wantsGithub && wantsLogin) {
     const base: Planned['actions'] = [];
     base.push({ type: 'goto', url: 'https://github.com/login' });
-    base.push({ type: 'wait', ms: 450 });
+    base.push({ type: 'wait', ms: cfg.defaultWaitMs });
     base.push({ type: 'assert', selector: 'input#login_field, input[name="login"], input[autocomplete="username"]' });
     base.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_EMAIL}}' });
     base.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_PASSWORD}}' });
@@ -426,7 +426,7 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
       type: 'click',
       selector: 'input[type="submit"][name="commit"], button[type="submit"]:has-text("Sign in"), button:has-text("Sign in")',
     });
-    base.push({ type: 'wait', ms: 900 });
+    base.push({ type: 'wait', ms: cfg.longWaitMs });
     base.push({ type: 'ui_audit', optional: true });
     return base;
   }
@@ -436,14 +436,14 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
     actions.push({ type: 'click', text: 'Log in', optional: true });
     actions.push({ type: 'click', text: 'تسجيل الدخول', optional: true });
     actions.push({ type: 'click', text: 'تسجيل دخول', optional: true });
-    actions.push({ type: 'wait', ms: 500, optional: true });
+    actions.push({ type: 'wait', ms: cfg.shortWaitMs, optional: true });
     actions.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_EMAIL}}', optional: true });
     actions.push({ type: 'type', text: '{{SECRET:JOE_LOGIN_PASSWORD}}', optional: true });
     actions.push({ type: 'click', selector: 'button[type="submit"], input[type="submit"]', optional: true });
     actions.push({ type: 'click', text: 'Sign in', optional: true });
     actions.push({ type: 'click', text: 'Log in', optional: true });
     actions.push({ type: 'click', text: 'تسجيل الدخول', optional: true });
-    actions.push({ type: 'wait', ms: 900, optional: true });
+    actions.push({ type: 'wait', ms: cfg.longWaitMs, optional: true });
     actions.push({ type: 'ui_audit', optional: true });
     return actions;
   }

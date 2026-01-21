@@ -44,7 +44,7 @@ const openai = new OpenAI({
 
 
 
-const MAX_PROVIDER_TOOLS = 128;
+const MAX_PROVIDER_TOOLS = Number(process.env.MAX_PROVIDER_TOOLS) || 256;
 const PRIORITY_TOOL_NAMES: string[] = [
   'echo',
   'project_detect',

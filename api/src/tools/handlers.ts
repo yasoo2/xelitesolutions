@@ -94,7 +94,23 @@ export async function handleFsCommand(
     targetPath: string,
     content?: string
 ): Promise<HandlerResult> {
-    const p = path.resolve(targetPath);
+    // SECURITY: Path validation to prevent directory traversal
+    const normalizedPath = path.normalize(targetPath);
+
+    // Check for path traversal attempts
+    if (normalizedPath.includes('..') || normalizedPath.startsWith('/etc') || normalizedPath.startsWith('/sys')) {
+        return { ok: false, error: 'invalid_path: potential security risk', logs: [] };
+    }
+
+    // Ensure path is within allowed directories (workspace or temp)
+    const cwd = process.cwd();
+    const tmpDir = '/tmp';
+    const p = path.resolve(normalizedPath);
+
+    if (!p.startsWith(cwd) && !p.startsWith(tmpDir)) {
+        return { ok: false, error: 'path_outside_workspace', logs: [`Blocked access to ${p}`] };
+    }
+
     const logs = [`fs.${operation} ${p}`];
 
     try {
