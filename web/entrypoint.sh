@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Default values
-API_URL=${VITE_API_URL:-"https://api.xelitesolutions.com"}
+API_URL=${VITE_API_URL:-"http://46.224.187.142:3000"}
 WS_URL=${VITE_WS_URL:-""}
 FEATURE_BROWSER_CHROME=${FEATURE_BROWSER_CHROME:-${VITE_FEATURE_BROWSER_CHROME:-"0"}}
 
