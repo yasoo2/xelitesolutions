@@ -173,7 +173,7 @@ router.post('/google', async (req: Request, res: Response) => {
     }
 
     const payload = await userInfoRes.json();
-    console.log('DEBUG: Google Payload:', JSON.stringify(payload, null, 2));
+
 
     if (!payload || !payload.email) {
       return res.status(400).json({ error: 'Invalid Google Profile' });

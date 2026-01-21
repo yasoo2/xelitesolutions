@@ -173,12 +173,9 @@ async function main() {
   app.use('/artifacts', express.static(ARTIFACT_DIR));
 
   const server = http.createServer(app);
-  console.log('DEBUG: Attaching WebSocket...');
   attachWebSocket(server);
 
-  console.log('DEBUG: Starting listen...');
   server.listen(config.port, '0.0.0.0', () => {
-    console.log('DEBUG: Server callback triggered');
     logger.info({ port: config.port }, 'API listening');
 
     // [NEW] Deep Memory Auto-Indexing

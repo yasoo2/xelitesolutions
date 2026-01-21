@@ -57,8 +57,7 @@ export class VectorMemory {
 
     async createEmbedding(text: string): Promise<number[]> {
         if (!this.openai) {
-            console.warn('[VectorMemory] No OpenAI Key. Using random vector (MOCK).');
-            return Array.from({ length: 1536 }, () => Math.random());
+            throw new Error('[VectorMemory] OpenAI API key not configured. Memory features unavailable.');
         }
         try {
             const response = await this.openai.embeddings.create({
@@ -69,17 +68,14 @@ export class VectorMemory {
             return response.data[0].embedding;
         } catch (e) {
             console.error('[VectorMemory] Embedding failed:', e);
-            // Fallback for demo/dev if API fails
-            return Array.from({ length: 1536 }, () => Math.random());
+            throw new Error(`Failed to create embedding: ${e instanceof Error ? e.message : 'Unknown error'}`);
         }
     }
 
     async add(id: string, text: string, metadata: Record<string, any> = {}) {
         if (!this.db) await this.init();
         if (!this.db) {
-            // Fail silently or warn if DB is broken
-            console.warn('[VectorMemory] Add skipped: DB not available.');
-            return;
+            throw new Error('[VectorMemory] Database not available. Cannot add memory.');
         }
 
         const vector = await this.createEmbedding(text);

@@ -28,7 +28,17 @@ export async function handleShellCommand(
     logs.push(`exec: ${command} ${args.join(' ')} (cwd=${validCwd})`);
 
     return new Promise((resolve) => {
-        const child = spawn(command, args, { cwd: validCwd, shell: true });
+        // SECURITY FIX: Use shell: false to prevent command injection
+        // Only specific whitelisted commands allowed
+        const allowedCommands = ['git', 'npm', 'node', 'tsc', 'eslint', 'ls', 'cat', 'grep', 'find'];
+
+        if (!allowedCommands.includes(command)) {
+            console.warn(`[Security] Blocked potentially unsafe command: ${command}`);
+            resolve({ ok: false, error: 'command_not_allowed', logs });
+            return;
+        }
+
+        const child = spawn(command, args, { cwd: validCwd, shell: false });
 
         let stdout = '';
         let stderr = '';

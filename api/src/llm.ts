@@ -282,11 +282,11 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 import { PollinationsProvider } from './llm/providers/pollinations';
 import { OpenRouterProvider } from './llm/providers/openrouter';
 
-const hackProvider = new PollinationsProvider();
+const pollinationsProvider = new PollinationsProvider();
 const openRouterProvider = new OpenRouterProvider();
 
 // Export for use in intelligent-router
-export { hackProvider, openRouterProvider };
+export { pollinationsProvider, openRouterProvider };
 
 
 // In-memory store for user provider preference
@@ -322,7 +322,7 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
       ...context,
       { role: 'user', content: prompt }
     ];
-    return hackProvider.chatComplete(msgs, 'openai');
+    return pollinationsProvider.chatComplete(msgs, 'openai');
   }
 
   // Determine configuration for Official Providers (OpenAI / Gemini)
@@ -412,7 +412,7 @@ export async function planNextStep(
         { role: 'system', content: 'You are a helpful assistant.' },
         ...messages
       ];
-      const text = await hackProvider.chatComplete(msgs, 'openai');
+      const text = await pollinationsProvider.chatComplete(msgs, 'openai');
       return { name: 'echo', input: { text: text || 'Connected to Joe!' } };
     } catch (err: any) {
       console.error('[LLM] Joe Hack Provider Failed:', err);
@@ -641,7 +641,7 @@ Respond in ${analysis.language === 'ar' ? 'Arabic' : analysis.language === 'mixe
       // Fallback to simple chat
       try {
         const msgs = [{ role: 'system', content: 'You are a helpful assistant.' }, ...messages];
-        const text = await hackProvider.chatComplete(msgs, 'openai');
+        const text = await pollinationsProvider.chatComplete(msgs, 'openai');
         return { name: 'echo', input: { text: text || 'Response from Joe (Free)' } };
       } catch {
         throw new Error('AUTO_MODE_FAILED: ' + (err.message || String(err)));
