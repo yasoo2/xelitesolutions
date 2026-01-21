@@ -338,10 +338,18 @@ jobs:
 
           echo "Tearing down old containers..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans || true
-          # Force cleaning explicit names just in case
-          for n in joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
+          
+          # Aggressive cleanup to prevent conflicts
+          echo "Force removing any remaining Joe containers..."
+          docker ps -a | grep -E '(joe_|joe-)' | awk '{print $1}' | xargs -r docker rm -f 2>/dev/null || true
+          
+          # Also try explicit container names
+          for n in joe_dashboard joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
             docker rm -f $n 2>/dev/null || true
           done
+          
+          # Clean up dangling networks
+          docker network prune -f || true
 
           echo "Docker restarting..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
