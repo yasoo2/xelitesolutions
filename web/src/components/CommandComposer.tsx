@@ -506,8 +506,6 @@ export default function CommandComposer({
   const [thinkingGlimpse, setThinkingGlimpse] = useState('');
   const [draftText, setDraftText] = useState('');
   const [draftActive, setDraftActive] = useState(false);
-  const [thinkingStyle, setThinkingStyle] = useState<'rapid' | 'deep' | 'balanced'>('rapid');
-  const [selectedAgent, setSelectedAgent] = useState<'planner' | 'builder' | 'debugger' | 'auto'>('auto');
 
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -1881,9 +1879,7 @@ export default function CommandComposer({
         provider: providerToSend,
         model: providerCfgToSend?.model,
         apiKey: providerCfgToSend?.apiKey,
-        baseUrl: providerCfgToSend?.baseUrl,
-        thinkingStyle,
-        agent: selectedAgent
+        baseUrl: providerCfgToSend?.baseUrl
       };
 
       const res = await fetch(`${API}/runs/start`, {
@@ -3148,47 +3144,6 @@ export default function CommandComposer({
           ) : null}
         </AnimatePresence>
         <div className="input-area">
-          <div style={{ display: 'flex', gap: 16, padding: '0 4px 8px 4px', alignItems: 'center' }}>
-            {/* Agent Selector */}
-            <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', padding: 3, borderRadius: 8 }}>
-              {(['auto', 'planner', 'builder', 'debugger'] as const).map(agent => (
-                <button
-                  key={agent}
-                  onClick={() => setSelectedAgent(agent)}
-                  style={{
-                    padding: '4px 8px', fontSize: 11, borderRadius: 6, border: 'none', cursor: 'pointer',
-                    background: selectedAgent === agent ? 'rgba(var(--accent-primary-rgb), 0.15)' : 'transparent',
-                    color: selectedAgent === agent ? 'var(--accent-primary)' : 'var(--text-muted)',
-                    fontWeight: selectedAgent === agent ? 600 : 400,
-                    transition: 'all 0.2s', textTransform: 'capitalize'
-                  }}
-                >
-                  {agent}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ width: 1, height: 16, background: 'var(--border-color)' }}></div>
-
-            {/* Thinking Style Selector */}
-            <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', padding: 3, borderRadius: 8 }}>
-              {(['rapid', 'balanced', 'deep'] as const).map(style => (
-                <button
-                  key={style}
-                  onClick={() => setThinkingStyle(style)}
-                  style={{
-                    padding: '4px 8px', fontSize: 11, borderRadius: 6, border: 'none', cursor: 'pointer',
-                    background: thinkingStyle === style ? 'rgba(var(--accent-primary-rgb), 0.15)' : 'transparent',
-                    color: thinkingStyle === style ? 'var(--accent-primary)' : 'var(--text-muted)',
-                    fontWeight: thinkingStyle === style ? 600 : 400,
-                    transition: 'all 0.2s', textTransform: 'capitalize'
-                  }}
-                >
-                  {style}
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="input-container">
             <textarea
               className="main-input"
