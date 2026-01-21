@@ -73,7 +73,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
         }
     };
 
-    const createTerminal = (tabId: string, serverId?: string) => {
+    const createTerminal = (tabId: string, serverId?: string): (() => void) | void => {
         if (termsRef.current[tabId]) return;
 
         const container = containersRef.current[tabId];
@@ -199,7 +199,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
     useEffect(() => {
         if (!isMinimized) {
             const cleanup = createTerminal(activeTabId, tabs.find(t => t.id === activeTabId)?.serverId);
-            return cleanup;
+            if (cleanup) return cleanup;
         }
     }, [activeTabId, isMinimized]);
 
@@ -210,7 +210,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                 termsRef.current[msg.id]?.write(msg.data);
             }
         });
-        return () => unsub();
+        return () => { unsub(); };
     }, []);
 
     return (

@@ -93,7 +93,7 @@ export default function AgentCentralPanel({
                                         </div>
                                         {step.input && (
                                             <div className="text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap max-w-2xl opacity-60 group-hover:opacity-100 italic">
-                        > {JSON.stringify(step.input)}
+                                                &gt; {JSON.stringify(step.input)}
                                             </div>
                                         )}
                                     </div>

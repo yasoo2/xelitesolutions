@@ -13,6 +13,7 @@ export interface ServerConfig {
     username: string;
     authMethod: 'key' | 'password';
     keyPath?: string;
+    password?: string;
     tags?: string[];
     isActive?: boolean;
     lastConnected?: string;
