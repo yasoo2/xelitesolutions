@@ -131,22 +131,23 @@ export class FreeIntelligenceOptimizer {
     private suggestFreeModel(message: string): string {
         const lower = message.toLowerCase();
 
-        // Code-related
-        if (/(code|function|class|bug|error|debug)/i.test(lower)) {
-            return 'gemma-2-9b'; // Best for code
+        // Code-related - Gemma is specialized for code
+        if (/(code|كود|function|دالة|class|كلاس|component|كومبوننت|bug|خطأ|error|debug|برمجة|programming|script|سكريبت|api|fix|اصلح|صلح)/i.test(lower)) {
+            return 'gemma-2-9b';
         }
 
-        // Long context
-        if (message.length > 2000) {
-            return 'mixtral-8x7b'; // 32K context
+        // Long context or detailed analysis - Mixtral has 32K context
+        if (message.length > 1000 || /(analyze|تحليل|explain in detail|اشرح بالتفصيل|compare|قارن|summarize|لخص|detailed|مفصل)/i.test(lower)) {
+            return 'mixtral-8x7b';
         }
 
-        // Quick response needed
-        if (message.length < 50) {
-            return 'llama-3.1-8b'; // Fastest
+        // Only use fast model for VERY short simple queries
+        if (message.length < 15 && !/(why|how|what|explain|لماذا|كيف|ماذا|اشرح|من|هل)/i.test(lower)) {
+            return 'llama-3.1-8b';
         }
 
-        // Default: best quality
+        // Default: Use best model (Llama 70B) for all other queries
+        // This ensures high-quality responses
         return 'llama-3.1-70b';
     }
 
