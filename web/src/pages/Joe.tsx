@@ -1068,6 +1068,8 @@ export default function Joe() {
                             await loadAllSessions();
                             setAgentSelected(id);
                           }}
+                          showTerminal={showTerminal}
+                          onTerminalToggle={() => setShowTerminal(!showTerminal)}
                         />
                       )}
                     </div>
@@ -1093,6 +1095,8 @@ export default function Joe() {
                           await loadAllSessions();
                           setSelected(id);
                         }}
+                        showTerminal={showTerminal}
+                        onTerminalToggle={() => setShowTerminal(!showTerminal)}
                       />
                     </div>
                   </div>
