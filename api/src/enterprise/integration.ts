@@ -200,7 +200,7 @@ export async function enhanceAutoMode(
         if (response.tool) {
             return {
                 name: response.tool,
-                input: { text: response.text, ...response }
+                input: { ...response }
             };
         }
 

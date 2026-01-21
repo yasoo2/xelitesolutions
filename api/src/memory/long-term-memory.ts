@@ -57,7 +57,7 @@ class LongTermMemory {
     /**
      * Store a new memory
      */
-    async remember(userId: string, entry: Omit<MemoryEntry, 'id' | 'timestamp' | 'accessCount' | 'lastAccessed'>): Promise<void> {
+    async remember(userId: string, entry: Omit<MemoryEntry, 'id' | 'userId' | 'timestamp' | 'accessCount' | 'lastAccessed'>): Promise<void> {
         const memory: MemoryEntry = {
             ...entry,
             id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -143,7 +143,7 @@ class LongTermMemory {
         if (!this.profiles.has(userId)) {
             const profile: UserProfile = {
                 userId,
-                preferences: {},
+                preferences: {} as UserProfile['preferences'],
                 facts: new Map(),
                 conversationSummaries: [],
                 createdAt: Date.now(),
@@ -192,7 +192,7 @@ class LongTermMemory {
             if (progLangs) {
                 profile.preferences.programmingLanguages = [
                     ...(profile.preferences.programmingLanguages || []),
-                    ...progLangs.map(l => l.toLowerCase())
+                    ...progLangs.map((l: string) => l.toLowerCase())
                 ];
                 // Remove duplicates
                 profile.preferences.programmingLanguages = Array.from(new Set(profile.preferences.programmingLanguages));

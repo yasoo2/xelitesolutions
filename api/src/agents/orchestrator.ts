@@ -32,14 +32,14 @@ export interface AgentResult {
 export interface ProjectPlan {
     goal: string;
     projectType: 'web' | 'api' | 'mobile' | 'desktop' | 'fullstack';
-  tech Stack: {
-    frontend ?: string[];
-    backend ?: string[];
-    database ?: string;
-    deployment ?: string;
-};
-tasks: AgentTask[];
-timeline: string;
+    techStack: {
+        frontend?: string[];
+        backend?: string[];
+        database?: string;
+        deployment?: string;
+    };
+    tasks: AgentTask[];
+    timeline: string;
 }
 
 /**

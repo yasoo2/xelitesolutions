@@ -55,7 +55,7 @@ async function verifyCapabilities() {
         console.log(`Execution Status: ${result.status}`);
         console.log(`File Created: ${fileExists}`);
         console.log(`File Content: "${content}"`);
-        console.log(`Plan Steps: ${result.steps?.length}`);
+        console.log(`Plan Steps: ${result.history?.length}`);
 
         if (fileExists && content.includes('Created')) {
             console.log('✅ Result: Agent successfully handled the conditional logic (or guessed correctly).');

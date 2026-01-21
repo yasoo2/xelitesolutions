@@ -8,9 +8,9 @@ import { broadcast } from '../ws';
 import { executeTool } from '../services/ToolService';
 import { store } from '../mock/store';
 import { getSessionRunConfig, popPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted, setPendingTool } from '../services/secrets';
-import { redactToolInputForStorage, sanitizeToolResultForBroadcast, safeErrorMessage, redactSecretsFromString } from '../utils/redaction';
+import { redactToolInputForStorage, safeErrorMessage, redactSecretsFromString } from '../utils/redaction';
 import { planNextStep } from '../llm';
-import { summarizeBrowserOutputForChat, inferSiteLabel, extractTitleFromHtml } from '../utils/browserUtils';
+import { summarizeBrowserOutputForChat, inferSiteLabel, extractTitleFromHtml, sanitizeToolResultForBroadcast } from '../utils/browserUtils';
 import mongoose from 'mongoose';
 
 const useMock = () => process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
@@ -151,12 +151,12 @@ export class AgentLoopService {
             // Check run config
             const runCfg = getSessionRunConfig(sessionId);
 
-            broadcast({ type: 'thinking_start', runId: currentRunId });
+            broadcast({ type: 'thinking_start', runId: currentRunId, data: {} });
 
             let plan;
             try {
                 // We need to pass the runConfig to planNextStep if needed (e.g. model selection)
-                plan = await planNextStep(msgsForLLM, runCfg?.model); // Assuming planNextStep updated to accept model
+                plan = await planNextStep(msgsForLLM, { model: runCfg?.model });
             } catch (e: any) {
                 console.error('LLM Plan Error', e);
                 broadcast({ type: 'text', runId: currentRunId, data: `Error planning next step: ${e.message}` });
@@ -184,10 +184,10 @@ export class AgentLoopService {
             // Let's create a new run for the autonomous step
             let newRunId: string;
             if (useMock()) {
-                const r = store.createRun(sessionId, plan.name || 'thinking', 'running');
+                const r = store.createRun(sessionId);
                 newRunId = r.id;
             } else {
-                const r = await Run.create({ sessionId, status: 'running', type: 'agent' });
+                const r = await Run.create({ sessionId, status: 'running' });
                 newRunId = (r as any)._id.toString();
             }
             currentRunId = newRunId; // Update tracking context

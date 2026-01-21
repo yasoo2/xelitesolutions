@@ -36,8 +36,8 @@ console.log('---\n');
 
 // Test 6: Patterns
 console.log('Test 6: Testing patterns');
-console.log('Identity pattern test:', ADVANCED_FREE_PATTERNS.questions.identity.test('من أنت'));
-console.log('Capabilities pattern test:', ADVANCED_FREE_PATTERNS.questions.capabilities.test('ماذا تستطيع'));
+console.log('Identity pattern test:', ADVANCED_FREE_PATTERNS.questions.identity[0].test('من أنت'));
+console.log('Capabilities pattern test:', ADVANCED_FREE_PATTERNS.questions.capabilities[0].test('ماذا تستطيع'));
 console.log('Greeting pattern test:', ADVANCED_FREE_PATTERNS.greetings[0].test('مرحبا'));
 console.log('---\n');
 
