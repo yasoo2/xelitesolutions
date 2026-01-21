@@ -571,7 +571,8 @@ export async function planNextStep(
     console.info('[LLM] Planning with HuggingFace Provider');
 
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.role === 'tool' || lastMsg?.role === 'function') {
+    const role = lastMsg ? (lastMsg.role as string) : '';
+    if (role === 'tool' || role === 'function') {
       console.info('[LLM] HuggingFace: Tool output detected, ending turn.');
       return null;
     }
@@ -594,13 +595,13 @@ export async function planNextStep(
     console.info('[LLM] 🚀 Auto Mode Enterprise - Full System Activated');
 
     const lastMsg = messages[messages.length - 1];
-    const role = lastMsg ? (lastMsg.role as string) : '';
+    const role = (lastMsg?.role as string) || '';
     if (role === 'tool' || role === 'function' || role === 'assistant') {
       // Check if assistant actually replied or if it's just a tool call
       const hasContent = typeof lastMsg?.content === 'string' && lastMsg.content.trim().length > 0;
       if (!hasContent && (lastMsg as any).tool_calls?.length > 0) {
         console.info('[LLM] Auto Mode: Assistant waiting for tools, proceeding.');
-      } else if (role !== 'user') {
+      } else {
         console.info('[LLM] Auto Mode: Last message was not from user, ending turn.');
         return null;
       }

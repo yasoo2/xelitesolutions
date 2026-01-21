@@ -7,6 +7,8 @@ import { executePlannedActions } from './executor';
 import { getBrowserSession, stopSession, touchSession, screenshotSessionJpeg } from './manager';
 import { getSessionRunConfig, setSessionSecretEncrypted } from '../services/secrets';
 
+const cfg = DEFAULT_BROWSER_CONFIG;
+
 function now() {
   return Date.now();
 }

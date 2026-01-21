@@ -176,7 +176,10 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
 
     // CRITICAL: Skip LLM analysis for simple/short messages to avoid double-hitting free rate limits
     // Also skip if it's clearly a greeting or very short question
-    if (length < 100 || (!hasGroq && length < 250) || /^(hi|hello|مرحبا|اهلا|سلام)/i.test(userMessage)) {
+    const isGreeting = /^(hi|hello|مرحبا|اهلا|سلام|hey)/i.test(userMessage.trim());
+    const hasComplexKeywords = /(build|create|ابني|انشئ|app|تطبيق|system|نظام|full|كامل|ecommerce|متجر|deploy|رفع|fix|صلح|optimize|حسن)/i.test(userMessage);
+
+    if ((length < 50 && !hasComplexKeywords) || (isGreeting && length < 100)) {
         console.info('[IntelligentRouter] Skipping LLM analysis for simple/short request');
         return analyzeTask(userMessage, history);
     }
@@ -238,8 +241,15 @@ Respond ONLY with a numbered list of steps.`;
 
         // Use a stronger model for planning if possible
         const response = await routeToModel(messages, { ...analysis, complexity: 'medium' });
-        return response.split('\n').filter(line => /^\d+\./.test(line.trim()));
-    } catch {
+        console.log('[IntelligentRouter] Planning response:', response);
+        const steps = response.split('\n')
+            .map(line => line.trim())
+            .filter(line => /^\d+[\.\)-]/.test(line)); // More flexible regex for steps (1., 1), 1-)
+
+        console.info(`[IntelligentRouter] Parsed ${steps.length} steps from plan`);
+        return steps;
+    } catch (err: any) {
+        console.warn('[IntelligentRouter] Action plan generation failed:', err.message);
         return [];
     }
 }
