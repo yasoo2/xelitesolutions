@@ -7,8 +7,11 @@ import { NodeSSH, Config as SSHConfig } from 'node-ssh';
 import { ServerConfig, ServerConnectionStatus } from '../models/ServerConfig';
 import * as fs from 'fs/promises';
 
+import { broadcast } from '../ws';
+
 export class SSHManager {
     private connections: Map<string, NodeSSH> = new Map();
+    private shellStreams: Map<string, any> = new Map();
     private connectionStatus: Map<string, ServerConnectionStatus> = new Map();
     private readonly maxConnections = 10;
 
@@ -69,6 +72,60 @@ export class SSHManager {
     }
 
     /**
+     * Request an interactive shell for the server
+     */
+    async requestShell(serverId: string, terminalId: string, options?: { cols: number, rows: number }): Promise<void> {
+        const ssh = this.connections.get(serverId);
+        if (!ssh) throw new Error(`Not connected to server ${serverId}`);
+
+        // If already has a shell for this terminal, skip
+        if (this.shellStreams.has(terminalId)) return;
+
+        try {
+            const stream = await ssh.requestShell({
+                term: 'xterm-color',
+                cols: options?.cols || 80,
+                rows: options?.rows || 24,
+            });
+
+            this.shellStreams.set(terminalId, stream);
+
+            stream.on('data', (data: any) => {
+                broadcast({ type: 'terminal_output', id: terminalId, data: data.toString() });
+            });
+
+            stream.on('close', () => {
+                this.shellStreams.delete(terminalId);
+                broadcast({ type: 'terminal_output', id: terminalId, data: '\r\n[Remote Connection Closed]\r\n' });
+            });
+
+        } catch (error: any) {
+            console.error(`[SSH] Failed to request shell:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Send input to interactive shell
+     */
+    sendInput(terminalId: string, data: string): void {
+        const stream = this.shellStreams.get(terminalId);
+        if (stream) {
+            stream.write(data);
+        }
+    }
+
+    /**
+     * Resize interactive shell
+     */
+    resizeShell(terminalId: string, cols: number, rows: number): void {
+        const stream = this.shellStreams.get(terminalId);
+        if (stream && stream.setWindow) {
+            stream.setWindow(rows, cols, 0, 0);
+        }
+    }
+
+    /**
      * Execute command on remote server
      */
     async executeRemote(
@@ -105,6 +162,14 @@ export class SSHManager {
      */
     async disconnect(serverId: string): Promise<void> {
         const ssh = this.connections.get(serverId);
+
+        // Close any associated shell streams
+        for (const [tid, stream] of this.shellStreams.entries()) {
+            if (tid.includes(serverId)) { // Assuming terminalId might contain serverId for identification
+                stream.end();
+                this.shellStreams.delete(tid);
+            }
+        }
 
         if (ssh) {
             ssh.dispose();

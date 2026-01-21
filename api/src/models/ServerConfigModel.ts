@@ -2,10 +2,12 @@
  * Server Configuration MongoDB Model
  */
 
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 import { ServerConfig as IServerConfig } from './ServerConfig';
 
-export interface ServerConfigDocument extends Omit<IServerConfig, 'id'>, Document { }
+export interface ServerConfigDocument extends Document, Omit<IServerConfig, 'id' | 'userId'> {
+    userId: Types.ObjectId;
+}
 
 const ServerConfigSchema = new Schema<ServerConfigDocument>({
     name: { type: String, required: true },

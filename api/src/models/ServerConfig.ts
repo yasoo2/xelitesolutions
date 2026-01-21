@@ -16,7 +16,7 @@ export interface ServerConfig {
     isActive?: boolean;
     lastConnected?: Date;
     createdAt: Date;
-    userId: string;
+    userId: string | any;
 }
 
 export interface ServerConnectionStatus {

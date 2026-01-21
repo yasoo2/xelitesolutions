@@ -24,11 +24,14 @@ router.get('/', async (req, res) => {
         const servers = await ServerConfigModel.find({ userId, isActive: true });
 
         // Add connection status
-        const serversWithStatus = servers.map(server => ({
-            ...server.toObject(),
-            id: server._id.toString(),
-            connectionStatus: sshManager.getStatus(server._id.toString()),
-        }));
+        const serversWithStatus = servers.map(server => {
+            const doc = server as any;
+            return {
+                ...doc.toObject(),
+                id: doc._id.toString(),
+                connectionStatus: sshManager.getStatus(doc._id.toString()),
+            };
+        });
 
         res.json(serversWithStatus);
     } catch (error: any) {
@@ -55,9 +58,10 @@ router.post('/', async (req, res) => {
 
         const server = await ServerConfigModel.create(serverData);
 
+        const doc = server as any;
         res.status(201).json({
-            ...server.toObject(),
-            id: server._id.toString(),
+            ...doc.toObject(),
+            id: doc._id.toString(),
         });
     } catch (error: any) {
         res.status(400).json({ error: error.message });
@@ -83,9 +87,10 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Server not found' });
         }
 
+        const doc = server as any;
         res.json({
-            ...server.toObject(),
-            id: server._id.toString(),
+            ...doc.toObject(),
+            id: doc._id.toString(),
         });
     } catch (error: any) {
         res.status(400).json({ error: error.message });

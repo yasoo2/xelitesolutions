@@ -1,256 +1,477 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Terminal as XTerm } from 'xterm';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { Terminal as TerminalIcon, Server, Shield, Plus, X, Maximize2, Minimize2, ChevronDown, Activity } from 'lucide-react';
 import 'xterm/css/xterm.css';
-import ServerSelector from './ServerSelector';
 import { SocketService } from '../../services/socket';
-import { API_URL } from '../../config';
+import { ServerService, ServerConfig } from '../../services/server';
+import {
+    Maximize2,
+    Minimize2,
+    Plus,
+    Terminal as TerminalIcon,
+    X,
+    Server,
+    Globe,
+    Monitor,
+    Activity,
+    Settings,
+    ChevronDown,
+    RefreshCw,
+    Trash2,
+    Wifi,
+    WifiOff
+} from 'lucide-react';
 
-interface TerminalSession {
+interface TerminalTab {
     id: string;
     name: string;
-    type: 'local' | 'ssh';
-    serverId?: string;
-    lastActive: Date;
+    serverId?: string; // undefined for local
+    isReady: boolean;
 }
 
-export default function EnterpriseTerminalPanel({ onClose }: { onClose?: () => void }) {
-    const [sessions, setSessions] = useState<TerminalSession[]>([
-        { id: 'local-main', name: 'Local Shell', type: 'local', lastActive: new Date() }
+interface EnterpriseTerminalPanelProps {
+    onClose?: () => void;
+}
+
+export default function EnterpriseTerminalPanel({ onClose }: EnterpriseTerminalPanelProps) {
+    const [tabs, setTabs] = useState<TerminalTab[]>([
+        { id: 'local', name: 'Localhost', isReady: false }
     ]);
-    const [activeSessionId, setActiveSessionId] = useState<string>('local-main');
+    const [activeTabId, setActiveTabId] = useState('local');
     const [isMinimized, setIsMinimized] = useState(false);
-    const [showServerSelector, setShowServerSelector] = useState(false);
+    const [showAddServer, setShowAddServer] = useState(false);
+    const [servers, setServers] = useState<ServerConfig[]>([]);
+    const [isLoadingServers, setIsLoadingServers] = useState(false);
 
-    const activeSession = sessions.find(s => s.id === activeSessionId);
+    // Form state for adding server
+    const [newServer, setNewServer] = useState<Partial<ServerConfig>>({
+        name: '',
+        host: '',
+        port: 22,
+        username: '',
+        authMethod: 'password'
+    });
 
-    const handleAddSession = (session: TerminalSession) => {
-        setSessions(prev => [...prev, session]);
-        setActiveSessionId(session.id);
-        setShowServerSelector(false);
-    };
+    const containersRef = useRef<Record<string, HTMLDivElement | null>>({});
+    const termsRef = useRef<Record<string, Terminal | null>>({});
+    const fitAddonsRef = useRef<Record<string, FitAddon | null>>({});
 
-    const handleCloseSession = (id: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (sessions.length === 1) return;
-        const newSessions = sessions.filter(s => s.id !== id);
-        setSessions(newSessions);
-        if (activeSessionId === id) {
-            setActiveSessionId(newSessions[newSessions.length - 1].id);
+    useEffect(() => {
+        loadServers();
+    }, []);
+
+    const loadServers = async () => {
+        setIsLoadingServers(true);
+        try {
+            const data = await ServerService.listServers();
+            setServers(data);
+        } catch (error) {
+            console.error('Failed to load servers:', error);
+        } finally {
+            setIsLoadingServers(false);
         }
     };
 
-    return (
-        <div className={`fixed bottom-4 right-4 bg-[#0f172a] border border-slate-700 rounded-xl shadow-2xl transition-all duration-300 flex flex-col overflow-hidden ${isMinimized ? 'w-80 h-14' : 'w-[900px] h-[600px]'}`} style={{ zIndex: 1000 }}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 bg-slate-800/50 border-b border-slate-700/50 backdrop-blur-md select-none">
-                <div className="flex items-center gap-3">
-                    <div className="p-1.5 bg-blue-500/10 rounded-lg">
-                        <TerminalIcon size={18} className="text-blue-400" />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-semibold text-slate-200">Enterprise Terminal</h3>
-                        <div className="flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Connected</span>
-                        </div>
-                    </div>
-                </div>
+    const createTerminal = (tabId: string, serverId?: string) => {
+        if (termsRef.current[tabId]) return;
 
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setShowServerSelector(!showServerSelector)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-xs font-medium text-slate-300 transition-colors border border-slate-600/50"
-                    >
-                        <Server size={14} className="text-emerald-400" />
-                        <span>Servers</span>
-                        <ChevronDown size={12} className={`transition-transform duration-300 ${showServerSelector ? 'rotate-180' : ''}`} />
-                    </button>
+        const container = containersRef.current[tabId];
+        if (!container) return;
 
-                    <div className="w-px h-6 bg-slate-700/50 mx-1" />
-
-                    <button onClick={() => setIsMinimized(!isMinimized)} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 transition-colors">
-                        {isMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
-                    </button>
-                    <button onClick={onClose} className="p-2 hover:bg-red-500/10 hover:text-red-400 rounded-lg text-slate-400 transition-colors">
-                        <X size={16} />
-                    </button>
-                </div>
-            </div>
-
-            {!isMinimized && (
-                <>
-                    {/* Tabs */}
-                    <div className="flex items-center gap-1 px-2 py-1.5 bg-slate-800/30 border-b border-slate-700/30 overflow-x-auto no-scrollbar">
-                        {sessions.map(session => (
-                            <button
-                                key={session.id}
-                                onClick={() => setActiveSessionId(session.id)}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 ${activeSessionId === session.id
-                                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-lg shadow-blue-500/5'
-                                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/30 border border-transparent'
-                                    }`}
-                            >
-                                {session.type === 'ssh' ? <Shield size={12} /> : <Activity size={12} />}
-                                <span>{session.name}</span>
-                                {sessions.length > 1 && (
-                                    <X
-                                        size={12}
-                                        className="ml-1 opacity-50 hover:opacity-100 hover:text-red-400"
-                                        onClick={(e) => handleCloseSession(session.id, e)}
-                                    />
-                                )}
-                            </button>
-                        ))}
-                        <button
-                            onClick={() => setShowServerSelector(true)}
-                            className="p-1.5 hover:bg-slate-700/50 rounded-lg text-slate-500 hover:text-blue-400 transition-colors"
-                        >
-                            <Plus size={16} />
-                        </button>
-                    </div>
-
-                    {/* Terminal Display */}
-                    <div className="flex-1 bg-[#0b0f1a] relative p-1">
-                        {sessions.map(session => (
-                            <TerminalInstance
-                                key={session.id}
-                                session={session}
-                                isActive={session.id === activeSessionId}
-                            />
-                        ))}
-                    </div>
-                </>
-            )}
-
-            {/* Server Selector Overlay */}
-            {showServerSelector && !isMinimized && (
-                <div className="absolute inset-x-0 top-[110px] bottom-0 z-10 bg-[#0f172a]/80 backdrop-blur-sm p-4">
-                    <div className="max-w-lg mx-auto bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-6">
-                        <div className="flex items-center justify-between mb-6">
-                            <h4 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                                <Server className="text-emerald-400" />
-                                Connect to Server
-                            </h4>
-                            <button onClick={() => setShowServerSelector(false)} className="text-slate-400 hover:text-slate-200">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <ServerSelector onConnect={handleAddSession} />
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-function TerminalInstance({ session, isActive }: { session: TerminalSession, isActive: boolean }) {
-    const containerRef = React.useRef<HTMLDivElement>(null);
-    const termRef = React.useRef<XTerm | null>(null);
-    const fitAddonRef = React.useRef<FitAddon | null>(null);
-
-    useEffect(() => {
-        if (!containerRef.current || termRef.current) return;
-
-        const term = new XTerm({
+        const term = new Terminal({
             cursorBlink: true,
             fontFamily: '"JetBrains Mono", "Fira Code", monospace',
             fontSize: 13,
-            lineHeight: 1.4,
             theme: {
-                background: '#0b0f1a',
-                foreground: '#cbd5e1',
-                cursor: '#38bdf8',
-                selectionBackground: 'rgba(56, 189, 248, 0.2)',
-                black: '#1e293b',
-                red: '#ef4444',
-                green: '#22c55e',
-                yellow: '#eab308',
-                blue: '#3b82f6',
-                magenta: '#a855f7',
-                cyan: '#06b6d4',
-                white: '#f1f5f9',
+                background: '#0f172a', // Slate-900
+                foreground: '#e2e8f0', // Slate-200
+                cursor: '#a78bfa',
+                selectionBackground: 'rgba(167, 139, 250, 0.3)',
             },
             allowProposedApi: true
         });
 
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
-        term.open(containerRef.current);
+        term.open(container);
         fitAddon.fit();
 
-        termRef.current = term;
-        fitAddonRef.current = fitAddon;
-
-        // Message to terminal
-        term.writeln(`\x1b[1;34m[*] Initializing ${session.name}...\x1b[0m`);
+        termsRef.current[tabId] = term;
+        fitAddonsRef.current[tabId] = fitAddon;
 
         // Handle Input
         term.onData((data) => {
             SocketService.send({
                 type: 'terminal_input',
-                id: session.id,
+                id: tabId,
+                serverId,
                 data
             });
         });
 
-        // Resize
+        // Initialize Connection (Local or Remote)
+        if (!serverId) {
+            term.writeln('\x1b[1;35m🚀 Joe Enterprise Shell [Local]\x1b[0m');
+            setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isReady: true } : t));
+        } else {
+            term.writeln(`\x1b[1;34m🌐 Connecting to remote server...\x1b[0m`);
+            connectRemote(tabId, serverId);
+        }
+
+        // Resize Handling
         const resizeObserver = new ResizeObserver(() => {
             requestAnimationFrame(() => {
-                if (fitAddonRef.current) {
-                    try {
-                        fitAddonRef.current.fit();
-                        const dims = fitAddonRef.current.proposeDimensions();
-                        if (dims) {
-                            SocketService.send({
-                                type: 'terminal_resize',
-                                id: session.id,
-                                cols: dims.cols,
-                                rows: dims.rows
-                            });
-                        }
-                    } catch (e) { }
+                fitAddon.fit();
+                const dims = fitAddon.proposeDimensions();
+                if (dims && dims.cols && dims.rows) {
+                    SocketService.send({
+                        type: 'terminal_resize',
+                        id: tabId,
+                        serverId,
+                        cols: dims.cols,
+                        rows: dims.rows
+                    });
                 }
             });
         });
-        resizeObserver.observe(containerRef.current);
-
-        // Subscribe to output
-        const unsub = SocketService.subscribe((msg: any) => {
-            if (msg.type === 'terminal_output' && msg.id === session.id) {
-                term.write(msg.data);
-            }
-        });
-
-        // Initialize (Dummy for now, will connect to backend)
-        const init = async () => {
-            const token = localStorage.getItem('token');
-            try {
-                // If SSH, we might need a different endpoint or payload
-                const endpoint = session.type === 'ssh' ? '/api/servers/' + session.serverId + '/connect' : '/tools/terminal_manager/execute';
-                const body = session.type === 'ssh' ? {} : { action: 'create', id: session.id };
-
-                // For now, let's just make sure the backend knows we are here
-                term.writeln(`\x1b[1;32m[+] ${session.name} Session Active\x1b[0m`);
-            } catch (e) {
-                term.writeln(`\x1b[1;31m[-] Failed to connect to ${session.name}\x1b[0m`);
-            }
-        };
-        init();
+        resizeObserver.observe(container);
 
         return () => {
             resizeObserver.disconnect();
-            unsub();
             term.dispose();
-            termRef.current = null;
+            delete termsRef.current[tabId];
         };
+    };
+
+    const connectRemote = async (tabId: string, serverId: string) => {
+        try {
+            await ServerService.connect(serverId);
+            termsRef.current[tabId]?.writeln('\x1b[1;32m✓ SSH Connection Established\x1b[0m');
+            setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isReady: true } : t));
+        } catch (error: any) {
+            termsRef.current[tabId]?.writeln(`\x1b[1;31m✗ Connection Failed: ${error.message}\x1b[0m`);
+        }
+    };
+
+    const addTab = (server?: ServerConfig) => {
+        const id = server ? `remote_${server.id}_${Date.now()}` : `local_${Date.now()}`;
+        const newTab: TerminalTab = {
+            id,
+            name: server ? server.name : 'Localhost',
+            serverId: server?.id,
+            isReady: false
+        };
+        setTabs([...tabs, newTab]);
+        setActiveTabId(id);
+    };
+
+    const closeTab = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (tabs.length === 1) return; // Keep last tab
+
+        const newTabs = tabs.filter(t => t.id !== id);
+        setTabs(newTabs);
+
+        if (activeTabId === id) {
+            setActiveTabId(newTabs[newTabs.length - 1].id);
+        }
+
+        // Clean up
+        if (termsRef.current[id]) {
+            termsRef.current[id]?.dispose();
+            delete termsRef.current[id];
+        }
+    };
+
+    const handleAddServer = async () => {
+        try {
+            const added = await ServerService.addServer(newServer);
+            setServers([...servers, added]);
+            setShowAddServer(false);
+            setNewServer({ name: '', host: '', port: 22, username: '', authMethod: 'password' });
+        } catch (error) {
+            alert('Failed to add server');
+        }
+    };
+
+    // Effect to initialize terminal when tab changes or container is available
+    useEffect(() => {
+        if (!isMinimized) {
+            const cleanup = createTerminal(activeTabId, tabs.find(t => t.id === activeTabId)?.serverId);
+            return cleanup;
+        }
+    }, [activeTabId, isMinimized]);
+
+    // Sync terminal output
+    useEffect(() => {
+        const unsub = SocketService.subscribe((msg: any) => {
+            if (msg.type === 'terminal_output') {
+                termsRef.current[msg.id]?.write(msg.data);
+            }
+        });
+        return () => unsub();
     }, []);
 
     return (
-        <div className={`w-full h-full p-2 ${isActive ? 'block' : 'hidden'}`}>
-            <div ref={containerRef} className="w-full h-full" />
+        <div
+            className={`fixed bottom-4 right-4 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden transition-all duration-300 flex flex-col ${isMinimized ? 'w-64 h-12' : 'w-[900px] h-[600px]'
+                }`}
+            style={{ zIndex: 100, backdropFilter: 'blur(10px)' }}
+        >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 select-none">
+                <div className="flex items-center gap-3">
+                    <Activity size={18} className="text-purple-400 animate-pulse" />
+                    <span className="text-sm font-semibold text-slate-200 tracking-tight">Enterprise Terminal</span>
+                    <div className="h-4 w-[1px] bg-slate-700"></div>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/50 border border-slate-700">
+                        <Server size={12} className="text-slate-400" />
+                        <span className="text-[10px] text-slate-300 font-medium">10.0.1.X - PROD</span>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setIsMinimized(!isMinimized)}
+                        className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 transition-colors"
+                    >
+                        {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+                    </button>
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-slate-400 transition-colors"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            </div>
+
+            {!isMinimized && (
+                <div className="flex flex-1 overflow-hidden">
+                    {/* Sidebar - Server List */}
+                    <div className="w-56 bg-slate-800/30 border-r border-slate-700/50 flex flex-col">
+                        <div className="p-3 flex items-center justify-between border-b border-slate-700/30">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Servers</span>
+                            <button
+                                onClick={() => setShowAddServer(true)}
+                                className="p-1 hover:bg-purple-500/20 text-purple-400 rounded-md transition-colors"
+                            >
+                                <Plus size={14} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-auto p-2 flex flex-col gap-1">
+                            <button
+                                onClick={() => addTab()}
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-700/50 text-slate-300 transition-all group"
+                            >
+                                <Monitor size={14} className="group-hover:text-purple-400" />
+                                <span className="text-sm font-medium">Localhost</span>
+                            </button>
+
+                            {servers.map(server => (
+                                <button
+                                    key={server.id}
+                                    onClick={() => addTab(server)}
+                                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-700/50 text-slate-300 transition-all group"
+                                >
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <Globe size={14} className="group-hover:text-blue-400 shrink-0" />
+                                        <span className="text-sm font-medium truncate">{server.name}</span>
+                                    </div>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${server.isActive ? 'bg-green-500' : 'bg-slate-600'}`}></div>
+                                </button>
+                            ))}
+
+                            {isLoadingServers && (
+                                <div className="flex justify-center p-4">
+                                    <RefreshCw size={16} className="text-slate-500 animate-spin" />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-3 border-t border-slate-700/30">
+                            <div className="flex items-center gap-2 text-slate-500 hover:text-slate-300 cursor-pointer transition-colors">
+                                <Settings size={14} />
+                                <span className="text-[11px] font-medium uppercase tracking-wider">Settings</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Content Area */}
+                    <div className="flex-1 flex flex-col bg-[#0f172a]">
+                        {/* Tabs */}
+                        <div className="flex items-center bg-slate-900 border-b border-slate-700/50 overflow-x-auto no-scrollbar">
+                            {tabs.map(tab => (
+                                <div
+                                    key={tab.id}
+                                    onClick={() => setActiveTabId(tab.id)}
+                                    className={`flex items-center gap-2 px-4 py-2 border-r border-slate-700/50 cursor-pointer transition-all min-w-[120px] max-w-[200px] ${activeTabId === tab.id
+                                            ? 'bg-[#0f172a] border-t-2 border-t-purple-500 text-slate-100'
+                                            : 'bg-slate-800/30 text-slate-400 hover:bg-slate-800/50'
+                                        }`}
+                                >
+                                    {tab.serverId ? <Globe size={12} /> : <Monitor size={12} />}
+                                    <span className="text-xs truncate font-medium">{tab.name}</span>
+                                    <X
+                                        size={10}
+                                        className="ml-auto hover:text-red-400 transition-colors"
+                                        onClick={(e) => closeTab(tab.id, e)}
+                                    />
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => addTab()}
+                                className="p-2 text-slate-500 hover:text-slate-300"
+                            >
+                                <Plus size={14} />
+                            </button>
+                        </div>
+
+                        {/* Terminal Viewports */}
+                        <div className="flex-1 relative">
+                            {tabs.map(tab => (
+                                <div
+                                    key={tab.id}
+                                    ref={el => (containersRef.current[tab.id] = el)}
+                                    className={`absolute inset-0 p-2 ${activeTabId === tab.id ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}
+                                />
+                            ))}
+                        </div>
+
+                        {/* Status Footer */}
+                        <div className="px-3 py-1.5 bg-slate-900 border-t border-slate-700/50 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                    <Wifi size={12} className="text-green-500" />
+                                    <span className="text-[10px] font-medium uppercase tracking-tighter">Socket Connected</span>
+                                </div>
+                                <div className="h-3 w-[1px] bg-slate-700"></div>
+                                <div className="text-[10px] text-slate-500 font-mono">joe-term@enterprise:~</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-500">UTF-8</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Server Modal Overlay */}
+            {showAddServer && (
+                <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+                        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-800/30">
+                            <div className="flex items-center gap-2">
+                                <Server size={18} className="text-purple-400" />
+                                <h3 className="font-bold text-slate-100">Add New Server</h3>
+                            </div>
+                            <button onClick={() => setShowAddServer(false)} className="text-slate-500 hover:text-slate-300">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 flex flex-col gap-4">
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Server Name</label>
+                                <input
+                                    type="text"
+                                    placeholder="Production API"
+                                    value={newServer.name}
+                                    onChange={e => setNewServer({ ...newServer, name: e.target.value })}
+                                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-purple-500 transition-all"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-4">
+                                <div className="col-span-3 flex flex-col gap-1.5">
+                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Hostname / IP</label>
+                                    <input
+                                        type="text"
+                                        placeholder="192.168.1.100"
+                                        value={newServer.host}
+                                        onChange={e => setNewServer({ ...newServer, host: e.target.value })}
+                                        className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-purple-500 transition-all"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Port</label>
+                                    <input
+                                        type="number"
+                                        value={newServer.port}
+                                        onChange={e => setNewServer({ ...newServer, port: parseInt(e.target.value) })}
+                                        className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-sm text-slate-100 focus:outline-none focus:border-purple-500 transition-all text-center"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Username</label>
+                                <input
+                                    type="text"
+                                    placeholder="root"
+                                    value={newServer.username}
+                                    onChange={e => setNewServer({ ...newServer, username: e.target.value })}
+                                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-purple-500 transition-all"
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Authentication</label>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setNewServer({ ...newServer, authMethod: 'password' })}
+                                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${newServer.authMethod === 'password' ? 'bg-purple-500/10 border-purple-500 text-purple-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+                                    >Password</button>
+                                    <button
+                                        onClick={() => setNewServer({ ...newServer, authMethod: 'key' })}
+                                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${newServer.authMethod === 'key' ? 'bg-purple-500/10 border-purple-500 text-purple-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+                                    >SSH Key</button>
+                                </div>
+                            </div>
+
+                            {newServer.authMethod === 'password' ? (
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Password</label>
+                                    <input
+                                        type="password"
+                                        placeholder="••••••••"
+                                        value={newServer.password}
+                                        onChange={e => setNewServer({ ...newServer, password: e.target.value })}
+                                        className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-purple-500 transition-all"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Private Key Path</label>
+                                    <input
+                                        type="text"
+                                        placeholder="~/.ssh/id_rsa"
+                                        value={newServer.keyPath}
+                                        onChange={e => setNewServer({ ...newServer, keyPath: e.target.value })}
+                                        className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-purple-500 transition-all"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 bg-slate-950/30 border-t border-slate-800 flex gap-3">
+                            <button
+                                onClick={() => setShowAddServer(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 font-semibold text-sm hover:bg-slate-800 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddServer}
+                                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm shadow-lg shadow-purple-600/20 transition-all"
+                            >
+                                Save Server
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
