@@ -439,113 +439,131 @@ export async function planNextStep(
     }
   }
 
-  // Auto Mode - Intelligent Provider Selection
+  // Auto Mode - Smart & Free (No API Key Required!)
   if (providerKey.includes('auto')) {
-    console.info('[LLM] Planning with Auto Mode (Intelligent Selection)');
+    console.info('[LLM] Smart Auto Mode - Intelligent Free Assistant');
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
     if (role === 'tool' || role === 'function') {
-      console.info('[LLM] Auto Mode: Detected tool output, ending turn.');
+      console.info('[LLM] Auto Mode: Tool output detected, ending turn.');
       return null;
     }
 
-    // Advanced complexity analysis
-    const analyzeComplexity = (message: string): { level: 'simple' | 'medium' | 'complex'; confidence: number; reasoning: string } => {
-      const msg = message.toLowerCase();
-      const length = message.length;
+    const userMsg = [...messages].reverse().find(m => m.role === 'user');
+    const userText = typeof userMsg?.content === 'string' ? userMsg.content : '';
 
-      // Simple patterns (greetings, basic questions)
-      const simplePatterns = [
-        /^(hi|hello|hey|مرحبا|السلام|اهلا)\b/i,
-        /^(how are you|كيف حالك|شلونك)/i,
-        /^(thanks|شكرا|thank you)/i,
-        /^(yes|no|نعم|لا|ok|okay|حسنا)\s*$/i,
-      ];
+    // === Smart Pattern Detection ===
 
-      // Complex patterns (architecture, analysis, planning)
-      const complexPatterns = [
-        /\b(architect|design|structure|معمارية|تصميم|هيكل)\b/i,
-        /\b(analyze|analysis|تحليل|audit|review|مراجعة)\b/i,
-        /\b(implement|build|create.*system|إنشاء.*نظام|بناء)\b/i,
-        /\b(optimize|performance|أداء|تحسين|تطوير)\b/i,
-        /\b(database|schema|migration|قاعدة\s+بيانات)\b/i,
-        /\b(security|authentication|أمان|مصادقة)\b/i,
-      ];
-
-      // Medium patterns (coding, translation, moderate tasks)
-      const mediumPatterns = [
-        /\b(write.*function|اكتب.*دالة|code|كود|برمجة)\b/i,
-        /\b(translate|ترجم|convert|حول)\b/i,
-        /\b(explain|اشرح|وضح|describe)\b/i,
-        /\b(fix|repair|أصلح|debug)\b/i,
-      ];
-
-      // Check for simple first
-      if (simplePatterns.some(p => p.test(msg)) && length < 50) {
-        return {
-          level: 'simple',
-          confidence: 0.9,
-          reasoning: 'Short greeting or basic question'
-        };
-      }
-
-      // Check for complex
-      const complexMatches = complexPatterns.filter(p => p.test(msg)).length;
-      if (complexMatches >= 2 || (complexMatches >= 1 && length > 200)) {
-        return {
-          level: 'complex',
-          confidence: 0.85,
-          reasoning: 'Multiple complex keywords or long detailed request'
-        };
-      }
-
-      // Check for medium
-      const mediumMatches = mediumPatterns.filter(p => p.test(msg)).length;
-      if (mediumMatches >= 1 || length > 100) {
-        return {
-          level: 'medium',
-          confidence: 0.75,
-          reasoning: 'Coding task or moderate complexity request'
-        };
-      }
-
-      // Default to simple for very short messages
-      if (length < 30) {
-        return {
-          level: 'simple',
-          confidence: 0.6,
-          reasoning: 'Very short message, likely simple'
-        };
-      }
-
-      // Default to medium
-      return {
-        level: 'medium',
-        confidence: 0.5,
-        reasoning: 'Default classification for moderate length'
-      };
+    // Browser patterns
+    const browserPatterns = {
+      open: /(open|افتح|ادخل|زور|اذهب|visit|go to|browse)\s+(https?:\/\/|www\.|google|youtube|github|facebook|twitter|x\.com)/i,
+      hasUrl: /https?:\/\/[^\s]+/i,
+      multiStep: /(then|ثم|بعد|click|انقر|اضغط|type|اكتب|املأ|extract|استخرج)/i
     };
 
-    const userMsg = [...messages].reverse().find(m => m.role === 'user');
-    const msgContent = typeof userMsg?.content === 'string' ? userMsg.content : '';
-    const analysis = analyzeComplexity(msgContent);
+    // Search patterns
+    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور)\s+(عن|على|for|about)/i;
 
-    console.info(`[LLM] Auto Mode: Complexity Analysis - Level: ${analysis.level}, Confidence: ${analysis.confidence}, Reason: ${analysis.reasoning}`);
+    // File patterns  
+    const filePatterns = {
+      read: /(read|اقرأ|قراءة)\s+(file|ملف)/i,
+      write: /(write|اكتب|create)\s+(file|ملف)/i,
+      list: /(list|show|عرض|اعرض)\s+(files|الملفات)/i
+    };
+
+    // General question patterns (for Joe Free chat)
+    const questionPatterns = /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|what|when|where|why|how|who)\s/i;
+    const greetingPatterns = /^(hi|hello|hey|مرحبا|السلام|اهلا|كيف حالك|how are you)\b/i;
 
     try {
-      const msgs = [
-        { role: 'system', content: 'You are a helpful assistant.' },
-        ...messages
-      ];
+      // 1. Browser requests
+      if (browserPatterns.open.test(userText) || browserPatterns.hasUrl.test(userText)) {
+        const urlMatch = userText.match(/https?:\/\/[^\s]+/);
+        const url = urlMatch ? urlMatch[0] :
+          userText.match(/google/i) ? 'https://www.google.com' :
+            userText.match(/youtube/i) ? 'https://www.youtube.com' :
+              userText.match(/github/i) ? 'https://github.com' : '';
 
-      // Use Joe (Free) for all complexity levels - no auth required
-      console.info('[LLM] Auto Mode → Joe (Free) - No API key needed');
-      const text = await hackProvider.chatComplete(msgs, 'openai');
-      return { name: 'echo', input: { text: text || 'Response from Joe (Free)' } };
+        if (url) {
+          if (browserPatterns.multiStep.test(userText)) {
+            console.info('[LLM] Auto Mode → Browser Multi-Step Task');
+            return {
+              name: 'browser_run',
+              input: {
+                sessionId: `browser_${Date.now()}`,
+                instructionText: userText
+              }
+            };
+          } else {
+            console.info('[LLM] Auto Mode → Browser Open');
+            return {
+              name: 'browser_open',
+              input: {
+                url,
+                sessionId: `browser_${Date.now()}`
+              }
+            };
+          }
+        }
+      }
+
+      // 2. Web search requests
+      if (searchPatterns.test(userText)) {
+        console.info('[LLM] Auto Mode → Web Search');
+        return {
+          name: 'web_search',
+          input: { query: userText }
+        };
+      }
+
+      // 3. File operations
+      if (filePatterns.read.test(userText)) {
+        const fileMatch = userText.match(/(read|اقرأ|قراءة)\s+(file|ملف)\s+(.+)/i);
+        const filePath = fileMatch?.[3]?.trim() || '.';
+        console.info('[LLM] Auto Mode → Read File');
+        return {
+          name: 'file_read',
+          input: { filePath }
+        };
+      }
+
+      if (filePatterns.list.test(userText) || userText.trim() === 'ls') {
+        console.info('[LLM] Auto Mode → List Files');
+        return {
+          name: 'ls',
+          input: { path: '.' }
+        };
+      }
+
+      // 4. General chat (questions, greetings, conversation)
+      if (questionPatterns.test(userText) || greetingPatterns.test(userText) || userText.length < 100) {
+        console.info('[LLM] Auto Mode → Joe Free Chat');
+        const msgs = [
+          { role: 'system', content: 'You are Joe, a helpful AI assistant. Be friendly and concise.' },
+          ...messages
+        ];
+        const text = await hackProvider.chatComplete(msgs, 'openai');
+        return {
+          name: 'echo',
+          input: { text: text || 'مرحباً! كيف يمكنني مساعدتك؟' }
+        };
+      }
+
+      // 5. Default: Let fallback handle it (for code, complex tasks, etc)
+      console.info('[LLM] Auto Mode → Fallback to pattern matcher');
+      return null;
+
     } catch (err: any) {
-      console.error('[LLM] Auto Mode Failed:', err);
-      throw new Error('AUTO_MODE_FAILED: ' + (err.message || String(err)));
+      console.error('[LLM] Smart Auto Mode Failed:', err);
+      // Fallback to simple chat
+      try {
+        const msgs = [{ role: 'system', content: 'You are a helpful assistant.' }, ...messages];
+        const text = await hackProvider.chatComplete(msgs, 'openai');
+        return { name: 'echo', input: { text: text || 'Response from Joe (Free)' } };
+      } catch {
+        throw new Error('AUTO_MODE_FAILED: ' + (err.message || String(err)));
+      }
     }
   }
 
