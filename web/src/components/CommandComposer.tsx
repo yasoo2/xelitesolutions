@@ -436,6 +436,8 @@ export default function CommandComposer({
   onPreviewArtifact,
   onStepsUpdate,
   onMessagesUpdate,
+  showTerminal,
+  onTerminalToggle,
 }: {
   sessionId?: string;
   sessionKind?: 'chat' | 'agent';
