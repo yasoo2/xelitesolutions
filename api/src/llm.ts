@@ -222,6 +222,7 @@ export interface PlanOptions {
   throwOnError?: boolean;
   mock?: boolean;
   userId?: string;
+  sessionId?: string; // For enterprise context and memory
 }
 
 export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect. You are the embodiment of speed, precision, and intelligence.
@@ -443,9 +444,9 @@ export async function planNextStep(
     }
   }
 
-  // Auto Mode - Enterprise Intelligence (Multi-Model Router)
+  // Auto Mode - Enterprise Intelligence (Multi-Model Router + Context + Memory)
   if (providerKey.includes('auto')) {
-    console.info('[LLM] 🚀 Auto Mode Enterprise - Intelligent Multi-Model System');
+    console.info('[LLM] 🚀 Auto Mode Enterprise - Full System Activated');
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
@@ -457,10 +458,34 @@ export async function planNextStep(
     const userMsg = [...messages].reverse().find(m => m.role === 'user');
     const userText = typeof userMsg?.content === 'string' ? userMsg.content : '';
 
-    // Import intelligent router
-    const { analyzeTask, routeToModel, selectBestModel } = await import('./llm/intelligent-router');
+    // === ENTERPRISE SYSTEMS ACTIVATION ===
 
-    // Analyze the task
+    // 1. Import all enterprise systems
+    const { analyzeTask, routeToModel, selectBestModel } = await import('./llm/intelligent-router');
+    const { buildConversationContext, analyzeContextualIntent, matchPatternWithContext } = await import('./llm/context-engine');
+    const { longTermMemory } = await import('./memory/long-term-memory');
+    const { orchestrator } = await import('./agents/orchestrator');
+
+    // 2. Build conversation context
+    const userId = options?.userId || 'anonymous';
+    const sessionId = options?.sessionId || 'session_' + Date.now();
+    const context = buildConversationContext(userId, sessionId, messages as any[]);
+
+    // 3. Learn from conversation (async, don't block)
+    longTermMemory.learnFromConversation(userId, messages as any[]).catch(console.error);
+
+    // 4. Analyze contextual intent
+    const intent = analyzeContextualIntent(userText, context);
+    console.info(`[Enterprise] Intent: ${intent.primary} (${(intent.confidence * 100).toFixed(0)}%)`);
+
+    // 5. Check for context-aware patterns
+    const contextMatch = matchPatternWithContext(userText, context);
+    if (contextMatch.matched && contextMatch.confidence > 0.7) {
+      console.info(`[Enterprise] Context Match: ${contextMatch.action} - executing directly`);
+      return { name: contextMatch.action!, input: contextMatch.params };
+    }
+
+    // 6. Analyze the task
     const analysis = analyzeTask(userText, messages);
     const selectedModel = selectBestModel(analysis);
 
