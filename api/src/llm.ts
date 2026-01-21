@@ -439,9 +439,9 @@ export async function planNextStep(
     }
   }
 
-  // Auto Mode - Smart & Free (No API Key Required!)
+  // Auto Mode - Enterprise Intelligence (Multi-Model Router)
   if (providerKey.includes('auto')) {
-    console.info('[LLM] Smart Auto Mode - Intelligent Free Assistant');
+    console.info('[LLM] 🚀 Auto Mode Enterprise - Intelligent Multi-Model System');
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
@@ -453,28 +453,36 @@ export async function planNextStep(
     const userMsg = [...messages].reverse().find(m => m.role === 'user');
     const userText = typeof userMsg?.content === 'string' ? userMsg.content : '';
 
-    // === Smart Pattern Detection ===
+    // Import intelligent router
+    const { analyzeTask, routeToModel, selectBestModel } = await import('./llm/intelligent-router');
+
+    // Analyze the task
+    const analysis = analyzeTask(userText, messages);
+    const selectedModel = selectBestModel(analysis);
+
+    console.info(`[Auto Enterprise] Task: ${analysis.type} | Complexity: ${analysis.complexity} | Model: ${selectedModel.name}`);
+
+    // === Smart Pattern Detection (for tool routing) ===
 
     // Browser patterns
     const browserPatterns = {
-      open: /(open|افتح|ادخل|زور|اذهب|visit|go to|browse)\s+(https?:\/\/|www\.|google|youtube|github|facebook|twitter|x\.com)/i,
+      open: /(open|افتح|ادخل|زور|اذهب|visit|go to|browse|شوف|طالع|ودني|وديني|خلني|بدي|ابغى|عايز)\s+(https?:\/\/|www\.|google|youtube|github|facebook|twitter|x\.com|instagram|tiktok|linkedin)/i,
       hasUrl: /https?:\/\/[^\s]+/i,
-      multiStep: /(then|ثم|بعد|click|انقر|اضغط|type|اكتب|املأ|extract|استخرج)/i
+      multiStep: /(then|ثم|بعد|بعدها|وبعدين|click|انقر|اضغط|دوس|type|اكتب|املأ|extract|استخرج|لخص|انسخ)/i
     };
 
-    // Search patterns
-    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور)\s+(عن|على|for|about)/i;
+    // Search patterns (expanded)
+    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي)\s+(عن|على|for|about|في|بـ)/i;
 
-    // File patterns  
+    // File patterns (expanded)
     const filePatterns = {
-      read: /(read|اقرأ|قراءة)\s+(file|ملف)/i,
-      write: /(write|اكتب|create)\s+(file|ملف)/i,
-      list: /(list|show|عرض|اعرض)\s+(files|الملفات)/i
+      read: /(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)/i,
+      write: /(write|اكتب|create|انشئ|سوي|اعمل|كون)\s+(file|ملف)/i,
+      list: /(list|show|عرض|اعرض|شوف|طالع|ls)\s+(files|الملفات|ملفات)/i
     };
 
-    // General question patterns (for Joe Free chat)
-    const questionPatterns = /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|what|when|where|why|how|who)\s/i;
-    const greetingPatterns = /^(hi|hello|hey|مرحبا|السلام|اهلا|كيف حالك|how are you)\b/i;
+    // Code generation patterns (expanded)
+    const codePatterns = /(اكتب|كود|code|function|دالة|class|كلاس|component|كومبوننت|api|endpoint|script|سكريبت|program|برنامج|تطبيق|application|app|نظام|system|sوي|اعمل|ابني|انشئ|طور|build|create|develop|implement|نفذ)/i;
 
     try {
       // 1. Browser requests
@@ -483,11 +491,14 @@ export async function planNextStep(
         const url = urlMatch ? urlMatch[0] :
           userText.match(/google/i) ? 'https://www.google.com' :
             userText.match(/youtube/i) ? 'https://www.youtube.com' :
-              userText.match(/github/i) ? 'https://github.com' : '';
+              userText.match(/github/i) ? 'https://github.com' :
+                userText.match(/facebook/i) ? 'https://www.facebook.com' :
+                  userText.match(/instagram/i) ? 'https://www.instagram.com' :
+                    userText.match(/twitter|x\.com/i) ? 'https://x.com' : '';
 
         if (url) {
           if (browserPatterns.multiStep.test(userText)) {
-            console.info('[LLM] Auto Mode → Browser Multi-Step Task');
+            console.info('[Auto Enterprise] → Browser Multi-Step Task');
             return {
               name: 'browser_run',
               input: {
@@ -496,7 +507,7 @@ export async function planNextStep(
               }
             };
           } else {
-            console.info('[LLM] Auto Mode → Browser Open');
+            console.info('[Auto Enterprise] → Browser Open');
             return {
               name: 'browser_open',
               input: {
@@ -510,7 +521,7 @@ export async function planNextStep(
 
       // 2. Web search requests
       if (searchPatterns.test(userText)) {
-        console.info('[LLM] Auto Mode → Web Search');
+        console.info('[Auto Enterprise] → Web Search');
         return {
           name: 'web_search',
           input: { query: userText }
@@ -519,43 +530,55 @@ export async function planNextStep(
 
       // 3. File operations
       if (filePatterns.read.test(userText)) {
-        const fileMatch = userText.match(/(read|اقرأ|قراءة)\s+(file|ملف)\s+(.+)/i);
+        const fileMatch = userText.match(/(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)\s+(.+)/i);
         const filePath = fileMatch?.[3]?.trim() || '.';
-        console.info('[LLM] Auto Mode → Read File');
+        console.info('[Auto Enterprise] → Read File');
         return {
           name: 'file_read',
           input: { filePath }
         };
       }
 
-      if (filePatterns.list.test(userText) || userText.trim() === 'ls') {
-        console.info('[LLM] Auto Mode → List Files');
+      if (filePatterns.list.test(userText) || /^ls$/i.test(userText.trim())) {
+        console.info('[Auto Enterprise] → List Files');
         return {
           name: 'ls',
           input: { path: '.' }
         };
       }
 
-      // 4. General chat (questions, greetings, conversation)
-      if (questionPatterns.test(userText) || greetingPatterns.test(userText) || userText.length < 100) {
-        console.info('[LLM] Auto Mode → Joe Free Chat');
+      // 4. Code generation (let the intelligent model handle it via echo)
+      if (codePatterns.test(userText) && analysis.type === 'code_generation') {
+        console.info('[Auto Enterprise] → Code Generation via Intelligent Model');
         const msgs = [
-          { role: 'system', content: 'You are Joe, a helpful AI assistant. Be friendly and concise.' },
+          { role: 'system', content: 'You are an expert software engineer. Generate clean, production-ready code with best practices.' },
           ...messages
         ];
-        const text = await hackProvider.chatComplete(msgs, 'openai');
+        const codeResponse = await routeToModel(msgs, analysis);
         return {
           name: 'echo',
-          input: { text: text || 'مرحباً! كيف يمكنني مساعدتك؟' }
+          input: { text: codeResponse }
         };
       }
 
-      // 5. Default: Let fallback handle it (for code, complex tasks, etc)
-      console.info('[LLM] Auto Mode → Fallback to pattern matcher');
-      return null;
+      // 5. General chat/questions - Use intelligent router
+      console.info(`[Auto Enterprise] → Intelligent Chat via ${selectedModel.name}`);
+      const msgs = [
+        {
+          role: 'system', content: `You are Joe, an advanced AI assistant. Be helpful, accurate, and concise. 
+Respond in ${analysis.language === 'ar' ? 'Arabic' : analysis.language === 'mixed' ? 'the same language as the user' : 'English'}.`
+        },
+        ...messages
+      ];
+
+      const response = await routeToModel(msgs, analysis);
+      return {
+        name: 'echo',
+        input: { text: response || 'مرحباً! كيف يمكنني مساعدتك؟' }
+      };
 
     } catch (err: any) {
-      console.error('[LLM] Smart Auto Mode Failed:', err);
+      console.error('[Auto Enterprise] Failed:', err);
       // Fallback to simple chat
       try {
         const msgs = [{ role: 'system', content: 'You are a helpful assistant.' }, ...messages];
