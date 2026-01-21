@@ -606,7 +606,7 @@ export async function planNextStep(
     // === ENTERPRISE SYSTEMS ACTIVATION ===
 
     // 1. Import all enterprise systems
-    const { analyzeTask, routeToModel, selectBestModel } = await import('./llm/intelligent-router');
+    const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = await import('./llm/intelligent-router');
     const { buildConversationContext, analyzeContextualIntent, matchPatternWithContext } = await import('./llm/context-engine');
     const { longTermMemory } = await import('./memory/long-term-memory');
     const { orchestrator } = await import('./agents/orchestrator');
@@ -630,11 +630,20 @@ export async function planNextStep(
       return { name: contextMatch.action!, input: contextMatch.params };
     }
 
-    // 6. Analyze the task
-    const analysis = analyzeTask(userText, messages);
+    // 6. Analyze the task (UPGRADED: uses LLM for deep analysis)
+    const analysis = await advancedAnalyzeTask(userText, messages);
     const selectedModel = selectBestModel(analysis);
 
     console.info(`[Auto Enterprise] Task: ${analysis.type} | Complexity: ${analysis.complexity} | Model: ${selectedModel.name}`);
+
+    // 7. Multi-step planning (UPGRADED: generates a roadmap for complex tasks)
+    if (analysis.complexity === 'high' || analysis.complexity === 'extreme') {
+      const planSteps = await generateActionPlan(userText, analysis);
+      if (planSteps.length > 0) {
+        console.info(`[Auto Enterprise] Generated ${planSteps.length} step plan:`, planSteps);
+        // We can optionally store this in memory or just use it to guide the current turn
+      }
+    }
 
     // === Smart Pattern Detection (for tool routing) ===
 

@@ -102,7 +102,7 @@ export const MODELS: Record<string, ModelConfig> = {
 };
 
 /**
- * Analyze user message to determine task type and complexity
+ * Analyze user message to determine task type and complexity (Regex Fallback)
  */
 export function analyzeTask(userMessage: string, conversationHistory?: any[]): TaskAnalysis {
     const msg = userMessage.toLowerCase();
@@ -164,6 +164,81 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
         estimatedTokens: Math.min(length * 10, 8000),
         language
     };
+}
+
+/**
+ * Advanced Task Analysis using LLM
+ * Uses a lightweight model to deeply understand the task
+ */
+export async function advancedAnalyzeTask(userMessage: string, history?: any[]): Promise<TaskAnalysis> {
+    const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
+
+    // Default to regex analysis if no key (to save free model usage)
+    if (!hasGroq && userMessage.length < 50) {
+        return analyzeTask(userMessage, history);
+    }
+
+    try {
+        const analyst = hasGroq ? 'llama-3.1-8b-instant' : 'openai'; // Use Pollinations if no Groq
+        const provider = hasGroq ? 'groq' : 'hack';
+
+        const systemPrompt = `Analyze the following user request and return a JSON object with:
+{
+  "type": "simple_chat" | "complex_reasoning" | "code_generation" | "creative" | "data_analysis" | "browser_task",
+  "complexity": "low" | "medium" | "high" | "extreme",
+  "requiresTools": boolean,
+  "language": "ar" | "en" | "mixed",
+  "shortSummary": "string"
+}`;
+
+        let responseText = "";
+        if (provider === 'groq') {
+            responseText = await callGroq(analyst, [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }]);
+        } else {
+            if (!hack) {
+                const llm = await import('../llm');
+                hack = llm.pollinationsProvider;
+            }
+            responseText = await hack.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'openai');
+        }
+
+        // Clean JSON response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const analysis = JSON.parse(jsonMatch[0]);
+            return {
+                ...analysis,
+                estimatedTokens: userMessage.length * 10
+            };
+        }
+    } catch (err) {
+        console.warn('[IntelligentRouter] Advanced analysis failed, falling back to regex:', err);
+    }
+
+    return analyzeTask(userMessage, history);
+}
+
+/**
+ * Generate a multi-step execution plan for complex tasks
+ */
+export async function generateActionPlan(userMessage: string, analysis: TaskAnalysis): Promise<string[]> {
+    if (analysis.complexity === 'low' || analysis.type === 'simple_chat') return [];
+
+    try {
+        const systemPrompt = `You are a technical planner. Break down the user's request into 3-5 logical steps. 
+Respond ONLY with a numbered list of steps.`;
+
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+        ];
+
+        // Use a stronger model for planning if possible
+        const response = await routeToModel(messages, { ...analysis, complexity: 'medium' });
+        return response.split('\n').filter(line => /^\d+\./.test(line.trim()));
+    } catch {
+        return [];
+    }
 }
 
 /**
@@ -325,9 +400,45 @@ export async function routeToModel(
     }
 }
 
+/**
+ * Suggest a correction after a tool failure
+ */
+export async function suggestCorrection(
+    error: any,
+    failedTool: string,
+    originalTask: string,
+    analysis?: TaskAnalysis
+): Promise<{ action: string; input: any } | null> {
+    try {
+        const taskAnalysis = analysis || analyzeTask(originalTask);
+        const systemPrompt = `The AI was trying to execute a task but the tool failed. 
+Analyze the error and suggest a correction (alternative tool or modified parameters).
+Respond ONLY with a JSON object: { "name": "tool_name", "input": { ... } } or { "no_correction": true }`;
+
+        const userMessage = `Task: ${originalTask}\nFailed Tool: ${failedTool}\nError: ${JSON.stringify(error)}`;
+
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+        ];
+
+        const responseText = await routeToModel(messages, taskAnalysis);
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const correction = JSON.parse(jsonMatch[0]);
+            if (correction.no_correction) return null;
+            return { action: correction.name, input: correction.input };
+        }
+    } catch { }
+    return null;
+}
+
 export default {
     analyzeTask,
+    advancedAnalyzeTask,
     selectBestModel,
     routeToModel,
+    generateActionPlan,
+    suggestCorrection,
     MODELS
 };

@@ -58,9 +58,16 @@ export function extractEntities(text: string, history?: any[]): Record<string, a
     }
 
     // URLs
-    const urls = text.match(/https?:\/\/[^\s]+/gi);
+    const urls = text.match(/https?:\/\/[^\s"'<>]+/gi);
     if (urls) {
         entities.urls = urls;
+    }
+
+    // Dependencies (npm/python)
+    const depPatterns = /\b(install|add|package|library|مكتبة|تثبيت)\s+([\w@/-]+)/gi;
+    const deps = [...text.matchAll(depPatterns)].map(m => m[2]);
+    if (deps.length > 0) {
+        entities.dependencies = deps;
     }
 
     // Programming languages
@@ -171,13 +178,13 @@ export function analyzeContextualIntent(
     }
 
     // 6. Multi-step requests
-    else if (/\b(then|ثم|بعد\s*ذلك|after\s*that|and\s*then)\b/i.test(msg)) {
+    else if (/\b(then|ثم|بعد\s*ذلك|after\s*that|and\s*then|and|و|كمان|followed by|يليه)\b/i.test(msg) && msg.length > 30) {
         primary = 'multi_step';
         confidence = 0.8;
         suggestedAction = 'Break down into sequential steps';
 
-        // Extract steps
-        const steps = msg.split(/(?:then|ثم|بعد\s*ذلك|after\s*that|and\s*then)/i);
+        // Extract steps (improved splitting)
+        const steps = msg.split(/(?:then|ثم|بعد\s*ذلك|after\s*that|and\s*then|followed by|يليه)/i);
         entities.steps = steps.map(s => s.trim()).filter(s => s.length > 3);
     }
 

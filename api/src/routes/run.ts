@@ -1446,7 +1446,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         userId && initialPlan.input && typeof initialPlan.input === 'object'
           ? { ...(initialPlan.input as any), userId: String(userId) }
           : initialPlan.input;
-      const result = await executeTool(initialPlan.name, callInput);
+      let result = await executeTool(initialPlan.name, callInput);
+
+      // [INTELLIGENCE UPGRADE] Self-Correction Logic
+      if (!result.ok && providerKey === 'auto') {
+        console.info(`[AutoCorrection] Tool ${initialPlan.name} failed. Attempting autonomous fix...`);
+        const { suggestCorrection } = await import('../llm/intelligent-router');
+        const correction = await suggestCorrection(result.error || result.message, initialPlan.name, rawUserText);
+
+        if (correction) {
+          console.info(`[AutoCorrection] Retrying with: ${correction.action}`);
+          const retryInput = userId && correction.input && typeof correction.input === 'object'
+            ? { ...(correction.input as any), userId: String(userId) }
+            : correction.input;
+          result = await executeTool(correction.action, retryInput);
+        }
+      }
+
       ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
       if (result.artifacts) {
         for (const a of result.artifacts) {
