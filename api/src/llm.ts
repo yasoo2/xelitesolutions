@@ -514,19 +514,26 @@ export async function planNextStep(
     const codePatterns = /(اكتب|كود|code|function|دالة|class|كلاس|component|كومبوننت|api|endpoint|script|سكريبت|program|برنامج|تطبيق|application|app|نظام|system|sوي|اعمل|ابني|انشئ|طور|build|create|develop|implement|نفذ)/i;
 
     // === FREE INTELLIGENCE OPTIMIZER ===
+    console.info(`[Auto Enterprise] 💬 User query: "${userText.substring(0, 100)}${userText.length > 100 ? '...' : ''}"`);
+
     // Import optimizer
     const { generateSmartResponse, freeIntelligenceOptimizer } = await import('./llm/free-intelligence-optimizer');
 
     // 1. Check for instant smart response (no API call needed!)
+    console.info('[FREE OPTIMIZER] Checking for instant smart response patterns...');
     const smartResponse = generateSmartResponse(userText, context);
     if (smartResponse) {
-      console.info('[FREE OPTIMIZER] 🚀 Instant smart response - no API needed!');
-      return { name: 'echo', input: { text: smartResponse } };
+      console.info('[FREE OPTIMIZER] ✅ 🚀 INSTANT SMART RESPONSE MATCHED! No API call needed!');
+      console.info(`[FREE OPTIMIZER] Response preview: "${smartResponse.substring(0, 80)}..."`); return { name: 'echo', input: { text: smartResponse } };
     }
+    console.info('[FREE OPTIMIZER] ❌ No instant pattern match - proceeding with API call');
 
     // 2. Optimize request for better performance
     const optimization = await freeIntelligenceOptimizer.optimizeRequest(userText, context);
-    console.info(`[FREE OPTIMIZER] Model suggestion: ${optimization.suggestedModel}`);
+    if (optimization.shouldUseCache) {
+      console.info('[FREE OPTIMIZER] ✅ 💾 CACHE HIT! Returning cached response');
+    }
+    console.info(`[FREE OPTIMIZER] 🎯 Model selected: ${optimization.suggestedModel}`);
 
     try {
       // 1. Browser requests
@@ -616,11 +623,12 @@ Respond in ${analysis.language === 'ar' ? 'Arabic' : analysis.language === 'mixe
       ];
 
       const response = await routeToModel(msgs, analysis);
+      console.info(`[Auto Enterprise] ✅ Got response from intelligent router (${response?.length || 0} chars)`);
 
       // Cache good responses for future use
       if (response && response.length > 20) {
         freeIntelligenceOptimizer.cacheResponse(userText, response);
-        console.info('[FREE OPTIMIZER] Response cached for future use');
+        console.info('[FREE OPTIMIZER] ✅ Response cached for future use');
       }
 
       return {
