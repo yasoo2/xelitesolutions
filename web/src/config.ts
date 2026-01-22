@@ -26,17 +26,9 @@ function inferApiUrl() {
 }
 
 function inferWsUrl(apiUrl: string) {
-  const hostname = window.location.hostname;
-  const isLocal =
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '0.0.0.0' ||
-    hostname.endsWith('.local');
-
-  if (isLocal) {
+  if (apiUrl) {
     return apiUrl.replace(/^http/i, 'ws') + '/ws';
   }
-
   return window.location.origin.replace(/^http/i, 'ws') + '/ws';
 }
 
