@@ -1037,21 +1037,12 @@ export default function Joe() {
                             {t('tools.clear', 'Clear')}
                           </button>
                         ) : null}
-                        {rightPanelTab === 'thinking' ? (
-                          <button
-                            onClick={() => setShowThinkingPanel(false)}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                          >
-                            {t('close', 'Hide')}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setShowFiles(false)}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                          >
-                            {t('close', 'Hide')}
-                          </button>
-                        )}
+                        <button
+                          onClick={() => setShowFiles(false)}
+                          style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                        >
+                          {t('close', 'Hide')}
+                        </button>
                       </div>
                     </div>
 
@@ -1062,9 +1053,7 @@ export default function Joe() {
                         </div>
                       ) : null}
 
-                      {rightPanelTab === 'thinking' && showThinkingPanel ? (
-                        renderThinkingPanel()
-                      ) : null}
+
 
                       {rightPanelTab === 'memory' ? (
                         <Suspense fallback={<div className="flex justify-center p-4">Loading...</div>}>
