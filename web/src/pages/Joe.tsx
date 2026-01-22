@@ -313,9 +313,9 @@ export default function Joe() {
         additions.push({ ...base, type: 'action', content: label });
 
         // Auto-switch tabs based on the running tool
-        if (name.includes('shell_execute')) {
+        if (name.includes('shell_') || name.includes('run_command') || name.includes('terminal')) {
           setAgentCentralTab('terminal');
-        } else if (name.startsWith('browser_')) {
+        } else if (name.includes('browser_') || name.includes('screenshot') || name.includes('read_url')) {
           setAgentCentralTab('browser');
         }
       } else if (status === 'done') {

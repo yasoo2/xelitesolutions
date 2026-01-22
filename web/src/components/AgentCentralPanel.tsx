@@ -40,10 +40,11 @@ export default function AgentCentralPanel({
     ];
 
     const renderContent = () => {
-        switch (activeTab) {
-            case 'browser':
-                return (
-                    <div className="w-full h-full relative bg-slate-900">
+        return (
+            <div className="w-full h-full relative">
+                {/* Browser Layer */}
+                <div className={`absolute inset-0 z-10 transition-opacity duration-300 ${activeTab === 'browser' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                    <div className="w-full h-full bg-slate-900">
                         {browserSessionId ? (
                             <Suspense fallback={
                                 <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400">
@@ -63,17 +64,18 @@ export default function AgentCentralPanel({
                             </div>
                         )}
                     </div>
-                );
-            case 'terminal':
-                return (
+                </div>
+
+                {/* Terminal Layer */}
+                <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${activeTab === 'terminal' ? 'opacity-100 pointer-events-auto z-20' : 'opacity-0 pointer-events-none'}`}>
                     <div className="w-full h-full bg-[#0f172a]">
                         <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader className="animate-spin text-purple-500" /></div>}>
                             <EnterpriseTerminalPanel isEmbedded={true} />
                         </Suspense>
                     </div>
-                );
-
-        }
+                </div>
+            </div>
+        );
     };
 
     return (
