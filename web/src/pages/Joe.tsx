@@ -247,65 +247,26 @@ export default function Joe() {
     return () => window.removeEventListener('joe:browser_open_request', handler as any);
   }, [API, mode, agentBrowserSessionId, activeBrowserSession?.sessionId, makeBrowserSessionId]);
 
-  // ===== نظام عرض سلسلة التفكير والحوار الداخلي =====
-  const [thinkingChain, setThinkingChain] = useState<Array<{
-    id: string;
-    type: 'thought' | 'decision' | 'action' | 'result' | 'error';
-    content: string;
-    timestamp: number;
-    details?: any;
-  }>>([]);
+
 
   // Mobile Optimization: Default closed on small screens
   const isMobileInitial = window.innerWidth < 1024;
-  const [showThinkingPanel, setShowThinkingPanel] = useState(!isMobileInitial);
-  const [rightPanelTab, setRightPanelTab] = useState<'thinking' | 'files' | 'memory'>('thinking');
-  const [agentPanelTab, setAgentPanelTab] = useState<'commands' | 'thinking'>('commands');
+  const [rightPanelTab, setRightPanelTab] = useState<'files' | 'memory'>('files');
+  const [agentPanelTab, setAgentPanelTab] = useState<'commands'>('commands');
   const [liveSteps, setLiveSteps] = useState<any[]>([]);
-  const thinkingPanelRef = useRef<HTMLDivElement>(null);
   const stepStatusByKeyRef = useRef<Map<string, string>>(new Map());
 
   const openedPaymentsRef = useRef<Set<string>>(new Set());
 
-  // ===== معالج أحداث سلسلة التفكير =====
-  useEffect(() => {
-    const handler = (ev: Event) => {
-      const detail = (ev as CustomEvent)?.detail || {};
-      if (detail.type && detail.content) {
-        setThinkingChain(prev => [...prev, {
-          id: `thought-${Date.now()}-${Math.random()}`,
-          type: detail.type,
-          content: detail.content,
-          timestamp: Date.now(),
-          details: detail.details
-        }]);
-        // تمرير تلقائي إلى آخر العناصر
-        setTimeout(() => {
-          thinkingPanelRef.current?.scrollTo({
-            top: thinkingPanelRef.current.scrollHeight,
-            behavior: 'smooth'
-          });
-        }, 100);
-      }
-    };
-    window.addEventListener('joe:thinking_update', handler as any);
-    return () => window.removeEventListener('joe:thinking_update', handler as any);
-  }, []);
+
 
   const activeSessionKey = mode === 'chat' ? (selected || '') : (agentSelected || '');
   useEffect(() => {
-    setThinkingChain([]);
     setLiveSteps([]);
     stepStatusByKeyRef.current = new Map();
   }, [activeSessionKey, mode]);
 
-  useEffect(() => {
-    if (rightPanelTab === 'thinking' && !showThinkingPanel) {
-      if (showFiles) setRightPanelTab('files');
-      else setRightPanelTab('memory');
-    }
-    if (rightPanelTab === 'files' && !showFiles && showThinkingPanel) setRightPanelTab('thinking');
-  }, [rightPanelTab, showFiles, showThinkingPanel]);
+
 
   const formatStepLabel = useCallback((step: any) => {
     const name = String(step?.name || '');
@@ -365,64 +326,9 @@ export default function Joe() {
       }
     }
 
-    if (additions.length === 0) return;
-    setThinkingChain((prev) => {
-      const next = [...prev, ...additions];
-      return next.length > 260 ? next.slice(next.length - 260) : next;
-    });
-    window.setTimeout(() => {
-      thinkingPanelRef.current?.scrollTo({ top: thinkingPanelRef.current.scrollHeight, behavior: 'smooth' });
-    }, 80);
   }, [formatStepLabel, setAgentCentralTab]);
 
-  const renderThinkingPanel = useCallback(() => {
-    const visible = liveSteps.filter((s: any) => {
-      const name = String(s?.name || '');
-      return name && name !== 'plan' && !name.startsWith('thinking_step_');
-    });
-    const total = visible.length;
-    const done = visible.filter((s: any) => s?.status === 'done').length;
-    const failed = visible.filter((s: any) => s?.status === 'failed').length;
-    const running = visible.filter((s: any) => s?.status === 'running').length;
-    const pct = total ? Math.round(((done + failed) / total) * 100) : 0;
 
-    return (
-      <div className="joe-thinking-panel">
-        <div className="joe-thinking-summary">
-          <div className="joe-thinking-summary-row">
-            <div className="joe-thinking-summary-title">{t('liveSteps', 'Live Steps')}</div>
-            <div className="joe-thinking-summary-badges">
-              <span className="joe-thinking-badge">{t('statusRunning', 'قيد التنفيذ')}: {running}</span>
-              <span className="joe-thinking-badge">{t('statusDone', 'تم')}: {done}</span>
-              <span className="joe-thinking-badge">{t('statusFailed', 'فشل')}: {failed}</span>
-            </div>
-          </div>
-          <div className="joe-thinking-progress">
-            <div className="joe-thinking-progress-fill" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-
-        <div ref={thinkingPanelRef} className="joe-thinking-list" dir="auto">
-          {thinkingChain.length === 0 ? (
-            <div className="joe-thinking-empty">{t('waitingForActivity', 'Waiting for activity...')}</div>
-          ) : (
-            thinkingChain.map((item) => {
-              const time = new Date(item.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-              return (
-                <div key={item.id} className={`joe-thinking-item joe-thinking-${item.type}`}>
-                  <div className="joe-thinking-dot" />
-                  <div className="joe-thinking-body">
-                    <div className="joe-thinking-text">{item.content}</div>
-                    <div className="joe-thinking-meta">{time}</div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    );
-  }, [liveSteps, thinkingChain, t]);
 
   const nav = useNavigate();
 
@@ -881,21 +787,7 @@ export default function Joe() {
                 <Folder size={16} />
                 <span className="mode-fab-label">الملفات</span>
               </button>
-              <button
-                onClick={() => setShowThinkingPanel(v => {
-                  const next = !v;
-                  if (next) {
-                    setRightPanelTab('thinking');
-                    setAgentPanelTab('thinking');
-                  }
-                  return next;
-                })}
-                className={`mode-fab ${showThinkingPanel ? 'active' : ''}`}
-                title="Thinking"
-              >
-                <Activity size={16} />
-                <span className="mode-fab-label">التفكير</span>
-              </button>
+
             </div>
           </div>
 
@@ -1043,14 +935,8 @@ export default function Joe() {
                     >
                       الأوامر
                     </button>
-                    {showThinkingPanel ? (
-                      <button
-                        onClick={() => setAgentPanelTab('thinking')}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: agentPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      >
-                        <Activity size={14} /> التفكير
-                      </button>
-                    ) : null}
+
+
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {isNarrow ? (
@@ -1066,22 +952,21 @@ export default function Joe() {
                 {(!isNarrow || agentComposerOpen) ? (
                   <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
                     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                      {agentPanelTab === 'thinking' && showThinkingPanel ? (
-                        renderThinkingPanel()
-                      ) : (
-                        <CommandComposer
-                          sessionId={agentSelected || undefined}
-                          sessionKind="agent"
-                          browserSessionId={agentBrowserSessionId}
-                          onStepsUpdate={handleStepsUpdate}
-                          onSessionCreated={async (id) => {
-                            await loadAllSessions();
-                            setAgentSelected(id);
-                          }}
-                          showTerminal={agentCentralTab === 'terminal'}
-                          onTerminalToggle={() => setAgentCentralTab(agentCentralTab === 'terminal' ? 'browser' : 'terminal')}
-                        />
-                      )}
+
+
+                      <CommandComposer
+                        sessionId={agentSelected || undefined}
+                        sessionKind="agent"
+                        browserSessionId={agentBrowserSessionId}
+                        onStepsUpdate={handleStepsUpdate}
+                        onSessionCreated={async (id) => {
+                          await loadAllSessions();
+                          setAgentSelected(id);
+                        }}
+                        showTerminal={agentCentralTab === 'terminal'}
+                        onTerminalToggle={() => setAgentCentralTab(agentCentralTab === 'terminal' ? 'browser' : 'terminal')}
+                      />
+
                     </div>
                   </div>
                 ) : null}
@@ -1193,114 +1078,127 @@ export default function Joe() {
             </>
           )}
         </div>
-      </main>
+      </main >
 
       {showTerminal && mode === 'chat' && (
         <Suspense fallback={null}>
           <EnterpriseTerminalPanelLazy onClose={() => setShowTerminal(false)} />
         </Suspense>
-      )}
+      )
+      }
       {/* Package Manager Modal */}
-      {showPackages && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-            <button
-              onClick={() => setShowPackages(false)}
-              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-            >
-              <PanelLeftClose size={20} />
-            </button>
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-              <PackageManagerLazy />
-            </Suspense>
+      {
+        showPackages && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowPackages(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <PackageManagerLazy />
+              </Suspense>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Git Modal */}
-      {showGit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-            <button
-              onClick={() => setShowGit(false)}
-              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-            >
-              <PanelLeftClose size={20} />
-            </button>
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-              <GitPanelLazy />
-            </Suspense>
+      {
+        showGit && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowGit(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <GitPanelLazy />
+              </Suspense>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Social Modal */}
-      {showSocial && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-            <button
-              onClick={() => setShowSocial(false)}
-              className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
-            >
-              <PanelLeftClose size={20} />
-            </button>
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-              <SocialPanelLazy />
-            </Suspense>
+      {
+        showSocial && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowSocial(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <SocialPanelLazy />
+              </Suspense>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Art Modal */}
-      {showArt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-            <button
-              onClick={() => setShowArt(false)}
-              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-            >
-              <PanelLeftClose size={20} />
-            </button>
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-              <ArtStudioLazy />
-            </Suspense>
+      {
+        showArt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowArt(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <ArtStudioLazy />
+              </Suspense>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* DB Modal */}
-      {showDB && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-            <button
-              onClick={() => setShowDB(false)}
-              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-            >
-              <PanelLeftClose size={20} />
-            </button>
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-              <DatabasePanelLazy />
-            </Suspense>
+      {
+        showDB && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowDB(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <DatabasePanelLazy />
+              </Suspense>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Actions Modal */}
-      {showActions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-            <button
-              onClick={() => setShowActions(false)}
-              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-            >
-              <PanelLeftClose size={20} />
-            </button>
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-              <ActionsPanelLazy />
-            </Suspense>
+      {
+        showActions && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowActions(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <ActionsPanelLazy />
+              </Suspense>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
