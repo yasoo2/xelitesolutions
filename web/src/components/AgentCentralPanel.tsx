@@ -79,49 +79,36 @@ export default function AgentCentralPanel({
     };
 
     return (
-        <div className="flex flex-col w-full h-full bg-slate-900 overflow-hidden">
-            {/* Tab Navigation */}
-            <div className="flex items-center px-4 bg-slate-950 border-b border-white/5 h-12 shrink-0">
+        <div className="flex flex-col w-full h-full bg-slate-950 overflow-hidden relative">
+            {/* Elite Tab Navigation (Overlay Style) */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center p-1.5 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
                 <div className="flex gap-1">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => onTabChange(tab.id as TabType)}
-                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all relative group ${activeTab === tab.id
-                                ? 'bg-[var(--accent-primary)] text-slate-900 shadow-[0_0_20px_var(--accent-glow)] border border-white/20'
+                            className={`flex items-center gap-3 px-6 py-2.5 rounded-xl text-sm font-black transition-all relative group ${activeTab === tab.id
+                                ? 'bg-[var(--accent-primary)] text-slate-950 shadow-[0_0_20px_var(--accent-glow)]'
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                 }`}
                         >
-                            <tab.icon size={14} className={activeTab === tab.id ? 'text-slate-900' : 'text-slate-500 group-hover:text-slate-300'} />
-                            {tab.label}
+                            <tab.icon size={18} className={activeTab === tab.id ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-300'} />
+                            <span className="uppercase tracking-widest">{tab.label}</span>
                             {activeTab === tab.id && (
                                 <motion.div
-                                    layoutId="activeTabUnderline"
-                                    className="absolute bottom-[-13px] left-0 right-0 h-0.5 bg-cyan-500 rounded-full z-10"
+                                    layoutId="eliteTabGlow"
+                                    className="absolute inset-0 rounded-xl bg-white/10"
+                                    initial={false}
+                                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                                 />
                             )}
                         </button>
                     ))}
                 </div>
-
-                <div className="ml-auto flex items-center gap-4">
-                    {activeTab === 'browser' && browserSessionId && (
-                        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">Neural Stream Active</span>
-                        </div>
-                    )}
-                    {activeTab === 'terminal' && (
-                        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20">
-                            <div className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
-                            <span className="text-[10px] font-bold text-purple-400 uppercase tracking-tighter">SSH Bridge Ready</span>
-                        </div>
-                    )}
-                </div>
             </div>
 
-            {/* Content Area */}
-            <div className="flex-1 relative overflow-hidden">
+            {/* Content Area (Forced Full Height/Width) */}
+            <div className="flex-1 relative overflow-hidden bg-black">
                 {renderContent()}
             </div>
         </div>

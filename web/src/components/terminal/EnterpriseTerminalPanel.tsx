@@ -238,31 +238,36 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             style={{ zIndex: isEmbedded ? 1 : 100, backdropFilter: isEmbedded ? 'none' : 'blur(10px)' }}
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 select-none">
-                <div className="flex items-center gap-3">
-                    <Activity size={18} className="text-[var(--accent-primary)] animate-pulse" />
-                    <span className="text-sm font-bold text-slate-100 tracking-tight uppercase">Joe Elite Terminal</span>
-                    <div className="h-4 w-[1px] bg-slate-800"></div>
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/40 border border-[var(--accent-primary)]/20 shadow-[0_0_10px_rgba(var(--accent-primary-rgb),0.05)]">
-                        <Server size={12} className="text-[var(--accent-primary)]" />
-                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Enterprise Core</span>
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-950 border-b border-white/5 select-none">
+                <div className="flex items-center gap-4">
+                    <div className="p-2 rounded-xl bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 shadow-[0_0_15px_rgba(var(--accent-primary-rgb),0.1)]">
+                        <Activity size={20} className="text-[var(--accent-primary)] animate-pulse" />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-sm font-black text-slate-100 tracking-widest uppercase leading-tight">Joe Elite Shell</span>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Neural Logic Core</span>
+                    </div>
+                    <div className="h-6 w-[1px] bg-white/5 mx-2"></div>
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/5 shadow-inner">
+                        <Server size={12} className="text-slate-400" />
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Enterprise Stream</span>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                     {!isEmbedded && (
                         <>
                             <button
                                 onClick={() => setIsMinimized(!isMinimized)}
-                                className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 transition-colors"
+                                className="p-2 hover:bg-white/5 rounded-xl text-slate-400 hover:text-white transition-all"
                             >
-                                {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+                                {isMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
                             </button>
                             <button
                                 onClick={onClose}
-                                className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-slate-400 transition-colors"
+                                className="p-2 hover:bg-red-500/20 hover:text-red-400 rounded-xl text-slate-400 transition-all"
                             >
-                                <X size={14} />
+                                <X size={16} />
                             </button>
                         </>
                     )}
