@@ -1,57 +1,31 @@
 #!/bin/bash
-# Auto-deployment script for Joe System
-# This runs on the server when code is pulled from GitHub
+# سكريبت نشر التحديثات البصرية لنظام Joe
 
-set -e  # Exit on any error
+echo "🚀 بدء تطبيق التحديثات..."
+echo ""
 
-echo "🚀 Joe Auto-Deployment Started..."
+# الانتقال لمجلد المشروع
+cd /Users/younissowadi/xelitesolutions-1
 
-# Navigate to project directory
-cd /opt/joe || cd /var/www/joe || cd "$(dirname "$0")"
-
-echo "📦 Pulling latest code..."
+# جلب أحدث التحديثات
+echo "📥 جلب التحديثات من GitHub..."
 git pull origin main
 
-echo "🐳 Starting Docker services..."
-
-# Stop old containers gracefully
-docker-compose -f docker-compose.server.yml down
-
-# Remove old images (optional - uncomment if needed)
-# docker-compose -f docker-compose.server.yml down --rmi local
-
-# Build and start all services
-docker-compose -f docker-compose.server.yml up -d --build
-
-echo "⏳ Waiting for services to start..."
-sleep 10
-
-# Health checks
-echo "🔍 Running health checks..."
-
-# Check MongoDB
-if docker exec joe_mongo mongosh --eval "db.version()" &>/dev/null; then
-    echo "✅ MongoDB: Running"
-else
-    echo "❌ MongoDB: Failed"
-fi
-
-# Check API
-if curl -f http://localhost:3000/health &>/dev/null; then
-    echo "✅ API: Running"
-else
-    echo "❌ API: Failed"
-fi
-
-# Check Browser Worker
-if curl -f http://localhost:5050/health &>/dev/null; then
-    echo "✅ Browser Worker: Running"
-else
-    echo "⚠️  Browser Worker: Not responding (may take longer to start)"
-fi
-
-echo "📊 Active containers:"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-echo "✅ Deployment completed!"
-echo "🌍 System is now live!"
+echo ""
+echo "✅ تم تحديث الكود بنجاح!"
+echo ""
+echo "📋 الآن قم بالخطوات التالية:"
+echo ""
+echo "1️⃣ أعد تشغيل Frontend:"
+echo "   cd /Users/younissowadi/xelitesolutions-1/web"
+echo "   npm run dev"
+echo ""
+echo "2️⃣ في نافذة Terminal أخرى، أعد تشغيل Backend:"
+echo "   cd /Users/younissowadi/xelitesolutions-1/api"
+echo "   npm run dev"
+echo ""
+echo "3️⃣ افتح المتصفح على: http://localhost:5173"
+echo ""
+echo "4️⃣ اضغط Cmd + Shift + R لإعادة تحميل الصفحة"
+echo ""
+echo "✨ ستظهر الأزرار بلون ذهبي لامع!"

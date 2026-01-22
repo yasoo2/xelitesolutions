@@ -245,7 +245,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                     </div>
                     <div className="flex flex-col">
                         <span className="text-sm font-black text-slate-100 tracking-widest uppercase leading-tight">Joe Elite Shell</span>
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Neural Logic Core</span>
+                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Neural Logic Core</span>
                     </div>
                     <div className="h-6 w-[1px] bg-white/5 mx-2"></div>
                     <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/5 shadow-inner">
@@ -279,7 +279,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                     {/* Sidebar - Server List */}
                     <div className="w-56 bg-slate-950 border-r border-slate-800 flex flex-col">
                         <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-900/40">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Node Registry</span>
+                            <span className="text-[10px] font-black text-slate-200 uppercase tracking-[0.2em]">Node Registry</span>
                             <button
                                 onClick={() => setShowAddServer(true)}
                                 className="p-1.5 hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] rounded-lg border border-[var(--accent-primary)]/10 transition-all active:scale-90"
