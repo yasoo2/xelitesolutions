@@ -1484,7 +1484,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       // store plan context for continuation
       const { planContext } = await import('../approvals/context');
       planContext.set(ap.id, { runId, name: initialPlan.name, input: initialPlan.input });
-      if (autoAll || (auto && safe)) {
+      if (autoAll || (auto && safe) || /^browser_/.test(initialPlan.name || '')) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
@@ -1510,7 +1510,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, name: initialPlan.name, input: initialPlan.input });
-      if (autoAll || (auto && safe)) {
+      if (autoAll || (auto && safe) || /^browser_/.test(initialPlan.name || '')) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
@@ -2743,7 +2743,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
           const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
-          if (autoAll || (auto && safe)) {
+          if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
             ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
@@ -2770,7 +2770,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
           const autoAll = cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
-          if (autoAll || (auto && safe)) {
+          if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
             ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
