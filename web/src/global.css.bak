@@ -2860,35 +2860,69 @@ html.live-panel-open .events-content {
 .chat-bubble {
   flex: 0 1 auto;
   min-width: 0;
-  border-radius: 20px;
+  border-radius: 16px;
   border: 1px solid var(--border-color);
   background: rgba(255, 255, 255, 0.03);
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, filter 0.18s ease;
 }
 
-
-
+.chat-bubble.ai::after,
+.chat-bubble.user::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  bottom: 12px;
+  border-radius: 4px;
+  transform: rotate(45deg);
+  opacity: 0.95;
+  pointer-events: none;
+}
 
 .chat-bubble.ai {
   position: relative;
-  border-bottom-left-radius: 4px;
-  max-width: 84%;
-  border-color: rgba(var(--accent-primary-rgb), 0.3);
-  background: linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.15), rgba(var(--accent-primary-rgb), 0.05));
-  box-shadow: 0 8px 32px rgba(var(--accent-primary-rgb), 0.12);
 }
 
 .chat-bubble.user {
   position: relative;
-  border-bottom-right-radius: 4px;
+}
+
+.chat-bubble.ai::after {
+  left: -6px;
+  background: rgba(var(--accent-primary-rgb), 0.18);
+  border-left: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+  border-bottom: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+}
+
+.chat-bubble.user::after {
+  right: -6px;
+  background: rgba(var(--accent-secondary-rgb), 0.18);
+  border-right: 1px solid rgba(var(--accent-secondary-rgb), 0.35);
+  border-bottom: 1px solid rgba(var(--accent-secondary-rgb), 0.35);
+}
+
+.chat-bubble:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+  box-shadow: 0 26px 85px rgba(0, 0, 0, 0.20);
+}
+
+.chat-bubble.ai {
   max-width: 84%;
-  border-color: rgba(var(--accent-secondary-rgb), 0.3);
-  background: linear-gradient(135deg, rgba(var(--accent-secondary-rgb), 0.15), rgba(var(--accent-secondary-rgb), 0.05));
-  box-shadow: 0 8px 32px rgba(var(--accent-secondary-rgb), 0.12);
+  border-color: rgba(var(--accent-primary-rgb), 0.55);
+  background:
+    radial-gradient(520px 280px at 15% 0%, rgba(var(--accent-primary-rgb), 0.18) 0%, transparent 60%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.chat-bubble.user {
+  max-width: 84%;
+  border-color: rgba(var(--accent-secondary-rgb), 0.55);
+  background:
+    radial-gradient(520px 280px at 85% 0%, rgba(var(--accent-secondary-rgb), 0.18) 0%, transparent 60%),
+    rgba(255, 255, 255, 0.04);
 }
 
 .chat-bubble.system {

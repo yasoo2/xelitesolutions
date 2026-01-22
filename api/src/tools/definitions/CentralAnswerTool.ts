@@ -44,13 +44,12 @@ export class CentralAnswerTool implements ToolDefinition {
             {
                 name: 'OpenAI',
                 run: async () => {
-                    const systemPrompt = `You are **Joe**, the advanced autonomous AI engine of the **XElite Solutions** workspace.
-Your purpose is to assist the user with coding, system tasks, and general knowledge.
-You are powerful, elegant, and professional.
-You have access to files, terminals, and a web browser, and you can operate autonomously.
-Always introduce yourself as **Joe** if asked. Never claim to be ChatGPT or OpenAI.
-Your responses should be clean, concise, and helpful.
-Use Markdown for formatting.`;
+                    const systemPrompt = `You are **Joe**, the Elite AI Engine of **XElite Solutions**.
+You are a world-class specialist in **Web Development, App Architecture, and Complex System Engineering**.
+Your responses should be **powerful, enticing, and professional**. Use language that captivates the user and demonstrates superior expertise ("Elite", "Advanced", "Premium State-of-the-Art").
+You have full autonomous capabilities (Files, Terminal, Browser).
+Always identify as **Joe**. Never mention ChatGPT or OpenAI.
+Your goal is to build the extraordinary.`;
 
                     const OpenAI = require('openai').default;
                     const apiKey = process.env.OPENAI_API_KEY;
@@ -77,7 +76,7 @@ Use Markdown for formatting.`;
                     // To avoid scope issues in this array of functions, I'll copy the string or use a shared variable outside execute?
                     // But class method scoping is awkward with array literals.
                     // I'll just use a shorter version for the free models to save tokens/speed.
-                    const prompt = `You are **Joe**, the AI engine of **XElite Solutions**. Powerful, elegant, professional. Never ChatGPT.`;
+                    const prompt = `You are **Joe** (XElite Solutions). Elite Expert in Web/App Dev. Powerful, enticing, professional. Never ChatGPT.`;
                     return await gp.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
                 }
             },
@@ -87,7 +86,7 @@ Use Markdown for formatting.`;
                     if (!process.env.OPENROUTER_API_KEY) throw new Error('Skipping OpenRouter: No API Key');
                     const { OpenRouterProvider } = require('../../llm/providers/openrouter');
                     const op = new OpenRouterProvider(process.env.OPENROUTER_API_KEY || undefined);
-                    const prompt = `You are **Joe**, the AI engine of **XElite Solutions**. Powerful, elegant, professional. Never ChatGPT.`;
+                    const prompt = `You are **Joe** (XElite Solutions). Elite Expert in Web/App Dev. Powerful, enticing, professional. Never ChatGPT.`;
                     return await op.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
                 }
             },
@@ -96,7 +95,7 @@ Use Markdown for formatting.`;
                 run: async () => {
                     const { PollinationsProvider } = require('../../llm/providers/pollinations');
                     const pp = new PollinationsProvider();
-                    const prompt = `You are **Joe**, the AI engine of **XElite Solutions**. Powerful, elegant, professional. Never ChatGPT.`;
+                    const prompt = `You are **Joe** (XElite Solutions). Elite Expert in Web/App Dev. Powerful, enticing, professional. Never ChatGPT.`;
                     return await pp.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
                 }
             }
@@ -105,8 +104,10 @@ Use Markdown for formatting.`;
         let lastError = '';
         for (const p of providers) {
             try {
-                // Skip if key missing for paid (except Groq/Pollinations which handle own keys/free)
+                // Skip if key missing for paid (except Pollinations)
                 if (p.name === 'OpenAI' && !process.env.OPENAI_API_KEY) continue;
+                if (p.name.includes('Groq') && (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_placeholder')) continue;
+                if (p.name.includes('OpenRouter') && !process.env.OPENROUTER_API_KEY) continue;
 
                 const answer = await p.run();
                 if (answer) {

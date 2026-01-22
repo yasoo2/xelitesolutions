@@ -308,9 +308,9 @@ const ChatBubble = forwardRef(
     return (
       <motion.div
         ref={ref}
-        initial={{ opacity: 0, y: 20, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        initial={{ opacity: 0, y: 10, scale: 0.98, filter: 'blur(4px)' }}
+        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+        transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
         className={`chat-bubble-wrapper ${bubbleVariant}`}
       >
         {showAvatar ? (
@@ -829,19 +829,28 @@ export default function CommandComposer({
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     const scroller = eventsScrollRef.current;
     if (!scroller) {
+      // If ref is missing, try endRef with smooth behavior if requested
       endRef.current?.scrollIntoView({ behavior });
       return;
     }
+
+    // For 'auto' (instant) scrolling, skip RAF to ensure it happens in the same frame as render/paint
+    // This is critical for preventing jitter during high-frequency streaming updates
+    if (behavior === 'auto') {
+      scroller.scrollTop = scroller.scrollHeight;
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+      return;
+    }
+
     if (scrollRafRef.current != null) {
       cancelAnimationFrame(scrollRafRef.current);
       scrollRafRef.current = null;
     }
     scrollRafRef.current = requestAnimationFrame(() => {
-      if (behavior === 'smooth') {
-        scroller.scrollTo({ top: scroller.scrollHeight, behavior });
-      } else {
-        scroller.scrollTop = scroller.scrollHeight;
-      }
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior });
     });
   };
 
@@ -851,6 +860,7 @@ export default function CommandComposer({
       autoScrollRef.current = true;
       return;
     }
+    // Tolerance of 120px
     const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
     autoScrollRef.current = remaining < 120;
   };
