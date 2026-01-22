@@ -5,12 +5,12 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Terminal as TerminalIcon, Package, GitBranch, Camera, Wand2, Database, Play, Plus } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Package, GitBranch, Camera, Wand2, Database, Play, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
 const AgentCentralPanelLazy = lazy(() => import('../components/AgentCentralPanel'));
-const EnterpriseTerminalPanelLazy = lazy(() => import('../components/terminal/EnterpriseTerminalPanel'));
+
 const PackageManagerLazy = lazy(() => import('../components/PackageManager'));
 const GitPanelLazy = lazy(() => import('../components/GitPanel'));
 const SocialPanelLazy = lazy(() => import('../components/SocialPanel'));
@@ -144,7 +144,7 @@ export default function Joe() {
   const [composerHeight, setComposerHeight] = useState(0);
   const [showBoxes, setShowBoxes] = useState(true);
   const [controlOpen, setControlOpen] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(false);
+
   const [agentCentralTab, setAgentCentralTab] = useState<'browser' | 'terminal'>('terminal');
   const [showPackages, setShowPackages] = useState(false);
   const [showGit, setShowGit] = useState(false);
@@ -990,8 +990,6 @@ export default function Joe() {
                           await loadAllSessions();
                           setSelected(id);
                         }}
-                        showTerminal={showTerminal}
-                        onTerminalToggle={() => setShowTerminal(!showTerminal)}
                       />
                     </div>
                   </div>
@@ -1041,12 +1039,6 @@ export default function Joe() {
         </div>
       </main >
 
-      {showTerminal && mode === 'chat' && (
-        <Suspense fallback={null}>
-          <EnterpriseTerminalPanelLazy onClose={() => setShowTerminal(false)} />
-        </Suspense>
-      )
-      }
       {/* Package Manager Modal */}
       {
         showPackages && (

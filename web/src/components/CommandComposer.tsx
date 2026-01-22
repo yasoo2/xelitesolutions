@@ -438,8 +438,7 @@ export default function CommandComposer({
   onPreviewArtifact,
   onStepsUpdate,
   onMessagesUpdate,
-  showTerminal,
-  onTerminalToggle,
+
 }: {
   sessionId?: string;
   sessionKind?: 'chat' | 'agent';
@@ -449,8 +448,7 @@ export default function CommandComposer({
   onPreviewArtifact?: (content: string, lang: string) => void;
   onStepsUpdate?: (steps: any[]) => void;
   onMessagesUpdate?: (msgs: any[]) => void;
-  showTerminal?: boolean;
-  onTerminalToggle?: () => void;
+
 }) {
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
@@ -3160,33 +3158,6 @@ export default function CommandComposer({
           ) : null}
         </AnimatePresence>
         <div className="input-area">
-          {/* Terminal Button */}
-          <div style={{ display: 'flex', gap: 8, padding: '0 4px 8px 4px', alignItems: 'center' }}>
-            <button
-              onClick={() => onTerminalToggle?.()}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                fontSize: 13,
-                borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                cursor: 'pointer',
-                background: showTerminal ? 'rgba(var(--accent-primary-rgb), 0.15)' : 'rgba(255,255,255,0.03)',
-                color: showTerminal ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                fontWeight: showTerminal ? 600 : 400,
-                transition: 'all 0.2s',
-              }}
-              title={showTerminal ? 'إغلاق Terminal' : 'فتح Terminal'}
-            >
-              <Terminal size={16} />
-              <span>Terminal</span>
-            </button>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {showTerminal ? '✓ نشط - Joe يستخدمه للتحليل والاختبار' : 'سيُستخدم تلقائياً عند الحاجة'}
-            </span>
-          </div>
           <div className="input-container">
             <textarea
               className="main-input"
