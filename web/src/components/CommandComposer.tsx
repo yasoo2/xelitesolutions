@@ -3222,11 +3222,14 @@ export default function CommandComposer({
               </div>
               <div className="right-actions">
                 <button
-                  className="action-btn"
+                  className={`action-btn provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
                   onClick={() => setShowProviders(true)}
-                  title="AI Providers"
+                  title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
                 >
-                  <Cpu size={20} />
+                  <Cpu size={16} />
+                  <span className="provider-label">
+                    {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
+                  </span>
                 </button>
                 <input
                   type="file"

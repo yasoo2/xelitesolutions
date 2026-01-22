@@ -262,6 +262,44 @@ body {
   -webkit-text-fill-color: initial;
 }
 
+/* AI Provider Button Enhancement */
+.provider-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 0 10px !important;
+  min-width: fit-content !important;
+  height: 32px !important;
+  transition: all 0.2s ease !important;
+}
+
+.provider-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.provider-btn:hover .provider-label {
+  color: var(--text-primary);
+}
+
+.provider-btn.is-disconnected {
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.provider-btn.is-disconnected .provider-label,
+.provider-btn.is-disconnected svg {
+  color: #ef4444 !important;
+}
+
+.provider-btn.is-disconnected:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-color: rgba(239, 68, 68, 0.6) !important;
+}
+
 /* Joe Avatar Styling (Theme-Aware) */
 .joe-avatar-icon {
   background: var(--brand-mark-yellow);
