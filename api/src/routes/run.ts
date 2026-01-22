@@ -62,24 +62,27 @@ class ThoughtStreamParser {
 
     // Check for start trigger
     if (!this.insideThought) {
-      const startIdx = this.buffer.indexOf(':::thought');
-      if (startIdx !== -1) {
+      // Support lenient markers: ::thought or :::thought
+      const startMatch = this.buffer.match(/:{2,3}thought/);
+      if (startMatch && startMatch.index !== undefined) {
         this.insideThought = true;
-        this.buffer = this.buffer.slice(startIdx + 10); // Remove marker
+        // Keep the buffer *after* the marker
+        this.buffer = this.buffer.slice(startMatch.index + startMatch[0].length);
         this.onEvent({ action: 'start' });
       }
     }
 
     // Process content if inside thought
     if (this.insideThought) {
-      const endIdx = this.buffer.indexOf(':::');
-      if (endIdx !== -1) {
+      // Look for end marker: :: or :::
+      const endMatch = this.buffer.match(/:{2,3}/);
+      if (endMatch && endMatch.index !== undefined) {
         // Thought ended
-        const content = this.buffer.slice(0, endIdx);
+        const content = this.buffer.slice(0, endMatch.index);
         if (content) this.onEvent({ action: 'chunk', content });
         this.onEvent({ action: 'end' });
         this.insideThought = false;
-        this.buffer = this.buffer.slice(endIdx + 3); // Remove marker
+        this.buffer = this.buffer.slice(endMatch.index + endMatch[0].length); // Remove marker
       } else {
         // Still inside, try to emit what we can safely emit
         // We keep a small buffer to avoid cutting the end marker
@@ -1551,14 +1554,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
             // Check for thought markers
-            const thoughtMatch = answerText.match(/:::thought([\s\S]*?):::/);
+            const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
             if (thoughtMatch) {
               const thought = thoughtMatch[1].trim();
               ev({ type: 'thought', data: { action: 'start' } });
               ev({ type: 'thought', data: { action: 'chunk', content: thought } });
               ev({ type: 'thought', data: { action: 'end' } });
               // Strip thought from answer
-              answerText = answerText.replace(/:::thought([\s\S]*?):::/, '').trim();
+              answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
             }
             if (answerText) {
               ev({ type: 'text', data: answerText });
@@ -1600,14 +1603,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
             // Check for thought markers
-            const thoughtMatch = answerText.match(/:::thought([\s\S]*?):::/);
+            const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
             if (thoughtMatch) {
               const thought = thoughtMatch[1].trim();
               ev({ type: 'thought', data: { action: 'start' } });
               ev({ type: 'thought', data: { action: 'chunk', content: thought } });
               ev({ type: 'thought', data: { action: 'end' } });
               // Strip thought from answer
-              answerText = answerText.replace(/:::thought([\s\S]*?):::/, '').trim();
+              answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
             }
             if (answerText) {
               ev({ type: 'text', data: answerText });
