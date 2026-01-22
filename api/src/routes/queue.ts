@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { taskQueueManager } from '../services/TaskQueueManager';
-import { requireAuth } from '../middleware/auth';
+import { authenticate as requireAuth } from '../middleware/auth';
 
 const router = Router();
 
