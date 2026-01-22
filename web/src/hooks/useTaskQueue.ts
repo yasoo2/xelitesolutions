@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { API_URL } from '../config';
+import { api } from '../services/apiClient';
 
 interface QueuedTask {
     id: string;
@@ -26,13 +26,9 @@ export function useTaskQueue(sessionId: string | undefined) {
         if (!sessionId) return;
 
         try {
-            const response = await fetch(`${API_URL}/queue/${sessionId}`, {
-                credentials: 'include',
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setTasks(data.tasks || []);
+            const data: any = await api.get(`/queue/${sessionId}`);
+            if (data && data.tasks) {
+                setTasks(data.tasks);
             }
         } catch (error) {
             console.error('Error fetching tasks:', error);
@@ -44,16 +40,8 @@ export function useTaskQueue(sessionId: string | undefined) {
         if (!sessionId) return null;
 
         try {
-            const response = await fetch(`${API_URL}/queue/analyze`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ message, sessionId }),
-            });
-
-            if (response.ok) {
-                return await response.json();
-            }
+            const data: any = await api.post('/queue/analyze', { message, sessionId });
+            return data as ContextAnalysis;
         } catch (error) {
             console.error('Error analyzing message:', error);
         }
@@ -70,15 +58,14 @@ export function useTaskQueue(sessionId: string | undefined) {
         if (!sessionId) return null;
 
         try {
-            const response = await fetch(`${API_URL}/queue`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ message, sessionId, priority, relatedToCurrentTask }),
+            const data: any = await api.post('/queue', {
+                message,
+                sessionId,
+                priority,
+                relatedToCurrentTask
             });
 
-            if (response.ok) {
-                const data = await response.json();
+            if (data && data.task) {
                 await fetchTasks(); // Refresh the list
                 return data.task;
             }
@@ -94,15 +81,9 @@ export function useTaskQueue(sessionId: string | undefined) {
         if (!sessionId) return false;
 
         try {
-            const response = await fetch(`${API_URL}/queue/${sessionId}/${taskId}`, {
-                method: 'DELETE',
-                credentials: 'include',
-            });
-
-            if (response.ok) {
-                await fetchTasks(); // Refresh the list
-                return true;
-            }
+            await api.delete(`/queue/${sessionId}/${taskId}`);
+            await fetchTasks(); // Refresh the list
+            return true;
         } catch (error) {
             console.error('Error removing task:', error);
         }
@@ -115,15 +96,9 @@ export function useTaskQueue(sessionId: string | undefined) {
         if (!sessionId) return false;
 
         try {
-            const response = await fetch(`${API_URL}/queue/${sessionId}/start/${taskId}`, {
-                method: 'POST',
-                credentials: 'include',
-            });
-
-            if (response.ok) {
-                await fetchTasks(); // Refresh the list
-                return true;
-            }
+            await api.post(`/queue/${sessionId}/start/${taskId}`);
+            await fetchTasks(); // Refresh the list
+            return true;
         } catch (error) {
             console.error('Error starting task:', error);
         }
@@ -136,14 +111,8 @@ export function useTaskQueue(sessionId: string | undefined) {
         if (!sessionId) return false;
 
         try {
-            const response = await fetch(`${API_URL}/queue/${sessionId}/current`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ description }),
-            });
-
-            return response.ok;
+            await api.post(`/queue/${sessionId}/current`, { description });
+            return true;
         } catch (error) {
             console.error('Error setting current task:', error);
             return false;
@@ -155,12 +124,8 @@ export function useTaskQueue(sessionId: string | undefined) {
         if (!sessionId) return false;
 
         try {
-            const response = await fetch(`${API_URL}/queue/${sessionId}/current`, {
-                method: 'DELETE',
-                credentials: 'include',
-            });
-
-            return response.ok;
+            await api.delete(`/queue/${sessionId}/current`);
+            return true;
         } catch (error) {
             console.error('Error clearing current task:', error);
             return false;
