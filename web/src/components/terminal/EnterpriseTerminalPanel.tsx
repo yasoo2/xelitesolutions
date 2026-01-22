@@ -313,13 +313,13 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
 
                             {isLoadingServers && (
                                 <div className="flex justify-center p-4">
-                                    <RefreshCw size={16} className="text-slate-500 animate-spin" />
+                                    <RefreshCw size={16} className="text-slate-300 animate-spin" />
                                 </div>
                             )}
                         </div>
 
                         <div className="p-3 border-t border-slate-700/30">
-                            <div className="flex items-center gap-2 text-slate-500 hover:text-slate-300 cursor-pointer transition-colors">
+                            <div className="flex items-center gap-2 text-slate-200 hover:text-white cursor-pointer transition-colors">
                                 <Settings size={14} />
                                 <span className="text-[11px] font-medium uppercase tracking-wider">Settings</span>
                             </div>
@@ -375,10 +375,10 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                                     <span className="text-[10px] font-medium uppercase tracking-tighter">Socket Connected</span>
                                 </div>
                                 <div className="h-3 w-[1px] bg-slate-700"></div>
-                                <div className="text-[10px] text-slate-500 font-mono">joe-term@enterprise:~</div>
+                                <div className="text-[10px] text-slate-300 font-mono">joe-term@enterprise:~</div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-500">UTF-8</span>
+                                <span className="text-[10px] text-slate-300">UTF-8</span>
                             </div>
                         </div>
                     </div>
@@ -394,14 +394,14 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                                 <Server size={18} className="text-purple-400" />
                                 <h3 className="font-bold text-slate-100">Add New Server</h3>
                             </div>
-                            <button onClick={() => setShowAddServer(false)} className="text-slate-500 hover:text-slate-300">
+                            <button onClick={() => setShowAddServer(false)} className="text-slate-300 hover:text-white">
                                 <X size={16} />
                             </button>
                         </div>
 
                         <div className="p-6 flex flex-col gap-4">
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-[11px] font-bold text-slate-500 uppercase">Server Name</label>
+                                <label className="text-[11px] font-bold text-slate-200 uppercase">Server Name</label>
                                 <input
                                     type="text"
                                     placeholder="Production API"
@@ -413,7 +413,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
 
                             <div className="grid grid-cols-4 gap-4">
                                 <div className="col-span-3 flex flex-col gap-1.5">
-                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Hostname / IP</label>
+                                    <label className="text-[11px] font-bold text-slate-200 uppercase">Hostname / IP</label>
                                     <input
                                         type="text"
                                         placeholder="192.168.1.100"
@@ -423,7 +423,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Port</label>
+                                    <label className="text-[11px] font-bold text-slate-200 uppercase">Port</label>
                                     <input
                                         type="number"
                                         value={newServer.port}
@@ -434,7 +434,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-[11px] font-bold text-slate-500 uppercase">Username</label>
+                                <label className="text-[11px] font-bold text-slate-200 uppercase">Username</label>
                                 <input
                                     type="text"
                                     placeholder="root"
@@ -445,7 +445,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-[11px] font-bold text-slate-500 uppercase">Authentication</label>
+                                <label className="text-[11px] font-bold text-slate-200 uppercase">Authentication</label>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setNewServer({ ...newServer, authMethod: 'password' })}
@@ -460,7 +460,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
 
                             {newServer.authMethod === 'password' ? (
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Password</label>
+                                    <label className="text-[11px] font-bold text-slate-200 uppercase">Password</label>
                                     <input
                                         type="password"
                                         placeholder="••••••••"
@@ -471,7 +471,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-[11px] font-bold text-slate-500 uppercase">Private Key Path</label>
+                                    <label className="text-[11px] font-bold text-slate-200 uppercase">Private Key Path</label>
                                     <input
                                         type="text"
                                         placeholder="~/.ssh/id_rsa"
