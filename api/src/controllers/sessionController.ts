@@ -137,12 +137,24 @@ export async function listSessionMessages(req: Request, res: Response) {
             return res.json(store.listMessages(sessionId));
         }
 
+        console.log(`[SessionController] Listing messages for sessionId: ${sessionId}, userId: ${userId}`);
+
+        const { ObjectId } = mongoose.Types;
+        let queryId: any = sessionId;
+        try {
+            queryId = new ObjectId(sessionId);
+        } catch (e) {
+            console.error(`[SessionController] Invalid ObjectId: ${sessionId}`);
+        }
+
         // Fetch Messages, Tools, and Session in parallel
         const [messages, tools, session] = await Promise.all([
-            Message.find({ sessionId }).sort({ createdAt: 1 }).lean(),
-            ToolExecution.find({ sessionId: sessionId }).sort({ createdAt: 1 }).lean(),
-            Session.findById(sessionId)
+            Message.find({ sessionId: queryId }).sort({ createdAt: 1 }).lean(),
+            ToolExecution.find({ sessionId: queryId }).sort({ createdAt: 1 }).lean(),
+            Session.findById(queryId).lean()
         ]);
+
+        console.log(`[SessionController] Found ${messages.length} messages and ${tools.length} tools for session ${sessionId}`);
 
         // Transform to unified events format for frontend
         const events: any[] = [];
