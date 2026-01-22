@@ -46,6 +46,53 @@ function isRunCancelled(runId: string): boolean {
 }
 
 
+
+// Neural Thought Stream Parser
+class ThoughtStreamParser {
+  private buffer = '';
+  private insideThought = false;
+  private onEvent: (event: any) => void;
+
+  constructor(onEvent: (event: any) => void) {
+    this.onEvent = onEvent;
+  }
+
+  feed(chunk: string) {
+    this.buffer += chunk;
+
+    // Check for start trigger
+    if (!this.insideThought) {
+      const startIdx = this.buffer.indexOf(':::thought');
+      if (startIdx !== -1) {
+        this.insideThought = true;
+        this.buffer = this.buffer.slice(startIdx + 10); // Remove marker
+        this.onEvent({ action: 'start' });
+      }
+    }
+
+    // Process content if inside thought
+    if (this.insideThought) {
+      const endIdx = this.buffer.indexOf(':::');
+      if (endIdx !== -1) {
+        // Thought ended
+        const content = this.buffer.slice(0, endIdx);
+        if (content) this.onEvent({ action: 'chunk', content });
+        this.onEvent({ action: 'end' });
+        this.insideThought = false;
+        this.buffer = this.buffer.slice(endIdx + 3); // Remove marker
+      } else {
+        // Still inside, try to emit what we can safely emit
+        // We keep a small buffer to avoid cutting the end marker
+        if (this.buffer.length > 5) {
+          const safeEmit = this.buffer.slice(0, -3);
+          this.onEvent({ action: 'chunk', content: safeEmit });
+          this.buffer = this.buffer.slice(-3);
+        }
+      }
+    }
+  }
+}
+
 router.get('/', async (req: Request, res: Response) => {
   const limit = parseInt(String(req.query.limit || '10'));
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
@@ -1394,7 +1441,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             preferNonLLM: true,
           }) as any;
         } else {
-          initialPlan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
+          // Initialize Thought Parser
+          const parser = new ThoughtStreamParser((data) => {
+            ev({ type: 'thought', data });
+          });
+
+          initialPlan = await planNextStep(history, {
+            provider, apiKey, baseUrl, model, throwOnError: true,
+            onThought: (chunk) => parser.feed(chunk)
+          });
         }
       }
     }

@@ -335,10 +335,14 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
 /**
  * Make API call to Groq (free Llama/Mixtral/Gemma models)
  */
-async function callGroq(model: string, messages: any[]): Promise<string> {
-    const GROQ_API_KEY = process.env.GROQ_API_KEY || 'gsk_placeholder'; // We'll add free key
+/**
+ * Make API call to Groq (free Llama/Mixtral/Gemma models)
+ */
+async function callGroq(model: string, messages: any[], onPartial?: (delta: string) => void): Promise<string> {
+    const GROQ_API_KEY = process.env.GROQ_API_KEY || 'gsk_placeholder';
 
     try {
+        const stream = !!onPartial;
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -349,7 +353,8 @@ async function callGroq(model: string, messages: any[]): Promise<string> {
                 model,
                 messages,
                 temperature: 0.7,
-                max_tokens: 8000
+                max_tokens: 8000,
+                stream
             })
         });
 
@@ -357,8 +362,46 @@ async function callGroq(model: string, messages: any[]): Promise<string> {
             throw new Error(`Groq API error: ${response.status}`);
         }
 
-        const data = await response.json();
-        return data.choices[0]?.message?.content || '';
+        if (stream && response.body) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let fullText = '';
+            let buffer = '';
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed === 'data: [DONE]') continue;
+                        if (trimmed.startsWith('data: ')) {
+                            try {
+                                const json = JSON.parse(trimmed.slice(6));
+                                const content = json.choices[0]?.delta?.content || '';
+                                if (content) {
+                                    fullText += content;
+                                    onPartial?.(content);
+                                }
+                            } catch { }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Stream reading failed', err);
+            }
+            return fullText;
+        } else {
+            const data = await response.json();
+            return data.choices[0]?.message?.content || '';
+        }
+
     } catch (err: any) {
         console.error('[Groq] API call failed:', err.message);
         throw err;
@@ -372,7 +415,8 @@ async function callGroq(model: string, messages: any[]): Promise<string> {
 export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
-    availableKeys?: { anthropic?: string; openai?: string; groq?: string; }
+    availableKeys?: { anthropic?: string; openai?: string; groq?: string; },
+    onPartial?: (delta: string) => void
 ): Promise<string> {
 
     // Analyze if not provided
@@ -413,7 +457,7 @@ export async function routeToModel(
                 }
                 try {
                     const model = selectedModel.provider === 'groq' ? selectedModel.model : MODELS['llama-3.1-70b'].model;
-                    return await callGroq(model, messages);
+                    return await callGroq(model, messages, onPartial);
                 } catch (e: any) { throw e; }
             }
         },
@@ -447,7 +491,7 @@ export async function routeToModel(
     // 1. Try Selected Model First (Happy Path)
     try {
         if (selectedModel.provider === 'groq' && hasGroqKey) {
-            return await callGroq(selectedModel.model, messages);
+            return await callGroq(selectedModel.model, messages, onPartial);
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
             throw new Error('UseLegacyOpenAIPath'); // Handled by existing code logic? 

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentActivity } from './AgentActivity';
+import { ThinkingProcess } from './ThinkingProcess';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -1402,6 +1403,36 @@ export default function CommandComposer({
             hideToolSoon();
           }
 
+          if (msg.type === 'thought') {
+            const action = msg.data?.action;
+            const content = msg.data?.content || '';
+
+            setEvents(prev => {
+              const last = prev[prev.length - 1];
+              // If we are starting a thought
+              if (action === 'start') {
+                // Check if we already have an active thought to avoid dupes if connection glitches
+                if (last && last.type === 'thought' && last.data.active) return prev;
+                return [...prev, { type: 'thought', data: { content: '', active: true }, ts: Date.now() }];
+              }
+              // If we are appending to a thought
+              if (last && last.type === 'thought' && last.data.active) {
+                const updated = {
+                  ...last,
+                  data: { ...last.data, content: last.data.content + content }
+                };
+                // If ending, mark inactive
+                if (action === 'end') {
+                  updated.data.active = false;
+                }
+                return [...prev.slice(0, -1), updated];
+              }
+              return prev;
+            });
+            // Keep scrolling down as thoughts stream in
+            if (autoScrollRef.current) scrollToBottom('auto');
+          }
+
           if (msg.type === 'text') {
             const id = typeof msg?.id === 'string' ? msg.id : '';
             const isSystemPrompt = id.startsWith('system_prompt:');
@@ -2612,6 +2643,7 @@ export default function CommandComposer({
       else if (type === 'text') out.push({ kind: 'text', key: `text:${idx}`, e, idx });
       else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
+      else if (type === 'thought') out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
     }
 
     return out;
@@ -2743,6 +2775,12 @@ export default function CommandComposer({
                     showTechnical={!!showTechnicalByRunId[rid]}
                     onToggleTechnical={() => setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }))}
                   />
+                );
+              }
+
+              if (item.kind === 'thought') {
+                return (
+                  <ThinkingProcess key={item.key} thought={item.e?.data} />
                 );
               }
 

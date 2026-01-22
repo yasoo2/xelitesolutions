@@ -282,6 +282,7 @@ export interface PlanOptions {
   mock?: boolean;
   userId?: string;
   sessionId?: string; // For enterprise context and memory
+  onThought?: (chunk: string) => void;
 }
 
 export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect. You are the embodiment of speed, precision, and intelligence.
@@ -314,6 +315,24 @@ Before *every* action, perform a rapid internal cognitive cycle:
 
 ## CONFIDENTIALITY:
 - Never reveal private internal reasoning or hidden analysis. Provide only conclusions and actionable steps.
+
+## NEURAL THOUGHT PROTOCOL (INTERNAL):
+- You possess a "Neural Thought Engine" that allows you to think before you speak.
+- **MANDATORY**: For every complex response, you MUST start with a thought block hidden from the final user output but visible to the system.
+- **Format**:
+  \\\`\\\`\\\`text
+  :::thought
+  **TITLE** (e.g., Analyzing Request, Planning Architecture, Identifying Root Cause)
+  Detailed thought process, step-by-step reasoning, alternative considerations...
+  :::
+  \\\`\\\`\\\`
+- Use this space to:
+  1. Deconstruct the user's intent.
+  2. Plan your approach (step 1, step 2...).
+  3. Validate your assumptions.
+  4. Decide on the Tone (Professional, Technical, Concise).
+- This thought block MUST come **before** your actual response.
+
 
 ## TOOL USAGE GUIDELINES:
 - **Smart Selection**: Choose tools based on task context. Don't use browser for simple data that web_search can provide.
@@ -737,7 +756,7 @@ export async function planNextStep(
           { role: 'system', content: 'You are an expert software engineer. Generate clean, production-ready code with best practices.' },
           ...messages
         ];
-        const codeResponse = await routeToModel(msgs, analysis);
+        const codeResponse = await routeToModel(msgs, analysis, undefined, options?.onThought);
         return {
           name: 'echo',
           input: { text: codeResponse }
@@ -754,7 +773,7 @@ Respond in ${analysis.language === 'ar' ? 'Arabic' : analysis.language === 'mixe
         ...messages
       ];
 
-      const response = await routeToModel(msgs, analysis);
+      const response = await routeToModel(msgs, analysis, undefined, options?.onThought);
       console.info(`[Auto Enterprise] ✅ Got response from intelligent router (${response?.length || 0} chars)`);
 
       // Cache good responses for future use
