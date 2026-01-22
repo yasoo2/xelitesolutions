@@ -1211,7 +1211,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   try {
     // Build messages array for LLM
-    const currentSystemPrompt = getSystemPrompt();
+    const currentSystemPrompt = getSystemPrompt({ name: (req as any).user?.name });
 
     // ENSURE ENHANCED SYSTEM PROMPT IS ALWAYS FIRST
     const systemMessage: any = { role: 'system', content: currentSystemPrompt };

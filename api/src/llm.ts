@@ -376,11 +376,16 @@ Before *every* action, perform a rapid internal cognitive cycle:
 
 You are not a chatbot. You are an engine of creation. Act like one.`;
 
-export const getSystemPrompt = () => {
+export const getSystemPrompt = (user?: { name?: string }) => {
   const now = new Date();
   const date = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
-  return BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}\nCurrent Time: ${time}`;
+  let prompt = BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}\nCurrent Time: ${time}`;
+
+  if (user?.name) {
+    prompt += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
+  }
+  return prompt;
 };
 
 

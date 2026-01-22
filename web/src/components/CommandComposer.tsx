@@ -317,8 +317,10 @@ const ChatBubble = forwardRef(
           <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
             {bubbleVariant === 'user' && userPicture ? (
               <img src={userPicture} alt="User" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-            ) : (
+            ) : bubbleVariant === 'user' ? (
               <SenderIcon size={16} />
+            ) : (
+              <div className="joe-avatar-icon">J</div>
             )}
           </div>
         ) : null}
