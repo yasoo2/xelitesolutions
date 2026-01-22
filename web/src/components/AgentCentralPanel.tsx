@@ -83,27 +83,37 @@ export default function AgentCentralPanel({
             {/* Elite Tab Navigation (Overlay Style) */}
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center p-1.5 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
                 <div className="flex gap-1">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => onTabChange(tab.id as TabType)}
-                            className={`flex items-center gap-3 px-6 py-2.5 rounded-xl text-sm font-black transition-all relative group ${activeTab === tab.id
-                                ? 'bg-[var(--accent-primary)] text-slate-950 shadow-[0_0_20px_var(--accent-glow)]'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                                }`}
-                        >
-                            <tab.icon size={18} className={activeTab === tab.id ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-300'} />
-                            <span className="uppercase tracking-widest">{tab.label}</span>
-                            {activeTab === tab.id && (
-                                <motion.div
-                                    layoutId="eliteTabGlow"
-                                    className="absolute inset-0 rounded-xl bg-white/10"
-                                    initial={false}
-                                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                                />
-                            )}
-                        </button>
-                    ))}
+                    {tabs.map((tab) => {
+                        const isActive = activeTab === tab.id;
+                        // Dynamic colors: Gold for dark mode, Blue for light mode
+                        const activeBg = 'linear-gradient(135deg, #F0B90B 0%, #FFD700 100%)';
+                        const activeBgLight = 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)';
+
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => onTabChange(tab.id as TabType)}
+                                className={`flex items-center gap-3 px-6 py-2.5 rounded-xl text-sm font-black transition-all relative group ${isActive
+                                        ? 'text-slate-950 shadow-[0_0_30px_rgba(240,185,11,0.6)]'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                    }`}
+                                style={isActive ? {
+                                    background: activeBg,
+                                } : {}}
+                            >
+                                <tab.icon size={18} className={isActive ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-300'} />
+                                <span className="uppercase tracking-widest">{tab.label}</span>
+                                {isActive && (
+                                    <motion.div
+                                        layoutId="eliteTabGlow"
+                                        className="absolute inset-0 rounded-xl bg-white/10"
+                                        initial={false}
+                                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                    />
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
