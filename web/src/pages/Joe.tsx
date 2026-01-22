@@ -904,7 +904,7 @@ export default function Joe() {
                     <AgentCentralPanelLazy
                       sessionId={agentSelected || undefined}
                       browserSessionId={agentBrowserSessionId}
-                      thinkingChain={thinkingChain}
+
                       showBoxes={showBoxes}
                       activeTab={agentCentralTab}
                       onTabChange={setAgentCentralTab}
@@ -996,7 +996,7 @@ export default function Joe() {
                     </div>
                   </div>
                 </div>
-                {(showFiles || showThinkingPanel) ? (
+                {(showFiles) ? (
                   <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
                     <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
