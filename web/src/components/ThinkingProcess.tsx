@@ -88,19 +88,20 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <span style={{
-                        color: '#FFD700',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        letterSpacing: '0.5px',
+                        color: 'rgba(255, 215, 0, 0.7)',
+                        fontSize: '0.75rem',
+                        fontWeight: 200,
+                        letterSpacing: '0.8px',
                         fontFamily: 'monospace',
                         textTransform: 'uppercase'
                     }}>
                         {t('neuralThoughtEngine')}
                     </span>
                     <span style={{
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        fontSize: '0.8rem',
-                        marginTop: '2px',
+                        color: 'rgba(255, 255, 255, 0.45)',
+                        fontSize: '0.78rem',
+                        fontWeight: 200,
+                        marginTop: '1px',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'
@@ -137,10 +138,10 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                                 padding: '12px 16px',
                                 maxHeight: '240px',
                                 overflowY: 'auto',
-                                fontSize: '0.82rem',
-                                fontWeight: 300,
+                                fontSize: '0.78rem',
+                                fontWeight: 200,
                                 lineHeight: '1.6',
-                                color: 'rgba(255, 255, 255, 0.6)',
+                                color: 'rgba(255, 255, 255, 0.45)',
                                 fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
                                 whiteSpace: 'pre-wrap',
                                 scrollbarWidth: 'thin',

@@ -2586,12 +2586,21 @@ export default function CommandComposer({
     for (const { e } of sortedEvents) {
       if (e?.type === 'text') {
         const rid = getEventRunId(e);
-        if (rid && rid !== 'no-run') hasTextResponse.add(rid);
+        if (rid && rid !== 'no-run') {
+          // If the text has actual content, mark this run as responded
+          const content = e.data?.text || e.data;
+          if (typeof content === 'string' && content.trim()) {
+            hasTextResponse.add(rid);
+          } else if (content && typeof content === 'object' && String(content.text || '').trim()) {
+            hasTextResponse.add(rid);
+          }
+        }
       }
     }
 
-    // Also hide active thoughts if we are in 'answering' status for the current session
-    const isAnsweringCurrent = status === 'answering';
+    // Also track if we are currently streaming an answer for the active run
+    const activeRunHasText = activeRunId && hasTextResponse.has(activeRunId);
+    const isAnsweringCurrent = status === 'answering' || activeRunHasText;
 
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
@@ -2606,16 +2615,27 @@ export default function CommandComposer({
       }
 
       if (type === 'user_input') out.push({ kind: 'user', key: `user:${idx}`, e, idx });
-      else if (type === 'text') out.push({ kind: 'text', key: `text:${idx}`, e, idx });
+      else if (type === 'text') {
+        const rid = getEventRunId(e);
+        const cleaned = cleanAssistantText(e.data?.text || e.data);
+        if (cleaned) out.push({ kind: 'text', key: `text:${idx}`, e, idx });
+      }
       else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
       else if (type === 'thought') {
         const rid = getEventRunId(e);
-        // EPHEMERAL THOUGHT: Hide if text response has already started for this run/session
+        // ABSOLUTE EPHEMERAL THOUGHT: Hide if text response has already started for this run/session
         if (hasTextResponse.has(rid)) continue;
-        // Also hide if it's the very last thought and we just started answering
-        const isLastItem = idx === sortedEvents.length - 1;
-        if (isLastItem && isAnsweringCurrent) continue;
+
+        // If it belongs to the current active run and we are answering, hide it
+        if (rid === activeRunId && isAnsweringCurrent) continue;
+
+        // Also fallback check for consecutive thought/text items
+        const nextItem = sortedEvents[idx + 1];
+        if (nextItem && nextItem.e?.type === 'text') {
+          const nextRid = getEventRunId(nextItem.e);
+          if (nextRid === rid) continue;
+        }
 
         out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
       }
