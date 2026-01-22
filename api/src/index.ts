@@ -28,6 +28,7 @@ import databaseRoutes from './routes/database';
 import actionsRoutes from './routes/actions';
 import browserRoutes from './routes/browser';
 import serverRoutes from './routes/servers';
+import queueRoutes from './routes/queue';
 import { healthcheckBrowser } from './browser/manager';
 
 import { authenticate } from './middleware/auth';
@@ -159,6 +160,7 @@ async function main() {
   app.use('/actions', actionsRoutes);
   app.use('/api/browser', browserRoutes);
   app.use('/api/servers', authenticate, serverRoutes);
+  app.use('/queue', queueRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
