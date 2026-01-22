@@ -2664,7 +2664,7 @@ export default function CommandComposer({
 
         // 2. If the GLOBAL status is answering, kill ALL thoughts (including optimistic ones).
         // This is the "Nuclear Option" to prevent overlap.
-        if (status === 'answering') continue;
+        if ((status as string) === 'answering') continue;
 
         // 3. Specific Run Check
         if (rid === activeRunId && isAnsweringCurrent) continue;
@@ -2674,7 +2674,7 @@ export default function CommandComposer({
         if (next && next.e?.type === 'text' && getEventRunId(next.e) === rid) continue;
 
         // 5. Special check for optimistic thoughts during answering
-        if (rid.endsWith('_opt') && (status === 'answering' || isAnsweringCurrent)) continue;
+        if (rid.endsWith('_opt') && ((status as string) === 'answering' || isAnsweringCurrent)) continue;
 
         out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
       }
