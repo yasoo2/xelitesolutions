@@ -963,8 +963,6 @@ export default function Joe() {
                           await loadAllSessions();
                           setAgentSelected(id);
                         }}
-                        showTerminal={agentCentralTab === 'terminal'}
-                        onTerminalToggle={() => setAgentCentralTab(agentCentralTab === 'terminal' ? 'browser' : 'terminal')}
                       />
 
                     </div>
