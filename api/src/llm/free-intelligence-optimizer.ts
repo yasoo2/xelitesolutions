@@ -145,7 +145,10 @@ export class FreeIntelligenceOptimizer {
         }
 
         // FAST LANE: Use 8B for short/simple queries (Speed > Quality)
-        if (message.length < 100 && !/(plan|design|architecture|explain|why|how|خطط|صمم|معمارية|اشرح|لماذا|كيف)/i.test(lower)) {
+        // But NOT for factual identification
+        const isFactual = /(who\s*is|what\s*is|man\s*huwa|president|ruler|king|minister|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|الحالي|عاصمة|ماهي|ماهو)/i.test(lower);
+
+        if (!isFactual && message.length < 100 && !/(plan|design|architecture|explain|why|how|خطط|صمم|معمارية|اشرح|لماذا|كيف)/i.test(lower)) {
             console.info('[FREE OPTIMIZER] ⚡ Fast Lane detected → Using Llama 3.1 8B (Instant)');
             return 'llama-3.1-8b-instant';
         }

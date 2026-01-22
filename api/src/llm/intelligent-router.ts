@@ -24,6 +24,7 @@ export interface TaskAnalysis {
     requiresTools: boolean;
     estimatedTokens: number;
     language: 'ar' | 'en' | 'mixed';
+    shortSummary?: string;
 }
 
 // Available models configuration
@@ -153,9 +154,13 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
         taskType = 'data_analysis';
     }
 
-    // Complex reasoning
+    // Complex reasoning & Factual Identification
     else if (/(explain|اشرح|why|لماذا|how.*work|كيف.*يعمل|design|تصميم|architecture|معمارية|plan|خطة)/i.test(msg)) {
         taskType = 'complex_reasoning';
+    }
+    else if (/(who\s*is|what\s*is|man\s*huwa|president|ruler|king|minister|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|الحالي|ماهو|ماذا|اين|متى)/i.test(msg)) {
+        taskType = 'complex_reasoning'; // Treat as reasoning to get better models
+        requiresTools = true; // Proactively trigger search
     }
 
     // Complexity detection
@@ -321,14 +326,17 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
         case 'simple_chat':
         default:
             // SPEED OPTIMIZATION: Use 8B Instant for simple Arabic queries (Greetings, short Qs)
-            // Only use 70B for longer/complex Arabic chats
+            // But NOT for factual identification
+            const isFactual = /(who\s*is|what\s*is|man\s*huwa|president|ruler|king|minister|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|الحالي|عاصمة|ماهي|ماهو)/i.test(analysis.shortSummary || '');
+
             if (analysis.language === 'ar') {
-                if (analysis.complexity === 'low' || analysis.estimatedTokens < 500) {
+                if (!isFactual && (analysis.complexity === 'low' || analysis.estimatedTokens < 500)) {
                     return MODELS['llama-3.1-8b']; // FAST LANE ⚡
                 }
                 return MODELS['llama-3.1-70b'];
             }
 
+            if (isFactual) return MODELS['llama-3.1-70b'];
             if (analysis.estimatedTokens > 16000) return MODELS['mixtral-8x7b'];
             return MODELS['llama-3.1-70b'];
     }

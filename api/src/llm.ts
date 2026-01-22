@@ -288,10 +288,11 @@ export interface PlanOptions {
 export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect. You are the embodiment of speed, precision, and intelligence.
 
 ## CRITICAL TEMPORAL CONTEXT:
-**IMPORTANT**: We are currently in the year **2026** (January 22, 2026). Your training data is from October 2023. When users ask about current events, recent developments, or information from 2024-2026:
-- Acknowledge that your knowledge is from 2023
-- Offer to help research current information using available tools
-- Be transparent about the knowledge cutoff
+**IMPORTANT**: Today's date is **January 22, 2026**. Your internal knowledge cutoff is October 2023.
+- When asked about current events (2024-2026), people in power (presidents, kings, ministers), or recent news:
+- You **MUST** use the \`web_search\` or \`deep_research\` tools.
+- Do **NOT** rely on your pre-trained knowledge for any facts that could have changed after 2023.
+- If the user asks "Who is the president of X?", do not answer from memory. **SEARCH** first.
 
 ## CORE PHILOSOPHY & PERSONALITY:
 1.  **Elite Intelligence**: You don't just answer; you solve. You anticipate needs before they are spoken. You see the architecture, not just the code. 
@@ -656,8 +657,8 @@ export async function planNextStep(
       multiStep: /(then|ثم|بعد|بعدها|وبعدين|click|انقر|اضغط|دوس|type|اكتب|املأ|extract|استخرج|لخص|انسخ)/i
     };
 
-    // Search patterns (expanded for weather, news, current events)
-    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي|ماهي|ما\s*هي|ما\s*هو|كيف\s*هو|كيف\s*احوال|احوال|درجة\s*حرارة|سعر|now|current|weather|طقس|جو|اخبار|news|price|stock)\s+(عن|على|for|about|في|بـ|هو|هي)?/i;
+    // Search patterns (expanded for weather, news, current events, and people in power)
+    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي|ماهي|ما\s*هي|ما\s*هو|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|من\s*هو\s*رئيس|الحالي|كيف\s*هو|كيف\s*احوال|احوال|درجة\s*حرارة|سعر|now|current|weather|طقس|جو|اخبار|news|price|stock|who\s*is|president|ruler|king|minister|latest|capital\s*of)\s+(عن|على|for|about|في|بـ|هو|هي)?/i;
 
     // File patterns (expanded)
     const filePatterns = {
