@@ -71,6 +71,20 @@ export async function deleteSession(req: Request, res: Response) {
     }
 }
 
+export async function deleteAllSessions(req: Request, res: Response) {
+    const userId = (req as any).auth?.sub;
+    try {
+        if (useMock()) {
+            // Mock implementation (stub)
+            return res.json({ ok: true });
+        }
+        const result = await Session.deleteMany({ userId });
+        return res.json({ ok: true, count: result.deletedCount });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to delete all sessions' });
+    }
+}
+
 export async function togglePin(req: Request, res: Response) {
     const id = req.params.id;
     try {

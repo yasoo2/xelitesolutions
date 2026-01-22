@@ -140,4 +140,16 @@ export const useSessionStore = create<SessionState>((set) => ({
       set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-session-${id}`]: false } }));
     }
   },
+
+  deleteAllSessions: async () => {
+    set(state => ({ loadingStates: { ...state.loadingStates, deletingAll: true } }));
+    try {
+      await api.delete('/sessions');
+      set({ sessions: [], agentSessions: [], selected: null, agentSelected: null });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      set(state => ({ loadingStates: { ...state.loadingStates, deletingAll: false } }));
+    }
+  },
 }));

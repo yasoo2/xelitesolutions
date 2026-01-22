@@ -14,6 +14,9 @@ router.get('/', authenticate as any, SessionController.listSessions);
 router.get('/search', authenticate as any, SessionController.searchSessions);
 
 
+// Delete All Sessions
+router.delete('/', authenticate as any, SessionController.deleteAllSessions);
+
 // Delete Session
 router.delete('/:id', authenticate as any, SessionController.deleteSession);
 
