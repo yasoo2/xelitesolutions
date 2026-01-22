@@ -86,11 +86,11 @@ export default function AgentCentralPanel({
                             key={tab.id}
                             onClick={() => onTabChange(tab.id as TabType)}
                             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all relative group ${activeTab === tab.id
-                                ? 'bg-slate-800 text-white shadow-lg border border-slate-700'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                ? 'bg-[var(--accent-primary)] text-slate-900 shadow-lg border border-white/20'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                 }`}
                         >
-                            <tab.icon size={14} className={activeTab === tab.id ? tab.color : 'text-slate-500 group-hover:text-slate-300'} />
+                            <tab.icon size={14} className={activeTab === tab.id ? 'text-slate-900' : 'text-slate-500 group-hover:text-slate-300'} />
                             {tab.label}
                             {activeTab === tab.id && (
                                 <motion.div

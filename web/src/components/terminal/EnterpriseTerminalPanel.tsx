@@ -286,9 +286,9 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                         <div className="flex-1 overflow-auto p-2 flex flex-col gap-1">
                             <button
                                 onClick={() => addTab()}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 transition-all group"
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--accent-primary)] hover:text-slate-900 text-slate-200 transition-all group"
                             >
-                                <Monitor size={14} className="group-hover:text-purple-400 text-slate-400" />
+                                <Monitor size={14} className="group-hover:text-slate-900 text-slate-400" />
                                 <span className="text-sm font-medium">Localhost</span>
                             </button>
 
@@ -296,10 +296,10 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                                 <button
                                     key={server.id}
                                     onClick={() => addTab(server)}
-                                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 transition-all group"
+                                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[var(--accent-primary)] hover:text-slate-900 text-slate-200 transition-all group"
                                 >
                                     <div className="flex items-center gap-2 overflow-hidden">
-                                        <Globe size={14} className="group-hover:text-blue-400 shrink-0 text-slate-400" />
+                                        <Globe size={14} className="group-hover:text-slate-900 shrink-0 text-slate-400" />
                                         <span className="text-sm font-medium truncate">{server.name}</span>
                                     </div>
                                     <div className={`w-1.5 h-1.5 rounded-full ${server.isActive ? 'bg-green-500' : 'bg-slate-600'}`}></div>

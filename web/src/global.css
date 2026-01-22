@@ -3442,23 +3442,48 @@ html[data-theme="light"] .providers-left {
   gap: 8px;
 }
 
+.sidebar {
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.session-item {
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.session-item:hover,
+.session-item.active {
+  background: var(--bg-secondary);
+  color: var(--accent-primary);
+}
+
+.sidebar-toggle-btn,
+.close-sidebar-btn {
+  color: var(--accent-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
 .send-btn {
   height: 40px;
   width: 40px;
   border-radius: 14px;
   border: 1px solid transparent;
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #ffffff;
+  background: var(--accent-primary);
+  color: #000000;
+  /* Force dark text on Yellow/Blue button */
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 14px 40px rgba(34, 197, 94, 0.22);
-  transition: transform 0.15s ease, filter 0.15s ease;
+  box-shadow: 0 10px 30px var(--accent-glow);
 }
 
 html[data-theme="light"] .send-btn {
   color: #ffffff;
+  /* White text on Blue button */
 }
 
 .send-btn.is-busy {
@@ -3849,25 +3874,27 @@ html[data-theme="light"] .send-btn {
 .ssh-active {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05));
   border-color: rgba(16, 185, 129, 0.3);
-}.joe-avatar-icon {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: system-ui, -apple-system, sans-serif;
-    font-weight: 800;
-    font-size: 16px;
-    color: #fff;
-    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.joe-avatar-icon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .chat-avatar.ai {
-    border: 0;
-    background: transparent;
-    padding: 0;
-    width: 36px;
-    height: 36px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  width: 36px;
+  height: 36px;
 }

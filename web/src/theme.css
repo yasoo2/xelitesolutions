@@ -2,11 +2,11 @@
 html[data-theme="dark"],
 html.dark {
   /* Obsidian Lux Palette */
-  --accent-primary: #F0B90B;
-  /* Luxury Gold */
+  --accent-primary: #ffff00;
+  /* Pure Yellow */
   --accent-secondary: #E2E8F0;
   /* Platinum Silver */
-  --accent-primary-rgb: 240, 185, 11;
+  --accent-primary-rgb: 255, 255, 0;
   --accent-secondary-rgb: 226, 232, 240;
 
   --accent-rgb: 240, 185, 11;
@@ -67,17 +67,17 @@ html {
 }
 
 html[data-theme="light"] {
-  /* Light Mode Adaptation of Obsidian Lux (Cream & Gold) */
-  --accent-primary: #d97706;
-  /* Amber 600 */
+  /* Blue & Gold (Light Mode Upgrade) */
+  --accent-primary: #2563eb;
+  /* Blue 600 */
   --accent-secondary: #0f172a;
   /* Slate 900 */
-  --accent-primary-rgb: 217, 119, 6;
+  --accent-primary-rgb: 37, 99, 235;
   --accent-secondary-rgb: 15, 23, 42;
-  --accent-rgb: 217, 119, 6;
-  --accent-glow: rgba(217, 119, 6, 0.2);
-  --brand-mark-yellow: #d97706;
-  --brand-mark-yellow-rgb: 217, 119, 6;
+  --accent-rgb: 37, 99, 235;
+  --accent-glow: rgba(37, 99, 235, 0.2);
+  --brand-mark-yellow: #2563eb;
+  --brand-mark-yellow-rgb: 37, 99, 235;
 
   --bg-dark: #f8fafc;
   /* Slate 50 */
