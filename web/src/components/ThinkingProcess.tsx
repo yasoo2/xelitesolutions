@@ -18,20 +18,21 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
     const [displayedContent, setDisplayedContent] = useState('');
 
     // High-speed word-by-word streaming for Elite 5.0
+    // High-speed word-by-word streaming for Elite 5.0
     useEffect(() => {
         if (!thought.content || !thought.active) {
-            setDisplayedContent(thought.content);
+            setDisplayedContent(thought.content || '');
             return;
         }
 
-        const words = thought.content.split(' ');
+        const words = (thought.content || '').split(' ');
         let current = '';
         let i = 0;
 
         const interval = setInterval(() => {
             if (i >= words.length) {
                 clearInterval(interval);
-                setDisplayedContent(thought.content);
+                setDisplayedContent(thought.content || '');
                 return;
             }
             current += (i === 0 ? '' : ' ') + words[i];
@@ -59,7 +60,7 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
     // Remove title from content for display
     const cleanContent = thought.title
         ? displayedContent
-        : displayedContent.replace(/\*\*([^*]+)\*\*/, '').trim();
+        : (displayedContent || '').replace(/\*\*([^*]+)\*\*/, '').trim();
 
     return (
         <motion.div
