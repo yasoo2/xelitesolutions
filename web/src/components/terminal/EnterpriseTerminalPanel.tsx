@@ -84,10 +84,26 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             fontFamily: '"JetBrains Mono", "Fira Code", monospace',
             fontSize: 13,
             theme: {
-                background: '#0f172a', // Slate-900
-                foreground: '#e2e8f0', // Slate-200
-                cursor: '#a78bfa',
-                selectionBackground: 'rgba(167, 139, 250, 0.3)',
+                background: '#09090b', // Zinc-950 (Deep Black)
+                foreground: '#ffffff', // Pure White
+                cursor: '#22c55e', // Green-500
+                selectionBackground: 'rgba(34, 197, 94, 0.3)',
+                black: '#09090b',
+                red: '#ef4444',
+                green: '#22c55e',
+                yellow: '#eab308',
+                blue: '#3b82f6',
+                magenta: '#a855f7',
+                cyan: '#06b6d4',
+                white: '#ffffff',
+                brightBlack: '#71717a',
+                brightRed: '#f87171',
+                brightGreen: '#4ade80',
+                brightYellow: '#fde047',
+                brightBlue: '#60a5fa',
+                brightMagenta: '#c084fc',
+                brightCyan: '#22d3ee',
+                brightWhite: '#ffffff'
             },
             allowProposedApi: true
         });
@@ -222,12 +238,12 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             style={{ zIndex: isEmbedded ? 1 : 100, backdropFilter: isEmbedded ? 'none' : 'blur(10px)' }}
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 select-none">
+            <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 select-none">
                 <div className="flex items-center gap-3">
                     <Activity size={18} className="text-purple-400 animate-pulse" />
                     <span className="text-sm font-semibold text-slate-200 tracking-tight">Enterprise Terminal</span>
-                    <div className="h-4 w-[1px] bg-slate-700"></div>
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/50 border border-slate-700">
+                    <div className="h-4 w-[1px] bg-slate-600"></div>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-600">
                         <Server size={12} className="text-slate-400" />
                         <span className="text-[10px] text-slate-300 font-medium">10.0.1.X - PROD</span>
                     </div>
@@ -256,8 +272,8 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             {!isMinimized && (
                 <div className="flex flex-1 overflow-hidden">
                     {/* Sidebar - Server List */}
-                    <div className="w-56 bg-slate-800/30 border-r border-slate-700/50 flex flex-col">
-                        <div className="p-3 flex items-center justify-between border-b border-slate-700/30">
+                    <div className="w-56 bg-slate-900 border-r border-slate-700 flex flex-col">
+                        <div className="p-3 flex items-center justify-between border-b border-slate-700">
                             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Servers</span>
                             <button
                                 onClick={() => setShowAddServer(true)}
@@ -270,9 +286,9 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                         <div className="flex-1 overflow-auto p-2 flex flex-col gap-1">
                             <button
                                 onClick={() => addTab()}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-700/50 text-slate-300 transition-all group"
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 transition-all group"
                             >
-                                <Monitor size={14} className="group-hover:text-purple-400" />
+                                <Monitor size={14} className="group-hover:text-purple-400 text-slate-400" />
                                 <span className="text-sm font-medium">Localhost</span>
                             </button>
 
@@ -280,10 +296,10 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                                 <button
                                     key={server.id}
                                     onClick={() => addTab(server)}
-                                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-700/50 text-slate-300 transition-all group"
+                                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 transition-all group"
                                 >
                                     <div className="flex items-center gap-2 overflow-hidden">
-                                        <Globe size={14} className="group-hover:text-blue-400 shrink-0" />
+                                        <Globe size={14} className="group-hover:text-blue-400 shrink-0 text-slate-400" />
                                         <span className="text-sm font-medium truncate">{server.name}</span>
                                     </div>
                                     <div className={`w-1.5 h-1.5 rounded-full ${server.isActive ? 'bg-green-500' : 'bg-slate-600'}`}></div>
