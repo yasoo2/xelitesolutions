@@ -16,6 +16,9 @@ router.get('/search', authenticate as any, SessionController.searchSessions);
 // Get Session Messages (History)
 router.get('/:id/messages', authenticate as any, SessionController.listSessionMessages);
 
+// Compatibility alias for CommandComposer.tsx
+router.get('/:id/history', authenticate as any, SessionController.listSessionMessages);
+
 
 // Delete All Sessions
 router.delete('/', authenticate as any, SessionController.deleteAllSessions);

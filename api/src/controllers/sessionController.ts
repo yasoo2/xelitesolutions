@@ -137,18 +137,65 @@ export async function listSessionMessages(req: Request, res: Response) {
             return res.json(store.listMessages(sessionId));
         }
 
-        // Fetch Messages and ToolExecutions in parallel
+        // Fetch Messages, Tools, and Session in parallel
         const [messages, tools, session] = await Promise.all([
             Message.find({ sessionId }).sort({ createdAt: 1 }).lean(),
             ToolExecution.find({ sessionId: sessionId }).sort({ createdAt: 1 }).lean(),
             Session.findById(sessionId)
         ]);
 
+        // Transform to unified events format for frontend
+        const events: any[] = [];
+
+        messages.forEach((m: any) => {
+            if (m.role === 'user') {
+                events.push({
+                    type: 'user_input',
+                    data: m.content,
+                    ts: new Date(m.createdAt).getTime(),
+                    id: m._id.toString(),
+                    seq: 0
+                });
+            } else if (m.role === 'assistant') {
+                events.push({
+                    type: 'text',
+                    data: { text: m.content },
+                    ts: new Date(m.createdAt).getTime(),
+                    id: m._id.toString(),
+                    runId: m.runId
+                });
+            }
+        });
+
+        tools.forEach((t: any) => {
+            const ts = new Date(t.createdAt).getTime();
+            events.push({
+                type: 'step_started',
+                runId: t.runId,
+                data: { name: `execute:${t.name}`, input: t.input },
+                ts: ts
+            });
+            events.push({
+                type: t.ok ? 'step_done' : 'step_failed',
+                runId: t.runId,
+                data: {
+                    name: `execute:${t.name}`,
+                    result: {
+                        ok: t.ok,
+                        output: t.output,
+                        error: t.ok ? undefined : (t.output || 'Failed')
+                    }
+                },
+                ts: ts + 10
+            });
+        });
+
+        events.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+
         // Auto-Title Check (Lazy)
         if (session && (session.title === 'New Session' || session.title.startsWith('Session '))) {
-            // If we have some user messages, try to title it now
             const userMsgs = messages.filter(m => m.role === 'user');
-            if (userMsgs.length > 0 && userMsgs.length <= 5) { // Only title early on
+            if (userMsgs.length > 0 && userMsgs.length <= 5) {
                 (async () => {
                     try {
                         const newTitle = await generateSessionTitle(userMsgs.map(m => ({ role: 'user', content: m.content || '' })));
@@ -161,7 +208,7 @@ export async function listSessionMessages(req: Request, res: Response) {
             }
         }
 
-        return res.json({ messages, tools });
+        return res.json({ events });
     } catch (e) {
         console.error('List Messages Error', e);
         return res.status(500).json({ error: 'Failed to list session messages' });
