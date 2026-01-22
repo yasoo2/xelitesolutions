@@ -145,7 +145,7 @@ export default function Joe() {
   const [showBoxes, setShowBoxes] = useState(true);
   const [controlOpen, setControlOpen] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
-  const [agentCentralTab, setAgentCentralTab] = useState<'browser' | 'terminal' | 'logs' | 'flow'>('browser');
+  const [agentCentralTab, setAgentCentralTab] = useState<'browser' | 'terminal'>('terminal');
   const [showPackages, setShowPackages] = useState(false);
   const [showGit, setShowGit] = useState(false);
   const [showSocial, setShowSocial] = useState(false);
