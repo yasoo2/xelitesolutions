@@ -134,13 +134,14 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                         <div
                             ref={contentRef}
                             style={{
-                                padding: '16px',
-                                maxHeight: '300px',
+                                padding: '12px 16px',
+                                maxHeight: '240px',
                                 overflowY: 'auto',
-                                fontSize: '0.9rem',
+                                fontSize: '0.82rem',
+                                fontWeight: 300,
                                 lineHeight: '1.6',
-                                color: 'rgba(255, 255, 255, 0.8)',
-                                fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
                                 whiteSpace: 'pre-wrap',
                                 scrollbarWidth: 'thin',
                                 scrollbarColor: '#333 transparent'
@@ -154,7 +155,7 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                             {thought.active && (
                                 <motion.span
                                     animate={{ opacity: [0, 1, 0] }}
-                                    transition={{ duration: 0.8, repeat: Infinity }}
+                                    transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
                                     style={{ color: '#FFD700', marginLeft: '4px' }}
                                 >
                                     ▍

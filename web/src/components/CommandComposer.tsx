@@ -106,7 +106,7 @@ const ChatBubble = forwardRef(
 
     const senderLabel = bubbleVariant === 'user' ? 'أنت' : bubbleVariant === 'system' ? 'النظام' : 'Joe';
     const SenderIcon = bubbleVariant === 'user' ? User : bubbleVariant === 'system' ? ShieldCheck : Bot;
-    const showHeader = bubbleVariant !== 'user';
+    const showHeader = false; // ELITE REFINEMENT: Remove headers (Joe/You)
     const showAvatar = bubbleVariant !== 'user' || (bubbleVariant === 'user' && !!userPicture);
     const showCopy = bubbleVariant !== 'user';
 
@@ -2581,6 +2581,18 @@ export default function CommandComposer({
     const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
     const inserted = new Set<string>();
 
+    // ELITE REFINEMENT: Track sessions/runs that have text responses to hide their thoughts
+    const hasTextResponse = new Set<string>();
+    for (const { e } of sortedEvents) {
+      if (e?.type === 'text') {
+        const rid = getEventRunId(e);
+        if (rid && rid !== 'no-run') hasTextResponse.add(rid);
+      }
+    }
+
+    // Also hide active thoughts if we are in 'answering' status for the current session
+    const isAnsweringCurrent = status === 'answering';
+
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
 
@@ -2597,11 +2609,20 @@ export default function CommandComposer({
       else if (type === 'text') out.push({ kind: 'text', key: `text:${idx}`, e, idx });
       else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
-      else if (type === 'thought') out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
+      else if (type === 'thought') {
+        const rid = getEventRunId(e);
+        // EPHEMERAL THOUGHT: Hide if text response has already started for this run/session
+        if (hasTextResponse.has(rid)) continue;
+        // Also hide if it's the very last thought and we just started answering
+        const isLastItem = idx === sortedEvents.length - 1;
+        if (isLastItem && isAnsweringCurrent) continue;
+
+        out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
+      }
     }
 
     return out;
-  }, [sortedEvents]);
+  }, [sortedEvents, status]);
 
   const activeTaskBar = useMemo(() => {
     if (!showFloatingTaskbar) return null;
