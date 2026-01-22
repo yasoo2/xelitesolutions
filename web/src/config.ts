@@ -62,8 +62,10 @@ const pointsToLocalhost = (u: string) => {
 const apiEnv = !isLocalHost && pointsToLocalhost(apiEnvRaw) ? '' : apiEnvRaw;
 const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')) ? '' : wsEnvRaw;
 
-const API_URL = apiEnv || inferApiUrl();
-const WS_URL = wsEnv || inferWsUrl(API_URL);
+// ELITE FIX: Force localhost for dev
+const isDev = import.meta.env.DEV;
+const API_URL = isDev ? 'http://localhost:3000' : (apiEnv || inferApiUrl());
+const WS_URL = isDev ? 'ws://localhost:3000/ws' : (wsEnv || inferWsUrl(API_URL));
 const readQueryChrome = () => {
   try {
     return new URLSearchParams(window.location.search).get('chrome') || '';

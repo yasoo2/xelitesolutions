@@ -1771,6 +1771,38 @@ export default function CommandComposer({
     setActiveToolName(null);
     setToolVisible(false);
 
+    // ELITE 5.0 FIX: Optimistic "Instant" Thought Trigger (0ms Latency)
+    // Inject a local thought event immediately so the UI reacts before the server responds.
+    const optimisticRunId = `run_${Date.now()}_opt`;
+    const optimisticThoughtEvent = {
+      type: 'thought',
+      data: {
+        action: 'start',
+        runId: optimisticRunId
+      },
+      id: `thought_${Date.now()}_opt`,
+      ts: Date.now(),
+      seq: lastLiveSeqRef.current + 0.1,
+      runId: optimisticRunId
+    };
+
+    // We also need to inject an 'activity' placeholder or start the run locally in the UI state
+    // but the critical part is the thought.
+    setEvents(prev => [...prev, optimisticThoughtEvent]);
+    // Also start the streaming text for thought immediately
+    setEvents(prev => [...prev, {
+      type: 'thought',
+      data: {
+        action: 'chunk',
+        content: t('thinkingInit', 'Analyzing request...'),
+        runId: optimisticRunId
+      },
+      id: `thought_chunk_${Date.now()}_opt`,
+      ts: Date.now() + 1,
+      seq: lastLiveSeqRef.current + 0.2,
+      runId: optimisticRunId
+    }]);
+
     const isLikelyCodeFile = (v: string) => {
       const t = v.toLowerCase();
       return /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|json|md|yml|yaml|py|go|java|cs|cpp|c|h|hpp|rs|swift|kt|php|rb|sh|sql|toml|lock)(?:$|\?|\#)/i.test(t);
@@ -2624,16 +2656,25 @@ export default function CommandComposer({
       else if (type === 'thought') {
         const rid = getEventRunId(e);
 
-        // ELITE 5.0 (Absolute Isolation):
-        // 1. If this run ALREADY has a text response in history, hide all its thoughts.
+        // ELITE 5.0 FIX (Atomic Disappearance):
+        // Absolute Zero Tolerance for overlap.
+
+        // 1. If we have ANY text response for this run, kill the thought.
         if (hasTextResponse.has(rid)) continue;
 
-        // 2. If this is the current active run AND we just started answering, hide its thoughts.
+        // 2. If the GLOBAL status is answering, kill ALL thoughts (including optimistic ones).
+        // This is the "Nuclear Option" to prevent overlap.
+        if (status === 'answering') continue;
+
+        // 3. Specific Run Check
         if (rid === activeRunId && isAnsweringCurrent) continue;
 
-        // 3. Peak ahead: if the NEXT item in the sorted stream is a text response for this run, hide this thought.
+        // 4. Peak ahead check remains valid
         const next = sortedEvents[idx + 1];
         if (next && next.e?.type === 'text' && getEventRunId(next.e) === rid) continue;
+
+        // 5. Special check for optimistic thoughts during answering
+        if (rid.endsWith('_opt') && (status === 'answering' || isAnsweringCurrent)) continue;
 
         out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
       }
