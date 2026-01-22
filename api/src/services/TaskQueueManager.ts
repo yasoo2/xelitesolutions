@@ -52,8 +52,9 @@ class TaskQueueManager {
             'actually', 'wait', 'correction', 'mistake'
         ];
 
-        const hasCorrectio nKeyword = correctionKeywords.some(kw =>
-            newMessage.toLowerCase().includes(kw)
+        const messageLower = newMessage.toLowerCase();
+        const hasCorrectionKeyword = correctionKeywords.some(kw =>
+            messageLower.includes(kw)
         );
 
         // Use LLM for semantic analysis
