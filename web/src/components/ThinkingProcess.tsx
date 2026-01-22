@@ -40,24 +40,22 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
             animate={{ opacity: 1, y: 0 }}
             className="thinking-process-container"
             style={{
-                margin: '12px 0',
+                margin: '8px 0',
                 borderRadius: '12px',
-                border: '1px solid rgba(255, 215, 0, 0.2)', // Gold border
-                background: 'linear-gradient(180deg, rgba(10, 10, 20, 0.9) 0%, rgba(20, 20, 35, 0.95) 100%)',
+                border: '1px solid rgba(255, 255, 255, 0.04)',
+                background: 'rgba(255, 255, 255, 0.01)',
                 overflow: 'hidden',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(255, 215, 0, 0.05)',
             }}
         >
             {/* Header */}
             <div
                 onClick={() => setIsExpanded(!isExpanded)}
                 style={{
-                    padding: '10px 16px',
+                    padding: '8px 12px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '12px',
+                    gap: '10px',
                     cursor: 'pointer',
-                    borderBottom: isExpanded ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
                     background: 'rgba(255, 255, 255, 0.02)',
                 }}
             >

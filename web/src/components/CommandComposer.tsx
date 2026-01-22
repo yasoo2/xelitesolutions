@@ -306,12 +306,38 @@ const ChatBubble = forwardRef(
       else if (looksLikeBrowserSummary(content)) content = formatBrowserSummary(content);
     }
 
+    const [displayedContent, setDisplayedContent] = useState(isUser || !isTyping ? rawText : '');
+    const streamingRef = useRef(false);
+
+    useEffect(() => {
+      if (isUser || !isTyping || streamingRef.current || displayedContent === rawText) return;
+
+      streamingRef.current = true;
+      const words = rawText.split(' ');
+      let current = '';
+      let i = 0;
+
+      const interval = setInterval(() => {
+        if (i >= words.length) {
+          clearInterval(interval);
+          streamingRef.current = false;
+          setDisplayedContent(rawText);
+          return;
+        }
+        current += (i === 0 ? '' : ' ') + words[i];
+        setDisplayedContent(current);
+        i++;
+      }, 30);
+
+      return () => clearInterval(interval);
+    }, [rawText, isUser, isTyping, displayedContent]);
+
     return (
       <motion.div
         ref={ref}
-        initial={{ opacity: 0, y: 10, scale: 0.98, filter: 'blur(4px)' }}
-        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-        transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
         className={`chat-bubble-wrapper ${bubbleVariant}`}
       >
         {showAvatar ? (
@@ -345,22 +371,22 @@ const ChatBubble = forwardRef(
 
           <div className="chat-bubble-content" dir="auto">
             {bubbleVariant === 'user' ? (
-              <div>{content}</div>
+              <div>{displayedContent}</div>
             ) : (
               <>
                 <ReactMarkdown
                   components={{
-                    h1: ({ node, ...props }) => <h1 {...props} />,
-                    h2: ({ node, ...props }) => <h2 {...props} />,
-                    h3: ({ node, ...props }) => <h3 {...props} />,
-                    ul: ({ node, ...props }) => <ul {...props} />,
-                    ol: ({ node, ...props }) => <ol {...props} />,
-                    li: ({ node, ...props }) => <li {...props} />,
-                    p: ({ node, ...props }) => <p {...props} />,
-                    blockquote: ({ node, ...props }) => <blockquote {...props} />,
-                    a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                    h1: ({ ...props }) => <h1 {...props} />,
+                    h2: ({ ...props }) => <h2 {...props} />,
+                    h3: ({ ...props }) => <h3 {...props} />,
+                    ul: ({ ...props }) => <ul {...props} />,
+                    ol: ({ ...props }) => <ol {...props} />,
+                    li: ({ ...props }) => <li {...props} />,
+                    p: ({ ...props }) => <p {...props} />,
+                    blockquote: ({ ...props }) => <blockquote {...props} />,
+                    a: ({ ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
                     code({ className, children, ...props }: any) {
-                      const { inline, node, ...rest } = props as any;
+                      const { inline, ...rest } = props as any;
                       const match = /language-(\w+)/.exec(className || '');
                       return !inline && match ? (
                         <SyntaxHighlighter style={vscDarkPlus as any} language={match[1]} PreTag="div" dir="ltr" {...rest}>
@@ -374,7 +400,7 @@ const ChatBubble = forwardRef(
                     },
                   }}
                 >
-                  {content || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
+                  {displayedContent || (typeof event.data === 'string' ? event.data : JSON.stringify(event.data))}
                 </ReactMarkdown>
 
                 {options.length > 0 && (
@@ -389,7 +415,7 @@ const ChatBubble = forwardRef(
               </>
             )}
 
-            {isTyping ? (
+            {isTyping && !streamingRef.current ? (
               <div className="typing-dots" aria-label="Typing">
                 <span className="typing-dot" />
                 <span className="typing-dot" />
