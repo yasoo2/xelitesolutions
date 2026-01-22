@@ -44,13 +44,21 @@ export class CentralAnswerTool implements ToolDefinition {
             {
                 name: 'OpenAI',
                 run: async () => {
+                    const systemPrompt = `You are **Joe**, the advanced autonomous AI engine of the **XElite Solutions** workspace.
+Your purpose is to assist the user with coding, system tasks, and general knowledge.
+You are powerful, elegant, and professional.
+You have access to files, terminals, and a web browser, and you can operate autonomously.
+Always introduce yourself as **Joe** if asked. Never claim to be ChatGPT or OpenAI.
+Your responses should be clean, concise, and helpful.
+Use Markdown for formatting.`;
+
                     const OpenAI = require('openai').default;
                     const apiKey = process.env.OPENAI_API_KEY;
                     if (!apiKey) throw new Error('OPENAI_API_KEY not found');
                     const client = new OpenAI({ apiKey });
                     const res = await client.chat.completions.create({
                         model: 'gpt-4o',
-                        messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }, { role: 'user', content: question }],
+                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: question }],
                         max_tokens: 1000
                     });
                     return res.choices[0]?.message?.content;
@@ -62,7 +70,15 @@ export class CentralAnswerTool implements ToolDefinition {
                     if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_placeholder') throw new Error('Skipping Groq: No API Key');
                     const { GroqProvider } = require('../../llm/providers/groq');
                     const gp = new GroqProvider();
-                    return await gp.chatComplete([{ role: 'user', content: question }]);
+                    const systemPrompt = `You are Joe, the engine of XElite Solutions.`;
+                    // Simplifying prompt for smaller models or to avoid repetition if defined elsewhere? 
+                    // No, let's keep it consistent but compact if needed.
+                    // Actually, let's use the full prompt but we need to duplicate the string or scope it.
+                    // To avoid scope issues in this array of functions, I'll copy the string or use a shared variable outside execute?
+                    // But class method scoping is awkward with array literals.
+                    // I'll just use a shorter version for the free models to save tokens/speed.
+                    const prompt = `You are **Joe**, the AI engine of **XElite Solutions**. Powerful, elegant, professional. Never ChatGPT.`;
+                    return await gp.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
                 }
             },
             {
@@ -71,7 +87,8 @@ export class CentralAnswerTool implements ToolDefinition {
                     if (!process.env.OPENROUTER_API_KEY) throw new Error('Skipping OpenRouter: No API Key');
                     const { OpenRouterProvider } = require('../../llm/providers/openrouter');
                     const op = new OpenRouterProvider(process.env.OPENROUTER_API_KEY || undefined);
-                    return await op.chatComplete([{ role: 'user', content: question }]);
+                    const prompt = `You are **Joe**, the AI engine of **XElite Solutions**. Powerful, elegant, professional. Never ChatGPT.`;
+                    return await op.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
                 }
             },
             {
@@ -79,7 +96,8 @@ export class CentralAnswerTool implements ToolDefinition {
                 run: async () => {
                     const { PollinationsProvider } = require('../../llm/providers/pollinations');
                     const pp = new PollinationsProvider();
-                    return await pp.chatComplete([{ role: 'user', content: question }]);
+                    const prompt = `You are **Joe**, the AI engine of **XElite Solutions**. Powerful, elegant, professional. Never ChatGPT.`;
+                    return await pp.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
                 }
             }
         ];
