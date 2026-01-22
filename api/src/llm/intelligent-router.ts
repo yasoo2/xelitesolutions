@@ -108,10 +108,12 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     const msg = userMessage.toLowerCase();
     const length = userMessage.length;
 
-    // Detect language
-    const arabicRatio = (userMessage.match(/[\u0600-\u06FF]/g) || []).length / userMessage.length;
+    // Detect language: Stronger Arabic detection
+    const arabicRatio = (userMessage.match(/[\u0600-\u06FF]/g) || []).length / (userMessage.length || 1);
+    const hasArabicWords = /(أنا|أنت|هو|هي|نحن|في|من|على|إلى|عن|مع|هل|كيف|لماذا|متى|أين|ماذا|كم)/.test(userMessage);
     const language: 'ar' | 'en' | 'mixed' =
-        arabicRatio > 0.7 ? 'ar' : arabicRatio > 0.3 ? 'mixed' : 'en';
+        arabicRatio > 0.5 || (arabicRatio > 0.1 && hasArabicWords) ? 'ar' :
+            arabicRatio > 0.1 ? 'mixed' : 'en';
 
     // Task type detection
     let taskType: TaskAnalysis['type'] = 'simple_chat';
@@ -295,6 +297,8 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
             return MODELS['gemma-2-9b'];
 
         case 'complex_reasoning':
+            // Arabic reasoning ALWAYS gets the big model
+            if (analysis.language === 'ar') return MODELS['llama-3.1-70b'];
             return MODELS['llama-3.1-70b'];
 
         case 'creative':
@@ -309,6 +313,8 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
 
         case 'simple_chat':
         default:
+            // Arabic chat ALWAYS gets the big model for quality
+            if (analysis.language === 'ar') return MODELS['llama-3.1-70b'];
             if (analysis.estimatedTokens > 16000) return MODELS['mixtral-8x7b'];
             return MODELS['llama-3.1-70b'];
     }
