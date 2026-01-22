@@ -275,14 +275,15 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             </div>
 
             {!isMinimized && (
-                <div className="flex flex-1 overflow-hidden">
+                <div className="flex flex-1 overflow-hidden font-sans">
                     {/* Sidebar - Server List */}
-                    <div className="w-56 bg-slate-950 border-r border-slate-800 flex flex-col">
-                        <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-900/40">
-                            <span className="text-[10px] font-black text-slate-200 uppercase tracking-[0.2em]">Node Registry</span>
+                    <div className="w-56 bg-gradient-to-b from-[#0f1115] to-black border-r border-white/5 flex flex-col">
+                        <div className="p-3 pl-4 flex items-center justify-between border-b border-white/5">
+                            <span className="text-[10px] font-black text-[#F0B90B] uppercase tracking-[0.2em] opacity-80">Node Registry</span>
                             <button
                                 onClick={() => setShowAddServer(true)}
-                                className="p-1.5 hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] rounded-lg border border-[var(--accent-primary)]/10 transition-all active:scale-90"
+                                className="p-1.5 hover:bg-[#F0B90B]/10 text-[#F0B90B] rounded-lg border border-[#F0B90B]/20 transition-all active:scale-95 hover:shadow-[0_0_10px_rgba(240,185,11,0.2)]"
+                                title="Add New Server"
                             >
                                 <Plus size={14} />
                             </button>
@@ -291,94 +292,101 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                         <div className="flex-1 overflow-auto p-2 flex flex-col gap-1">
                             <button
                                 onClick={() => addTab()}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--accent-primary)] hover:text-slate-900 text-slate-200 transition-all group active:scale-95"
+                                className="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-white/5 text-slate-300 hover:text-white transition-all group active:scale-95 border border-transparent hover:border-white/5"
                             >
-                                <Monitor size={14} className="group-hover:text-slate-900 text-slate-400" />
-                                <span className="text-sm font-medium">Localhost</span>
+                                <Monitor size={14} className="text-[#F0B90B] opacity-70 group-hover:opacity-100" />
+                                <span className="text-xs font-bold tracking-wide">Localhost</span>
                             </button>
 
                             {servers.map(server => (
                                 <button
                                     key={server.id}
                                     onClick={() => addTab(server)}
-                                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[var(--accent-primary)] hover:text-slate-900 text-slate-200 transition-all group active:scale-95"
+                                    className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-white/5 text-slate-300 hover:text-white transition-all group active:scale-95 border border-transparent hover:border-white/5"
                                 >
                                     <div className="flex items-center gap-2 overflow-hidden">
-                                        <Globe size={14} className="group-hover:text-slate-900 shrink-0 text-slate-400" />
-                                        <span className="text-sm font-medium truncate">{server.name}</span>
+                                        <Globe size={14} className="text-blue-400 opacity-70 group-hover:opacity-100" />
+                                        <span className="text-xs font-medium truncate">{server.name}</span>
                                     </div>
-                                    <div className={`w-1.5 h-1.5 rounded-full ${server.isActive ? 'bg-green-500' : 'bg-slate-600'}`}></div>
+                                    <div className={`w-1.5 h-1.5 rounded-full shadow-[0_0_5px_currentColor] ${server.isActive ? 'bg-green-500 text-green-500' : 'bg-slate-700 text-slate-700'}`}></div>
                                 </button>
                             ))}
 
                             {isLoadingServers && (
                                 <div className="flex justify-center p-4">
-                                    <RefreshCw size={16} className="text-slate-300 animate-spin" />
+                                    <RefreshCw size={16} className="text-[#F0B90B] animate-spin" />
                                 </div>
                             )}
                         </div>
 
-                        <div className="p-3 border-t border-slate-700/30">
-                            <div className="flex items-center gap-2 text-slate-200 hover:text-white cursor-pointer transition-colors">
-                                <Settings size={14} />
-                                <span className="text-[11px] font-medium uppercase tracking-wider">Settings</span>
+                        <div className="p-3 border-t border-white/5 bg-white/[0.02]">
+                            <div className="flex items-center gap-2 text-slate-400 hover:text-[#F0B90B] cursor-pointer transition-colors group">
+                                <Settings size={14} className="group-hover:rotate-45 transition-transform duration-500" />
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Terminal Settings</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Main Content Area */}
-                    <div className="flex-1 flex flex-col bg-[#0f172a]">
+                    <div className="flex-1 flex flex-col bg-[#050505] relative">
                         {/* Tabs */}
-                        <div className="flex items-center bg-slate-900 border-b border-slate-700/50 overflow-x-auto no-scrollbar">
+                        <div className="flex items-center bg-[#0a0a0a] border-b border-white/5 overflow-x-auto no-scrollbar">
                             {tabs.map(tab => (
                                 <div
                                     key={tab.id}
                                     onClick={() => setActiveTabId(tab.id)}
-                                    className={`flex items-center gap-2 px-4 py-2 border-r border-slate-700/50 cursor-pointer transition-all min-w-[140px] max-w-[220px] ${activeTabId === tab.id
-                                        ? 'bg-[#0f172a] border-t-2 border-t-[var(--accent-primary)] text-[var(--accent-primary)] shadow-[inset_0_2px_10px_rgba(var(--accent-primary-rgb),0.1)]'
-                                        : 'bg-slate-800/30 text-slate-500 hover:bg-slate-800/50 hover:text-slate-300'
+                                    className={`flex items-center gap-2 px-4 py-2 border-r border-white/5 cursor-pointer transition-all min-w-[140px] max-w-[220px] relative group ${activeTabId === tab.id
+                                        ? 'bg-[#151515] text-[#F0B90B]'
+                                        : 'bg-transparent text-slate-500 hover:bg-white/5 hover:text-slate-300'
                                         }`}
                                 >
-                                    {tab.serverId ? <Globe size={12} className={activeTabId === tab.id ? 'text-[var(--accent-primary)]' : ''} /> : <Monitor size={12} className={activeTabId === tab.id ? 'text-[var(--accent-primary)]' : ''} />}
+                                    {activeTabId === tab.id && (
+                                        <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#F0B90B] shadow-[0_0_10px_#F0B90B]" />
+                                    )}
+                                    {tab.serverId ? <Globe size={12} className={activeTabId === tab.id ? 'text-blue-400' : ''} /> : <Monitor size={12} className={activeTabId === tab.id ? 'text-[#F0B90B]' : ''} />}
                                     <span className="text-xs truncate font-bold tracking-tight">{tab.name}</span>
                                     <X
-                                        size={10}
-                                        className="ml-auto hover:text-red-400 opacity-50 hover:opacity-100 transition-opacity"
+                                        size={12}
+                                        className="ml-auto hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-white/10 rounded"
                                         onClick={(e) => closeTab(tab.id, e)}
                                     />
                                 </div>
                             ))}
                             <button
                                 onClick={() => addTab()}
-                                className="p-2 text-slate-500 hover:text-[var(--accent-primary)] transition-colors"
+                                className="px-3 py-2 text-slate-600 hover:text-[#F0B90B] transition-colors hover:bg-white/5"
+                                title="New Tab"
                             >
                                 <Plus size={14} />
                             </button>
                         </div>
 
                         {/* Terminal Viewports */}
-                        <div className="flex-1 relative">
+                        <div className="flex-1 relative bg-black">
                             {tabs.map(tab => (
                                 <div
                                     key={tab.id}
                                     ref={el => (containersRef.current[tab.id] = el)}
-                                    className={`absolute inset-0 p-2 ${activeTabId === tab.id ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}
+                                    className={`absolute inset-0 p-3 pt-4 ${activeTabId === tab.id ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}
                                 />
                             ))}
                         </div>
 
                         {/* Status Footer */}
-                        <div className="px-3 py-1.5 bg-slate-900 border-t border-slate-700/50 flex items-center justify-between">
+                        <div className="px-3 py-1 bg-[#0a0a0a] border-t border-white/5 flex items-center justify-between select-none">
                             <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1.5 text-slate-400">
-                                    <Wifi size={12} className="text-green-500" />
-                                    <span className="text-[10px] font-medium uppercase tracking-tighter">Socket Connected</span>
+                                <div className="flex items-center gap-1.5 text-slate-500">
+                                    <Wifi size={10} className="text-green-500" />
+                                    <span className="text-[9px] font-bold uppercase tracking-wider">Connected</span>
                                 </div>
-                                <div className="h-3 w-[1px] bg-slate-700"></div>
-                                <div className="text-[10px] text-slate-300 font-mono">joe-term@enterprise:~</div>
+                                <div className="h-2 w-[1px] bg-white/10"></div>
+                                <div className="text-[9px] text-slate-400 font-mono tracking-wide opacity-50">
+                                    {activeTabId.includes('local') ? 'local::core' : 'remote::ssh'}
+                                </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-300">UTF-8</span>
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#F0B90B] animate-pulse"></div>
+                                <span className="text-[9px] text-[#F0B90B] font-bold tracking-wider opacity-80">ONLINE</span>
                             </div>
                         </div>
                     </div>
