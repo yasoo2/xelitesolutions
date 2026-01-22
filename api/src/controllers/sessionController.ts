@@ -122,7 +122,54 @@ export async function updateSecrets(req: Request, res: Response) {
     return res.json({ ok: true, message: 'Secrets updated (stub)' });
 }
 
+// ... (existing imports)
+import { Message } from '../models/message';
+import { ToolExecution } from '../models/toolExecution';
+import { generateSessionTitle } from '../llm';
+import { broadcast } from '../ws';
+
+export async function listSessionMessages(req: Request, res: Response) {
+    const sessionId = req.params.id;
+    const userId = (req as any).auth?.sub;
+
+    try {
+        if (useMock()) {
+            return res.json(store.listMessages(sessionId));
+        }
+
+        // Fetch Messages and ToolExecutions in parallel
+        const [messages, tools, session] = await Promise.all([
+            Message.find({ sessionId }).sort({ createdAt: 1 }).lean(),
+            ToolExecution.find({ sessionId: sessionId }).sort({ createdAt: 1 }).lean(),
+            Session.findById(sessionId)
+        ]);
+
+        // Auto-Title Check (Lazy)
+        if (session && (session.title === 'New Session' || session.title.startsWith('Session '))) {
+            // If we have some user messages, try to title it now
+            const userMsgs = messages.filter(m => m.role === 'user');
+            if (userMsgs.length > 0 && userMsgs.length <= 5) { // Only title early on
+                (async () => {
+                    try {
+                        const newTitle = await generateSessionTitle(userMsgs.map(m => ({ role: 'user', content: m.content || '' })));
+                        if (newTitle && newTitle !== 'New Session') {
+                            await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+                            broadcast({ type: 'sessions:refresh', data: { sessionId } });
+                        }
+                    } catch (e) { console.error('Lazy auto-title failed', e) }
+                })();
+            }
+        }
+
+        return res.json({ messages, tools });
+    } catch (e) {
+        console.error('List Messages Error', e);
+        return res.status(500).json({ error: 'Failed to list session messages' });
+    }
+}
+
 export async function searchSessions(req: Request, res: Response) {
+    // ... (existing searchSessions code)
     const userId = (req as any).auth?.sub;
     const query = String(req.query.q || '').trim();
     const kind = String(req.query.kind || '');
