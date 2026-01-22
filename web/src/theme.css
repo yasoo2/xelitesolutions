@@ -2,11 +2,11 @@
 html[data-theme="dark"],
 html.dark {
   /* Obsidian Lux Palette */
-  --accent-primary: #ffff00;
-  /* Pure Yellow */
+  --accent-primary: #F0B90B;
+  /* Luxury Gold */
   --accent-secondary: #E2E8F0;
   /* Platinum Silver */
-  --accent-primary-rgb: 255, 255, 0;
+  --accent-primary-rgb: 240, 185, 11;
   --accent-secondary-rgb: 226, 232, 240;
 
   --accent-rgb: 240, 185, 11;
@@ -67,9 +67,9 @@ html {
 }
 
 html[data-theme="light"] {
-  /* Blue & Gold (Light Mode Upgrade) */
+  /* Premium Theme Accents */
   --accent-primary: #2563eb;
-  /* Blue 600 */
+  /* Royal Blue */
   --accent-secondary: #0f172a;
   /* Slate 900 */
   --accent-primary-rgb: 37, 99, 235;

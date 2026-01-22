@@ -94,6 +94,16 @@ export default function TopBar() {
       <div className="spacer" />
 
       <div className="topbar-actions">
+        {/* Theme Toggle Button */}
+        <button
+          className="action-btn theme-toggle-btn"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          title={theme === 'dark' ? t('lightMode', 'Light Mode') : t('darkMode', 'Dark Mode')}
+          style={{ marginRight: '8px' }}
+        >
+          {theme === 'dark' ? <Moon size={20} className="theme-icon moon" /> : <Sun size={20} className="theme-icon sun" />}
+        </button>
+
         {/* Admin Dashboard Link */}
         {user?.role === 'OWNER' && (
           <button
