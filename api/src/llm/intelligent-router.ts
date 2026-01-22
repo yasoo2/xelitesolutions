@@ -390,9 +390,10 @@ export async function routeToModel(
         {
             name: 'Groq (Free)',
             run: async () => {
-                // Try Groq if matched OR as fallback
+                if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_placeholder') {
+                    throw new Error('Skipping Groq: No API Key');
+                }
                 try {
-                    // Prefer 70B for reasoning, 8B for speed
                     const model = selectedModel.provider === 'groq' ? selectedModel.model : MODELS['llama-3.1-70b'].model;
                     return await callGroq(model, messages);
                 } catch (e: any) { throw e; }
@@ -401,11 +402,13 @@ export async function routeToModel(
         {
             name: 'OpenRouter (Free)',
             run: async () => {
+                if (!process.env.OPENROUTER_API_KEY) {
+                    throw new Error('Skipping OpenRouter: No API Key');
+                }
                 if (!openrouter) {
                     const llm = require('../llm');
                     openrouter = llm.openRouterProvider;
                 }
-                // Use Gemma 9B Free as robust option
                 return await openrouter.chatComplete(messages, 'google/gemma-2-9b-it:free');
             }
         },

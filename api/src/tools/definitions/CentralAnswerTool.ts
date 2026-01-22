@@ -63,6 +63,7 @@ export class CentralAnswerTool implements ToolDefinition {
             {
                 name: 'Groq (Free)',
                 run: async () => {
+                    if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_placeholder') throw new Error('Skipping Groq: No API Key');
                     const { GroqProvider } = require('../../llm/providers/groq');
                     const gp = new GroqProvider();
                     return await gp.chatComplete([{ role: 'user', content: question }]);
@@ -71,6 +72,7 @@ export class CentralAnswerTool implements ToolDefinition {
             {
                 name: 'OpenRouter (Free)',
                 run: async () => {
+                    if (!process.env.OPENROUTER_API_KEY) throw new Error('Skipping OpenRouter: No API Key');
                     const { OpenRouterProvider } = require('../../llm/providers/openrouter');
                     const op = new OpenRouterProvider(process.env.OPENROUTER_API_KEY || undefined);
                     return await op.chatComplete([{ role: 'user', content: question }]);
