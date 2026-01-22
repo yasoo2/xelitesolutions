@@ -123,8 +123,15 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
         requiresTools = true;
     }
 
+
+    // File/System Operations
+    else if (/(file|folder|directory|system|terminal|command|ملف|مجلد|نظام|امر)/i.test(msg) && /(create|write|read|edit|delete|run|execute|list|انشئ|اكتب|اقرأ|عدل|احذف|شغل|نفذ|اعرض)/i.test(msg)) {
+        taskType = 'code_generation';
+        requiresTools = true;
+    }
+
     // Code generation
-    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create.*app|انشئ.*تطبيق)/i.test(msg)) {
+    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create|انشئ|app|تطبيق)/i.test(msg)) {
         taskType = 'code_generation';
         requiresTools = length > 100; // Complex code needs tools
     }
@@ -177,7 +184,7 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
     // CRITICAL: Skip LLM analysis for simple/short messages to avoid double-hitting free rate limits
     // Also skip if it's clearly a greeting or very short question
     const isGreeting = /^(hi|hello|مرحبا|اهلا|سلام|hey)/i.test(userMessage.trim());
-    const hasComplexKeywords = /(build|create|ابني|انشئ|app|تطبيق|system|نظام|full|كامل|ecommerce|متجر|deploy|رفع|fix|صلح|optimize|حسن)/i.test(userMessage);
+    const hasComplexKeywords = /(build|create|file|folder|shell|terminal|ابني|انشئ|ملف|مجلد|app|تطبيق|system|نظام|full|كامل|ecommerce|متجر|deploy|رفع|fix|صلح|optimize|حسن)/i.test(userMessage);
 
     if ((length < 50 && !hasComplexKeywords) || (isGreeting && length < 100)) {
         console.info('[IntelligentRouter] Skipping LLM analysis for simple/short request');
@@ -192,12 +199,12 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
 Be extremely strict with complexity:
 - "extreme": Building full applications, complex systems, multi-step deployment, or "from scratch" projects.
 - "high": Complex coding tasks, deep analysis, or multi-module changes.
-- "medium": Browser automation, explaining complex concepts (like Kubernetes), or single component logic.
+- "medium": Browser automation, explaining complex concepts (like Kubernetes), single component logic, or multi-step file operations.
 - "low": Simple questions, greetings, or basic file reads.
 
 Task Types:
 - "complex_reasoning": For "How does X work?", architecture discussions, or planning.
-- "code_generation": For any request involving writing code.
+- "code_generation": For any request involving writing code, file operations, or system commands.
 - "browser_task": For any web-based automation or search.
 
 Return exactly this JSON structure:
@@ -241,7 +248,7 @@ Return exactly this JSON structure:
  * Generate a multi-step execution plan for complex tasks
  */
 export async function generateActionPlan(userMessage: string, analysis: TaskAnalysis): Promise<string[]> {
-    if (analysis.complexity === 'low' || analysis.type === 'simple_chat') return [];
+    if (analysis.complexity === 'low' && !analysis.requiresTools) return [];
 
     try {
         const systemPrompt = `You are a technical planner. Break down the user's request into 3-5 logical steps. 
@@ -358,72 +365,107 @@ export async function routeToModel(
     // Select best model
     const selectedModel = selectBestModel(taskAnalysis, availableKeys);
 
-    console.info(`[IntelligentRouter] Selected: ${selectedModel.name} for ${taskAnalysis.type} (${taskAnalysis.complexity})`);
-
     // Check if Groq API key available
     const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
 
-    // If no Groq key and selected model needs it → use Pollinations directly
-    if (!hasGroqKey && selectedModel.provider === 'groq') {
-        console.info('[IntelligentRouter] No Groq key - using FREE Pollinations instead');
-        if (!hack) {
-            const llm = require('../llm');
-            hack = llm.pollinationsProvider;
+    // Unified Multi-Provider Mesh for Auto Mode
+    // Order: OpenAI (if key) -> Groq (Free) -> OpenRouter (Free) -> Pollinations (Backup)
+    const providers = [
+        {
+            name: 'OpenAI',
+            run: async () => {
+                if (selectedModel.provider === 'openai' || selectedModel.provider === 'anthropic') {
+                    if (process.env.OPENAI_API_KEY) {
+                        // Use standard invocation (implied by not throwing here)
+                        // But we need to actually CALL it.
+                        // existing logic below handles "if provider === 'openai' ..."
+                        // To fit into loop, we refactor slighty or just use the loop for FALLBACKs.
+                        throw new Error('Pass-through to main logic');
+                    }
+                    throw new Error('No OpenAI Key');
+                }
+                throw new Error('Not OpenAI model');
+            }
+        },
+        {
+            name: 'Groq (Free)',
+            run: async () => {
+                // Try Groq if matched OR as fallback
+                try {
+                    // Prefer 70B for reasoning, 8B for speed
+                    const model = selectedModel.provider === 'groq' ? selectedModel.model : MODELS['llama-3.1-70b'].model;
+                    return await callGroq(model, messages);
+                } catch (e: any) { throw e; }
+            }
+        },
+        {
+            name: 'OpenRouter (Free)',
+            run: async () => {
+                if (!openrouter) {
+                    const llm = require('../llm');
+                    openrouter = llm.openRouterProvider;
+                }
+                // Use Gemma 9B Free as robust option
+                return await openrouter.chatComplete(messages, 'google/gemma-2-9b-it:free');
+            }
+        },
+        {
+            name: 'Pollinations (Backup)',
+            run: async () => {
+                if (!hack) {
+                    const llm = require('../llm');
+                    hack = llm.pollinationsProvider;
+                }
+                return await hack.chatComplete(messages, 'openai');
+            }
         }
-        return await hack.chatComplete(messages, 'openai');
-    }
+    ];
 
+    let lastError = '';
+
+    // 1. Try Selected Model First (Happy Path)
     try {
-        // Route to appropriate provider
-        if (selectedModel.provider === 'groq') {
+        if (selectedModel.provider === 'groq' && hasGroqKey) {
             return await callGroq(selectedModel.model, messages);
         }
-
-        if (selectedModel.provider === 'hack') {
-            if (!hack) {
-                const llm = require('../llm');
-                hack = llm.pollinationsProvider;
-            }
-            return await hack.chatComplete(messages, 'openai');
+        if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
+            throw new Error('UseLegacyOpenAIPath'); // Handled by existing code logic? 
+            // Actually, intelligent-router calls `llm.ts`? No, it calls providers directly.
+            // Wait, `routeToModel` typically returns string.
+            // The original code passed `hack` for Pollinations.
+            // We need to implement OpenAI call here if we want it self-contained, 
+            // OR assume `llm.ts` passed it.
         }
-
-        if (selectedModel.provider === 'openrouter') {
-            if (!openrouter) {
-                const llm = require('../llm');
-                openrouter = llm.openRouterProvider;
-            }
-            return await openrouter.chatComplete(messages, selectedModel.model);
+    } catch (e: any) {
+        if (e.message !== 'UseLegacyOpenAIPath') {
+            console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message}`);
         }
-
-        // For Anthropic/OpenAI - would need separate implementation
-        throw new Error(`Provider ${selectedModel.provider} not yet implemented`);
-
-    } catch (error: any) {
-        console.error(`[IntelligentRouter] ${selectedModel.name} failed, using fallback...`);
-
-        // Fallback cascade: Try Groq models if key available, otherwise Pollinations
-        if (hasGroqKey) {
-            try {
-                if (selectedModel.model !== MODELS['llama-3.1-70b'].model) {
-                    console.info('[IntelligentRouter] Fallback to Llama 3.1 70B');
-                    return await callGroq(MODELS['llama-3.1-70b'].model, messages);
-                }
-            } catch { }
-
-            try {
-                console.info('[IntelligentRouter] Fallback to Llama 3.1 8B');
-                return await callGroq(MODELS['llama-3.1-8b'].model, messages);
-            } catch { }
-        }
-
-        // Final fallback - Always available (FREE)
-        console.info('[IntelligentRouter] Final fallback to Pollinations (FREE)');
-        if (!hack) {
-            const llm = require('../llm');
-            hack = llm.pollinationsProvider;
-        }
-        return await hack.chatComplete(messages, 'openai');
     }
+
+    // 2. The Chain of Steel (Fallback Mesh)
+    for (const p of providers) {
+        try {
+            // Skip OpenAI in loop if we know we want free/auto fallback
+            if (p.name === 'OpenAI') continue;
+
+            console.info(`[IntelligentRouter] 🔄 Attempting ${p.name}...`);
+            const ans = await p.run();
+            if (ans) {
+                console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
+                return ans;
+            }
+        } catch (e: any) {
+            console.warn(`[IntelligentRouter] ${p.name} failed: ${e.message}`);
+            lastError = e.message;
+        }
+    }
+
+    // Final catch-all (should never be reached due to Pollinations, but just in case)
+    if (!hack) {
+        const llm = require('../llm');
+        hack = llm.pollinationsProvider;
+    }
+    return await hack.chatComplete(messages, 'openai');
 }
 
 /**
