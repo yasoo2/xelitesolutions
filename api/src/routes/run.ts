@@ -1549,7 +1549,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
-        const result = await executeTool(initialPlan.name, callInput);
+        let result; try { result = await executeTool(initialPlan.name, callInput); } catch (e) { result = { ok: false, output: String(e) }; }
         if (initialPlan.name === 'central_answer' && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
@@ -1598,7 +1598,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
-        const result = await executeTool(initialPlan.name, callInput);
+        let result; try { result = await executeTool(initialPlan.name, callInput); } catch (e) { result = { ok: false, output: String(e) }; }
         if (String(initialPlan.name) === 'central_answer' && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
