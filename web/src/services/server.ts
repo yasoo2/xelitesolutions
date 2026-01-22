@@ -36,7 +36,10 @@ const getHeaders = () => {
 
 export const ServerService = {
     async listServers(): Promise<ServerConfig[]> {
-        const res = await fetch(`${API_URL}/api/servers`, { headers: getHeaders() });
+        const res = await fetch(`${API_URL}/api/servers`, {
+            headers: getHeaders(),
+            credentials: 'include'
+        });
         if (!res.ok) throw new Error('Failed to fetch servers');
         return res.json();
     },
