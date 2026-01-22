@@ -412,7 +412,7 @@ export { pollinationsProvider, openRouterProvider, huggingfaceProvider };
 
 
 // In-memory store for user provider preference
-// 'joe' = Pollinations (Free)
+// 'pollinations' = Pollinations (Free)
 // 'openrouter' = OpenRouter (Free/Paid)
 // 'auto' = Intelligent Auto-Selection
 // 'gemini' = Google Gemini (Official)
@@ -425,7 +425,6 @@ export function setActiveProvider(userId: string, provider: string) {
   else if (['auto', 'intelligent'].includes(p)) activeProviders.set(userId, 'auto');
   else if (['huggingface', 'hf'].includes(p)) activeProviders.set(userId, 'huggingface');
   else if (['gemini', 'google'].includes(p)) activeProviders.set(userId, 'gemini');
-  else if (['pollinations'].includes(p)) activeProviders.set(userId, 'pollinations');
   else activeProviders.set(userId, 'openai');
   console.log(`LLM: User ${userId.slice(0, 4)} switched to provider: ${activeProviders.get(userId)}`);
 }
@@ -434,29 +433,13 @@ export function getActiveProvider(userId: string): string {
   const userProvider = activeProviders.get(userId);
   if (userProvider) return userProvider;
 
-  // Smart default: Use FREE provider if no OpenAI key
-  const envProvider = process.env.LLM_PROVIDER?.toLowerCase();
-  if (envProvider?.includes('pollinations') || envProvider?.includes('hack') || envProvider?.includes('joe')) {
-    return 'pollinations';
-  }
-
+  // Smart default: Use OPENAI if available, else standard fallback
   const hasOpenAIKey = !!(process.env.OPENAI_API_KEY?.trim());
-  return hasOpenAIKey ? 'openai' : 'pollinations';
+  return hasOpenAIKey ? 'openai' : 'openrouter';
 }
 
 export async function callLLM(prompt: string, context: any[] = [], userId?: string): Promise<string> {
   const currentProvider = userId ? getActiveProvider(userId) : 'openai';
-
-  // Hack Provider (Joe)
-  if (currentProvider === 'joe') {
-    console.log('LLM: Using Hack Provider (Joe/Pollinations)');
-    const msgs = [
-      { role: 'system', content: 'You are a helpful assistant.' },
-      ...context,
-      { role: 'user', content: prompt }
-    ];
-    return pollinationsProvider.chatComplete(msgs, 'openai');
-  }
 
   // Determine configuration for Official Providers (OpenAI / Gemini)
   let forcedBaseUrl = process.env.OPENAI_BASE_URL;
@@ -527,31 +510,7 @@ export async function planNextStep(
 
 
 
-  if (providerKey.includes('joe') || providerKey.includes('hack') || providerKey.includes('pollinations')) {
-    console.info('[LLM] Planning with Hack Provider (Joe/Pollinations)');
 
-    // Anti-Loop Check: If the last message was a tool output (from our previous echo), we assume we're done.
-    const lastMsg = messages[messages.length - 1];
-    const role = lastMsg ? (lastMsg.role as string) : '';
-    if (role === 'tool' || role === 'function') {
-      console.info('[LLM] Joe Hack: Detected tool output, ending turn to avoid loop.');
-      return null;
-    }
-
-    try {
-      // Pollinations is text-only, so we treat it as an interaction that returns an echo/response
-      // This satisfies the connection verification check
-      const msgs = [
-        { role: 'system', content: 'You are a helpful assistant.' },
-        ...messages
-      ];
-      const text = await pollinationsProvider.chatComplete(msgs, 'openai');
-      return { name: 'echo', input: { text: text || 'Connected to Joe!' } };
-    } catch (err: any) {
-      console.error('[LLM] Joe Hack Provider Failed:', err);
-      throw new Error('JOE_CONNECTION_FAILED: ' + (err.message || String(err)));
-    }
-  }
 
   // OpenRouter Provider
   if (providerKey.includes('openrouter')) {

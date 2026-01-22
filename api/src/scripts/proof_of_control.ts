@@ -22,7 +22,7 @@ async function proveControl() {
             sessionId: sessionId,
             userId: 'auditor',
             sessionKind: 'chat',
-            provider: 'joe'
+            provider: 'pollinations'
         });
 
         console.log('   (AI is thinking and executing...)');

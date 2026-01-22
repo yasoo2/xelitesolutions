@@ -420,7 +420,6 @@ interface ProviderConfig {
 }
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
-  joe: { name: 'Joe (Free)', apiKey: 'sk-pollinations-dummy', isConnected: true, model: 'openai', isCustom: true },
   openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemma-2-9b-it:free' },
   auto: { name: 'Auto (Intelligent)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
@@ -552,7 +551,6 @@ export default function CommandComposer({
       anthropic: { ...DEFAULT_PROVIDERS.anthropic },
       gemini: { ...DEFAULT_PROVIDERS.gemini },
       grok: { ...DEFAULT_PROVIDERS.grok },
-      joe: { ...DEFAULT_PROVIDERS.joe }, // Joe (Free) at the end
     };
 
     try {
@@ -566,25 +564,18 @@ export default function CommandComposer({
     } catch { }
 
     const pickFirstKeyedProvider = () => {
-      // PRIORITY: Use Joe (Free) by default - always works, no credits needed
-      return 'joe';
+      // PRIORITY: Use Auto by default
+      return 'auto';
 
-      // Only switch to paid providers if user explicitly configures them
-      // Uncomment below if you want to auto-switch when keys are added:
-      // if (String(baseProviders.openai?.apiKey || '').trim()) return 'openai';
-      // if (String(baseProviders.anthropic?.apiKey || '').trim()) return 'anthropic';
-      // if (String(baseProviders.gemini?.apiKey || '').trim()) return 'gemini';
+      // Use specific providers if keys exist
+      if (String(baseProviders.openai?.apiKey || '').trim()) return 'openai';
+      if (String(baseProviders.anthropic?.apiKey || '').trim()) return 'anthropic';
     };
 
     try {
       const savedActive = localStorage.getItem('active_provider');
       if (savedActive && baseProviders[savedActive]) {
-        // If saved provider has key (or is joe), use it. But if it's joe and we have openai key, upgrade to openai.
-        const hasKey = String(baseProviders[savedActive]?.apiKey || '').trim();
-        if (hasKey) {
-          if (savedActive === 'joe' && String(baseProviders.openai?.apiKey || '').trim()) return { providers: baseProviders, activeProvider: 'openai' };
-          return { providers: baseProviders, activeProvider: savedActive };
-        }
+        return { providers: baseProviders, activeProvider: savedActive };
       }
       return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
     } catch {

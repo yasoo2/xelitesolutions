@@ -574,7 +574,7 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
     return res.status(400).json({ error: 'مزود llm المحلي مُعطّل. اختر مزودًا وأدخل API Key.' });
   }
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
-  if (providerKey && providerKey !== 'openai' && !providerKey.includes('auto') && !providerKey.includes('joe') && !providerKey.includes('hack') && !providerKey.includes('pollinations') && !hasBaseUrl) {
+  if (providerKey && providerKey !== 'openai' && !providerKey.includes('auto') && !providerKey.includes('hack') && !providerKey.includes('pollinations') && !hasBaseUrl) {
     return res.status(400).json({
       error: `Provider "${providerKey}" requires an OpenAI-compatible Base URL (or select OpenAI).`,
     });
@@ -1385,7 +1385,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         initialPlan = { name: 'payments_create_checkout_session', input: { amount: p.amount, currency: p.currency, productName: p.productName } } as any;
       }
       if (!initialPlan) {
-        const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack' || providerKey === 'joe';
+        const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
         if ((!hasAnyKey && !isFreeProvider) || providerKey === 'llm') {
           initialPlan = fallbackPlanWhenPlannerUnavailable({
             userText: rawUserText,

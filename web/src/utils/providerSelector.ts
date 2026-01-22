@@ -104,18 +104,17 @@ export function selectAutoProvider(
 ): string {
     const analysis = analyzeComplexity(message);
 
-    // Simple tasks: Use Pollinations (always free and fast)
-    if (analysis.level === 'simple' && availableProviders.pollinations) {
-        return 'joe'; // Pollinations
+    // Simple tasks: Use OpenRouter free or OpenAI
+    if (analysis.level === 'simple') {
+        if (availableProviders.openrouter) return 'openrouter';
+        if (availableProviders.openai) return 'openai';
+        return 'auto';
     }
 
-    // Medium tasks: Use OpenRouter free or Pollinations
+    // Medium tasks: Use OpenRouter free
     if (analysis.level === 'medium') {
         if (availableProviders.openrouter) {
             return 'openrouter';
-        }
-        if (availableProviders.pollinations) {
-            return 'joe';
         }
     }
 
@@ -137,5 +136,5 @@ export function selectAutoProvider(
     }
 
     // Ultimate fallback
-    return 'joe';
+    return 'auto';
 }

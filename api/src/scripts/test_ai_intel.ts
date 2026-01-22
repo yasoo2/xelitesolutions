@@ -20,7 +20,7 @@ async function testAI() {
             sessionId: sessionId,
             userId: 'test_user',
             sessionKind: 'chat',
-            provider: 'joe'
+            provider: 'pollinations'
         });
 
         console.log('✅ Response Received!');
