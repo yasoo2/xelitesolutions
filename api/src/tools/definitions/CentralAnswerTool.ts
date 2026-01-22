@@ -44,55 +44,73 @@ export class CentralAnswerTool implements ToolDefinition {
     async execute(input: { question: string }) {
         const { question } = input;
 
-        try {
-            const OpenAI = require('openai').default;
-            const apiKey = process.env.OPENAI_API_KEY;
-            if (!apiKey) throw new Error('OPENAI_API_KEY not found');
+        const providers = [
+            {
+                name: 'OpenAI',
+                run: async () => {
+                    const OpenAI = require('openai').default;
+                    const apiKey = process.env.OPENAI_API_KEY;
+                    if (!apiKey) throw new Error('OPENAI_API_KEY not found');
+                    const client = new OpenAI({ apiKey });
+                    const res = await client.chat.completions.create({
+                        model: 'gpt-4o',
+                        messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }, { role: 'user', content: question }],
+                        max_tokens: 1000
+                    });
+                    return res.choices[0]?.message?.content;
+                }
+            },
+            {
+                name: 'Groq (Free)',
+                run: async () => {
+                    const { GroqProvider } = require('../../llm/providers/groq');
+                    const gp = new GroqProvider();
+                    return await gp.chatComplete([{ role: 'user', content: question }]);
+                }
+            },
+            {
+                name: 'OpenRouter (Free)',
+                run: async () => {
+                    const { OpenRouterProvider } = require('../../llm/providers/openrouter');
+                    const op = new OpenRouterProvider(process.env.OPENROUTER_API_KEY || undefined);
+                    return await op.chatComplete([{ role: 'user', content: question }]);
+                }
+            },
+            {
+                name: 'Pollinations (Backup)',
+                run: async () => {
+                    const { PollinationsProvider } = require('../../llm/providers/pollinations');
+                    const pp = new PollinationsProvider();
+                    return await pp.chatComplete([{ role: 'user', content: question }]);
+                }
+            }
+        ];
 
-            const openai = new OpenAI({ apiKey });
-            const completion = await openai.chat.completions.create({
-                model: 'gpt-4o',
-                messages: [
-                    { role: 'system', content: 'You are a helpful AI assistant. Answer the user question directly and concisely.' },
-                    { role: 'user', content: question }
-                ],
-                max_tokens: 1000
-            });
-
-            const answer = completion.choices[0]?.message?.content || 'No response generated.';
-
-            return {
-                ok: true,
-                output: {
-                    question,
-                    note: answer
-                },
-                logs: [`central_answer: Answered question: "${question.slice(0, 50)}..."`]
-            };
-        } catch (err: any) {
+        let lastError = '';
+        for (const p of providers) {
             try {
-                const { PollinationsProvider } = require('../../llm/providers/pollinations');
-                const provider = new PollinationsProvider();
-                const response = await provider.chatComplete([
-                    { role: 'system', content: 'You are a helpful AI assistant. Answer the user question directly and concisely.' },
-                    { role: 'user', content: question }
-                ]);
+                // Skip if key missing for paid (except Groq/Pollinations which handle own keys/free)
+                if (p.name === 'OpenAI' && !process.env.OPENAI_API_KEY) continue;
 
-                return {
-                    ok: true,
-                    output: {
-                        question,
-                        note: response || 'No response generated (Pollinations).'
-                    },
-                    logs: [`central_answer: Answered via Pollinations (Fallback): "${(response || '').slice(0, 50)}..."`]
-                };
-            } catch (fallbackErr: any) {
-                return {
-                    ok: false,
-                    error: `Failed to generate answer (All providers failed): ${err.message} -> ${fallbackErr.message}`,
-                    logs: [`central_answer: Error: ${err.message}`]
-                };
+                const answer = await p.run();
+                if (answer) {
+                    return {
+                        ok: true,
+                        output: { question, note: answer },
+                        logs: [`central_answer: Answered via ${p.name}`]
+                    };
+                }
+            } catch (e: any) {
+                console.warn(`[CentralAnswer] ${p.name} failed: ${e.message}`);
+                lastError = e.message;
+                // continue to next provider
             }
         }
+
+        return {
+            ok: false,
+            error: `All AI providers failed. Last error: ${lastError}`,
+            logs: [`central_answer: Failed all providers`]
+        };
     }
 }
