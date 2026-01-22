@@ -51,7 +51,8 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
 
     // Extract title
     const displayTitle = thought.title || (() => {
-        const match = thought.content.match(/\*\*([^*]+)\*\*/);
+        const content = thought.content || '';
+        const match = content.match(/\*\*([^*]+)\*\*/);
         return match ? match[1].trim() : t('thinkingDefaultTitle');
     })();
 
