@@ -3888,8 +3888,8 @@ html[data-theme="light"] .send-btn {
   font-family: system-ui, -apple-system, sans-serif;
   font-weight: 800;
   font-size: 16px;
-  color: #fff;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: var(--bg-dark);
+  background: var(--accent-primary);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
