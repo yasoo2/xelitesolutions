@@ -1496,7 +1496,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ev({ type: 'text', data: answerText });
           assistantTextEmitted = true;
         }
-        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
+        let stepResult = result;
+        if (initialPlan.name === 'central_answer' && result.ok) {
+          stepResult = { ...result, output: { note: 'Answer emitted as text' } };
+        }
+        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result: stepResult } });
         if (result.artifacts) {
           for (const a of result.artifacts) {
             store.addArtifact(runId, a.name, a.href);
@@ -1527,7 +1531,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ev({ type: 'text', data: answerText });
           assistantTextEmitted = true;
         }
-        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
+        let stepResult = result;
+        if (initialPlan.name === 'central_answer' && result.ok) {
+          // Hide raw JSON from UI, rely on 'text' event
+          stepResult = { ...result, output: { note: 'Answer emitted as text' } };
+        }
+        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result: stepResult } });
         if (result.artifacts) {
           // Persist artifacts in DB using Artifact model if needed
         }
