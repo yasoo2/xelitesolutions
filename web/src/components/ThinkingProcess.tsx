@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, ChevronDown, ChevronRight, Activity, Cpu, Sparkles } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Brain, Cpu } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface ThinkingProcessProps {
@@ -13,83 +13,93 @@ interface ThinkingProcessProps {
 
 export function ThinkingProcess({ thought }: ThinkingProcessProps) {
     const { t } = useTranslation();
-    const [isExpanded, setIsExpanded] = useState(true);
+    const isExpanded = true;
     const contentRef = useRef<HTMLDivElement>(null);
+    const [displayedContent, setDisplayedContent] = useState('');
 
-    // Auto-scroll to bottom of thought when active and expanded
+    // High-speed word-by-word streaming for Elite 5.0
     useEffect(() => {
-        if (thought.active && isExpanded && contentRef.current) {
+        if (!thought.content || !thought.active) {
+            setDisplayedContent(thought.content);
+            return;
+        }
+
+        const words = thought.content.split(' ');
+        let current = '';
+        let i = 0;
+
+        const interval = setInterval(() => {
+            if (i >= words.length) {
+                clearInterval(interval);
+                setDisplayedContent(thought.content);
+                return;
+            }
+            current += (i === 0 ? '' : ' ') + words[i];
+            setDisplayedContent(current);
+            i++;
+        }, 15);
+
+        return () => clearInterval(interval);
+    }, [thought.content, thought.active]);
+
+    // Auto-scroll to bottom of thought when active
+    useEffect(() => {
+        if (thought.active && contentRef.current) {
             contentRef.current.scrollTop = contentRef.current.scrollHeight;
         }
-    }, [thought.content, thought.active, isExpanded]);
+    }, [displayedContent, thought.active]);
 
-    // Parse title if not explicitly provided but exists in content (e.g. **TITLE**)
+    // Extract title
     const displayTitle = thought.title || (() => {
         const match = thought.content.match(/\*\*([^*]+)\*\*/);
         return match ? match[1].trim() : t('thinkingDefaultTitle');
     })();
 
-    // Remove title from content for display if it was extracted
-    const displayContent = thought.title
-        ? thought.content
-        : thought.content.replace(/\*\*([^*]+)\*\*/, '').trim();
+    // Remove title from content for display
+    const cleanContent = thought.title
+        ? displayedContent
+        : displayedContent.replace(/\*\*([^*]+)\*\*/, '').trim();
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
             className="thinking-process-container"
             style={{
-                margin: '8px 0',
-                borderRadius: '12px',
-                border: '1px solid rgba(255, 255, 255, 0.04)',
+                margin: '4px 0',
+                borderRadius: '8px',
+                border: '1px solid rgba(255, 255, 255, 0.03)',
                 background: 'rgba(255, 255, 255, 0.01)',
                 overflow: 'hidden',
             }}
         >
-            {/* Header */}
+            {/* Header (Minimalist) */}
             <div
-                onClick={() => setIsExpanded(!isExpanded)}
                 style={{
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    cursor: 'pointer',
+                    gap: '8px',
                     background: 'rgba(255, 255, 255, 0.02)',
                 }}
             >
-                <div style={{ position: 'relative', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'relative', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {thought.active ? (
                         <motion.div
                             animate={{ rotate: 360 }}
                             transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
                         >
-                            <Cpu size={18} color="#FFD700" />
+                            <Cpu size={14} color="rgba(255, 215, 0, 0.6)" />
                         </motion.div>
                     ) : (
-                        <Brain size={18} color="#FFD700" style={{ opacity: 0.8 }} />
-                    )}
-                    {thought.active && (
-                        <motion.div
-                            style={{
-                                position: 'absolute',
-                                inset: -4,
-                                borderRadius: '50%',
-                                border: '1px solid transparent',
-                                borderTopColor: '#FFD700',
-                                borderRightColor: 'transparent',
-                            }}
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                        />
+                        <Brain size={14} color="rgba(255, 215, 0, 0.4)" />
                     )}
                 </div>
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <span style={{
-                        color: 'rgba(255, 215, 0, 0.7)',
-                        fontSize: '0.75rem',
+                        color: 'rgba(255, 215, 0, 0.5)',
+                        fontSize: '9px',
                         fontWeight: 200,
                         letterSpacing: '0.8px',
                         fontFamily: 'monospace',
@@ -98,8 +108,8 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                         {t('neuralThoughtEngine')}
                     </span>
                     <span style={{
-                        color: 'rgba(255, 255, 255, 0.45)',
-                        fontSize: '0.78rem',
+                        color: 'rgba(255, 255, 255, 0.3)',
+                        fontSize: '8px',
                         fontWeight: 200,
                         marginTop: '1px',
                         whiteSpace: 'nowrap',
@@ -117,76 +127,60 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                         <div className="bar" />
                     </div>
                 )}
-
-                <div style={{ color: 'rgba(255, 255, 255, 0.4)' }}>
-                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </div>
             </div>
 
-            {/* Content */}
-            <AnimatePresence>
-                {isExpanded && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                    >
-                        <div
-                            ref={contentRef}
-                            style={{
-                                padding: '8px 12px',
-                                maxHeight: '180px',
-                                overflowY: 'auto',
-                                fontSize: '9px', /* ELITE 4.0: 50% smaller than result */
-                                fontWeight: 200,
-                                lineHeight: '1.4',
-                                color: 'rgba(255, 255, 255, 0.35)',
-                                fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
-                                whiteSpace: 'pre-wrap',
-                                scrollbarWidth: 'thin',
-                                scrollbarColor: '#333 transparent'
-                            }}
-                        >
-                            {displayContent || (
-                                <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontStyle: 'italic' }}>
-                                    {t('thinkingInit')}
-                                </span>
-                            )}
-                            {thought.active && (
-                                <motion.span
-                                    animate={{ opacity: [0, 1, 0] }}
-                                    transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
-                                    style={{ color: '#FFD700', marginLeft: '4px' }}
-                                >
-                                    ▍
-                                </motion.span>
-                            )}
-                        </div>
-                    </motion.div>
+            {/* Content (Ultra-Miniature Technical Trace) */}
+            <div
+                ref={contentRef}
+                style={{
+                    padding: '8px 12px',
+                    maxHeight: '150px',
+                    overflowY: 'auto',
+                    fontSize: '7.5px',
+                    fontWeight: 200,
+                    lineHeight: '1.4',
+                    color: 'rgba(255, 255, 255, 0.3)',
+                    fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
+                    whiteSpace: 'pre-wrap',
+                    scrollbarWidth: 'none',
+                }}
+            >
+                {cleanContent || (
+                    <span style={{ color: 'rgba(255, 255, 255, 0.2)', fontStyle: 'italic' }}>
+                        {t('thinkingInit')}
+                    </span>
                 )}
-            </AnimatePresence>
+                {thought.active && (
+                    <motion.span
+                        animate={{ opacity: [0, 1, 0] }}
+                        transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
+                        style={{ color: 'rgba(255, 215, 0, 0.5)', marginLeft: '2px' }}
+                    >
+                        ▍
+                    </motion.span>
+                )}
+            </div>
 
             <style>{`
-        .neural-pulse {
-          display: flex;
-          gap: 2px;
-          height: 12px;
-          align-items: center;
-        }
-        .neural-pulse .bar {
-          width: 2px;
-          background: #3B82F6;
-          height: 4px;
-          animation: pulse 1s ease-in-out infinite;
-        }
-        .neural-pulse .bar:nth-child(2) { animation-delay: 0.1s; height: 8px; }
-        .neural-pulse .bar:nth-child(3) { animation-delay: 0.2s; }
-        @keyframes pulse {
-          0%, 100% { height: 4px; opacity: 0.5; }
-          50% { height: 12px; opacity: 1; background: #60A5FA; }
-        }
-      `}</style>
+                .neural-pulse {
+                    display: flex;
+                    gap: 2px;
+                    height: 12px;
+                    align-items: center;
+                }
+                .neural-pulse .bar {
+                    width: 2px;
+                    background: rgba(59, 130, 246, 0.5);
+                    height: 4px;
+                    animation: pulse 1s ease-in-out infinite;
+                }
+                .neural-pulse .bar:nth-child(2) { animation-delay: 0.1s; height: 8px; }
+                .neural-pulse .bar:nth-child(3) { animation-delay: 0.2s; }
+                @keyframes pulse {
+                    0%, 100% { height: 4px; opacity: 0.3; }
+                    50% { height: 12px; opacity: 0.7; }
+                }
+            `}</style>
         </motion.div>
     );
 }

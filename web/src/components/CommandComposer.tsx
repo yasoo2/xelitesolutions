@@ -2616,7 +2616,6 @@ export default function CommandComposer({
 
       if (type === 'user_input') out.push({ kind: 'user', key: `user:${idx}`, e, idx });
       else if (type === 'text') {
-        const rid = getEventRunId(e);
         const cleaned = cleanAssistantText(e.data?.text || e.data);
         if (cleaned) out.push({ kind: 'text', key: `text:${idx}`, e, idx });
       }
@@ -2625,11 +2624,14 @@ export default function CommandComposer({
       else if (type === 'thought') {
         const rid = getEventRunId(e);
 
-        // ELITE 4.0: Absolute separation. If we are in 'answering' state or have a persistent text response, hide thoughts.
+        // ELITE 5.0 (Absolute Isolation):
+        // 1. If this run ALREADY has a text response in history, hide all its thoughts.
         if (hasTextResponse.has(rid)) continue;
-        if (rid === activeRunId && status === 'answering') continue;
 
-        // Fallback for consecutive items in the same run
+        // 2. If this is the current active run AND we just started answering, hide its thoughts.
+        if (rid === activeRunId && isAnsweringCurrent) continue;
+
+        // 3. Peak ahead: if the NEXT item in the sorted stream is a text response for this run, hide this thought.
         const next = sortedEvents[idx + 1];
         if (next && next.e?.type === 'text' && getEventRunId(next.e) === rid) continue;
 
@@ -2638,7 +2640,7 @@ export default function CommandComposer({
     }
 
     return out;
-  }, [sortedEvents, status]);
+  }, [sortedEvents, status, activeRunId]);
 
   const activeTaskBar = useMemo(() => {
     if (!showFloatingTaskbar) return null;
