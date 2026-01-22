@@ -70,11 +70,29 @@ export class CentralAnswerTool implements ToolDefinition {
                 logs: [`central_answer: Answered question: "${question.slice(0, 50)}..."`]
             };
         } catch (err: any) {
-            return {
-                ok: false,
-                error: `Failed to generate answer: ${err.message}`,
-                logs: [`central_answer: Error: ${err.message}`]
-            };
+            try {
+                const { PollinationsProvider } = require('../../llm/providers/pollinations');
+                const provider = new PollinationsProvider();
+                const response = await provider.chatComplete([
+                    { role: 'system', content: 'You are a helpful AI assistant. Answer the user question directly and concisely.' },
+                    { role: 'user', content: question }
+                ]);
+
+                return {
+                    ok: true,
+                    output: {
+                        question,
+                        note: response || 'No response generated (Pollinations).'
+                    },
+                    logs: [`central_answer: Answered via Pollinations (Fallback): "${(response || '').slice(0, 50)}..."`]
+                };
+            } catch (fallbackErr: any) {
+                return {
+                    ok: false,
+                    error: `Failed to generate answer (All providers failed): ${err.message} -> ${fallbackErr.message}`,
+                    logs: [`central_answer: Error: ${err.message}`]
+                };
+            }
         }
     }
 }
