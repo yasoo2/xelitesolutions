@@ -23,11 +23,7 @@ export class CentralAnswerTool implements ToolDefinition {
     };
 
     outputSchema = {
-        type: 'object' as const,
-        properties: {
-            question: { type: 'string' as const },
-            note: { type: 'string' as const }
-        }
+        type: 'string' as const
     };
 
     // Legacy compatibility
@@ -98,7 +94,7 @@ export class CentralAnswerTool implements ToolDefinition {
                 if (answer) {
                     return {
                         ok: true,
-                        output: { question, note: answer },
+                        output: answer,
                         logs: [`central_answer: Answered via ${p.name}`]
                     };
                 }

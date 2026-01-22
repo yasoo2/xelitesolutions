@@ -1491,10 +1491,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         const result = await executeTool(initialPlan.name, callInput);
-        if (initialPlan.name === 'central_answer' && result.ok && result.output && result.output.note) {
-          const answerText = String(result.output.note);
-          ev({ type: 'text', data: answerText });
-          assistantTextEmitted = true;
+        if (initialPlan.name === 'central_answer' && result.ok && result.output) {
+          const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
+          if (answerText) {
+            ev({ type: 'text', data: answerText });
+            assistantTextEmitted = true;
+          }
         }
         let stepResult = result;
         if (initialPlan.name === 'central_answer' && result.ok) {
@@ -1526,10 +1528,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         const result = await executeTool(initialPlan.name, callInput);
-        if (initialPlan.name === 'central_answer' && result.ok && result.output && result.output.note) {
-          const answerText = String(result.output.note);
-          ev({ type: 'text', data: answerText });
-          assistantTextEmitted = true;
+        if (initialPlan.name === 'central_answer' && result.ok && result.output) {
+          const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
+          if (answerText) {
+            ev({ type: 'text', data: answerText });
+            assistantTextEmitted = true;
+          }
         }
         let stepResult = result;
         if (initialPlan.name === 'central_answer' && result.ok) {
