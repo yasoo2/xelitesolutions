@@ -1046,112 +1046,125 @@ export default function Joe() {
         </div>
       </main >
 
-            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-          >
-            <PanelLeftClose size={20} />
-          </button>
-          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-            <PackageManagerLazy />
-          </Suspense>
-        </div >
-      </div >
-    )
-}
+      <TaskQueue
+        tasks={queuedTasks}
+        onRemove={removeTask}
+        onExecute={startTask}
+      />
 
-{/* Git Modal */ }
-{
-  showGit && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-        <button
-          onClick={() => setShowGit(false)}
-          className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-        >
-          <PanelLeftClose size={20} />
-        </button>
-        <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-          <GitPanelLazy />
-        </Suspense>
-      </div>
-    </div>
-  )
-}
+      {/* Package Manager Modal */}
+      {
+        showPackages && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowPackages(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <PackageManagerLazy />
+              </Suspense>
+            </div>
+          </div>
+        )
+      }
 
-{/* Social Modal */ }
-{
-  showSocial && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-        <button
-          onClick={() => setShowSocial(false)}
-          className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
-        >
-          <PanelLeftClose size={20} />
-        </button>
-        <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-          <SocialPanelLazy />
-        </Suspense>
-      </div>
-    </div>
-  )
-}
+      {/* Git Modal */}
+      {
+        showGit && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowGit(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <GitPanelLazy />
+              </Suspense>
+            </div>
+          </div>
+        )
+      }
 
-{/* Art Modal */ }
-{
-  showArt && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-        <button
-          onClick={() => setShowArt(false)}
-          className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-        >
-          <PanelLeftClose size={20} />
-        </button>
-        <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-          <ArtStudioLazy />
-        </Suspense>
-      </div>
-    </div>
-  )
-}
+      {/* Social Modal */}
+      {
+        showSocial && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowSocial(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <SocialPanelLazy />
+              </Suspense>
+            </div>
+          </div>
+        )
+      }
 
-{/* DB Modal */ }
-{
-  showDB && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-        <button
-          onClick={() => setShowDB(false)}
-          className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-        >
-          <PanelLeftClose size={20} />
-        </button>
-        <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-          <DatabasePanelLazy />
-        </Suspense>
-      </div>
-    </div>
-  )
-}
+      {/* Art Modal */}
+      {
+        showArt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowArt(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <ArtStudioLazy />
+              </Suspense>
+            </div>
+          </div>
+        )
+      }
 
-{/* Actions Modal */ }
-{
-  showActions && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-        <button
-          onClick={() => setShowActions(false)}
-          className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-        >
-          <PanelLeftClose size={20} />
-        </button>
-        <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-          <ActionsPanelLazy />
-        </Suspense>
-      </div>
-    </div>
-  )
-}
+      {/* DB Modal */}
+      {
+        showDB && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowDB(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <DatabasePanelLazy />
+              </Suspense>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Actions Modal */}
+      {
+        showActions && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+              <button
+                onClick={() => setShowActions(false)}
+                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+              >
+                <PanelLeftClose size={20} />
+              </button>
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+                <ActionsPanelLazy />
+              </Suspense>
+            </div>
+          </div>
+        )
+      }
     </div >
   );
 }
