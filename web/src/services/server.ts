@@ -34,13 +34,30 @@ const getHeaders = () => {
     };
 };
 
+const handleResponse = async (res: Response) => {
+    if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        throw new Error('Unauthorized');
+    }
+    if (!res.ok) {
+        let msg = 'Request failed';
+        try {
+            const data = await res.json();
+            msg = data.error || msg;
+        } catch { }
+        throw new Error(msg);
+    }
+    return res;
+};
+
 export const ServerService = {
     async listServers(): Promise<ServerConfig[]> {
         const res = await fetch(`${API_URL}/api/servers`, {
             headers: getHeaders(),
             credentials: 'include'
         });
-        if (!res.ok) throw new Error('Failed to fetch servers');
+        await handleResponse(res);
         return res.json();
     },
 
@@ -50,7 +67,7 @@ export const ServerService = {
             headers: getHeaders(),
             body: JSON.stringify(data),
         });
-        if (!res.ok) throw new Error('Failed to add server');
+        await handleResponse(res);
         return res.json();
     },
 
@@ -60,7 +77,7 @@ export const ServerService = {
             headers: getHeaders(),
             body: JSON.stringify(data),
         });
-        if (!res.ok) throw new Error('Failed to update server');
+        await handleResponse(res);
         return res.json();
     },
 
@@ -69,7 +86,7 @@ export const ServerService = {
             method: 'DELETE',
             headers: getHeaders(),
         });
-        if (!res.ok) throw new Error('Failed to delete server');
+        await handleResponse(res);
     },
 
     async connect(id: string): Promise<ConnectionStatus> {
@@ -77,7 +94,7 @@ export const ServerService = {
             method: 'POST',
             headers: getHeaders(),
         });
-        if (!res.ok) throw new Error('Failed to connect to server');
+        await handleResponse(res);
         return res.json();
     },
 
@@ -86,7 +103,7 @@ export const ServerService = {
             method: 'POST',
             headers: getHeaders(),
         });
-        if (!res.ok) throw new Error('Failed to disconnect');
+        await handleResponse(res);
     },
 
     async testConnection(id: string): Promise<boolean> {
@@ -94,6 +111,10 @@ export const ServerService = {
             method: 'POST',
             headers: getHeaders(),
         });
+        if (res.status === 401) {
+            await handleResponse(res); // Trigger auth flow
+            return false;
+        }
         if (!res.ok) return false;
         const data = await res.json();
         return data.success;
