@@ -3565,7 +3565,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (useMock) {
       store.addExec(runId, plan?.name || 'unknown', persistedInput, result.output, result.ok, result.logs);
     } else {
-      await ToolExecution.create({ runId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
+      await ToolExecution.create({ runId, sessionId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
     }
 
     if (result.ok && plan?.name === 'central_answer') {

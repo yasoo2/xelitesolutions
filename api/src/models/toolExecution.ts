@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IToolExecution extends Document {
   runId?: Types.ObjectId;
+  sessionId?: Types.ObjectId;
   name: string;
   input: any;
   output?: any;
@@ -14,6 +15,7 @@ export interface IToolExecution extends Document {
 const ToolExecutionSchema = new Schema<IToolExecution>(
   {
     runId: { type: Schema.Types.ObjectId, ref: 'Run', index: true },
+    sessionId: { type: Schema.Types.ObjectId, ref: 'Session', index: true },
     name: { type: String, required: true },
     input: { type: Schema.Types.Mixed },
     output: { type: Schema.Types.Mixed },

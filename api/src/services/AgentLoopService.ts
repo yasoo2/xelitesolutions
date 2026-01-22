@@ -66,6 +66,7 @@ export class AgentLoopService {
             try {
                 await ToolExecution.create({
                     runId: pending.runId,
+                    sessionId,
                     name: pending.name || 'unknown',
                     input: persistedInput,
                     output: result.output, // Use raw output for DB, not sanitized
@@ -221,6 +222,7 @@ export class AgentLoopService {
                 try {
                     await ToolExecution.create({
                         runId: newRunId,
+                        sessionId,
                         name: plan.name || 'unknown',
                         input: persistedInput,
                         output: result.output,
