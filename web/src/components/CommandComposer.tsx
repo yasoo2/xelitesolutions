@@ -589,84 +589,6 @@ export default function CommandComposer({
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
-  // Load Session History Logic
-  useEffect(() => {
-    if (!sessionId) {
-      setEvents([]);
-      return;
-    }
-
-    // Reset state before loading
-    setEvents([]);
-    setIsThinking(true);
-    setStatus('thinking'); // Show loading indicator
-
-    const loadHistory = async () => {
-      try {
-        const res = await fetch(`${API}/sessions/${sessionId}/messages`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
-        });
-        if (!res.ok) throw new Error('Failed to load history');
-        const data = await res.json();
-        const { messages, tools } = data;
-
-        const merged: any[] = [];
-
-        // Map Messages
-        if (Array.isArray(messages)) {
-          messages.forEach((m: any) => {
-            if (m.role === 'user') {
-              merged.push({ type: 'user_input', data: { text: m.content }, ts: new Date(m.createdAt).getTime(), id: m._id });
-            } else if (m.role === 'assistant') {
-              // We treat assistant text as final output events
-              merged.push({ type: 'text', data: { text: m.content }, ts: new Date(m.createdAt).getTime(), id: m._id, runId: m.runId });
-            }
-          });
-        }
-
-        // Map Tool Executions
-        if (Array.isArray(tools)) {
-          tools.forEach((t: any) => {
-            // Step Started
-            merged.push({
-              type: 'step_started',
-              runId: t.runId,
-              data: { name: `execute:${t.name}`, input: t.input },
-              ts: new Date(t.createdAt).getTime()
-            });
-
-            // Step Result
-            const resultData = {
-              ok: t.ok,
-              output: t.output,
-              error: t.ok ? undefined : (t.output || 'Failed')
-            };
-            // Sanitize/Format output for UI if needed (simplified here)
-            merged.push({
-              type: t.ok ? 'step_done' : 'step_failed',
-              runId: t.runId,
-              data: { name: `execute:${t.name}`, result: resultData },
-              ts: new Date(t.createdAt).getTime() + 100 // Slightly after start
-            });
-          });
-        }
-
-        // Sort by timestamp
-        merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        setEvents(merged);
-
-      } catch (e) {
-        console.error('History load failed', e);
-        // Fallback: Just clear events to avoid stale state
-        setEvents([]);
-      } finally {
-        setIsThinking(false);
-        setStatus('idle');
-      }
-    };
-
-    loadHistory();
-  }, [sessionId]);
 
   const getToolLabel = (tool: string, input: any) => {
     const tname = String(tool || '').trim();
@@ -1649,7 +1571,10 @@ export default function CommandComposer({
   }, [sessionId]);
 
   async function loadHistory(id: string) {
+    if (!id) return;
     try {
+      setStatus('thinking');
+      setIsThinking(true);
       const token = localStorage.getItem('token');
       const res = await fetch(`${API}/sessions/${id}/history`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1666,6 +1591,9 @@ export default function CommandComposer({
       }
     } catch (e) {
       console.error('Failed to load history', e);
+    } finally {
+      setStatus('idle');
+      setIsThinking(false);
     }
   }
 
