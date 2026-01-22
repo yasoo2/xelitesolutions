@@ -1022,6 +1022,7 @@ export default function Joe() {
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
                       {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
                       <CommandComposer
+                        sessionId={selected || undefined}
                         onSessionCreated={async (id) => {
                           await loadAllSessions();
                           setSelected(id);
