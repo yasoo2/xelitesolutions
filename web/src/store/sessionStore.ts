@@ -77,7 +77,8 @@ export const useSessionStore = create<SessionState>((set) => ({
         return;
       }
       const data: any = await api.get('/sessions', { kind: 'chat,agent' });
-      const allSessions = (data.sessions || []).map((s: any) => ({ ...s, id: s.id || s._id }));
+      const rawList = Array.isArray(data) ? data : (data.sessions || []);
+      const allSessions = rawList.map((s: any) => ({ ...s, id: s.id || s._id }));
 
       const chatSessions = allSessions.filter((s: any) => s.kind === 'chat' || !s.kind);
       const agentSessions = allSessions.filter((s: any) => s.kind === 'agent');
