@@ -238,14 +238,14 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             style={{ zIndex: isEmbedded ? 1 : 100, backdropFilter: isEmbedded ? 'none' : 'blur(10px)' }}
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 select-none">
+            <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 select-none">
                 <div className="flex items-center gap-3">
-                    <Activity size={18} className="text-purple-400 animate-pulse" />
-                    <span className="text-sm font-semibold text-slate-200 tracking-tight">Enterprise Terminal</span>
-                    <div className="h-4 w-[1px] bg-slate-600"></div>
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-600">
-                        <Server size={12} className="text-slate-400" />
-                        <span className="text-[10px] text-slate-300 font-medium">10.0.1.X - PROD</span>
+                    <Activity size={18} className="text-[var(--accent-primary)] animate-pulse" />
+                    <span className="text-sm font-bold text-slate-100 tracking-tight uppercase">Joe Elite Terminal</span>
+                    <div className="h-4 w-[1px] bg-slate-800"></div>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/40 border border-[var(--accent-primary)]/20 shadow-[0_0_10px_rgba(var(--accent-primary-rgb),0.05)]">
+                        <Server size={12} className="text-[var(--accent-primary)]" />
+                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Enterprise Core</span>
                     </div>
                 </div>
 
@@ -272,12 +272,12 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             {!isMinimized && (
                 <div className="flex flex-1 overflow-hidden">
                     {/* Sidebar - Server List */}
-                    <div className="w-56 bg-slate-900 border-r border-slate-700 flex flex-col">
-                        <div className="p-3 flex items-center justify-between border-b border-slate-700">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Servers</span>
+                    <div className="w-56 bg-slate-950 border-r border-slate-800 flex flex-col">
+                        <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-900/40">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Node Registry</span>
                             <button
                                 onClick={() => setShowAddServer(true)}
-                                className="p-1 hover:bg-purple-500/20 text-purple-400 rounded-md transition-colors"
+                                className="p-1.5 hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] rounded-lg border border-[var(--accent-primary)]/10 transition-all active:scale-90"
                             >
                                 <Plus size={14} />
                             </button>
@@ -329,23 +329,23 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                                 <div
                                     key={tab.id}
                                     onClick={() => setActiveTabId(tab.id)}
-                                    className={`flex items-center gap-2 px-4 py-2 border-r border-slate-700/50 cursor-pointer transition-all min-w-[120px] max-w-[200px] ${activeTabId === tab.id
-                                        ? 'bg-[#0f172a] border-t-2 border-t-purple-500 text-slate-100'
-                                        : 'bg-slate-800/30 text-slate-400 hover:bg-slate-800/50'
+                                    className={`flex items-center gap-2 px-4 py-2 border-r border-slate-700/50 cursor-pointer transition-all min-w-[140px] max-w-[220px] ${activeTabId === tab.id
+                                        ? 'bg-[#0f172a] border-t-2 border-t-[var(--accent-primary)] text-[var(--accent-primary)] shadow-[inset_0_2px_10px_rgba(var(--accent-primary-rgb),0.1)]'
+                                        : 'bg-slate-800/30 text-slate-500 hover:bg-slate-800/50 hover:text-slate-300'
                                         }`}
                                 >
-                                    {tab.serverId ? <Globe size={12} /> : <Monitor size={12} />}
-                                    <span className="text-xs truncate font-medium">{tab.name}</span>
+                                    {tab.serverId ? <Globe size={12} className={activeTabId === tab.id ? 'text-[var(--accent-primary)]' : ''} /> : <Monitor size={12} className={activeTabId === tab.id ? 'text-[var(--accent-primary)]' : ''} />}
+                                    <span className="text-xs truncate font-bold tracking-tight">{tab.name}</span>
                                     <X
                                         size={10}
-                                        className="ml-auto hover:text-red-400 transition-colors"
+                                        className="ml-auto hover:text-red-400 opacity-50 hover:opacity-100 transition-opacity"
                                         onClick={(e) => closeTab(tab.id, e)}
                                     />
                                 </div>
                             ))}
                             <button
                                 onClick={() => addTab()}
-                                className="p-2 text-slate-500 hover:text-slate-300"
+                                className="p-2 text-slate-500 hover:text-[var(--accent-primary)] transition-colors"
                             >
                                 <Plus size={14} />
                             </button>
