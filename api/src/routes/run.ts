@@ -1024,6 +1024,7 @@ function extractWeatherCity(text: string) {
 
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
   let { text, sessionId, fileIds, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
+  let assistantTextEmitted = false;
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
@@ -1566,7 +1567,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
         }
         let stepResult = result;
-        if (initialPlan.name === 'central_answer' && result.ok) {
+        if (String(initialPlan.name) === 'central_answer' && result.ok) {
           stepResult = { ...result, output: { note: 'Answer emitted as text' } };
         }
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result: stepResult } });
@@ -1595,7 +1596,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         const result = await executeTool(initialPlan.name, callInput);
-        if (initialPlan.name === 'central_answer' && result.ok && result.output) {
+        if (String(initialPlan.name) === 'central_answer' && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
             // Check for thought markers
@@ -1705,7 +1706,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   let lastResult: any = null;
   let forcedText: string | null = null;
-  let assistantTextEmitted = false;
   let plan: { name: string, input: any } | null = null;
   let pendingPlan: { name: string, input: any } | null = null;
   let lastPlanError: string | null = null;
@@ -2828,7 +2828,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
           });
           const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId });
-          if ((plan?.name === 'central_answer' || plan?.name === 'web_search') && result.ok && result.output) {
+          if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
             const answerText = String(result.output.note || result.output.summary || '');
             if (answerText) {
               ev({ type: 'text', data: answerText });
@@ -2855,7 +2855,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
-            if ((plan?.name === 'central_answer' || plan?.name === 'web_search') && result.ok && result.output) {
+            if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
               const answerText = String(result.output.note || result.output.summary || '');
               if (answerText) {
                 ev({ type: 'text', data: answerText });
@@ -2889,7 +2889,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
-            if ((plan?.name === 'central_answer' || plan?.name === 'web_search') && result.ok && result.output) {
+            if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
               const answerText = String(result.output.note || result.output.summary || '');
               if (answerText) {
                 ev({ type: 'text', data: answerText });
