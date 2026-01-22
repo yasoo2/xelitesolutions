@@ -97,7 +97,7 @@ Guidelines:
             const analysis = JSON.parse(content);
 
             // Boost confidence if correction keywords are present
-            if (hasCorrectio nKeyword && analysis.isCorrection) {
+            if (hasCorrectionKeyword && analysis.isCorrection) {
                 analysis.confidence = Math.min(1.0, analysis.confidence + 0.2);
             }
 
