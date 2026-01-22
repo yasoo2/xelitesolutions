@@ -1491,6 +1491,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         const result = await executeTool(initialPlan.name, callInput);
+        if (initialPlan.name === 'central_answer' && result.ok && result.output && result.output.note) {
+          const answerText = String(result.output.note);
+          ev({ type: 'text', data: answerText });
+          assistantTextEmitted = true;
+        }
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
         if (result.artifacts) {
           for (const a of result.artifacts) {
@@ -1517,6 +1522,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         const result = await executeTool(initialPlan.name, callInput);
+        if (initialPlan.name === 'central_answer' && result.ok && result.output && result.output.note) {
+          const answerText = String(result.output.note);
+          ev({ type: 'text', data: answerText });
+          assistantTextEmitted = true;
+        }
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
         if (result.artifacts) {
           // Persist artifacts in DB using Artifact model if needed
@@ -2726,6 +2736,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
           });
           const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId });
+          if ((plan?.name === 'central_answer' || plan?.name === 'web_search') && result.ok && result.output) {
+            const answerText = String(result.output.note || result.output.summary || '');
+            if (answerText) {
+              ev({ type: 'text', data: answerText });
+              assistantTextEmitted = true;
+            }
+          }
           ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
           if (useMock) store.updateRun(runId, { status: result.ok ? 'done' : 'failed' });
           else await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
@@ -2746,6 +2763,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
+            if ((plan?.name === 'central_answer' || plan?.name === 'web_search') && result.ok && result.output) {
+              const answerText = String(result.output.note || result.output.summary || '');
+              if (answerText) {
+                ev({ type: 'text', data: answerText });
+                assistantTextEmitted = true;
+              }
+            }
             ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
             if (result.artifacts) {
               for (const a of result.artifacts) {
@@ -2773,6 +2797,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
+            if ((plan?.name === 'central_answer' || plan?.name === 'web_search') && result.ok && result.output) {
+              const answerText = String(result.output.note || result.output.summary || '');
+              if (answerText) {
+                ev({ type: 'text', data: answerText });
+                assistantTextEmitted = true;
+              }
+            }
             ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
             await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
             ev({ type: 'run_finished', data: { runId, ok: result.ok } });
