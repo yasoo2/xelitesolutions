@@ -66,6 +66,10 @@ const resources = {
       thinkingGlimpseDraft: 'Drafting the response…',
       thinkingDraftIntro: 'Working on it now…',
       thinkingDraftRefine: 'Refining and organizing the answer…',
+      thinkingDraftRefine: 'Refining and organizing the answer…',
+      neuralThoughtEngine: 'Neural Thought Engine',
+      thinkingDefaultTitle: 'Analyzing Request...',
+      thinkingInit: 'Thinking process initialized...',
       thinking: {
         searching: 'Searching the web…',
         researching: 'Conducting research…',
@@ -236,6 +240,10 @@ const resources = {
       thinkingGlimpseDraft: 'أجهّز الرد…',
       thinkingDraftIntro: 'جارٍ العمل الآن…',
       thinkingDraftRefine: 'أرتّب النتيجة وأصيغها بشكل واضح…',
+      thinkingDraftRefine: 'أرتّب النتيجة وأصيغها بشكل واضح…',
+      neuralThoughtEngine: 'محرك التفكير العصبي',
+      thinkingDefaultTitle: 'جاري تحليل الطلب...',
+      thinkingInit: 'بدأت عملية التفكير...',
       thinking: {
         searching: 'أبحث في الويب…',
         researching: 'أتحقق من المعلومات…',

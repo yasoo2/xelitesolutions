@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Brain, ChevronDown, ChevronRight, Activity, Cpu, Sparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface ThinkingProcessProps {
     thought: {
@@ -11,6 +12,7 @@ interface ThinkingProcessProps {
 }
 
 export function ThinkingProcess({ thought }: ThinkingProcessProps) {
+    const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(true);
     const contentRef = useRef<HTMLDivElement>(null);
 
@@ -24,7 +26,7 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
     // Parse title if not explicitly provided but exists in content (e.g. **TITLE**)
     const displayTitle = thought.title || (() => {
         const match = thought.content.match(/\*\*([^*]+)\*\*/);
-        return match ? match[1].trim() : 'Analyzing Request...';
+        return match ? match[1].trim() : t('thinkingDefaultTitle');
     })();
 
     // Remove title from content for display if it was extracted
@@ -95,7 +97,7 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                         fontFamily: 'monospace',
                         textTransform: 'uppercase'
                     }}>
-                        NEURAL THOUGHT ENGINE
+                        {t('neuralThoughtEngine')}
                     </span>
                     <span style={{
                         color: 'rgba(255, 255, 255, 0.7)',
@@ -148,7 +150,7 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                         >
                             {displayContent || (
                                 <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontStyle: 'italic' }}>
-                                    Thinking process initialized...
+                                    {t('thinkingInit')}
                                 </span>
                             )}
                             {thought.active && (
