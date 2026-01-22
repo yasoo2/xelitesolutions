@@ -2624,18 +2624,14 @@ export default function CommandComposer({
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
       else if (type === 'thought') {
         const rid = getEventRunId(e);
-        // ABSOLUTE EPHEMERAL THOUGHT: Hide if text response has already started for this run/session
+
+        // ELITE 4.0: Absolute separation. If we are in 'answering' state or have a persistent text response, hide thoughts.
         if (hasTextResponse.has(rid)) continue;
+        if (rid === activeRunId && status === 'answering') continue;
 
-        // If it belongs to the current active run and we are answering, hide it
-        if (rid === activeRunId && isAnsweringCurrent) continue;
-
-        // Also fallback check for consecutive thought/text items
-        const nextItem = sortedEvents[idx + 1];
-        if (nextItem && nextItem.e?.type === 'text') {
-          const nextRid = getEventRunId(nextItem.e);
-          if (nextRid === rid) continue;
-        }
+        // Fallback for consecutive items in the same run
+        const next = sortedEvents[idx + 1];
+        if (next && next.e?.type === 'text' && getEventRunId(next.e) === rid) continue;
 
         out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
       }

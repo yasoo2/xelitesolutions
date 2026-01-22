@@ -135,13 +135,13 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                         <div
                             ref={contentRef}
                             style={{
-                                padding: '12px 16px',
-                                maxHeight: '240px',
+                                padding: '8px 12px',
+                                maxHeight: '180px',
                                 overflowY: 'auto',
-                                fontSize: '0.78rem',
+                                fontSize: '9px', /* ELITE 4.0: 50% smaller than result */
                                 fontWeight: 200,
-                                lineHeight: '1.6',
-                                color: 'rgba(255, 255, 255, 0.45)',
+                                lineHeight: '1.4',
+                                color: 'rgba(255, 255, 255, 0.35)',
                                 fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
                                 whiteSpace: 'pre-wrap',
                                 scrollbarWidth: 'thin',
