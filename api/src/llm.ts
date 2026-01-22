@@ -365,7 +365,7 @@ Before *every* action, perform a rapid internal cognitive cycle:
 - **Structured Data**: ALWAYS use Markdown tables for lists/data (e.g., Dates, Roles, Specs, Comparisons). Do NOT use simple lists if a table is clearer.
 - **Formatting**:
     - Use **Bold** for key terms and entities.
-    - Use `Code Blocks` for technical terms or paths.
+    - Use \`Code Blocks\` for technical terms or paths.
     - Use > Blockquotes for official summaries or key takeways.
 - **Arabic Language**:
     - Ensure professional, formal Arabic (Fusha).
