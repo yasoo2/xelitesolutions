@@ -262,6 +262,38 @@ body {
   -webkit-text-fill-color: initial;
 }
 
+/* Joe Avatar Styling (Theme-Aware) */
+.joe-avatar-icon {
+  background: var(--brand-mark-yellow);
+  color: #000;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+  transition: all 0.3s ease;
+  animation: joe-pulse 3s infinite ease-in-out;
+}
+
+[data-theme="light"] .joe-avatar-icon {
+  background: var(--accent-primary);
+  color: #fff;
+  box-shadow: 0 0 15px rgba(var(--accent-primary-rgb), 0.3);
+}
+
+@keyframes joe-pulse {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+    filter: brightness(1.2) drop-shadow(0 0 8px gold);
+  }
+
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
 @keyframes shine {
   to {
     background-position: 200% center;
