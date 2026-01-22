@@ -148,6 +148,38 @@ export default function Joe() {
   const [agentComposerOpen, setAgentComposerOpen] = useState(false);
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
+
+  // Agent Central Panel State
+  const [agentCentralTab, setAgentCentralTab] = useState<'browser' | 'terminal'>('terminal');
+
+  // Auto-switch logic
+  useEffect(() => {
+    const unsub = SocketService.subscribe((msg: any) => {
+      // Switch to Terminal on command execution or output
+      if (msg.type === 'tool_start' && msg.tool === 'run_command') {
+        setAgentCentralTab('terminal');
+      }
+      if (msg.type === 'terminal_output') {
+        setAgentCentralTab('terminal');
+      }
+
+      // Switch to Browser on browser tool execution or browser events
+      if (msg.type === 'tool_start' && (
+        msg.tool.startsWith('browser_') ||
+        msg.tool === 'open_page' ||
+        msg.tool === 'click_element' ||
+        msg.tool === 'type_text' ||
+        msg.tool === 'scroll' ||
+        msg.tool === 'press_key'
+      )) {
+        setAgentCentralTab('browser');
+      }
+      if (msg.type === 'browser_screenshot' || msg.type === 'browser_update') {
+        setAgentCentralTab('browser');
+      }
+    });
+    return () => { unsub(); };
+  }, []);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
