@@ -1547,10 +1547,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             : initialPlan.input;
         const result = await executeTool(initialPlan.name, callInput);
         if (initialPlan.name === 'central_answer' && result.ok && result.output) {
-          const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
+          let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
-            ev({ type: 'text', data: answerText });
-            assistantTextEmitted = true;
+            // Check for thought markers
+            const thoughtMatch = answerText.match(/:::thought([\s\S]*?):::/);
+            if (thoughtMatch) {
+              const thought = thoughtMatch[1].trim();
+              ev({ type: 'thought', data: { action: 'start' } });
+              ev({ type: 'thought', data: { action: 'chunk', content: thought } });
+              ev({ type: 'thought', data: { action: 'end' } });
+              // Strip thought from answer
+              answerText = answerText.replace(/:::thought([\s\S]*?):::/, '').trim();
+            }
+            if (answerText) {
+              ev({ type: 'text', data: answerText });
+              assistantTextEmitted = true;
+            }
           }
         }
         let stepResult = result;
@@ -1584,10 +1596,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             : initialPlan.input;
         const result = await executeTool(initialPlan.name, callInput);
         if (initialPlan.name === 'central_answer' && result.ok && result.output) {
-          const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
+          let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
-            ev({ type: 'text', data: answerText });
-            assistantTextEmitted = true;
+            // Check for thought markers
+            const thoughtMatch = answerText.match(/:::thought([\s\S]*?):::/);
+            if (thoughtMatch) {
+              const thought = thoughtMatch[1].trim();
+              ev({ type: 'thought', data: { action: 'start' } });
+              ev({ type: 'thought', data: { action: 'chunk', content: thought } });
+              ev({ type: 'thought', data: { action: 'end' } });
+              // Strip thought from answer
+              answerText = answerText.replace(/:::thought([\s\S]*?):::/, '').trim();
+            }
+            if (answerText) {
+              ev({ type: 'text', data: answerText });
+              assistantTextEmitted = true;
+            }
           }
         }
         let stepResult = result;

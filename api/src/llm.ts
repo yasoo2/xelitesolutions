@@ -316,24 +316,6 @@ Before *every* action, perform a rapid internal cognitive cycle:
 ## CONFIDENTIALITY:
 - Never reveal private internal reasoning or hidden analysis. Provide only conclusions and actionable steps.
 
-## NEURAL THOUGHT PROTOCOL (INTERNAL):
-- You possess a "Neural Thought Engine" that allows you to think before you speak.
-- **MANDATORY**: For every complex response, you MUST start with a thought block hidden from the final user output but visible to the system.
-- **Format**:
-  \\\`\\\`\\\`text
-  :::thought
-  **TITLE** (e.g., Analyzing Request, Planning Architecture, Identifying Root Cause)
-  Detailed thought process, step-by-step reasoning, alternative considerations...
-  :::
-  \\\`\\\`\\\`
-- Use this space to:
-  1. Deconstruct the user's intent.
-  2. Plan your approach (step 1, step 2...).
-  3. Validate your assumptions.
-  4. Decide on the Tone (Professional, Technical, Concise).
-- This thought block MUST come **before** your actual response.
-
-
 ## TOOL USAGE GUIDELINES:
 - **Smart Selection**: Choose tools based on task context. Don't use browser for simple data that web_search can provide.
 - **Tool Dependencies**: Always open browser before running browser actions. Save files before running tests.
@@ -383,7 +365,7 @@ Before *every* action, perform a rapid internal cognitive cycle:
 - **Structured Data**: ALWAYS use Markdown tables for lists/data (e.g., Dates, Roles, Specs, Comparisons). Do NOT use simple lists if a table is clearer.
 - **Formatting**:
     - Use **Bold** for key terms and entities.
-    - Use \`Code Blocks\` for technical terms or paths.
+    - Use `Code Blocks` for technical terms or paths.
     - Use > Blockquotes for official summaries or key takeways.
 - **Arabic Language**:
     - Ensure professional, formal Arabic (Fusha).
@@ -402,16 +384,39 @@ Before *every* action, perform a rapid internal cognitive cycle:
 
 You are not a chatbot. You are an engine of creation. Act like one.`;
 
+export const NEURAL_THOUGHT_PROTOCOL = `
+- You possess a "Neural Thought Engine" that allows you to think before you speak.
+- **MANDATORY**: For every complex response, you MUST start with a thought block hidden from the final user output but visible to the system.
+- **Format**:
+  \`\`\`text
+  :::thought
+  **TITLE** (e.g., Analyzing Request, Planning Architecture, Identifying Root Cause)
+  Detailed thought process, step-by-step reasoning, alternative considerations...
+  :::
+  \`\`\`
+- Use this space to:
+  1. Deconstruct the user's intent.
+  2. Plan your approach (step 1, step 2...).
+  3. Validate your assumptions.
+  4. Decide on the Tone (Professional, Technical, Concise).
+- This thought block MUST come **before** your actual response.
+`;
+
+export const applyNeuralProtocol = (prompt: string) => {
+  if (prompt.includes('NEURAL THOUGHT PROTOCOL')) return prompt;
+  return prompt + '\\n\\n## NEURAL THOUGHT PROTOCOL (INTERNAL):\\n' + NEURAL_THOUGHT_PROTOCOL;
+};
+
 export const getSystemPrompt = (user?: { name?: string }) => {
   const now = new Date();
   const date = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
-  let prompt = BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}\nCurrent Time: ${time}`;
+  let systemPromptOutput = BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}\nCurrent Time: ${time}`;
 
   if (user?.name) {
-    prompt += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
+    systemPromptOutput += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
   }
-  return prompt;
+  return applyNeuralProtocol(systemPromptOutput);
 };
 
 
@@ -651,8 +656,8 @@ export async function planNextStep(
       multiStep: /(then|ثم|بعد|بعدها|وبعدين|click|انقر|اضغط|دوس|type|اكتب|املأ|extract|استخرج|لخص|انسخ)/i
     };
 
-    // Search patterns (expanded)
-    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي)\s+(عن|على|for|about|في|بـ)/i;
+    // Search patterns (expanded for weather, news, current events)
+    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي|ماهي|ما\s*هي|ما\s*هو|كيف\s*هو|كيف\s*احوال|احوال|درجة\s*حرارة|سعر|now|current|weather|طقس|جو|اخبار|news|price|stock)\s+(عن|على|for|about|في|بـ|هو|هي)?/i;
 
     // File patterns (expanded)
     const filePatterns = {
@@ -763,13 +768,10 @@ export async function planNextStep(
         };
       }
 
-      // 5. General chat/questions - Use intelligent router
+      // 5. General chat/questions - Use intelligent router with full persona
       console.info(`[Auto Enterprise] → Intelligent Chat via ${selectedModel.name}`);
       const msgs = [
-        {
-          role: 'system', content: `You are Joe, an advanced AI assistant. Be helpful, accurate, and concise. 
-Respond in ${analysis.language === 'ar' ? 'Arabic' : analysis.language === 'mixed' ? 'the same language as the user' : 'English'}.`
-        },
+        { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) },
         ...messages
       ];
 

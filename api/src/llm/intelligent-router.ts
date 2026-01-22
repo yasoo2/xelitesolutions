@@ -188,12 +188,14 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
     const length = userMessage.length;
 
-    // CRITICAL: Skip LLM analysis for simple/short messages to avoid double-hitting free rate limits
+    // CRITICAL: Skip LLM analysis for simple/short messages ONLY if NOT in Auto Mode
     // Also skip if it's clearly a greeting or very short question
     const isGreeting = /^(hi|hello|مرحبا|اهلا|سلام|hey)/i.test(userMessage.trim());
     const hasComplexKeywords = /(build|create|file|folder|shell|terminal|ابني|انشئ|ملف|مجلد|app|تطبيق|system|نظام|full|كامل|ecommerce|متجر|deploy|رفع|fix|صلح|optimize|حسن)/i.test(userMessage);
 
-    if ((length < 100 && !hasComplexKeywords) || (isGreeting && length < 150)) {
+    const isAutoMode = true; // High-quality brain requested
+
+    if (!isAutoMode && ((length < 100 && !hasComplexKeywords) || (isGreeting && length < 150))) {
         console.info('[IntelligentRouter] ⚡ FAST LANE: Skipping LLM analysis for simple/short request');
         return analyzeTask(userMessage, history);
     }
