@@ -111,8 +111,8 @@ Guidelines:
             console.error('Context analysis failed:', error);
             // Fallback to keyword-based detection
             return {
-                action: hasCorrectio nKeyword? 'merge': 'queue',
-                isCorrection: hasCorrectio nKeyword,
+                action: hasCorrectionKeyword ? 'merge' : 'queue',
+                isCorrection: hasCorrectionKeyword,
                 confidence: 0.5,
                 reason: 'Fallback to keyword detection due to LLM error',
             };
