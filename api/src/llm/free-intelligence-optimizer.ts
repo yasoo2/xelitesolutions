@@ -144,6 +144,12 @@ export class FreeIntelligenceOptimizer {
             return 'mixtral-8x7b-32768';
         }
 
+        // FAST LANE: Use 8B for short/simple queries (Speed > Quality)
+        if (message.length < 100 && !/(plan|design|architecture|explain|why|how|خطط|صمم|معمارية|اشرح|لماذا|كيف)/i.test(lower)) {
+            console.info('[FREE OPTIMIZER] ⚡ Fast Lane detected → Using Llama 3.1 8B (Instant)');
+            return 'llama-3.1-8b-instant';
+        }
+
         // DEFAULT: ALWAYS use best model (Llama 70B) for MAXIMUM INTELLIGENCE
         // This is the secret sauce - quality over speed!
         console.info('[FREE OPTIMIZER] 🧠 Using Llama 3.1 70B (highest quality)');

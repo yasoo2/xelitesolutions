@@ -115,6 +115,11 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
         arabicRatio > 0.5 || (arabicRatio > 0.1 && hasArabicWords) ? 'ar' :
             arabicRatio > 0.1 ? 'mixed' : 'en';
 
+    // SPEED OPTIMIZATION: Check for Fast Lane candidates immediately
+    const isGreeting = /^(hi|hello|مرحبا|اهلا|سلام|هلا|يا\s*هلا|hey|صباح|مساء)/i.test(msg);
+    const isShortQuestion = length < 60 && /(ما|من|كيف|اين|متى|what|who|how|where|when)/i.test(msg);
+
+
     // Task type detection
     let taskType: TaskAnalysis['type'] = 'simple_chat';
     let requiresTools = false;
@@ -188,8 +193,8 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
     const isGreeting = /^(hi|hello|مرحبا|اهلا|سلام|hey)/i.test(userMessage.trim());
     const hasComplexKeywords = /(build|create|file|folder|shell|terminal|ابني|انشئ|ملف|مجلد|app|تطبيق|system|نظام|full|كامل|ecommerce|متجر|deploy|رفع|fix|صلح|optimize|حسن)/i.test(userMessage);
 
-    if ((length < 50 && !hasComplexKeywords) || (isGreeting && length < 100)) {
-        console.info('[IntelligentRouter] Skipping LLM analysis for simple/short request');
+    if ((length < 100 && !hasComplexKeywords) || (isGreeting && length < 150)) {
+        console.info('[IntelligentRouter] ⚡ FAST LANE: Skipping LLM analysis for simple/short request');
         return analyzeTask(userMessage, history);
     }
 
@@ -313,8 +318,15 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
 
         case 'simple_chat':
         default:
-            // Arabic chat ALWAYS gets the big model for quality
-            if (analysis.language === 'ar') return MODELS['llama-3.1-70b'];
+            // SPEED OPTIMIZATION: Use 8B Instant for simple Arabic queries (Greetings, short Qs)
+            // Only use 70B for longer/complex Arabic chats
+            if (analysis.language === 'ar') {
+                if (analysis.complexity === 'low' || analysis.estimatedTokens < 500) {
+                    return MODELS['llama-3.1-8b']; // FAST LANE ⚡
+                }
+                return MODELS['llama-3.1-70b'];
+            }
+
             if (analysis.estimatedTokens > 16000) return MODELS['mixtral-8x7b'];
             return MODELS['llama-3.1-70b'];
     }

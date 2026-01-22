@@ -1210,7 +1210,7 @@ export default function CommandComposer({
         setIsThinking(false);
         setStatus('idle');
         setThinkingGlimpse('');
-      }, 250);
+      }, 50); // SPEED OPTIMIZATION: Reduced from 250ms
     }, wait);
     return totalDelay;
   };
@@ -1434,7 +1434,7 @@ export default function CommandComposer({
             setStatus('answering');
             setIsThinking(true);
 
-            const delay = hadTool ? 220 : 0;
+            const delay = 0; // SPEED OPTIMIZATION: Instant UI update
             window.setTimeout(() => {
               try {
                 let content: any = msg.data;
