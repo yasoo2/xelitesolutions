@@ -149,9 +149,6 @@ export default function Joe() {
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
 
-  // Agent Central Panel State
-  const [agentCentralTab, setAgentCentralTab] = useState<'browser' | 'terminal'>('terminal');
-
   // Auto-switch logic
   useEffect(() => {
     const unsub = SocketService.subscribe((msg: any) => {
