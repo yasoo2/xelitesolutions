@@ -251,7 +251,7 @@ export default function Joe() {
 
   // Mobile Optimization: Default closed on small screens
   const isMobileInitial = window.innerWidth < 1024;
-  const [rightPanelTab, setRightPanelTab] = useState<'files' | 'memory'>('files');
+  const [rightPanelTab, setRightPanelTab] = useState<'files'>('files');
   const [agentPanelTab, setAgentPanelTab] = useState<'commands'>('commands');
   const [liveSteps, setLiveSteps] = useState<any[]>([]);
   const stepStatusByKeyRef = useRef<Map<string, string>>(new Map());
@@ -1000,14 +1000,7 @@ export default function Joe() {
                   <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
                     <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        {showThinkingPanel ? (
-                          <button
-                            onClick={() => setRightPanelTab('thinking')}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'thinking' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                          >
-                            <Activity size={14} /> {t('liveSteps', 'Thinking Chain')}
-                          </button>
-                        ) : null}
+
                         {showFiles ? (
                           <button
                             onClick={() => setRightPanelTab('files')}
@@ -1016,27 +1009,10 @@ export default function Joe() {
                             <Folder size={14} /> {t('tools.file_read', 'Files')}
                           </button>
                         ) : null}
-                        {true ? (
-                          <button
-                            onClick={() => setRightPanelTab('memory')}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'memory' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                          >
-                            <Brain size={14} /> {t('memory.title', 'Memory')}
-                          </button>
-                        ) : null}
+
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        {rightPanelTab === 'thinking' && showThinkingPanel ? (
-                          <button
-                            onClick={() => {
-                              setThinkingChain([]);
-                              stepStatusByKeyRef.current = new Map();
-                            }}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                          >
-                            {t('tools.clear', 'Clear')}
-                          </button>
-                        ) : null}
+
                         <button
                           onClick={() => setShowFiles(false)}
                           style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
@@ -1055,11 +1031,7 @@ export default function Joe() {
 
 
 
-                      {rightPanelTab === 'memory' ? (
-                        <Suspense fallback={<div className="flex justify-center p-4">Loading...</div>}>
-                          <MemoryPanelLazy sessionId={selected || undefined} />
-                        </Suspense>
-                      ) : null}
+
                     </div>
                   </div>
                 ) : null}
