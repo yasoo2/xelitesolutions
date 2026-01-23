@@ -54,15 +54,61 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
       !req.file.mimetype.startsWith('audio/') &&
       !req.file.mimetype.startsWith('video/')
     ) {
-      // Universal Text Reader: Try to read EVERYTHING else as text
+      // Universal Text Reader: Try to read text smartly
       try {
-        const buf = await fs.promises.readFile(req.file.path);
-        // Heuristic: Check for null bytes (binary indicator) in the first 8000 bytes
-        const sample = buf.slice(0, Math.min(buf.length, 8000));
-        const isBinary = sample.includes(0);
+        const stats = await fs.promises.stat(req.file.path);
+        const fileSize = stats.size;
+        const CHUNK_SIZE = 1024 * 1024; // 1MB
+
+        let finalContent = '';
+        let isBinary = false;
+
+        // If file is "massive" (larger than 2 chunks), read Head + Tail
+        if (fileSize > 2 * CHUNK_SIZE) {
+          console.info(`[UniversalLoader] Optimizing massive file: ${req.file.originalname} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
+          const handle = await fs.promises.open(req.file.path, 'r');
+
+          try {
+            // Read Head
+            const headBuf = Buffer.alloc(CHUNK_SIZE);
+            await handle.read(headBuf, 0, CHUNK_SIZE, 0);
+
+            // Binary Check on Head
+            if (headBuf.includes(0)) {
+              isBinary = true;
+            } else {
+              // Read Tail
+              const tailBuf = Buffer.alloc(CHUNK_SIZE);
+              await handle.read(tailBuf, 0, CHUNK_SIZE, fileSize - CHUNK_SIZE);
+
+              finalContent = headBuf.toString('utf8') +
+                '\n...[Content Truncated (Included Start and End of file)]...\n' +
+                tailBuf.toString('utf8');
+            }
+          } finally {
+            await handle.close();
+          }
+
+        } else {
+          // Small enough to read normally
+          const buf = await fs.promises.readFile(req.file.path);
+          // Check for null bytes (binary indicator) in the first 8000 bytes
+          const sample = buf.slice(0, Math.min(buf.length, 8000));
+          if (sample.includes(0)) {
+            isBinary = true;
+          } else {
+            finalContent = buf.toString('utf8');
+          }
+        }
 
         if (!isBinary) {
-          content = buf.toString('utf8');
+          // Safe Truncate for DB (Secondary check, mostly for the 'else' case or if 2MB is still too big)
+          const MAX_DB_CONTENT = 2 * 1024 * 1024;
+          if (Buffer.byteLength(finalContent, 'utf8') > MAX_DB_CONTENT) {
+            console.warn(`[UniversalLoader] Additional truncation for DB: ${req.file.originalname}`);
+            finalContent = finalContent.slice(0, MAX_DB_CONTENT) + '\n\n...[Content Truncated due to size]...';
+          }
+          content = finalContent;
         } else {
           console.info(`[UniversalLoader] Skipping binary file: ${req.file.originalname} (${req.file.mimetype})`);
         }
@@ -71,14 +117,8 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
       }
     }
 
-    // Database BSON limit is 16MB. We keep it safe at 2MB per file content field.
-    // If larger, we truncate and mark it.
-    const MAX_DB_CONTENT = 2 * 1024 * 1024;
+    // Assign content directly since we handled truncation logic above
     let finalContent = content;
-    if (Buffer.byteLength(content, 'utf8') > MAX_DB_CONTENT) {
-      console.warn(`[UniversalLoader] Truncating content for DB: ${req.file.originalname}`);
-      finalContent = content.slice(0, MAX_DB_CONTENT) + '\n\n...[Content Truncated due to size]...';
-    }
 
     const fileDoc = await FileModel.create({
       originalName: req.file.originalname,

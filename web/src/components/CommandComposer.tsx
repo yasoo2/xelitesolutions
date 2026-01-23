@@ -515,6 +515,7 @@ export default function CommandComposer({
   >({});
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [userName, setUserName] = useState<string>('');
   const [userPicture, setUserPicture] = useState<string>('');
@@ -1645,6 +1646,7 @@ export default function CommandComposer({
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
     setIsUploading(true);
+    setUploadProgress(0);
 
     try {
       const token = localStorage.getItem('token');
@@ -1652,37 +1654,68 @@ export default function CommandComposer({
       formData.append('file', file);
       if (sessionId) formData.append('sessionId', sessionId);
 
-      const res = await fetch(`${API}/files/upload`, {
-        method: 'POST',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: formData,
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API}/files/upload`);
+
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(percentComplete);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 401) {
+            handleUnauthorized();
+            resolve();
+            return;
+          }
+
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              if (data && (data.file || data.filename)) {
+                const fileData = data.file || data;
+                // Support multiple ID formats: id, _id, or fallback to filename
+                const id = fileData.id || fileData._id || fileData.filename;
+                setAttachedFiles(prev => [...prev, { id: String(id), name: fileData.originalName }]);
+                resolve();
+              } else {
+                console.error('Invalid file upload response:', data);
+                alert(t('uploadFailed') || 'Upload failed: No file data returned');
+                resolve(); // resolve to clean up
+              }
+            } catch (err) {
+              console.error('Error parsing response:', err);
+              alert(t('uploadFailed') || 'Upload failed');
+              resolve();
+            }
+          } else {
+            alert(t('uploadFailed') || 'Upload failed');
+            resolve();
+          }
+        };
+
+        xhr.onerror = () => {
+          console.error('Network error during upload');
+          alert(t('uploadError') || 'Upload error');
+          reject(new Error('Network error'));
+        };
+
+        xhr.send(formData);
       });
 
-      if (res.status === 401) {
-        handleUnauthorized();
-        return;
-      }
-      if (res.ok) {
-        const data = await res.json();
-        if (data && (data.file || data.filename)) {
-          const fileData = data.file || data;
-          // Support multiple ID formats: id, _id, or fallback to filename
-          const id = fileData.id || fileData._id || fileData.filename;
-          setAttachedFiles(prev => [...prev, { id: String(id), name: fileData.originalName }]);
-        } else {
-          console.error('Invalid file upload response:', data);
-          alert(t('uploadFailed') || 'Upload failed: No file data returned');
-        }
-      } else {
-        alert(t('uploadFailed') || 'Upload failed');
-      }
     } catch (err) {
       console.error(err);
-      alert(t('uploadError') || 'Upload error');
+      // alert handled in xhr.onerror mostly, but good safeguard
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
@@ -3381,7 +3414,27 @@ export default function CommandComposer({
                   title={t('attachFile') || "Attach file"}
                   disabled={isUploading}
                 >
-                  {isUploading ? <Loader2 size={20} className="spin" /> : <Paperclip size={20} />}
+                  {isUploading ? (
+                    <div className="relative flex items-center justify-center w-5 h-5">
+                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                        <path
+                          className="text-gray-400/20"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="text-blue-500 transition-all duration-200 ease-out"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          strokeDasharray={`${uploadProgress}, 100`}
+                        />
+                      </svg>
+                    </div>
+                  ) : <Paperclip size={20} />}
                 </button>
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
