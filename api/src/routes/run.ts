@@ -1378,7 +1378,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const rawUserText = String(text || '');
   try {
 
-    const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0;
+    // Force hasAttachments if fileIds are present, even if content extraction failed
+    const hasAttachments = Boolean(attachedText.trim()) || contentParts.length > 0 || (Array.isArray(fileIds) && fileIds.length > 0);
     if (xeliteMacro && !hasAttachments && !initialPlan) {
       const sid =
         typeof browserSessionId === 'string' && browserSessionId.trim()

@@ -1809,7 +1809,7 @@ export default function CommandComposer({
       }
     ]);
     if (!overrideText) setText('');
-    setAttachedFiles([]);
+    // setAttachedFiles([]) moved to after payload construction
 
     // ELITE 5.0 FIX: Optimistic "Instant" Thought Trigger (0ms Latency)
     // Inject a local thought event immediately so the UI reacts before the server responds.
@@ -2088,6 +2088,7 @@ export default function CommandComposer({
           setEvents(prev => [...prev, { type: 'text', data: txt }]);
         }
       }
+      setAttachedFiles([]);
     } catch (e) {
       console.error(e);
       const msg = String((e as any)?.message || e || '').trim();
@@ -2098,6 +2099,7 @@ export default function CommandComposer({
       clearDraftTimer();
       setDraftActive(false);
       setDraftText('');
+      setAttachedFiles([]);
       setStatus('idle');
       setIsThinking(false);
       setActiveToolName(null);
