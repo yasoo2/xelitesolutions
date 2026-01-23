@@ -11,6 +11,37 @@ import './theme.css';
 import './global.css';
 import './i18n';
 
+if (import.meta.env.DEV) {
+  const shouldIgnoreNoiseError = (val: any) => {
+    const s = String(val?.stack || val?.message || val?.filename || val || '');
+    return s.includes('solanaActionsContentScript.js');
+  };
+
+  window.addEventListener(
+    'error',
+    (event) => {
+      const e = event as any;
+      if (shouldIgnoreNoiseError({ stack: e?.error?.stack, message: e?.message, filename: e?.filename })) {
+        event.preventDefault();
+        (event as any).stopImmediatePropagation?.();
+      }
+    },
+    true,
+  );
+
+  window.addEventListener(
+    'unhandledrejection',
+    (event) => {
+      const e = event as PromiseRejectionEvent;
+      if (shouldIgnoreNoiseError(e.reason)) {
+        event.preventDefault();
+        (event as any).stopImmediatePropagation?.();
+      }
+    },
+    true,
+  );
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
   if (!token) return <Navigate to="/login" replace />;
