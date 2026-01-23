@@ -1291,7 +1291,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           // Only trigger if it's the first or second message
           if (messageCount <= 2) {
             // Get the user message and potential context
-            const seed = String(text || '').trim() || fullPromptText;
+            const seed = fullPromptText;
             const messages = [{ role: 'user', content: seed }];
             const newTitle = await generateSessionTitle(messages);
             if (newTitle && newTitle !== 'New Session') {
@@ -1426,7 +1426,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   ev({ type: 'step_started', data: { name: 'plan' } });
 
   let initialPlan = null;
-  const rawUserText = String(text || '');
+  const rawUserText = fullPromptText;
   try {
 
     // Force hasAttachments if fileIds are present, even if content extraction failed
@@ -1544,10 +1544,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } catch { }
   }
 
-  // Save User Message to DB
-  let persistedUserText = redactSecretsFromString(String(text || ''));
+  // Save User Message to DB (Keep full content for history context)
+  let persistedUserText = redactSecretsFromString(String(fullPromptText || text || ''));
   try {
-    const r = rewriteInlineLoginCredentialsToSecrets(String(text || ''));
+    const r = rewriteInlineLoginCredentialsToSecrets(String(fullPromptText || text || ''));
     if (r.ok) persistedUserText = redactSecretsFromString(String(r.sanitizedText || persistedUserText));
   } catch { }
   try {

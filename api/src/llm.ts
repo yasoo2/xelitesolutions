@@ -604,7 +604,15 @@ export async function planNextStep(
     }
 
     const userMsg = [...messages].reverse().find(m => m.role === 'user');
-    const userText = typeof userMsg?.content === 'string' ? userMsg.content : '';
+    let userText = '';
+    if (typeof userMsg?.content === 'string') {
+      userText = userMsg.content;
+    } else if (Array.isArray(userMsg?.content)) {
+      userText = userMsg.content
+        .filter((c: any) => c.type === 'text')
+        .map((c: any) => c.text)
+        .join('\n');
+    }
 
     // === ENTERPRISE SYSTEMS ACTIVATION ===
 
