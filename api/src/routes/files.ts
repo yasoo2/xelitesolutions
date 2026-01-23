@@ -13,8 +13,8 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../../uploads');
     fs.mkdir(uploadDir, { recursive: true }, (err) => {
-        if (err) return cb(err, uploadDir); // Should we return uploadDir on error? Multer expects destination
-        cb(null, uploadDir);
+      if (err) return cb(err, uploadDir); // Should we return uploadDir on error? Multer expects destination
+      cb(null, uploadDir);
     });
   },
   filename: (req, file, cb) => {
@@ -23,7 +23,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
@@ -38,15 +38,31 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     const { sessionId } = req.body;
     let content = '';
 
+    const lowerName = req.file.originalname.toLowerCase();
     // Extract content based on type
     if (req.file.mimetype === 'application/pdf') {
       const dataBuffer = await fs.promises.readFile(req.file.path);
       const data = await pdf(dataBuffer);
       content = data.text;
-    } else if (req.file.mimetype.startsWith('text/') || 
-               req.file.mimetype === 'application/json' || 
-               req.file.mimetype === 'application/javascript' ||
-               req.file.mimetype.includes('code')) {
+    } else if (
+      req.file.mimetype.startsWith('text/') ||
+      req.file.mimetype === 'application/json' ||
+      req.file.mimetype === 'application/javascript' ||
+      req.file.mimetype.includes('code') ||
+      lowerName.endsWith('.har') ||
+      lowerName.endsWith('.json') ||
+      lowerName.endsWith('.ts') ||
+      lowerName.endsWith('.tsx') ||
+      lowerName.endsWith('.js') ||
+      lowerName.endsWith('.jsx') ||
+      lowerName.endsWith('.md') ||
+      lowerName.endsWith('.txt') ||
+      lowerName.endsWith('.log') ||
+      lowerName.endsWith('.csv') ||
+      lowerName.endsWith('.xml') ||
+      lowerName.endsWith('.yaml') ||
+      lowerName.endsWith('.yml')
+    ) {
       content = await fs.promises.readFile(req.file.path, 'utf8');
     }
 

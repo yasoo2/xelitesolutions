@@ -1096,6 +1096,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
         } else if (f.content) {
           attachedText += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
+        } else {
+          // File exists but content wasn't extracted (e.g. binary or unknown type)
+          attachedText += `\n\n[Attached File: ${f.originalName}] (Type: ${f.mimeType})\n(Content not automatically extracted. Refer to this file by name if needed.)\n`;
         }
       }
     } catch (e) {
