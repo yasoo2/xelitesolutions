@@ -1648,8 +1648,11 @@ export default function CommandComposer({
       }
       if (res.ok) {
         const data = await res.json();
-        if (data && data.file) {
-          setAttachedFiles(prev => [...prev, { id: data.file.id, name: data.file.originalName }]);
+        if (data && (data.file || data.filename)) {
+          const fileData = data.file || data;
+          // Support multiple ID formats: id, _id, or fallback to filename
+          const id = fileData.id || fileData._id || fileData.filename;
+          setAttachedFiles(prev => [...prev, { id: String(id), name: fileData.originalName }]);
         } else {
           console.error('Invalid file upload response:', data);
           alert(t('uploadFailed') || 'Upload failed: No file data returned');
