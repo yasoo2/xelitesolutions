@@ -1913,17 +1913,7 @@ export default function CommandComposer({
       return { sessionId: `browser:${sid}` };
     };
 
-    // Optimistic update
-    const tempId = Date.now().toString();
-    setEvents(prev => [
-      ...prev,
-      { type: 'user_input', data: inputText, id: tempId, ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
-    ]);
-
-    if (!overrideText) {
-      setText('');
-    }
-    setAttachedFiles([]);
+    // Optimistic update removed (duplicate)
 
     const token = localStorage.getItem('token');
     try {
