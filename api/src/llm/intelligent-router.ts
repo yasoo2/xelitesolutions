@@ -27,7 +27,39 @@ export interface TaskAnalysis {
     shortSummary?: string;
 }
 
+/**
+ * Flatten multimodal messages for text-only providers
+ * Converts content arrays with images into text descriptions
+ */
+export function flattenMultimodalMessages(messages: any[]): any[] {
+    return messages.map(m => {
+        if (Array.isArray(m.content)) {
+            const textParts = m.content
+                .filter((c: any) => c.type === 'text')
+                .map((c: any) => c.text || '')
+                .join('\n');
+
+            const imageParts = m.content.filter((c: any) => c.type === 'image_url');
+            const fileParts = m.content.filter((c: any) => c.type === 'file' || c.type === 'document');
+
+            let finalContent = textParts;
+
+            if (imageParts.length > 0) {
+                finalContent += `\n\n[📷 ${imageParts.length} صورة/صور مرفقة - يرجى تحليلها بناءً على السياق المتوفر]`;
+            }
+
+            if (fileParts.length > 0) {
+                finalContent += `\n\n[📄 ${fileParts.length} ملف/ملفات مرفقة]`;
+            }
+
+            return { ...m, content: finalContent || m.content };
+        }
+        return m;
+    });
+}
+
 // Available models configuration
+
 export const MODELS: Record<string, ModelConfig> = {
     // Free tier - Always available
     'llama-3.1-70b': {
@@ -429,9 +461,12 @@ export async function routeToModel(
     onPartial?: (delta: string) => void
 ): Promise<string> {
 
+    // Flatten multimodal messages for text-only providers
+    const flatMessages = flattenMultimodalMessages(messages);
+
     // Analyze if not provided
     const taskAnalysis = analysis || analyzeTask(
-        messages.find(m => m.role === 'user')?.content || ''
+        flatMessages.find(m => m.role === 'user')?.content || ''
     );
 
     // Select best model
@@ -441,6 +476,7 @@ export async function routeToModel(
     const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
 
     // Unified Multi-Provider Mesh for Auto Mode
+
     // Order: OpenAI (if key) -> Groq (Free) -> OpenRouter (Free) -> Pollinations (Backup)
     const providers = [
         {
@@ -467,7 +503,7 @@ export async function routeToModel(
                 }
                 try {
                     const model = selectedModel.provider === 'groq' ? selectedModel.model : MODELS['llama-3.1-70b'].model;
-                    return await callGroq(model, messages, onPartial);
+                    return await callGroq(model, flatMessages, onPartial);
                 } catch (e: any) { throw e; }
             }
         },
@@ -481,7 +517,7 @@ export async function routeToModel(
                     const llm = require('../llm');
                     openrouter = llm.openRouterProvider;
                 }
-                return await openrouter.chatComplete(messages, 'google/gemma-2-9b-it:free');
+                return await openrouter.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
             }
         },
         {
@@ -491,7 +527,7 @@ export async function routeToModel(
                     const llm = require('../llm');
                     hack = llm.pollinationsProvider;
                 }
-                return await hack.chatComplete(messages, 'openai');
+                return await hack.chatComplete(flatMessages, 'openai');
             }
         }
     ];
@@ -501,12 +537,13 @@ export async function routeToModel(
     // 1. Try Selected Model First (Happy Path)
     try {
         if (selectedModel.provider === 'groq' && hasGroqKey) {
-            return await callGroq(selectedModel.model, messages, onPartial);
+            return await callGroq(selectedModel.model, flatMessages, onPartial);
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
             throw new Error('UseLegacyOpenAIPath'); // Handled by existing code logic? 
             // Actually, intelligent-router calls `llm.ts`? No, it calls providers directly.
             // Wait, `routeToModel` typically returns string.
+
             // The original code passed `hack` for Pollinations.
             // We need to implement OpenAI call here if we want it self-contained, 
             // OR assume `llm.ts` passed it.

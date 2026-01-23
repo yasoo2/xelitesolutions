@@ -3185,10 +3185,34 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(plan?.name || '', persistedInput)}\nOutput: ${safeOutput(plan?.name || '', result.output || result.error || 'Done')}`
     });
 
+    // [FIX 3] Preserve file context for multi-turn conversations
+    // If there are attached files/images, remind the LLM about them
+    if (steps === 0 && (contentParts.length > 0 || attachedText.trim().length > 100)) {
+      const fileContextSummary = attachedText.trim().length > 100
+        ? attachedText.slice(0, 500) + '...[محتوى مختصر]'
+        : attachedText;
+      const imageCount = contentParts.filter((p: any) => p.type === 'image_url').length;
+
+      let contextReminder = '[📎 سياق الملفات المرفقة]:\n';
+      if (imageCount > 0) {
+        contextReminder += `- ${imageCount} صورة/صور مرفقة\n`;
+      }
+      if (fileContextSummary.trim()) {
+        contextReminder += `- محتوى الملف:\n${fileContextSummary}\n`;
+      }
+
+      history.push({
+        role: 'system',
+        content: contextReminder
+      });
+      console.info('[Run/Context] Injected file context reminder into history');
+    }
+
     lastResult = result;
     if (result?.ok && /^browser_/.test(String(plan?.name || ''))) {
       updateBrowserLockFromOutput((result as any)?.output);
     }
+
 
     if (result.logs?.length) {
       for (const line of result.logs) {

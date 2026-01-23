@@ -593,15 +593,30 @@ export async function planNextStep(
     const lastMsg = messages[messages.length - 1];
     const role = (lastMsg?.role as string) || '';
     if (role === 'tool' || role === 'function' || role === 'assistant') {
-      // Check if assistant actually replied or if it's just a tool call
-      const hasContent = typeof lastMsg?.content === 'string' && lastMsg.content.trim().length > 0;
-      if (!hasContent && (lastMsg as any).tool_calls?.length > 0) {
+      // Check if assistant actually replied or if it's just a tool call/result marker
+      const content = typeof lastMsg?.content === 'string' ? lastMsg.content : '';
+      const hasToolCalls = (lastMsg as any).tool_calls?.length > 0;
+      const isToolMarker = content.includes('tool call:') || content.includes('Tool Call:') ||
+        content.includes('Tool \'') || content.includes('FAILED') ||
+        content.includes('PROJECT_') || content.includes('WF_START:') ||
+        content.includes('ECOMMERCE_PLAN');
+
+      // Only end turn if:
+      // 1. There's actual content that's NOT a tool marker
+      // 2. AND content is long enough to be a real response (> 100 chars)
+      // 3. AND there are no pending tool calls
+      const isRealResponse = content.trim().length > 100 && !isToolMarker && !hasToolCalls;
+
+      if (hasToolCalls && !content.trim()) {
         console.info('[LLM] Auto Mode: Assistant waiting for tools, proceeding.');
-      } else {
-        console.info('[LLM] Auto Mode: Last message was not from user, ending turn.');
+      } else if (isRealResponse) {
+        console.info('[LLM] Auto Mode: Last message was a real assistant response, ending turn.');
         return null;
+      } else {
+        console.info('[LLM] Auto Mode: Tool result marker detected, continuing planning.');
       }
     }
+
 
     const userMsg = [...messages].reverse().find(m => m.role === 'user');
     let userText = '';
