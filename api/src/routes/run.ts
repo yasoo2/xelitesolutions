@@ -1085,34 +1085,70 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let attachedText = '';
   const contentParts: any[] = [];
 
-  if (!useMock && fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
-    try {
-      const files = await FileModel.find({ _id: { $in: fileIds } });
-      for (const f of files) {
-        if (f.mimeType && f.mimeType.startsWith('image/')) {
-          try {
-            if (fs.existsSync(f.path)) {
-              const imageBuffer = fs.readFileSync(f.path);
-              const base64Image = imageBuffer.toString('base64');
-              contentParts.push({
-                type: 'image_url',
-                image_url: {
-                  url: `data:${f.mimeType};base64,${base64Image}`
-                }
-              });
+  if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
+    if (!useMock) {
+      // Normal path: Read from MongoDB
+      try {
+        const files = await FileModel.find({ _id: { $in: fileIds } });
+        for (const f of files) {
+          if (f.mimeType && f.mimeType.startsWith('image/')) {
+            try {
+              if (fs.existsSync(f.path)) {
+                const imageBuffer = fs.readFileSync(f.path);
+                const base64Image = imageBuffer.toString('base64');
+                contentParts.push({
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${f.mimeType};base64,${base64Image}`
+                  }
+                });
+              }
+            } catch (err) {
+              console.error('Failed to read image', err);
             }
-          } catch (err) {
-            console.error('Failed to read image', err);
+          } else if (f.content) {
+            attachedText += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
+          } else {
+            // File exists but content wasn't extracted (e.g. binary or unknown type)
+            attachedText += `\n\n[Attached File: ${f.originalName}] (Type: ${f.mimeType})\n(Content not automatically extracted. Refer to this file by name if needed.)\n`;
           }
-        } else if (f.content) {
-          attachedText += `\n\n--- [Attached File: ${f.originalName}] ---\n${f.content}\n--- [End of File] ---\n`;
-        } else {
-          // File exists but content wasn't extracted (e.g. binary or unknown type)
-          attachedText += `\n\n[Attached File: ${f.originalName}] (Type: ${f.mimeType})\n(Content not automatically extracted. Refer to this file by name if needed.)\n`;
+        }
+      } catch (e) {
+        console.error('Error loading files from DB', e);
+      }
+    } else {
+      // Fallback: DB unavailable, read directly from uploads directory
+      console.log('[Fallback] MongoDB unavailable, attempting to read files from disk');
+      const uploadsDir = path.join(__dirname, '../../uploads');
+
+      for (const fileId of fileIds) {
+        try {
+          // Try to find the file by scanning the uploads directory
+          if (fs.existsSync(uploadsDir)) {
+            const allFiles = fs.readdirSync(uploadsDir);
+            // Look for files that might match this ID (usually filename contains original name)
+            const matchingFile = allFiles.find(f => f.includes(String(fileId).slice(-8)));
+
+            if (matchingFile) {
+              const filePath = path.join(uploadsDir, matchingFile);
+              const stats = fs.statSync(filePath);
+
+              // Try to read as text (simple heuristic)
+              if (stats.size < 10 * 1024 * 1024) { // < 10MB
+                try {
+                  const content = fs.readFileSync(filePath, 'utf-8');
+                  attachedText += `\n\n--- [Attached File: ${matchingFile}] ---\n${content}\n--- [End of File] ---\n`;
+                } catch {
+                  // Binary file, add placeholder
+                  attachedText += `\n\n[Attached File: ${matchingFile}]\n(Binary file - content not displayed)\n`;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to read file ${fileId} from disk:`, err);
         }
       }
-    } catch (e) {
-      console.error('Error loading files', e);
     }
   }
 
