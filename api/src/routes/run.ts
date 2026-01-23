@@ -2402,8 +2402,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
           `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
           `- المفتاح: ${keyLabel}`,
-          needsKey ? `- فعّل مزوّد ذكاء (OpenAI/Anthropic) وأضف API Key من الإعدادات.` : `- جرّب إعادة صياغة الطلب أو أعطني تفاصيل إضافية.`,
-          hint ? `${hint}` : ``,
+          `- المفتاح: ${keyLabel}`,
+          needsKey ? `- ⚠️ يبدو أنك لم تقم بتفعيل مفتاح API (مثلاً OpenAI/Anthropic). يرجى الذهاب للإعدادات وإضافته.` : `- لم أتمكن من تحديد خطة ذكية لهذا الطلب. هل يمكنك توضيح المزيد؟`,
+          hint ? `تلميح: ${hint}` : ``,
+          `Debug Info: Provider=${providerKey}, HasKey=${hasAnyKey}, Plan=${planName || 'none'}`
         ].filter(Boolean).join('\n');
         forcedText = msg;
         const now = Date.now();
