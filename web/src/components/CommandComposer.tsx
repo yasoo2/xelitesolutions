@@ -3319,19 +3319,6 @@ export default function CommandComposer({
       )}
 
       <div className="composer-footer">
-        {attachedFiles.length > 0 && (
-          <div className="attached-files">
-            {attachedFiles.map((file, i) => (
-              <div key={i} className="attached-file-chip">
-                <span className="file-name">{file.name}</span>
-                <button onClick={() => setAttachedFiles(prev => prev.filter((_, idx) => idx !== i))} className="remove-file-btn">
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
         <AnimatePresence>
           {showFloatingTaskbar && activeTaskBar?.visible ? (
             <motion.div
@@ -3375,6 +3362,18 @@ export default function CommandComposer({
         </AnimatePresence>
         <div className="input-area">
           <div className="input-container">
+            {attachedFiles.length > 0 && (
+              <div className="attached-files">
+                {attachedFiles.map((file, i) => (
+                  <div key={i} className="attached-file-chip">
+                    <span className="file-name">{file.name}</span>
+                    <button onClick={() => setAttachedFiles(prev => prev.filter((_, idx) => idx !== i))} className="remove-file-btn">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <textarea
               className="main-input"
               value={text}
