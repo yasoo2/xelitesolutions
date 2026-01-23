@@ -217,6 +217,32 @@ function errorStatusCode(err: any): number | null {
   return null;
 }
 
+function normalizeFileIds(raw: any): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
+    if (s) out.push(s);
+  }
+  return out;
+}
+
+function looksLikeObjectId(raw: string): boolean {
+  const s = String(raw || '').trim();
+  if (!s) return false;
+  return /^[a-f0-9]{24}$/i.test(s);
+}
+
+function splitFileIdCandidates(fileIds: string[]) {
+  const objectIds: string[] = [];
+  const filenames: string[] = [];
+  for (const id of fileIds) {
+    if (looksLikeObjectId(id)) objectIds.push(id);
+    else filenames.push(id);
+  }
+  return { objectIds, filenames };
+}
+
 function isProviderAuthError(err: any, errMsg?: string): boolean {
   const status = errorStatusCode(err);
   if (status === 401 || status === 403) return true;
@@ -1032,13 +1058,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const userId = (req as any).auth?.sub;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
   const kind = sessionKind === 'agent' ? 'agent' : 'chat';
+  const normalizedFileIds = normalizeFileIds(fileIds);
 
   // [DEBUG] Log incoming request for file debugging
   console.log('[Run/Start] Request received:', {
     hasText: Boolean(text),
     sessionId,
-    fileIdsCount: fileIds?.length,
-    fileIds,
+    fileIdsCount: normalizedFileIds.length,
+    fileIds: normalizedFileIds,
     provider,
     model
   });
@@ -1085,16 +1112,32 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let attachedText = '';
   const contentParts: any[] = [];
 
-  console.log('[File Processing] fileIds:', fileIds);
+  console.log('[File Processing] fileIds:', normalizedFileIds);
   console.log('[File Processing] useMock:', useMock);
   console.log('[File Processing] mongoose.connection.readyState:', mongoose.connection.readyState);
 
-  if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
+  if (normalizedFileIds.length > 0) {
     if (!useMock) {
       // Normal path: Read from MongoDB
       try {
-        const files = await FileModel.find({ _id: { $in: fileIds } });
+        const { objectIds, filenames } = splitFileIdCandidates(normalizedFileIds);
+        const or: any[] = [];
+        if (objectIds.length > 0) or.push({ _id: { $in: objectIds } });
+        if (filenames.length > 0) or.push({ filename: { $in: filenames } });
+        const files = or.length > 0 ? await FileModel.find({ $or: or }) : [];
+
+        const byId = new Map<string, any>();
+        const byFilename = new Map<string, any>();
         for (const f of files) {
+          const id = String((f as any)?._id || '');
+          if (id) byId.set(id, f);
+          const fn = String((f as any)?.filename || '');
+          if (fn && !byFilename.has(fn)) byFilename.set(fn, f);
+        }
+
+        for (const ref of normalizedFileIds) {
+          const f = byId.get(ref) || byFilename.get(ref);
+          if (!f) continue;
           if (f.mimeType && f.mimeType.startsWith('image/')) {
             try {
               if (fs.existsSync(f.path)) {
@@ -1129,8 +1172,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const cache = JSON.parse(fs.readFileSync(cacheFilePath, 'utf-8'));
           console.log('[Fallback] Cache file loaded, available files:', Object.keys(cache).length);
 
-          for (const fileId of fileIds) {
-            const fileData = cache[fileId];
+          const filenameIndex = new Map<string, any>();
+          for (const v of Object.values(cache || {})) {
+            const fn = v && typeof (v as any).filename === 'string' ? String((v as any).filename) : '';
+            if (fn && !filenameIndex.has(fn)) filenameIndex.set(fn, v);
+          }
+
+          for (const fileId of normalizedFileIds) {
+            const fileData = cache[fileId] || filenameIndex.get(fileId);
             if (fileData) {
               console.log('[Fallback] Found file in cache:', fileData.originalName);
 
@@ -1257,9 +1306,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   }
 
   // Update session with new files if any
-  if (!useMock && fileIds && Array.isArray(fileIds)) {
-    // Optionally link files to session if not already
-    await FileModel.updateMany({ _id: { $in: fileIds } }, { $set: { sessionId } });
+  if (!useMock && normalizedFileIds.length > 0) {
+    const { objectIds, filenames } = splitFileIdCandidates(normalizedFileIds);
+    const or: any[] = [];
+    if (objectIds.length > 0) or.push({ _id: { $in: objectIds } });
+    if (filenames.length > 0) or.push({ filename: { $in: filenames } });
+    if (or.length > 0) {
+      await FileModel.updateMany({ $or: or }, { $set: { sessionId } });
+    }
   }
 
   const isAutoTitleCandidate = (title: string) => {

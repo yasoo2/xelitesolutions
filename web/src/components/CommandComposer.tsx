@@ -1660,7 +1660,7 @@ export default function CommandComposer({
         formData.append('file', file);
         if (sessionId) formData.append('sessionId', sessionId);
 
-        await new Promise<void>((resolve, reject) => {
+        await new Promise<void>((resolve) => {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', `${API}/files/upload`);
 
@@ -1686,16 +1686,31 @@ export default function CommandComposer({
               try {
                 const data = JSON.parse(xhr.responseText);
 
-                if (data && (data.file || data.filename)) {
-                  const fileData = data.file || data;
-                  const id = fileData.id || fileData._id || fileData.filename;
-                  setAttachedFiles(prev => [...prev, { id: String(id), name: fileData.originalName }]);
-                  resolve();
-                } else {
+                const fileData =
+                  data && typeof data === 'object' && data.file && typeof data.file === 'object'
+                    ? data.file
+                    : data;
+
+                const idRaw = (fileData as any)?.id ?? (fileData as any)?._id;
+                if (!idRaw) {
                   console.error('Invalid file upload response:', data);
                   alert(t('uploadFailed') || `Upload failed for ${file.name}: No data returned`);
                   resolve();
+                  return;
                 }
+
+                const id = String(idRaw);
+                const displayName = String(
+                  (fileData as any)?.originalName ??
+                  (fileData as any)?.name ??
+                  file.name
+                );
+
+                setAttachedFiles((prev) => {
+                  if (prev.some((f) => f.id === id)) return prev;
+                  return [...prev, { id, name: displayName }];
+                });
+                resolve();
               } catch (err) {
                 console.error('Error parsing response:', err);
                 alert(t('uploadFailed') || `Upload failed for ${file.name}`);
@@ -3384,6 +3399,7 @@ export default function CommandComposer({
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
+                  if (isUploading) return;
                   if (status !== 'idle' || !!approval || !!secretPrompt) {
                     stopCurrentRun();
                     return;
@@ -3459,9 +3475,10 @@ export default function CommandComposer({
                       stopCurrentRun();
                       return;
                     }
+                    if (isUploading) return;
                     run();
                   }}
-                  disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (!text.trim() || !!approval)}
+                  disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
                   title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
                 >
                   {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={18} /> : <ArrowUp size={20} />}

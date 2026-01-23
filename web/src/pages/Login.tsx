@@ -53,7 +53,7 @@ export default function Login() {
     }
 
     const googleLogin = useGoogleLogin({
-        onSuccess: async (tokenResponse) => {
+        onSuccess: async (tokenResponse: any) => {
             setLoading(true);
             try {
                 // Modified: Only send the access_token, which is what implicit flow returns.
