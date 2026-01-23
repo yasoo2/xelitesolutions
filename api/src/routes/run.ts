@@ -1033,6 +1033,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
   const kind = sessionKind === 'agent' ? 'agent' : 'chat';
 
+  // [DEBUG] Log incoming request for file debugging
+  console.log('[Run/Start] Request received:', {
+    hasText: Boolean(text),
+    sessionId,
+    fileIdsCount: fileIds?.length,
+    fileIds,
+    provider,
+    model
+  });
+
   if (typeof provider === 'string') provider = provider.trim();
   if (typeof apiKey === 'string') apiKey = apiKey.trim();
   if (typeof baseUrl === 'string') baseUrl = baseUrl.trim();
@@ -1117,6 +1127,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   if (ctxLines.length > 0) {
     fullPromptText += `\n\n[Client Context]:\n${ctxLines.join('\n')}\n`;
   }
+
+  // [DEBUG] Log prompt construction
+  console.log('[Run/Setup] Prompt constructed:', {
+    textLen: text?.length,
+    attachmentsLen: attachedText.length,
+    contentPartsCount: contentParts.length,
+    fullPromptLen: fullPromptText.length,
+    snippet: fullPromptText.slice(0, 100) + '...'
+  });
 
   // Inject Memory
   if (userId && !useMock) {
