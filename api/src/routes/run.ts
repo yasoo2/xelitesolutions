@@ -1121,37 +1121,48 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         console.error('Error loading files from DB', e);
       }
     } else {
-      // Fallback: DB unavailable, read directly from uploads directory
-      console.log('[Fallback] MongoDB unavailable, attempting to read files from disk');
-      const uploadsDir = path.join(__dirname, '../../uploads');
+      // Fallback: DB unavailable, read from cache file
+      console.log('[Fallback] MongoDB unavailable, reading files from cache');
+      try {
+        const cacheFilePath = path.join(__dirname, '../../.file-cache.json');
+        if (fs.existsSync(cacheFilePath)) {
+          const cache = JSON.parse(fs.readFileSync(cacheFilePath, 'utf-8'));
+          console.log('[Fallback] Cache file loaded, available files:', Object.keys(cache).length);
 
-      for (const fileId of fileIds) {
-        try {
-          // Try to find the file by scanning the uploads directory
-          if (fs.existsSync(uploadsDir)) {
-            const allFiles = fs.readdirSync(uploadsDir);
-            // Look for files that might match this ID (usually filename contains original name)
-            const matchingFile = allFiles.find(f => f.includes(String(fileId).slice(-8)));
+          for (const fileId of fileIds) {
+            const fileData = cache[fileId];
+            if (fileData) {
+              console.log('[Fallback] Found file in cache:', fileData.originalName);
 
-            if (matchingFile) {
-              const filePath = path.join(uploadsDir, matchingFile);
-              const stats = fs.statSync(filePath);
-
-              // Try to read as text (simple heuristic)
-              if (stats.size < 10 * 1024 * 1024) { // < 10MB
+              if (fileData.mimeType && fileData.mimeType.startsWith('image/')) {
                 try {
-                  const content = fs.readFileSync(filePath, 'utf-8');
-                  attachedText += `\n\n--- [Attached File: ${matchingFile}] ---\n${content}\n--- [End of File] ---\n`;
-                } catch {
-                  // Binary file, add placeholder
-                  attachedText += `\n\n[Attached File: ${matchingFile}]\n(Binary file - content not displayed)\n`;
+                  if (fs.existsSync(fileData.path)) {
+                    const imageBuffer = fs.readFileSync(fileData.path);
+                    const base64Image = imageBuffer.toString('base64');
+                    contentParts.push({
+                      type: 'image_url',
+                      image_url: {
+                        url: `data:${fileData.mimeType};base64,${base64Image}`
+                      }
+                    });
+                  }
+                } catch (err) {
+                  console.error('[Fallback] Failed to read image from cache:', err);
                 }
+              } else if (fileData.content) {
+                attachedText += `\n\n--- [Attached File: ${fileData.originalName}] ---\n${fileData.content}\n--- [End of File] ---\n`;
+              } else {
+                attachedText += `\n\n[Attached File: ${fileData.originalName}] (Type: ${fileData.mimeType})\n(Content not automatically extracted. Refer to this file by name if needed.)\n`;
               }
+            } else {
+              console.warn('[Fallback] File not found in cache:', fileId);
             }
           }
-        } catch (err) {
-          console.error(`Failed to read file ${fileId} from disk:`, err);
+        } else {
+          console.error('[Fallback] Cache file not found at:', cacheFilePath);
         }
+      } catch (err) {
+        console.error('[Fallback] Error reading cache:', err);
       }
     }
   }

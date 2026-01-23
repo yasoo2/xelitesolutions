@@ -130,6 +130,28 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
       sessionId
     });
 
+    // [FALLBACK] Save to cache file for offline access
+    try {
+      const cacheFilePath = path.join(__dirname, '../../.file-cache.json');
+      let cache: any = {};
+      if (fs.existsSync(cacheFilePath)) {
+        cache = JSON.parse(fs.readFileSync(cacheFilePath, 'utf-8'));
+      }
+      cache[fileDoc._id.toString()] = {
+        id: fileDoc._id.toString(),
+        originalName: fileDoc.originalName,
+        filename: fileDoc.filename,
+        mimeType: fileDoc.mimeType,
+        size: fileDoc.size,
+        path: fileDoc.path,
+        content: fileDoc.content
+      };
+      fs.writeFileSync(cacheFilePath, JSON.stringify(cache, null, 2));
+      console.log('[File Cache] Saved file to cache:', fileDoc._id.toString());
+    } catch (cacheErr) {
+      console.error('[File Cache] Failed to write cache:', cacheErr);
+    }
+
     res.json(fileDoc);
   } catch (e) {
     console.error(e);
