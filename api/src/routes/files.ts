@@ -120,39 +120,58 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     // Assign content directly since we handled truncation logic above
     let finalContent = content;
 
-    const fileDoc = await FileModel.create({
+    // Generate a unique ID (MongoDB-compatible format)
+    const crypto = require('crypto');
+    const generatedId = crypto.randomBytes(12).toString('hex'); // 24 char hex (like MongoDB ObjectId)
+
+    // Prepare file data
+    const fileData = {
+      _id: generatedId,
       originalName: req.file.originalname,
       filename: req.file.filename,
       mimeType: req.file.mimetype,
       size: req.file.size,
       path: req.file.path,
       content: finalContent,
-      sessionId
-    });
+      sessionId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
 
-    // [FALLBACK] Save to cache file for offline access
+    // [PRIORITY 1] Save to cache FIRST (works offline)
     try {
       const cacheFilePath = path.join(__dirname, '../../.file-cache.json');
       let cache: any = {};
       if (fs.existsSync(cacheFilePath)) {
         cache = JSON.parse(fs.readFileSync(cacheFilePath, 'utf-8'));
       }
-      cache[fileDoc._id.toString()] = {
-        id: fileDoc._id.toString(),
-        originalName: fileDoc.originalName,
-        filename: fileDoc.filename,
-        mimeType: fileDoc.mimeType,
-        size: fileDoc.size,
-        path: fileDoc.path,
-        content: fileDoc.content
+      cache[generatedId] = {
+        id: generatedId,
+        originalName: fileData.originalName,
+        filename: fileData.filename,
+        mimeType: fileData.mimeType,
+        size: fileData.size,
+        path: fileData.path,
+        content: fileData.content
       };
       fs.writeFileSync(cacheFilePath, JSON.stringify(cache, null, 2));
-      console.log('[File Cache] Saved file to cache:', fileDoc._id.toString());
+      console.log('[File Cache] Saved file to cache:', generatedId);
     } catch (cacheErr) {
       console.error('[File Cache] Failed to write cache:', cacheErr);
+      return res.status(500).json({ error: 'Failed to save file' });
     }
 
-    res.json(fileDoc);
+    // [PRIORITY 2] Try to save to MongoDB (optional, non-blocking)
+    try {
+      const fileDoc = await FileModel.create(fileData);
+      console.log('[MongoDB] File saved to DB:', fileDoc._id);
+    } catch (dbErr) {
+      console.warn('[MongoDB] Failed to save to DB (continuing with cache):', dbErr);
+      // Don't fail the request - cache is enough
+    }
+
+    // Return success with generated ID
+    res.json(fileData);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Upload failed' });
