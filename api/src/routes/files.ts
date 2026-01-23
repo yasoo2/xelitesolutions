@@ -30,10 +30,19 @@ const upload = multer({
 
 // Upload endpoint
 router.post('/upload', authenticate as any, upload.single('file') as any, async (req: Request, res: Response) => {
+  console.log('[DEBUG-API] /files/upload hit');
+  console.log('[DEBUG-API] Headers:', req.headers);
   try {
     if (!req.file) {
+      console.error('[DEBUG-API] No file in request');
       return res.status(400).json({ error: 'No file uploaded' });
     }
+    console.log('[DEBUG-API] File received:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    });
 
     const { sessionId } = req.body;
     let content = '';

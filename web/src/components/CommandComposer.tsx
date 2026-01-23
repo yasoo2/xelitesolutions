@@ -1644,75 +1644,90 @@ export default function CommandComposer({
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files?.length) return;
-    const file = e.target.files[0];
+    const selectedFiles = Array.from(e.target.files);
+    console.log('[DEBUG] Files selected:', selectedFiles);
+
     setIsUploading(true);
     setUploadProgress(0);
 
     try {
       const token = localStorage.getItem('token');
-      const formData = new FormData();
-      formData.append('file', file);
-      if (sessionId) formData.append('sessionId', sessionId);
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${API}/files/upload`);
+      // Upload sequentially to show progress for each
+      for (const file of selectedFiles) {
+        setUploadProgress(0); // Reset for next file
 
-        if (token) {
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        }
+        const formData = new FormData();
+        formData.append('file', file);
+        if (sessionId) formData.append('sessionId', sessionId);
 
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = Math.round((event.loaded / event.total) * 100);
-            setUploadProgress(percentComplete);
-          }
-        };
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${API}/files/upload`);
 
-        xhr.onload = () => {
-          if (xhr.status === 401) {
-            handleUnauthorized();
-            resolve();
-            return;
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           }
 
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              if (data && (data.file || data.filename)) {
-                const fileData = data.file || data;
-                // Support multiple ID formats: id, _id, or fallback to filename
-                const id = fileData.id || fileData._id || fileData.filename;
-                setAttachedFiles(prev => [...prev, { id: String(id), name: fileData.originalName }]);
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const percentComplete = Math.round((event.loaded / event.total) * 100);
+              setUploadProgress(percentComplete);
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status === 401) {
+              handleUnauthorized();
+              resolve();
+              return;
+            }
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                console.log('[DEBUG] Upload Response Raw:', xhr.responseText);
+                const data = JSON.parse(xhr.responseText);
+                console.log('[DEBUG] Upload Response Parsed:', data);
+
+                if (data && (data.file || data.filename)) {
+                  const fileData = data.file || data;
+                  const id = fileData.id || fileData._id || fileData.filename;
+                  console.log('[DEBUG] Adding file to attachedFiles:', { id: String(id), name: fileData.originalName });
+                  setAttachedFiles(prev => {
+                    const newState = [...prev, { id: String(id), name: fileData.originalName }];
+                    console.log('[DEBUG] New attachedFiles state:', newState);
+                    return newState;
+                  });
+                  resolve();
+                } else {
+                  console.error('Invalid file upload response:', data);
+                  alert(t('uploadFailed') || `Upload failed for ${file.name}: No data returned`);
+                  resolve();
+                }
+              } catch (err) {
+                console.error('Error parsing response:', err);
+                alert(t('uploadFailed') || `Upload failed for ${file.name}`);
                 resolve();
-              } else {
-                console.error('Invalid file upload response:', data);
-                alert(t('uploadFailed') || 'Upload failed: No file data returned');
-                resolve(); // resolve to clean up
               }
-            } catch (err) {
-              console.error('Error parsing response:', err);
-              alert(t('uploadFailed') || 'Upload failed');
+            } else {
+              alert(t('uploadFailed') || `Upload failed for ${file.name}`);
               resolve();
             }
-          } else {
-            alert(t('uploadFailed') || 'Upload failed');
+          };
+
+          xhr.onerror = () => {
+            console.error('Network error during upload');
+            alert(t('uploadError') || `Network error uploading ${file.name}`);
+            // We resolve instead of reject to allow other files to try uploading
             resolve();
-          }
-        };
+          };
 
-        xhr.onerror = () => {
-          console.error('Network error during upload');
-          alert(t('uploadError') || 'Upload error');
-          reject(new Error('Network error'));
-        };
-
-        xhr.send(formData);
-      });
+          xhr.send(formData);
+        });
+      }
 
     } catch (err) {
       console.error(err);
-      // alert handled in xhr.onerror mostly, but good safeguard
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -3310,6 +3325,8 @@ export default function CommandComposer({
       )}
 
       <div className="composer-footer">
+        {/* Debug Log in Render */}
+        {(() => { console.log('[DEBUG] Render attachedFiles:', attachedFiles); return null; })()}
         {attachedFiles.length > 0 && (
           <div className="attached-files">
             {attachedFiles.map((file, i) => (
@@ -3404,6 +3421,7 @@ export default function CommandComposer({
                 </button>
                 <input
                   type="file"
+                  multiple
                   ref={fileInputRef}
                   onChange={handleFileSelect}
                   style={{ display: 'none' }}
