@@ -1085,6 +1085,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let attachedText = '';
   const contentParts: any[] = [];
 
+  console.log('[File Processing] fileIds:', fileIds);
+  console.log('[File Processing] useMock:', useMock);
+  console.log('[File Processing] mongoose.connection.readyState:', mongoose.connection.readyState);
+
   if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
     if (!useMock) {
       // Normal path: Read from MongoDB
