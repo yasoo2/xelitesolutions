@@ -327,6 +327,14 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
     anthropic?: string;
     openai?: string;
 }): ModelConfig {
+    const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
+
+    // Fallback found: Use Pollinations if Groq key is missing
+    // This enables "True Free Mode" for users without keys
+    if (!hasGroq) {
+        console.info('[IntelligentRouter] Groq key missing. Falling back to Pollinations (OpenAI Proxy).');
+        return MODELS['pollinations'];
+    }
 
     // For extreme complexity with available premium keys
     if (analysis.complexity === 'extreme') {
