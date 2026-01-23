@@ -13,7 +13,7 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../../uploads');
     fs.mkdir(uploadDir, { recursive: true }, (err) => {
-      if (err) return cb(err, uploadDir); // Should we return uploadDir on error? Multer expects destination
+      if (err) return cb(err, uploadDir);
       cb(null, uploadDir);
     });
   },
@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit (Universal)
 });
 
 // Upload endpoint
@@ -39,31 +39,45 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     let content = '';
 
     const lowerName = req.file.originalname.toLowerCase();
-    // Extract content based on type
+
+    // Universal Loader Logic
     if (req.file.mimetype === 'application/pdf') {
-      const dataBuffer = await fs.promises.readFile(req.file.path);
-      const data = await pdf(dataBuffer);
-      content = data.text;
+      try {
+        const dataBuffer = await fs.promises.readFile(req.file.path);
+        const data = await pdf(dataBuffer);
+        content = data.text;
+      } catch (err) {
+        console.warn('[UniversalLoader] PDF parse warning:', err);
+      }
     } else if (
-      req.file.mimetype.startsWith('text/') ||
-      req.file.mimetype === 'application/json' ||
-      req.file.mimetype === 'application/javascript' ||
-      req.file.mimetype.includes('code') ||
-      lowerName.endsWith('.har') ||
-      lowerName.endsWith('.json') ||
-      lowerName.endsWith('.ts') ||
-      lowerName.endsWith('.tsx') ||
-      lowerName.endsWith('.js') ||
-      lowerName.endsWith('.jsx') ||
-      lowerName.endsWith('.md') ||
-      lowerName.endsWith('.txt') ||
-      lowerName.endsWith('.log') ||
-      lowerName.endsWith('.csv') ||
-      lowerName.endsWith('.xml') ||
-      lowerName.endsWith('.yaml') ||
-      lowerName.endsWith('.yml')
+      !req.file.mimetype.startsWith('image/') &&
+      !req.file.mimetype.startsWith('audio/') &&
+      !req.file.mimetype.startsWith('video/')
     ) {
-      content = await fs.promises.readFile(req.file.path, 'utf8');
+      // Universal Text Reader: Try to read EVERYTHING else as text
+      try {
+        const buf = await fs.promises.readFile(req.file.path);
+        // Heuristic: Check for null bytes (binary indicator) in the first 8000 bytes
+        const sample = buf.slice(0, Math.min(buf.length, 8000));
+        const isBinary = sample.includes(0);
+
+        if (!isBinary) {
+          content = buf.toString('utf8');
+        } else {
+          console.info(`[UniversalLoader] Skipping binary file: ${req.file.originalname} (${req.file.mimetype})`);
+        }
+      } catch (e) {
+        console.warn('[UniversalLoader] Text read failed:', e);
+      }
+    }
+
+    // Database BSON limit is 16MB. We keep it safe at 2MB per file content field.
+    // If larger, we truncate and mark it.
+    const MAX_DB_CONTENT = 2 * 1024 * 1024;
+    let finalContent = content;
+    if (Buffer.byteLength(content, 'utf8') > MAX_DB_CONTENT) {
+      console.warn(`[UniversalLoader] Truncating content for DB: ${req.file.originalname}`);
+      finalContent = content.slice(0, MAX_DB_CONTENT) + '\n\n...[Content Truncated due to size]...';
     }
 
     const fileDoc = await FileModel.create({
@@ -72,7 +86,7 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
       mimeType: req.file.mimetype,
       size: req.file.size,
       path: req.file.path,
-      content: content.slice(0, 50000), // Limit content size for DB
+      content: finalContent,
       sessionId
     });
 
