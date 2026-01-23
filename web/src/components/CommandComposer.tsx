@@ -2046,14 +2046,14 @@ export default function CommandComposer({
         text: inputText,
         sessionId,
         browserSessionId: effectiveBrowserSessionId || undefined,
-        files: attachedFiles.map(f => f.id),
+        fileIds: attachedFiles.map(f => f.id),
         provider: providerToSend,
         model: providerCfgToSend?.model,
         apiKey: providerCfgToSend?.apiKey,
         baseUrl: providerCfgToSend?.baseUrl
       };
       console.log('[DEBUG-SEND] attachedFiles:', attachedFiles);
-      console.log('[DEBUG-SEND] payload.files:', payload.files);
+      console.log('[DEBUG-SEND] payload.fileIds:', payload.fileIds);
 
       const res = await fetch(`${API}/runs/start`, {
         method: 'POST',
