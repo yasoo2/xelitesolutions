@@ -127,6 +127,7 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     // Prepare file data
     const fileData = {
       _id: generatedId,
+      id: generatedId,
       originalName: req.file.originalname,
       filename: req.file.filename,
       mimeType: req.file.mimetype,
