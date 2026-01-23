@@ -1594,7 +1594,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         }
         let stepResult = result;
         if (String(initialPlan.name) === 'central_answer' && result.ok) {
-          stepResult = { ...result, output: { note: 'Answer emitted as text' } };
+          stepResult = { ...result, output: { note: 'Answer emitted as text' } as any };
         }
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result: stepResult } });
         if (result.artifacts) {
@@ -1644,7 +1644,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         let stepResult = result;
         if (initialPlan.name === 'central_answer' && result.ok) {
           // Hide raw JSON from UI, rely on 'text' event
-          stepResult = { ...result, output: { note: 'Answer emitted as text' } };
+          stepResult = { ...result, output: { note: 'Answer emitted as text' } as any };
         }
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result: stepResult } });
         if (result.artifacts) {

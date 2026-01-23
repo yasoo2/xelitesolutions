@@ -2052,6 +2052,8 @@ export default function CommandComposer({
         apiKey: providerCfgToSend?.apiKey,
         baseUrl: providerCfgToSend?.baseUrl
       };
+      console.log('[DEBUG-SEND] attachedFiles:', attachedFiles);
+      console.log('[DEBUG-SEND] payload.files:', payload.files);
 
       const res = await fetch(`${API}/runs/start`, {
         method: 'POST',
