@@ -95,6 +95,7 @@ const ChatBubble = forwardRef(
       };
     }, []);
 
+    const files = event.data?.files || [];
     const fmtTime = (t?: number) => {
       const d = new Date(typeof t === 'number' ? t : Date.now());
       try {
@@ -370,6 +371,23 @@ const ChatBubble = forwardRef(
           ) : null}
 
           <div className="chat-bubble-content" dir="auto">
+            {files.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {files.map((f: any, i: number) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 8px', borderRadius: 6,
+                    background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)',
+                    fontSize: 11, color: 'var(--text-secondary)'
+                  }}>
+                    <FileText size={12} style={{ opacity: 0.7 }} />
+                    <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.name || 'File'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             {bubbleVariant === 'user' ? (
               <div>{displayedContent}</div>
             ) : (
@@ -1778,6 +1796,20 @@ export default function CommandComposer({
     setIsThinking(true);
     setActiveToolName(null);
     setToolVisible(false);
+
+    // Optimistic User Message with Files
+    setEvents(prev => [
+      ...prev,
+      {
+        type: 'user_input',
+        data: { text: inputText, files: [...attachedFiles] },
+        id: Date.now().toString(),
+        ts: Date.now(),
+        seq: lastLiveSeqRef.current + 0.1
+      }
+    ]);
+    if (!overrideText) setText('');
+    setAttachedFiles([]);
 
     // ELITE 5.0 FIX: Optimistic "Instant" Thought Trigger (0ms Latency)
     // Inject a local thought event immediately so the UI reacts before the server responds.
