@@ -173,7 +173,9 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     // Return success with generated ID
     res.json(fileData);
   } catch (e) {
-    console.error(e);
+    console.error('[Upload Error] Exception occurred:', e instanceof Error ? e.message : String(e));
+    console.error('[Upload Error] Stack:', e instanceof Error ? e.stack : 'No stack trace');
+    console.error('[Upload Error] Full error object:', e);
     res.status(500).json({ error: 'Upload failed' });
   }
 });
