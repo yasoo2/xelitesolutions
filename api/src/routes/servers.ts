@@ -16,7 +16,7 @@ const router = Router();
  */
 router.get('/', async (req, res) => {
     try {
-        const userId = (req as any).user?.id;
+        const userId = (req as any).auth?.sub;
         if (!userId) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
@@ -45,7 +45,7 @@ router.get('/', async (req, res) => {
  */
 router.post('/', async (req, res) => {
     try {
-        const userId = (req as any).user?.id;
+        const userId = (req as any).auth?.sub;
         if (!userId) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
@@ -74,7 +74,7 @@ router.post('/', async (req, res) => {
  */
 router.put('/:id', async (req, res) => {
     try {
-        const userId = (req as any).user?.id;
+        const userId = (req as any).auth?.sub;
         const { id } = req.params;
 
         const server = await ServerConfigModel.findOneAndUpdate(
@@ -103,7 +103,7 @@ router.put('/:id', async (req, res) => {
  */
 router.delete('/:id', async (req, res) => {
     try {
-        const userId = (req as any).user?.id;
+        const userId = (req as any).auth?.sub;
         const { id } = req.params;
 
         // Disconnect if connected
@@ -133,7 +133,7 @@ router.delete('/:id', async (req, res) => {
  */
 router.post('/:id/connect', async (req, res) => {
     try {
-        const userId = (req as any).user?.id;
+        const userId = (req as any).auth?.sub;
         const { id } = req.params;
 
         const server = await ServerConfigModel.findOne({ _id: id, userId }).select('+password');
@@ -195,7 +195,7 @@ router.post('/:id/disconnect', async (req, res) => {
  */
 router.post('/:id/test', async (req, res) => {
     try {
-        const userId = (req as any).user?.id;
+        const userId = (req as any).auth?.sub;
         const { id } = req.params;
 
         const server = await ServerConfigModel.findOne({ _id: id, userId }).select('+password');
