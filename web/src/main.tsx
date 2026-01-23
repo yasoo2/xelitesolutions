@@ -21,8 +21,8 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {GOOGLE_CLIENT_ID ? (
-      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    {(() => {
+      const appTree = (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<App />}>
@@ -42,9 +42,12 @@ createRoot(document.getElementById('root')!).render(
             </Route>
           </Routes>
         </BrowserRouter>
-      </GoogleOAuthProvider>
-    ) : (
-      <div style={{ color: 'red', padding: 20 }}>Missing VITE_GOOGLE_CLIENT_ID</div>
-    )}
+      );
+
+      if (GOOGLE_CLIENT_ID) {
+        return <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>{appTree}</GoogleOAuthProvider>;
+      }
+      return appTree;
+    })()}
   </React.StrictMode>
 );

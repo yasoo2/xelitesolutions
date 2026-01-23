@@ -9,10 +9,96 @@ import {
 } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 
+function GoogleLoginButton({
+    t,
+    nav,
+    setError,
+    setLoading,
+    S,
+}: {
+    t: any;
+    nav: any;
+    setError: any;
+    setLoading: any;
+    S: any;
+}) {
+    const googleLogin = useGoogleLogin({
+        onSuccess: async (tokenResponse: any) => {
+            setLoading(true);
+            try {
+                const res = await fetch(`${API}/auth/google`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tokenResponse.access_token }),
+                });
+
+                const raw = await res.text();
+                let data: any = null;
+                try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+
+                if (!res.ok) {
+                    setError(data?.error || raw || 'Google Login Failed');
+                    return;
+                }
+
+                localStorage.setItem('token', data.token);
+                nav('/joe');
+            } catch (e) {
+                console.error(e);
+                setError('Google Login Error');
+            } finally {
+                setLoading(false);
+            }
+        },
+        onError: () => {
+            setError('Google Login Failed');
+            setLoading(false);
+        }
+    });
+
+    const handleSocialLogin = () => {
+        setLoading(true);
+        googleLogin();
+    };
+
+    return (
+        <button
+            onClick={handleSocialLogin}
+            style={S.socialBtn}
+            title="Continue with Google"
+            onMouseEnter={(e) => {
+                const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
+                if (div) div.style.opacity = '1';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)';
+            }}
+            onMouseLeave={(e) => {
+                const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
+                if (div) div.style.opacity = '0';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+            }}
+        >
+            <div className="overlay" style={S.socialBtnHoverOverlay} />
+            <svg style={S.socialBtnIcon} viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                <path fill="none" d="M0 0h48v48H0z" />
+            </svg>
+            <span style={S.socialBtnText}>
+                {t('continue_with_google', 'Continue with Google')}
+            </span>
+        </button>
+    );
+}
+
 export default function Login() {
     const { t, i18n } = useTranslation();
     const nav = useNavigate();
     const isRTL = i18n.language === 'ar';
+    const googleEnabled = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
     // DEBUG: Tracking Deployment Version - v7 (Google Only)
     console.log('JOE System: Login Page Gold-v7-GoogleOnly Loaded');
@@ -51,47 +137,6 @@ export default function Login() {
             setLoading(false);
         }
     }
-
-    const googleLogin = useGoogleLogin({
-        onSuccess: async (tokenResponse: any) => {
-            setLoading(true);
-            try {
-                // Modified: Only send the access_token, which is what implicit flow returns.
-                const res = await fetch(`${API}/auth/google`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: tokenResponse.access_token }),
-                });
-
-                const raw = await res.text();
-                let data: any = null;
-                try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
-
-                if (!res.ok) {
-                    setError(data?.error || raw || 'Google Login Failed');
-                    return;
-                }
-
-                localStorage.setItem('token', data.token);
-                nav('/joe');
-            } catch (e) {
-                console.error(e);
-                setError('Google Login Error');
-            } finally {
-                setLoading(false);
-            }
-        },
-        onError: () => {
-            setError('Google Login Failed');
-            setLoading(false);
-        }
-    });
-
-    // We will use a custom function that calls googleLogin()
-    const handleSocialLogin = () => {
-        setLoading(true); // temporary visual feedback
-        googleLogin();
-    };
 
     /* =========================================
        INLINE STYLES DEFINITION
@@ -316,42 +361,16 @@ export default function Login() {
                 <span>{t('login')}</span>
             </button>
 
-            <div style={S.divider}>
-                <div style={S.dividerLine} />
-                <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
-                <div style={S.dividerLine} />
-            </div>
-
-            {/* Google Login Button */}
-            <button
-                onClick={() => handleSocialLogin()}
-                style={S.socialBtn}
-                title="Continue with Google"
-                onMouseEnter={(e) => {
-                    const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
-                    if (div) div.style.opacity = '1';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                    e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)';
-                }}
-                onMouseLeave={(e) => {
-                    const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
-                    if (div) div.style.opacity = '0';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-                }}
-            >
-                <div className="overlay" style={S.socialBtnHoverOverlay} />
-                <svg style={S.socialBtnIcon} viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                    <path fill="none" d="M0 0h48v48H0z" />
-                </svg>
-                <span style={S.socialBtnText}>
-                    {t('continue_with_google', 'Continue with Google')}
-                </span>
-            </button>
+            {googleEnabled && (
+                <>
+                    <div style={S.divider}>
+                        <div style={S.dividerLine} />
+                        <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
+                        <div style={S.dividerLine} />
+                    </div>
+                    <GoogleLoginButton t={t} nav={nav} setError={setError} setLoading={setLoading} S={S} />
+                </>
+            )}
         </div>
     );
 
@@ -446,42 +465,16 @@ export default function Login() {
                         <span>{t('login')}</span>
                     </button>
 
-                    <div style={S.divider}>
-                        <div style={S.dividerLine} />
-                        <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
-                        <div style={S.dividerLine} />
-                    </div>
-
-                    {/* Google Login Button */}
-                    <button
-                        onClick={() => handleSocialLogin()}
-                        style={S.socialBtn}
-                        title="Continue with Google"
-                        onMouseEnter={(e) => {
-                            const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
-                            if (div) div.style.opacity = '1';
-                            e.currentTarget.style.transform = 'translateY(-1px)';
-                            e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)';
-                        }}
-                        onMouseLeave={(e) => {
-                            const div = e.currentTarget.querySelector('.overlay') as HTMLElement;
-                            if (div) div.style.opacity = '0';
-                            e.currentTarget.style.transform = 'translateY(0)';
-                            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-                        }}
-                    >
-                        <div className="overlay" style={S.socialBtnHoverOverlay} />
-                        <svg style={S.socialBtnIcon} viewBox="0 0 48 48">
-                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                            <path fill="none" d="M0 0h48v48H0z" />
-                        </svg>
-                        <span style={S.socialBtnText}>
-                            {t('continue_with_google', 'Continue with Google')}
-                        </span>
-                    </button>
+                    {googleEnabled && (
+                        <>
+                            <div style={S.divider}>
+                                <div style={S.dividerLine} />
+                                <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
+                                <div style={S.dividerLine} />
+                            </div>
+                            <GoogleLoginButton t={t} nav={nav} setError={setError} setLoading={setLoading} S={S} />
+                        </>
+                    )}
                 </div>
             </div>
 

@@ -22,8 +22,9 @@ class TaskQueueManager {
     private openai: OpenAI;
 
     constructor() {
+        const envKey = typeof process.env.OPENAI_API_KEY === 'string' ? process.env.OPENAI_API_KEY.trim() : '';
         this.openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
+            apiKey: envKey || 'sk-local-dev',
         });
     }
 
