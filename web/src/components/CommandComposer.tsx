@@ -3384,32 +3384,54 @@ export default function CommandComposer({
         </AnimatePresence>
         <div className="input-area">
           <div className="input-container">
-            {(attachedFiles.length > 0 || isUploading) && (
-              <div className="attached-files">
+            <div className="file-attachments-row">
+              <AnimatePresence>
                 {attachedFiles.map((file, i) => (
-                  <div key={file.id || i} className="attached-file-chip">
-                    <Paperclip size={12} className="text-blue-400" />
-                    <span className="file-name">{file.name}</span>
+                  <motion.div
+                    key={file.id || `file-${i}`}
+                    initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                    className="attached-file-chip is-success"
+                  >
+                    <div className="file-chip-icon">
+                      <FileCode size={16} />
+                    </div>
+                    <span className="file-chip-name">{file.name}</span>
                     <button
                       type="button"
                       onClick={() => setAttachedFiles(prev => prev.filter((_, idx) => idx !== i))}
-                      className="remove-file-btn"
+                      className="file-chip-remove"
+                      title={t('remove') || 'Remove'}
                     >
-                      <X size={12} />
+                      <X size={14} />
                     </button>
-                  </div>
+                  </motion.div>
                 ))}
 
                 {isUploading && (
-                  <div className="attached-file-chip uploading pulse-animation">
-                    <Loader2 size={12} className="animate-spin text-blue-500" />
-                    <span className="file-name">
-                      {uploadProgress > 0 ? `${uploadProgress}%` : t('uploading', 'Uploading...')}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="attached-file-chip uploading"
+                    style={{ minWidth: '120px' }}
+                  >
+                    <div className="upload-progress-container" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', margin: 0, borderRadius: 0, border: 'none' }}>
+                      <div
+                        className="upload-progress-fill"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                    <div className="file-chip-icon">
+                      <Loader2 size={16} className="spin" />
+                    </div>
+                    <span className="file-chip-name">
+                      {uploadProgress === 100 ? t('processing', 'Processing...') : `${uploadProgress}%`}
                     </span>
-                  </div>
+                  </motion.div>
                 )}
-              </div>
-            )}
+              </AnimatePresence>
+            </div>
             <textarea
               className="main-input"
               value={text}
@@ -3459,28 +3481,51 @@ export default function CommandComposer({
                   onClick={() => fileInputRef.current?.click()}
                   title={t('attachFile') || "Attach file"}
                   disabled={isUploading}
+                  style={{ position: 'relative' }}
                 >
-                  {isUploading ? (
-                    <div className="relative flex items-center justify-center w-5 h-5">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                        <path
-                          className="text-gray-400/20"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="text-blue-500 transition-all duration-200 ease-out"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          strokeDasharray={`${uploadProgress}, 100`}
-                        />
-                      </svg>
-                    </div>
-                  ) : <Paperclip size={20} />}
+                  <AnimatePresence mode="wait">
+                    {isUploading ? (
+                      <motion.div
+                        key="uploading-icon"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className="relative flex items-center justify-center w-5 h-5"
+                      >
+                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            className="text-gray-400/20"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="text-blue-500 transition-all duration-200 ease-out"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            strokeDasharray={`${uploadProgress}, 100`}
+                          />
+                        </svg>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="idle-icon"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                      >
+                        <Paperclip size={20} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  {!isUploading && attachedFiles.length > 0 && (
+                    <span className="attachment-badge-count">
+                      {attachedFiles.length}
+                    </span>
+                  )}
                 </button>
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}

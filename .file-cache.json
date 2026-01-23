@@ -1,0 +1,38 @@
+{
+  "84031ed449a8235f286296e8": {
+    "id": "84031ed449a8235f286296e8",
+    "originalName": "test_secret.txt",
+    "filename": "1769208457610-719588054-test_secret.txt",
+    "mimeType": "text/plain",
+    "size": 118,
+    "path": "/Users/younissowadi/xelitesolutions-1/uploads/1769208457610-719588054-test_secret.txt",
+    "content": "The identifier for this session is JOE-nsycw2. If you can see this, the file upload and content extraction is working."
+  },
+  "4424e9d295e60fbda1d917a2": {
+    "id": "4424e9d295e60fbda1d917a2",
+    "originalName": "test_secret.txt",
+    "filename": "1769208538680-578579995-test_secret.txt",
+    "mimeType": "text/plain",
+    "size": 118,
+    "path": "/Users/younissowadi/xelitesolutions-1/uploads/1769208538680-578579995-test_secret.txt",
+    "content": "The identifier for this session is JOE-y2itvk. If you can see this, the file upload and content extraction is working."
+  },
+  "aede97e595fcdbefce912950": {
+    "id": "aede97e595fcdbefce912950",
+    "originalName": "test_secret.txt",
+    "filename": "1769208989171-535300873-test_secret.txt",
+    "mimeType": "text/plain",
+    "size": 117,
+    "path": "/Users/younissowadi/xelitesolutions-1/uploads/1769208989171-535300873-test_secret.txt",
+    "content": "The identifier for this session is JOE-efic8. If you can see this, the file upload and content extraction is working."
+  },
+  "11ee88a431f6e6459e753b42": {
+    "id": "11ee88a431f6e6459e753b42",
+    "originalName": "test_secret.txt",
+    "filename": "1769209254953-429527286-test_secret.txt",
+    "mimeType": "text/plain",
+    "size": 118,
+    "path": "/Users/younissowadi/xelitesolutions-1/uploads/1769209254953-429527286-test_secret.txt",
+    "content": "The identifier for this session is JOE-201li6. If you can see this, the file upload and content extraction is working."
+  }
+}

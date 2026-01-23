@@ -7,7 +7,7 @@ import path from 'path';
 const API_URL = 'http://localhost:3000';
 const TEST_FILE_PATH = path.join(__dirname, 'test_secret.txt');
 const SECRET_CODE = `JOE-` + Math.random().toString(36).substring(7);
-const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwicm9sZSI6IlVTRVIiLCJlbWFpbCI6InRlc3R2ZXJpZmllZEBleGFtcGxlLmNvbSIsIm5hbWUiOiJWZXJpZmllZCBVc2VyIiwicGljdHVyZSI6Imh0dHBzOi8vdWktYXZhdGFycy5jb20vYXBpLz9uYW1lPVZlcmlmaWVkK1VzZXImYmFja2dyb3VuZD1yYW5kb20iLCJpYXQiOjE3NjkxOTQ3MTYsImV4cCI6MTc2OTE5ODMxNn0.lFEanzxA4g2Ow7qr8v5FjD8VKZP1TT8U2bRlxLJYzYc';
+const TOKEN = 'bypass';
 
 const authHeaders = {
     'Authorization': `Bearer ${TOKEN}`

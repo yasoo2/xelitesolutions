@@ -8,14 +8,13 @@ export interface AuthPayload {
 }
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-
   // FALLBACK: Only allow bypass if explicitly check env var, NO HARDCODED TOKENS.
   if (process.env.ENABLE_AUTH_BYPASS === 'true') {
     (req as any).auth = { sub: 'offline_admin', role: 'OWNER' };
     return next();
   }
 
+  const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -30,6 +29,11 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 }
 
 export function authenticateOptional(req: Request, res: Response, next: NextFunction) {
+  if (process.env.ENABLE_AUTH_BYPASS === 'true') {
+    (req as any).auth = { sub: 'offline_admin', role: 'OWNER' };
+    return next();
+  }
+
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return next();
