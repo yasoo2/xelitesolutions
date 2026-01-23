@@ -161,16 +161,16 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
       return res.status(500).json({ error: 'Failed to save file' });
     }
 
-    // [PRIORITY 2] Try to save to MongoDB (optional, non-blocking)
-    try {
-      const fileDoc = await FileModel.create(fileData);
-      console.log('[MongoDB] File saved to DB:', fileDoc._id);
-    } catch (dbErr) {
-      console.warn('[MongoDB] Failed to save to DB (continuing with cache):', dbErr);
-      // Don't fail the request - cache is enough
-    }
+    // [PRIORITY 2] Try to save to MongoDB (fire-and-forget, non-blocking)
+    FileModel.create(fileData)
+      .then((fileDoc) => {
+        console.log('[MongoDB] File saved to DB successfully:', fileDoc._id);
+      })
+      .catch((dbErr) => {
+        console.warn('[MongoDB] Failed to save to DB (continuing with cache):', dbErr.message);
+      });
 
-    // Return success with generated ID
+    // Return success immediately with generated ID
     res.json(fileData);
   } catch (e) {
     console.error('[Upload Error] Exception occurred:', e instanceof Error ? e.message : String(e));
