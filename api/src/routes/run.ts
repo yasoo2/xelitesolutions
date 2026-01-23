@@ -221,8 +221,13 @@ function normalizeFileIds(raw: any): string[] {
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
   for (const v of raw) {
-    const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
-    if (s) out.push(s);
+    if (typeof v === 'string') {
+      const s = v.trim();
+      if (s) out.push(s);
+    } else if (typeof v === 'object' && v !== null) {
+      const id = String((v as any).id || (v as any)._id || '').trim();
+      if (id) out.push(id);
+    }
   }
   return out;
 }
@@ -1052,7 +1057,10 @@ function extractWeatherCity(text: string) {
 }
 
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
-  let { text, sessionId, fileIds, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
+  let { text, sessionId, fileIds, attachedFiles, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
+  if (!fileIds && Array.isArray(attachedFiles)) {
+    fileIds = attachedFiles;
+  }
   let assistantTextEmitted = false;
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
@@ -4130,10 +4138,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
   if (useMock) {
     store.addMessage(sessionId, 'assistant', finalContent, runId);
-    store.updateRun(runId, { status: lastResult?.ok ? 'done' : 'failed' });
+    store.updateRun(runId, { status: lastResult?.ok ? 'done' : 'failed', response: finalContent } as any);
   } else {
     await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
-    await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed' } });
+    await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed', response: finalContent } });
   }
   cancelledRuns.delete(String(runId));
 

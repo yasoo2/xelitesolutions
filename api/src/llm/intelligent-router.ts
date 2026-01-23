@@ -568,7 +568,7 @@ export async function routeToModel(
             // Skip OpenAI in loop if we know we want free/auto fallback
             if (p.name === 'OpenAI') continue;
 
-            console.info(`[IntelligentRouter] 🔄 Attempting ${p.name}...`);
+            console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
             const ans = await p.run();
             if (ans) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);

@@ -1744,7 +1744,14 @@ export default function CommandComposer({
 
   async function run(overrideText?: string) {
     const inputText = overrideText || text;
-    if (!inputText.trim()) return;
+
+    // ALLOW empty text if files are attached
+    if (!inputText.trim() && attachedFiles.length === 0) return;
+
+    if (isUploading) {
+      alert(t('waitUpload', 'Please wait for files to finish uploading...'));
+      return;
+    }
 
     const normalizeDecision = (raw: string) =>
       String(raw || '')
@@ -3377,16 +3384,30 @@ export default function CommandComposer({
         </AnimatePresence>
         <div className="input-area">
           <div className="input-container">
-            {attachedFiles.length > 0 && (
+            {(attachedFiles.length > 0 || isUploading) && (
               <div className="attached-files">
                 {attachedFiles.map((file, i) => (
-                  <div key={i} className="attached-file-chip">
+                  <div key={file.id || i} className="attached-file-chip">
+                    <Paperclip size={12} className="text-blue-400" />
                     <span className="file-name">{file.name}</span>
-                    <button onClick={() => setAttachedFiles(prev => prev.filter((_, idx) => idx !== i))} className="remove-file-btn">
+                    <button
+                      type="button"
+                      onClick={() => setAttachedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                      className="remove-file-btn"
+                    >
                       <X size={12} />
                     </button>
                   </div>
                 ))}
+
+                {isUploading && (
+                  <div className="attached-file-chip uploading pulse-animation">
+                    <Loader2 size={12} className="animate-spin text-blue-500" />
+                    <span className="file-name">
+                      {uploadProgress > 0 ? `${uploadProgress}%` : t('uploading', 'Uploading...')}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
             <textarea

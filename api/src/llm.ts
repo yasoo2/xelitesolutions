@@ -459,9 +459,9 @@ export function getActiveProvider(userId: string): string {
   const userProvider = activeProviders.get(userId);
   if (userProvider) return userProvider;
 
-  // Smart default: Use OPENAI if available, else standard fallback
-  const hasOpenAIKey = !!(process.env.OPENAI_API_KEY?.trim());
-  return hasOpenAIKey ? 'openai' : 'openrouter';
+  // Smart default: ALWAYS use auto mode (intelligent-router) to ensure robust fallbacks
+  // even if an environment key is present but broken.
+  return 'auto';
 }
 
 export async function callLLM(prompt: string, context: any[] = [], userId?: string): Promise<string> {
@@ -518,7 +518,9 @@ export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
 ): Promise<{ name: string; input: any; thought?: string | null } | null> {
-  const providerKey = String(options?.provider || '').trim().toLowerCase();
+  const provider = options?.provider || getActiveProvider(options?.userId || 'anonymous');
+  const providerKey = String(provider || '').trim().toLowerCase();
+  console.info(`[LLM] planNextStep entry - Provider: ${provider}, Resolved Key: ${providerKey}`);
 
   // Resolve Key: Option > UserMap > Env
   let resolvedKey = options?.apiKey;
@@ -601,11 +603,10 @@ export async function planNextStep(
         content.includes('PROJECT_') || content.includes('WF_START:') ||
         content.includes('ECOMMERCE_PLAN');
 
-      // Only end turn if:
       // 1. There's actual content that's NOT a tool marker
-      // 2. AND content is long enough to be a real response (> 100 chars)
+      // 2. AND content has any length (> 1 char)
       // 3. AND there are no pending tool calls
-      const isRealResponse = content.trim().length > 100 && !isToolMarker && !hasToolCalls;
+      const isRealResponse = content.trim().length > 1 && !isToolMarker && !hasToolCalls;
 
       if (hasToolCalls && !content.trim()) {
         console.info('[LLM] Auto Mode: Assistant waiting for tools, proceeding.');
