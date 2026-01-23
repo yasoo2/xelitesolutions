@@ -1645,7 +1645,6 @@ export default function CommandComposer({
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files?.length) return;
     const selectedFiles = Array.from(e.target.files);
-    console.log('[DEBUG] Files selected:', selectedFiles);
 
     setIsUploading(true);
     setUploadProgress(0);
@@ -1685,19 +1684,12 @@ export default function CommandComposer({
 
             if (xhr.status >= 200 && xhr.status < 300) {
               try {
-                console.log('[DEBUG] Upload Response Raw:', xhr.responseText);
                 const data = JSON.parse(xhr.responseText);
-                console.log('[DEBUG] Upload Response Parsed:', data);
 
                 if (data && (data.file || data.filename)) {
                   const fileData = data.file || data;
                   const id = fileData.id || fileData._id || fileData.filename;
-                  console.log('[DEBUG] Adding file to attachedFiles:', { id: String(id), name: fileData.originalName });
-                  setAttachedFiles(prev => {
-                    const newState = [...prev, { id: String(id), name: fileData.originalName }];
-                    console.log('[DEBUG] New attachedFiles state:', newState);
-                    return newState;
-                  });
+                  setAttachedFiles(prev => [...prev, { id: String(id), name: fileData.originalName }]);
                   resolve();
                 } else {
                   console.error('Invalid file upload response:', data);
@@ -3325,8 +3317,6 @@ export default function CommandComposer({
       )}
 
       <div className="composer-footer">
-        {/* Debug Log in Render */}
-        {(() => { console.log('[DEBUG] Render attachedFiles:', attachedFiles); return null; })()}
         {attachedFiles.length > 0 && (
           <div className="attached-files">
             {attachedFiles.map((file, i) => (
