@@ -3882,20 +3882,22 @@ html[data-theme="light"] .input-actions {
 }
 
 /* Floating Sidebar Toggle - Fixed Position */
+/* Floating Sidebar Toggle - Fixed Position - EMERGENCY VISIBILITY */
 .sidebar-toggle-btn-floating {
   position: fixed;
-  /* Changed from absolute to fixed */
-  left: 20px;
+  inset-inline-start: 20px;
+  /* Use logical property for LTR/RTL safety */
   top: 20px;
-  z-index: 1000;
-  /* Ensure above everything */
-  width: 40px;
-  height: 40px;
+  z-index: 9999 !important;
+  /* Force on top of everything */
+  width: 44px;
+  /* Slightly larger touch target */
+  height: 44px;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.6);
-  /* Slightly darker backing for visibility */
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
+  background: var(--bg-card);
+  /* Opaque background */
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3903,15 +3905,20 @@ html[data-theme="light"] .input-actions {
   transition: all 0.2s ease;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
   animation: toggleSearchPulse 3s infinite;
 }
 
+/* Remove old specific left/right overrides as we use inset-inline-start */
 [dir="rtl"] .sidebar-toggle-btn-floating {
-  left: auto;
-  right: 20px;
-  /* Flip to right in Arabic */
+  /* No override needed with inset-inline-start, or confirm browser support. 
+     Safest to explicit if needed, but modern browsers support inset-inline-start. 
+     Let's stick to explicit overrides if we want to be 100% sure. */
+  inset-inline-start: 20px;
 }
+
+
+
 
 @keyframes toggleSearchPulse {
   0% {
