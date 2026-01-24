@@ -63,6 +63,36 @@ export const useAgent = () => {
 
     const wsRef = useRef<WebSocket | null>(null);
     const sessionIdRef = useRef<string | null>(null);
+    // NEW: Buffer for incoming text tokens to reduce re-renders (INP Fix)
+    const messageBufferRef = useRef<string[]>([]);
+
+    // Flush Buffer Interval
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (messageBufferRef.current.length > 0) {
+                const combinedText = messageBufferRef.current.join('');
+                messageBufferRef.current = []; // Clear buffer
+
+                setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.tool) {
+                        return [
+                            ...prev.slice(0, -1),
+                            { ...lastMsg, content: lastMsg.content + combinedText }
+                        ];
+                    }
+                    return [...prev, {
+                        id: Date.now().toString(),
+                        role: 'assistant',
+                        content: combinedText,
+                        type: 'text'
+                    }];
+                });
+            }
+        }, 100); // Update UI every 100ms max
+
+        return () => clearInterval(interval);
+    }, []);
 
     // Initialize Session
     useEffect(() => {
@@ -88,23 +118,15 @@ export const useAgent = () => {
                 const msg = JSON.parse(event.data);
 
                 if (msg.type === 'text') {
-                    setMessages(prev => {
-                        const lastMsg = prev[prev.length - 1];
-                        if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.tool) {
-                            // Append to existing message
-                            return [
-                                ...prev.slice(0, -1),
-                                { ...lastMsg, content: lastMsg.content + msg.data }
-                            ];
-                        }
-                        // New message
-                        return [...prev, {
-                            id: Date.now().toString(),
-                            role: 'assistant',
-                            content: msg.data,
-                            type: 'text'
-                        }];
-                    });
+                    // BUFFERING STRATEGY:
+                    // Instead of updating state immediately, we push to a buffer
+                    // A separate interval will flush this buffer up to 10 times a second
+                    // This dramatically reduces re-renders during high-speed streaming
+                    messageBufferRef.current.push(msg.data);
+
+                    // If this is the *first* chunk of a new message stream, we might want to ensure
+                    // the assistant message entry exists. 
+                    // However, our flush logic handles creation/appending.
                     setStatus('idle');
                 } else if (msg.type === 'thought') {
                     // NEW: Track thoughts for JoeStudio

@@ -1,10 +1,41 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Cpu, Sparkles } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAgent } from '../hooks/useAgent';
 import { AgentActivity } from './AgentActivity';
 import { FileActivityPanel } from './FileActivityPanel';
+
+// Memoized Message Item to prevent re-rendering of history
+const MessageItem = React.memo(({ msg }: { msg: any }) => (
+    <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+    >
+        {msg.role !== 'user' && (
+            <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/50 flex-shrink-0">
+                <Bot size={16} className="text-cyan-400" />
+            </div>
+        )}
+
+        <div className={`max-w-[80%] rounded-xl p-3 text-sm ${msg.role === 'user'
+            ? 'bg-purple-600/20 border border-purple-500/30 text-purple-100'
+            : msg.type === 'step'
+                ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-200 font-mono text-xs'
+                : 'bg-white/5 border border-white/10 text-gray-200'
+            }`}>
+            {msg.content}
+        </div>
+
+        {msg.role === 'user' && (
+            <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center border border-purple-500/50 flex-shrink-0">
+                <User size={16} className="text-purple-400" />
+            </div>
+        )}
+    </motion.div>
+));
 
 export const NeuralChat = () => {
     const { messages, status, sendMessage, steps, fileActivities } = useAgent();
@@ -52,37 +83,9 @@ export const NeuralChat = () => {
                     </div>
                 )}
 
-                <AnimatePresence>
-                    {messages.map((msg) => (
-                        <motion.div
-                            key={msg.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                            {msg.role !== 'user' && (
-                                <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/50">
-                                    <Bot size={16} className="text-cyan-400" />
-                                </div>
-                            )}
-
-                            <div className={`max-w-[80%] rounded-xl p-3 text-sm ${msg.role === 'user'
-                                ? 'bg-purple-600/20 border border-purple-500/30 text-purple-100'
-                                : msg.type === 'step'
-                                    ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-200 font-mono text-xs'
-                                    : 'bg-white/5 border border-white/10 text-gray-200'
-                                }`}>
-                                {msg.content}
-                            </div>
-
-                            {msg.role === 'user' && (
-                                <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center border border-purple-500/50">
-                                    <User size={16} className="text-purple-400" />
-                                </div>
-                            )}
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
+                {messages.map((msg) => (
+                    <MessageItem key={msg.id} msg={msg} />
+                ))}
             </div>
 
             <div className="px-4 pb-2 space-y-2">
