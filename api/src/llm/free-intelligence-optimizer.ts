@@ -200,7 +200,31 @@ class FreeIntelligenceOptimizer {
             'kubernetes': 'devops_pipelines.md',
             'ci': 'devops_pipelines.md',
             'pipeline': 'devops_pipelines.md',
-            'devops': 'devops_pipelines.md'
+            'devops': 'devops_pipelines.md',
+
+            // Phase 2: Advanced Engineering
+            'security': 'cybersecurity_essentials.md',
+            'cyber': 'cybersecurity_essentials.md',
+            'auth': 'cybersecurity_essentials.md',
+            'jwt': 'cybersecurity_essentials.md',
+            'owasp': 'cybersecurity_essentials.md',
+            'hack': 'cybersecurity_essentials.md',
+            'penetration': 'cybersecurity_essentials.md',
+
+            'ai': 'ai_engineering_guide.md',
+            'llm': 'ai_engineering_guide.md',
+            'rag': 'ai_engineering_guide.md',
+            'vector': 'ai_engineering_guide.md',
+            'embedding': 'ai_engineering_guide.md',
+            'gpt': 'ai_engineering_guide.md',
+            'agent': 'ai_engineering_guide.md',
+
+            'cloud': 'cloud_architecture_mastery.md',
+            'aws': 'cloud_architecture_mastery.md',
+            'azure': 'cloud_architecture_mastery.md',
+            'serverless': 'cloud_architecture_mastery.md',
+            'lambda': 'cloud_architecture_mastery.md',
+            'architect': 'cloud_architecture_mastery.md'
         };
 
         // Find relevant file
