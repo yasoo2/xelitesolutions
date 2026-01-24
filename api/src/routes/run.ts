@@ -19,6 +19,7 @@ import { MemoryItem } from '../models/memoryItem';
 import { rewriteInlineLoginCredentialsToSecrets } from '../browser/secrets';
 import { stopSession } from '../browser/manager';
 import { setSessionSecretEncrypted } from '../services/secrets';
+import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
 
 const router = Router();
 
@@ -1073,10 +1074,46 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     hasText: Boolean(text),
     sessionId,
     fileIdsCount: normalizedFileIds.length,
-    fileIds: normalizedFileIds,
+    fileIds,
     provider,
     model
   });
+
+  // --- FREE INTELLIGENCE OPTIMIZER (God-Tier Speed) ---
+  if (text && (!fileIds || fileIds.length === 0)) {
+    try {
+      const optimization = await freeIntelligenceOptimizer.optimizeRequest(text, []);
+      if (optimization.shouldUseCache && optimization.cachedResponse) {
+        console.log('[Optimizer] Cache HIT - Sending Instant Response');
+
+        // Emulate streaming response for frontend compatibility
+        res.setHeader('Content-Type', 'application/x-ndjson');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        const responseText = optimization.cachedResponse;
+        const chunks = responseText.match(/.{1,100}/g) || [responseText]; // Split to look like stream
+
+        // Send initial "thought" event (fake thinking)
+        res.write(JSON.stringify({ type: 'thought', data: '🧠 accessing_library_of_alexandria...' }) + '\n');
+
+        // Send text chunks
+        for (const chunk of chunks) {
+          res.write(JSON.stringify({ type: 'text', data: chunk }) + '\n');
+          await new Promise(r => setTimeout(r, 5)); // Tiny delay for "typing" effect
+        }
+
+        // Send completion
+        res.write(JSON.stringify({ type: 'run_completed', data: { status: 'success' } }) + '\n');
+        res.end();
+        return;
+      }
+    } catch (e) {
+      console.warn('[Optimizer] Optimization check failed', e);
+    }
+  }
+  // --- END OPTIMIZER ---
 
   if (typeof provider === 'string') provider = provider.trim();
   if (typeof apiKey === 'string') apiKey = apiKey.trim();
