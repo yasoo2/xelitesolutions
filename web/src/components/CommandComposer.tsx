@@ -3739,83 +3739,105 @@ export default function CommandComposer({
                 }
               }}
             />
-            <div className="input-actions">
-              <div className="connection-status" title={isConnected ? t('connected') : t('connecting')}>
-                <div className={`status-dot ${isConnected ? 'connected' : ''}`} />
-                <span className="status-text">
-                  {isConnected ? t('connected') : t('connecting')}
-                </span>
-              </div>
-              <div className="right-actions">
-                <button
-                  className={`action-btn provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
-                  onClick={() => setShowProviders(true)}
-                  title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+  /* [RESILIENCY] Default to 'auto' for new sessions */
+            const [activeProvider, setActiveProvider] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('ui.composer.provider');
+              return saved || 'auto';
+    } catch { return 'auto'; }
+  });
+
+              /* ... */
+
+              <div className="input-actions">
+                {/* [UI] Enhanced Status Indicator */}
+                <div
+                  className="connection-status"
+                  title={isConnected ? t('connected') : t('connecting')}
                 >
-                  <Cpu size={16} />
-                  <span className="provider-label">
-                    {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
+                  <div
+                    className={`status-dot ${isConnected && (
+                        activeProvider === 'auto' ||
+                        (activeProvider.includes('openai') && activeConfig?.apiKey) ||
+                        (activeProvider.includes('anthropic') && activeConfig?.apiKey)
+                      ) ? 'funded' : isConnected ? 'connected' : ''
+                      }`}
+                  />
+                  <span className="status-text hide-mobile">
+                    {activeProvider === 'auto' ? 'Auto (Free)' : activeProvider}
                   </span>
-                </button>
-                <input
-                  type="file"
-                  multiple
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  className="action-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  title={t('attachFile') || "Attach file"}
-                  disabled={isUploading}
-                >
-                  {isUploading ? (
-                    <div className="relative flex items-center justify-center w-5 h-5">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                        <path
-                          className="text-gray-400/20"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="text-blue-500 transition-all duration-200 ease-out"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          strokeDasharray={`${uploadProgress}, 100`}
-                        />
-                      </svg>
-                    </div>
-                  ) : <Paperclip size={20} />}
-                </button>
-                <button
-                  className={`action-btn ${isVoiceMode ? 'active' : ''}`}
-                  onClick={() => setIsVoiceMode(!isVoiceMode)}
-                  title="Voice Mode"
-                >
-                  {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
-                </button>
-                <button
-                  className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
-                  onClick={() => {
-                    if (status !== 'idle' || !!approval || !!secretPrompt) {
-                      stopCurrentRun();
-                      return;
-                    }
-                    if (isUploading) return;
-                    run();
-                  }}
-                  disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
-                  title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
-                >
-                  {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={18} /> : <ArrowUp size={20} />}
-                </button>
+                </div>
+
+                <div className="right-actions">
+                  <button
+                    className={`action-btn provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
+                    onClick={() => setShowProviders(true)}
+                    title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+                  >
+                    <Cpu size={16} />
+                    <span className="provider-label">
+                      {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
+                    </span>
+                  </button>
+                  <input
+                    type="file"
+                    multiple
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    className="action-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    title={t('attachFile') || "Attach file"}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? (
+                      <div className="relative flex items-center justify-center w-5 h-5">
+                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            className="text-gray-400/20"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="text-blue-500 transition-all duration-200 ease-out"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            strokeDasharray={`${uploadProgress}, 100`}
+                          />
+                        </svg>
+                      </div>
+                    ) : <Paperclip size={20} />}
+                  </button>
+                  <button
+                    className={`action-btn ${isVoiceMode ? 'active' : ''}`}
+                    onClick={() => setIsVoiceMode(!isVoiceMode)}
+                    title="Voice Mode"
+                  >
+                    {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
+                  </button>
+                  <button
+                    className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
+                    onClick={() => {
+                      if (status !== 'idle' || !!approval || !!secretPrompt) {
+                        stopCurrentRun();
+                        return;
+                      }
+                      if (isUploading) return;
+                      run();
+                    }}
+                    disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
+                    title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+                  >
+                    {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={18} /> : <ArrowUp size={20} />}
+                  </button>
+                </div>
               </div>
-            </div>
           </div>
 
           {isVoiceMode && (

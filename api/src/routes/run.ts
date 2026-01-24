@@ -2130,34 +2130,57 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               lastResult = { ok: false, error: 'stopped' };
               break;
             }
-            plan = await planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true });
+
+            // [RESILIENCY] Add Timeout (2 minutes) to prevent infinite hanging
+            const TIMEOUT_MS = 2 * 60 * 1000;
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('LLM_TIMEOUT')), TIMEOUT_MS));
+
+            // Race between planner and timeout
+            plan = await Promise.race([
+              planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true }),
+              timeoutPromise
+            ]) as any;
+
           } catch (err: any) {
             lastPlanError = safeErrorMessage(err);
             const status = errorStatusCode(err);
             console.warn(`LLM planning error (status=${status}):`, lastPlanError);
 
-            if (lastPlanError && (lastPlanError.includes('NO_API_KEY_CONFIGURED') || lastPlanError.includes('PROVIDER_LLM_DISABLED'))) {
-              const msg = lastPlanError.includes('PROVIDER_LLM_DISABLED')
-                ? '⚠️ **LLM Disabled**\nThe local LLM provider is disabled. Please select a valid remote provider (OpenAI/Anthropic) in settings.'
-                : '⚠️ **Missing API Key**\nNo API Key configured. Please add your OpenAI/Anthropic API Key in the settings panel.';
-              ev({ type: 'text', data: msg });
-              forcedText = msg;
-              assistantTextEmitted = true;
-              break;
+            // [RESILIENCY] Auto-Fallback Mechanism
+            const isAuthError = isProviderAuthError(err, lastPlanError) || lastPlanError.includes('NO_API_KEY_CONFIGURED');
+            const isRateLimit = isProviderRateLimitError(err, lastPlanError) || status === 429 || lastPlanError.includes('quota') || lastPlanError === 'LLM_TIMEOUT';
+
+            // Only fallback if we aren't ALREADY on auto/pollinations
+            const isAlreadyFree = providerKey.includes('auto') || providerKey.includes('pollinations');
+
+            if ((isAuthError || isRateLimit) && !isAlreadyFree) {
+              console.info('[Resiliency] ⚠️ Primary provider failed. Falling back to Auto (Free) Mode immediately.');
+
+              // Notify user ONCE about the fallback
+              if (!assistantTextEmitted) {
+                const reason = lastPlanError === 'LLM_TIMEOUT' ? 'تأخرت الاستجابة' : 'نفذ الرصيد أو خطأ في المفتاح';
+                ev({
+                  type: 'text',
+                  data: `⚠️ **تنبيه:** ${reason} في المزود الأساسي.\n🔄 **تم التحويل تلقائياً إلى النظام المجاني (Auto Mode).**`
+                });
+                assistantTextEmitted = true; // Prevent spamming
+              }
+
+              // Switch to auto mode for this turn AND future turns in this session can be handled by frontend logic or re-try loop
+              provider = 'auto';
+              providerKey.replace('', 'auto'); // Update local var logic if needed (providerKey is const, but we use logic below)
+
+              // RETRY IMMEDIATELY with 'auto' provider
+              try {
+                plan = await planNextStep(history, { provider: 'auto', throwOnError: false });
+                if (plan) continue; // Loop continues with new plan
+              } catch (retryErr) {
+                console.error('[Resiliency] Fallback also failed:', retryErr);
+              }
             }
 
-            if (isProviderAuthError(err, lastPlanError)) {
-              const msg = '⚠️ **Authentication Failed**\nThe AI provider rejected the API key. Please verify the key and provider endpoint in the settings.';
-              ev({ type: 'text', data: msg });
-              forcedText = msg;
-              assistantTextEmitted = true;
-              break;
-            }
-            if (isProviderConfigError(err, lastPlanError)) {
-              const msg = `⚠️ **Configuration Error**\nThe AI provider returned an error (Status: ${status}). This usually means the Model Name is invalid or not available for your API Key.\nDetails: ${lastPlanError}`;
-              ev({ type: 'text', data: msg });
-              forcedText = msg;
-              assistantTextEmitted = true;
+            // Standard Error Handling (if fallback didn't recover or was already free)
+            if (lastPlanError && (lastPlanError.includes('NO_API_KEY_CONFIGURED') || lastPlanError.includes('PROVIDER_LLM_DISABLED'))) {
               break;
             }
             if (isProviderRateLimitError(err, lastPlanError)) {

@@ -4243,3 +4243,66 @@ html[data-theme="light"] .send-btn {
   width: 36px;
   height: 36px;
 }
+/* [UI] Status Dot Indicator */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.3s ease;
+}
+
+.status-dot.connected {
+  background: var(--text-secondary);
+}
+
+.status-dot.funded {
+  background: #22c55e; /* Green for funded/auto */
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* [UI] Mobile Responsiveness for Composer */
+@media (max-width: 768px) {
+  .status-text.hide-mobile {
+    display: none;
+  }
+  
+  .connection-status {
+    padding: 6px; /* Smaller padding on mobile */
+  }
+
+  .input-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .right-actions {
+    margin-left: auto; /* Push send button to right */
+  }
+
+  .main-input {
+    min-height: 48px; /* Slightly larger tap target */
+  }
+  
+  /* Ensure send button is always visible */
+  .send-btn {
+    width: 40px !important;
+    padding: 0 !important;
+  }
+  
+  .send-text {
+    display: none; /* Hide text, show icon only on mobile */
+  }
+}
