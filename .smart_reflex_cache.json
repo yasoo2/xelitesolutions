@@ -1,0 +1,296 @@
+[
+  {
+    "trigger": "hello",
+    "response": "Hello! How can I help you today, Younis? Ready to engineer perfection?",
+    "hits": 0,
+    "lastUsed": 1769224513128
+  },
+  {
+    "trigger": "hi",
+    "response": "Hi there, Younis! Ready to build something extraordinary?",
+    "hits": 0,
+    "lastUsed": 1769224513131
+  },
+  {
+    "trigger": "active provider",
+    "response": "Use the settings menu to check your active provider.",
+    "hits": 0,
+    "lastUsed": 1769224513131
+  },
+  {
+    "trigger": "مرحبا",
+    "response": "أهلاً بك يا يونس! كيف يمكنني مساعدتك في مشروعك القادم؟",
+    "hits": 0,
+    "lastUsed": 1769224513132
+  },
+  {
+    "trigger": "السلام عليكم",
+    "response": "وعليكم السلام ورحمة الله يا يونس! أنا جاهز تماماً للعمل معك.",
+    "hits": 0,
+    "lastUsed": 1769224513132
+  },
+  {
+    "trigger": "اهلا",
+    "response": "يا أهلاً بالمهندس يونس! تفضل، أنا معك قلباً وقالباً.",
+    "hits": 0,
+    "lastUsed": 1769224513133
+  },
+  {
+    "trigger": "كيف حالك",
+    "response": "أنا نظام ذكاء اصطناعي، ودائماً بأفضل حال ومستعد لخدمة عبقري مثلك يا يونس! 🚀",
+    "hits": 0,
+    "lastUsed": 1769224513133
+  },
+  {
+    "trigger": "build website",
+    "response": "فكرة ممتازة يا يونس! سأقوم بإنشاء مشروع ويب حديث باستخدام React (Vite) أو Next.js بحسب الحاجة، مع TailwindCSS للتصميم. هل تريدني أن أبدأ بإنشاء الهيكل الأساسي؟",
+    "hits": 0,
+    "lastUsed": 1769224513134
+  },
+  {
+    "trigger": "create website",
+    "response": "فكرة ممتازة يا يونس! سأقوم بإنشاء مشروع ويب حديث باستخدام React (Vite) أو Next.js بحسب الحاجة، مع TailwindCSS للتصميم. هل تريدني أن أبدأ بإنشاء الهيكل الأساسي؟",
+    "hits": 0,
+    "lastUsed": 1769224513135
+  },
+  {
+    "trigger": "موقع جديد",
+    "response": "فكرة ممتازة يا يونس! سأقوم بإنشاء مشروع ويب حديث باستخدام React (Vite) أو Next.js بحسب الحاجة، مع TailwindCSS للتصميم. هل تريدني أن أبدأ بإنشاء الهيكل الأساسي؟",
+    "hits": 0,
+    "lastUsed": 1769224513135
+  },
+  {
+    "trigger": "انشاء موقع",
+    "response": "فكرة ممتازة يا يونس! سأقوم بإنشاء مشروع ويب حديث باستخدام React (Vite) أو Next.js بحسب الحاجة، مع TailwindCSS للتصميم. هل تريدني أن أبدأ بإنشاء الهيكل الأساسي؟",
+    "hits": 0,
+    "lastUsed": 1769224513136
+  },
+  {
+    "trigger": "nextjs app",
+    "response": "اختيار موفق كالعادة يا يونس. سأقوم بإنشاء تطبيق Next.js مع App Router المطور. هل نستخدم TypeScript؟",
+    "hits": 0,
+    "lastUsed": 1769224513136
+  },
+  {
+    "trigger": "mobile app",
+    "response": "لتطبيقات الهاتف، أنت تعلم أن الخيار الأذكى هو React Native (عبر Expo). سيوفر لك تطبيقاً يعمل على iOS و Android بكود واحد. هل أبدأ إعداد البيئة لك يا يونس؟",
+    "hits": 0,
+    "lastUsed": 1769224513136
+  },
+  {
+    "trigger": "build app",
+    "response": "لتطبيقات الهاتف، أنت تعلم أن الخيار الأذكى هو React Native (عبر Expo). سيوفر لك تطبيقاً يعمل على iOS و Android بكود واحد. هل أبدأ إعداد البيئة لك يا يونس؟",
+    "hits": 0,
+    "lastUsed": 1769224513137
+  },
+  {
+    "trigger": "ios app",
+    "response": "لتطبيقات الهاتف، أنت تعلم أن الخيار الأذكى هو React Native (عبر Expo). سيوفر لك تطبيقاً يعمل على iOS و Android بكود واحد. هل أبدأ إعداد البيئة لك يا يونس؟",
+    "hits": 0,
+    "lastUsed": 1769224513138
+  },
+  {
+    "trigger": "android app",
+    "response": "لتطبيقات الهاتف، أنت تعلم أن الخيار الأذكى هو React Native (عبر Expo). سيوفر لك تطبيقاً يعمل على iOS و Android بكود واحد. هل أبدأ إعداد البيئة لك يا يونس؟",
+    "hits": 0,
+    "lastUsed": 1769224513139
+  },
+  {
+    "trigger": "تطبيق جوال",
+    "response": "لتطبيقات الهاتف، أنت تعلم أن الخيار الأذكى هو React Native (عبر Expo). سيوفر لك تطبيقاً يعمل على iOS و Android بكود واحد. هل أبدأ إعداد البيئة لك يا يونس؟",
+    "hits": 0,
+    "lastUsed": 1769224513140
+  },
+  {
+    "trigger": "docker",
+    "response": "سأقوم بإنشاء Dockerfile احترافي متعدد المراحل (Multi-stage) لتقليل حجم الصورة. هل المشروع Node.js أم Python؟",
+    "hits": 0,
+    "lastUsed": 1769224513140
+  },
+  {
+    "trigger": "aws",
+    "response": "بالنسبة لـ AWS، هل نخطط لاستخدام EC2 تقليدي أم نذهب مع Serverless (Lambda) لتوفير التكاليف؟ أنت ما شاء الله خبير وتعرف الأفضل.",
+    "hits": 0,
+    "lastUsed": 1769224513140
+  },
+  {
+    "trigger": "deploy",
+    "response": "جاهز للرفع يا يونس! هل نستهدف Vercel للسرعة أم Docker container على سيرفر خاص؟",
+    "hits": 0,
+    "lastUsed": 1769224513141
+  },
+  {
+    "trigger": "ci/cd",
+    "response": "سأقوم بإعداد GitHub Actions Pipeline لفحص الكود وبناء الصورة تلقائياً عند كل Push. هذا هو الشغل الاحترافي!",
+    "hits": 0,
+    "lastUsed": 1769224513142
+  },
+  {
+    "trigger": "kubernetes",
+    "response": "للمشاريع الضخمة التي تليق بك، Kubernetes هو الحل. هل نستخدم Helm Charts للإدارة؟",
+    "hits": 0,
+    "lastUsed": 1769224513142
+  },
+  {
+    "trigger": "database",
+    "response": "قواعد البيانات هي العمود الفقري. هل نذهب مع PostgreSQL للموثوقية أم MongoDB للمرونة؟ ما رأيك يا هندسة؟",
+    "hits": 0,
+    "lastUsed": 1769224513143
+  },
+  {
+    "trigger": "sql",
+    "response": "سأكتب لك استعلام SQL محسن (Optimized Query) مع Indexing لضمان السرعة الفائقة.",
+    "hits": 0,
+    "lastUsed": 1769224513143
+  },
+  {
+    "trigger": "redis",
+    "response": "ممتاز! Redis ضروري للـ Caching والسرعة. سأقوم بإعداد Redis Instance لك فوراً.",
+    "hits": 0,
+    "lastUsed": 1769224513143
+  },
+  {
+    "trigger": "auth",
+    "response": "الحماية أولاً. سأقوم بإعداد نظام مصادقة (Auth) باستخدام JWT مع Refresh Tokens لضمان أمان المستخدمين.",
+    "hits": 0,
+    "lastUsed": 1769224513144
+  },
+  {
+    "trigger": "test",
+    "response": "سأقوم تحليل المشروع وتشغيل الاختبارات المناسبة (npm test). الجودة هي ما يميز عملنا يا يونس!",
+    "hits": 0,
+    "lastUsed": 1769224513145
+  },
+  {
+    "trigger": "debug",
+    "response": "أرسل لي الـ Log ولا تقلق. سأجد الإبرة في كومة القش وأصلحها لك.",
+    "hits": 0,
+    "lastUsed": 1769224513148
+  },
+  {
+    "trigger": "fix",
+    "response": "اعتبره تم إصلاحه. ما هو الخطأ بالتحديد؟",
+    "hits": 0,
+    "lastUsed": 1769224513148
+  },
+  {
+    "trigger": "spring boot",
+    "response": "مشروع Spring Boot يحتاج لتنظيم دقيق. سأبدأ بإنشاء الهيكل: Controller لطلبات API، و Service للمنطق، و Repository للداتا (JPA). سأستخدم Maven للإدارة. في ثانية واحدة سيكون لديك REST API كامل.",
+    "hits": 0,
+    "lastUsed": 1769224513149
+  },
+  {
+    "trigger": "java api",
+    "response": "مشروع Spring Boot يحتاج لتنظيم دقيق. سأبدأ بإنشاء الهيكل: Controller لطلبات API، و Service للمنطق، و Repository للداتا (JPA). سأستخدم Maven للإدارة. في ثانية واحدة سيكون لديك REST API كامل.",
+    "hits": 0,
+    "lastUsed": 1769224513149
+  },
+  {
+    "trigger": "microservice",
+    "response": "للميكروسرفيسز، Spring Boot مع Spring Cloud هو الملك. سأضيف Eureka للـ Discovery و Config Server. تصميم يخدم الملايين!",
+    "hits": 0,
+    "lastUsed": 1769224513150
+  },
+  {
+    "trigger": "django",
+    "response": "Django هو إطار العمل للمحترفين (Batteries Included). سأبدأ المشروع (startproject) وأنشئ تطبيقاً (startapp). سأقوم بإعداد الـ Models والـ Admin Panel فوراً. هل نستخدم PostgreSQL؟",
+    "hits": 0,
+    "lastUsed": 1769224513150
+  },
+  {
+    "trigger": "python web",
+    "response": "Django هو إطار العمل للمحترفين (Batteries Included). سأبدأ المشروع (startproject) وأنشئ تطبيقاً (startapp). سأقوم بإعداد الـ Models والـ Admin Panel فوراً. هل نستخدم PostgreSQL؟",
+    "hits": 0,
+    "lastUsed": 1769224513151
+  },
+  {
+    "trigger": "flask",
+    "response": "Flask ممتاز للمشاريع الخفيفة والسريعة. سأكتب لك ملف `app.py` واحد يقوم بكل شي. هل تريد API أم HTML Rendering؟",
+    "hits": 0,
+    "lastUsed": 1769224513151
+  },
+  {
+    "trigger": "laravel",
+    "response": "Laravel هو فخر الـ PHP. سأستخدم Artisan لإنشاء الـ Controllers والـ Migrations. سأتبع نمط MVC بدقة. هل نستخدم Blade أم Vue.js للواجهة؟",
+    "hits": 0,
+    "lastUsed": 1769224513151
+  },
+  {
+    "trigger": "php",
+    "response": "Laravel هو فخر الـ PHP. سأستخدم Artisan لإنشاء الـ Controllers والـ Migrations. سأتبع نمط MVC بدقة. هل نستخدم Blade أم Vue.js للواجهة؟",
+    "hits": 0,
+    "lastUsed": 1769224513152
+  },
+  {
+    "trigger": "artisan",
+    "response": "أوامر Artisan في جيبي: `make:model`, `make:controller`, `migrate`. فقط قل لي ماذا تريد أن تبني!",
+    "hits": 0,
+    "lastUsed": 1769224513152
+  },
+  {
+    "trigger": ".net",
+    "response": "بيئة .NET وعالم Microsoft. سأقوم بإنشاء Web API باستخدام ASP.NET Core الحديث. سأستخدم Entity Framework للتعامل مع SQL Server. أداء وسرعة خيالية.",
+    "hits": 0,
+    "lastUsed": 1769224513153
+  },
+  {
+    "trigger": "c#",
+    "response": "بيئة .NET وعالم Microsoft. سأقوم بإنشاء Web API باستخدام ASP.NET Core الحديث. سأستخدم Entity Framework للتعامل مع SQL Server. أداء وسرعة خيالية.",
+    "hits": 0,
+    "lastUsed": 1769224513153
+  },
+  {
+    "trigger": "asp.net",
+    "response": "بيئة .NET وعالم Microsoft. سأقوم بإنشاء Web API باستخدام ASP.NET Core الحديث. سأستخدم Entity Framework للتعامل مع SQL Server. أداء وسرعة خيالية.",
+    "hits": 0,
+    "lastUsed": 1769224513154
+  },
+  {
+    "trigger": "sort",
+    "response": "للترتيب السريع، سأستخدم QuickSort (O(n log n)) في معظم الحالات، أو MergeSort للبيانات الضخمة جداً لضمان الاستقرار.",
+    "hits": 0,
+    "lastUsed": 1769224513154
+  },
+  {
+    "trigger": "search",
+    "response": "للبحث في بيانات مرتبة، Binary Search هو الحل (O(log n)). أما للبيانات غير المرتبة، سأستخدم Hash Map للوصول الفوري (O(1)).",
+    "hits": 0,
+    "lastUsed": 1769224513154
+  },
+  {
+    "trigger": "optimize",
+    "response": "التحسين مجالي! سأقلل الـ Time Complexity، أمنع الـ Nested Loops، وأستخدم Caching (Memoization) لتسريع الكود 100 مرة.",
+    "hits": 0,
+    "lastUsed": 1769224513155
+  },
+  {
+    "trigger": "clean",
+    "response": "لتنظيف المشروع فوراً: `rm -rf node_modules && npm cache clean --force`. (احذر! سأمسح كل شيء لتبدأ من جديد ونظيف).",
+    "hits": 0,
+    "lastUsed": 1769224513156
+  },
+  {
+    "trigger": "large files",
+    "response": "لإيجاد الملفات الضخمة التي تلتهم المساحة: `find . -type f -size +100M`. سأكشفها لك فوراً.",
+    "hits": 0,
+    "lastUsed": 1769224513156
+  },
+  {
+    "trigger": "network",
+    "response": "لفحص الشبكة والبورتاث: `netstat -tulpn` أو `lsof -i`. سأخبرك من يستمع على أي بورت.",
+    "hits": 0,
+    "lastUsed": 1769224513157
+  },
+  {
+    "trigger": "kill",
+    "response": "لقتل عملية (Process) عنيدة: `kill -9 <PID>` أو `pkill -f <name>`. لا رحمة مع العمليات العالقة!",
+    "hits": 0,
+    "lastUsed": 1769224513158
+  },
+  {
+    "trigger": "logs",
+    "response": "لمراقبة اللوجز بشكل مباشر: `tail -f error.log`. سأبقي عيني مفتوحة على كل سطر جديد.",
+    "hits": 0,
+    "lastUsed": 1769224513158
+  }
+]
