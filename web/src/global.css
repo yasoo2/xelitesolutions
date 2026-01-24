@@ -195,7 +195,13 @@ html,
 body {
   height: 100%;
   width: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
+  /* Critical: Prevent body scroll */
+  margin: 0;
+  padding: 0;
+  position: fixed;
+  /* Lock viewport on mobile */
+  inset: 0;
 }
 
 /* Premium Scrollbars (Obsidian Lux) */
@@ -363,10 +369,27 @@ body {
 }
 
 .app {
-  min-height: 100vh;
-  min-height: 100svh;
+  height: 100vh;
+  height: 100svh;
+  /* Sustain mobile viewport */
+  width: 100vw;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  /* Ensure nothing spills out */
+}
+
+.center {
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow-y: auto;
+  /* Let child containers handle scroll or handle it here if it's the main */
+  flex: 1;
+  min-height: 0;
+  /* Important for nested flex scroll */
+  width: 100%;
 }
 
 .content {
@@ -2408,6 +2431,13 @@ html[data-theme="light"] .session-menu {
   color: rgba(254, 202, 202, 1);
 }
 
+.sidebar-header {
+  padding: 20px 20px 0 20px;
+  padding-inline-start: 70px;
+  /* Logical padding: Left in LTR, Right in RTL */
+  margin-bottom: 0;
+}
+
 .sidebar-footer {
   padding: 12px;
   border-top: 1px solid var(--border-color);
@@ -3270,8 +3300,10 @@ html[data-theme="light"] .chat-bubble-content code {
   opacity: 1;
 }
 
-.option-btn:active {
-  transform: translateY(0);
+/* Ensure content doesn't get hidden behind the floating command bar */
+.events-content {
+  padding-bottom: 200px !important;
+  /* Huge padding to clear the floating bar */
 }
 
 .composer-footer {
@@ -3833,16 +3865,19 @@ html[data-theme="light"] .input-actions {
   color: var(--text-primary);
 }
 
-/* Floating Sidebar Toggle */
+/* Floating Sidebar Toggle - Fixed Position */
 .sidebar-toggle-btn-floating {
-  position: absolute;
+  position: fixed;
+  /* Changed from absolute to fixed */
   left: 20px;
   top: 20px;
-  z-index: 50;
+  z-index: 1000;
+  /* Ensure above everything */
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(15, 23, 42, 0.6);
+  /* Slightly darker backing for visibility */
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-secondary);
   display: flex;
@@ -3850,9 +3885,16 @@ html[data-theme="light"] .input-actions {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   animation: toggleSearchPulse 3s infinite;
+}
+
+[dir="rtl"] .sidebar-toggle-btn-floating {
+  left: auto;
+  right: 20px;
+  /* Flip to right in Arabic */
 }
 
 @keyframes toggleSearchPulse {
