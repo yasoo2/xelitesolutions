@@ -58,6 +58,7 @@ import { DirectoryInspectionTool, FileSearchTool, SymbolInspectorTool, AdvancedF
 import { SafeReadFileTool, AskUserTool, TerminalManagerTool } from './definitions/TaskInteractionTools';
 import { BrowserVisionTool } from './definitions/BrowserVisionTool';
 import { BrowserActionTool } from './definitions/BrowserActionTool';
+import { PaymentsTools } from './definitions/PaymentsTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -187,4 +188,7 @@ export const tools: ToolDefinition[] = [
   new TerminalManagerTool(),
   new BrowserVisionTool(),
   new BrowserActionTool(),
+
+  // --- Payments ---
+  ...PaymentsTools,
 ];
