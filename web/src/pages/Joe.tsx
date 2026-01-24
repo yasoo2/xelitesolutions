@@ -137,7 +137,7 @@ export default function Joe() {
     };
   }, [autoDetectPreview, previewUrl, isProduction]);
 
-  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 1024);
+  const [showSidebar, setShowSidebar] = useState(false); // Default closed for cleaner look
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -785,9 +785,13 @@ export default function Joe() {
           </div>
         </aside>
       )}
-      {mode === 'chat' && !showSidebar && (
-        <button className="sidebar-toggle-btn" style={{ position: 'absolute', left: 16, top: 16 }} onClick={() => setShowSidebar(true)}>
-          <PanelLeftOpen size={20} />
+      {mode === 'chat' && (
+        <button
+          className="sidebar-toggle-btn-floating"
+          onClick={() => setShowSidebar(!showSidebar)}
+          title={showSidebar ? t('sidebar.close', 'Close Sidebar') : t('sidebar.open', 'Open Sidebar')}
+        >
+          {showSidebar ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
         </button>
       )}
 

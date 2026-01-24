@@ -3739,7 +3739,7 @@ html[data-theme="light"] .providers-left {
   background: rgba(15, 23, 42, 0.85);
   /* Darker, more solid background */
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.3), 0 20px 60px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3749,14 +3749,19 @@ html[data-theme="light"] .providers-left {
 
 html[data-theme="light"] .input-container {
   background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3), 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 
 .input-container:focus-within {
-  border-color: rgba(var(--accent-primary-rgb), 0.5);
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(var(--accent-primary-rgb), 0.15);
+  border-color: var(--brand-mark-yellow);
+  box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.5), 0 25px 80px rgba(0, 0, 0, 0.5);
   transform: translateY(-2px);
+}
+
+html[data-theme="light"] .input-container:focus-within {
+  border-color: var(--neon-blue);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5), 0 25px 80px rgba(0, 0, 0, 0.15);
 }
 
 .main-input {
@@ -3828,9 +3833,50 @@ html[data-theme="light"] .input-actions {
   color: var(--text-primary);
 }
 
+/* Floating Sidebar Toggle */
+.sidebar-toggle-btn-floating {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  z-index: 50;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.sidebar-toggle-btn-floating:hover {
+  background: rgba(var(--accent-primary-rgb), 0.1);
+  color: var(--text-primary);
+  border-color: rgba(var(--accent-primary-rgb), 0.3);
+  transform: scale(1.05);
+}
+
 .session-item {
   color: var(--text-secondary);
   transition: all 0.2s;
+  border-left: 2px solid transparent;
+  /* Prepare for border style */
+  padding-left: 10px;
+}
+
+.session-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-left-color: rgba(255, 255, 255, 0.2);
+}
+
+.session-item.active {
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  border-left-color: var(--accent-primary);
+  color: var(--text-primary);
 }
 
 .session-item:hover,
