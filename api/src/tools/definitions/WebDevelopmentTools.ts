@@ -190,7 +190,7 @@ export class DevServerTool extends BaseTool {
     description = 'Start a development server for a project.';
     version = '2.0.0';
     tags = ['dev', 'server', 'preview'];
-    inputSchema = { type: 'object' as const, properties: { cwd: { type: 'string' }, command: { type: 'string' } }, required: ['cwd'] };
+    inputSchema = { type: 'object' as const, properties: { cwd: { type: 'string' }, command: { type: 'string' }, port: { type: 'number' } }, required: ['cwd'] };
     outputSchema = { type: 'object' as const, properties: { previewUrl: { type: 'string' } } };
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = ['execute']; // it starts a process
@@ -201,20 +201,33 @@ export class DevServerTool extends BaseTool {
         const logs: string[] = [];
         const cwd = resolveToolPath(String(input?.cwd || '').trim());
         const command = String(input?.command || 'npm run dev').trim();
+        const port = Number(input?.port) || 5173;
+
         try {
             const parts = command.split(' ');
             const child = spawn(parts[0], parts.slice(1), {
                 cwd,
-                env: process.env,
+                env: { ...process.env, PORT: String(port) },
                 stdio: 'ignore',
                 detached: true,
             });
             child.unref(); // Fire and forget (keep running)
-            logs.push(`dev_started cwd=${cwd} cmd=${command}`);
-            // In a real scenario, we might scrape stdout to find the port.
-            // For now, assuming standard Vite/Next port or hoping the log reveals it.
-            // But immediate return assumes 5173 or 3000.
-            return { ok: true, output: { previewUrl: 'http://localhost:5173/' }, logs };
+
+            const previewUrl = `http://localhost:${port}/`;
+            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
+
+            // Broadcast preview_ready event for JoeStudio LivePreview
+            const { broadcast } = require('../../ws');
+            broadcast({
+                type: 'preview_ready',
+                data: {
+                    url: previewUrl,
+                    cwd,
+                    timestamp: new Date().toISOString()
+                }
+            });
+
+            return { ok: true, output: { previewUrl }, logs };
         } catch (e: any) {
             const msg = e?.message || String(e);
             logs.push(`dev_error=${msg}`);

@@ -208,6 +208,9 @@ export const useAgent = () => {
                         width: msg.data?.width || 1280,
                         height: msg.data?.height || 720
                     }, ...prev]);
+                } else if (msg.type === 'preview_ready') {
+                    // NEW: Set preview URL for LivePreview
+                    setPreviewUrl(msg.data?.url || '');
                 }
             } catch (e) {
                 console.error('WS Parse Error', e);
