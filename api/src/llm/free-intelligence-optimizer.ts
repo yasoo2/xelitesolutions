@@ -39,16 +39,30 @@ class FreeIntelligenceOptimizer {
     private buildDynamicIndex() {
         try {
             const knowledgeDir = path.join(__dirname, '../knowledge');
+            const blueprintDir = path.join(knowledgeDir, 'blueprints');
+
             if (!fs.existsSync(knowledgeDir)) return;
 
+            // 1. Scan Main Knowledge
             const files = fs.readdirSync(knowledgeDir).filter(f => f.endsWith('.md'));
-
             for (const file of files) {
-                // Extract keywords from filename (e.g. 'high_performance_computing.md' -> ['high', 'performance', 'computing'])
                 const nameWithoutExt = file.replace('.md', '');
                 const keywords = nameWithoutExt.split(/[_-]/).filter(k => k.length > 2);
-                this.dynamicIndex.set(file, keywords);
+                this.dynamicIndex.set(path.join(knowledgeDir, file), keywords);
             }
+
+            // 2. Scan Blueprints (Higher Weight Injection)
+            if (fs.existsSync(blueprintDir)) {
+                const bFiles = fs.readdirSync(blueprintDir).filter(f => f.endsWith('.md'));
+                for (const bFile of bFiles) {
+                    const nameWithoutExt = bFile.replace('.md', '');
+                    const keywords = nameWithoutExt.split(/[_-]/).filter(k => k.length > 2);
+                    // Blueprints get a 'blueprint' tag automatically
+                    keywords.push('blueprint', 'template', 'snippet', 'code');
+                    this.dynamicIndex.set(path.join(blueprintDir, bFile), keywords);
+                }
+            }
+
             console.log(`[Optimizer] Universal Index Ready: ${this.dynamicIndex.size} Engineering Atlases mapped.`);
         } catch (e) {
             console.warn('[Optimizer] Failed to build dynamic index', e);
@@ -235,7 +249,7 @@ class FreeIntelligenceOptimizer {
         let highestScore = 0;
 
         // Perform semantic scoring against dynamic index
-        for (const [file, keywords] of this.dynamicIndex.entries()) {
+        for (const [fullPath, keywords] of this.dynamicIndex.entries()) {
             let score = 0;
             for (const kw of keywords) {
                 if (lowerQuery.includes(kw.toLowerCase())) {
@@ -245,15 +259,16 @@ class FreeIntelligenceOptimizer {
 
             if (score > highestScore) {
                 highestScore = score;
-                bestFile = file;
+                bestFile = fullPath;
             }
         }
 
         // Only return if we have a significant match (e.g. at least one full keyword)
         if (bestFile && highestScore > 3) {
             try {
-                const content = fs.readFileSync(path.join(knowledgeDir, bestFile), 'utf-8');
-                return `\n\n📚 **Universal Engineering Atlas (${bestFile}):**\n` + content.substring(0, 2000) + '... [Full Atlas Synced]';
+                const content = fs.readFileSync(bestFile, 'utf-8');
+                const basename = path.basename(bestFile);
+                return `\n\n📚 **Universal Engineering Atlas (${basename}):**\n` + content.substring(0, 2500) + '... [Full Atlas Synced]';
             } catch (e) {
                 console.error('[Optimizer] Knowledge read error', e);
             }
