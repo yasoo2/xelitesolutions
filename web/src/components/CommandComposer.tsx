@@ -504,6 +504,12 @@ export default function CommandComposer({
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
   };
   const [text, setText] = useState('');
+  useEffect(() => {
+    const trimmed = text.trim();
+    if (trimmed === '/* ... */' || trimmed === '/* ... */.') {
+      setText('');
+    }
+  }, [text]);
 
   const [taskBarByRunId, setTaskBarByRunId] = useState<
     Record<
