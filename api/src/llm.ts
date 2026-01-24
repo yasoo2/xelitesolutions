@@ -438,11 +438,6 @@ export { pollinationsProvider, openRouterProvider, huggingfaceProvider };
 
 
 // In-memory store for user provider preference
-// 'pollinations' = Pollinations (Free)
-// 'openrouter' = OpenRouter (Free/Paid)
-// 'auto' = Intelligent Auto-Selection
-// 'gemini' = Google Gemini (Official)
-// 'openai' = Standard OpenAI
 const activeProviders = new Map<string, string>();
 
 export function setActiveProvider(userId: string, provider: string) {

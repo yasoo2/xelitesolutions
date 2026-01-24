@@ -372,7 +372,7 @@ export class ShellExecuteTool extends BaseTool {
                     throw new Error('Background execution not yet supported for remote servers');
                 }
                 const id = 'bg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-                // ... (rest of background logic remains same for local)
+
                 const child = spawn(command, [], {
                     cwd: workDir,
                     shell: true,
