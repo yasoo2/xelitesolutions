@@ -18,15 +18,40 @@ type OptimizationResult = {
 
 class FreeIntelligenceOptimizer {
     private cache: Map<string, CachedResponse> = new Map();
+    private dynamicIndex: Map<string, string[]> = new Map(); // filename -> keywords[]
     private cachePath: string;
 
     constructor() {
         this.cachePath = path.join(__dirname, '../../../.smart_reflex_cache.json');
         this.loadCache();
+        this.buildDynamicIndex();
 
         // Seed basic common patterns if empty
         if (this.cache.size === 0) {
             this.seedDefaults();
+        }
+    }
+
+    /**
+     * UNIVERSAL KNOWLEDGE INDEXER (Singularity Core)
+     * Scans the knowledge directory and builds a keyword-to-file map
+     */
+    private buildDynamicIndex() {
+        try {
+            const knowledgeDir = path.join(__dirname, '../knowledge');
+            if (!fs.existsSync(knowledgeDir)) return;
+
+            const files = fs.readdirSync(knowledgeDir).filter(f => f.endsWith('.md'));
+
+            for (const file of files) {
+                // Extract keywords from filename (e.g. 'high_performance_computing.md' -> ['high', 'performance', 'computing'])
+                const nameWithoutExt = file.replace('.md', '');
+                const keywords = nameWithoutExt.split(/[_-]/).filter(k => k.length > 2);
+                this.dynamicIndex.set(file, keywords);
+            }
+            console.log(`[Optimizer] Universal Index Ready: ${this.dynamicIndex.size} Engineering Atlases mapped.`);
+        } catch (e) {
+            console.warn('[Optimizer] Failed to build dynamic index', e);
         }
     }
 
@@ -203,150 +228,32 @@ class FreeIntelligenceOptimizer {
         }
 
         const knowledgeDir = path.join(__dirname, '../knowledge');
-        if (!fs.existsSync(knowledgeDir)) return null;
+        if (!fs.existsSync(knowledgeDir) || this.dynamicIndex.size === 0) return null;
 
         const lowerQuery = query.toLowerCase();
-        let bestMatch = '';
+        let bestFile: string | null = null;
+        let highestScore = 0;
 
-        // Map topics to files
-        const topicMap: Record<string, string> = {
-            'react': 'web_modern_stack.md',
-            'next': 'web_modern_stack.md',
-            'tailwind': 'web_modern_stack.md',
-            'web': 'web_modern_stack.md',
+        // Perform semantic scoring against dynamic index
+        for (const [file, keywords] of this.dynamicIndex.entries()) {
+            let score = 0;
+            for (const kw of keywords) {
+                if (lowerQuery.includes(kw.toLowerCase())) {
+                    score += kw.length; // Longer matches carry more weight
+                }
+            }
 
-            'native': 'mobile_architecture.md',
-            'mobile': 'mobile_architecture.md',
-            'expo': 'mobile_architecture.md',
-            'ios': 'mobile_architecture.md',
-            'android': 'mobile_architecture.md',
+            if (score > highestScore) {
+                highestScore = score;
+                bestFile = file;
+            }
+        }
 
-            'backend': 'backend_systems.md',
-            'database': 'backend_systems.md',
-            'sql': 'backend_systems.md',
-            'redis': 'backend_systems.md',
-            'cache': 'backend_systems.md',
-            'microservice': 'backend_systems.md',
-
-            'docker': 'devops_pipelines.md',
-            'k8s': 'devops_pipelines.md',
-            'kubernetes': 'devops_pipelines.md',
-            'ci': 'devops_pipelines.md',
-            'pipeline': 'devops_pipelines.md',
-            'devops': 'devops_pipelines.md',
-
-            // Phase 2: Advanced Engineering
-            'security': 'cybersecurity_essentials.md',
-            'cyber': 'cybersecurity_essentials.md',
-            'auth': 'cybersecurity_essentials.md',
-            'jwt': 'cybersecurity_essentials.md',
-            'owasp': 'cybersecurity_essentials.md',
-            'hack': 'cybersecurity_essentials.md',
-            'penetration': 'cybersecurity_essentials.md',
-
-            'ai': 'ai_engineering_guide.md',
-            'llm': 'ai_engineering_guide.md',
-            'rag': 'ai_engineering_guide.md',
-            'vector': 'ai_engineering_guide.md',
-            'embedding': 'ai_engineering_guide.md',
-            'gpt': 'ai_engineering_guide.md',
-            'agent': 'ai_engineering_guide.md',
-
-            'cloud': 'cloud_architecture_mastery.md',
-            'aws': 'cloud_architecture_mastery.md',
-            'azure': 'cloud_architecture_mastery.md',
-            'serverless': 'cloud_architecture_mastery.md',
-            'lambda': 'cloud_architecture_mastery.md',
-
-            // Phase 3: Future Tech & Deep Science
-            'blockchain': 'blockchain_web3.md',
-            'web3': 'blockchain_web3.md',
-            'solidity': 'blockchain_web3.md',
-            'smart contract': 'blockchain_web3.md',
-            'defi': 'blockchain_web3.md',
-            'crypto': 'blockchain_web3.md',
-            'wallet': 'blockchain_web3.md',
-
-            'data': 'data_science_analytics.md',
-            'science': 'data_science_analytics.md',
-            'analytics': 'data_science_analytics.md',
-            'pandas': 'data_science_analytics.md',
-            'spark': 'data_science_analytics.md',
-            'python': 'data_science_analytics.md',
-            'visualization': 'data_science_analytics.md',
-
-            'optimize': 'performance_optimization.md',
-            'performance': 'performance_optimization.md',
-            'cpu': 'performance_optimization.md',
-            'fast': 'performance_optimization.md',
-            'algorithm': 'performance_optimization.md',
-            'complexity': 'performance_optimization.md',
-            'scale': 'performance_optimization.md',
-
-            // Floor 4: Mission-Critical & Legacy Systems
-            'bank': 'fintech_banking_architecture.md',
-            'fintech': 'fintech_banking_architecture.md',
-            'payment': 'fintech_banking_architecture.md',
-            'transaction': 'fintech_banking_architecture.md',
-            'ledger': 'fintech_banking_architecture.md',
-            'money': 'fintech_banking_architecture.md',
-
-            'resilience': 'resilience_disaster_recovery.md',
-            'failover': 'resilience_disaster_recovery.md',
-            'recovery': 'resilience_disaster_recovery.md',
-            'availability': 'resilience_disaster_recovery.md',
-            'circuit': 'resilience_disaster_recovery.md',
-            'chaos': 'resilience_disaster_recovery.md',
-
-            'legacy': 'legacy_modernization.md',
-            'monolith': 'legacy_modernization.md',
-            'migrate': 'legacy_modernization.md',
-            'modernize': 'legacy_modernization.md',
-            'strangler': 'legacy_modernization.md',
-            'ddd': 'legacy_modernization.md',
-
-            // Floor 5: Aesthetic Design Mastery
-            'design': 'aesthetic_design_systems.md',
-            'ui': 'ui_ux_patterns_library.md',
-            'ux': 'ui_ux_patterns_library.md',
-            'color': 'aesthetic_design_systems.md',
-            'style': 'aesthetic_design_systems.md',
-            'css': 'aesthetic_design_systems.md',
-            'beautiful': 'aesthetic_design_systems.md',
-            'aesthetic': 'aesthetic_design_systems.md',
-            'typography': 'aesthetic_design_systems.md',
-            'font': 'aesthetic_design_systems.md',
-            'interaction': 'ui_ux_patterns_library.md',
-            'animation': 'ui_ux_patterns_library.md',
-            'animate': 'ui_ux_patterns_library.md',
-            'framer': 'ui_ux_patterns_library.md',
-            'brand': 'branding_visual_identity.md',
-            'logo': 'branding_visual_identity.md',
-            'identity': 'branding_visual_identity.md',
-            'icon': 'branding_visual_identity.md',
-            'accessible': 'branding_visual_identity.md',
-
-            // Floor 6: System Self-Awareness
-            'system': 'system_architecture_deepdive.md',
-            'architecture': 'system_architecture_deepdive.md',
-            'stack': 'system_architecture_deepdive.md',
-            'how you work': 'system_architecture_deepdive.md',
-            'how do you work': 'system_architecture_deepdive.md',
-            'tool': 'tools_encyclopedia.md',
-            'capabilities': 'tools_encyclopedia.md',
-            'what can you do': 'tools_encyclopedia.md',
-            'genesis': 'agent_protocols.md',
-            'architect': 'agent_protocols.md',
-            'protocol': 'agent_protocols.md',
-            'memory': 'agent_protocols.md'
-        };
-
-        // Find relevant file
-        const foundTopic = Object.keys(topicMap).find(t => lowerQuery.includes(t));
-        if (foundTopic) {
+        // Only return if we have a significant match (e.g. at least one full keyword)
+        if (bestFile && highestScore > 3) {
             try {
-                const content = fs.readFileSync(path.join(knowledgeDir, topicMap[foundTopic]), 'utf-8');
-                return `\n\n📚 **Knowledge Base (${topicMap[foundTopic]}):**\n` + content.substring(0, 1500) + '... [Read more]';
+                const content = fs.readFileSync(path.join(knowledgeDir, bestFile), 'utf-8');
+                return `\n\n📚 **Universal Engineering Atlas (${bestFile}):**\n` + content.substring(0, 2000) + '... [Full Atlas Synced]';
             } catch (e) {
                 console.error('[Optimizer] Knowledge read error', e);
             }
