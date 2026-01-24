@@ -35,8 +35,9 @@ export const NeuralChat = () => {
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
-                    <div className={`w-2 h-2 rounded-full ${status === 'thinking' ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`} />
-                    <span className="uppercase text-gray-400">{status === 'idle' ? 'Ready' : status}</span>
+                    <div className={`w-2 h-2 rounded-full ${status === 'thinking' ? 'bg-yellow-400 animate-pulse' :
+                        status === 'executing' ? 'bg-cyan-400 animate-pulse' : 'bg-green-400'}`}
+                    />
                 </div>
             </div>
 

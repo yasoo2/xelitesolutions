@@ -57,13 +57,28 @@ export const useAgent = () => {
                 const msg = JSON.parse(event.data);
 
                 if (msg.type === 'text') {
-                    setMessages(prev => [...prev, {
-                        id: Date.now().toString(),
-                        role: 'assistant',
-                        content: msg.data,
-                        type: 'text'
-                    }]);
+                    setMessages(prev => {
+                        const lastMsg = prev[prev.length - 1];
+                        if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.tool) {
+                            // Append to existing message
+                            return [
+                                ...prev.slice(0, -1),
+                                { ...lastMsg, content: lastMsg.content + msg.data }
+                            ];
+                        }
+                        // New message
+                        return [...prev, {
+                            id: Date.now().toString(),
+                            role: 'assistant',
+                            content: msg.data,
+                            type: 'text'
+                        }];
+                    });
                     setStatus('idle');
+                } else if (msg.type === 'thought') {
+                    // Show thoughts as ephemeral status (optional)
+                    // For now, handled by step_started mostly, but we can set status
+                    setStatus('thinking');
                 } else if (msg.type === 'step_started') {
                     setSteps(prev => {
                         const next = prev.map(s => ({ ...s, status: 'done' as const }));
