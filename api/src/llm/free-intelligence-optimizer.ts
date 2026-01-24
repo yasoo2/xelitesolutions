@@ -294,7 +294,28 @@ class FreeIntelligenceOptimizer {
             'migrate': 'legacy_modernization.md',
             'modernize': 'legacy_modernization.md',
             'strangler': 'legacy_modernization.md',
-            'ddd': 'legacy_modernization.md'
+            'ddd': 'legacy_modernization.md',
+
+            // Floor 5: Aesthetic Design Mastery
+            'design': 'aesthetic_design_systems.md',
+            'ui': 'ui_ux_patterns_library.md',
+            'ux': 'ui_ux_patterns_library.md',
+            'color': 'aesthetic_design_systems.md',
+            'style': 'aesthetic_design_systems.md',
+            'css': 'aesthetic_design_systems.md',
+            'beautiful': 'aesthetic_design_systems.md',
+            'aesthetic': 'aesthetic_design_systems.md',
+            'typography': 'aesthetic_design_systems.md',
+            'font': 'aesthetic_design_systems.md',
+            'interaction': 'ui_ux_patterns_library.md',
+            'animation': 'ui_ux_patterns_library.md',
+            'animate': 'ui_ux_patterns_library.md',
+            'framer': 'ui_ux_patterns_library.md',
+            'brand': 'branding_visual_identity.md',
+            'logo': 'branding_visual_identity.md',
+            'identity': 'branding_visual_identity.md',
+            'icon': 'branding_visual_identity.md',
+            'accessible': 'branding_visual_identity.md'
         };
 
         // Find relevant file
