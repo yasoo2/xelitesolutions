@@ -272,7 +272,29 @@ class FreeIntelligenceOptimizer {
             'fast': 'performance_optimization.md',
             'algorithm': 'performance_optimization.md',
             'complexity': 'performance_optimization.md',
-            'scale': 'performance_optimization.md'
+            'scale': 'performance_optimization.md',
+
+            // Floor 4: Mission-Critical & Legacy Systems
+            'bank': 'fintech_banking_architecture.md',
+            'fintech': 'fintech_banking_architecture.md',
+            'payment': 'fintech_banking_architecture.md',
+            'transaction': 'fintech_banking_architecture.md',
+            'ledger': 'fintech_banking_architecture.md',
+            'money': 'fintech_banking_architecture.md',
+
+            'resilience': 'resilience_disaster_recovery.md',
+            'failover': 'resilience_disaster_recovery.md',
+            'recovery': 'resilience_disaster_recovery.md',
+            'availability': 'resilience_disaster_recovery.md',
+            'circuit': 'resilience_disaster_recovery.md',
+            'chaos': 'resilience_disaster_recovery.md',
+
+            'legacy': 'legacy_modernization.md',
+            'monolith': 'legacy_modernization.md',
+            'migrate': 'legacy_modernization.md',
+            'modernize': 'legacy_modernization.md',
+            'strangler': 'legacy_modernization.md',
+            'ddd': 'legacy_modernization.md'
         };
 
         // Find relevant file
