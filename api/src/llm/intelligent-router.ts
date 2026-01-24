@@ -18,14 +18,7 @@ export interface ModelConfig {
     strengths: string[];
 }
 
-export interface TaskAnalysis {
-    type: 'simple_chat' | 'complex_reasoning' | 'code_generation' | 'creative' | 'data_analysis' | 'browser_task';
-    complexity: 'low' | 'medium' | 'high' | 'extreme';
-    requiresTools: boolean;
-    estimatedTokens: number;
-    language: 'ar' | 'en' | 'mixed';
-    shortSummary?: string;
-}
+// TaskAnalysis interface moved to bottom with vision support
 
 /**
  * Flatten multimodal messages for text-only providers
@@ -137,85 +130,7 @@ export const MODELS: Record<string, ModelConfig> = {
 /**
  * Analyze user message to determine task type and complexity (Regex Fallback)
  */
-export function analyzeTask(userMessage: string, conversationHistory?: any[]): TaskAnalysis {
-    const msg = userMessage.toLowerCase();
-    const length = userMessage.length;
-
-    // Detect language: Stronger Arabic detection
-    const arabicRatio = (userMessage.match(/[\u0600-\u06FF]/g) || []).length / (userMessage.length || 1);
-    const hasArabicWords = /(أنا|أنت|هو|هي|نحن|في|من|على|إلى|عن|مع|هل|كيف|لماذا|متى|أين|ماذا|كم)/.test(userMessage);
-    const language: 'ar' | 'en' | 'mixed' =
-        arabicRatio > 0.5 || (arabicRatio > 0.1 && hasArabicWords) ? 'ar' :
-            arabicRatio > 0.1 ? 'mixed' : 'en';
-
-    // SPEED OPTIMIZATION: Check for Fast Lane candidates immediately
-    const isGreeting = /^(hi|hello|مرحبا|اهلا|سلام|هلا|يا\s*هلا|hey|صباح|مساء)/i.test(msg);
-    const isShortQuestion = length < 60 && /(ما|من|كيف|اين|متى|what|who|how|where|when)/i.test(msg);
-
-
-    // Task type detection
-    let taskType: TaskAnalysis['type'] = 'simple_chat';
-    let requiresTools = false;
-
-    // Browser/automation tasks
-    if (/(open|افتح|browse|متصفح|click|انقر|extract|استخرج)/i.test(msg)) {
-        taskType = 'browser_task';
-        requiresTools = true;
-    }
-
-
-    // File/System Operations
-    else if (/(file|folder|directory|system|terminal|command|ملف|مجلد|نظام|امر)/i.test(msg) && /(create|write|read|edit|delete|run|execute|list|انشئ|اكتب|اقرأ|عدل|احذف|شغل|نفذ|اعرض)/i.test(msg)) {
-        taskType = 'code_generation';
-        requiresTools = true;
-    }
-
-    // Code generation
-    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create|انشئ|app|تطبيق)/i.test(msg)) {
-        taskType = 'code_generation';
-        requiresTools = length > 100; // Complex code needs tools
-    }
-
-    // Creative writing
-    else if (/(write.*story|اكتب.*قصة|poem|قصيدة|article|مقال|essay|موضوع|creative|إبداعي)/i.test(msg)) {
-        taskType = 'creative';
-    }
-
-    // Data analysis
-    else if (/(analyze|حلل|statistics|إحصائيات|data|بيانات|chart|رسم|graph|مخطط)/i.test(msg)) {
-        taskType = 'data_analysis';
-    }
-
-    // Complex reasoning & Factual Identification
-    else if (/(explain|اشرح|why|لماذا|how.*work|كيف.*يعمل|design|تصميم|architecture|معمارية|plan|خطة)/i.test(msg)) {
-        taskType = 'complex_reasoning';
-    }
-    else if (/(who\s*is|what\s*is|man\s*huwa|president|ruler|king|minister|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|الحالي|ماهو|ماذا|اين|متى)/i.test(msg)) {
-        taskType = 'complex_reasoning'; // Treat as reasoning to get better models
-        requiresTools = true; // Proactively trigger search
-    }
-
-    // Complexity detection
-    let complexity: TaskAnalysis['complexity'] = 'low';
-
-    if (length > 500 || taskType === 'data_analysis') complexity = 'high';
-    else if (length > 200 || taskType === 'code_generation' || taskType === 'complex_reasoning') complexity = 'medium';
-    else if (taskType === 'browser_task') complexity = 'medium';
-
-    // Check for extremely complex tasks
-    if (/(build.*application|ابني.*تطبيق|full.*system|نظام.*كامل|million|مليون|large.*scale|واسع.*النطاق)/i.test(msg)) {
-        complexity = 'extreme';
-        requiresTools = true;
-    }
-
-    return {
-        type: taskType,
-        complexity,
-        requiresTools,
-        estimatedTokens: Math.min(length * 10, 8000),
-        language
-    };
-}
+// analyzeTask function moved to bottom with vision support
 
 /**
  * Advanced Task Analysis using LLM
@@ -323,14 +238,129 @@ Respond ONLY with a numbered list of steps.`;
 /**
  * Select the best model based on task analysis
  */
+export interface TaskAnalysis {
+    type: 'simple_chat' | 'complex_reasoning' | 'code_generation' | 'creative' | 'data_analysis' | 'browser_task';
+    complexity: 'low' | 'medium' | 'high' | 'extreme';
+    requiresTools: boolean;
+    estimatedTokens: number;
+    language: 'ar' | 'en' | 'mixed';
+    shortSummary?: string;
+    hasImages?: boolean;
+}
+
+// ... existing flattenMultimodalMessages ...
+
+// ... existing MODELS ...
+
+// ... existing analyzeTask ...
+
+export function analyzeTask(userMessage: string, conversationHistory?: any[]): TaskAnalysis {
+    const msg = userMessage.toLowerCase();
+    const length = userMessage.length;
+
+    // Check for images in history (New Vision Logic)
+    let hasImages = false;
+    if (conversationHistory && conversationHistory.length > 0) {
+        const lastMsg = conversationHistory[conversationHistory.length - 1];
+        if (Array.isArray(lastMsg?.content)) {
+            hasImages = lastMsg.content.some((c: any) => c.type === 'image_url');
+        }
+    }
+
+    // Detect language: Stronger Arabic detection
+    const arabicRatio = (userMessage.match(/[\u0600-\u06FF]/g) || []).length / (userMessage.length || 1);
+    const hasArabicWords = /(أنا|أنت|هو|هي|نحن|في|من|على|إلى|عن|مع|هل|كيف|لماذا|متى|أين|ماذا|كم)/.test(userMessage);
+    const language: 'ar' | 'en' | 'mixed' =
+        arabicRatio > 0.5 || (arabicRatio > 0.1 && hasArabicWords) ? 'ar' :
+            arabicRatio > 0.1 ? 'mixed' : 'en';
+
+    // SPEED OPTIMIZATION: Check for Fast Lane candidates immediately
+    const isShortQuestion = length < 60 && /(ما|من|كيف|اين|متى|what|who|how|where|when)/i.test(msg);
+
+    // Task type detection
+    let taskType: TaskAnalysis['type'] = 'simple_chat';
+    let requiresTools = false;
+
+    // Browser/automation tasks
+    if (/(open|افتح|browse|متصفح|click|انقر|extract|استخرج)/i.test(msg)) {
+        taskType = 'browser_task';
+        requiresTools = true;
+    }
+    // File/System Operations
+    else if (/(file|folder|directory|system|terminal|command|ملف|مجلد|نظام|امر)/i.test(msg) && /(create|write|read|edit|delete|run|execute|list|انشئ|اكتب|اقرأ|عدل|احذف|شغل|نفذ|اعرض)/i.test(msg)) {
+        taskType = 'code_generation';
+        requiresTools = true;
+    }
+    // Code generation
+    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create|انشئ|app|تطبيق)/i.test(msg)) {
+        taskType = 'code_generation';
+        requiresTools = length > 100; // Complex code needs tools
+    }
+    // Creative writing
+    else if (/(write.*story|اكتب.*قصة|poem|قصيدة|article|مقال|essay|موضوع|creative|إبداعي)/i.test(msg)) {
+        taskType = 'creative';
+    }
+    // Data analysis
+    else if (/(analyze|حلل|statistics|إحصائيات|data|بيانات|chart|رسم|graph|مخطط)/i.test(msg)) {
+        taskType = 'data_analysis';
+    }
+    // Complex reasoning & Factual Identification
+    else if (/(explain|اشرح|why|لماذا|how.*work|كيف.*يعمل|design|تصميم|architecture|معمارية|plan|خطة)/i.test(msg)) {
+        taskType = 'complex_reasoning';
+    }
+    else if (/(who\s*is|what\s*is|man\s*huwa|president|ruler|king|minister|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|الحالي|ماهو|ماذا|اين|متى)/i.test(msg)) {
+        taskType = 'complex_reasoning'; // Treat as reasoning to get better models
+        requiresTools = true; // Proactively trigger search
+    }
+
+    // Complexity detection
+    let complexity: TaskAnalysis['complexity'] = 'low';
+
+    if (length > 500 || taskType === 'data_analysis') complexity = 'high';
+    else if (length > 200 || taskType === 'code_generation' || taskType === 'complex_reasoning') complexity = 'medium';
+    else if (taskType === 'browser_task') complexity = 'medium';
+
+    // Check for extremely complex tasks
+    if (/(build.*application|ابني.*تطبيق|full.*system|نظام.*كامل|million|مليون|large.*scale|واسع.*النطاق)/i.test(msg)) {
+        complexity = 'extreme';
+        requiresTools = true;
+    }
+
+    // Force Vision Logic
+    if (hasImages) {
+        taskType = 'complex_reasoning'; // Force reasoning mode for images
+        complexity = complexity === 'low' ? 'medium' : complexity; // Bump complexity
+    }
+
+    return {
+        type: taskType,
+        complexity,
+        requiresTools,
+        estimatedTokens: Math.min(length * 10, 8000),
+        language,
+        hasImages
+    };
+}
+
+/**
+ * Select the best model based on task analysis
+ */
 export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
     anthropic?: string;
     openai?: string;
 }): ModelConfig {
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
 
+    // Vision Support: valid keys required
+    if (analysis.hasImages) {
+        console.info('[IntelligentRouter] 📷 Image detected in request - Switching to Vision Model');
+        if (availableKeys?.openai || process.env.OPENAI_API_KEY) return MODELS['gpt-4o'];
+        if (availableKeys?.anthropic || process.env.ANTHROPIC_API_KEY) return MODELS['claude-3.5-sonnet'];
+        // Fallback to Pollinations (which uses OpenAI) if no keys
+        return MODELS['pollinations'];
+    }
+
     // Fallback found: Use Pollinations if Groq key is missing
-    // This enables "True Free Mode" for users without keys
     if (!hasGroq) {
         console.info('[IntelligentRouter] Groq key missing. Falling back to Pollinations (OpenAI Proxy).');
         return MODELS['pollinations'];
@@ -365,8 +395,7 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
 
         case 'simple_chat':
         default:
-            // SPEED OPTIMIZATION: Use 8B Instant for simple Arabic queries (Greetings, short Qs)
-            // But NOT for factual identification
+            // SPEED OPTIMIZATION: Use 8B Instant for simple Arabic queries
             const isFactual = /(who\s*is|what\s*is|man\s*huwa|president|ruler|king|minister|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|الحالي|عاصمة|ماهي|ماهو)/i.test(analysis.shortSummary || '');
 
             if (analysis.language === 'ar') {
@@ -469,16 +498,25 @@ export async function routeToModel(
     onPartial?: (delta: string) => void
 ): Promise<string> {
 
-    // Flatten multimodal messages for text-only providers
+    // Flatten multimodal messages for text-only providers (and for analysis)
     const flatMessages = flattenMultimodalMessages(messages);
 
-    // Analyze if not provided
+    // Analyze if not provided (using flat messages for analysis)
     const taskAnalysis = analysis || analyzeTask(
         flatMessages.find(m => m.role === 'user')?.content || ''
     );
 
     // Select best model
     const selectedModel = selectBestModel(taskAnalysis, availableKeys);
+
+    // [VISION SUPPORT] Determine which messages to use
+    // If model is GPT-4o or Claude 3.5 Sonnet, use ORIGINAL messages (with images)
+    // Otherwise, use FLATTENED messages (text placeholders)
+    const isVisionCapable = selectedModel.model.includes('gpt-4o') ||
+        selectedModel.model.includes('claude-3-5-sonnet') ||
+        selectedModel.model.includes('gemini');
+
+    const effectiveMessages = isVisionCapable ? messages : flatMessages;
 
     // Check if Groq API key available
     const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
@@ -511,6 +549,8 @@ export async function routeToModel(
                 }
                 try {
                     const model = selectedModel.provider === 'groq' ? selectedModel.model : MODELS['llama-3.1-70b'].model;
+                    // Llama is text-only, so force flatMessages if selecting Llama, otherwise effectiveMessages (if we add Llama vision later)
+                    // For now, Groq models are text only.
                     return await callGroq(model, flatMessages, onPartial);
                 } catch (e: any) { throw e; }
             }
@@ -525,7 +565,7 @@ export async function routeToModel(
                     const llm = require('../llm');
                     openrouter = llm.openRouterProvider;
                 }
-                return await openrouter.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
+                return await openrouter.chatComplete(effectiveMessages, 'google/gemma-2-9b-it:free');
             }
         },
         {
@@ -535,7 +575,7 @@ export async function routeToModel(
                     const llm = require('../llm');
                     hack = llm.pollinationsProvider;
                 }
-                return await hack.chatComplete(flatMessages, 'openai');
+                return await hack.chatComplete(effectiveMessages, 'openai');
             }
         }
     ];
@@ -545,7 +585,7 @@ export async function routeToModel(
     // 1. Try Selected Model First (Happy Path)
     try {
         if (selectedModel.provider === 'groq' && hasGroqKey) {
-            return await callGroq(selectedModel.model, flatMessages, onPartial);
+            return await callGroq(selectedModel.model, flatMessages, onPartial); // Groq is text-only
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
             throw new Error('UseLegacyOpenAIPath'); // Handled by existing code logic? 
