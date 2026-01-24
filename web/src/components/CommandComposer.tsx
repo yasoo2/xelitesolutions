@@ -3080,39 +3080,18 @@ export default function CommandComposer({
                 Your elite autonomous pair programmer is ready to engineer the future.
               </p>
 
-              <div className="hero-suggestions">
-                <button className="hero-card" onClick={() => setText('Create a full-stack React & Node.js application with authentication')}>
-                  <div className="hero-card-icon"><Zap size={24} /></div>
-                  <div className="hero-card-content">
-                    <h3>Full Stack App</h3>
-                    <p>React, Node.js, Auth, & DB</p>
-                  </div>
-                </button>
 
-                <button className="hero-card" onClick={() => setText('Analyze this codebase and suggest architectural improvements')}>
-                  <div className="hero-card-icon"><Search size={24} /></div>
-                  <div className="hero-card-content">
-                    <h3>Deep Analysis</h3>
-                    <p>Architecture & Performance</p>
-                  </div>
-                </button>
-
-                <button className="hero-card" onClick={() => setText('Write a Python script to automate data scraping')}>
-                  <div className="hero-card-icon"><Terminal size={24} /></div>
-                  <div className="hero-card-content">
-                    <h3>Automation</h3>
-                    <p>Python Scripts & Tools</p>
-                  </div>
-                </button>
-
-                <button className="hero-card" onClick={() => setText('Debug the current error in the console')}>
-                  <div className="hero-card-icon"><Cpu size={24} /></div>
-                  <div className="hero-card-content">
-                    <h3>Smart Debug</h3>
-                    <p>Fix errors instantly</p>
-                  </div>
-                </button>
+              {/* Joe's Beautiful Smart Logo */}
+              <div className="hero-joe-pulse-wrapper" style={{ marginTop: 40, display: 'flex', justifyContent: 'center' }}>
+                <div className="joe-avatar-icon" style={{
+                  width: 80, height: 80, borderRadius: '24px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 32, fontWeight: 900
+                }}>
+                  J
+                </div>
               </div>
+
             </div>
           )}
 
