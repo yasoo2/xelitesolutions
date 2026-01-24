@@ -189,7 +189,7 @@ router.post('/google', async (req: Request, res: Response) => {
     const picture = String(payload.picture || '').trim();
     const emailNormalized = payload.email.trim().toLowerCase();
 
-    // ... (rest of logic is same: Find or Create User) ...
+
     const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
     let user: any;
 

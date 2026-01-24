@@ -240,11 +240,7 @@ export interface TaskAnalysis {
     hasImages?: boolean;
 }
 
-// ... existing flattenMultimodalMessages ...
 
-// ... existing MODELS ...
-
-// ... existing analyzeTask ...
 
 export function analyzeTask(userMessage: string, conversationHistory?: any[]): TaskAnalysis {
     const msg = userMessage.toLowerCase();
@@ -633,7 +629,7 @@ export async function suggestCorrection(
         const taskAnalysis = analysis || analyzeTask(originalTask);
         const systemPrompt = `The AI was trying to execute a task but the tool failed. 
 Analyze the error and suggest a correction (alternative tool or modified parameters).
-Respond ONLY with a JSON object: { "name": "tool_name", "input": { ... } } or { "no_correction": true }`;
+Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_correction": true }`;
 
         const userMessage = `Task: ${originalTask}\nFailed Tool: ${failedTool}\nError: ${JSON.stringify(error)}`;
 

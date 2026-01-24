@@ -174,8 +174,8 @@ export class AgentLoopService {
                 broadcast({ type: 'thought', runId: currentRunId, data: plan.thought });
             }
 
+
             // 3. Check for blocking conditions (Secrets, Approvals)
-            // ... (Logic for GitHub Auth checks etc - ported from original) ...
 
             // 4. Create New Run for this step (or reuse?)
             // It's cleaner to create a new Run for each autonomous step, or append to the same "Chain"?
