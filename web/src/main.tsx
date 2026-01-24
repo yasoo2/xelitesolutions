@@ -6,7 +6,6 @@ import App from './App';
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
 const Showcase = lazy(() => import('./pages/Showcase'));
-const FiveFloorsShowcase = lazy(() => import('./pages/FiveFloorsShowcase'));
 const Joe = lazy(() => import('./pages/Joe'));
 import './theme.css';
 import './global.css';
@@ -61,7 +60,6 @@ createRoot(document.getElementById('root')!).render(
               <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
               <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
               <Route path="showcase" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Showcase /></Suspense>} />
-              <Route path="showcase/five-floors" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><FiveFloorsShowcase /></Suspense>} />
               <Route
                 path="joe"
                 element={
