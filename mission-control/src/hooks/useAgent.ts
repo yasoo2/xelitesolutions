@@ -1,6 +1,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AgentStep } from '../components/AgentActivity';
+import type { ThoughtStep } from '../components/ReasoningPanel';
+import type { PipelineStage } from '../components/BuildPipeline';
+import type { FileDiff } from '../components/DiffViewer';
 
 const getApiUrl = () => {
     if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -36,11 +39,26 @@ export type FileActivity = {
     diff?: string;
 };
 
+// Default pipeline stages
+const defaultPipeline: PipelineStage[] = [
+    { id: 'plan', name: 'Planning', nameAr: 'التخطيط', icon: null, status: 'pending' },
+    { id: 'code', name: 'Coding', nameAr: 'البرمجة', icon: null, status: 'pending' },
+    { id: 'test', name: 'Testing', nameAr: 'الفحص', icon: null, status: 'pending' },
+    { id: 'deploy', name: 'Deploy', nameAr: 'النشر', icon: null, status: 'pending' },
+];
+
 export const useAgent = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [status, setStatus] = useState<'idle' | 'thinking' | 'executing' | 'error'>('idle');
     const [steps, setSteps] = useState<AgentStep[]>([]);
-    const [fileActivities, setFileActivities] = useState<FileActivity[]>([]); // NEW
+    const [fileActivities, setFileActivities] = useState<FileActivity[]>([]);
+
+    // NEW: JoeStudio state
+    const [thoughts, setThoughts] = useState<ThoughtStep[]>([]);
+    const [pipeline, setPipeline] = useState<PipelineStage[]>(defaultPipeline);
+    const [diffs, setDiffs] = useState<FileDiff[]>([]);
+    const [previewUrl, setPreviewUrl] = useState<string>('');
+
     const wsRef = useRef<WebSocket | null>(null);
     const sessionIdRef = useRef<string | null>(null);
 
@@ -87,9 +105,19 @@ export const useAgent = () => {
                     });
                     setStatus('idle');
                 } else if (msg.type === 'thought') {
-                    // Show thoughts as ephemeral status (optional)
-                    // For now, handled by step_started mostly, but we can set status
+                    // NEW: Track thoughts for JoeStudio
+                    setThoughts(prev => [...prev, {
+                        id: Date.now().toString(),
+                        type: 'analysis',
+                        content: msg.data?.content || msg.data,
+                        timestamp: new Date()
+                    }]);
                     setStatus('thinking');
+
+                    // Update pipeline - set planning as running
+                    setPipeline(prev => prev.map((s, i) =>
+                        i === 0 ? { ...s, status: 'running' as const } : s
+                    ));
                 } else if (msg.type === 'step_started') {
                     const toolName = msg.data?.tool || '';
                     setSteps(prev => {
@@ -102,7 +130,6 @@ export const useAgent = () => {
                     });
                     setStatus('executing');
 
-                    // NEW: Track file activities
                     if (['file_edit', 'file_read', 'create_file', 'write_file'].includes(toolName)) {
                         const filePath = msg.data?.input?.path || msg.data?.input?.file || 'unknown';
                         const action: 'created' | 'modified' | 'deleted' | 'read' =
@@ -115,6 +142,21 @@ export const useAgent = () => {
                             timestamp: new Date(),
                             status: 'pending' as const
                         }, ...prev].slice(0, 50)); // Keep last 50
+
+                        // Add thought for action
+                        setThoughts(prev => [...prev, {
+                            id: Date.now().toString(),
+                            type: 'action',
+                            content: `${action === 'created' ? 'إنشاء' : action === 'modified' ? 'تعديل' : 'قراءة'} ملف: ${filePath.split('/').pop()}`,
+                            timestamp: new Date(),
+                            toolUsed: toolName
+                        }]);
+
+                        // Update pipeline - set coding as running
+                        setPipeline(prev => prev.map((s, i) =>
+                            i === 0 ? { ...s, status: 'success' as const } :
+                                i === 1 ? { ...s, status: 'running' as const } : s
+                        ));
                     }
                 } else if (msg.type === 'step_completed') {
                     // Update file activity status
@@ -129,6 +171,30 @@ export const useAgent = () => {
                         fa.status === 'pending' ? { ...fa, status: 'success' } : fa
                     ));
                     setStatus('idle');
+
+                    // Complete pipeline
+                    setPipeline(prev => prev.map(s => ({ ...s, status: 'success' as const })));
+
+                    // Add result thought
+                    setThoughts(prev => [...prev, {
+                        id: Date.now().toString(),
+                        type: 'result',
+                        content: 'تم إكمال المهمة بنجاح!',
+                        timestamp: new Date()
+                    }]);
+
+                    // Set preview URL if available
+                    if (msg.data?.previewUrl) {
+                        setPreviewUrl(msg.data.previewUrl);
+                    }
+                } else if (msg.type === 'diff') {
+                    // NEW: Track diffs for DiffViewer
+                    setDiffs(prev => [{
+                        path: msg.data?.path || 'unknown',
+                        additions: msg.data?.additions || 0,
+                        deletions: msg.data?.deletions || 0,
+                        lines: msg.data?.lines || []
+                    }, ...prev]);
                 }
             } catch (e) {
                 console.error('WS Parse Error', e);
@@ -157,6 +223,12 @@ export const useAgent = () => {
         }]);
         setStatus('thinking');
         setSteps([]);
+
+        // Reset JoeStudio state for new run
+        setThoughts([]);
+        setPipeline(defaultPipeline);
+        setDiffs([]);
+        setPreviewUrl('');
 
         try {
             // We need a session ID. If null, backend should generate one.
@@ -190,5 +262,16 @@ export const useAgent = () => {
         }
     }, [connect]);
 
-    return { messages, status, sendMessage, steps, fileActivities };
+    return {
+        messages,
+        status,
+        sendMessage,
+        steps,
+        fileActivities,
+        // JoeStudio exports
+        thoughts,
+        pipeline,
+        diffs,
+        previewUrl
+    };
 };

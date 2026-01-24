@@ -18,6 +18,9 @@ export type LiveEventType =
   | 'run_finished'
   | 'run_completed'
   | 'text'
+  | 'thought'       // NEW: AI reasoning step
+  | 'diff'          // NEW: File diff for viewer
+  | 'preview_ready' // NEW: Preview URL available
   | (string & {});
 
 export interface LiveEvent {

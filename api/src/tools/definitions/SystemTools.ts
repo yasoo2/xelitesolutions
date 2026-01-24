@@ -6,6 +6,7 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import util from 'util';
 import { commandRouter } from '../../terminal/command-router';
+import { broadcast } from '../../ws';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, startTime: number, process: any }>();
@@ -79,6 +80,23 @@ export class FileEditTool extends BaseTool {
         content = content.replace(find, replace);
         fs.writeFileSync(full, content);
         logs.push(`edit=${filename}`);
+
+        // Broadcast diff event for UI
+        const findLines = find.split('\n').length;
+        const replaceLines = replace.split('\n').length;
+        broadcast({
+            type: 'diff',
+            data: {
+                path: filename,
+                additions: replaceLines,
+                deletions: findLines,
+                lines: [
+                    ...find.split('\n').map((line, i) => ({ type: 'remove', content: line, lineNumber: i + 1 })),
+                    ...replace.split('\n').map((line, i) => ({ type: 'add', content: line, lineNumber: i + 1 }))
+                ]
+            }
+        });
+
         return { ok: true, output: { success: true }, logs };
     }
 }
@@ -114,6 +132,19 @@ export class WriteFileTool extends BaseTool {
 
         fs.writeFileSync(full, content);
         logs.push(`write=${filename}`);
+
+        // Broadcast diff event for UI (new file)
+        const lines = content.split('\n');
+        broadcast({
+            type: 'diff',
+            data: {
+                path: filename,
+                additions: lines.length,
+                deletions: 0,
+                lines: lines.map((line, i) => ({ type: 'add', content: line, lineNumber: i + 1 }))
+            }
+        });
+
         return { ok: true, output: { success: true }, logs };
     }
 }
