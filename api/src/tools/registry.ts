@@ -6,6 +6,7 @@ import { GenesisAgent } from '../agents/GenesisAgent';
 // ...
 // ...
 
+import { GenesisBuilderTool } from './definitions/GenesisBuilderTool';
 import { GenesisToolDef } from './definitions/GenesisTool';
 import { VisualQATool } from './definitions/VisualQATool';
 import { ImageGenerationTool } from './definitions/ImageGenerationTool';
@@ -189,6 +190,7 @@ export const tools: ToolDefinition[] = [
   new BrowserVisionTool(),
   new BrowserActionTool(),
 
+  new GenesisBuilderTool(),
   // --- Payments ---
   ...PaymentsTools,
 ];
