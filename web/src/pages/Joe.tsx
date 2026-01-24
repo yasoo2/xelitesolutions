@@ -790,6 +790,23 @@ export default function Joe() {
       {/* Always show toggle button regardless of mode if possible, or at least for chat */}
       <button
         className="sidebar-toggle-btn-floating"
+        style={{
+          position: 'fixed',
+          top: '20px',
+          insetInlineStart: '20px',
+          zIndex: 2147483647, /* MAX INT */
+          display: 'flex',
+          width: '44px',
+          height: '44px',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          /* Ensure visibility against any background */
+          background: 'var(--bg-card)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          boxShadow: '0 4px 15px rgba(0,0,0,0.5)'
+        }}
         onClick={() => setShowSidebar(!showSidebar)}
         title={showSidebar ? t('sidebar.close', 'Close Sidebar') : t('sidebar.open', 'Open Sidebar')}
       >
