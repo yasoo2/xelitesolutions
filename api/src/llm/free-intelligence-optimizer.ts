@@ -167,8 +167,30 @@ class FreeIntelligenceOptimizer {
         return response;
     }
 
+    /**
+     * Safety Valve: Detects if the user wants an ACTION (Tool) rather than INFO (RAG)
+     */
+    private isHighStakesAction(text: string): boolean {
+        const actionVerbs = [
+            'create', 'write', 'generate', 'build', 'deploy', 'run', 'execute',
+            'fix', 'debug', 'delete', 'remove', 'install', 'update', 'upgrade',
+            // Arabic actions
+            'أنشئ', 'اكتب', 'ابني', 'شغل', 'نفذ', 'صلح', 'احذف', 'ركب', 'حدث'
+        ];
+        // Check if starts with verb or contains strong command pattern
+        const words = text.split(' ');
+        const firstWord = words[0];
+
+        return actionVerbs.some(v => text.includes(v)); // Simple contains check for safety
+    }
+
     // === LIBRARY OF ALEXANDRIA (RAG-lite) ===
     public getRealKnowledge(query: string): string | null {
+        // [INTENT GUARD] If user wants to CREATE/WRITE, do NOT use RAG.
+        if (this.isHighStakesAction(query.toLowerCase())) {
+            return null; // Force Planner
+        }
+
         const knowledgeDir = path.join(__dirname, '../knowledge');
         if (!fs.existsSync(knowledgeDir)) return null;
 
