@@ -224,7 +224,33 @@ class FreeIntelligenceOptimizer {
             'azure': 'cloud_architecture_mastery.md',
             'serverless': 'cloud_architecture_mastery.md',
             'lambda': 'cloud_architecture_mastery.md',
-            'architect': 'cloud_architecture_mastery.md'
+            'architect': 'cloud_architecture_mastery.md',
+
+            // Phase 3: Future Tech & Deep Science
+            'blockchain': 'blockchain_web3.md',
+            'web3': 'blockchain_web3.md',
+            'solidity': 'blockchain_web3.md',
+            'smart contract': 'blockchain_web3.md',
+            'defi': 'blockchain_web3.md',
+            'crypto': 'blockchain_web3.md',
+            'wallet': 'blockchain_web3.md',
+
+            'data': 'data_science_analytics.md',
+            'science': 'data_science_analytics.md',
+            'analytics': 'data_science_analytics.md',
+            'pandas': 'data_science_analytics.md',
+            'spark': 'data_science_analytics.md',
+            'python': 'data_science_analytics.md',
+            'visualization': 'data_science_analytics.md',
+
+            'optimize': 'performance_optimization.md',
+            'performance': 'performance_optimization.md',
+            'memory': 'performance_optimization.md',
+            'cpu': 'performance_optimization.md',
+            'fast': 'performance_optimization.md',
+            'algorithm': 'performance_optimization.md',
+            'complexity': 'performance_optimization.md',
+            'scale': 'performance_optimization.md'
         };
 
         // Find relevant file
