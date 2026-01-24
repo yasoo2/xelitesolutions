@@ -137,7 +137,7 @@ export default function Joe() {
     };
   }, [autoDetectPreview, previewUrl, isProduction]);
 
-  const [showSidebar, setShowSidebar] = useState(false); // Force closed default
+  const [showSidebar, setShowSidebar] = useState(true); // Open by default for better UX
   // Remove auto-open logic based on width to strictly respect "closed by default"
 
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
@@ -812,10 +812,7 @@ export default function Joe() {
       >
         {showSidebar ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
       </button>
-      {/* DEBUG BADGE: Remove after confirmation */}
-      <div style={{ position: 'fixed', bottom: '10px', right: '10px', zIndex: 999999, background: 'red', color: 'white', padding: '5px', fontSize: '20px', fontWeight: 'bold' }}>
-        VERSION 22.1 - DO YOU SEE ME?
-      </div>
+
 
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
