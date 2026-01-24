@@ -672,7 +672,32 @@ export async function planNextStep(
       }
     }
 
-    // === Smart Pattern Detection (for tool routing) ===
+    // === FREE INTELLIGENCE OPTIMIZER ===
+    console.info(`[Auto Enterprise] 💬 User query: "${userText.substring(0, 100)}${userText.length > 100 ? '...' : ''}"`);
+
+    // Import optimizer (using require to avoid TS1323)
+    const { generateSmartResponse, freeIntelligenceOptimizer } = require('./llm/free-intelligence-optimizer');
+
+    // 1. Check for instant smart response (no API call needed!)
+    console.info('[FREE OPTIMIZER] Checking for instant smart response patterns...');
+    const smartResponse = generateSmartResponse(userText, context);
+    if (smartResponse) {
+      console.info('[FREE OPTIMIZER] ✅ 🚀 INSTANT SMART RESPONSE MATCHED! No API call needed!');
+      console.info(`[FREE OPTIMIZER] Response preview: "${smartResponse.substring(0, 80)}..."`);
+      return { name: 'echo', input: { text: smartResponse } };
+    }
+    console.info('[FREE OPTIMIZER] ❌ No instant pattern match - proceeding with API call');
+
+    // 2. Optimize request for better performance
+    const optimization = await freeIntelligenceOptimizer.optimizeRequest(userText, context);
+    if (optimization.shouldUseCache) {
+      console.info('[FREE OPTIMIZER] ✅ 💾 CACHE HIT! Returning cached response');
+      // If we have a full cached response object logic (future), use it.
+      // For now, optimizeRequest returns similar info to generateSmartResponse but async/deeper.
+    }
+    console.info(`[FREE OPTIMIZER] 🎯 Model selected: ${optimization.suggestedModel}`);
+
+    // === Pattern Detection ===
 
     // Browser patterns
     const browserPatterns = {
@@ -694,27 +719,6 @@ export async function planNextStep(
     // Code generation patterns (expanded)
     const codePatterns = /(اكتب|كود|code|function|دالة|class|كلاس|component|كومبوننت|api|endpoint|script|سكريبت|program|برنامج|تطبيق|application|app|نظام|system|sوي|اعمل|ابني|انشئ|طور|build|create|develop|implement|نفذ)/i;
 
-    // === FREE INTELLIGENCE OPTIMIZER ===
-    console.info(`[Auto Enterprise] 💬 User query: "${userText.substring(0, 100)}${userText.length > 100 ? '...' : ''}"`);
-
-    // Import optimizer (using require to avoid TS1323)
-    const { generateSmartResponse, freeIntelligenceOptimizer } = require('./llm/free-intelligence-optimizer');
-
-    // 1. Check for instant smart response (no API call needed!)
-    console.info('[FREE OPTIMIZER] Checking for instant smart response patterns...');
-    const smartResponse = generateSmartResponse(userText, context);
-    if (smartResponse) {
-      console.info('[FREE OPTIMIZER] ✅ 🚀 INSTANT SMART RESPONSE MATCHED! No API call needed!');
-      console.info(`[FREE OPTIMIZER] Response preview: "${smartResponse.substring(0, 80)}..."`); return { name: 'echo', input: { text: smartResponse } };
-    }
-    console.info('[FREE OPTIMIZER] ❌ No instant pattern match - proceeding with API call');
-
-    // 2. Optimize request for better performance
-    const optimization = await freeIntelligenceOptimizer.optimizeRequest(userText, context);
-    if (optimization.shouldUseCache) {
-      console.info('[FREE OPTIMIZER] ✅ 💾 CACHE HIT! Returning cached response');
-    }
-    console.info(`[FREE OPTIMIZER] 🎯 Model selected: ${optimization.suggestedModel}`);
 
     try {
       // 1. Browser requests
@@ -805,7 +809,7 @@ export async function planNextStep(
 
       // Cache good responses for future use
       if (response && response.length > 20) {
-        freeIntelligenceOptimizer.cacheResponse(userText, response);
+        freeIntelligenceOptimizer.train(userText, response);
         console.info('[FREE OPTIMIZER] ✅ Response cached for future use');
       }
 

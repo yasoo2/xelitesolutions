@@ -140,28 +140,9 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
     const length = userMessage.length;
 
-    // CRITICAL: Skip LLM analysis for simple/short messages ONLY if NOT in Auto Mode
-    // Also skip if it's clearly a greeting or very short question
-    const isGreeting = /^(hi|hello|مرحبا|اهلا|سلام|hey)/i.test(userMessage.trim());
-    const hasComplexKeywords = /(build|create|file|folder|shell|terminal|ابني|انشئ|ملف|مجلد|app|تطبيق|system|نظام|full|كامل|ecommerce|متجر|deploy|رفع|fix|صلح|optimize|حسن|analyze|حلل)/i.test(userMessage);
-
-    // [FAST LANE] Smart Bypass logic to reduce latency ⚡
-    // If request is short (< 200 chars) AND has no complex keywords AND not a specific vision request
-    // AND not asking for "latest" or "news" (which might need search tool)
-    const isFastLaneEligible = length < 250 && !hasComplexKeywords && !/(news|weather|اخبار|طقس|latest|جديد)/i.test(userMessage);
-
-    if (isFastLaneEligible) {
-        console.info('[IntelligentRouter] ⚡ FAST LANE ACTIVATED: Skipping deep analysis for instant response.');
-        // Force a simple analysis result to use the fast model immediately
-        return {
-            type: 'simple_chat',
-            complexity: 'low',
-            requiresTools: false, // Assume no tools needed for fast lane (unless router override catches it later)
-            estimatedTokens: length * 2,
-            language: /[\u0600-\u06FF]/.test(userMessage) ? 'ar' : 'en',
-            hasImages: false
-        };
-    }
+    // [REMOVED] Legacy Regex Fast Lane
+    // Fast Lane logic is now handled by Free Intelligence Optimizer in llm.ts
+    // This function returns control to the sophisticated analyzer.
 
     try {
         const analyst = hasGroq ? 'llama-3.1-8b-instant' : 'openai'; // Use Pollinations if no Groq
