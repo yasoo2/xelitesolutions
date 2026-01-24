@@ -60,6 +60,7 @@ import { SafeReadFileTool, AskUserTool, TerminalManagerTool } from './definition
 import { BrowserVisionTool } from './definitions/BrowserVisionTool';
 import { BrowserActionTool } from './definitions/BrowserActionTool';
 import { PaymentsTools } from './definitions/PaymentsTool';
+import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -193,4 +194,7 @@ export const tools: ToolDefinition[] = [
   new GenesisBuilderTool(),
   // --- Payments ---
   ...PaymentsTools,
+  // --- Screenshot & Visual QA ---
+  new ScreenshotTool(),
+  new VisualComparisonTool(),
 ];

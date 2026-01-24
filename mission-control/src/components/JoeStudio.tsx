@@ -13,7 +13,6 @@ import type { FileNode } from './ProjectTree';
 import { DiffViewer } from './DiffViewer';
 import { LivePreview } from './LivePreview';
 import { ScreenshotGallery } from './ScreenshotGallery';
-import type { Screenshot } from './ScreenshotGallery';
 
 // Hook
 import { useAgent } from '../hooks/useAgent';
@@ -30,7 +29,8 @@ export const JoeStudio: React.FC = () => {
         pipeline,
         diffs,
         previewUrl,
-        fileActivities
+        fileActivities,
+        screenshots
     } = useAgent();
 
     const [input, setInput] = useState('');
@@ -40,9 +40,6 @@ export const JoeStudio: React.FC = () => {
     const [reasoningExpanded, setReasoningExpanded] = useState(true);
     const [diffExpanded, setDiffExpanded] = useState(true);
     const [screenshotExpanded, setScreenshotExpanded] = useState(true);
-
-    // Screenshots (will be populated from WebSocket later)
-    const [screenshots] = useState<Screenshot[]>([]);
 
     // Build project tree from file activities
     const projectTree = useMemo<FileNode>(() => {
@@ -112,9 +109,9 @@ export const JoeStudio: React.FC = () => {
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 text-xs">
                             <span className={`w-2 h-2 rounded-full ${status === 'idle' ? 'bg-gray-500' :
-                                    status === 'thinking' ? 'bg-yellow-500 animate-pulse' :
-                                        status === 'executing' ? 'bg-cyan-500 animate-pulse' :
-                                            'bg-red-500'
+                                status === 'thinking' ? 'bg-yellow-500 animate-pulse' :
+                                    status === 'executing' ? 'bg-cyan-500 animate-pulse' :
+                                        'bg-red-500'
                                 }`} />
                             <span className="text-gray-400">
                                 {status === 'idle' ? 'جاهز' :
@@ -158,8 +155,8 @@ export const JoeStudio: React.FC = () => {
 
                 {/* Main Grid */}
                 <div className={`grid gap-4 ${layoutMode === 'full' ? 'grid-cols-1' :
-                        layoutMode === 'split' ? 'grid-cols-2' :
-                            'grid-cols-3'
+                    layoutMode === 'split' ? 'grid-cols-2' :
+                        'grid-cols-3'
                     }`}>
 
                     {/* Left Column - Chat & Reasoning */}
@@ -189,8 +186,8 @@ export const JoeStudio: React.FC = () => {
                                                 </div>
                                             )}
                                             <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.role === 'user'
-                                                    ? 'bg-cyan-600/20 border border-cyan-500/30 text-cyan-100'
-                                                    : 'bg-white/5 border border-white/10 text-gray-200'
+                                                ? 'bg-cyan-600/20 border border-cyan-500/30 text-cyan-100'
+                                                : 'bg-white/5 border border-white/10 text-gray-200'
                                                 }`}>
                                                 {msg.content}
                                             </div>

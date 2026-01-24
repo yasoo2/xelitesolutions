@@ -4,6 +4,7 @@ import type { AgentStep } from '../components/AgentActivity';
 import type { ThoughtStep } from '../components/ReasoningPanel';
 import type { PipelineStage } from '../components/BuildPipeline';
 import type { FileDiff } from '../components/DiffViewer';
+import type { Screenshot } from '../components/ScreenshotGallery';
 
 const getApiUrl = () => {
     if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -58,6 +59,7 @@ export const useAgent = () => {
     const [pipeline, setPipeline] = useState<PipelineStage[]>(defaultPipeline);
     const [diffs, setDiffs] = useState<FileDiff[]>([]);
     const [previewUrl, setPreviewUrl] = useState<string>('');
+    const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
 
     const wsRef = useRef<WebSocket | null>(null);
     const sessionIdRef = useRef<string | null>(null);
@@ -195,6 +197,17 @@ export const useAgent = () => {
                         deletions: msg.data?.deletions || 0,
                         lines: msg.data?.lines || []
                     }, ...prev]);
+                } else if (msg.type === 'screenshot') {
+                    // NEW: Track screenshots for ScreenshotGallery
+                    setScreenshots(prev => [{
+                        id: msg.data?.id || Date.now().toString(),
+                        url: msg.data?.url || '',
+                        pageName: msg.data?.pageName || 'Unknown',
+                        timestamp: new Date(msg.data?.timestamp || Date.now()),
+                        status: msg.data?.status || 'success',
+                        width: msg.data?.width || 1280,
+                        height: msg.data?.height || 720
+                    }, ...prev]);
                 }
             } catch (e) {
                 console.error('WS Parse Error', e);
@@ -272,6 +285,7 @@ export const useAgent = () => {
         thoughts,
         pipeline,
         diffs,
-        previewUrl
+        previewUrl,
+        screenshots
     };
 };

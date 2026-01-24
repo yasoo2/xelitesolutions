@@ -21,6 +21,7 @@ export type LiveEventType =
   | 'thought'       // NEW: AI reasoning step
   | 'diff'          // NEW: File diff for viewer
   | 'preview_ready' // NEW: Preview URL available
+  | 'screenshot'    // NEW: Screenshot captured
   | (string & {});
 
 export interface LiveEvent {
