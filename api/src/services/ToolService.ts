@@ -88,11 +88,57 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = 'npm_manager';
         if (!effectiveInput.command) effectiveInput.command = 'install';
     }
-    if (name === 'command_execute') {
+    if (name === 'npm_build') {
+        effectiveName = 'npm_manager';
+        effectiveInput.command = 'run';
+        effectiveInput.script = 'build';
+    }
+    if (name === 'npm_run') {
+        effectiveName = 'npm_manager';
+        effectiveInput.command = 'run';
+    }
+    if (name === 'npm_start') {
+        effectiveName = 'npm_manager';
+        effectiveInput.command = 'run';
+        effectiveInput.script = 'dev';
+    }
+    if (name === 'npm_test') {
+        effectiveName = 'npm_manager';
+        effectiveInput.command = 'run';
+        effectiveInput.script = 'test';
+    }
+    if (name === 'command_execute' || name === 'run_command' || name === 'exec' || name === 'terminal') {
         effectiveName = 'shell_execute';
     }
     if (name === 'project_scaffold') {
         effectiveName = 'scaffold_project';
+    }
+    if (name === 'create_file' || name === 'write_file') {
+        effectiveName = 'file_edit';
+        effectiveInput.mode = 'create';
+    }
+    if (name === 'edit_file' || name === 'modify_file') {
+        effectiveName = 'file_edit';
+    }
+    if (name === 'read_file' || name === 'view_file' || name === 'get_file') {
+        effectiveName = 'file_read';
+    }
+    if (name === 'list_files' || name === 'list_directory' || name === 'dir') {
+        effectiveName = 'ls';
+    }
+    if (name === 'search_code' || name === 'find_in_files') {
+        effectiveName = 'grep';
+    }
+    if (name === 'browse' || name === 'open_browser' || name === 'web_browse') {
+        effectiveName = 'browser_run';
+    }
+    if (name === 'git_commit' || name === 'commit') {
+        effectiveName = 'git_operations';
+        effectiveInput.operation = 'commit';
+    }
+    if (name === 'git_push' || name === 'push') {
+        effectiveName = 'git_operations';
+        effectiveInput.operation = 'push';
     }
 
     // Universal Session Injection
