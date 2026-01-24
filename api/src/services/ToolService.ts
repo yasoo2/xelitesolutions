@@ -83,6 +83,18 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         }
     }
 
+    // [FIX] Aliasing for commonly hallucinated tool names
+    if (name === 'npm_install' || name === 'install_package') {
+        effectiveName = 'npm_manager';
+        if (!effectiveInput.command) effectiveInput.command = 'install';
+    }
+    if (name === 'command_execute') {
+        effectiveName = 'shell_execute';
+    }
+    if (name === 'project_scaffold') {
+        effectiveName = 'scaffold_project';
+    }
+
     // Universal Session Injection
     if ((effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') && !effectiveInput.sessionId && contextSessionId) {
         effectiveInput.sessionId = contextSessionId;
