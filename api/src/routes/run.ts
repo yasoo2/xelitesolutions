@@ -1285,9 +1285,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   // Inject Memory
   if (userId && !useMock) {
     try {
-      const [relevant, recentItems] = await Promise.all([
+      const [relevant, recentItems, persistentContext] = await Promise.all([
         MemoryService.searchMemories(userId, String(text || '')),
         MemoryItem.find({ userId, scope: 'user' }).sort({ updatedAt: -1 }).limit(20).lean(),
+        MemoryService.getPersistentContext(userId, 3), // NEW: Get last 3 conversation summaries
       ]);
 
       const recent = (recentItems || []).map((item: any) => {
@@ -1313,6 +1314,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       if (merged.length > 0) {
         console.info(`[Memory] Injecting ${merged.length} memories (relevant+recent)`);
         fullPromptText += `\n\n[System Note: Known facts about this user (Memory)]:\n${merged.join('\n')}\n`;
+      }
+
+      // NEW: Inject persistent context (conversation summaries from previous sessions)
+      if (persistentContext) {
+        console.info(`[Memory] Injecting persistent context from previous sessions`);
+        fullPromptText += persistentContext;
       }
     } catch (e) {
       console.error('[Memory] Search failed', e);
