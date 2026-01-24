@@ -98,6 +98,45 @@ class FreeIntelligenceOptimizer {
         this.train('test', "سأقوم تحليل المشروع وتشغيل الاختبارات المناسبة (npm test). الجودة هي ما يميز عملنا يا يونس!");
         this.train('debug', "أرسل لي الـ Log ولا تقلق. سأجد الإبرة في كومة القش وأصلحها لك.");
         this.train('fix', "اعتبره تم إصلاحه. ما هو الخطأ بالتحديد؟");
+
+        // --- LAYER 3: INFINITE MASTERY (The "Big 4" & Meta-Templates) ---
+
+        // 6. Enterprise Frameworks (Spring Boot, Django, Laravel, .NET)
+        // Java / Spring Boot
+        const springContext = "مشروع Spring Boot يحتاج لتنظيم دقيق. سأبدأ بإنشاء الهيكل: Controller لطلبات API، و Service للمنطق، و Repository للداتا (JPA). سأستخدم Maven للإدارة. في ثانية واحدة سيكون لديك REST API كامل.";
+        this.train('spring boot', springContext);
+        this.train('java api', springContext);
+        this.train('microservice', "للميكروسرفيسز، Spring Boot مع Spring Cloud هو الملك. سأضيف Eureka للـ Discovery و Config Server. تصميم يخدم الملايين!");
+
+        // Python / Django
+        const djangoContext = "Django هو إطار العمل للمحترفين (Batteries Included). سأبدأ المشروع (startproject) وأنشئ تطبيقاً (startapp). سأقوم بإعداد الـ Models والـ Admin Panel فوراً. هل نستخدم PostgreSQL؟";
+        this.train('django', djangoContext);
+        this.train('python web', djangoContext);
+        this.train('flask', "Flask ممتاز للمشاريع الخفيفة والسريعة. سأكتب لك ملف `app.py` واحد يقوم بكل شي. هل تريد API أم HTML Rendering؟");
+
+        // PHP / Laravel
+        const laravelContext = "Laravel هو فخر الـ PHP. سأستخدم Artisan لإنشاء الـ Controllers والـ Migrations. سأتبع نمط MVC بدقة. هل نستخدم Blade أم Vue.js للواجهة؟";
+        this.train('laravel', laravelContext);
+        this.train('php', laravelContext);
+        this.train('artisan', "أوامر Artisan في جيبي: `make:model`, `make:controller`, `migrate`. فقط قل لي ماذا تريد أن تبني!");
+
+        // C# / .NET
+        const dotnetContext = "بيئة .NET وعالم Microsoft. سأقوم بإنشاء Web API باستخدام ASP.NET Core الحديث. سأستخدم Entity Framework للتعامل مع SQL Server. أداء وسرعة خيالية.";
+        this.train('.net', dotnetContext);
+        this.train('c#', dotnetContext);
+        this.train('asp.net', dotnetContext);
+
+        // 7. ALGORITHMIC SPEED & DATA STRUCTURES (Computer Science Brain)
+        this.train('sort', "للترتيب السريع، سأستخدم QuickSort (O(n log n)) في معظم الحالات، أو MergeSort للبيانات الضخمة جداً لضمان الاستقرار.");
+        this.train('search', "للبحث في بيانات مرتبة، Binary Search هو الحل (O(log n)). أما للبيانات غير المرتبة، سأستخدم Hash Map للوصول الفوري (O(1)).");
+        this.train('optimize', "التحسين مجالي! سأقلل الـ Time Complexity، أمنع الـ Nested Loops، وأستخدم Caching (Memoization) لتسريع الكود 100 مرة.");
+
+        // 8. HYPER-SPEED TOOLS (CLI Mastery)
+        this.train('clean', "لتنظيف المشروع فوراً: `rm -rf node_modules && npm cache clean --force`. (احذر! سأمسح كل شيء لتبدأ من جديد ونظيف).");
+        this.train('large files', "لإيجاد الملفات الضخمة التي تلتهم المساحة: `find . -type f -size +100M`. سأكشفها لك فوراً.");
+        this.train('network', "لفحص الشبكة والبورتاث: `netstat -tulpn` أو `lsof -i`. سأخبرك من يستمع على أي بورت.");
+        this.train('kill', "لقتل عملية (Process) عنيدة: `kill -9 <PID>` أو `pkill -f <name>`. لا رحمة مع العمليات العالقة!");
+        this.train('logs', "لمراقبة اللوجز بشكل مباشر: `tail -f error.log`. سأبقي عيني مفتوحة على كل سطر جديد.");
     }
 
     public train(trigger: string, response: string) {
