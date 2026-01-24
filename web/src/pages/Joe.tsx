@@ -791,30 +791,30 @@ export default function Joe() {
       {/* Always show toggle button regardless of mode, rendered in Portal to escape layout clipping */}
       {createPortal(
         <button
-          className="ui-main-toggle" // NEW CLASS to avoid ad-blockers
+          className="sidebar-toggle-btn-floating"
           style={{
             position: 'fixed',
             top: '20px',
             insetInlineStart: '20px',
             zIndex: 2147483647, /* MAX INT */
             display: 'flex',
-            width: '60px', // Wider for text
+            width: '44px',
             height: '44px',
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: '12px',
             cursor: 'pointer',
-            /* DIAGNOSTIC COLORS */
-            background: 'red',
-            color: 'white',
-            border: '2px solid white',
-            fontWeight: 'bold',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.8)'
+            /* Premium Glassmorphism */
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+            transition: 'all 0.2s cubic-bezier(0.2, 0, 0, 1)'
           }}
           onClick={() => setShowSidebar(!showSidebar)}
           title={showSidebar ? t('sidebar.close', 'Close Sidebar') : t('sidebar.open', 'Open Sidebar')}
         >
-          MENU
+          {showSidebar ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
         </button>,
         document.body
       )}
