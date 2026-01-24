@@ -3727,8 +3727,21 @@ export default function CommandComposer({
             )}
             <textarea
               className="main-input"
+              ref={(el) => {
+                if (el) {
+                  // Auto-resize logic
+                  el.style.height = 'auto'; // Reset height to recalculate
+                  el.style.height = Math.min(el.scrollHeight, 300) + 'px'; // Set new height capped at max
+                }
+              }}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                // Trigger resize
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 300) + 'px';
+              }}
+              rows={1}
               onPaste={handlePaste}
               placeholder={t('inputPlaceholder')}
               dir="auto"
