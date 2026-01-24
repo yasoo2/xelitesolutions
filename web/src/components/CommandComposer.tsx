@@ -3746,7 +3746,7 @@ export default function CommandComposer({
               }}
             />
 
-              /* ... */
+
 
             <div className="input-actions">
               {/* [UI] Enhanced Status Indicator */}
@@ -3758,7 +3758,7 @@ export default function CommandComposer({
                   className={`status-dot ${isConnected ? 'connected' : ''}`}
                 />
                 <span className="status-text hide-mobile">
-                  {activeProvider === 'auto' ? 'Auto (Free)' : activeProvider}
+                  {activeProvider === 'auto' ? 'Auto' : activeProvider}
                 </span>
               </div>
 
