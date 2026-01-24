@@ -137,6 +137,17 @@ class FreeIntelligenceOptimizer {
         this.train('network', "لفحص الشبكة والبورتاث: `netstat -tulpn` أو `lsof -i`. سأخبرك من يستمع على أي بورت.");
         this.train('kill', "لقتل عملية (Process) عنيدة: `kill -9 <PID>` أو `pkill -f <name>`. لا رحمة مع العمليات العالقة!");
         this.train('logs', "لمراقبة اللوجز بشكل مباشر: `tail -f error.log`. سأبقي عيني مفتوحة على كل سطر جديد.");
+
+        // 9. ARCHITECTURAL WISDOM (Smart Reflex++)
+        this.train('scaling', "للـ Scaling السلس، نستخدم Horizontal scaling مع Load Balancer (NGINX) و Stateless Services. هل نطبق الـ Caching في الـ Layer الأمامي؟");
+        this.train('latency', "لتقليل الـ Latency، يجب تفعيل Redis Caching، ضغط الصور (WebP)، واستخدم CDN مثل Cloudflare. سأقوم بفحص الـ Network Waterfall لك.");
+        this.train('redundancy', "النسخ الاحتياطي (Redundancy) ضروري. سنقوم بإعداد Multi-AZ Deployment لضمان عمل النظام حتى في حال سقوط داتا سنتر كامل.");
+        this.train('security audit', "سأقوم بفحص الكود بحثاً عن SQL Injection، XSS، و NoSQL Injection. الحماية هي لعبتنا المفضلة يا هندسة.");
+
+        // --- LAYER 4: BUSINESS AGILITY ---
+        this.train('mvp', "لبناء MVP ناجح، سنركز على الـ Core Features فقط بأعلى جودة بصرية وأداء. السرعة في الـ Go-to-market هي الأهم هنا.");
+        this.train('startup', "مشروع Startup يحتاج مرونة. سأستخدم تقنيات Serverless و NoSQL لنتحرك بسرعة البرق وبأقل تكلفة تشغيل.");
+        this.train('enterprise', "للمشاريع الضخمة، سنعتمد معمارية Micro-frontend و Event-driven باستخدام Kafka لضمان فصل المهام (Separation of Concerns).");
     }
 
     public train(trigger: string, response: string) {
@@ -339,6 +350,7 @@ class FreeIntelligenceOptimizer {
         const userName = 'يونس'; // Hardcoded for this session
 
         // 0. Check Real Knowledge (RAG) - Priority over static strings
+        // ENHANCEMENT: Allow RAG even with attachments if query is purely descriptive
         const realKnowledge = this.getRealKnowledge(cleanText);
         if (realKnowledge) {
             return {
@@ -350,16 +362,18 @@ class FreeIntelligenceOptimizer {
         }
 
         // 1. Check Smart Cache (Exact & Fuzzy)
-        if (this.cache.has(cleanText)) {
-            const hit = this.cache.get(cleanText)!;
-            hit.hits++;
-            hit.lastUsed = Date.now();
-            return {
-                shouldUseCache: true,
-                cachedResponse: this.injectPersona(hit.response, userName), // APPLY PERSONA
-                suggestedModel: 'fast',
-                skipPlanner: true
-            };
+        // Fuzzy: Check if any trigger word exists in the text for high-importance patterns
+        for (const [trigger, res] of this.cache.entries()) {
+            if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
+                res.hits++;
+                res.lastUsed = Date.now();
+                return {
+                    shouldUseCache: true,
+                    cachedResponse: this.injectPersona(res.response, userName),
+                    suggestedModel: 'fast',
+                    skipPlanner: true
+                };
+            }
         }
 
         // Fuzzy match (very basic containment for now to be safe)

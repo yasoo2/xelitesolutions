@@ -1080,7 +1080,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   });
 
   // --- FREE INTELLIGENCE OPTIMIZER (God-Tier Speed) ---
-  if (text && (!fileIds || fileIds.length === 0)) {
+  if (text) {
     try {
       const optimization = await freeIntelligenceOptimizer.optimizeRequest(text, []);
       if (optimization.shouldUseCache && optimization.cachedResponse) {
