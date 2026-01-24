@@ -4,11 +4,13 @@ import { Send, Bot, User, Cpu, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAgent } from '../hooks/useAgent';
 import { AgentActivity } from './AgentActivity';
+import { FileActivityPanel } from './FileActivityPanel';
 
 export const NeuralChat = () => {
-    const { messages, status, sendMessage, steps } = useAgent();
+    const { messages, status, sendMessage, steps, fileActivities } = useAgent();
     // ... existing state ...
     const [expanded, setExpanded] = useState(true);
+    const [filesExpanded, setFilesExpanded] = useState(true); // NEW
     const [input, setInput] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -83,7 +85,14 @@ export const NeuralChat = () => {
                 </AnimatePresence>
             </div>
 
-            <div className="px-4 pb-2"><AgentActivity status={status} steps={steps || []} logs={[]} expanded={expanded} onToggle={() => setExpanded(!expanded)} runId="current" /></div>
+            <div className="px-4 pb-2 space-y-2">
+                <FileActivityPanel
+                    activities={fileActivities || []}
+                    expanded={filesExpanded}
+                    onToggle={() => setFilesExpanded(!filesExpanded)}
+                />
+                <AgentActivity status={status} steps={steps || []} logs={[]} expanded={expanded} onToggle={() => setExpanded(!expanded)} runId="current" />
+            </div>
             {/* Input Area */}
             <form onSubmit={handleSend} className="p-4 bg-black/40 border-t border-white/10">
                 <div className="relative">

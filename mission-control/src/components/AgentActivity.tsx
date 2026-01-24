@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cpu, CheckCircle, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -23,10 +23,10 @@ export interface AgentActivityProps {
 export const AgentActivity: React.FC<AgentActivityProps> = ({
     status,
     steps = [],
-    logs = [],
+    logs: _logs = [],
     expanded = true,
     onToggle,
-    runId
+    runId: _runId
 }) => {
     // We only show if status is NOT idle/done (unless we want to show result for a bit)
     // But per user request: "disappear and show answer". 
@@ -66,7 +66,7 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                 status === 'thinking' ? 'bg-purple-900/80 border-purple-500' : 'bg-cyan-900/80 border-cyan-500'}`}
                         >
                             {status === 'error' ? <AlertCircle size={14} className="text-red-200" /> :
-                                <Cpu size={14} className={`text-white ${status !== 'idle' ? 'animate-spin-slow' : ''}`} />}
+                                <Cpu size={14} className={`text-white ${status === 'thinking' || status === 'executing' ? 'animate-spin-slow' : ''}`} />}
                         </div>
                     </div>
 
@@ -114,7 +114,7 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({
                                         )}
                                     </div>
                                     <span className={`${step.status === 'running' ? 'text-cyan-200 font-medium' :
-                                            step.status === 'done' ? 'text-gray-400' : 'text-gray-500'
+                                        step.status === 'done' ? 'text-gray-400' : 'text-gray-500'
                                         }`}>
                                         {step.name}
                                     </span>

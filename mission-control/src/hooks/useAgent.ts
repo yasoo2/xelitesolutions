@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AgentStep } from '../components/AgentActivity';
+import type { AgentStep } from '../components/AgentActivity';
 
 const getApiUrl = () => {
     if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -26,10 +26,21 @@ export type Message = {
     tool?: string;
 };
 
+// NEW: File Activity tracking
+export type FileActivity = {
+    id: string;
+    path: string;
+    action: 'created' | 'modified' | 'deleted' | 'read';
+    timestamp: Date;
+    status: 'pending' | 'success' | 'error';
+    diff?: string;
+};
+
 export const useAgent = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [status, setStatus] = useState<'idle' | 'thinking' | 'executing' | 'error'>('idle');
     const [steps, setSteps] = useState<AgentStep[]>([]);
+    const [fileActivities, setFileActivities] = useState<FileActivity[]>([]); // NEW
     const wsRef = useRef<WebSocket | null>(null);
     const sessionIdRef = useRef<string | null>(null);
 
@@ -80,17 +91,43 @@ export const useAgent = () => {
                     // For now, handled by step_started mostly, but we can set status
                     setStatus('thinking');
                 } else if (msg.type === 'step_started') {
+                    const toolName = msg.data?.tool || '';
                     setSteps(prev => {
                         const next = prev.map(s => ({ ...s, status: 'done' as const }));
                         return [...next, {
                             key: Date.now().toString(),
-                            name: msg.data.tool,
+                            name: toolName,
                             status: 'running' as const
                         }];
                     });
                     setStatus('executing');
+
+                    // NEW: Track file activities
+                    if (['file_edit', 'file_read', 'create_file', 'write_file'].includes(toolName)) {
+                        const filePath = msg.data?.input?.path || msg.data?.input?.file || 'unknown';
+                        const action: 'created' | 'modified' | 'deleted' | 'read' =
+                            toolName.includes('read') ? 'read' :
+                                toolName.includes('create') ? 'created' : 'modified';
+                        setFileActivities(prev => [{
+                            id: Date.now().toString(),
+                            path: filePath,
+                            action,
+                            timestamp: new Date(),
+                            status: 'pending' as const
+                        }, ...prev].slice(0, 50)); // Keep last 50
+                    }
+                } else if (msg.type === 'step_completed') {
+                    // Update file activity status
+                    setFileActivities(prev => prev.map((fa, i) =>
+                        i === 0 && fa.status === 'pending'
+                            ? { ...fa, status: msg.data?.success ? 'success' : 'error' }
+                            : fa
+                    ));
                 } else if (msg.type === 'run_completed') {
                     setSteps(prev => prev.map(s => ({ ...s, status: 'done' as const })));
+                    setFileActivities(prev => prev.map(fa =>
+                        fa.status === 'pending' ? { ...fa, status: 'success' } : fa
+                    ));
                     setStatus('idle');
                 }
             } catch (e) {
@@ -153,5 +190,5 @@ export const useAgent = () => {
         }
     }, [connect]);
 
-    return { messages, status, sendMessage, steps };
+    return { messages, status, sendMessage, steps, fileActivities };
 };
