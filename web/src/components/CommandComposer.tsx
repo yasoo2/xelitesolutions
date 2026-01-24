@@ -3701,11 +3701,20 @@ export default function CommandComposer({
                 ))}
 
                 {isUploading && (
-                  <div className="attached-file-chip uploading pulse-animation">
-                    <Loader2 size={12} className="animate-spin text-blue-500" />
-                    <span className="file-name">
-                      {uploadProgress > 0 ? `${uploadProgress}%` : t('uploading', 'Uploading...')}
-                    </span>
+                  <div className="uploading-indicator">
+                    <div className="uploading-content">
+                      <Loader2 size={16} className="spin uploading-spinner" />
+                      <span className="uploading-text">
+                        {t('uploading', 'جاري الرفع')}
+                      </span>
+                      <span className="uploading-progress">{uploadProgress}%</span>
+                    </div>
+                    <div className="uploading-bar-container">
+                      <div
+                        className="uploading-bar-fill"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
