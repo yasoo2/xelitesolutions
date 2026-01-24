@@ -52,17 +52,53 @@ class FreeIntelligenceOptimizer {
     }
 
     private seedDefaults() {
-        // English Defaults
+        // English Defaults - General
         this.train('hello', 'Hello! How can I help you today?');
         this.train('hi', 'Hi there! Ready to build something?');
         this.train('active provider', 'Use the settings menu to check your active provider.');
 
-        // Arabic Defaults
+        // Arabic Defaults - General
         this.train('مرحبا', 'أهلاً بك! كيف يمكنني مساعدتك اليوم؟');
         this.train('السلام عليكم', 'وعليكم السلام ورحمة الله! أنا جاهز للمساعدة.');
         this.train('اهلا', 'يا أهلاً! تفضل، أنا معك.');
         this.train('كيف حالك', 'أنا نظام ذكاء اصطناعي، ودائماً بأفضل حال ومستعد لخدمتك! 🚀');
         this.train('من انت', 'أنا Joe، مساعدك الذكي لتطوير البرمجيات وإدارة المهام.');
+
+        // === ENGINEERING INTELLIGENCE (Smart Reflex++) ===
+
+        // Web Development (Modern Stack)
+        const webContext = "سأقوم بإنشاء مشروع ويب حديث باستخدام React (Vite) أو Next.js بحسب الحاجة، مع TailwindCSS للتصميم. هل تريدني أن أبدأ بإنشاء الهيكل الأساسي؟";
+        this.train('build website', webContext);
+        this.train('create website', webContext);
+        this.train('new web app', webContext);
+        this.train('موقع جديد', webContext);
+        this.train('انشاء موقع', webContext);
+        this.train('بناء موقع', webContext);
+        this.train('react app', "سأستخدم Vite لإنشاء تطبيق React سريع وحديث. سأقوم بتثبيت الاعتماديات وإعداد الهيكل. جاهز؟");
+        this.train('nextjs app', "سأقوم بإنشاء تطبيق Next.js مع App Router المطور. هل تفضل استخدام TypeScript؟ (أنصح بذلك).");
+
+        // Mobile Development (Cross-Platform)
+        const mobileContext = "لتطبيقات الهاتف، الخيار الأفضل والأسرع هو React Native (عبر Expo). سيوفر لك تطبيقاً يعمل على iOS و Android بكود واحد. هل أبدأ إعداد البيئة؟";
+        this.train('mobile app', mobileContext);
+        this.train('build app', mobileContext);
+        this.train('ios app', mobileContext);
+        this.train('android app', mobileContext);
+        this.train('تطبيق جوال', mobileContext);
+        this.train('برمجة تطبيق', mobileContext);
+        this.train('تطبيق ايفون', mobileContext);
+        this.train('تطبيق اندرويد', mobileContext);
+
+        // System Engineering & Testing
+        this.train('test', "سأقوم بتحليل المشروع وتشغيل الاختبارات المناسبة (npm test). إذا لم توجد اختبارات، يمكنني كتابة اختبارات Unit Tests باستخدام Jest. هل نبدأ؟");
+        this.train('اختبار', "سأفحص الكود وأشغل الاختبارات. الجودة أولاً! 🕵️‍♂️");
+        this.train('debug', "أرسل لي رسالة الخطأ (Log) أو اشرح المشكلة. سأقوم بتحليل السبب الجذري واقتراح الحل فوراً.");
+        this.train('fix error', "ما هو الخطأ الذي يظهر لك؟ انسخه هنا وسأقوم بإصلاحه.");
+        this.train('صلح الخطأ', "فقط زودني بتفاصيل الخطأ أو صورة له، وسأتكفل بالباقي.");
+
+        // DevOps & Deployment
+        this.train('deploy', "يمكنني مساعدتك في رفع المشروع. هل نستهدف Vercel (للويب) أو بيئة Docker مخصصة؟");
+        this.train('docker', "سأقوم بإنشاء Dockerfile محسن لبيئة تشغيل خفيفة وآمنة. هل المشروع Node.js أم Python؟");
+        this.train('git init', "سأقوم بتهيئة مستودع Git وإضافة ملف .gitignore قياسي لحماية ملفاتك.");
     }
 
     public train(trigger: string, response: string) {
