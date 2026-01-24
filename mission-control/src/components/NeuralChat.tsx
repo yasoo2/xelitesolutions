@@ -8,7 +8,7 @@ import { FileActivityPanel } from './FileActivityPanel';
 
 export const NeuralChat = () => {
     const { messages, status, sendMessage, steps, fileActivities } = useAgent();
-    // ... existing state ...
+
     const [expanded, setExpanded] = useState(true);
     const [filesExpanded, setFilesExpanded] = useState(true); // NEW
     const [input, setInput] = useState('');
