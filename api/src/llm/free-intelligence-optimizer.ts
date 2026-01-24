@@ -167,16 +167,74 @@ class FreeIntelligenceOptimizer {
         return response;
     }
 
+    // === LIBRARY OF ALEXANDRIA (RAG-lite) ===
+    public getRealKnowledge(query: string): string | null {
+        const knowledgeDir = path.join(__dirname, '../knowledge');
+        if (!fs.existsSync(knowledgeDir)) return null;
+
+        const lowerQuery = query.toLowerCase();
+        let bestMatch = '';
+
+        // Map topics to files
+        const topicMap: Record<string, string> = {
+            'react': 'web_modern_stack.md',
+            'next': 'web_modern_stack.md',
+            'tailwind': 'web_modern_stack.md',
+            'web': 'web_modern_stack.md',
+
+            'native': 'mobile_architecture.md',
+            'mobile': 'mobile_architecture.md',
+            'expo': 'mobile_architecture.md',
+            'ios': 'mobile_architecture.md',
+            'android': 'mobile_architecture.md',
+
+            'backend': 'backend_systems.md',
+            'database': 'backend_systems.md',
+            'sql': 'backend_systems.md',
+            'redis': 'backend_systems.md',
+            'cache': 'backend_systems.md',
+            'microservice': 'backend_systems.md',
+
+            'docker': 'devops_pipelines.md',
+            'k8s': 'devops_pipelines.md',
+            'kubernetes': 'devops_pipelines.md',
+            'ci': 'devops_pipelines.md',
+            'pipeline': 'devops_pipelines.md',
+            'devops': 'devops_pipelines.md'
+        };
+
+        // Find relevant file
+        const foundTopic = Object.keys(topicMap).find(t => lowerQuery.includes(t));
+        if (foundTopic) {
+            try {
+                const content = fs.readFileSync(path.join(knowledgeDir, topicMap[foundTopic]), 'utf-8');
+                return `\n\n📚 **Knowledge Base (${topicMap[foundTopic]}):**\n` + content.substring(0, 1500) + '... [Read more]';
+            } catch (e) {
+                console.error('[Optimizer] Knowledge read error', e);
+            }
+        }
+        return null;
+    }
+
     /**
      * Main optimization entry point
-     * Decides if we can skip the heavy lifting
      */
     public async optimizeRequest(userText: string, context: any[]): Promise<OptimizationResult> {
         const cleanText = userText.toLowerCase().trim();
-        const userName = 'يونس'; // Hardcoded for this session, can be dynamic later
+        const userName = 'يونس'; // Hardcoded for this session
+
+        // 0. Check Real Knowledge (RAG) - Priority over static strings
+        const realKnowledge = this.getRealKnowledge(cleanText);
+        if (realKnowledge) {
+            return {
+                shouldUseCache: true,
+                cachedResponse: this.injectPersona(realKnowledge, userName),
+                suggestedModel: 'fast',
+                skipPlanner: true
+            };
+        }
 
         // 1. Check Smart Cache (Exact & Fuzzy)
-        // Exact match
         if (this.cache.has(cleanText)) {
             const hit = this.cache.get(cleanText)!;
             hit.hits++;
