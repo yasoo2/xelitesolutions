@@ -3851,6 +3851,22 @@ html[data-theme="light"] .input-actions {
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  animation: toggleSearchPulse 3s infinite;
+}
+
+@keyframes toggleSearchPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb), 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--accent-primary-rgb), 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb), 0);
+  }
 }
 
 .sidebar-toggle-btn-floating:hover {

@@ -137,7 +137,9 @@ export default function Joe() {
     };
   }, [autoDetectPreview, previewUrl, isProduction]);
 
-  const [showSidebar, setShowSidebar] = useState(false); // Default closed for cleaner look
+  const [showSidebar, setShowSidebar] = useState(false); // Force closed default
+  // Remove auto-open logic based on width to strictly respect "closed by default"
+
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -488,10 +490,10 @@ export default function Joe() {
 
   useEffect(() => {
     if (mode === 'agent') {
-      setShowSidebar(false);
+      // Don't auto-open sidebar in agent mode either
       if (agentSessions.length === 0) loadAllSessions();
     } else {
-      setShowSidebar(!isNarrow);
+      // Don't auto-open sidebar in chat mode
       if (sessions.length === 0) loadAllSessions();
     }
   }, [mode]);
@@ -785,15 +787,14 @@ export default function Joe() {
           </div>
         </aside>
       )}
-      {mode === 'chat' && (
-        <button
-          className="sidebar-toggle-btn-floating"
-          onClick={() => setShowSidebar(!showSidebar)}
-          title={showSidebar ? t('sidebar.close', 'Close Sidebar') : t('sidebar.open', 'Open Sidebar')}
-        >
-          {showSidebar ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
-        </button>
-      )}
+      {/* Always show toggle button regardless of mode if possible, or at least for chat */}
+      <button
+        className="sidebar-toggle-btn-floating"
+        onClick={() => setShowSidebar(!showSidebar)}
+        title={showSidebar ? t('sidebar.close', 'Close Sidebar') : t('sidebar.open', 'Open Sidebar')}
+      >
+        {showSidebar ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+      </button>
 
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
