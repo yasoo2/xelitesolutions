@@ -1964,6 +1964,7 @@ html[data-theme="light"] .joe-layout::after {
   min-width: 280px;
   height: 100%;
   display: flex;
+  /* Critical for internal layout */
   flex-direction: column;
   border-right: 1px solid var(--border-color);
   background: rgba(10, 14, 26, 0.55);
@@ -1976,6 +1977,9 @@ html[data-theme="light"] .joe-layout::after {
   opacity: 1;
   transition: transform 0.24s ease, opacity 0.24s ease;
   will-change: transform, opacity;
+  overflow: hidden;
+  /* Prevent sidebar resizing/jumping */
+  flex-shrink: 0;
 }
 
 html[data-theme="light"] .sidebar {
@@ -2022,6 +2026,8 @@ html[data-theme="light"] .sidebar {
   gap: 8px;
   box-shadow: 0 14px 40px rgba(var(--accent-primary-rgb), 0.14);
   transition: transform 0.15s ease, filter 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  margin-inline-start: 60px;
+  /* Force clearance for fixed toggle button */
 }
 
 .new-chat-btn:hover {
@@ -2168,8 +2174,12 @@ html[data-theme="light"] .sidebar-toggle-btn {
 
 .session-list {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  /* Independent scroll */
+  overflow-x: hidden;
   padding: 6px 8px 10px;
+  min-height: 0;
+  /* Enable flex scroll */
 }
 
 .folder-container {
@@ -2432,15 +2442,21 @@ html[data-theme="light"] .session-menu {
 }
 
 .sidebar-header {
+  flex: 0 0 auto;
   padding: 20px 20px 0 20px;
-  padding-inline-start: 70px;
-  /* Logical padding: Left in LTR, Right in RTL */
+  /* Reduced padding as button margin handles spacing */
   margin-bottom: 0;
+  display: flex;
+  align-items: center;
 }
 
 .sidebar-footer {
+  flex: 0 0 auto;
   padding: 12px;
   border-top: 1px solid var(--border-color);
+  background: var(--bg-card);
+  /* Ensure opaque background */
+  z-index: 10;
 }
 
 .delete-all-btn {
