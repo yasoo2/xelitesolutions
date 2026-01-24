@@ -2198,7 +2198,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const isAlreadyFree = providerKey.includes('auto') || providerKey.includes('pollinations');
 
             if ((isAuthError || isRateLimit) && !isAlreadyFree) {
-              console.info('[Resiliency] ⚠️ Primary provider failed. Falling back to Auto (Free) Mode immediately.');
+              console.info('[Resiliency] ⚠️ Primary provider failed. Falling back to Auto Mode immediately.');
 
               // Notify user ONCE about the fallback
               if (!assistantTextEmitted) {
