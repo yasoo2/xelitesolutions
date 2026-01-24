@@ -812,6 +812,10 @@ export default function Joe() {
       >
         {showSidebar ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
       </button>
+      {/* DEBUG BADGE: Remove after confirmation */}
+      <div style={{ position: 'fixed', bottom: '10px', right: '10px', zIndex: 999999, background: 'red', color: 'white', padding: '5px', fontSize: '20px', fontWeight: 'bold' }}>
+        VERSION 22.1 - DO YOU SEE ME?
+      </div>
 
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
