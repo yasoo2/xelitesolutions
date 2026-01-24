@@ -257,7 +257,6 @@ class FreeIntelligenceOptimizer {
             'azure': 'cloud_architecture_mastery.md',
             'serverless': 'cloud_architecture_mastery.md',
             'lambda': 'cloud_architecture_mastery.md',
-            'architect': 'cloud_architecture_mastery.md',
 
             // Phase 3: Future Tech & Deep Science
             'blockchain': 'blockchain_web3.md',
@@ -278,7 +277,6 @@ class FreeIntelligenceOptimizer {
 
             'optimize': 'performance_optimization.md',
             'performance': 'performance_optimization.md',
-            'memory': 'performance_optimization.md',
             'cpu': 'performance_optimization.md',
             'fast': 'performance_optimization.md',
             'algorithm': 'performance_optimization.md',
@@ -326,7 +324,21 @@ class FreeIntelligenceOptimizer {
             'logo': 'branding_visual_identity.md',
             'identity': 'branding_visual_identity.md',
             'icon': 'branding_visual_identity.md',
-            'accessible': 'branding_visual_identity.md'
+            'accessible': 'branding_visual_identity.md',
+
+            // Floor 6: System Self-Awareness
+            'system': 'system_architecture_deepdive.md',
+            'architecture': 'system_architecture_deepdive.md',
+            'stack': 'system_architecture_deepdive.md',
+            'how you work': 'system_architecture_deepdive.md',
+            'how do you work': 'system_architecture_deepdive.md',
+            'tool': 'tools_encyclopedia.md',
+            'capabilities': 'tools_encyclopedia.md',
+            'what can you do': 'tools_encyclopedia.md',
+            'genesis': 'agent_protocols.md',
+            'architect': 'agent_protocols.md',
+            'protocol': 'agent_protocols.md',
+            'memory': 'agent_protocols.md'
         };
 
         // Find relevant file
