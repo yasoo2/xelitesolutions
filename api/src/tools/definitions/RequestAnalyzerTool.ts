@@ -70,7 +70,7 @@ Provide your analysis in the following JSON format:
   "projectType": "fullstack|api|website|dashboard|cms|ecommerce|mobile|other",
   "complexity": "simple|medium|complex|very_complex",
   "estimatedFiles": <number>,
-  "modules": ["module1", "module2", ...],
+  "modules": ["module1", "module2"],
   "techStack": {
     "frontend": "react|vue|angular|html|none",
     "backend": "node|python|java|none",

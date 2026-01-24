@@ -125,7 +125,7 @@ export const CodebaseNavigatorTool = {
             const snippets = results.ids[0].map((id: string, idx: number) => ({
                 filePath: id,
                 score: results.distances[0][idx],
-                preview: (results.documents[0][idx] || '').substring(0, 300) + '...'
+                preview: (results.documents[0][idx] || '').substring(0, 300) + ' (truncated)'
             }));
 
             return { ok: true, output: { results: snippets }, logs: [] };

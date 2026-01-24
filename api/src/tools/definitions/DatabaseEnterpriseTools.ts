@@ -84,7 +84,7 @@ export class QueryOptimizerTool extends BaseTool {
 
         if (!sql.includes('WHERE')) suggestions.push('⚠️ Missing WHERE clause: potential full table scan.');
         if (sql.includes('SELECT *')) suggestions.push('⚠️ Avoid SELECT *: fetch only needed columns.');
-        if (sql.includes('LIKE \'%...%')) suggestions.push('⚠️ Leading wildcard in LIKE prevents index usage.');
+        if (sql.includes('LIKE \'%_wildcard_%')) suggestions.push('⚠️ Leading wildcard in LIKE prevents index usage.');
         if (sql.includes('OR')) suggestions.push('ℹ️ Check if UNION matches indexes better than OR.');
         if (!sql.includes('LIMIT') && (sql.includes('SELECT') || sql.includes('DELETE'))) suggestions.push('ℹ️ Consider adding LIMIT to batch operations.');
 
