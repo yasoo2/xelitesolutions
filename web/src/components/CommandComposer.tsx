@@ -516,6 +516,7 @@ export default function CommandComposer({
   const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [userName, setUserName] = useState<string>('');
   const [userPicture, setUserPicture] = useState<string>('');
@@ -1739,6 +1740,139 @@ export default function CommandComposer({
       setIsUploading(false);
       setUploadProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  // Reusable upload function for drag-drop and clipboard paste
+  async function uploadFiles(files: File[]) {
+    if (!files.length) return;
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const token = localStorage.getItem('token');
+
+      for (const file of files) {
+        setUploadProgress(0);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        if (sessionId) formData.append('sessionId', sessionId);
+
+        await new Promise<void>((resolve) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${API}/files/upload`);
+
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          }
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const percentComplete = Math.round((event.loaded / event.total) * 100);
+              setUploadProgress(percentComplete);
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status === 401) {
+              handleUnauthorized();
+              resolve();
+              return;
+            }
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const data = JSON.parse(xhr.responseText);
+                const fileData = data?.file || data;
+                const idRaw = fileData?.id ?? fileData?._id;
+                if (!idRaw) {
+                  resolve();
+                  return;
+                }
+
+                const id = String(idRaw);
+                const displayName = String(fileData?.originalName ?? fileData?.name ?? file.name);
+
+                setAttachedFiles((prev) => {
+                  if (prev.some((f) => f.id === id)) return prev;
+                  return [...prev, { id, name: displayName }];
+                });
+                resolve();
+              } catch {
+                resolve();
+              }
+            } else {
+              resolve();
+            }
+          };
+
+          xhr.onerror = () => resolve();
+          xhr.send(formData);
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  }
+
+  // Drag & Drop handlers
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set to false if leaving the container entirely
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      uploadFiles(files);
+    }
+  }
+
+  // Clipboard Paste handler
+  function handlePaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      uploadFiles(files);
     }
   }
 
@@ -3382,7 +3516,22 @@ export default function CommandComposer({
             </motion.div>
           ) : null}
         </AnimatePresence>
-        <div className="input-area">
+        <div
+          className={`input-area ${isDragging ? 'drag-active' : ''}`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {/* Drag overlay */}
+          {isDragging && (
+            <div className="drop-zone-overlay">
+              <div className="drop-zone-content">
+                <Paperclip size={32} />
+                <span>{t('dropFilesHere', 'أفلت الملفات هنا')}</span>
+              </div>
+            </div>
+          )}
           <div className="input-container">
             {(attachedFiles.length > 0 || isUploading) && (
               <div className="attached-files">
@@ -3414,6 +3563,7 @@ export default function CommandComposer({
               className="main-input"
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onPaste={handlePaste}
               placeholder={t('inputPlaceholder')}
               dir="auto"
               disabled={!!approval}
