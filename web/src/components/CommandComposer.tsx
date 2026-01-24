@@ -3783,24 +3783,6 @@ export default function CommandComposer({
                     </div>
                   ) : <Paperclip size={20} />}
                 </button>
-                {/* Camera Capture Button */}
-                <button
-                  className="action-btn capture-btn"
-                  onClick={captureFromCamera}
-                  title={t('capturePhoto', 'التقاط صورة من الكاميرا')}
-                  disabled={isUploading}
-                >
-                  <Camera size={18} />
-                </button>
-                {/* Screen Capture Button */}
-                <button
-                  className="action-btn capture-btn"
-                  onClick={captureScreen}
-                  title={t('captureScreen', 'التقاط صورة للشاشة')}
-                  disabled={isUploading}
-                >
-                  <Monitor size={18} />
-                </button>
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
                   onClick={() => setIsVoiceMode(!isVoiceMode)}
