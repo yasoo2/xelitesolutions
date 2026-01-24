@@ -3,8 +3,6 @@ import { ToolDefinition } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
 import { MemoryTools } from './definitions/MemoryTool';
 import { GenesisAgent } from '../agents/GenesisAgent';
-// ...
-// ...
 
 import { GenesisBuilderTool } from './definitions/GenesisBuilderTool';
 import { GenesisToolDef } from './definitions/GenesisTool';
