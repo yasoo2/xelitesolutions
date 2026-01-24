@@ -54,7 +54,9 @@ import {
   Lock,
   ShieldCheck,
   Bot,
-  User
+  User,
+  Camera,
+  Monitor
 } from 'lucide-react';
 
 const DEBUG_TOOL_UI = false;
@@ -513,7 +515,14 @@ export default function CommandComposer({
       }
     >
   >({});
-  const [attachedFiles, setAttachedFiles] = useState<Array<{ id: string; name: string }>>([]);
+  const [attachedFiles, setAttachedFiles] = useState<Array<{
+    id: string;
+    name: string;
+    size?: number;
+    type?: string;
+    preview?: string;
+    uploadSuccess?: boolean;
+  }>>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -1794,9 +1803,32 @@ export default function CommandComposer({
                 const id = String(idRaw);
                 const displayName = String(fileData?.originalName ?? fileData?.name ?? file.name);
 
-                setAttachedFiles((prev) => {
-                  if (prev.some((f) => f.id === id)) return prev;
-                  return [...prev, { id, name: displayName }];
+                // Generate preview for images
+                const generatePreview = (): Promise<string | undefined> => {
+                  return new Promise((resolvePreview) => {
+                    if (file.type.startsWith('image/')) {
+                      const reader = new FileReader();
+                      reader.onload = (e) => resolvePreview(e.target?.result as string);
+                      reader.onerror = () => resolvePreview(undefined);
+                      reader.readAsDataURL(file);
+                    } else {
+                      resolvePreview(undefined);
+                    }
+                  });
+                };
+
+                generatePreview().then((preview) => {
+                  setAttachedFiles((prev) => {
+                    if (prev.some((f) => f.id === id)) return prev;
+                    return [...prev, {
+                      id,
+                      name: displayName,
+                      size: file.size,
+                      type: file.type,
+                      preview,
+                      uploadSuccess: true
+                    }];
+                  });
                 });
                 resolve();
               } catch {
@@ -1873,6 +1905,86 @@ export default function CommandComposer({
     if (files.length > 0) {
       e.preventDefault();
       uploadFiles(files);
+    }
+  }
+
+  // Camera Capture handler
+  async function captureFromCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+      video.playsInline = true;
+
+      await new Promise<void>((resolve) => {
+        video.onloadedmetadata = () => {
+          video.play();
+          resolve();
+        };
+      });
+
+      // Wait a moment for camera to focus
+      await new Promise((r) => setTimeout(r, 300));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(video, 0, 0);
+
+      stream.getTracks().forEach((track) => track.stop());
+
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+          uploadFiles([file]);
+        }
+      }, 'image/jpeg', 0.9);
+    } catch (err: any) {
+      console.error('Camera capture failed:', err);
+      alert(t('cameraError', 'لا يمكن الوصول للكاميرا. تأكد من منح الإذن.'));
+    }
+  }
+
+  // Screen Capture handler
+  async function captureScreen() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+
+      await new Promise<void>((resolve) => {
+        video.onloadedmetadata = () => {
+          video.play();
+          resolve();
+        };
+      });
+
+      // ait for frame
+      await new Promise((r) => setTimeout(r, 100));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(video, 0, 0);
+
+      stream.getTracks().forEach((track) => track.stop());
+
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' });
+          uploadFiles([file]);
+        }
+      }, 'image/png');
+    } catch (err: any) {
+      console.error('Screen capture failed:', err);
+      // User cancelled - don't show error
+      if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+        alert(t('screenError', 'فشل في التقاط الشاشة.'));
+      }
     }
   }
 
@@ -3536,9 +3648,48 @@ export default function CommandComposer({
             {(attachedFiles.length > 0 || isUploading) && (
               <div className="attached-files">
                 {attachedFiles.map((file, i) => (
-                  <div key={file.id || i} className="attached-file-chip">
-                    <Paperclip size={12} className="text-blue-400" />
-                    <span className="file-name">{file.name}</span>
+                  <div
+                    key={file.id || i}
+                    className={`attached-file-chip ${file.uploadSuccess ? 'upload-success' : ''} ${file.preview ? 'has-preview' : ''}`}
+                  >
+                    {/* Image Preview or Icon */}
+                    {file.preview ? (
+                      <img
+                        src={file.preview}
+                        alt={file.name}
+                        className="file-thumbnail"
+                      />
+                    ) : file.type?.startsWith('video/') ? (
+                      <VideoIcon size={16} className="file-type-icon video" />
+                    ) : file.type === 'application/pdf' ? (
+                      <FileText size={16} className="file-type-icon pdf" />
+                    ) : file.type?.includes('spreadsheet') || file.type?.includes('csv') || file.type?.includes('excel') ? (
+                      <FileCode size={16} className="file-type-icon excel" />
+                    ) : (
+                      <Paperclip size={14} className="file-type-icon default" />
+                    )}
+
+                    {/* File Info */}
+                    <div className="file-info">
+                      <span className="file-name">{file.name}</span>
+                      {file.size && (
+                        <span className="file-size">
+                          {file.size < 1024
+                            ? `${file.size} B`
+                            : file.size < 1024 * 1024
+                              ? `${(file.size / 1024).toFixed(1)} KB`
+                              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                          }
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Success indicator */}
+                    {file.uploadSuccess && (
+                      <CheckCircle2 size={14} className="upload-success-icon" />
+                    )}
+
+                    {/* Remove button */}
                     <button
                       type="button"
                       onClick={() => setAttachedFiles(prev => prev.filter((_, idx) => idx !== i))}
@@ -3631,6 +3782,24 @@ export default function CommandComposer({
                       </svg>
                     </div>
                   ) : <Paperclip size={20} />}
+                </button>
+                {/* Camera Capture Button */}
+                <button
+                  className="action-btn capture-btn"
+                  onClick={captureFromCamera}
+                  title={t('capturePhoto', 'التقاط صورة من الكاميرا')}
+                  disabled={isUploading}
+                >
+                  <Camera size={18} />
+                </button>
+                {/* Screen Capture Button */}
+                <button
+                  className="action-btn capture-btn"
+                  onClick={captureScreen}
+                  title={t('captureScreen', 'التقاط صورة للشاشة')}
+                  disabled={isUploading}
+                >
+                  <Monitor size={18} />
                 </button>
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
