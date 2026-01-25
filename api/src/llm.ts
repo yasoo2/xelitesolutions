@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { tools } from './tools/registry';
 import path from 'path';
+import { freeIntelligenceOptimizer, generateSmartResponse } from './llm/free-intelligence-optimizer';
 
 // Initialize OpenAI client
 let apiKey = process.env.OPENAI_API_KEY;
@@ -674,8 +675,7 @@ export async function planNextStep(
     // === FREE INTELLIGENCE OPTIMIZER ===
     console.info(`[Auto Enterprise] 💬 User query: "${userText.substring(0, 100)}${userText.length > 100 ? '...' : ''}"`);
 
-    // Import optimizer (using require to avoid TS1323)
-    const { generateSmartResponse, freeIntelligenceOptimizer } = require('./llm/free-intelligence-optimizer');
+
 
     // 1. Check for instant smart response (no API call needed!)
     console.info('[FREE OPTIMIZER] Checking for instant smart response patterns...');
