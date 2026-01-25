@@ -1583,8 +1583,27 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     else if (!initialPlan && rawUserText && !hasAttachments) {
       const optimization = await freeIntelligenceOptimizer.optimizeRequest(rawUserText, []);
       if (optimization.shouldUseCache && optimization.cachedResponse) {
-        console.log('[Optimizer] Cache HIT - Using Echo Plan');
-        initialPlan = { name: 'echo', input: { text: optimization.cachedResponse } };
+        console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
+        const answer = optimization.cachedResponse;
+
+        // Broadcast events to satisfy frontend listeners
+        ev({ type: 'thought', data: '🧠 accessing_library_of_alexandria...' });
+        ev({ type: 'text', data: answer });
+        ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
+        ev({ type: 'run_finished', data: { runId, ok: true } });
+
+        // Update DB/Mock state asynchronously to avoid blocking response
+        if (useMock) {
+          store.updateRun(runId, { status: 'done' });
+        } else {
+          Run.findByIdAndUpdate(runId, { $set: { status: 'done' } }).catch(console.error);
+        }
+
+        return res.json({
+          ok: true,
+          runId,
+          result: { ok: true, output: { text: answer }, logs: ['Optimizer Cache Hit'] }
+        });
       }
     }
 
