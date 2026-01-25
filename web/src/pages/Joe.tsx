@@ -237,7 +237,8 @@ export default function Joe() {
         }
       })();
       try {
-        void fetch(`${API}/api/browser/stop`, {
+        void fetch(`${API}/browser/stop`, {
+
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

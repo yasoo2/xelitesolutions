@@ -22,7 +22,8 @@ export default function BrainStatus() {
   const toggleTraining = async () => {
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${API_URL}/api/system/brain/toggle`, {
+      await fetch(`${API_URL}/system/brain/toggle`, {
+
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -35,7 +36,8 @@ export default function BrainStatus() {
     const fetchStats = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/api/system/brain/stats`, {
+        const res = await fetch(`${API_URL}/system/brain/stats`, {
+
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         const json = await res.json();

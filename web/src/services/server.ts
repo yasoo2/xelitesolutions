@@ -53,7 +53,7 @@ const handleResponse = async (res: Response) => {
 
 export const ServerService = {
     async listServers(): Promise<ServerConfig[]> {
-        const res = await fetch(`${API_URL}/api/servers`, {
+        const res = await fetch(`${API_URL}/servers`, {
             headers: getHeaders(),
             credentials: 'include'
         });
@@ -62,7 +62,7 @@ export const ServerService = {
     },
 
     async addServer(data: Partial<ServerConfig>): Promise<ServerConfig> {
-        const res = await fetch(`${API_URL}/api/servers`, {
+        const res = await fetch(`${API_URL}/servers`, {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(data),

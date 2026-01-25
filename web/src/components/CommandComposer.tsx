@@ -2262,7 +2262,7 @@ export default function CommandComposer({
           effectiveBrowserSessionId = opened.sessionId;
 
           const token2 = localStorage.getItem('token');
-          await fetch(`${API}/api/browser/run`, {
+          await fetch(`${API}/browser/run`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -2441,7 +2441,7 @@ export default function CommandComposer({
     }
     if (bid) {
       reqs.push(
-        fetch(`${API}/api/browser/stop`, {
+        fetch(`${API}/browser/stop`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ sessionId: bid }),
@@ -2449,7 +2449,7 @@ export default function CommandComposer({
       );
     } else if (pendingBid) {
       reqs.push(
-        fetch(`${API}/api/browser/stop`, {
+        fetch(`${API}/browser/stop`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ sessionId: pendingBid }),
