@@ -628,12 +628,17 @@ export async function routeToModel(
         }
     }
 
-    // Final catch-all (should never be reached due to Pollinations, but just in case)
-    if (!hack) {
-        const llm = require('../llm');
-        hack = llm.pollinationsProvider;
+    // Final catch-all (Guarantee a response to avoid "empty model output" error)
+    try {
+        if (!hack) {
+            const llm = require('../llm');
+            hack = llm.pollinationsProvider;
+        }
+        const finalAns = await hack.chatComplete(messages, 'openai');
+        return finalAns || "أعتذر، حدثت مشكلة في الاتصال. كيف يمكنني مساعدتك؟";
+    } catch {
+        return "أعتذر، جميع مزودات الـ AI مشغولة حالياً. يرجى المحاولة بعد لحظات.";
     }
-    return await hack.chatComplete(messages, 'openai');
 }
 
 /**

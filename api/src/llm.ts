@@ -694,11 +694,11 @@ export async function planNextStep(
 
 
     // 7. Multi-step planning (UPGRADED: generates a roadmap for complex tasks)
-    if (analysis.complexity === 'high' || analysis.complexity === 'extreme') {
+    // SPEED FIX: Only plan if complexity is EXTREME
+    if (analysis.complexity === 'extreme') {
       const planSteps = await generateActionPlan(userText, analysis);
       if (planSteps.length > 0) {
         console.info(`[Auto Enterprise] Generated ${planSteps.length} step plan:`, planSteps);
-        // We can optionally store this in memory or just use it to guide the current turn
       }
     }
 

@@ -529,7 +529,8 @@ class FreeIntelligenceOptimizer {
         return {
             shouldUseCache: false,
             suggestedModel: 'smart',
-            skipPlanner: false
+            skipPlanner: false,
+            analysis: { type: 'complex_reasoning', complexity: 'medium', requiresTools: true, language: 'ar' } // PRE-SET ANALYSIS
         };
     }
 
