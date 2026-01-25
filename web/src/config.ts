@@ -25,10 +25,14 @@ function inferApiUrl() {
 
 function inferWsUrl(apiUrl: string) {
   if (apiUrl && apiUrl.startsWith('https')) {
-    return apiUrl.replace(/^https/i, 'wss').replace(/\/api$/, '') + '/ws';
+    // If it ends in /api, remove it and add /ws
+    // Otherwise just swap https->wss and add /ws
+    const base = apiUrl.replace(/\/api\/?$/, '');
+    return base.replace(/^https/i, 'wss') + '/ws';
   }
   if (apiUrl) {
-    return apiUrl.replace(/^http/i, 'ws') + '/ws';
+    const base = apiUrl.replace(/\/api\/?$/, '');
+    return base.replace(/^http/i, 'ws') + '/ws';
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws`;

@@ -3,6 +3,8 @@
 import { Activity, Box, Cpu, Server, Brain, Play, Pause, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getSystemStats, getBrainStats, toggleBrainTraining } from '@/lib/api';
+import { formatNumber } from './utils/formatters';
+
 
 export default function Home() {
   const [stats, setStats] = useState<any>(null);
@@ -54,7 +56,8 @@ export default function Home() {
     },
     {
       title: 'Neural Synapses',
-      value: brainStats?.reflexCount?.toLocaleString() ?? '-',
+      value: formatNumber(brainStats?.reflexCount || 0),
+
       icon: Brain,
       color: isLearning ? 'text-purple-500' : 'text-gray-500',
       bg: isLearning ? 'bg-purple-500/10' : 'bg-gray-500/10',

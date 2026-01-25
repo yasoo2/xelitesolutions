@@ -84,7 +84,7 @@ export const SystemMonitor = () => {
                     <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/10">
                         <Database size={16} className={isRunning ? "text-green-400 animate-pulse" : "text-gray-500"} />
                         <span className={`font-mono font-bold ${isRunning ? "text-green-400" : "text-gray-400"}`}>
-                            REFLEXES: {brainStats.reflexCount.toLocaleString()}
+                            REFLEXES: {(brainStats?.reflexCount || 0).toLocaleString()}
                         </span>
 
                         <button

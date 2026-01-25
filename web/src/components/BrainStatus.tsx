@@ -1,87 +1,90 @@
 import { useState, useEffect } from 'react';
 import { Brain, Play, Pause, Zap } from 'lucide-react';
 import { API_URL } from '../config';
+import { formatNumber } from '../utils/formatters';
+
 
 interface BrainStats {
-    reflexCount: number;
-    status: 'running' | 'paused' | 'connecting';
-    lastLearned?: string;
+  reflexCount: number;
+  status: 'running' | 'paused' | 'connecting';
+  lastLearned?: string;
 }
 
 export default function BrainStatus() {
-    const [stats, setStats] = useState<BrainStats>({
-        reflexCount: 0,
-        status: 'connecting',
-        lastLearned: 'Connecting...'
-    });
+  const [stats, setStats] = useState<BrainStats>({
+    reflexCount: 0,
+    status: 'connecting',
+    lastLearned: 'Connecting...'
+  });
 
-    const isRunning = stats.status === 'running';
+  const isRunning = stats.status === 'running';
 
-    const toggleTraining = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/api/system/brain/toggle`, {
-                method: 'POST',
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
-        } catch (e) {
-            console.error('Toggle failed', e);
-        }
+  const toggleTraining = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_URL}/api/system/brain/toggle`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+    } catch (e) {
+      console.error('Toggle failed', e);
+    }
+  };
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/api/system/brain/stats`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        const json = await res.json();
+        setStats(json);
+      } catch (e) {
+        console.error('Brain stats failed', e);
+      }
     };
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                const res = await fetch(`${API_URL}/api/system/brain/stats`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {}
-                });
-                const json = await res.json();
-                setStats(json);
-            } catch (e) {
-                console.error('Brain stats failed', e);
-            }
-        };
+    fetchStats();
+    const interval = setInterval(fetchStats, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-        fetchStats();
-        const interval = setInterval(fetchStats, 1000);
-        return () => clearInterval(interval);
-    }, []);
+  return (
+    <div className="brain-status-widget">
+      <div className="brain-header">
+        <Brain size={18} className={isRunning ? 'brain-icon-active' : 'brain-icon'} />
+        <span className="brain-title">Neural Core</span>
+        <button
+          onClick={toggleTraining}
+          className={`brain-toggle ${isRunning ? 'running' : 'paused'}`}
+          title={isRunning ? 'Pause Training' : 'Resume Training'}
+        >
+          {isRunning ? <Pause size={14} /> : <Play size={14} />}
+        </button>
+      </div>
 
-    return (
-        <div className="brain-status-widget">
-            <div className="brain-header">
-                <Brain size={18} className={isRunning ? 'brain-icon-active' : 'brain-icon'} />
-                <span className="brain-title">Neural Core</span>
-                <button
-                    onClick={toggleTraining}
-                    className={`brain-toggle ${isRunning ? 'running' : 'paused'}`}
-                    title={isRunning ? 'Pause Training' : 'Resume Training'}
-                >
-                    {isRunning ? <Pause size={14} /> : <Play size={14} />}
-                </button>
-            </div>
+      <div className="brain-stats">
+        <div className="brain-count">
+          <Zap size={14} className="zap-icon" />
+          <span className="count-value">{formatNumber(stats?.reflexCount || 0)}</span>
 
-            <div className="brain-stats">
-                <div className="brain-count">
-                    <Zap size={14} className="zap-icon" />
-                    <span className="count-value">{stats.reflexCount.toLocaleString()}</span>
-                    <span className="count-label">Reflexes</span>
-                </div>
+          <span className="count-label">Reflexes</span>
+        </div>
 
-                <div className={`brain-status-indicator ${isRunning ? 'active' : 'inactive'}`}>
-                    {isRunning ? 'LEARNING' : 'PAUSED'}
-                </div>
-            </div>
+        <div className={`brain-status-indicator ${isRunning ? 'active' : 'inactive'}`}>
+          {isRunning ? 'LEARNING' : 'PAUSED'}
+        </div>
+      </div>
 
-            {stats.lastLearned && (
-                <div className="brain-ticker">
-                    <span className="ticker-label">Latest:</span>
-                    <span className="ticker-content">{stats.lastLearned.replace('Learned: ', '')}</span>
-                </div>
-            )}
+      {stats.lastLearned && (
+        <div className="brain-ticker">
+          <span className="ticker-label">Latest:</span>
+          <span className="ticker-content">{stats.lastLearned.replace('Learned: ', '')}</span>
+        </div>
+      )}
 
-            <style>{`
+      <style>{`
         .brain-status-widget {
           background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1));
           border: 1px solid rgba(139, 92, 246, 0.3);
@@ -189,6 +192,6 @@ export default function BrainStatus() {
           text-overflow: ellipsis;
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }

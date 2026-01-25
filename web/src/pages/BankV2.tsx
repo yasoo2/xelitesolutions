@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Moon, LogOut, ShieldCheck, Wallet, ArrowUpRight, ArrowDownLeft, Landmark, Menu } from 'lucide-react';
+import { formatNumber } from '../utils/formatters';
+
 
 export default function BankV2() {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -15,10 +17,11 @@ export default function BankV2() {
     const text = theme === 'dark' ? 'hsl(0, 0%, 98%)' : 'hsl(230, 30%, 10%)';
 
     const transactions = [
-        { id: 1, type: 'in', name: 'Dividend Payment', date: 'Oct 24, 2026', amount: '+ $12,500.00', status: 'Settled' },
-        { id: 2, type: 'out', name: 'Luxury Auto Lease', date: 'Oct 22, 2026', amount: '- $2,450.00', status: 'Processing' },
-        { id: 3, type: 'in', name: 'Consulting Retainer', date: 'Oct 20, 2026', amount: '+ $4,800.00', status: 'Settled' },
+        { id: 1, type: 'in', name: 'Dividend Payment', date: 'Oct 24, 2026', amount: '+ $12.500,00', status: 'Settled' },
+        { id: 2, type: 'out', name: 'Luxury Auto Lease', date: 'Oct 22, 2026', amount: '- $2.450,00', status: 'Processing' },
+        { id: 3, type: 'in', name: 'Consulting Retainer', date: 'Oct 20, 2026', amount: '+ $4.800,00', status: 'Settled' },
     ];
+
 
     return (
         <div
@@ -71,9 +74,10 @@ export default function BankV2() {
                         <div className="absolute top-0 right-0 p-8 opacity-20"><Wallet size={120} /></div>
                         <h3 className="text-white/70 font-medium mb-2 uppercase tracking-widest text-xs">Total Net Worth</h3>
                         <div className="flex items-baseline gap-2 mb-8">
-                            <span className="text-white text-5xl font-black">${balance.toLocaleString()}</span>
+                            <span className="text-white text-5xl font-black">${formatNumber(balance)}</span>
                             <span className="text-white/60 text-xl">USD</span>
                         </div>
+
                         <div className="flex gap-4">
                             <button className="px-8 py-3 bg-white text-indigo-700 rounded-full font-bold shadow-xl shadow-indigo-900/20 active:scale-95 transition-transform">Transfer</button>
                             <button className="px-8 py-3 bg-indigo-900/20 backdrop-blur-md border border-white/20 text-white rounded-full font-bold hover:bg-white/10 transition-all">Exchange</button>
@@ -83,10 +87,11 @@ export default function BankV2() {
                     {/* Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {[
-                            { label: 'Spending', value: '$8,420', icon: <ArrowUpRight className="text-red-400" /> },
-                            { label: 'Income', value: '$22,100', icon: <ArrowDownLeft className="text-green-400" /> },
+                            { label: 'Spending', value: '$8.420', icon: <ArrowUpRight className="text-red-400" /> },
+                            { label: 'Income', value: '$22.100', icon: <ArrowDownLeft className="text-green-400" /> },
                             { label: 'Status', value: 'Elite Black', icon: <ShieldCheck className="text-cyan-400" /> },
                         ].map((stat, i) => (
+
                             <motion.div
                                 key={i}
                                 initial={{ opacity: 0, scale: 0.9 }}

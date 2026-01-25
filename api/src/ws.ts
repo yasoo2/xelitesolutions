@@ -127,8 +127,8 @@ export function attachWebSocket(server: Server) {
       return reject(400, 'Bad Request');
     }
 
-    if (url.pathname === '/ws' || url.pathname === '/ws/') {
-      console.log('[WS] Upgrading /ws connection');
+    if (url.pathname === '/ws' || url.pathname === '/ws/' || url.pathname === '/api/ws' || url.pathname === '/api/ws/') {
+      console.log('[WS] Upgrading ws connection at:', url.pathname);
       if (!liveWssRef) return reject(503, 'Service Unavailable');
       liveWssRef.handleUpgrade(req, socket, head, (ws) => {
         console.log('[WS] Connection established');

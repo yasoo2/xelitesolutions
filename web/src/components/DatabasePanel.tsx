@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { Database, Zap, Archive, Play, Activity } from 'lucide-react';
 import { API_URL } from '../config';
+import { formatNumber } from '../utils/formatters';
+
 
 export default function DatabasePanel() {
     const [activeTab, setActiveTab] = useState<'migrate' | 'seed' | 'optimize'>('migrate');
@@ -86,7 +88,8 @@ export default function DatabasePanel() {
                                     disabled={loading}
                                     className="w-full py-3 bg-red-600 hover:bg-red-500 rounded font-bold flex items-center justify-center gap-2"
                                 >
-                                    <Zap size={16} /> Generate {rows.toLocaleString()} Rows
+                                    <Zap size={16} /> Generate {formatNumber(rows)} Rows
+
                                 </button>
                             </div>
                         </div>
