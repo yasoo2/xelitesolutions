@@ -482,7 +482,7 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
   }
 
   const msgs = [
-    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'system', content: getSystemPrompt({ name: userId ? 'Younis' : undefined }) },
     ...context,
     { role: 'user', content: prompt }
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
@@ -580,7 +580,7 @@ export async function planNextStep(
 
     try {
       const msgs = [
-        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'system', content: getSystemPrompt({ name: options?.userId || 'Younis' }) },
         ...messages
       ];
       const text = await openRouterProvider.chatComplete(msgs, options?.model || 'google/gemma-2-9b-it:free');
@@ -604,7 +604,7 @@ export async function planNextStep(
 
     try {
       const msgs = [
-        { role: 'system', content: 'You are a helpful AI assistant.' },
+        { role: 'system', content: getSystemPrompt({ name: 'Younis' }) },
         ...messages
       ];
       const text = await huggingfaceProvider.chatComplete(msgs as any);
@@ -889,7 +889,7 @@ export async function planNextStep(
       console.error('[Auto Enterprise] Failed:', err);
       // Fallback to simple chat
       try {
-        const msgs = [{ role: 'system', content: 'You are a helpful assistant.' }, ...messages];
+        const msgs = [{ role: 'system', content: getSystemPrompt({ name: 'Younis' }) }, ...messages];
         const text = await pollinationsProvider.chatComplete(msgs, 'openai');
         return { name: 'echo', input: { text: text || 'Response from Joe (Free)' } };
       } catch {
@@ -1396,7 +1396,7 @@ export async function generateSessionTitle(messages: { role: string; content: st
   const msgs = [
     {
       role: 'system',
-      content: 'You are a helpful assistant. Generate a short, concise title (max 6 words) for a chat session based on the following conversation start. The title should summarize the main topic. If the user speaks Arabic, the title MUST be in Arabic. Do not include quotes.'
+      content: 'You are the XElite Intelligence Engine. Generate a short, concise, and elite title (max 6 words) for this session.'
     },
     ...messages.slice(0, 5).map(m => ({ role: 'user', content: String(m.content).slice(0, 500) }))
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
@@ -1427,7 +1427,7 @@ export async function generateSummary(messages: { role: string; content: string 
   const msgs = [
     {
       role: 'system',
-      content: 'You are a helpful assistant. Summarize the following conversation in a concise paragraph. Focus on the main goal, what was achieved, and any pending items. If the conversation is in Arabic, the summary MUST be in Arabic.'
+      content: 'You are the Lead Engineer Joe. Summarize this engineering dialogue with technical precision and professional Arabic/English.'
     },
     {
       role: 'user',

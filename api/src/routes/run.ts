@@ -2319,6 +2319,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     let planName = String(plan?.name || '');
     const userTextForOverrides = String(text || '');
     const userTextNorm = normalizeArabicQuery(userTextForOverrides);
+
+    // [GOD MODE] FORCE BUILD OVERRIDE
+    // If the user clearly wants to build/create, and we haven't started, don't let it stall in "echo"
+    const isExplicitBuild = /(build|create|generate|scaffold|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم)\s+(website|app|system|page|موقع|تطبيق|نظام|صفحة|صفحه)/i.test(userTextForOverrides);
+    if (isExplicitBuild && steps === 0 && (planName === 'echo' || !planName)) {
+      console.info('[GOD MODE] ⚡ Build Intent Detected - Forcing Pipeline Execution');
+      plan = { name: 'project_detect', input: { path: '.' } } as any;
+      planName = 'project_detect';
+    }
+
     const wantsLocationEarly = isLocationLikeQuery(userTextForOverrides);
     let browserIntentThisTurn = false;
     if (wantsLocationEarly) {

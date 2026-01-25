@@ -250,6 +250,7 @@ export interface TaskAnalysis {
     language: 'ar' | 'en' | 'mixed';
     shortSummary?: string;
     hasImages?: boolean;
+    suggestedModel?: string;
 }
 
 
@@ -271,7 +272,7 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     const arabicRatio = (userMessage.match(/[\u0600-\u06FF]/g) || []).length / (userMessage.length || 1);
     const hasArabicWords = /(أنا|أنت|هو|هي|نحن|في|من|على|إلى|عن|مع|هل|كيف|لماذا|متى|أين|ماذا|كم)/.test(userMessage);
     const language: 'ar' | 'en' | 'mixed' =
-        arabicRatio > 0.5 || (arabicRatio > 0.1 && hasArabicWords) ? 'ar' :
+        arabicRatio > 0.4 || (arabicRatio > 0.05 && hasArabicWords) ? 'ar' :
             arabicRatio > 0.1 ? 'mixed' : 'en';
 
     // SPEED OPTIMIZATION: Check for Fast Lane candidates immediately
@@ -282,7 +283,7 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     let requiresTools = false;
 
     // Browser/automation tasks
-    if (/(open|افتح|browse|متصفح|click|انقر|extract|استخرج)/i.test(msg)) {
+    if (/(open|afتح|browse|متصفح|click|انقر|اضغط|extract|استخرج|تصفح|ادخل|روح|زور)/i.test(msg)) {
         taskType = 'browser_task';
         requiresTools = true;
     }
@@ -291,10 +292,10 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
         taskType = 'code_generation';
         requiresTools = true;
     }
-    // Code generation
-    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create|انشئ|app|تطبيق)/i.test(msg)) {
+    // Code generation & Building
+    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create|انشئ|أنشئ|app|تطبيق|برمج|سوي|اعمل|صمم|نظام|تطبيق|منصة|صفحة|موقع)/i.test(msg)) {
         taskType = 'code_generation';
-        requiresTools = length > 100; // Complex code needs tools
+        requiresTools = length > 40; // Lower threshold to ensure tools are triggered for build requests
     }
     // Creative writing
     else if (/(write.*story|اكتب.*قصة|poem|قصيدة|article|مقال|essay|موضوع|creative|إبداعي)/i.test(msg)) {
@@ -577,57 +578,63 @@ export async function routeToModel(
             }
         }
     ];
-} catch (e: any) {
-    if (e.message !== 'UseLegacyOpenAIPath') {
-        console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message}`);
-    }
-}
+    let lastError = '';
 
-// Helper to clean output (Removed duplicate)
-
-// 2. The Chain of Steel (Fallback Mesh)
-for (const p of meshProviders) {
+    // 1. Try Selected Model First (Happy Path)
     try {
-        onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
-        console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
-
-        // Dynamic Timeout: Optimized for speed
-        let timeoutValue = 8000; // Base 8s (was 10s)
-
-        if (analysis?.complexity === 'high' || analysis?.complexity === 'extreme') {
-            timeoutValue = 20000; // 20s for complex
-        }
-        if (p.name === 'Pollinations (Backup)') {
-            timeoutValue = 25000; // Cap at 25s (was 60s) for better UX
+        if (selectedModel.provider === 'groq' && hasGroqKey) {
+            // Groq is fast, but let's give it 15s
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
+            const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial), timeoutPromise]) as string;
+            return cleanOutput(rawAns);
         }
 
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
-        const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
-
-        const ans = cleanOutput(rawAns);
-
-        if (ans && ans.length > 0) {
-            console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
-            return ans;
-        }
+        // If not Groq or Groq fails, fall through to the Chain of Steel
     } catch (e: any) {
-        console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message}`);
+        console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message}`);
         lastError = e.message;
     }
-}
 
-// Final catch-all (Guarantee a response to avoid "empty model output" error)
-try {
-    const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
-    const cleaned = cleanOutput(finalAns);
+    // 2. The Chain of Steel (Fallback Mesh)
+    for (const p of meshProviders) {
+        try {
+            onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
+            console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
-    if (cleaned && cleaned.length > 0) return cleaned;
+            // Dynamic Timeout: Optimized for speed
+            let timeoutValue = 8000; // Base 8s
 
-    throw new Error('FINAL_EMPTY_RESPONSE');
-} catch {
-    return "سأقوم بمراجعة الأدوات وربطها بشكل أفضل. يرجى إعطائي لحظة أو إرسال طلبك مرة أخرى بشكل أوضح.";
-}
+            if (taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme') {
+                timeoutValue = 20000;
+            }
+            if (p.name === 'Pollinations (Backup)') {
+                timeoutValue = 25000;
+            }
 
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
+            const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
+
+            const ans = cleanOutput(rawAns);
+
+            if (ans && ans.length > 2) {
+                console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
+                return ans;
+            }
+        } catch (e: any) {
+            console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message}`);
+            lastError = e.message;
+        }
+    }
+
+    // Final catch-all (Guarantee a response)
+    try {
+        const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
+        const cleaned = cleanOutput(finalAns);
+        if (cleaned && cleaned.length > 0) return cleaned;
+        throw new Error('FINAL_EMPTY_RESPONSE');
+    } catch {
+        return "سأقوم بمراجعة الأدوات وربطها بشكل أفضل. يرجى إعطائي لحظة أو إرسال طلبك مرة أخرى بشكل أوضح.";
+    }
 }
 
 /**
