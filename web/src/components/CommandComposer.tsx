@@ -65,42 +65,51 @@ const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: 
   return (
     <motion.div
       className={`elite-logo-wrapper ${className}`}
-      initial={{ opacity: 0, scale: 0.8 }}
+      initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.8, ease: "easeOut" }}
+      transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
       style={{ width: size, height: size, position: 'relative' }}
     >
-      {/* Dynamic Glow Layers */}
+      {/* Refined Theme-Aware Glow */}
       <motion.div
-        className="elite-logo-glow"
+        className="elite-logo-glow-refined"
         animate={{
-          scale: [1, 1.15, 1],
-          opacity: [0.3, 0.6, 0.3],
+          opacity: [0.2, 0.4, 0.2],
+          scale: [0.95, 1.05, 0.95],
         }}
-        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* Glass Circle Base */}
-      <div className="elite-glass-circle">
-        <div className="elite-glass-content">
-          <motion.div
-            className="elite-logo-text"
-            animate={{ y: [0, -4, 0] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+      <div className="elite-glass-container-refined">
+        <svg
+          viewBox="0 0 100 100"
+          className="elite-svg-mark"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Minimalist Geometric Mark */}
+          <motion.path
+            d="M50 15L85 35V65L50 85L15 65V35L50 15Z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 2, ease: "easeInOut" }}
+            className="elite-mark-path"
+          />
+          <text
+            x="50%"
+            y="54%"
+            dominantBaseline="middle"
+            textAnchor="middle"
+            className="elite-mark-text"
+            fill="currentColor"
           >
             JOE
-          </motion.div>
-          <div className="elite-logo-subtext">XELITE</div>
-        </div>
-
-        {/* Orbiting Elements */}
-        <motion.div
-          className="elite-orbit-ring"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-        >
-          <div className="elite-orbit-dot" />
-        </motion.div>
+          </text>
+        </svg>
       </div>
     </motion.div>
   );
