@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-    Send, Sparkles, Bot, User,
+    Send, Sparkles, User,
     LayoutGrid, Columns, Maximize2
 } from 'lucide-react';
 
@@ -9,6 +9,7 @@ import {
 import { BuildPipeline } from './BuildPipeline';
 import { ReasoningPanel } from './ReasoningPanel';
 import { ProjectTree } from './ProjectTree';
+import { JoeLogo } from './JoeLogo';
 import type { FileNode } from './ProjectTree';
 import { DiffViewer } from './DiffViewer';
 import { LivePreview } from './LivePreview';
@@ -94,9 +95,7 @@ export const JoeStudio: React.FC = () => {
             <header className="border-b border-white/10 bg-black/40 backdrop-blur-xl sticky top-0 z-40">
                 <div className="max-w-[1800px] mx-auto px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 via-pink-500 to-cyan-500 flex items-center justify-center ${isThinking ? 'animate-pulse' : ''}`}>
-                            <Bot size={24} className="text-white" />
-                        </div>
+                        <JoeLogo size={40} className={isThinking ? 'animate-pulse' : ''} />
                         <div>
                             <h1 className="text-lg font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
                                 Joe Studio
@@ -181,9 +180,7 @@ export const JoeStudio: React.FC = () => {
                                             className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                                         >
                                             {msg.role === 'assistant' && (
-                                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-                                                    <Bot size={14} />
-                                                </div>
+                                                <JoeLogo size={32} className="flex-shrink-0" />
                                             )}
                                             <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.role === 'user'
                                                 ? 'bg-cyan-600/20 border border-cyan-500/30 text-cyan-100'

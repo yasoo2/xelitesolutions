@@ -1,8 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Cpu, Sparkles } from 'lucide-react';
+import { Send, User, Cpu, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAgent } from '../hooks/useAgent';
+import { JoeLogo } from './JoeLogo';
 import { AgentActivity } from './AgentActivity';
 import { FileActivityPanel } from './FileActivityPanel';
 
@@ -15,9 +16,7 @@ const MessageItem = React.memo(({ msg }: { msg: any }) => (
         className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
     >
         {msg.role !== 'user' && (
-            <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/50 flex-shrink-0">
-                <Bot size={16} className="text-cyan-400" />
-            </div>
+            <JoeLogo size={32} className="flex-shrink-0" />
         )}
 
         <div className={`max-w-[80%] rounded-xl p-3 text-sm ${msg.role === 'user'
