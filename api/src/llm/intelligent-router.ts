@@ -138,13 +138,13 @@ export const MODELS: Record<string, ModelConfig> = {
  */
 export async function advancedAnalyzeTask(userMessage: string, history?: any[]): Promise<TaskAnalysis> {
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
-    const length = userMessage.length;
-
-    // [REMOVED] Legacy Regex Fast Lane
-    // Fast Lane logic is now handled by Free Intelligence Optimizer in llm.ts
-    // This function returns control to the sophisticated analyzer.
-
     try {
+        // [OPTIMIZATION] If query is short, skip LLM-based analysis to save TBT (Time to Bot Talk)
+        if (userMessage.length < 120) {
+            console.info('[IntelligentRouter] Short message - using fast regex analysis');
+            return analyzeTask(userMessage);
+        }
+
         const analyst = hasGroq ? 'llama-3.1-8b-instant' : 'openai'; // Use Pollinations if no Groq
         const provider = hasGroq ? 'groq' : 'hack';
 
@@ -580,6 +580,7 @@ export async function routeToModel(
             return await callGroq(selectedModel.model, flatMessages, onPartial); // Groq is text-only
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
+            console.info('[IntelligentRouter] ⚡ EXPRESS PATH: Using OpenAI immediately.');
             throw new Error('UseLegacyOpenAIPath');
         }
     } catch (e: any) {
@@ -595,13 +596,16 @@ export async function routeToModel(
             if (p.name === 'OpenAI') continue;
 
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
-            const ans = await p.run();
+            // Set a strict timeout for fallbacks to prevent "hanging"
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
+            const ans = await Promise.race([p.run(), timeoutPromise]) as string;
+
             if (ans) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
                 return ans;
             }
         } catch (e: any) {
-            console.warn(`[IntelligentRouter] ${p.name} failed: ${e.message}`);
+            console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message}`);
             lastError = e.message;
         }
     }
