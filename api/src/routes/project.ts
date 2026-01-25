@@ -5,6 +5,13 @@ import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
+// DYNAMIC WORKSPACE ROOT
+// Default to process.cwd() or activeWorkspaceRoot env
+let activeWorkspaceRoot = process.env.activeWorkspaceRoot
+  ? path.resolve(String(process.env.activeWorkspaceRoot))
+  : path.resolve(process.cwd());
+
+// Helper to find valid root if needed (legacy logic)
 function findWorkspaceRootFrom(startDir: string): string {
   let dir = path.resolve(startDir);
   for (let i = 0; i < 10; i += 1) {
@@ -18,16 +25,134 @@ function findWorkspaceRootFrom(startDir: string): string {
   return path.resolve(startDir);
 }
 
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT
-  ? path.resolve(String(process.env.WORKSPACE_ROOT))
-  : findWorkspaceRootFrom(process.cwd());
+// Initialize
+if (!process.env.activeWorkspaceRoot) {
+  activeWorkspaceRoot = findWorkspaceRootFrom(process.cwd());
+}
+
+// ------------------------------------------------------------------
+// WORKSPACE MANAGEMENT ROUTES
+// ------------------------------------------------------------------
+
+// Get Current Root
+router.get('/root', authenticate as any, (req: Request, res: Response) => {
+  res.json({ path: activeWorkspaceRoot, name: path.basename(activeWorkspaceRoot) });
+});
+
+// Set Active Root (Switch Workspace)
+router.post('/root', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const { path: newPath } = req.body;
+    if (!newPath) return res.status(400).json({ error: 'Path required' });
+
+    const resolved = path.resolve(newPath);
+    try {
+      await fs.promises.access(resolved);
+    } catch {
+      return res.status(404).json({ error: 'Path does not exist' });
+    }
+
+    activeWorkspaceRoot = resolved;
+    res.json({ success: true, path: activeWorkspaceRoot, name: path.basename(activeWorkspaceRoot) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to switch workspace' });
+  }
+});
+
+// Clone GitHub Repo
+import { exec } from 'child_process';
+import util from 'util';
+const execAsync = util.promisify(exec);
+
+router.post('/git/clone', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const { repoUrl } = req.body;
+    if (!repoUrl) return res.status(400).json({ error: 'Repo URL required' });
+
+    // Extract repo name
+    const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'repo-' + Date.now();
+
+    // Clone into uploads/repos/<name>
+    // Just finding a safe place - usually uploads/repos is good
+    const baseDir = path.join(process.cwd(), 'uploads', 'repos');
+    await fs.promises.mkdir(baseDir, { recursive: true });
+
+    const targetDir = path.join(baseDir, repoName);
+
+    // Check if already exists
+    if (fs.existsSync(targetDir)) {
+      // Just switch to it if it exists
+      activeWorkspaceRoot = targetDir;
+      return res.json({ success: true, path: activeWorkspaceRoot, message: 'Repository already exists, switched to it.' });
+    }
+
+    // Perform clone
+    // Note: This relies on system git. 
+    // Ideally we pass token if needed but for public repos simple clone works.
+    // If auth needed, user handles prompt or we enhance later.
+    await execAsync(`git clone "${repoUrl}" "${targetDir}"`);
+
+    activeWorkspaceRoot = targetDir;
+    res.json({ success: true, path: activeWorkspaceRoot });
+  } catch (e: any) {
+    console.error('Clone failed:', e);
+    res.status(500).json({ error: 'Clone failed: ' + (e.message || String(e)) });
+  }
+});
+
+// ------------------------------------------------------------------
+
+// Updated Resolver to use dynamic activeWorkspaceRoot
+async function resolvePathInsideWorkspace(inputPath: string): Promise<string | null> {
+  const raw = String(inputPath || '').trim();
+  if (!raw) return null;
+
+  const workspaceReal =
+    (await fs.promises.realpath(activeWorkspaceRoot).catch(() => null)) || activeWorkspaceRoot;
+
+  // We treat the "workspace" as the root. 
+  // Code should be able to access files inside it.
+  const candidate = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(workspaceReal, raw);
+  const candidateReal =
+    (await fs.promises.realpath(candidate).catch(() => null)) || candidate;
+
+  // Security check: Must be inside active root
+  const rel = path.relative(workspaceReal, candidateReal);
+  const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return inside ? candidateReal : null;
+}
+
+// Override activeWorkspaceRoot for the rest of this file (legacy const removal)
+// The original code used const activeWorkspaceRoot. We replaced the definition above.
+// But we need to make sure the rest of the functions use `activeWorkspaceRoot`.
+// To do this cleanly with 'const' is hard.
+// Let's rely on the fact we replaced the initialization block. 
+// We should define a getter or just use the var.
+// BUT `activeWorkspaceRoot` is used below in graph/tree/search.
+// We must find-and-replace activeWorkspaceRoot -> activeWorkspaceRoot in subsequent tool calls
+// OR simply redefine activeWorkspaceRoot as a getter if possible? No, it's a const.
+// Wait, I am replacing the block where activeWorkspaceRoot was defined.
+// So I will just NOT define `const activeWorkspaceRoot`. 
+// But the rest of the file uses it.
+// Strategy: I will execute a global replace of activeWorkspaceRoot with activeWorkspaceRoot in a SEPARATE step 
+// if I can't do it here. 
+// Actually, I can't redefine a const. 
+// I will REPLACE the lines 7-23 with my new logic, AND I need to make sure `activeWorkspaceRoot` is used.
+// The easiest way is to define `const activeWorkspaceRoot = activeWorkspaceRoot` BUT that fixes it at init.
+// So I must replace all usages.
+// Let's do this: 
+// 1. Define `let activeWorkspaceRoot`
+// 2. Define a getter? No.
+// 3. I will make a HUGE replace to swap activeWorkspaceRoot usage to activeWorkspaceRoot. 
+// Actually, let's keep it simple.
+
 
 async function resolvePathInsideWorkspace(inputPath: string): Promise<string | null> {
   const raw = String(inputPath || '').trim();
   if (!raw) return null;
 
   const workspaceReal =
-    (await fs.promises.realpath(WORKSPACE_ROOT).catch(() => null)) || WORKSPACE_ROOT;
+    (await fs.promises.realpath(activeWorkspaceRoot).catch(() => null)) || activeWorkspaceRoot;
 
   const candidate = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(workspaceReal, raw);
   const candidateReal =
@@ -98,8 +223,8 @@ function getImports(content: string): string[] {
 
 router.get('/graph', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const cwdRaw = req.query.path ? String(req.query.path) : WORKSPACE_ROOT;
-    const cwd = (await resolvePathInsideWorkspace(cwdRaw)) || WORKSPACE_ROOT;
+    const cwdRaw = req.query.path ? String(req.query.path) : activeWorkspaceRoot;
+    const cwd = (await resolvePathInsideWorkspace(cwdRaw)) || activeWorkspaceRoot;
 
     try {
       await fs.promises.access(cwd);
@@ -190,7 +315,7 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
 // File Tree Endpoint (Lazy)
 router.get('/tree', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const rootPathRaw = req.query.path ? String(req.query.path) : WORKSPACE_ROOT;
+    const rootPathRaw = req.query.path ? String(req.query.path) : activeWorkspaceRoot;
     const rootPath = await resolvePathInsideWorkspace(rootPathRaw);
     if (!rootPath) return res.status(400).json({ error: 'Invalid path' });
 
@@ -245,7 +370,7 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
 
     // Use grep to search recursively
     // Limit 100 results, max depth 5 to prevent overload, ignore hidden
-    const cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${WORKSPACE_ROOT}" --exclude-dir={node_modules,.git,dist,build} | head -n 100`;
+    const cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${activeWorkspaceRoot}" --exclude-dir={node_modules,.git,dist,build} | head -n 100`;
 
     const { stdout } = await execAsync(cmd).catch(() => ({ stdout: '' }));
 
@@ -346,7 +471,7 @@ router.post('/folder/create', authenticate as any, async (req: Request, res: Res
     // However, resolvePathInsideWorkspace uses realpath on the candidate which fails if it doesn't exist.
 
     // We need a looser path resolver for creation
-    const workspaceReal = await fs.promises.realpath(WORKSPACE_ROOT).catch(() => WORKSPACE_ROOT);
+    const workspaceReal = await fs.promises.realpath(activeWorkspaceRoot).catch(() => activeWorkspaceRoot);
     const candidate = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(workspaceReal, rawPath);
     const rel = path.relative(workspaceReal, candidate);
     const isSafe = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -366,7 +491,7 @@ router.post('/content', authenticate as any, async (req: Request, res: Response)
     const { path: filePathRaw, content } = req.body;
 
     // Allow creating new files: check path safety without requiring existence
-    const workspaceReal = await fs.promises.realpath(WORKSPACE_ROOT).catch(() => WORKSPACE_ROOT);
+    const workspaceReal = await fs.promises.realpath(activeWorkspaceRoot).catch(() => activeWorkspaceRoot);
     const filePath = path.isAbsolute(filePathRaw) ? path.resolve(filePathRaw) : path.resolve(workspaceReal, filePathRaw);
     const rel = path.relative(workspaceReal, filePath);
     const isSafe = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));

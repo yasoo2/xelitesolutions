@@ -551,40 +551,56 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                     >
                         <div className="elite-explorer-header">
-                            <div className="elite-mode-switcher">
-                                <button
-                                    onClick={() => { setViewMode('local'); loadRoot(); }}
-                                    className={`elite-mode-btn ${viewMode === 'local' ? 'active' : ''}`}
-                                    title="Local System"
-                                >
-                                    <HardDrive size={14} />
-                                </button>
-                                <button
-                                    onClick={() => { setViewMode('github'); fetchGitHubRepos(); }}
-                                    className={`elite-mode-btn ${viewMode === 'github' ? 'active' : ''}`}
-                                    title="GitHub Repos"
-                                >
-                                    <Github size={14} />
-                                </button>
-                            </div>
-                            <span className="elite-mode-label">{viewMode === 'local' ? 'Local' : 'GitHub'}</span>
-                            <div className="elite-header-actions">
-                                {viewMode === 'github' && (
-                                    <button
-                                        onClick={() => {
-                                            const token = prompt('Enter your GitHub Personal Access Token:');
-                                            if (token) {
-                                                localStorage.setItem('GITHUB_TOKEN', token);
-                                                alert('GitHub token saved successfully!');
-                                                fetchGitHubRepos();
+                            <div className="elite-workspace-selector" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <select
+                                    className="elite-select"
+                                    value="current"
+                                    onChange={(e) => {
+                                        if (e.target.value === 'folder') {
+                                            const path = prompt('Enter absolute path to folder:');
+                                            if (path) {
+                                                fetch(`${API}/project/root`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                                                    body: JSON.stringify({ path })
+                                                }).then(res => {
+                                                    if (res.ok) {
+                                                        loadRoot();
+                                                        alert('Workspace switched!');
+                                                    } else {
+                                                        alert('Failed to switch workspace. Path may not exist.');
+                                                    }
+                                                });
                                             }
-                                        }}
-                                        className="elite-icon-btn"
-                                        title="GitHub Settings"
-                                    >
-                                        <Settings size={14} />
-                                    </button>
-                                )}
+                                        } else if (e.target.value === 'clone') {
+                                            const repo = prompt('Enter GitHub Repository URL:');
+                                            if (repo) {
+                                                alert('Cloning repository... This may take a while.');
+                                                fetch(`${API}/project/git/clone`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                                                    body: JSON.stringify({ repoUrl: repo })
+                                                }).then(async res => {
+                                                    if (res.ok) {
+                                                        await loadRoot();
+                                                        alert('Repository cloned and opened!');
+                                                    } else {
+                                                        const err = await res.json();
+                                                        alert('Clone failed: ' + err.error);
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    }}
+                                >
+                                    <option value="current">📂 Current Project</option>
+                                    <option value="system">💻 Local System</option>
+                                    <option value="folder">🖥️ Open Folder...</option>
+                                    <option value="clone">🐙 Clone Repository...</option>
+                                </select>
+                            </div>
+
+                            <div className="elite-header-actions">
                                 <button onClick={loadRoot} className="elite-icon-btn" title="Refresh">
                                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                                 </button>
@@ -594,24 +610,7 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                             </div>
                         </div>
 
-                        {viewMode === 'github' && (
-                            <motion.div
-                                className="elite-repo-selector"
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                            >
-                                <select
-                                    className="elite-select"
-                                    onChange={(e) => { setActiveRepo(e.target.value); loadRoot(); }}
-                                    value={activeRepo || ''}
-                                >
-                                    <option value="">Select Repository</option>
-                                    {repos.map(r => (
-                                        <option key={r.url} value={r.name}>{r.name}</option>
-                                    ))}
-                                </select>
-                            </motion.div>
-                        )}
+                        {/* Repo Selector removed as it is now integrated in the Workspace flow */}
 
                         <div className="elite-search-container">
                             <div className="elite-search-input">
