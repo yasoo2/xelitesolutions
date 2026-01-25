@@ -911,7 +911,7 @@ export default function Joe() {
                   }}
                 >
                   {isNarrow || agentSidebarOpen ? (
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>جلسات الوكيل</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>مستكشف النظام</div>
                   ) : null}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button
@@ -936,40 +936,12 @@ export default function Joe() {
                     >
                       {isNarrow ? (agentSessionsOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />) : agentSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
                     </button>
-                    {isNarrow || agentSidebarOpen ? (
-                      <button
-                        onClick={() => setAgentSelected(null)}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
-                      >
-                        جلسة جديدة
-                      </button>
-                    ) : null}
+                    </button>
                   </div>
                 </div>
                 {(isNarrow ? agentSessionsOpen : agentSidebarOpen) ? (
                   <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
-                    {agentSessions.length === 0 ? (
-                      <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 13 }}>لا توجد جلسات بعد</div>
-                    ) : (
-                      agentSessions.map((s) => (
-                        <SessionItem
-                          key={s.id}
-                          session={s}
-                          isActive={agentSelected === s.id}
-                          onSelect={() => {
-                            setAgentSelected(s.id);
-                            if (isNarrow) setAgentSessionsOpen(false);
-                          }}
-                          onDelete={() => {
-                            if (!confirm('هل أنت متأكد من حذف هذه الجلسة؟')) return;
-                            deleteSession(s.id);
-                            if (agentSelected === s.id) setAgentSelected(null);
-                          }}
-                          onPin={() => toggleAgentPin(s.id, !!s.isPinned)}
-                          onShare={() => shareSession(s.id)}
-                        />
-                      ))
-                    )}
+                    <FileExplorer />
                   </div>
                 ) : null}
               </div>
@@ -1064,192 +1036,192 @@ export default function Joe() {
               </div>
             </div>
           )}
-          {mode === 'chat' && (
-            <>
-              <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
-                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
-                      {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
-                      <CommandComposer
-                        sessionId={selected || undefined}
-                        onSessionCreated={async (id) => {
-                          await loadAllSessions();
-                          setSelected(id);
-                        }}
-                      />
-                    </div>
+        {mode === 'chat' && (
+          <>
+            <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   </div>
                 </div>
-                {(showFiles) ? (
-                  <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-                    <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
+                    {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
+                    <CommandComposer
+                      sessionId={selected || undefined}
+                      onSessionCreated={async (id) => {
+                        await loadAllSessions();
+                        setSelected(id);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+              {(showFiles) ? (
+                <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+                  <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
 
-                        {showFiles ? (
-                          <button
-                            onClick={() => setRightPanelTab('files')}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                          >
-                            <Folder size={14} /> {t('tools.file_read', 'Files')}
-                          </button>
-                        ) : null}
-
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-
+                      {showFiles ? (
                         <button
-                          onClick={() => setShowFiles(false)}
-                          style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                          onClick={() => setRightPanelTab('files')}
+                          style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                         >
-                          {t('close', 'Hide')}
+                          <Folder size={14} /> {t('tools.file_read', 'Files')}
                         </button>
-                      </div>
-                    </div>
-
-                    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                      {rightPanelTab === 'files' && showFiles ? (
-                        <div style={{ height: '100%', overflow: 'auto' }}>
-                          <FileExplorer />
-                        </div>
                       ) : null}
 
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
 
-
-
+                      <button
+                        onClick={() => setShowFiles(false)}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        {t('close', 'Hide')}
+                      </button>
                     </div>
                   </div>
-                ) : null}
-              </div>
-            </>
-          )}
-        </div>
+
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    {rightPanelTab === 'files' && showFiles ? (
+                      <div style={{ height: '100%', overflow: 'auto' }}>
+                        <FileExplorer />
+                      </div>
+                    ) : null}
+
+
+
+
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </>
+        )}
+    </div>
       </main >
 
-      <TaskQueue
-        tasks={queuedTasks}
-        onRemove={removeTask}
-        onExecute={startTask}
-      />
+    <TaskQueue
+      tasks={queuedTasks}
+      onRemove={removeTask}
+      onExecute={startTask}
+    />
 
-      {/* Package Manager Modal */}
-      {
-        showPackages && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-              <button
-                onClick={() => setShowPackages(false)}
-                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-              >
-                <PanelLeftClose size={20} />
-              </button>
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-                <PackageManagerLazy />
-              </Suspense>
-            </div>
-          </div>
-        )
-      }
+  {/* Package Manager Modal */ }
+  {
+    showPackages && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+          <button
+            onClick={() => setShowPackages(false)}
+            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+          >
+            <PanelLeftClose size={20} />
+          </button>
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+            <PackageManagerLazy />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
 
-      {/* Git Modal */}
-      {
-        showGit && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-              <button
-                onClick={() => setShowGit(false)}
-                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-              >
-                <PanelLeftClose size={20} />
-              </button>
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-                <GitPanelLazy />
-              </Suspense>
-            </div>
-          </div>
-        )
-      }
+  {/* Git Modal */ }
+  {
+    showGit && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+          <button
+            onClick={() => setShowGit(false)}
+            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+          >
+            <PanelLeftClose size={20} />
+          </button>
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+            <GitPanelLazy />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
 
-      {/* Social Modal */}
-      {
-        showSocial && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-              <button
-                onClick={() => setShowSocial(false)}
-                className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
-              >
-                <PanelLeftClose size={20} />
-              </button>
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-                <SocialPanelLazy />
-              </Suspense>
-            </div>
-          </div>
-        )
-      }
+  {/* Social Modal */ }
+  {
+    showSocial && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+          <button
+            onClick={() => setShowSocial(false)}
+            className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
+          >
+            <PanelLeftClose size={20} />
+          </button>
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+            <SocialPanelLazy />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
 
-      {/* Art Modal */}
-      {
-        showArt && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-              <button
-                onClick={() => setShowArt(false)}
-                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-              >
-                <PanelLeftClose size={20} />
-              </button>
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-                <ArtStudioLazy />
-              </Suspense>
-            </div>
-          </div>
-        )
-      }
+  {/* Art Modal */ }
+  {
+    showArt && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+          <button
+            onClick={() => setShowArt(false)}
+            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+          >
+            <PanelLeftClose size={20} />
+          </button>
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+            <ArtStudioLazy />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
 
-      {/* DB Modal */}
-      {
-        showDB && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-              <button
-                onClick={() => setShowDB(false)}
-                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-              >
-                <PanelLeftClose size={20} />
-              </button>
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-                <DatabasePanelLazy />
-              </Suspense>
-            </div>
-          </div>
-        )
-      }
+  {/* DB Modal */ }
+  {
+    showDB && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+          <button
+            onClick={() => setShowDB(false)}
+            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+          >
+            <PanelLeftClose size={20} />
+          </button>
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+            <DatabasePanelLazy />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
 
-      {/* Actions Modal */}
-      {
-        showActions && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-              <button
-                onClick={() => setShowActions(false)}
-                className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-              >
-                <PanelLeftClose size={20} />
-              </button>
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-                <ActionsPanelLazy />
-              </Suspense>
-            </div>
-          </div>
-        )
-      }
+  {/* Actions Modal */ }
+  {
+    showActions && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+          <button
+            onClick={() => setShowActions(false)}
+            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+          >
+            <PanelLeftClose size={20} />
+          </button>
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+            <ActionsPanelLazy />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
     </div >
   );
 }

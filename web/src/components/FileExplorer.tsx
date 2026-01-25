@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight, ChevronDown, Folder, File, RefreshCw, FileText, Code, Image, Music, Video, Database, Package, Save, Loader2, X, Search, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
+import { GitBranch, Github, HardDrive } from 'lucide-react';
 
 interface FileNode {
     name: string;
@@ -120,23 +121,37 @@ const FileTreeItem = ({
 };
 
 export default function FileExplorer({ sessionId }: FileExplorerProps) {
-    const [tree, setTree] = useState<FileNode[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [expandedByPath, setExpandedByPath] = useState<Record<string, boolean>>({});
-    const [treeCollapsed, setTreeCollapsed] = useState(false);
-    const [query, setQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-    const [isSearching, setIsSearching] = useState(false);
+    const [viewMode, setViewMode] = useState<'local' | 'github'>('local');
+    const [repos, setRepos] = useState<any[]>([]);
+    const [activeRepo, setActiveRepo] = useState<string | null>(null);
 
-    const [tabs, setTabs] = useState<OpenTab[]>([]);
-    const [activePath, setActivePath] = useState<string | null>(null);
-    const [savingPath, setSavingPath] = useState<string | null>(null);
-    const [savedPath, setSavedPath] = useState<string | null>(null);
-    const saveFlashTimerRef = useRef<number | null>(null);
+    const fetchGitHubRepos = async () => {
+        const token = localStorage.getItem('GITHUB_TOKEN');
+        if (!token) return;
+        try {
+            const res = await fetch(`${API}/tools/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                body: JSON.stringify({
+                    tool: 'github_repo_manager',
+                    input: { action: 'list', token }
+                })
+            });
+            const data = await res.json();
+            if (data.ok) setRepos(data.output.repos);
+        } catch { }
+    };
 
     const fetchTree = async (path?: string) => {
         const token = localStorage.getItem('token');
         if (!token) return { tree: [] };
+
+        if (viewMode === 'github' && activeRepo) {
+            // Enhanced logic for GitHub tree would go here
+            // For now, let's keep it simple as a placeholder or use a dedicated tool
+            return { tree: [] };
+        }
+
         try {
             const url = `${API}/project/tree` + (path ? `?path=${encodeURIComponent(path)}` : '');
             const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -279,12 +294,44 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                 <div style={{ width: 260, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                     {/* Header */}
                     <div className="flex font-bold text-sm p-2 items-center justify-between border-b border-white/5">
-                        <div className="flex items-center gap-2"><Folder size={14} /> Workspace</div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
+                                <button
+                                    onClick={() => { setViewMode('local'); loadRoot(); }}
+                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'local' ? 'bg-white/10 text-white' : 'text-white/30 hover:text-white/60'}`}
+                                    title="Local System"
+                                >
+                                    <HardDrive size={14} />
+                                </button>
+                                <button
+                                    onClick={() => { setViewMode('github'); fetchGitHubRepos(); }}
+                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'github' ? 'bg-white/10 text-white' : 'text-white/30 hover:text-white/60'}`}
+                                    title="GitHub Repos"
+                                >
+                                    <Github size={14} />
+                                </button>
+                            </div>
+                            <span className="text-xs">{viewMode === 'local' ? 'Local' : 'GitHub'}</span>
+                        </div>
                         <div className="flex gap-1">
-                            <button onClick={() => setTreeCollapsed(true)} className="p-1 hover:bg-white/10 rounded"><PanelLeftClose size={14} /></button>
                             <button onClick={loadRoot} className="p-1 hover:bg-white/10 rounded"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
                         </div>
                     </div>
+
+                    {viewMode === 'github' && (
+                        <div className="p-2 border-b border-white/5 bg-white/5">
+                            <select
+                                className="w-full bg-black/40 border border-white/10 rounded text-[11px] p-1 text-white outline-none focus:border-blue-500/50"
+                                onChange={(e) => { setActiveRepo(e.target.value); loadRoot(); }}
+                                value={activeRepo || ''}
+                            >
+                                <option value="">Select Repository</option>
+                                {repos.map(r => (
+                                    <option key={r.url} value={r.name}>{r.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {/* Smart Search */}
                     <div className="p-2 border-b border-white/5 bg-white/5">
