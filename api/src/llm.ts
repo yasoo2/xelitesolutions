@@ -2,6 +2,10 @@ import OpenAI from 'openai';
 import { tools } from './tools/registry';
 import path from 'path';
 import { freeIntelligenceOptimizer, generateSmartResponse } from './llm/free-intelligence-optimizer';
+import { GroqProvider } from './llm/providers/groq';
+
+const groq = new GroqProvider();
+const GROQ_AVAILABLE = !!process.env.GROQ_API_KEY;
 
 // Enterprise Systems (Global Requires to avoid ReferenceErrors across scopes)
 const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = require('./llm/intelligent-router');
@@ -715,9 +719,14 @@ export async function planNextStep(
     }
 
     // Select best model (Use optimizer suggestion if available)
-    const selectedModel = (optimization as any).suggestedModel === 'fast'
+    let selectedModel = (optimization as any).suggestedModel === 'fast'
       ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' }
       : (analysis.complexity === 'simple' ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' } : selectBestModel(analysis));
+
+    // [TURBO] Override for fast mode if Groq is available
+    if ((optimization as any).suggestedModel === 'fast' && GROQ_AVAILABLE) {
+      selectedModel = { name: 'Groq Llama 3 8B', model: 'llama3-8b-8192' };
+    }
 
     console.info(`[Auto Enterprise] Task: ${analysis.type} | Complexity: ${analysis.complexity} | Model: ${selectedModel.name}`);
 
@@ -841,7 +850,21 @@ export async function planNextStep(
         ...messages
       ];
 
-      const response = await routeToModel(msgs, analysis, undefined, options?.onThought);
+      let response: string | null = null;
+
+      // [TURBO] Groq Direct Path
+      if (selectedModel.name.includes('Groq') && GROQ_AVAILABLE) {
+        try {
+          response = await groq.chatComplete(msgs, selectedModel.model);
+        } catch (e) {
+          console.error('[Groq] Failed, falling back to router:', e);
+        }
+      }
+
+      if (!response) {
+        response = await routeToModel(msgs, analysis, undefined, options?.onThought);
+      }
+
       console.info(`[Auto Enterprise] ✅ Got response from intelligent router (${response?.length || 0} chars)`);
 
       // Cache good responses for future use

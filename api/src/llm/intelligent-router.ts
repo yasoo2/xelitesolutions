@@ -152,6 +152,7 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[], 
         let provider = 'hack'; // Default to Pollinations
 
         if (hasGroq) {
+            console.info('[IntelligentRouter] ⚡ Using Groq (Llama 3) for instant analysis');
             analyst = 'llama-3.1-8b-instant';
             provider = 'groq';
         } else if (hasOpenAI) {
