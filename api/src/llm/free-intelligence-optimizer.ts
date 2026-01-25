@@ -408,14 +408,7 @@ class FreeIntelligenceOptimizer {
         return technicalKeywords.some(kw => text.includes(kw));
     }
 
-    // === TURBO RAG V2 (Chunk-based + Semantic) ===
     public getRealKnowledge(query: string): string | null {
-        // [INTENT GUARD] If user wants an ACTION (code/fix/build) or technical work, force LLM.
-        const lower = query.toLowerCase();
-        if (this.isHighStakesAction(lower) || this.isTechnical(lower)) {
-            return null; // Force Planner
-        }
-
         if (this.chunkCache.length === 0) return null;
 
         const expandedQuery = this.expandQuery(query);
@@ -475,17 +468,19 @@ class FreeIntelligenceOptimizer {
         const cleanText = userText.toLowerCase().trim();
         const userName = 'يونس'; // Hardcoded for this session
 
-        // 0. Check for Technical/Action Intent (BYPASS RAG/CACHE)
+        const realKnowledge = this.getRealKnowledge(cleanText);
+
+        // 0. Check for Technical/Action Intent (Force LLM but with RAG Context)
         if (this.isHighStakesAction(cleanText) || this.isTechnical(cleanText)) {
             return {
                 shouldUseCache: false,
+                cachedResponse: realKnowledge || undefined, // Pass context if found
                 suggestedModel: 'smart',
                 skipPlanner: false
             };
         }
 
-        // 1. Check Real Knowledge (RAG) - Only for descriptive info
-        const realKnowledge = this.getRealKnowledge(cleanText);
+        // 1. Check Smart Cache/RAG for simple Information requests
         if (realKnowledge) {
             return {
                 shouldUseCache: true,

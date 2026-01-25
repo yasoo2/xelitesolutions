@@ -138,6 +138,8 @@ export const MODELS: Record<string, ModelConfig> = {
  */
 export async function advancedAnalyzeTask(userMessage: string, history?: any[]): Promise<TaskAnalysis> {
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
+    const hasOpenAI = !!(process.env.OPENAI_API_KEY?.trim());
+
     try {
         // [OPTIMIZATION] If query is short, skip LLM-based analysis to save TBT (Time to Bot Talk)
         if (userMessage.length < 120) {
@@ -145,8 +147,16 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[]):
             return analyzeTask(userMessage);
         }
 
-        const analyst = hasGroq ? 'llama-3.1-8b-instant' : 'openai'; // Use Pollinations if no Groq
-        const provider = hasGroq ? 'groq' : 'hack';
+        let analyst = 'openai';
+        let provider = 'hack'; // Default to Pollinations
+
+        if (hasGroq) {
+            analyst = 'llama-3.1-8b-instant';
+            provider = 'groq';
+        } else if (hasOpenAI) {
+            analyst = 'gpt-4o-mini'; // Faster/Cheaper for analysis
+            provider = 'openai';
+        }
 
         const systemPrompt = `Analyze the following user request and return a JSON object.
 Be extremely strict with complexity:
@@ -172,6 +182,9 @@ Return exactly this JSON structure:
         let responseText = "";
         if (provider === 'groq') {
             responseText = await callGroq(analyst, [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }]);
+        } else if (provider === 'openai') {
+            const llm = require('../llm');
+            responseText = await llm.callLLM(userMessage, [{ role: 'system', content: systemPrompt }], 'system_analyst');
         } else {
             if (!hack) {
                 // Use require to bypass TS1323 and handle circular dependency

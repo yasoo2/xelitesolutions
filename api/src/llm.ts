@@ -683,14 +683,16 @@ export async function planNextStep(
     }
     console.info('[FREE OPTIMIZER] ❌ No instant pattern match - proceeding with API call');
 
-    // 2. Optimize request for better performance
+    // 2. Optimize request for better performance & context
     const optimization = await freeIntelligenceOptimizer.optimizeRequest(userText, context);
-    if (optimization.shouldUseCache) {
+    if (optimization.shouldUseCache && optimization.cachedResponse) {
       console.info('[FREE OPTIMIZER] ✅ 💾 CACHE HIT! Returning cached response');
-      // If we have a full cached response object logic (future), use it.
-      // For now, optimizeRequest returns similar info to generateSmartResponse but async/deeper.
+      return { name: 'echo', input: { text: optimization.cachedResponse } };
     }
     console.info(`[FREE OPTIMIZER] 🎯 Model selected: ${optimization.suggestedModel}`);
+
+    // Context from RAG to be injected into the LLM later if needed
+    const ragContext = optimization.cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${optimization.cachedResponse}` : '';
 
     // === Pattern Detection ===
 
@@ -795,7 +797,7 @@ export async function planNextStep(
       // 5. General chat/questions - Use intelligent router with full persona
       console.info(`[Auto Enterprise] → Intelligent Chat via ${selectedModel.name}`);
       const msgs = [
-        { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) },
+        { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) + ragContext },
         ...messages
       ];
 
