@@ -7,7 +7,7 @@ interface NeuralNerveProps {
     className?: string;
 }
 
-export const NeuralNerve: React.FC<NeuralNerveProps> = ({ status, intensity = 0.5, className = '' }) => {
+export const NeuralNerve = React.memo<NeuralNerveProps>(({ status, intensity = 0.5, className = '' }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
@@ -87,4 +87,4 @@ export const NeuralNerve: React.FC<NeuralNerveProps> = ({ status, intensity = 0.
             className={`w-full h-full ${className}`}
         />
     );
-};
+}); // End memo

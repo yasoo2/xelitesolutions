@@ -117,57 +117,26 @@ export const JoeStudio: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Neural Status Deck */}
-                    <div className="flex-1 max-w-2xl mx-8 flex items-center justify-center">
-                        <AnimatePresence mode="wait">
-                            {isThinking && thoughts.length > 0 ? (
-                                <motion.div
-                                    key="active"
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: 10 }}
-                                    className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-full px-6 py-2 backdrop-blur-md shadow-lg"
-                                >
-                                    <div className="relative w-3 h-3">
-                                        <div className="absolute inset-0 bg-purple-500 rounded-full animate-ping opacity-75" />
-                                        <div className="absolute inset-0 bg-purple-500 rounded-full" />
-                                    </div>
-                                    <span className="text-xs font-mono text-purple-300">
-                                        {thoughts[thoughts.length - 1].content}
-                                    </span>
-                                </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="idle"
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="h-8 flex items-center justify-center"
-                                >
-                                    <div className="w-64 h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                    {/* Status Indicator (Sole Source of Truth) */}
+                    <div className="flex-1 flex justify-center">
+                        {/* Centered Status (Optional, or just keep spacer) */}
+                        <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full border ${status === 'thinking' ? 'border-yellow-500/30 bg-yellow-500/10' :
+                                status === 'executing' ? 'border-cyan-500/30 bg-cyan-500/10' :
+                                    'border-white/5 bg-white/5'
+                            } transition-all duration-500`}>
+                            <div className={`w-2 h-2 rounded-full ${status === 'idle' ? 'bg-gray-500' :
+                                    status === 'thinking' ? 'bg-yellow-500 animate-pulse decoration-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]' :
+                                        status === 'executing' ? 'bg-cyan-500 animate-pulse decoration-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' :
+                                            'bg-red-500'
+                                }`} />
+                            <span className="text-[10px] font-mono tracking-[0.2em] text-gray-400 uppercase">
+                                {status === 'idle' ? 'SYSTEM_READY' : status}
+                            </span>
+                        </div>
                     </div>
 
                     {/* Right Controls */}
-                    <div className="flex items-center gap-6">
-                        {/* Status Pod */}
-                        <div className="hidden md:flex items-center gap-3 bg-white/5 rounded-full px-4 py-1.5 border border-white/5">
-                            <span className={`w-2 h-2 rounded-full ${status === 'idle' ? 'bg-gray-500' :
-                                status === 'thinking' ? 'bg-yellow-500 animate-pulse' :
-                                    status === 'executing' ? 'bg-cyan-500 animate-pulse' :
-                                        'bg-red-500'
-                                }`} />
-                            <span className="text-xs font-mono text-gray-300 uppercase tracking-wider">
-                                {status === 'idle' ? 'STANDBY' :
-                                    status === 'thinking' ? 'PROCESSING' :
-                                        status === 'executing' ? 'EXECUTING' :
-                                            'SYSTEM FAIL'}
-                            </span>
-                        </div>
-
-                        {/* Layout Switcher */}
+                    <div className="flex items-center gap-4">
                         <div className="flex items-center gap-1 bg-black/40 rounded-lg p-1 border border-white/5">
                             <button
                                 onClick={() => setLayoutMode('full')}
