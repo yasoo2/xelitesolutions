@@ -20,7 +20,7 @@ type CachedResponse = {
     source: 'manual' | 'learned'; // NEW: Track origin
 };
 
-type OptimizationResult = {
+export type OptimizationResult = {
     shouldUseCache: boolean;
     cachedResponse?: string;
     suggestedModel: 'fast' | 'smart';
@@ -136,7 +136,7 @@ class FreeIntelligenceOptimizer {
                 }
             }
         }
-        return [...new Set(keywords)].slice(0, 10); // Limit to 10 keywords per chunk
+        return Array.from(new Set(keywords)).slice(0, 10); // Limit to 10 keywords per chunk
     }
 
     /**
@@ -367,7 +367,7 @@ class FreeIntelligenceOptimizer {
             }
         }
 
-        return [...expanded];
+        return Array.from(expanded);
     }
 
     /**
@@ -501,7 +501,7 @@ class FreeIntelligenceOptimizer {
 
         // 1. Check Smart Cache (Exact & Fuzzy)
         // Fuzzy: Check if any trigger word exists in the text for high-importance patterns
-        for (const [trigger, res] of this.cache.entries()) {
+        for (const [trigger, res] of Array.from(this.cache.entries())) {
             if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
                 res.hits++;
                 res.lastUsed = Date.now();

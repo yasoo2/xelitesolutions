@@ -533,14 +533,14 @@ export async function planNextStep(
 
   onProgress?.('🧩 ربط الطلب بالمعمارية المناسبة... (Pattern Matching)');
 
-  const analysis = optimization.analysis || (optimization.skipPlanner ? { type: 'chat', complexity: 'simple', language: 'ar' } : await advancedAnalyzeTask(
+  const analysis = (optimization as any).analysis || ((optimization as any).skipPlanner ? { type: 'chat', complexity: 'simple', language: 'ar' } : await advancedAnalyzeTask(
     typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
     messages,
     onProgress
   ));
 
-  if (optimization.skipPlanner) {
-    const ragContext = optimization.cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${optimization.cachedResponse}` : '';
+  if ((optimization as any).skipPlanner) {
+    const ragContext = (optimization as any).cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${(optimization as any).cachedResponse}` : '';
     console.info('[Auto Enterprise] ⚡ Optimizer: Skipping heavy planner for simple conversational query.');
     const msgs = [
       { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) + ragContext },
@@ -715,7 +715,7 @@ export async function planNextStep(
     }
 
     // Select best model (Use optimizer suggestion if available)
-    const selectedModel = optimization.suggestedModel === 'fast'
+    const selectedModel = (optimization as any).suggestedModel === 'fast'
       ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' }
       : (analysis.complexity === 'simple' ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' } : selectBestModel(analysis));
 
