@@ -815,7 +815,7 @@ export default function Joe() {
           className="sidebar-toggle-btn-floating"
           style={{
             position: 'fixed',
-            top: '120px', // Further lowered per user request
+            top: '100px', // Adjusted to 100px per user "up a little" request
             insetInlineStart: '20px',
             zIndex: 2147483647, /* MAX INT */
             display: 'flex',
