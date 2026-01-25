@@ -395,10 +395,24 @@ class FreeIntelligenceOptimizer {
         return actionVerbs.some(v => text.includes(v)); // Simple contains check for safety
     }
 
+    /**
+     * NEW: Detect strictly technical queries
+     */
+    private isTechnical(text: string): boolean {
+        const technicalKeywords = [
+            'docker', 'aws', 'kubernetes', 'k8s', 'api', 'database', 'sql', 'mongo',
+            'react', 'nextjs', 'tailwind', 'css', 'html', 'javascript', 'typescript',
+            'npm', 'pnpm', 'yarn', 'git', 'github', 'commit', 'deploy', 'pipeline',
+            'ci/cd', 'test', 'jest', 'eslint', 'prettier'
+        ];
+        return technicalKeywords.some(kw => text.includes(kw));
+    }
+
     // === TURBO RAG V2 (Chunk-based + Semantic) ===
     public getRealKnowledge(query: string): string | null {
-        // [INTENT GUARD] If user wants to CREATE/WRITE, do NOT use RAG.
-        if (this.isHighStakesAction(query.toLowerCase())) {
+        // [INTENT GUARD] If user wants an ACTION (code/fix/build) or technical work, force LLM.
+        const lower = query.toLowerCase();
+        if (this.isHighStakesAction(lower) || this.isTechnical(lower)) {
             return null; // Force Planner
         }
 
@@ -461,8 +475,16 @@ class FreeIntelligenceOptimizer {
         const cleanText = userText.toLowerCase().trim();
         const userName = 'يونس'; // Hardcoded for this session
 
-        // 0. Check Real Knowledge (RAG) - Priority over static strings
-        // ENHANCEMENT: Allow RAG even with attachments if query is purely descriptive
+        // 0. Check for Technical/Action Intent (BYPASS RAG/CACHE)
+        if (this.isHighStakesAction(cleanText) || this.isTechnical(cleanText)) {
+            return {
+                shouldUseCache: false,
+                suggestedModel: 'smart',
+                skipPlanner: false
+            };
+        }
+
+        // 1. Check Real Knowledge (RAG) - Only for descriptive info
         const realKnowledge = this.getRealKnowledge(cleanText);
         if (realKnowledge) {
             return {

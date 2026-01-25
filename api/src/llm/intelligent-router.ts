@@ -348,9 +348,13 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
         return MODELS['pollinations'];
     }
 
-    // Fallback found: Use Pollinations if Groq key is missing
+    // Fallback found: Use OpenAI if available, then Pollinations
     if (!hasGroq) {
-        console.info('[IntelligentRouter] Groq key missing. Falling back to Pollinations (OpenAI Proxy).');
+        if (availableKeys?.openai || process.env.OPENAI_API_KEY) {
+            console.info('[IntelligentRouter] Groq key missing. Using available OpenAI key.');
+            return MODELS['gpt-4o'];
+        }
+        console.info('[IntelligentRouter] Groq and OpenAI keys missing. Falling back to Pollinations.');
         return MODELS['pollinations'];
     }
 
@@ -576,13 +580,7 @@ export async function routeToModel(
             return await callGroq(selectedModel.model, flatMessages, onPartial); // Groq is text-only
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
-            throw new Error('UseLegacyOpenAIPath'); // Handled by existing code logic? 
-            // Actually, intelligent-router calls `llm.ts`? No, it calls providers directly.
-            // Wait, `routeToModel` typically returns string.
-
-            // The original code passed `hack` for Pollinations.
-            // We need to implement OpenAI call here if we want it self-contained, 
-            // OR assume `llm.ts` passed it.
+            throw new Error('UseLegacyOpenAIPath');
         }
     } catch (e: any) {
         if (e.message !== 'UseLegacyOpenAIPath') {
