@@ -1767,7 +1767,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         let result; try { result = await executeTool(initialPlan.name, callInput); } catch (e) { result = { ok: false, output: String(e) }; }
-        if (String(initialPlan.name) === 'central_answer' && result.ok && result.output) {
+        if ((String(initialPlan.name) === 'central_answer' || String(initialPlan.name) === 'echo') && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
             // Check for thought markers
