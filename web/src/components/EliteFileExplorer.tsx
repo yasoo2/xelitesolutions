@@ -20,7 +20,8 @@ import {
     FilePlus,
     Trash2,
     Edit3,
-    Home
+    Home,
+    Settings
 } from 'lucide-react';
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
@@ -457,6 +458,22 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                             </div>
                             <span className="elite-mode-label">{viewMode === 'local' ? 'Local' : 'GitHub'}</span>
                             <div className="elite-header-actions">
+                                {viewMode === 'github' && (
+                                    <button
+                                        onClick={() => {
+                                            const token = prompt('Enter your GitHub Personal Access Token:');
+                                            if (token) {
+                                                localStorage.setItem('GITHUB_TOKEN', token);
+                                                alert('GitHub token saved successfully!');
+                                                fetchGitHubRepos();
+                                            }
+                                        }}
+                                        className="elite-icon-btn"
+                                        title="GitHub Settings"
+                                    >
+                                        <Settings size={14} />
+                                    </button>
+                                )}
                                 <button onClick={loadRoot} className="elite-icon-btn" title="Refresh">
                                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                                 </button>

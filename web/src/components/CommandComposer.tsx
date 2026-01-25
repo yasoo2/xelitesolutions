@@ -3869,20 +3869,6 @@ export default function CommandComposer({
                   ) : <Paperclip size={20} />}
                 </button>
                 <button
-                  className="action-btn github-btn"
-                  onClick={() => {
-                    const token = prompt(t('githubTokenPrompt') || 'Please enter your GitHub Personal Access Token:');
-                    if (token) {
-                      // We'll store it in local storage for now or send to server
-                      localStorage.setItem('GITHUB_TOKEN', token);
-                      alert(t('githubTokenSaved') || 'GitHub token saved successfully!');
-                    }
-                  }}
-                  title={t('connectGithub') || "Connect GitHub"}
-                >
-                  <Github size={20} />
-                </button>
-                <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
                   onClick={() => setIsVoiceMode(!isVoiceMode)}
                   title="Voice Mode"
