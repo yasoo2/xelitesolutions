@@ -25,6 +25,7 @@ import BrowserChrome from '../components/BrowserChrome';
 import BrowserControlPanel from '../components/BrowserControlPanel';
 import TaskQueue from '../components/TaskQueue';
 import { useTaskQueue } from '../hooks/useTaskQueue';
+import BrainStatus from '../components/BrainStatus';
 const MemoryPanelLazy = lazy(() => import('../components/MemoryPanel'));
 
 export default function Joe() {
@@ -625,6 +626,8 @@ export default function Joe() {
               />
             </div>
           </div>
+
+          <BrainStatus />
 
           {!searchQuery ? (
             <>
