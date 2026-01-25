@@ -66,40 +66,48 @@ const getTypeConfig = (type: string) => {
     }
 };
 
+import { NeuralNerve } from './NeuralNerve';
+
+// ... (imports remain)
+
 export const ReasoningPanel: React.FC<ReasoningPanelProps> = ({
     thoughts,
     expanded,
     onToggle,
     isThinking
 }) => {
-    return (
-        <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-            <button
-                onClick={onToggle}
-                className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-all"
-            >
-                <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center ${isThinking ? 'animate-pulse' : ''}`}>
-                        <Brain size={20} className="text-white" />
-                    </div>
-                    <div className="text-right">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                            التفكير
-                            {isThinking && (
-                                <span className="text-xs text-purple-400 animate-pulse">جاري التحليل...</span>
-                            )}
-                        </h3>
-                        <p className="text-xs text-gray-500">AI Reasoning Panel</p>
-                    </div>
-                </div>
+    // Current Status derivation
+    const currentStatus = isThinking ? (thoughts.length > 0 && thoughts[thoughts.length - 1].type === 'action' ? 'executing' : 'thinking') : 'idle';
 
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded-full">
-                        {thoughts.length} خطوة
-                    </span>
-                    {expanded ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
+    return (
+        <div className="bg-black/80 backdrop-blur-2xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5">
+            {/* Active Nerve Header */}
+            <div className="relative h-24 bg-gradient-to-b from-gray-900 to-black border-b border-white/10">
+                <NeuralNerve status={currentStatus} className="absolute inset-0 z-0 opacity-80" />
+
+                <div className="absolute inset-0 z-10 flex items-center justify-between px-6">
+                    <div className="flex items-center gap-4">
+                        <div className={`p-2 rounded-full border border-white/10 bg-black/50 backdrop-blur-md ${isThinking ? 'animate-pulse ring-2 ring-purple-500/50' : ''}`}>
+                            <Brain size={24} className={isThinking ? "text-purple-400" : "text-gray-500"} />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-white tracking-wider uppercase font-mono">
+                                Neural Core
+                            </h3>
+                            <div className="flex items-center gap-2">
+                                <span className={`w-1.5 h-1.5 rounded-full ${isThinking ? 'bg-green-500 animate-ping' : 'bg-gray-600'}`} />
+                                <p className="text-[10px] text-gray-400 font-mono">
+                                    {isThinking ? 'PROCESSING_TENSORS...' : 'SYSTEM_IDLE'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onClick={onToggle} className="p-2 hover:bg-white/10 rounded-lg transition-colors z-20">
+                        {expanded ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+                    </button>
                 </div>
-            </button>
+            </div>
 
             <AnimatePresence>
                 {expanded && (
@@ -107,70 +115,75 @@ export const ReasoningPanel: React.FC<ReasoningPanelProps> = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="border-t border-white/5"
                     >
-                        <div className="max-h-80 overflow-y-auto p-4">
+                        {/* Telemetry Bar */}
+                        <div className="flex items-center gap-1 h-1 bg-gray-900 opacity-50">
+                            <div className="h-full bg-purple-600 w-[60%] animate-pulse" />
+                            <div className="h-full bg-cyan-600 w-[30%]" />
+                            <div className="h-full bg-yellow-600 w-[10%]" />
+                        </div>
+
+                        <div className="max-h-80 overflow-y-auto p-4 space-y-4 bg-black/40">
                             {thoughts.length === 0 ? (
-                                <div className="text-center py-8 text-gray-500">
-                                    <Sparkles size={32} className="mx-auto mb-2 opacity-30" />
-                                    <p className="text-sm">في انتظار بدء التفكير...</p>
+                                <div className="text-center py-12 text-gray-600 font-mono text-xs">
+                                    <Sparkles size={24} className="mx-auto mb-3 opacity-20" />
+                                    AWAITING_INPUT_STREAM...
                                 </div>
                             ) : (
-                                <div className="space-y-3">
+                                <div className="space-y-4 relative">
+                                    {/* Connectivity Line */}
+                                    <div className="absolute left-[19px] top-4 bottom-4 w-px bg-gradient-to-b from-purple-500/0 via-purple-500/20 to-purple-500/0" />
+
                                     {thoughts.map((thought, idx) => {
                                         const config = getTypeConfig(thought.type);
+                                        const isLast = idx === thoughts.length - 1;
+
                                         return (
                                             <motion.div
                                                 key={thought.id}
-                                                initial={{ opacity: 0, x: -10 }}
+                                                initial={{ opacity: 0, x: -20 }}
                                                 animate={{ opacity: 1, x: 0 }}
-                                                transition={{ delay: idx * 0.1 }}
-                                                className={`p-3 rounded-xl border ${config.bg} ${config.border} relative`}
+                                                className={`relative pl-10 group`}
                                             >
-                                                <div className="flex items-start gap-2">
-                                                    <div className={`p-1.5 rounded-lg ${config.bg} ${config.color}`}>
-                                                        {config.icon}
+                                                {/* Node Point */}
+                                                <div className={`absolute left-[15px] top-3 w-2 h-2 rounded-full border-2 border-black ${config.bg.replace('/20', '')} ${isLast && isThinking ? 'animate-ping' : ''}`} />
+
+                                                <div className={`p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-colors relative overflow-hidden`}>
+                                                    {/* Decorator Line */}
+                                                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${config.bg.replace('/20', '')} opacity-50`} />
+
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className={`text-[10px] font-mono tracking-widest uppercase ${config.color} opacity-80`}>
+                                                            {config.label}
+                                                        </span>
+                                                        <span className="text-[10px] font-mono text-gray-600">
+                                                            {thought.timestamp.toLocaleTimeString('ar-SA')}
+                                                        </span>
                                                     </div>
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <span className={`text-xs font-medium ${config.color}`}>
-                                                                {config.label}
-                                                            </span>
-                                                            <span className="text-[10px] text-gray-600">
-                                                                {thought.timestamp.toLocaleTimeString('ar-SA')}
-                                                            </span>
+
+                                                    <p className="text-sm text-gray-300 leading-relaxed font-sans">
+                                                        {thought.content}
+                                                    </p>
+
+                                                    {/* Tools Chip */}
+                                                    {thought.toolUsed && (
+                                                        <div className="mt-3 flex items-center gap-2">
+                                                            <div className="px-2 py-1 rounded bg-black/50 border border-white/10 text-[10px] text-gray-400 font-mono flex items-center gap-2">
+                                                                <Wrench size={10} />
+                                                                {thought.toolUsed}
+                                                            </div>
                                                         </div>
-                                                        <p className="text-sm text-gray-300">{thought.content}</p>
-
-                                                        {thought.toolUsed && (
-                                                            <div className="mt-2 text-xs text-gray-500">
-                                                                <span className="bg-gray-800 px-2 py-0.5 rounded">
-                                                                    أداة: {thought.toolUsed}
-                                                                </span>
-                                                            </div>
-                                                        )}
-
-                                                        {thought.alternatives && thought.alternatives.length > 0 && (
-                                                            <div className="mt-2">
-                                                                <p className="text-[10px] text-gray-600 mb-1">بدائل أخرى:</p>
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {thought.alternatives.map((alt, i) => (
-                                                                        <span key={i} className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded">
-                                                                            {alt}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                    )}
                                                 </div>
-
-                                                {idx < thoughts.length - 1 && (
-                                                    <div className="absolute left-5 -bottom-3 h-3 w-0.5 bg-gray-700" />
-                                                )}
                                             </motion.div>
                                         );
                                     })}
+
+                                    {isThinking && (
+                                        <div className="pl-10">
+                                            <div className="h-8 w-32 bg-white/5 rounded animate-pulse" />
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

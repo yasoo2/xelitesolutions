@@ -89,73 +89,103 @@ export const JoeStudio: React.FC = () => {
         timestamp: new Date()
     }));
 
+    // Dynamic Ambient Background
+    const ambientColor = useMemo(() => {
+        switch (status) {
+            case 'thinking': return 'from-yellow-900/20 via-black to-black';
+            case 'executing': return 'from-cyan-900/20 via-black to-black';
+            case 'error': return 'from-red-900/20 via-black to-black';
+            default: return 'from-purple-900/10 via-gray-950 to-black';
+        }
+    }, [status]);
+
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white">
+        <div className={`min-h-screen bg-gradient-to-br transition-colors duration-1000 ${ambientColor} text-white`}>
             {/* Header */}
-            <header className="border-b border-white/10 bg-black/40 backdrop-blur-xl sticky top-0 z-40">
+            <header className="border-b border-white/5 bg-black/60 backdrop-blur-xl sticky top-0 z-40">
                 <div className="max-w-[1800px] mx-auto px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <JoeLogo size={40} className={isThinking ? 'animate-pulse' : ''} />
+                    <div className="flex items-center gap-4">
+                        <JoeLogo size={40} className={isThinking ? 'animate-pulse drop-shadow-[0_0_10px_rgba(168,85,247,0.5)]' : ''} />
                         <div>
-                            <h1 className="text-lg font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                                Joe Studio
+                            <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent font-mono tracking-tight">
+                                JOE STUDIO
                             </h1>
-                            <p className="text-xs text-gray-500">استوديو البناء الذكي</p>
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                <p className="text-[10px] text-gray-500 tracking-widest uppercase">System Online</p>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Neural Reflex Feedback */}
-                    <div className="flex-1 max-w-md mx-8">
-                        {isThinking && thoughts.length > 0 && (
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-full px-4 py-1.5"
-                            >
-                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
-                                <span className="text-[10px] uppercase tracking-widest text-purple-400 font-bold">Neural Activity:</span>
-                                <span className="text-xs text-purple-200 truncate font-mono">
-                                    {thoughts[thoughts.length - 1].content}
-                                </span>
-                            </motion.div>
-                        )}
+                    {/* Neural Status Deck */}
+                    <div className="flex-1 max-w-2xl mx-8 flex items-center justify-center">
+                        <AnimatePresence mode="wait">
+                            {isThinking && thoughts.length > 0 ? (
+                                <motion.div
+                                    key="active"
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 10 }}
+                                    className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-full px-6 py-2 backdrop-blur-md shadow-lg"
+                                >
+                                    <div className="relative w-3 h-3">
+                                        <div className="absolute inset-0 bg-purple-500 rounded-full animate-ping opacity-75" />
+                                        <div className="absolute inset-0 bg-purple-500 rounded-full" />
+                                    </div>
+                                    <span className="text-xs font-mono text-purple-300">
+                                        {thoughts[thoughts.length - 1].content}
+                                    </span>
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    key="idle"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="h-8 flex items-center justify-center"
+                                >
+                                    <div className="w-64 h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
 
-                    {/* Status Indicator */}
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 text-xs">
+                    {/* Right Controls */}
+                    <div className="flex items-center gap-6">
+                        {/* Status Pod */}
+                        <div className="hidden md:flex items-center gap-3 bg-white/5 rounded-full px-4 py-1.5 border border-white/5">
                             <span className={`w-2 h-2 rounded-full ${status === 'idle' ? 'bg-gray-500' :
                                 status === 'thinking' ? 'bg-yellow-500 animate-pulse' :
                                     status === 'executing' ? 'bg-cyan-500 animate-pulse' :
                                         'bg-red-500'
                                 }`} />
-                            <span className="text-gray-400">
-                                {status === 'idle' ? 'جاهز' :
-                                    status === 'thinking' ? 'يفكر...' :
-                                        status === 'executing' ? 'ينفذ...' :
-                                            'خطأ'}
+                            <span className="text-xs font-mono text-gray-300 uppercase tracking-wider">
+                                {status === 'idle' ? 'STANDBY' :
+                                    status === 'thinking' ? 'PROCESSING' :
+                                        status === 'executing' ? 'EXECUTING' :
+                                            'SYSTEM FAIL'}
                             </span>
                         </div>
 
                         {/* Layout Switcher */}
-                        <div className="flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
+                        <div className="flex items-center gap-1 bg-black/40 rounded-lg p-1 border border-white/5">
                             <button
                                 onClick={() => setLayoutMode('full')}
-                                className={`p-2 rounded-lg transition-all ${layoutMode === 'full' ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                                className={`p-2 rounded-md transition-all ${layoutMode === 'full' ? 'bg-white/10 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
                             >
-                                <Maximize2 size={16} />
+                                <Maximize2 size={14} />
                             </button>
                             <button
                                 onClick={() => setLayoutMode('split')}
-                                className={`p-2 rounded-lg transition-all ${layoutMode === 'split' ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                                className={`p-2 rounded-md transition-all ${layoutMode === 'split' ? 'bg-white/10 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
                             >
-                                <Columns size={16} />
+                                <Columns size={14} />
                             </button>
                             <button
                                 onClick={() => setLayoutMode('grid')}
-                                className={`p-2 rounded-lg transition-all ${layoutMode === 'grid' ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                                className={`p-2 rounded-md transition-all ${layoutMode === 'grid' ? 'bg-white/10 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
                             >
-                                <LayoutGrid size={16} />
+                                <LayoutGrid size={14} />
                             </button>
                         </div>
                     </div>
