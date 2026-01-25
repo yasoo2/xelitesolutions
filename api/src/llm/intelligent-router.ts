@@ -510,6 +510,15 @@ export async function routeToModel(
     // Flatten multimodal messages for text-only providers (and for analysis)
     const flatMessages = flattenMultimodalMessages(messages);
 
+    // Helper to clean output (Moved to top level scope)
+    const cleanOutput = (text: string) => {
+        return text
+            .replace(/:::thought[\s\S]*?:::/g, '') // Strip :::thought::: blocks
+            .replace(/<thought>[\s\S]*?<\/thought>/g, '') // Strip <thought> tags
+            .replace(/<think>[\s\S]*?<\/think>/g, '') // Strip <think> tags (DeepSeek style)
+            .trim();
+    };
+
     // Analyze if not provided (using flat messages for analysis)
     const taskAnalysis = analysis || analyzeTask(
         flatMessages.find(m => m.role === 'user')?.content || ''
@@ -602,7 +611,8 @@ export async function routeToModel(
         if (selectedModel.provider === 'groq' && hasGroqKey) {
             // Groq is fast, but let's give it 15s
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
-            return await Promise.race([callGroq(selectedModel.model, flatMessages, onPartial), timeoutPromise]) as string;
+            const rawAns = await Promise.race([callGroq(selectedModel.model, flatMessages, onPartial), timeoutPromise]) as string;
+            return cleanOutput(rawAns);
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
             throw new Error('UseLegacyOpenAIPath');
@@ -613,6 +623,8 @@ export async function routeToModel(
         }
     }
 
+    // Helper to clean output (Removed duplicate)
+
     // 2. The Chain of Steel (Fallback Mesh)
     for (const p of providers) {
         try {
@@ -622,19 +634,22 @@ export async function routeToModel(
             onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
-            // Dynamic Timeout: Complex tasks need more time (up to 60s for the mesh)
-            let timeoutValue = 10000; // Base 10s
+            // Dynamic Timeout: Optimized for speed
+            let timeoutValue = 8000; // Base 8s (was 10s)
+
             if (analysis?.complexity === 'high' || analysis?.complexity === 'extreme') {
-                timeoutValue = 30000; // 30s for complex
+                timeoutValue = 20000; // 20s for complex
             }
             if (p.name === 'Pollinations (Backup)') {
-                timeoutValue = 60000; // 60s for the ultimate fallback
+                timeoutValue = 25000; // Cap at 25s (was 60s) for better UX
             }
 
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
-            const ans = await Promise.race([p.run(), timeoutPromise]) as string;
+            const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
 
-            if (ans) {
+            const ans = cleanOutput(rawAns);
+
+            if (ans && ans.length > 0) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
                 return ans;
             }
@@ -651,7 +666,7 @@ export async function routeToModel(
             hack = llm.pollinationsProvider;
         }
         const finalAns = await hack.chatComplete(messages, 'openai');
-        return finalAns || "أعتذر، حدثت مشكلة في الاتصال. كيف يمكنني مساعدتك؟";
+        return cleanOutput(finalAns) || "أعتذر، حدثت مشكلة في الاتصال. كيف يمكنني مساعدتك؟";
     } catch {
         return "أعتذر، جميع مزودات الـ AI مشغولة حالياً. يرجى المحاولة بعد لحظات.";
     }
