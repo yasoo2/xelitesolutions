@@ -511,7 +511,6 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
   }
 }
 
-export interface PlanOptions {
 
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
