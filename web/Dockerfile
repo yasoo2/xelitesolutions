@@ -14,7 +14,7 @@ COPY . .
 
 # Accept build arguments for environment variables
 ARG VITE_GOOGLE_CLIENT_ID
-ARG VITE_API_URL=http://46.224.187.142:3000
+ARG VITE_API_URL=/api
 
 # Set as environment variables for Vite build
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID

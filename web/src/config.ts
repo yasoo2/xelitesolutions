@@ -24,10 +24,14 @@ function inferApiUrl() {
 }
 
 function inferWsUrl(apiUrl: string) {
+  if (apiUrl && apiUrl.startsWith('https')) {
+    return apiUrl.replace(/^https/i, 'wss').replace(/\/api$/, '') + '/ws';
+  }
   if (apiUrl) {
     return apiUrl.replace(/^http/i, 'ws') + '/ws';
   }
-  return window.location.origin.replace(/^http/i, 'ws') + '/ws';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws`;
 }
 
 const runtimeConfig: any = (window as any).JOE_CONFIG || {};
