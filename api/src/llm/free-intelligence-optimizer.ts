@@ -498,6 +498,16 @@ class FreeIntelligenceOptimizer {
         const cleanText = userText.toLowerCase().trim();
         const userName = 'يونس'; // Hardcoded for this session
 
+        // CRITICAL: Always run planner for workflow markers
+        if (cleanText.includes('wf_start') || cleanText.includes('project_plan') || cleanText.includes('eco_plan')) {
+            console.info('[Optimizer] Workflow marker detected - forcing full planner');
+            return {
+                shouldUseCache: false,
+                suggestedModel: 'smart',
+                skipPlanner: false
+            };
+        }
+
         const realKnowledge = this.getRealKnowledge(cleanText);
 
         // 1. Check Smart Cache (Exact & Fuzzy) - PRIORITY REFLEX

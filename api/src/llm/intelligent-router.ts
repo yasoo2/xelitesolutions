@@ -4,9 +4,10 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-// Use dynamic import to avoid circular dependency
-let hack: any = null;
-let openrouter: any = null;
+import { pollinationsProvider, openRouterProvider, groqProvider } from './providers/registry';
+
+let hack: any = pollinationsProvider;
+let openrouter: any = openRouterProvider;
 
 export interface ModelConfig {
     name: string;
@@ -188,16 +189,9 @@ Return exactly this JSON structure:
         if (provider === 'groq') {
             responseText = await callGroq(analyst, [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }]);
         } else if (provider === 'openai') {
-            const llm = require('../llm');
-            responseText = await llm.callLLM(userMessage, [{ role: 'system', content: systemPrompt }], 'system_analyst');
-        } else {
-            if (!hack) {
-                // Use require to bypass TS1323 and handle circular dependency
-                const llm = require('../llm');
-                hack = llm.pollinationsProvider;
-            }
-            responseText = await hack.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'openai');
+            responseText = await pollinationsProvider.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'openai');
         }
+
 
         // Clean JSON response
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -564,26 +558,19 @@ export async function routeToModel(
                 if (!process.env.OPENROUTER_API_KEY) {
                     throw new Error('Skipping OpenRouter: No API Key');
                 }
-                if (!openrouter) {
-                    const llm = require('../llm');
-                    openrouter = llm.openRouterProvider;
-                }
-                return await openrouter.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
+                return await openRouterProvider.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
             }
         },
         {
             name: 'Pollinations (Backup)',
             run: async () => {
-                if (!hack) {
-                    const llm = require('../llm');
-                    hack = llm.pollinationsProvider;
-                }
-                const res = await hack.chatComplete(flatMessages, 'openai');
+                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai');
                 if (!res || res.length < 5) throw new Error('Pollinations returned empty/useless response');
                 return res;
             }
         }
     ];
+
 
 
     let lastError = '';
@@ -643,12 +630,9 @@ export async function routeToModel(
 
     // Final catch-all (Guarantee a response to avoid "empty model output" error)
     try {
-        if (!hack) {
-            const llm = require('../llm');
-            hack = llm.pollinationsProvider;
-        }
-        const finalAns = await hack.chatComplete(flatMessages, 'openai');
+        const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
         const cleaned = cleanOutput(finalAns);
+
         if (cleaned && cleaned.length > 0) return cleaned;
 
         throw new Error('FINAL_EMPTY_RESPONSE');

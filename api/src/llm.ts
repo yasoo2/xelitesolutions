@@ -8,7 +8,8 @@ const groq = new GroqProvider();
 const GROQ_AVAILABLE = !!process.env.GROQ_API_KEY;
 
 // Enterprise Systems (Global Requires to avoid ReferenceErrors across scopes)
-const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = require('./llm/intelligent-router');
+import intelligentRouter from './llm/intelligent-router';
+const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = intelligentRouter;
 const { buildConversationContext, analyzeContextualIntent, matchPatternWithContext } = require('./llm/context-engine');
 const { longTermMemory } = require('./memory/long-term-memory');
 const { orchestrator } = require('./agents/orchestrator');
@@ -434,13 +435,7 @@ export const getSystemPrompt = (user?: { name?: string }) => {
 export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
-import { PollinationsProvider } from './llm/providers/pollinations';
-import { OpenRouterProvider } from './llm/providers/openrouter';
-import { HuggingFaceProvider } from './llm/providers/huggingface';
-
-const pollinationsProvider = new PollinationsProvider();
-const openRouterProvider = new OpenRouterProvider();
-const huggingfaceProvider = new HuggingFaceProvider();
+import { pollinationsProvider, openRouterProvider, huggingfaceProvider } from './llm/providers/registry';
 
 // Export for use in intelligent-router
 export { pollinationsProvider, openRouterProvider, huggingfaceProvider };
