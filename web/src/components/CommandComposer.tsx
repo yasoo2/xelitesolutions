@@ -2960,6 +2960,7 @@ export default function CommandComposer({
   const renderItems = useMemo(() => {
     const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
     const inserted = new Set<string>();
+    const renderedThoughts = new Set<string>();
 
     // ELITE REFINEMENT: Track sessions/runs that have text responses to hide their thoughts
     const hasTextResponse = new Set<string>();
@@ -3024,7 +3025,10 @@ export default function CommandComposer({
         // 5. Special check for optimistic thoughts during answering
         if (rid.endsWith('_opt') && ((status as string) === 'answering' || isAnsweringCurrent)) continue;
 
-        out.push({ kind: 'thought', key: `thought:${idx}`, e, idx });
+        if (renderedThoughts.has(rid)) continue;
+        renderedThoughts.add(rid);
+
+        out.push({ kind: 'thought', key: `thought:${rid}:${idx}`, e, idx });
       }
     }
 
