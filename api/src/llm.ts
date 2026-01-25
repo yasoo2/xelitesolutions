@@ -831,6 +831,18 @@ export async function planNextStep(
 
       // 4. Code generation (let the intelligent model handle it via echo)
       if (codePatterns.test(userText) && analysis.type === 'code_generation') {
+        const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
+        if (isBuildingWebsite) {
+          console.info('[Auto Enterprise] → Detected Website Build Request - using Pipeline');
+          return {
+            name: 'website_full_pipeline',
+            input: {
+              prompt: userText,
+              projectType: 'vanilla'
+            }
+          };
+        }
+
         console.info('[Auto Enterprise] → Code Generation via Intelligent Model');
         const msgs = [
           { role: 'system', content: 'You are an expert software engineer. Generate clean, production-ready code with best practices.' },

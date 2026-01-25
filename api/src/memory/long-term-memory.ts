@@ -293,18 +293,26 @@ class LongTermMemory {
                 if (file.endsWith('_profile.json')) {
                     const userId = file.replace('_profile.json', '');
                     const content = await fs.readFile(path.join(this.memoryDir, file), 'utf-8');
-                    const data = JSON.parse(content);
-
-                    this.profiles.set(userId, {
-                        ...data,
-                        facts: new Map(Object.entries(data.facts || {}))
-                    });
+                    if (!content || content.trim() === '') continue;
+                    try {
+                        const data = JSON.parse(content);
+                        this.profiles.set(userId, {
+                            ...data,
+                            facts: new Map(Object.entries(data.facts || {}))
+                        });
+                    } catch (e) {
+                        console.warn(`[LongTermMemory] Failed to parse profile: ${file}`, e);
+                    }
                 } else if (file.endsWith('.json')) {
                     const userId = file.replace('.json', '');
                     const content = await fs.readFile(path.join(this.memoryDir, file), 'utf-8');
-                    const memories = JSON.parse(content);
-
-                    this.memoryStore.set(userId, memories);
+                    if (!content || content.trim() === '') continue;
+                    try {
+                        const memories = JSON.parse(content);
+                        this.memoryStore.set(userId, memories);
+                    } catch (e) {
+                        console.warn(`[LongTermMemory] Failed to parse memory file: ${file}`, e);
+                    }
                 }
             }
 

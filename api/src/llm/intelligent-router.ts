@@ -549,33 +549,13 @@ export async function routeToModel(
     // Order: OpenAI (if key) -> Groq (Free) -> OpenRouter (Free) -> Pollinations (Backup)
     const providers = [
         {
-            name: 'OpenAI',
-            run: async () => {
-                if (selectedModel.provider === 'openai' || selectedModel.provider === 'anthropic') {
-                    if (process.env.OPENAI_API_KEY) {
-                        // Use standard invocation (implied by not throwing here)
-                        // But we need to actually CALL it.
-                        // existing logic below handles "if provider === 'openai' ..."
-                        // To fit into loop, we refactor slighty or just use the loop for FALLBACKs.
-                        throw new Error('Pass-through to main logic');
-                    }
-                    throw new Error('No OpenAI Key');
-                }
-                throw new Error('Not OpenAI model');
-            }
-        },
-        {
             name: 'Groq (Free)',
             run: async () => {
                 if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_placeholder') {
                     throw new Error('Skipping Groq: No API Key');
                 }
-                try {
-                    const model = selectedModel.provider === 'groq' ? selectedModel.model : MODELS['llama-3.1-70b'].model;
-                    // Llama is text-only, so force flatMessages if selecting Llama, otherwise effectiveMessages (if we add Llama vision later)
-                    // For now, Groq models are text only.
-                    return await callGroq(model, flatMessages, onPartial);
-                } catch (e: any) { throw e; }
+                const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.1-70b-versatile';
+                return await callGroq(model, flatMessages, onPartial);
             }
         },
         {
@@ -588,8 +568,7 @@ export async function routeToModel(
                     const llm = require('../llm');
                     openrouter = llm.openRouterProvider;
                 }
-                // Try a very smart free model
-                return await openrouter.chatComplete(effectiveMessages, 'google/gemma-2-9b-it:free');
+                return await openrouter.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
             }
         },
         {
@@ -599,10 +578,13 @@ export async function routeToModel(
                     const llm = require('../llm');
                     hack = llm.pollinationsProvider;
                 }
-                return await hack.chatComplete(effectiveMessages, 'openai');
+                const res = await hack.chatComplete(flatMessages, 'openai');
+                if (!res || res.length < 5) throw new Error('Pollinations returned empty/useless response');
+                return res;
             }
         }
     ];
+
 
     let lastError = '';
 
@@ -665,11 +647,15 @@ export async function routeToModel(
             const llm = require('../llm');
             hack = llm.pollinationsProvider;
         }
-        const finalAns = await hack.chatComplete(messages, 'openai');
-        return cleanOutput(finalAns) || "أعتذر، حدثت مشكلة في الاتصال. كيف يمكنني مساعدتك؟";
+        const finalAns = await hack.chatComplete(flatMessages, 'openai');
+        const cleaned = cleanOutput(finalAns);
+        if (cleaned && cleaned.length > 0) return cleaned;
+
+        throw new Error('FINAL_EMPTY_RESPONSE');
     } catch {
-        return "أعتذر، جميع مزودات الـ AI مشغولة حالياً. يرجى المحاولة بعد لحظات.";
+        return "سأقوم بمراجعة الأدوات وربطها بشكل أفضل. يرجى إعطائي لحظة أو إرسال طلبك مرة أخرى بشكل أوضح.";
     }
+
 }
 
 /**
