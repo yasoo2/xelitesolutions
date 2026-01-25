@@ -61,6 +61,51 @@ import {
 
 const DEBUG_TOOL_UI = false;
 
+const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: string }) => {
+  return (
+    <motion.div
+      className={`elite-logo-wrapper ${className}`}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.8, ease: "easeOut" }}
+      style={{ width: size, height: size, position: 'relative' }}
+    >
+      {/* Dynamic Glow Layers */}
+      <motion.div
+        className="elite-logo-glow"
+        animate={{
+          scale: [1, 1.15, 1],
+          opacity: [0.3, 0.6, 0.3],
+        }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      {/* Glass Circle Base */}
+      <div className="elite-glass-circle">
+        <div className="elite-glass-content">
+          <motion.div
+            className="elite-logo-text"
+            animate={{ y: [0, -4, 0] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+          >
+            JOE
+          </motion.div>
+          <div className="elite-logo-subtext">XELITE</div>
+        </div>
+
+        {/* Orbiting Elements */}
+        <motion.div
+          className="elite-orbit-ring"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        >
+          <div className="elite-orbit-dot" />
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+};
+
 const ChatBubble = forwardRef(
   (
     {
@@ -350,8 +395,11 @@ const ChatBubble = forwardRef(
             ) : bubbleVariant === 'user' ? (
               <SenderIcon size={16} />
             ) : (
-              <div className="joe-avatar-icon">J</div>
+              <div className="chat-avatar-joe">
+                <EliteLogo size={32} className="avatar-scaled" />
+              </div>
             )}
+
           </div>
         ) : null}
         <div className={`chat-bubble ${bubbleVariant}${tone ? ` tone-${tone}` : ''}`}>
@@ -3072,16 +3120,11 @@ export default function CommandComposer({
               </p>
 
 
-              {/* Joe's Beautiful Smart Logo */}
-              <div className="hero-joe-pulse-wrapper" style={{ marginTop: 40, display: 'flex', justifyContent: 'center' }}>
-                <div className="joe-avatar-icon" style={{
-                  width: 80, height: 80, borderRadius: '24px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 32, fontWeight: 900
-                }}>
-                  J
-                </div>
+              {/* Joe's Refined Premium Logo */}
+              <div className="hero-elite-logo-container" style={{ marginTop: 40, marginBottom: 20 }}>
+                <EliteLogo size={160} />
               </div>
+
 
             </div>
           )}
