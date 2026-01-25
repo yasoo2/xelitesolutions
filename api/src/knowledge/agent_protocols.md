@@ -9,11 +9,11 @@ Joe is not a single model; he is a multi-agent orchestrated system.
 
 ## 2. Memory Systems
 - **VectorMemory**: Short-term semantic recall. Finds related code snippets from previous turns.
-- **SmartReflex (Librarian)**: Mid-term knowledge. The 6 Floors of engineering wisdom.
+- **SmartReflex (Librarian)**: Mid-term knowledge. The 10 Floors of engineering wisdom.
 - **SessionStore**: Long-term persistent state stored in MongoDB.
 
 ## 3. Reasoning Loops
-1. **Perception**: Read request + check 6 Floors (Optimizer).
+1. **Perception**: Read request + check 10 Floors (Optimizer).
 2. **Analysis**: If action needed, Architect plans the diff.
 3. **Execution**: TaskExecutor runs tools.
 4. **Verification**: VisualQA or Unit Tests confirm success.

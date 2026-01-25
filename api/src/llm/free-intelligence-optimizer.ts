@@ -25,6 +25,7 @@ type OptimizationResult = {
     cachedResponse?: string;
     suggestedModel: 'fast' | 'smart';
     skipPlanner: boolean;
+    analysis?: any; // NEW: Pass-through analysis results
 };
 
 // NEW: Chunk type for RAG

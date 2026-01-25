@@ -285,7 +285,8 @@ export interface PlanOptions {
   onThought?: (chunk: string) => void;
 }
 
-export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect. You are the embodiment of speed, precision, and intelligence.
+export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect for Xelite Solutions. You are the embodiment of speed, precision, and intelligence. 
+You represent the **10-Floor Elite Intelligence System** (upgrade completed January 2026).
 
 ## CRITICAL TEMPORAL CONTEXT:
 **IMPORTANT**: Today's date is **January 22, 2026**. Your internal knowledge cutoff is October 2023.
@@ -652,21 +653,6 @@ export async function planNextStep(
       return { name: contextMatch.action!, input: contextMatch.params };
     }
 
-    // 6. Analyze the task (UPGRADED: uses LLM for deep analysis)
-    const analysis = await advancedAnalyzeTask(userText, messages);
-    const selectedModel = selectBestModel(analysis);
-
-    console.info(`[Auto Enterprise] Task: ${analysis.type} | Complexity: ${analysis.complexity} | Model: ${selectedModel.name}`);
-
-    // 7. Multi-step planning (UPGRADED: generates a roadmap for complex tasks)
-    if (analysis.complexity === 'high' || analysis.complexity === 'extreme') {
-      const planSteps = await generateActionPlan(userText, analysis);
-      if (planSteps.length > 0) {
-        console.info(`[Auto Enterprise] Generated ${planSteps.length} step plan:`, planSteps);
-        // We can optionally store this in memory or just use it to guide the current turn
-      }
-    }
-
     // === FREE INTELLIGENCE OPTIMIZER ===
     console.info(`[Auto Enterprise] 💬 User query: "${userText.substring(0, 100)}${userText.length > 100 ? '...' : ''}"`);
 
@@ -693,6 +679,31 @@ export async function planNextStep(
 
     // Context from RAG to be injected into the LLM later if needed
     const ragContext = optimization.cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${optimization.cachedResponse}` : '';
+
+    // 6. Analyze the task (UPGRADED: uses LLM for deep analysis)
+    // [OPTIMIZATION] Skip if already analyzed by optimizer
+    let analysis = optimization.analysis;
+    if (!analysis) {
+      analysis = await advancedAnalyzeTask(userText, messages);
+    }
+
+    // Select best model (Use optimizer suggestion if available)
+    const selectedModel = optimization.suggestedModel === 'fast' ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' } : selectBestModel(analysis);
+
+    console.info(`[Auto Enterprise] Task: ${analysis.type} | Complexity: ${analysis.complexity} | Model: ${selectedModel.name}`);
+
+
+    // 7. Multi-step planning (UPGRADED: generates a roadmap for complex tasks)
+    if (analysis.complexity === 'high' || analysis.complexity === 'extreme') {
+      const planSteps = await generateActionPlan(userText, analysis);
+      if (planSteps.length > 0) {
+        console.info(`[Auto Enterprise] Generated ${planSteps.length} step plan:`, planSteps);
+        // We can optionally store this in memory or just use it to guide the current turn
+      }
+    }
+
+    // Unified context injection point
+
 
     // === Pattern Detection ===
 

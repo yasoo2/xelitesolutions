@@ -361,14 +361,12 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
         return MODELS['pollinations'];
     }
 
-    // Fallback found: Use OpenAI if available, then Pollinations
+    // Fallback logic for FREE models
     if (!hasGroq) {
-        if (availableKeys?.openai || process.env.OPENAI_API_KEY) {
-            console.info('[IntelligentRouter] Groq key missing. Using available OpenAI key.');
-            return MODELS['gpt-4o'];
-        }
-        console.info('[IntelligentRouter] Groq and OpenAI keys missing. Falling back to Pollinations.');
-        return MODELS['pollinations'];
+        // If user wants free, we don't force GPT-4o here.
+        // We will default to the best free strategy in routeToModel.
+        console.info('[IntelligentRouter] Groq key missing. defaulting to Free Model Strategy.');
+        return MODELS['mixtral-8x7b']; // Placeholder config, will be handled by fallback loop
     }
 
     // For extreme complexity with available premium keys
@@ -512,7 +510,12 @@ export async function routeToModel(
     );
 
     // Select best model
-    const selectedModel = selectBestModel(taskAnalysis, availableKeys);
+    const selectedModel = analysis?.suggestedModel ? MODELS[analysis.suggestedModel] || MODELS['llama-3.1-70b'] : selectBestModel(taskAnalysis, availableKeys);
+
+    // [SPEED UP] If we already have a selected model from the fast analysis, use it and skip.
+    if (!selectedModel) {
+        // Fallback safety
+    }
 
     // [VISION SUPPORT] Determine which messages to use
     // If model is GPT-4o or Claude 3.5 Sonnet, use ORIGINAL messages (with images)
@@ -570,6 +573,7 @@ export async function routeToModel(
                     const llm = require('../llm');
                     openrouter = llm.openRouterProvider;
                 }
+                // Try a very smart free model
                 return await openrouter.chatComplete(effectiveMessages, 'google/gemma-2-9b-it:free');
             }
         },
@@ -593,7 +597,7 @@ export async function routeToModel(
             return await callGroq(selectedModel.model, flatMessages, onPartial); // Groq is text-only
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
-            console.info('[IntelligentRouter] ⚡ EXPRESS PATH: Using OpenAI immediately.');
+            // Keep OpenAI path for explicit model selection, but not for Auto-Free
             throw new Error('UseLegacyOpenAIPath');
         }
     } catch (e: any) {
@@ -609,8 +613,9 @@ export async function routeToModel(
             if (p.name === 'OpenAI') continue;
 
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
-            // Set a strict timeout for fallbacks to prevent "hanging"
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
+            // Set a strict 5s timeout for Auto-Free to keep it 'Fast'
+            const timeoutValue = p.name === 'Pollinations (Backup)' ? 12000 : 5000;
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
             const ans = await Promise.race([p.run(), timeoutPromise]) as string;
 
             if (ans) {

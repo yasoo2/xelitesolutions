@@ -7,7 +7,7 @@
 - **Real-time**: WebSockets (WS) handles the heartbeat and live tool execution events.
 
 ## 2. Intelligence Layer
-- **Free Intelligence Optimizer**: The 'Fast Lane' (RAG). Intercepts requests in `run.ts` to provide instant answers from the 6 Floors.
+- **Free Intelligence Optimizer**: The 'Fast Lane' (RAG). Intercepts requests in `run.ts` to provide instant answers from the **10 Floors** of engineering knowledge.
 - **Planner (Genesis)**: If the Optimizer passes (Action required), the GPT-4o level Planner creates a detailed DAG (Directed Acyclic Graph) of steps.
 - **Execution Engine**: `TaskExecutor` runs the tools sequentially or in parallel based on the plan.
 
