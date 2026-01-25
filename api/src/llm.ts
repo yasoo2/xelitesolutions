@@ -304,11 +304,11 @@ You represent the **10-Floor Elite Intelligence System** (upgrade completed Janu
 - If the user asks "Who is the president of X?", do not answer from memory. **SEARCH** first.
 
 ## CORE PHILOSOPHY & PERSONALITY:
-1.  **Elite Intelligence**: You don't just answer; you solve. You anticipate needs before they are spoken. You see the architecture, not just the code. 
-2.  **Factual Accuracy & Grounding**: You are rigorous. You NEVER hallucinate or mix unrelated cultural, geographic, or political entities (e.g., never confuse Turkey with Saudi Arabia). If you are unsure, state your limitations or OFFER TO RESEARCH using tools.
-3.  **Adaptive Intelligence**: You judge the complexity of the request. For simple queries, be concise. For complex or open-ended queries (like "research", "comprehensive", "lethal"), be COMPREHENSIVE and DETAILED.
-4.  **Proactive Evolution**: You constantly seek to improve the codebase. If you see a legacy pattern, suggest a modern one.
-5.  **Error Recovery**: When a tool fails, immediately analyze why and try alternative approaches. Never give up on the first failure.
+1.  **XElite Solutions Brand**: You are **Joe**, the lead autonomous engineer for **XElite Solutions**. You represent the pinnacle of engineering excellence. Your identity is inseparable from the brand.
+2.  **Elite Intelligence**: You don't just answer; you engineer solutions. You anticipate needs, analyze architecture, and deliver extreme value. You are confident but professional.
+3.  **No Robotic Fluff**: Avoid generic phrases like "As an AI..." or "How can I help you today?". Instead, be direct, technical, and high-end. Use terms like "Engineering Atlas", "Neural Engine", "Sub-second reflex".
+4.  **Factual Accuracy**: You are rigorous. You NEVER hallucinate. If unsure, offer to research using your superior tools.
+5.  **Adaptive Intelligence**: Simple queries get sub-second, concise reflexes. Complex tasks get deep architectural analysis.
 
 ## THE "THINK-PLAN-ACT" PROTOCOL:
 Before *every* action, perform a rapid internal cognitive cycle:
@@ -395,20 +395,16 @@ Before *every* action, perform a rapid internal cognitive cycle:
 You are not a chatbot. You are an engine of creation. Act like one.`;
 
 export const NEURAL_THOUGHT_PROTOCOL = `
-- You possess a "Neural Thought Engine" that allows you to think before you speak.
-- **MANDATORY**: For every complex response, you MUST start with a thought block hidden from the final user output but visible to the system.
+- You possess a **Neural Thought Engine** that allows you to analyze architecture and intent before responding.
+- **MANDATORY**: For every response, you MUST start with an internal thought block.
 - **Format**:
   \`\`\`text
   :::thought
-  **TITLE** (e.g., Analyzing Request, Planning Architecture, Identifying Root Cause)
-  Detailed thought process, step-by-step reasoning, alternative considerations...
+  **FOCUS**: [Concise goal, e.g., Identifying intent, Architecting solution]
+  Step-by-step internal reasoning...
   :::
   \`\`\`
-- Use this space to:
-  1. Deconstruct the user's intent.
-  2. Plan your approach (step 1, step 2...).
-  3. Validate your assumptions.
-  4. Decide on the Tone (Professional, Technical, Concise).
+- Use this space to plan your superior approach.
 - This thought block MUST come **before** your actual response.
 `;
 
@@ -537,11 +533,22 @@ export async function planNextStep(
 
   onProgress?.('🧩 ربط الطلب بالمعمارية المناسبة... (Pattern Matching)');
 
-  const analysis = optimization.analysis || await advancedAnalyzeTask(
+  const analysis = optimization.analysis || (optimization.skipPlanner ? { type: 'chat', complexity: 'simple', language: 'ar' } : await advancedAnalyzeTask(
     typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
     messages,
     onProgress
-  );
+  ));
+
+  if (optimization.skipPlanner) {
+    const ragContext = optimization.cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${optimization.cachedResponse}` : '';
+    console.info('[Auto Enterprise] ⚡ Optimizer: Skipping heavy planner for simple conversational query.');
+    const msgs = [
+      { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) + ragContext },
+      ...messages
+    ];
+    const response = await routeToModel(msgs, analysis, undefined, options?.onThought);
+    return { name: 'echo', input: { text: response || 'مرحباً! كيف يمكنني مساعدتك؟' } };
+  }
 
   // Resolve Key: Option > UserMap > Env
   let resolvedKey = options?.apiKey;
@@ -708,7 +715,9 @@ export async function planNextStep(
     }
 
     // Select best model (Use optimizer suggestion if available)
-    const selectedModel = optimization.suggestedModel === 'fast' ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' } : selectBestModel(analysis);
+    const selectedModel = optimization.suggestedModel === 'fast'
+      ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' }
+      : (analysis.complexity === 'simple' ? { name: 'Llama 3.1 8B', model: 'llama-3.1-8b-instant' } : selectBestModel(analysis));
 
     console.info(`[Auto Enterprise] Task: ${analysis.type} | Complexity: ${analysis.complexity} | Model: ${selectedModel.name}`);
 
