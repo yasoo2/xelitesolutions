@@ -294,6 +294,37 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
 
     useEffect(() => { loadRoot(); }, []);
 
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Cmd/Ctrl + S: Save active file
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
+                if (activePath && tabs.find(t => t.node.path === activePath)?.isDirty) {
+                    saveActiveFile();
+                }
+            }
+
+            // Cmd/Ctrl + W: Close active tab
+            if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+                e.preventDefault();
+                if (activePath) {
+                    closeTab(activePath);
+                }
+            }
+
+            // Cmd/Ctrl + F: Focus search
+            if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+                e.preventDefault();
+                document.querySelector<HTMLInputElement>('.elite-input')?.focus();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [activePath, tabs]);
+
+
     useEffect(() => {
         if (!query.trim()) {
             setSearchResults([]);
@@ -397,30 +428,110 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
     };
 
     const handleContextAction = async (action: string, node: FileNode) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
         switch (action) {
             case 'rename':
                 const newName = prompt('Enter new name:', node.name);
-                if (newName) {
-                    // Implement rename logic via API
-                    console.log('Rename', node.path, 'to', newName);
+                if (!newName || newName === node.name) return;
+
+                try {
+                    const newPath = node.path.replace(/[^/]+$/, newName);
+                    const res = await fetch(`${API}/project/file/rename`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ oldPath: node.path, newPath })
+                    });
+
+                    if (res.ok) {
+                        await loadRoot();
+                        // Update active tab if file is open
+                        if (activePath === node.path) {
+                            setActivePath(newPath);
+                        }
+                        setTabs(prev => prev.map(t =>
+                            t.node.path === node.path
+                                ? { ...t, node: { ...t.node, name: newName, path: newPath } }
+                                : t
+                        ));
+                    } else {
+                        alert('Failed to rename');
+                    }
+                } catch (err) {
+                    alert('Error renaming file');
                 }
                 break;
+
             case 'delete':
-                if (confirm(`Delete ${node.name}?`)) {
-                    // Implement delete logic via API
-                    console.log('Delete', node.path);
+                if (!confirm(`Delete ${node.name}?`)) return;
+
+                try {
+                    const res = await fetch(`${API}/project/file/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ path: node.path })
+                    });
+
+                    if (res.ok) {
+                        await loadRoot();
+                        // Close tab if file is open
+                        if (activePath === node.path) {
+                            closeTab(node.path);
+                        }
+                    } else {
+                        alert('Failed to delete');
+                    }
+                } catch (err) {
+                    alert('Error deleting file');
                 }
                 break;
+
             case 'newFile':
                 const fileName = prompt('Enter file name:');
-                if (fileName) {
-                    console.log('Create file in', node.path, fileName);
+                if (!fileName) return;
+
+                try {
+                    const newFilePath = `${node.path}/${fileName}`;
+                    const res = await fetch(`${API}/project/content`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ path: newFilePath, content: '' })
+                    });
+
+                    if (res.ok) {
+                        await loadRoot();
+                        // Expand parent directory
+                        setExpandedByPath(p => ({ ...p, [node.path]: true }));
+                    } else {
+                        alert('Failed to create file');
+                    }
+                } catch (err) {
+                    alert('Error creating file');
                 }
                 break;
+
             case 'newFolder':
                 const folderName = prompt('Enter folder name:');
-                if (folderName) {
-                    console.log('Create folder in', node.path, folderName);
+                if (!folderName) return;
+
+                try {
+                    const newFolderPath = `${node.path}/${folderName}`;
+                    const res = await fetch(`${API}/project/folder/create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ path: newFolderPath })
+                    });
+
+                    if (res.ok) {
+                        await loadRoot();
+                        // Expand parent directory
+                        setExpandedByPath(p => ({ ...p, [node.path]: true }));
+                    } else {
+                        alert('Failed to create folder');
+                    }
+                } catch (err) {
+                    alert('Error creating folder');
                 }
                 break;
         }

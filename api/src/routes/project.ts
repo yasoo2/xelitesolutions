@@ -289,22 +289,94 @@ router.get('/content', authenticate as any, async (req: Request, res: Response) 
   }
 });
 
-// File Content Endpoint (Write)
+// Rename File/Folder
+router.post('/file/rename', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const { oldPath: oldRaw, newPath: newRaw } = req.body;
+    const oldPath = await resolvePathInsideWorkspace(oldRaw);
+    const newPath = await resolvePathInsideWorkspace(newRaw);
+
+    if (!oldPath || !newPath) return res.status(400).json({ error: 'Invalid paths' });
+
+    try {
+      await fs.promises.access(oldPath);
+    } catch {
+      return res.status(404).json({ error: 'Source not found' });
+    }
+
+    await fs.promises.rename(oldPath, newPath);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Rename failed' });
+  }
+});
+
+// Delete File/Folder
+router.post('/file/delete', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const { path: rawPath } = req.body;
+    const itemPath = await resolvePathInsideWorkspace(rawPath);
+    if (!itemPath) return res.status(400).json({ error: 'Invalid path' });
+
+    try {
+      await fs.promises.access(itemPath);
+    } catch {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const stat = await fs.promises.stat(itemPath);
+    if (stat.isDirectory()) {
+      await fs.promises.rm(itemPath, { recursive: true, force: true });
+    } else {
+      await fs.promises.unlink(itemPath);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Delete failed' });
+  }
+});
+
+// Create Folder
+router.post('/folder/create', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const { path: rawPath } = req.body;
+    const folderPath = await resolvePathInsideWorkspace(rawPath);
+    // For new folder, resolvePath might return null if it strictly checks existence, 
+    // but our implementation checks if it's INSIDE workspace.
+    // However, resolvePathInsideWorkspace uses realpath on the candidate which fails if it doesn't exist.
+
+    // We need a looser path resolver for creation
+    const workspaceReal = await fs.promises.realpath(WORKSPACE_ROOT).catch(() => WORKSPACE_ROOT);
+    const candidate = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(workspaceReal, rawPath);
+    const rel = path.relative(workspaceReal, candidate);
+    const isSafe = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+
+    if (!isSafe) return res.status(400).json({ error: 'Invalid path' });
+
+    await fs.promises.mkdir(candidate, { recursive: true });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Folder creation failed' });
+  }
+});
+
+// File Content Endpoint (Write - Improved for creation)
 router.post('/content', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { path: filePathRaw, content } = req.body;
-    const filePath = await resolvePathInsideWorkspace(String(filePathRaw || ''));
-    if (!filePath) {
-      return res.status(400).json({ error: 'Path required' });
+
+    // Allow creating new files: check path safety without requiring existence
+    const workspaceReal = await fs.promises.realpath(WORKSPACE_ROOT).catch(() => WORKSPACE_ROOT);
+    const filePath = path.isAbsolute(filePathRaw) ? path.resolve(filePathRaw) : path.resolve(workspaceReal, filePathRaw);
+    const rel = path.relative(workspaceReal, filePath);
+    const isSafe = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+
+    if (!isSafe) {
+      return res.status(400).json({ error: 'Path outside workspace' });
     }
 
-    try {
-      const stat = await fs.promises.stat(filePath);
-      if (!stat.isFile()) return res.status(400).json({ error: 'Path must be a file' });
-    } catch {
-      return res.status(404).json({ error: 'File not found' });
-    }
-
+    // Ensure parent dir exists
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     await fs.promises.writeFile(filePath, String(content ?? ''), 'utf-8');
     res.json({ success: true });
   } catch (e) {
