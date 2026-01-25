@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
-import FileExplorer from '../components/FileExplorer';
+import EliteFileExplorer from '../components/EliteFileExplorer';
 import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -861,7 +861,7 @@ export default function Joe() {
                 </div>
                 {(isNarrow ? agentSessionsOpen : agentSidebarOpen) ? (
                   <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
-                    <FileExplorer />
+                    <EliteFileExplorer />
                   </div>
                 ) : null}
               </div>
@@ -992,7 +992,7 @@ export default function Joe() {
                   <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     {rightPanelTab === 'files' && (
                       <div style={{ height: '100%', overflow: 'auto' }}>
-                        <FileExplorer />
+                        <EliteFileExplorer />
                       </div>
                     )}
                   </div>
