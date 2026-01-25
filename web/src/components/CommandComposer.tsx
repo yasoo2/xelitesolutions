@@ -64,52 +64,75 @@ const DEBUG_TOOL_UI = false;
 const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: string }) => {
   return (
     <motion.div
-      className={`elite-logo-wrapper ${className}`}
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+      className={`elite-singularity-wrapper ${className}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 1.5 }}
       style={{ width: size, height: size, position: 'relative' }}
     >
-      {/* Refined Theme-Aware Glow */}
-      <motion.div
-        className="elite-logo-glow-refined"
-        animate={{
-          opacity: [0.2, 0.4, 0.2],
-          scale: [0.95, 1.05, 0.95],
-        }}
-        transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-      />
+      <svg
+        viewBox="0 0 200 200"
+        className="elite-singularity-svg"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <filter id="elite-gooey">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+            <feColorMatrix
+              in="blur"
+              mode="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -10"
+              result="goo"
+            />
+            <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+          </filter>
 
-      <div className="elite-glass-container-refined">
-        <svg
-          viewBox="0 0 100 100"
-          className="elite-svg-mark"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {/* Minimalist Geometric Mark */}
-          <motion.path
-            d="M50 15L85 35V65L50 85L15 65V35L50 15Z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 2, ease: "easeInOut" }}
-            className="elite-mark-path"
-          />
-          <text
-            x="50%"
-            y="54%"
-            dominantBaseline="middle"
-            textAnchor="middle"
-            className="elite-mark-text"
-            fill="currentColor"
-          >
-            JOE
-          </text>
-        </svg>
+          <radialGradient id="elite-core-grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="var(--accent-primary)" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="var(--accent-glow)" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        <g filter="url(#elite-gooey)">
+          {/* Animated Liquid Orbs */}
+          {[0, 1, 2].map((i) => (
+            <motion.circle
+              key={i}
+              cx="100"
+              cy="100"
+              r={30 + i * 5}
+              fill="var(--accent-primary)"
+              animate={{
+                x: [0, Math.sin(i) * 30, 0],
+                y: [0, Math.cos(i) * 30, 0],
+                scale: [1, 1.2 - i * 0.1, 1],
+              }}
+              transition={{
+                duration: 6 + i,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+              style={{ opacity: 0.6 - i * 0.1 }}
+            />
+          ))}
+        </g>
+
+        {/* The Central Nervous Core */}
+        <motion.circle
+          cx="100"
+          cy="100"
+          r="25"
+          fill="url(#elite-core-grad)"
+          animate={{ scale: [0.9, 1.1, 0.9], opacity: [0.5, 0.9, 0.5] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </svg>
+
+      {/* Brand Signature - Minimalist and Spaced */}
+      <div className="elite-signature">
+        <span className="elite-sig-j">J</span>
+        <span className="elite-sig-o">O</span>
+        <span className="elite-sig-e">E</span>
       </div>
     </motion.div>
   );
