@@ -64,53 +64,75 @@ const DEBUG_TOOL_UI = false;
 const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: string }) => {
   return (
     <motion.div
-      className={`elite-living-line-wrapper ${className}`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 2 }}
-      style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      className={`elite-bold-masterpiece-wrapper ${className}`}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+      style={{ width: size, height: size, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
+      {/* Polished Glass Backdrop with Depth */}
+      <div className="elite-glass-base" />
+
       <svg
         viewBox="0 0 100 100"
-        className="elite-living-line-svg"
+        className="elite-master-svg"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ width: '80%', height: '80%' }}
       >
         <defs>
-          <linearGradient id="line-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="var(--accent-primary)" stopOpacity="0.2" />
-            <stop offset="50%" stopColor="var(--accent-primary)" stopOpacity="1" />
-            <stop offset="100%" stopColor="var(--accent-primary)" stopOpacity="0.2" />
+          <linearGradient id="shimmer-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <motion.stop
+              offset="0%"
+              stopColor="var(--accent-primary)"
+              animate={{ stopColor: ["var(--accent-primary)", "var(--text-primary)", "var(--accent-primary)"] }}
+              transition={{ duration: 4, repeat: Infinity }}
+            />
+            <stop offset="50%" stopColor="var(--text-primary)" stopOpacity="0.8" />
+            <motion.stop
+              offset="100%"
+              stopColor="var(--accent-primary)"
+              animate={{ stopColor: ["var(--accent-primary)", "var(--text-primary)", "var(--accent-primary)"] }}
+              transition={{ duration: 4, repeat: Infinity, delay: 1 }}
+            />
           </linearGradient>
+
+          <filter id="elite-master-glow">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
         </defs>
 
-        {/* The Recognizable J: Refined Luxury Path */}
+        {/* The Bold Masterpiece 'J' */}
         <motion.path
-          d="M55 20V75C55 85 35 85 35 75"
-          stroke="url(#line-grad)"
-          strokeWidth="1.8"
+          d="M65 25V65C65 80 45 80 35 70"
+          stroke="url(#shimmer-grad)"
+          strokeWidth="12"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+          filter="url(#elite-master-glow)"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.5, ease: "easeOut" }}
+        />
+
+        {/* Highlight tracing for extra beauty */}
+        <motion.path
+          d="M65 25V65C65 80 45 80 35 70"
+          stroke="white"
+          strokeWidth="2"
           strokeLinecap="round"
           fill="none"
-          initial={{ pathLength: 0, pathOffset: 0 }}
+          initial={{ pathLength: 0, opacity: 0 }}
           animate={{
-            pathLength: [0.3, 0.6, 0.3],
-            pathOffset: [0, 1, 2]
+            pathLength: [0, 1, 0],
+            opacity: [0, 0.4, 0]
           }}
           transition={{
-            duration: 6,
+            duration: 5,
             repeat: Infinity,
             ease: "easeInOut"
           }}
-        />
-
-        {/* Subtle Static Path for Clarity */}
-        <path
-          d="M55 20V75C55 85 35 85 35 75"
-          stroke="var(--accent-primary)"
-          strokeWidth="0.8"
-          strokeLinecap="round"
-          fill="none"
-          style={{ opacity: 0.15 }}
+          style={{ opacity: 0.3 }}
         />
       </svg>
     </motion.div>
