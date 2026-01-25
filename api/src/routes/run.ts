@@ -1086,41 +1086,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     model
   });
 
-  // --- FREE INTELLIGENCE OPTIMIZER (God-Tier Speed) ---
-  if (text) {
-    try {
-      const optimization = await freeIntelligenceOptimizer.optimizeRequest(text, []);
-      if (optimization.shouldUseCache && optimization.cachedResponse) {
-        console.log('[Optimizer] Cache HIT - Sending Instant Response');
-
-        // Emulate streaming response for frontend compatibility
-        res.setHeader('Content-Type', 'application/x-ndjson');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders();
-
-        const responseText = optimization.cachedResponse;
-        const chunks = responseText.match(/.{1,100}/g) || [responseText]; // Split to look like stream
-
-        // Send initial "thought" event (fake thinking)
-        res.write(JSON.stringify({ type: 'thought', data: '🧠 accessing_library_of_alexandria...' }) + '\n');
-
-        // Send text chunks
-        for (const chunk of chunks) {
-          res.write(JSON.stringify({ type: 'text', data: chunk }) + '\n');
-          await new Promise(r => setTimeout(r, 5)); // Tiny delay for "typing" effect
-        }
-
-        // Send completion
-        res.write(JSON.stringify({ type: 'run_completed', data: { status: 'success' } }) + '\n');
-        res.end();
-        return;
-      }
-    } catch (e) {
-      console.warn('[Optimizer] Optimization check failed', e);
-    }
-  }
-  // --- END OPTIMIZER ---
+  // [MOVED] Free Intelligence Optimizer logic moved to initialPlan calculation phase to avoid response stream corruption
 
   if (typeof provider === 'string') provider = provider.trim();
   if (typeof apiKey === 'string') apiKey = apiKey.trim();
@@ -1611,7 +1577,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ],
         },
       } as any;
-    } else if (isGreetingOnly(rawUserText) && !hasAttachments) {
+    }
+
+    // [OPTIMIZER] Check cache before other heuristics
+    else if (!initialPlan && rawUserText && !hasAttachments) {
+      const optimization = await freeIntelligenceOptimizer.optimizeRequest(rawUserText, []);
+      if (optimization.shouldUseCache && optimization.cachedResponse) {
+        console.log('[Optimizer] Cache HIT - Using Echo Plan');
+        initialPlan = { name: 'echo', input: { text: optimization.cachedResponse } };
+      }
+    }
+
+    if (!initialPlan && isGreetingOnly(rawUserText) && !hasAttachments) {
       initialPlan = { name: 'echo', input: { text: greetingReply(rawUserText) } };
     } else {
       const wantsLocation = isLocationLikeQuery(rawUserText);
