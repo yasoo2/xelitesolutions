@@ -170,7 +170,11 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
     res.json({ success: true, path: activeWorkspaceRoot });
   } catch (e: any) {
     console.error('Clone failed:', e);
-    res.status(500).json({ error: 'Clone failed: ' + (e.message || String(e)) });
+    // Send clean error message
+    const msg = e.message || String(e);
+    // Remove potential 'Command failed:' prefix to make it cleaner
+    const cleanMsg = msg.replace('Command failed: ', '').trim();
+    res.status(500).json({ error: cleanMsg });
   }
 });
 

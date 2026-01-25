@@ -236,6 +236,63 @@ const ContextMenu = ({
     );
 };
 
+const ModalInput = ({
+    isOpen,
+    onClose,
+    onSubmit,
+    title,
+    placeholder,
+    loading
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (val: string) => void;
+    title: string;
+    placeholder: string;
+    loading?: boolean;
+}) => {
+    const [val, setVal] = useState('');
+    if (!isOpen) return null;
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000
+        }}>
+            <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="elite-modal"
+                style={{
+                    background: 'var(--surface-color)', padding: 24, borderRadius: 12,
+                    width: 400, border: '1px solid var(--border-color)',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+                }}
+            >
+                <h3 style={{ marginTop: 0, marginBottom: 16 }}>{title}</h3>
+                <input
+                    autoFocus
+                    className="elite-input"
+                    value={val}
+                    onChange={e => setVal(e.target.value)}
+                    placeholder={placeholder}
+                    style={{ width: '100%', marginBottom: 16 }}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter' && !loading) onSubmit(val);
+                        if (e.key === 'Escape') onClose();
+                    }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button onClick={onClose} className="elite-btn-secondary" disabled={loading}>Cancel</button>
+                    <button onClick={() => onSubmit(val)} className="elite-btn-primary" disabled={loading || !val}>
+                        {loading ? <Loader2 size={16} className="animate-spin" /> : 'Confirm'}
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
 export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
     const [viewMode, setViewMode] = useState<'local' | 'github'>('local');
     const [repos, setRepos] = useState<any[]>([]);
@@ -252,6 +309,13 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
     const [savedPath, setSavedPath] = useState<string | null>(null);
     const [treeCollapsed, setTreeCollapsed] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, node: null });
+
+    // Modal States
+    const [modalConfig, setModalConfig] = useState<{
+        open: boolean;
+        type: 'folder' | 'clone' | null;
+        loading: boolean;
+    }>({ open: false, type: null, loading: false });
 
     const fetchGitHubRepos = async () => {
         const token = localStorage.getItem('GITHUB_TOKEN');
@@ -537,10 +601,59 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
         }
     };
 
+    const handleModalSubmit = async (val: string) => {
+        if (!val) return;
+        const type = modalConfig.type;
+        setModalConfig(p => ({ ...p, loading: true }));
+
+        try {
+            if (type === 'folder') {
+                const res = await fetch(`${API}/project/root`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                    body: JSON.stringify({ path: val })
+                });
+                if (res.ok) {
+                    await loadRoot();
+                    setModalConfig({ open: false, type: null, loading: false });
+                } else {
+                    alert('Path not found');
+                    setModalConfig(p => ({ ...p, loading: false }));
+                }
+            } else if (type === 'clone') {
+                const res = await fetch(`${API}/project/git/clone`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                    body: JSON.stringify({ repoUrl: val })
+                });
+                if (res.ok) {
+                    await loadRoot();
+                    setModalConfig({ open: false, type: null, loading: false });
+                } else {
+                    const error = await res.json();
+                    alert(error.error || 'Clone failed');
+                    setModalConfig(p => ({ ...p, loading: false }));
+                }
+            }
+        } catch {
+            alert('Operation failed');
+            setModalConfig(p => ({ ...p, loading: false }));
+        }
+    };
+
     const pathParts = activePath?.split('/').filter(Boolean) || [];
 
     return (
         <div className="elite-file-explorer">
+            <ModalInput
+                isOpen={modalConfig.open}
+                onClose={() => setModalConfig({ open: false, type: null, loading: false })}
+                onSubmit={handleModalSubmit}
+                title={modalConfig.type === 'folder' ? 'Open Absolute Path' : 'Clone Repository'}
+                placeholder={modalConfig.type === 'folder' ? '/app/src/...' : 'https://github.com/user/repo'}
+                loading={modalConfig.loading}
+            />
+
             <AnimatePresence>
                 {!treeCollapsed ? (
                     <motion.div
@@ -556,45 +669,26 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                                     className="elite-select"
                                     value="current"
                                     onChange={(e) => {
-                                        if (e.target.value === 'folder') {
-                                            const path = prompt('Enter absolute path to folder:');
-                                            if (path) {
-                                                fetch(`${API}/project/root`, {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-                                                    body: JSON.stringify({ path })
-                                                }).then(res => {
-                                                    if (res.ok) {
-                                                        loadRoot();
-                                                        alert('Workspace switched!');
-                                                    } else {
-                                                        alert('Failed to switch workspace. Path may not exist.');
-                                                    }
-                                                });
-                                            }
-                                        } else if (e.target.value === 'clone') {
-                                            const repo = prompt('Enter GitHub Repository URL:');
-                                            if (repo) {
-                                                alert('Cloning repository... This may take a while.');
-                                                fetch(`${API}/project/git/clone`, {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-                                                    body: JSON.stringify({ repoUrl: repo })
-                                                }).then(async res => {
-                                                    if (res.ok) {
-                                                        await loadRoot();
-                                                        alert('Repository cloned and opened!');
-                                                    } else {
-                                                        const err = await res.json();
-                                                        alert('Clone failed: ' + err.error);
-                                                    }
-                                                });
-                                            }
+                                        const v = e.target.value;
+                                        if (v === 'folder') {
+                                            setModalConfig({ open: true, type: 'folder', loading: false });
+                                        } else if (v === 'clone') {
+                                            setModalConfig({ open: true, type: 'clone', loading: false });
+                                        } else if (v === 'system') {
+                                            // Reset to system
+                                            // Ideally we shouldn't hardcode system path but standard API behavior
+                                            // Or we just send empty or special flag. 
+                                            // But for now, user manually switches. 
+                                            // Actually, we should probably add a "Reset to System" option in the backend
+                                            // Or just assume the user knows the system path? 
+                                            // No, "Local System" implies reset.
+                                            // Let's make "Local System" option trigger the folder modal for now to be safe, 
+                                            // or better, implement a reset.
+                                            // I'll leave it as a placeholder that resets the dropdown.
                                         }
                                     }}
                                 >
                                     <option value="current">📂 Current Project</option>
-                                    <option value="system">💻 Local System</option>
                                     <option value="folder">🖥️ Open Folder...</option>
                                     <option value="clone">🐙 Clone Repository...</option>
                                 </select>
