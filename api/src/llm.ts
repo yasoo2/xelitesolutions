@@ -3,6 +3,13 @@ import { tools } from './tools/registry';
 import path from 'path';
 import { freeIntelligenceOptimizer, generateSmartResponse } from './llm/free-intelligence-optimizer';
 
+// Enterprise Systems (Global Requires to avoid ReferenceErrors across scopes)
+const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = require('./llm/intelligent-router');
+const { buildConversationContext, analyzeContextualIntent, matchPatternWithContext } = require('./llm/context-engine');
+const { longTermMemory } = require('./memory/long-term-memory');
+const { orchestrator } = require('./agents/orchestrator');
+const { analyzeContext } = require('./intelligence/context-analyzer');
+
 // Initialize OpenAI client
 let apiKey = process.env.OPENAI_API_KEY;
 if (apiKey) {
@@ -92,7 +99,6 @@ function selectToolDefsForProvider(
   // ACTUALLY USE CONTEXT ANALYZER - with proper error handling
   let contextInfo: any = null;
   try {
-    const { analyzeContext } = require('./intelligence/context-analyzer');
     contextInfo = analyzeContext(messages);
     console.log('[Tool Selection] Context detected:', {
       taskType: contextInfo?.taskType,
@@ -647,11 +653,7 @@ export async function planNextStep(
 
     // === ENTERPRISE SYSTEMS ACTIVATION ===
 
-    // 1. Import all enterprise systems (using require to avoid TS1323)
-    const { advancedAnalyzeTask, routeToModel, selectBestModel, generateActionPlan } = require('./llm/intelligent-router');
-    const { buildConversationContext, analyzeContextualIntent, matchPatternWithContext } = require('./llm/context-engine');
-    const { longTermMemory } = require('./memory/long-term-memory');
-    const { orchestrator } = require('./agents/orchestrator');
+    // 1. Enterprise systems are now imported at top-level for global scope
 
     // 2. Build conversation context
     const userId = options?.userId || 'anonymous';
