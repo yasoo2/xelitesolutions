@@ -105,6 +105,7 @@ export default function Joe() {
     }
     detect();
   }, [isProduction]);
+
   useEffect(() => {
     // Skip auto-detection in production
     if (isProduction || !autoDetectPreview) return;
@@ -139,9 +140,7 @@ export default function Joe() {
     };
   }, [autoDetectPreview, previewUrl, isProduction]);
 
-  const [showSidebar, setShowSidebar] = useState(true); // Open by default for better UX
-  // Remove auto-open logic based on width to strictly respect "closed by default"
-
+  const [showSidebar, setShowSidebar] = useState(true);
   const [mode, setMode] = useState<'agent' | 'chat'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -153,18 +152,14 @@ export default function Joe() {
   const [agentBrowserSessionId, setAgentBrowserSessionId] = useState<string | null>(null);
   const [activeBrowserSession, setActiveBrowserSession] = useState<{ sessionId: string; wsUrl: string } | null>(null);
 
-  // Auto-switch logic
   useEffect(() => {
     const unsub = SocketService.subscribe((msg: any) => {
-      // Switch to Terminal on command execution or output
       if (msg.type === 'tool_start' && msg.tool === 'run_command') {
         setAgentCentralTab('terminal');
       }
       if (msg.type === 'terminal_output') {
         setAgentCentralTab('terminal');
       }
-
-      // Switch to Browser on browser tool execution or browser events
       if (msg.type === 'tool_start' && (
         msg.tool.startsWith('browser_') ||
         msg.tool === 'open_page' ||
@@ -181,6 +176,7 @@ export default function Joe() {
     });
     return () => { unsub(); };
   }, []);
+
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [showFiles, setShowFiles] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
@@ -238,7 +234,6 @@ export default function Joe() {
       })();
       try {
         void fetch(`${API}/browser/stop`, {
-
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -290,26 +285,17 @@ export default function Joe() {
     return () => window.removeEventListener('joe:browser_open_request', handler as any);
   }, [API, mode, agentBrowserSessionId, activeBrowserSession?.sessionId, makeBrowserSessionId]);
 
-
-
-  // Mobile Optimization: Default closed on small screens
-  const isMobileInitial = window.innerWidth < 1024;
   const [rightPanelTab, setRightPanelTab] = useState<'files'>('files');
   const [agentPanelTab, setAgentPanelTab] = useState<'commands'>('commands');
   const [liveSteps, setLiveSteps] = useState<any[]>([]);
   const stepStatusByKeyRef = useRef<Map<string, string>>(new Map());
-
   const openedPaymentsRef = useRef<Set<string>>(new Set());
-
-
 
   const activeSessionKey = mode === 'chat' ? (selected || '') : (agentSelected || '');
   useEffect(() => {
     setLiveSteps([]);
     stepStatusByKeyRef.current = new Map();
   }, [activeSessionKey, mode]);
-
-
 
   const formatStepLabel = useCallback((step: any) => {
     const name = String(step?.name || '');
@@ -326,14 +312,6 @@ export default function Joe() {
     setLiveSteps(Array.isArray(steps) ? steps : []);
     if (!Array.isArray(steps) || steps.length === 0) return;
 
-    const additions: Array<{
-      id: string;
-      type: 'thought' | 'decision' | 'action' | 'result' | 'error';
-      content: string;
-      timestamp: number;
-      details?: any;
-    }> = [];
-
     for (const s of steps) {
       const name = String(s?.name || '');
       if (!name || name === 'plan' || name.startsWith('thinking_step_')) continue;
@@ -346,32 +324,15 @@ export default function Joe() {
       const label = formatStepLabel(s);
       if (!label) continue;
 
-      const base = {
-        id: `think-${Date.now()}-${Math.random()}`,
-        timestamp: Date.now(),
-        details: { step: s },
-      };
-
       if (status === 'running') {
-        additions.push({ ...base, type: 'action', content: label });
-
-        // Auto-switch tabs based on the running tool
         if (name.includes('shell_') || name.includes('run_command') || name.includes('terminal')) {
           setAgentCentralTab('terminal');
         } else if (name.includes('browser_') || name.includes('screenshot') || name.includes('read_url')) {
           setAgentCentralTab('browser');
         }
-      } else if (status === 'done') {
-        additions.push({ ...base, type: 'result', content: label });
-      } else if (status === 'failed') {
-        const err = typeof s?.error === 'string' ? s.error : typeof s?.result?.error === 'string' ? s.result.error : '';
-        additions.push({ ...base, type: 'error', content: err ? `${label} — ${err}` : label });
       }
     }
-
   }, [formatStepLabel, setAgentCentralTab]);
-
-
 
   const nav = useNavigate();
 
@@ -406,8 +367,6 @@ export default function Joe() {
     const el = nodes[nodes.length - 1] as HTMLElement | null;
     setComposerHeight(el?.offsetHeight || 0);
   }, [mode, showSidebar, agentComposerOpen, showFiles, selected]);
-
-  useEffect(() => { }, [isNarrow, composerHeight]);
 
   useEffect(() => {
     const release = SocketService.subscribe((event: any) => {
@@ -446,7 +405,6 @@ export default function Joe() {
     return () => window.removeEventListener('auth:unauthorized', onUnauthorized as any);
   }, []);
 
-  // Session Actions Hook
   const {
     createSession,
     isCreatingChatSession,
@@ -455,14 +413,6 @@ export default function Joe() {
     deleteAllSessions,
     togglePin
   } = useSessionActions();
-
-  // Alias for toggleAgentPin (as they share same logic essentially, or we can use togglePin directly below in JSX)
-  const toggleAgentPin = togglePin;
-
-  // Old isCreatingChatSession state removed (now from hook)
-
-
-  // createSession moved to hook
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -493,10 +443,8 @@ export default function Joe() {
 
   useEffect(() => {
     if (mode === 'agent') {
-      // Don't auto-open sidebar in agent mode either
       if (agentSessions.length === 0) loadAllSessions();
     } else {
-      // Don't auto-open sidebar in chat mode
       if (sessions.length === 0) loadAllSessions();
     }
   }, [mode]);
@@ -505,7 +453,6 @@ export default function Joe() {
     const mql = window.matchMedia('(max-width: 1024px)');
     const apply = () => {
       setIsNarrow(mql.matches);
-      // Don't auto-toggle sidebar here on resize to avoid annoyance, just set narrow state
       if (mql.matches) setShowSidebar(false);
     };
     apply();
@@ -529,19 +476,6 @@ export default function Joe() {
     if (!name) return;
     await createFolderAction(name);
   }
-
-  // moveSessionToFolder moved to hook
-
-
-  // mergeSessions moved to hook
-
-
-
-
-
-  // deleteAllSessions moved to hook
-
-  // togglePin and toggleAgentPin moved to hook
 
   function shareSession(id: string) {
     alert('تم نسخ رابط الجلسة');
@@ -585,10 +519,10 @@ export default function Joe() {
   return (
     <div className={`joe-layout ${showSidebar ? 'sidebar-open' : 'sidebar-closed'}`}>
       {mode === 'chat' && showSidebar && isNarrow && <div className="sidebar-backdrop" onClick={() => setShowSidebar(false)} />}
+
       {mode === 'chat' && (
         <aside className={`sidebar ${showSidebar ? 'open' : 'closed'} glass-panel`} aria-hidden={!showSidebar}>
           <div className="sidebar-header">
-            {/* Docked Toggle Button (Visible when Sidebar Open) */}
             <button
               className="action-icon-btn sidebar-toggle-docked"
               onClick={() => setShowSidebar(false)}
@@ -611,8 +545,6 @@ export default function Joe() {
             <button className="new-chat-btn premium-btn" onClick={() => createSession()} disabled={isCreatingChatSession}>
               <Plus size={16} /> {t('sidebar.newChat', 'New Chat')}
             </button>
-
-
           </div>
 
           <div className="search-box-container">
@@ -750,10 +682,6 @@ export default function Joe() {
                       e.preventDefault();
                       const sourceId = e.dataTransfer.getData('sessionId');
                       if (sourceId && sourceId !== s.id) {
-                        // Check if source session has no folder, otherwise move it here
-                        // But we also support merge. Let's prioritize folder move if dropped on a folder, merge if dropped on session
-                        // Actually, if we drop on session, it's merge. If we drop on "Other Sessions" header, it's move to root.
-                        // But here we are dropping on a session item.
                         mergeSessions(sourceId, s.id);
                       }
                     }}
@@ -792,7 +720,7 @@ export default function Joe() {
                     className="search-result-item"
                     onClick={() => {
                       setSelected(r.sessionId);
-                      setSearchQuery(''); // Clear search on select
+                      setSearchQuery('');
                       if (isNarrow) setShowSidebar(false);
                     }}
                   >
@@ -812,16 +740,15 @@ export default function Joe() {
           </div>
         </aside>
       )}
-      {/* Always show toggle button regardless of mode, rendered in Portal to escape layout clipping */}
-      {/* Floating Toggle Button (Visible ONLY when Sidebar Closed) */}
+
       {!showSidebar && createPortal(
         <button
           className="sidebar-toggle-btn-floating"
           style={{
             position: 'fixed',
-            top: '100px', // Adjusted to 100px per user "up a little" request
+            top: '100px',
             insetInlineStart: '20px',
-            zIndex: 2147483647, /* MAX INT */
+            zIndex: 2147483647,
             display: 'flex',
             width: '44px',
             height: '44px',
@@ -829,7 +756,6 @@ export default function Joe() {
             justifyContent: 'center',
             borderRadius: '12px',
             cursor: 'pointer',
-            /* Premium Glassmorphism */
             background: 'var(--bg-card)',
             border: '1px solid var(--border-color)',
             backdropFilter: 'blur(12px)',
@@ -844,11 +770,7 @@ export default function Joe() {
         document.body
       )}
 
-
-
       <main className="center" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-
-
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', paddingTop: 56 }}>
           <div className="mode-switch mode-switch-floating">
             <div className="mode-fabs">
@@ -880,7 +802,6 @@ export default function Joe() {
                 <Folder size={16} />
                 <span className="mode-fab-label">الملفات</span>
               </button>
-
             </div>
           </div>
 
@@ -936,7 +857,6 @@ export default function Joe() {
                     >
                       {isNarrow ? (agentSessionsOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />) : agentSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
                     </button>
-                    </button>
                   </div>
                 </div>
                 {(isNarrow ? agentSessionsOpen : agentSidebarOpen) ? (
@@ -969,7 +889,6 @@ export default function Joe() {
                     <AgentCentralPanelLazy
                       sessionId={agentSelected || undefined}
                       browserSessionId={agentBrowserSessionId}
-
                       showBoxes={showBoxes}
                       activeTab={agentCentralTab}
                       onTabChange={setAgentCentralTab}
@@ -1000,8 +919,6 @@ export default function Joe() {
                     >
                       الأوامر
                     </button>
-
-
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {isNarrow ? (
@@ -1017,8 +934,6 @@ export default function Joe() {
                 {(!isNarrow || agentComposerOpen) ? (
                   <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
                     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-
-
                       <CommandComposer
                         sessionId={agentSelected || undefined}
                         sessionKind="agent"
@@ -1029,25 +944,21 @@ export default function Joe() {
                           setAgentSelected(id);
                         }}
                       />
-
                     </div>
                   </div>
                 ) : null}
               </div>
             </div>
           )}
-        {mode === 'chat' && (
-          <>
+
+          {mode === 'chat' && (
             <div className="chat-view" style={{ display: 'flex', gap: 12, height: '100%' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--bg-secondary)' }}>
                 <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>المحادثة</div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: 12, padding: 12, height: '100%', overflow: 'hidden' }}>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'auto' }}>
-                    {/* ===== عرض سلسلة التفكير في وضع المحادثة ===== */}
                     <CommandComposer
                       sessionId={selected || undefined}
                       onSessionCreated={async (id) => {
@@ -1058,23 +969,18 @@ export default function Joe() {
                   </div>
                 </div>
               </div>
-              {(showFiles) ? (
+              {showFiles && (
                 <div className="joe-right-panel" style={{ width: isNarrow ? '100%' : 420, minWidth: isNarrow ? undefined : 320, height: '100%', borderLeft: isNarrow ? undefined : '1px solid var(--border-color)', borderTop: isNarrow ? '1px solid var(--border-color)' : undefined, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
                   <div className="joe-right-panel-header" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-
-                      {showFiles ? (
-                        <button
-                          onClick={() => setRightPanelTab('files')}
-                          style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                        >
-                          <Folder size={14} /> {t('tools.file_read', 'Files')}
-                        </button>
-                      ) : null}
-
+                      <button
+                        onClick={() => setRightPanelTab('files')}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--border-color)', background: rightPanelTab === 'files' ? 'rgba(var(--accent-primary-rgb), 0.14)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Folder size={14} /> {t('tools.file_read', 'Files')}
+                      </button>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-
                       <button
                         onClick={() => setShowFiles(false)}
                         style={{ height: 28, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}
@@ -1083,145 +989,121 @@ export default function Joe() {
                       </button>
                     </div>
                   </div>
-
                   <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                    {rightPanelTab === 'files' && showFiles ? (
+                    {rightPanelTab === 'files' && (
                       <div style={{ height: '100%', overflow: 'auto' }}>
                         <FileExplorer />
                       </div>
-                    ) : null}
-
-
-
-
+                    )}
                   </div>
                 </div>
-              ) : null}
+              )}
             </div>
-          </>
-        )}
+          )}
+        </div>
+      </main>
+
+      <TaskQueue
+        tasks={queuedTasks}
+        onRemove={removeTask}
+        onExecute={startTask}
+      />
+
+      {showPackages && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowPackages(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <PackageManagerLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {showGit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowGit(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <GitPanelLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {showSocial && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowSocial(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <SocialPanelLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {showArt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowArt(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <ArtStudioLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {showDB && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowDB(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <DatabasePanelLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {showActions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
+            <button
+              onClick={() => setShowActions(false)}
+              className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
+              <ActionsPanelLazy />
+            </Suspense>
+          </div>
+        </div>
+      )}
     </div>
-      </main >
-
-    <TaskQueue
-      tasks={queuedTasks}
-      onRemove={removeTask}
-      onExecute={startTask}
-    />
-
-  {/* Package Manager Modal */ }
-  {
-    showPackages && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-        <div className="bg-[#0f1117] w-full max-w-4xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-          <button
-            onClick={() => setShowPackages(false)}
-            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-          >
-            <PanelLeftClose size={20} />
-          </button>
-          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-            <PackageManagerLazy />
-          </Suspense>
-        </div>
-      </div>
-    )
-  }
-
-  {/* Git Modal */ }
-  {
-    showGit && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-        <div className="bg-[#0f1117] w-full max-w-2xl h-[70vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-          <button
-            onClick={() => setShowGit(false)}
-            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-          >
-            <PanelLeftClose size={20} />
-          </button>
-          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-            <GitPanelLazy />
-          </Suspense>
-        </div>
-      </div>
-    )
-  }
-
-  {/* Social Modal */ }
-  {
-    showSocial && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-        <div className="bg-black w-full max-w-md h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-          <button
-            onClick={() => setShowSocial(false)}
-            className="absolute right-4 top-4 p-2 hover:bg-black/50 rounded-full text-white hover:text-white transition-colors z-20"
-          >
-            <PanelLeftClose size={20} />
-          </button>
-          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-            <SocialPanelLazy />
-          </Suspense>
-        </div>
-      </div>
-    )
-  }
-
-  {/* Art Modal */ }
-  {
-    showArt && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-        <div className="bg-[#1a0b2e] w-full max-w-5xl h-[90vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-          <button
-            onClick={() => setShowArt(false)}
-            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-          >
-            <PanelLeftClose size={20} />
-          </button>
-          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-            <ArtStudioLazy />
-          </Suspense>
-        </div>
-      </div>
-    )
-  }
-
-  {/* DB Modal */ }
-  {
-    showDB && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-        <div className="bg-[#0a0f1c] w-full max-w-5xl h-[85vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-          <button
-            onClick={() => setShowDB(false)}
-            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-          >
-            <PanelLeftClose size={20} />
-          </button>
-          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-            <DatabasePanelLazy />
-          </Suspense>
-        </div>
-      </div>
-    )
-  }
-
-  {/* Actions Modal */ }
-  {
-    showActions && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-        <div className="bg-[#0d1117] w-full max-w-3xl h-[60vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden relative">
-          <button
-            onClick={() => setShowActions(false)}
-            className="absolute right-4 top-4 p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors z-10"
-          >
-            <PanelLeftClose size={20} />
-          </button>
-          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader className="animate-spin text-white/30" /></div>}>
-            <ActionsPanelLazy />
-          </Suspense>
-        </div>
-      </div>
-    )
-  }
-    </div >
   );
 }

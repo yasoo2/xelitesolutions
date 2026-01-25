@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, ChevronDown, Folder, File, RefreshCw, FileText, Code, Image, Music, Video, Database, Package, Save, Loader2, X, Search, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, File, RefreshCw, FileText, Code, Save, Loader2, X, Search, PanelLeftClose, PanelLeftOpen, HardDrive, Github } from 'lucide-react';
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
-import { GitBranch, Github, HardDrive } from 'lucide-react';
 
 interface FileNode {
     name: string;
     path: string;
     type: 'file' | 'directory';
     children?: FileNode[];
-    hasChildren?: boolean; // New flag for lazy loading
+    hasChildren?: boolean;
     loaded?: boolean;
 }
 
@@ -124,6 +123,17 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
     const [viewMode, setViewMode] = useState<'local' | 'github'>('local');
     const [repos, setRepos] = useState<any[]>([]);
     const [activeRepo, setActiveRepo] = useState<string | null>(null);
+    const [tree, setTree] = useState<FileNode[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [query, setQuery] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+    const [expandedByPath, setExpandedByPath] = useState<Record<string, boolean>>({});
+    const [tabs, setTabs] = useState<OpenTab[]>([]);
+    const [activePath, setActivePath] = useState<string | null>(null);
+    const [savingPath, setSavingPath] = useState<string | null>(null);
+    const [savedPath, setSavedPath] = useState<string | null>(null);
+    const [treeCollapsed, setTreeCollapsed] = useState(false);
 
     const fetchGitHubRepos = async () => {
         const token = localStorage.getItem('GITHUB_TOKEN');
@@ -146,12 +156,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         const token = localStorage.getItem('token');
         if (!token) return { tree: [] };
 
-        if (viewMode === 'github' && activeRepo) {
-            // Enhanced logic for GitHub tree would go here
-            // For now, let's keep it simple as a placeholder or use a dedicated tool
-            return { tree: [] };
-        }
-
         try {
             const url = `${API}/project/tree` + (path ? `?path=${encodeURIComponent(path)}` : '');
             const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -172,7 +176,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
 
     useEffect(() => { loadRoot(); }, []);
 
-    // Perform Search
     useEffect(() => {
         if (!query.trim()) {
             setSearchResults([]);
@@ -203,22 +206,7 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         setExpandedByPath(p => ({ ...p, [node.path]: true }));
 
         if (!node.children || node.children.length === 0) {
-            // Lazy load
-            // Helper to update specific node in tree
-            const updateNode = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(n => {
-                    if (n.path === node.path) {
-                        return { ...n, loading: true };
-                    }
-                    if (n.children) return { ...n, children: updateNode(n.children) };
-                    return n;
-                });
-            };
-            // Set loading state (not implemented in view yet, but logical)
-
             const { tree: children } = await fetchTree(node.path);
-
-            // Insert children
             setTree(prev => {
                 const inject = (list: FileNode[]): FileNode[] => {
                     return list.map(item => {
@@ -235,7 +223,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
     }, [expandedByPath]);
 
     const loadFileContent = useCallback(async (node: FileNode) => {
-        // ... (Existing load logic, mostly same)
         setTabs(prev => [...prev, { node, content: '', isLoading: true, error: null, isDirty: false, lastSavedAt: null }]);
 
         try {
@@ -269,7 +256,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         if (!tab || !tab.isDirty) return;
         setSavingPath(tab.node.path);
         try {
-            // Save logic same as before
             const token = localStorage.getItem('token');
             await fetch(`${API}/project/content`, {
                 method: 'POST',
@@ -292,7 +278,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
         <div style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden' }}>
             {!treeCollapsed ? (
                 <div style={{ width: 260, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                    {/* Header */}
                     <div className="flex font-bold text-sm p-2 items-center justify-between border-b border-white/5">
                         <div className="flex items-center gap-2">
                             <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
@@ -333,7 +318,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                         </div>
                     )}
 
-                    {/* Smart Search */}
                     <div className="p-2 border-b border-white/5 bg-white/5">
                         <div className="flex items-center gap-2 bg-black/20 rounded px-2 py-1 border border-white/5 focus-within:border-blue-500/50">
                             <Search size={14} className="text-white/40" />
@@ -347,16 +331,12 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                         </div>
                     </div>
 
-                    {/* Tree or Search Results */}
                     <div className="flex-1 overflow-auto">
                         {query ? (
                             <div className="flex flex-col">
                                 {searchResults.map((res, i) => (
                                     <div key={i}
-                                        onClick={() => {
-                                            // Open file and jump to line?
-                                            openFile({ name: res.path.split('/').pop()!, path: res.path, type: 'file' });
-                                        }}
+                                        onClick={() => openFile({ name: res.path.split('/').pop()!, path: res.path, type: 'file' })}
                                         className="p-2 hover:bg-white/5 cursor-pointer border-b border-white/5"
                                     >
                                         <div className="text-xs font-medium text-blue-300 truncate">{res.path.split('/').pop()}</div>
@@ -391,7 +371,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                 </div>
             )}
 
-            {/* Editor Area */}
             <div className="flex-1 flex flex-col min-w-0 bg-[#0f1117]">
                 <div className="h-10 border-b border-white/5 flex items-center px-2 gap-2 overflow-x-auto">
                     {tabs.map(t => (
@@ -422,7 +401,6 @@ export default function FileExplorer({ sessionId }: FileExplorerProps) {
                         </div>
                     )}
 
-                    {/* Save Button Overlay */}
                     {activePath && tabs.find(t => t.node.path === activePath)?.isDirty && (
                         <div className="absolute bottom-4 right-4 z-10">
                             <button onClick={saveActiveFile} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow-lg flex items-center gap-2 text-sm font-medium transition-colors">
