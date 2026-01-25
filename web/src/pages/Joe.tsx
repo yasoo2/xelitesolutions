@@ -586,6 +586,26 @@ export default function Joe() {
       {mode === 'chat' && (
         <aside className={`sidebar ${showSidebar ? 'open' : 'closed'} glass-panel`} aria-hidden={!showSidebar}>
           <div className="sidebar-header">
+            {/* Docked Toggle Button (Visible when Sidebar Open) */}
+            <button
+              className="action-icon-btn sidebar-toggle-docked"
+              onClick={() => setShowSidebar(false)}
+              title={t('sidebar.close', 'Close Sidebar')}
+              style={{
+                width: 32,
+                height: 32,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 8,
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)'
+              }}
+            >
+              <PanelLeftOpen size={18} />
+            </button>
             <button className="new-chat-btn premium-btn" onClick={() => createSession()} disabled={isCreatingChatSession}>
               <Plus size={16} /> {t('sidebar.newChat', 'New Chat')}
             </button>
@@ -789,7 +809,8 @@ export default function Joe() {
         </aside>
       )}
       {/* Always show toggle button regardless of mode, rendered in Portal to escape layout clipping */}
-      {createPortal(
+      {/* Floating Toggle Button (Visible ONLY when Sidebar Closed) */}
+      {!showSidebar && createPortal(
         <button
           className="sidebar-toggle-btn-floating"
           style={{
@@ -811,10 +832,10 @@ export default function Joe() {
             boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
             transition: 'all 0.2s cubic-bezier(0.2, 0, 0, 1)'
           }}
-          onClick={() => setShowSidebar(!showSidebar)}
-          title={showSidebar ? t('sidebar.close', 'Close Sidebar') : t('sidebar.open', 'Open Sidebar')}
+          onClick={() => setShowSidebar(true)}
+          title={t('sidebar.open', 'Open Sidebar')}
         >
-          {showSidebar ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+          <PanelLeftOpen size={20} />
         </button>,
         document.body
       )}
