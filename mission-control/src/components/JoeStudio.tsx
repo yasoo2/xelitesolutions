@@ -104,6 +104,23 @@ export const JoeStudio: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Neural Reflex Feedback */}
+                    <div className="flex-1 max-w-md mx-8">
+                        {isThinking && thoughts.length > 0 && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-full px-4 py-1.5"
+                            >
+                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
+                                <span className="text-[10px] uppercase tracking-widest text-purple-400 font-bold">Neural Activity:</span>
+                                <span className="text-xs text-purple-200 truncate font-mono">
+                                    {thoughts[thoughts.length - 1].content}
+                                </span>
+                            </motion.div>
+                        )}
+                    </div>
+
                     {/* Status Indicator */}
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 text-xs">

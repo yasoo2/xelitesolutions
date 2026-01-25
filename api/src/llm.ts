@@ -283,6 +283,7 @@ export interface PlanOptions {
   userId?: string;
   sessionId?: string; // For enterprise context and memory
   onThought?: (chunk: string) => void;
+  onProgress?: (msg: string) => void;
 }
 
 export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect for Xelite Solutions. You are the embodiment of speed, precision, and intelligence. 
@@ -510,6 +511,8 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
   }
 }
 
+export interface PlanOptions {
+
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
@@ -517,6 +520,22 @@ export async function planNextStep(
   const provider = options?.provider || getActiveProvider(options?.userId || 'anonymous');
   const providerKey = String(provider || '').trim().toLowerCase();
   console.info(`[LLM] planNextStep entry - Provider: ${provider}, Resolved Key: ${providerKey}`);
+
+  const onProgress = options?.onProgress;
+  onProgress?.('📚 استرجاع المعرفة من طوابق الهندسة الـ 10... (RAG Scan)');
+
+  const optimization = await freeIntelligenceOptimizer.optimizeRequest(
+    typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
+    messages
+  );
+
+  onProgress?.('🧩 ربط الطلب بالمعمارية المناسبة... (Pattern Matching)');
+
+  const analysis = optimization.analysis || await advancedAnalyzeTask(
+    typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
+    messages,
+    onProgress
+  );
 
   // Resolve Key: Option > UserMap > Env
   let resolvedKey = options?.apiKey;

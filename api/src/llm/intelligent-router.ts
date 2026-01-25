@@ -136,7 +136,8 @@ export const MODELS: Record<string, ModelConfig> = {
  * Advanced Task Analysis using LLM
  * Uses a lightweight model to deeply understand the task
  */
-export async function advancedAnalyzeTask(userMessage: string, history?: any[]): Promise<TaskAnalysis> {
+export async function advancedAnalyzeTask(userMessage: string, history?: any[], onProgress?: (msg: string) => void): Promise<TaskAnalysis> {
+    onProgress?.('🧠 تحليل عميق لطلبك... (Neural Analysis)');
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
     const hasOpenAI = !!(process.env.OPENAI_API_KEY?.trim());
 
@@ -177,7 +178,10 @@ Return exactly this JSON structure:
   "requiresTools": boolean,
   "language": "ar" | "en" | "mixed",
   "shortSummary": "string"
-}`;
+} - Do not add any talk before or after JSON.`;
+
+        onProgress?.('🔍 تحديد نوع المهمة ومدى تعقيدها... (Task Classification)');
+
 
         let responseText = "";
         if (provider === 'groq') {
@@ -498,7 +502,8 @@ export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
     availableKeys?: { anthropic?: string; openai?: string; groq?: string; },
-    onPartial?: (delta: string) => void
+    onPartial?: (delta: string) => void,
+    onProgress?: (msg: string) => void
 ): Promise<string> {
 
     // Flatten multimodal messages for text-only providers (and for analysis)
@@ -613,6 +618,7 @@ export async function routeToModel(
             // Skip OpenAI in loop if we know we want free/auto fallback
             if (p.name === 'OpenAI') continue;
 
+            onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
             // Dynamic Timeout: Complex tasks need more time (up to 60s for the mesh)

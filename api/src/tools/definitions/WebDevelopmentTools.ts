@@ -35,7 +35,9 @@ export class WebPipelineTool extends BaseTool {
             skipDev: { type: 'boolean' },
             qualityTasks: { type: 'array', items: { type: 'string', enum: ['lint', 'typecheck', 'test', 'build'] } },
             securityChecks: { type: 'boolean' },
-            autoFix: { type: 'boolean' }
+            autoFix: { type: 'boolean' },
+            aestheticMode: { type: 'string', enum: ['glass', 'neon', 'minimal', 'corporate'] },
+            language: { type: 'string', enum: ['ar', 'en', 'dual'] }
         },
         required: ['name']
     };
@@ -70,7 +72,11 @@ export class WebPipelineTool extends BaseTool {
         logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
 
         // 1. Scaffold
-        const scRes = await executeTool('scaffold_full_stack', { name, type, features, baseDir });
+        const scRes = await executeTool('scaffold_full_stack', {
+            name, type, features, baseDir,
+            aestheticMode: input?.aestheticMode,
+            language: input?.language
+        });
         if (!scRes?.ok) {
             steps.push({ step: 'scaffold_full_stack', ok: false, error: scRes?.error });
             return { ok: false, output: { path: '', steps }, logs };
@@ -247,7 +253,9 @@ export class ScaffoldTool extends BaseTool {
             name: { type: 'string' },
             type: { type: 'string', enum: ['ecommerce', 'saas', 'blog'] },
             features: { type: 'array', items: { type: 'string' } },
-            baseDir: { type: 'string' }
+            baseDir: { type: 'string' },
+            aestheticMode: { type: 'string', enum: ['glass', 'neon', 'minimal', 'corporate'] },
+            language: { type: 'string', enum: ['ar', 'en', 'dual'] }
         },
         required: ['name']
     };
@@ -278,7 +286,10 @@ export class ScaffoldTool extends BaseTool {
 
         try {
             // Call the shared Builder logic
-            const result = Builder.scaffold(projectName, type, features, baseDir);
+            const result = Builder.scaffold(projectName, type, features, baseDir, {
+                aestheticMode: input?.aestheticMode,
+                language: input?.language
+            });
             return { ok: true, output: result, logs: [`scaffold.success=${projectName}`] };
         } catch (e: any) {
             return { ok: false, error: e.message, logs: [`scaffold.error=${e.message}`] };

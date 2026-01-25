@@ -2,28 +2,34 @@ import fs from 'fs';
 import path from 'path';
 
 export class Builder {
-  static scaffold(name: string, type: 'ecommerce' | 'saas' | 'blog', features: string[] = [], baseDir?: string) {
+  static scaffold(
+    name: string,
+    type: 'ecommerce' | 'saas' | 'blog',
+    features: string[] = [],
+    baseDir?: string,
+    options: { aestheticMode?: string; language?: string } = {}
+  ) {
     const root = path.resolve(baseDir || process.cwd(), name);
     if (fs.existsSync(root)) throw new Error(`Project ${name} already exists`);
 
     fs.mkdirSync(root, { recursive: true });
 
     // Core Architecture
-    this.createMonorepo(root, name);
-    
+    this.createMonorepo(root, name, options);
+
     // Backend
-    this.createBackend(root, features);
+    this.createBackend(root, features, options);
 
     // Frontend
-    this.createFrontend(root, name, features);
+    this.createFrontend(root, name, features, options);
 
     // Infrastructure
-    this.createInfra(root);
+    this.createInfra(root, options);
 
-    return { path: root, features };
+    return { path: root, features, ...options };
   }
 
-  private static createMonorepo(root: string, name: string) {
+  private static createMonorepo(root: string, name: string, options: any = {}) {
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
       name,
       private: true,
@@ -35,7 +41,7 @@ export class Builder {
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "test": "npm run test -w apps/web && jest"
       },
-      devDependencies: { 
+      devDependencies: {
         "concurrently": "^8.0.0",
         "eslint": "^9.39.2",
         "typescript": "^5.9.3",
@@ -47,7 +53,7 @@ export class Builder {
         "@typescript-eslint/eslint-plugin": "^8.11.0"
       }
     }, null, 2));
-    
+
     fs.mkdirSync(path.join(root, 'apps'), { recursive: true });
 
     // TypeScript config (JS-friendly)
@@ -143,18 +149,18 @@ module.exports = {
 };`.trim());
   }
 
-  private static createBackend(root: string, features: string[]) {
+  private static createBackend(root: string, features: string[], options: any = {}) {
     const apiRoot = path.join(root, 'apps/api');
     fs.mkdirSync(path.join(apiRoot, 'src'), { recursive: true });
-    
+
     fs.writeFileSync(path.join(apiRoot, 'package.json'), JSON.stringify({
       name: "api",
       version: "1.0.0",
       scripts: { "dev": "nodemon src/index.js", "build": "echo \"API build skipped\"" },
-      dependencies: { 
-        "express": "^4.18.2", 
-        "mongoose": "^7.4.0", 
-        "cors": "^2.8.5", 
+      dependencies: {
+        "express": "^4.18.2",
+        "mongoose": "^7.4.0",
+        "cors": "^2.8.5",
         "dotenv": "^16.3.1",
         ...(features.includes('auth') ? { "jsonwebtoken": "^9.0.0", "bcryptjs": "^2.4.3" } : {})
       },
@@ -268,11 +274,11 @@ app.get('/api/orders', async (req, res) => {
     }
 
     indexContent += `\napp.listen(4000, () => console.log('🚀 API on 4000'));`;
-    
+
     fs.writeFileSync(path.join(apiRoot, 'src/index.js'), indexContent.trim());
   }
 
-  private static createFrontend(root: string, name: string, features: string[]) {
+  private static createFrontend(root: string, name: string, features: string[], options: any = {}) {
     const webRoot = path.join(root, 'apps/web');
     fs.mkdirSync(path.join(webRoot, 'src'), { recursive: true });
     fs.mkdirSync(path.join(webRoot, 'public'), { recursive: true });
@@ -295,10 +301,74 @@ export default defineConfig({
   test: { environment: 'node' }
 });`);
 
+    const isAr = options.language === 'ar' || options.language === 'dual';
+    const lang = isAr ? 'ar' : 'en';
+    const dir = isAr ? 'rtl' : 'ltr';
+    const title = name;
+
+    const aesthetic = options.aestheticMode || 'corporate';
+    const themes: any = {
+      glass: `
+        --bg: #030712;
+        --panel: rgba(17, 24, 39, 0.7);
+        --accent: #8b5cf6;
+        --accent-glow: rgba(139, 92, 246, 0.5);
+        --text: #f9fafb;
+        --border: rgba(255, 255, 255, 0.1);
+        --blur: blur(12px);
+      `,
+      neon: `
+        --bg: #000000;
+        --panel: #0a0a0a;
+        --accent: #00ff9f;
+        --accent-glow: rgba(0, 255, 159, 0.6);
+        --text: #ffffff;
+        --border: #00ff9f33;
+        --blur: none;
+      `,
+      minimal: `
+        --bg: #ffffff;
+        --panel: #fcfcfc;
+        --accent: #000000;
+        --accent-glow: rgba(0, 0, 0, 0.1);
+        --text: #111111;
+        --border: #eeeeee;
+        --blur: none;
+      `,
+      corporate: `
+        --bg: #f8fafc;
+        --panel: #ffffff;
+        --accent: #2563eb;
+        --accent-glow: rgba(37, 99, 235, 0.2);
+        --text: #0f172a;
+        --border: #e2e8f0;
+        --blur: none;
+      `
+    };
+
+    const activeTheme = themes[aesthetic] || themes.corporate;
+
     fs.writeFileSync(path.join(webRoot, 'index.html'), `
 <!doctype html>
-<html lang="en">
-  <head><meta charset="UTF-8" /><title>${name}</title></head>
+<html lang="${lang}" dir="${dir}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    ${isAr ? '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">' : ''}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        ${activeTheme}
+      }
+      body {
+        font-family: ${isAr ? "'Cairo', " : ''}'Inter', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        margin: 0;
+      }
+    </style>
+  </head>
   <body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body>
 </html>`);
 
@@ -310,14 +380,30 @@ import './index.css';
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 `);
 
+    const welcomeMsg = isAr ? 'أهلاً بك في ' + name : 'Welcome to ' + name;
+    const subMsg = isAr ? 'تم البناء بواسطة Joe AI — جاهز للانطلاق.' : 'Built by Joe AI — Ready to run.';
+    const glassStyle = aesthetic === 'glass' ? 'backdrop-blur-md bg-white/5 border border-white/10 p-12 rounded-3xl shadow-2xl' : 'p-8';
+
     fs.writeFileSync(path.join(webRoot, 'src/App.jsx'), `
 import React from 'react';
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-      <div>
-        <h1 className="text-4xl font-bold mb-4">Welcome to ${name}</h1>
-        <p className="text-slate-400">Built by Joe AI — Ready to run.</p>
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="${glassStyle} max-w-2xl text-center">
+        <h1 className="text-5xl font-extrabold mb-6 bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
+          ${welcomeMsg}
+        </h1>
+        <p className="text-xl opacity-70 mb-8">
+          ${subMsg}
+        </p>
+        <div className="flex gap-4 justify-center">
+          <button className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
+            ${isAr ? 'ابدأ الاستكشاف' : 'Start Exploring'}
+          </button>
+          <button className="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-xl transition-all">
+            ${isAr ? 'لوحة التحكم' : 'Dashboard'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -339,7 +425,7 @@ describe('App', () => {
     fs.writeFileSync(path.join(webRoot, 'postcss.config.js'), `export default { plugins: { tailwindcss: {}, autoprefixer: {} } }`);
   }
 
-  private static createInfra(root: string) {
+  private static createInfra(root: string, options: any = {}) {
     fs.writeFileSync(path.join(root, 'docker-compose.yml'), `
 version: '3.8'
 services:

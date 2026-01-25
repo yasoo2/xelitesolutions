@@ -665,8 +665,15 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
   try {
     // Try a simple planning step
     const result = await planNextStep(
-      [{ role: 'user', content: 'hello' }],
-      { provider, apiKey, baseUrl, model, throwOnError: true }
+      [{ role: 'user', content: 'hello' }], // Assuming 'messages' should be `[{ role: 'user', content: 'hello' }]` for this context
+      {
+        provider: providerKey,
+        apiKey: apiKey, // Assuming 'options?.apiKey' should be 'apiKey' for this context
+        baseUrl: baseUrl, // Assuming 'options?.baseUrl' should be 'baseUrl' for this context
+        model: model, // Assuming 'options?.model' should be 'model' for this context
+        throwOnError: true,
+        onProgress: (msg: string) => { /* ev is not defined here, so providing a no-op or placeholder */ console.log('Progress:', msg); }
+      }
     );
 
     if (result) {
@@ -1631,8 +1638,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           });
 
           initialPlan = await planNextStep(history, {
-            provider, apiKey, baseUrl, model, throwOnError: true,
-            onThought: (chunk) => parser.feed(chunk)
+            provider: providerKey,
+            apiKey: options?.apiKey,
+            baseUrl: options?.baseUrl,
+            model: options?.model,
+            throwOnError: true,
+            onProgress: (msg: string) => ev({ type: 'thought', data: msg })
           });
         }
       }
