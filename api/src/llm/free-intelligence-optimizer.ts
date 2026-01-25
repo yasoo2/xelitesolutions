@@ -510,10 +510,20 @@ class FreeIntelligenceOptimizer {
 
         const realKnowledge = this.getRealKnowledge(cleanText);
 
-        // 1. Check Smart Cache (Exact & Fuzzy) - PRIORITY REFLEX
-        // If we have a memorized reflex, USE IT immediately, bypassing safety checks.
+        // 1. Safety Valve: Detect if the user wants an ACTION (Tool) rather than INFO (RAG)
+        // High-stakes actions MUST always go through the planner
+        if (this.isHighStakesAction(cleanText) || this.isTechnical(cleanText)) {
+            console.info('[Optimizer] High-stakes action/technical intent detected - forcing planner');
+            return {
+                shouldUseCache: false,
+                cachedResponse: realKnowledge || undefined,
+                suggestedModel: 'smart',
+                skipPlanner: false
+            };
+        }
+
+        // 2. Check Smart Cache (Exact & Fuzzy) - INFO REFLEXES
         for (const [trigger, res] of Array.from(this.cache.entries())) {
-            // console.log(`Checking "${trigger}" against "${cleanText}"`);
             if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
                 res.hits++;
                 res.lastUsed = Date.now();

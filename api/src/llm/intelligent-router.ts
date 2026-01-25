@@ -541,13 +541,22 @@ export async function routeToModel(
     // Unified Multi-Provider Mesh for Auto Mode
 
     // Order: OpenAI (if key) -> Groq (Free) -> OpenRouter (Free) -> Pollinations (Backup)
-    const providers = [
+    const meshProviders = [
+        {
+            name: 'OpenAI (Premium)',
+            run: async () => {
+                const key = process.env.OPENAI_API_KEY || '';
+                if (!key || key === 'dummy') throw new Error('No OpenAI API Key');
+                // We reach out to the main LLM call for OpenAI
+                const { callLLM } = require('../llm');
+                return await callLLM(effectiveMessages[effectiveMessages.length - 1].content, effectiveMessages.slice(0, -1));
+            }
+        },
         {
             name: 'Groq (Free)',
             run: async () => {
-                if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_placeholder') {
-                    throw new Error('Skipping Groq: No API Key');
-                }
+                const key = process.env.GROQ_API_KEY || '';
+                if (!key || key === 'gsk_placeholder' || !key.trim()) throw new Error('No Groq API Key');
                 const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.1-70b-versatile';
                 return await callGroq(model, flatMessages, onPartial);
             }
@@ -555,9 +564,7 @@ export async function routeToModel(
         {
             name: 'OpenRouter (Free)',
             run: async () => {
-                if (!process.env.OPENROUTER_API_KEY) {
-                    throw new Error('Skipping OpenRouter: No API Key');
-                }
+                if (!process.env.OPENROUTER_API_KEY) throw new Error('No OpenRouter API Key');
                 return await openRouterProvider.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
             }
         },
@@ -565,80 +572,61 @@ export async function routeToModel(
             name: 'Pollinations (Backup)',
             run: async () => {
                 const res = await pollinationsProvider.chatComplete(flatMessages, 'openai');
-                if (!res || res.length < 5) throw new Error('Pollinations returned empty/useless response');
+                if (!res || res.length < 5) throw new Error('Pollinations response too short');
                 return res;
             }
         }
     ];
+} catch (e: any) {
+    if (e.message !== 'UseLegacyOpenAIPath') {
+        console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message}`);
+    }
+}
 
+// Helper to clean output (Removed duplicate)
 
-
-    let lastError = '';
-
-    // 1. Try Selected Model First (Happy Path)
+// 2. The Chain of Steel (Fallback Mesh)
+for (const p of meshProviders) {
     try {
-        if (selectedModel.provider === 'groq' && hasGroqKey) {
-            // Groq is fast, but let's give it 15s
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
-            const rawAns = await Promise.race([callGroq(selectedModel.model, flatMessages, onPartial), timeoutPromise]) as string;
-            return cleanOutput(rawAns);
+        onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
+        console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
+
+        // Dynamic Timeout: Optimized for speed
+        let timeoutValue = 8000; // Base 8s (was 10s)
+
+        if (analysis?.complexity === 'high' || analysis?.complexity === 'extreme') {
+            timeoutValue = 20000; // 20s for complex
         }
-        if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
-            throw new Error('UseLegacyOpenAIPath');
+        if (p.name === 'Pollinations (Backup)') {
+            timeoutValue = 25000; // Cap at 25s (was 60s) for better UX
+        }
+
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
+        const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
+
+        const ans = cleanOutput(rawAns);
+
+        if (ans && ans.length > 0) {
+            console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
+            return ans;
         }
     } catch (e: any) {
-        if (e.message !== 'UseLegacyOpenAIPath') {
-            console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message}`);
-        }
+        console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message}`);
+        lastError = e.message;
     }
+}
 
-    // Helper to clean output (Removed duplicate)
+// Final catch-all (Guarantee a response to avoid "empty model output" error)
+try {
+    const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
+    const cleaned = cleanOutput(finalAns);
 
-    // 2. The Chain of Steel (Fallback Mesh)
-    for (const p of providers) {
-        try {
-            // Skip OpenAI in loop if we know we want free/auto fallback
-            if (p.name === 'OpenAI') continue;
+    if (cleaned && cleaned.length > 0) return cleaned;
 
-            onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
-            console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
-
-            // Dynamic Timeout: Optimized for speed
-            let timeoutValue = 8000; // Base 8s (was 10s)
-
-            if (analysis?.complexity === 'high' || analysis?.complexity === 'extreme') {
-                timeoutValue = 20000; // 20s for complex
-            }
-            if (p.name === 'Pollinations (Backup)') {
-                timeoutValue = 25000; // Cap at 25s (was 60s) for better UX
-            }
-
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
-            const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
-
-            const ans = cleanOutput(rawAns);
-
-            if (ans && ans.length > 0) {
-                console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
-                return ans;
-            }
-        } catch (e: any) {
-            console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message}`);
-            lastError = e.message;
-        }
-    }
-
-    // Final catch-all (Guarantee a response to avoid "empty model output" error)
-    try {
-        const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
-        const cleaned = cleanOutput(finalAns);
-
-        if (cleaned && cleaned.length > 0) return cleaned;
-
-        throw new Error('FINAL_EMPTY_RESPONSE');
-    } catch {
-        return "سأقوم بمراجعة الأدوات وربطها بشكل أفضل. يرجى إعطائي لحظة أو إرسال طلبك مرة أخرى بشكل أوضح.";
-    }
+    throw new Error('FINAL_EMPTY_RESPONSE');
+} catch {
+    return "سأقوم بمراجعة الأدوات وربطها بشكل أفضل. يرجى إعطائي لحظة أو إرسال طلبك مرة أخرى بشكل أوضح.";
+}
 
 }
 
