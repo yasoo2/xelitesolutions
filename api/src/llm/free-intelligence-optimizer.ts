@@ -178,23 +178,37 @@ class FreeIntelligenceOptimizer {
 
     private loadCache() {
         try {
+            console.log(`[Optimizer] Loading cache from: ${this.cachePath}`);
             if (fs.existsSync(this.cachePath)) {
                 const data = JSON.parse(fs.readFileSync(this.cachePath, 'utf-8'));
                 // Convert array back to map or object
                 for (const item of data) {
                     this.cache.set(item.trigger, item);
                 }
+                console.log(`[Optimizer] Cache loaded: ${this.cache.size} entries.`);
+            } else {
+                console.warn(`[Optimizer] Cache NOT FOUND at ${this.cachePath}`);
             }
         } catch (e) {
             console.warn('[Optimizer] Failed to load cache', e);
         }
     }
 
+    private lastSaveTime = 0;
+    private unsavedChanges = 0;
+
     private saveCache() {
-        try {
-            const data = Array.from(this.cache.values());
-            fs.writeFileSync(this.cachePath, JSON.stringify(data, null, 2));
-        } catch (e) { /* Ignore write errors */ }
+        this.unsavedChanges++;
+        const now = Date.now();
+        // Save only if > 50 changes OR > 10 seconds since last save
+        if (this.unsavedChanges > 50 || (now - this.lastSaveTime > 10000)) {
+            try {
+                const data = Array.from(this.cache.values());
+                fs.writeFileSync(this.cachePath, JSON.stringify(data, null, 2));
+                this.lastSaveTime = now;
+                this.unsavedChanges = 0;
+            } catch (e) { /* Ignore write errors */ }
+        }
     }
 
     private seedDefaults() {
@@ -486,7 +500,23 @@ class FreeIntelligenceOptimizer {
 
         const realKnowledge = this.getRealKnowledge(cleanText);
 
-        // 0. Check for Technical/Action Intent (Force LLM but with RAG Context)
+        // 1. Check Smart Cache (Exact & Fuzzy) - PRIORITY REFLEX
+        // If we have a memorized reflex, USE IT immediately, bypassing safety checks.
+        for (const [trigger, res] of Array.from(this.cache.entries())) {
+            // console.log(`Checking "${trigger}" against "${cleanText}"`);
+            if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
+                res.hits++;
+                res.lastUsed = Date.now();
+                return {
+                    shouldUseCache: true,
+                    cachedResponse: this.injectPersona(res.response, userName),
+                    suggestedModel: 'fast',
+                    skipPlanner: true
+                };
+            }
+        }
+
+        // 2. Check for Technical/Action Intent (Force LLM but with RAG Context)
         if (this.isHighStakesAction(cleanText) || this.isTechnical(cleanText)) {
             return {
                 shouldUseCache: false,
@@ -507,8 +537,11 @@ class FreeIntelligenceOptimizer {
         }
 
         // 1. Check Smart Cache (Exact & Fuzzy)
-        // Fuzzy: Check if any trigger word exists in the text for high-importance patterns
+        // DEBUG: Log keys
+        // console.log('Cache Keys:', Array.from(this.cache.keys())); 
+
         for (const [trigger, res] of Array.from(this.cache.entries())) {
+            // console.log(`Checking "${trigger}" against "${cleanText}"`);
             if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
                 res.hits++;
                 res.lastUsed = Date.now();
@@ -575,6 +608,10 @@ class FreeIntelligenceOptimizer {
             return this.injectPersona(hit.response, 'يونس');
         }
         return null;
+    }
+
+    public getReflexCount(): number {
+        return this.cache.size;
     }
 }
 

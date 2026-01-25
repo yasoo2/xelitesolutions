@@ -59,6 +59,7 @@ import { BrowserVisionTool } from './definitions/BrowserVisionTool';
 import { BrowserActionTool } from './definitions/BrowserActionTool';
 import { PaymentsTools } from './definitions/PaymentsTool';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
+import { AutoTrainerTool } from './definitions/AutoTrainerTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -195,4 +196,5 @@ export const tools: ToolDefinition[] = [
   // --- Screenshot & Visual QA ---
   new ScreenshotTool(),
   new VisualComparisonTool(),
+  new AutoTrainerTool(),
 ];

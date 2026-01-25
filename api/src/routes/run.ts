@@ -114,6 +114,15 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/brain/stats', (req: Request, res: Response) => {
+  try {
+    const count = freeIntelligenceOptimizer.getReflexCount();
+    return res.json({ reflexCount: count, status: 'active' });
+  } catch (e: any) {
+    return res.json({ reflexCount: 0, status: 'error', error: e.message });
+  }
+});
+
 router.post('/stop', authenticateOptional as any, async (req: Request, res: Response) => {
   try {
     const runId = String(req.body?.runId || '').trim();

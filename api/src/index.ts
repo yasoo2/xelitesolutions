@@ -197,11 +197,12 @@ async function main() {
       executeTool('memorize_codebase', {
         directory: process.cwd(),
         extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
-      }).then(res => {
-        logger.info('[DeepMemory] Startup Indexing Complete: ' + (res.ok ? 'Success' : 'Failed'));
-      }).catch(err => {
-        logger.error('[DeepMemory] Startup Indexing Exception: ' + err.message);
-      });
+      }).catch(() => { });
+
+      // [NEW] Infinite Learning Loop
+      logger.info('[ContinuousTrainer] Starting Infinite Learning Loop (Phase 52)...');
+      import('./services/ContinuousTrainer').then(m => m.continuousTrainer.start());
+
     }, 5000); // 5 second delay
   });
 

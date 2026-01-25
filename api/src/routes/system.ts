@@ -33,7 +33,7 @@ router.get('/stats', authenticate, async (req, res) => {
 router.get('/processes', authenticate, async (req, res) => {
     // This command works on macOS/Linux
     const cmd = "ps aux | grep -E 'node|ts-node' | grep -v grep | head -n 20";
-    
+
     exec(cmd, (err, stdout, stderr) => {
         if (err) {
             return res.status(500).json({ error: 'Failed to list processes' });
@@ -60,7 +60,7 @@ router.get('/processes', authenticate, async (req, res) => {
 // Kill a process
 router.delete('/processes/:pid', authenticate, async (req, res) => {
     const { pid } = req.params;
-    
+
     // Safety check: Don't let them kill init or root easily if running as root (unlikely but safe)
     if (pid === '1') return res.status(403).json({ error: 'Cannot kill init process' });
 
@@ -70,6 +70,33 @@ router.delete('/processes/:pid', authenticate, async (req, res) => {
         }
         res.json({ success: true, message: `Process ${pid} killed` });
     });
+});
+
+// Brain Stats
+import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
+import { continuousTrainer } from '../services/ContinuousTrainer';
+
+router.get('/brain/stats', async (req, res) => {
+    try {
+        const count = freeIntelligenceOptimizer.getReflexCount();
+        const trainerStatus = continuousTrainer.getStatus();
+        res.json({
+            reflexCount: count,
+            status: trainerStatus.state,
+            lastLearned: trainerStatus.lastLearned
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.post('/brain/toggle', async (req, res) => {
+    try {
+        const newState = continuousTrainer.toggle();
+        res.json({ status: newState });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 export default router;
