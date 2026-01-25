@@ -84,33 +84,33 @@ const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: 
           </linearGradient>
         </defs>
 
-        {/* The Living Line: Abstract Infinite Curve */}
+        {/* The Recognizable J: Refined Luxury Path */}
         <motion.path
-          d="M30 40C30 20 70 20 70 50C70 80 40 90 30 70C25 60 50 50 70 40"
+          d="M55 20V75C55 85 35 85 35 75"
           stroke="url(#line-grad)"
-          strokeWidth="1.2"
+          strokeWidth="1.8"
           strokeLinecap="round"
           fill="none"
           initial={{ pathLength: 0, pathOffset: 0 }}
           animate={{
-            pathLength: [0.1, 0.4, 0.1],
+            pathLength: [0.3, 0.6, 0.3],
             pathOffset: [0, 1, 2]
           }}
           transition={{
-            duration: 8,
+            duration: 6,
             repeat: Infinity,
             ease: "easeInOut"
           }}
         />
 
-        {/* Subtle Background Glow Path */}
+        {/* Subtle Static Path for Clarity */}
         <path
-          d="M30 40C30 20 70 20 70 50C70 80 40 90 30 70C25 60 50 50 70 40"
+          d="M55 20V75C55 85 35 85 35 75"
           stroke="var(--accent-primary)"
-          strokeWidth="0.5"
+          strokeWidth="0.8"
           strokeLinecap="round"
           fill="none"
-          style={{ opacity: 0.1 }}
+          style={{ opacity: 0.15 }}
         />
       </svg>
     </motion.div>
