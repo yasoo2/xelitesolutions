@@ -64,76 +64,55 @@ const DEBUG_TOOL_UI = false;
 const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: string }) => {
   return (
     <motion.div
-      className={`elite-singularity-wrapper ${className}`}
+      className={`elite-living-line-wrapper ${className}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 1.5 }}
-      style={{ width: size, height: size, position: 'relative' }}
+      transition={{ duration: 2 }}
+      style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
       <svg
-        viewBox="0 0 200 200"
-        className="elite-singularity-svg"
+        viewBox="0 0 100 100"
+        className="elite-living-line-svg"
         xmlns="http://www.w3.org/2000/svg"
+        style={{ width: '80%', height: '80%' }}
       >
         <defs>
-          <filter id="elite-gooey">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-            <feColorMatrix
-              in="blur"
-              mode="matrix"
-              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -10"
-              result="goo"
-            />
-            <feComposite in="SourceGraphic" in2="goo" operator="atop" />
-          </filter>
-
-          <radialGradient id="elite-core-grad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="var(--accent-primary)" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="var(--accent-glow)" stopOpacity="0" />
-          </radialGradient>
+          <linearGradient id="line-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="var(--accent-primary)" stopOpacity="0.2" />
+            <stop offset="50%" stopColor="var(--accent-primary)" stopOpacity="1" />
+            <stop offset="100%" stopColor="var(--accent-primary)" stopOpacity="0.2" />
+          </linearGradient>
         </defs>
 
-        <g filter="url(#elite-gooey)">
-          {/* Animated Liquid Orbs */}
-          {[0, 1, 2].map((i) => (
-            <motion.circle
-              key={i}
-              cx="100"
-              cy="100"
-              r={30 + i * 5}
-              fill="var(--accent-primary)"
-              animate={{
-                x: [0, Math.sin(i) * 30, 0],
-                y: [0, Math.cos(i) * 30, 0],
-                scale: [1, 1.2 - i * 0.1, 1],
-              }}
-              transition={{
-                duration: 6 + i,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-              style={{ opacity: 0.6 - i * 0.1 }}
-            />
-          ))}
-        </g>
+        {/* The Living Line: Abstract Infinite Curve */}
+        <motion.path
+          d="M30 40C30 20 70 20 70 50C70 80 40 90 30 70C25 60 50 50 70 40"
+          stroke="url(#line-grad)"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          fill="none"
+          initial={{ pathLength: 0, pathOffset: 0 }}
+          animate={{
+            pathLength: [0.1, 0.4, 0.1],
+            pathOffset: [0, 1, 2]
+          }}
+          transition={{
+            duration: 8,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
 
-        {/* The Central Nervous Core */}
-        <motion.circle
-          cx="100"
-          cy="100"
-          r="25"
-          fill="url(#elite-core-grad)"
-          animate={{ scale: [0.9, 1.1, 0.9], opacity: [0.5, 0.9, 0.5] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        {/* Subtle Background Glow Path */}
+        <path
+          d="M30 40C30 20 70 20 70 50C70 80 40 90 30 70C25 60 50 50 70 40"
+          stroke="var(--accent-primary)"
+          strokeWidth="0.5"
+          strokeLinecap="round"
+          fill="none"
+          style={{ opacity: 0.1 }}
         />
       </svg>
-
-      {/* Brand Signature - Minimalist and Spaced */}
-      <div className="elite-signature">
-        <span className="elite-sig-j">J</span>
-        <span className="elite-sig-o">O</span>
-        <span className="elite-sig-e">E</span>
-      </div>
     </motion.div>
   );
 };

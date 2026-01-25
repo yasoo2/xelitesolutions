@@ -357,71 +357,39 @@ body {
 }
 
 /* =========================================
-   Elite Logo: The Singularity Edition
+   Elite Logo: The Living Line (Silent Elite)
    ========================================= */
-.elite-singularity-wrapper {
+.elite-living-line-wrapper {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 15px;
 }
 
-.elite-singularity-svg {
-  filter: drop-shadow(0 0 20px var(--accent-glow));
+.elite-living-line-svg {
   overflow: visible;
+  filter: drop-shadow(0 0 8px var(--accent-glow));
 }
 
-.elite-signature {
-  display: flex;
-  gap: 12px;
-  font-family: 'Inter', system-ui, sans-serif;
-  font-weight: 200;
-  letter-spacing: 0.5em;
-  color: var(--text-primary);
-  font-size: 14px;
-  opacity: 0.8;
-  margin-top: -10px;
-}
-
-.elite-sig-j,
-.elite-sig-o,
-.elite-sig-e {
-  display: inline-block;
-}
-
-/* Avatar Scaling for Singularity */
+/* Avatar Scaling for Living Line */
 .chat-avatar-joe {
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: rgba(var(--accent-primary-rgb), 0.05);
+  border-radius: 8px;
 }
 
-.chat-avatar-joe .elite-singularity-wrapper {
-  gap: 0;
+.chat-avatar-joe .elite-living-line-svg {
+  width: 90%;
+  height: 90%;
+  filter: none;
 }
 
-.chat-avatar-joe .elite-signature {
-  display: none;
-}
-
-.chat-avatar-joe .elite-singularity-svg {
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(0 0 5px var(--accent-glow));
-}
-
-/* Theme Adaptive Colors for Neural Core */
-[data-theme="light"] .elite-singularity-svg {
-  filter: drop-shadow(0 0 15px rgba(var(--accent-primary-rgb), 0.2));
-}
-
-[data-theme="light"] .elite-signature {
-  color: var(--accent-primary);
-  font-weight: 500;
-  letter-spacing: 0.4em;
+/* Theme Adaptive Contrast */
+[data-theme="light"] .elite-living-line-svg {
+  filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.05));
 }
 
 body {
