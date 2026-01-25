@@ -1,12 +1,17 @@
 services:
   mongo:
-    image: mongo:latest
+    image: mongo:7
     container_name: joe_mongo
     restart: always
     volumes:
       - mongo_data:/data/db
     networks:
       - joe-network
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   api:
     build: ./api
@@ -14,30 +19,30 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
-      - MONGO_URI=mongodb://mongo:27017/joe
       - PORT=3000
-      - JWT_SECRET=prod_secret_73821038_secure_key
-      - BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
-      - WORKER_API_KEY=joe_secret_browser_key
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    env_file:
+      - .env
     healthcheck:
-      test: [ "CMD", "node", "healthcheck.js" ]
-      interval: 10s
+      test: [ "CMD-SHELL", "node /app/healthcheck.js" ]
+      interval: 15s
       timeout: 10s
-      retries: 10
-      start_period: 120s
+      retries: 5
+      start_period: 30s
     volumes:
       - lance_data:/app/data
       - deep_memory:/app/.gemini
     networks:
       - joe-network
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
 
   dashboard:
     build: ./dashboard
     container_name: joe_dashboard
     restart: always
+    env_file:
+      - .env
     networks:
       - joe-network
 
@@ -45,14 +50,16 @@ services:
     build:
       context: ./web
       args:
-        - VITE_GOOGLE_CLIENT_ID=800177087496-pc24nvokifrerohcgkq5jctvm908m0ok.apps.googleusercontent.com
+        - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
     container_name: joe_web
     restart: always
-    environment:
-      #- VITE_API_URL=https://api.xelitesolutions.com
-      - NODE_ENV=production
+    env_file:
+      - .env
     networks:
       - joe-network
+    depends_on:
+      api:
+        condition: service_healthy
 
   browser-worker:
     build: ./services/joe-browser-worker
@@ -60,7 +67,8 @@ services:
     restart: always
     environment:
       - PORT=7070
-      - WORKER_API_KEY=joe_secret_browser_key
+    env_file:
+      - .env
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -97,9 +105,9 @@ services:
     volumes:
       - /opt/joe/certbot/conf:/etc/letsencrypt
       - /opt/joe/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     networks:
       - joe-network
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   mongo_data:
@@ -109,4 +117,5 @@ volumes:
 
 networks:
   joe-network:
+    name: joe-network
     driver: bridge
