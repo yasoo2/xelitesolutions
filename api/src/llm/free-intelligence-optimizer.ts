@@ -217,6 +217,13 @@ class FreeIntelligenceOptimizer {
         this.train('ماذا تفعل', "أقوم بهندسة البرمجيات، حل المشكلات المعقدة، وبناء مشاريع تقنية استثنائية من الصفر وحتى الإطلاق.");
         this.train('قدراتك', "تتضمن قدراتي البرمجة المتقدمة، تحليل البنية التحتية، الأتمتة الكاملة للعمليات، وبناء واجهات مستخدم فائقة الجودة.");
 
+        // Tool Count Reflex (Anti-Hallucination)
+        const toolCountContext = "أنا أمتلك **52 وحدة أدوات برمجية (Tool Modules)** تتضمن أكثر من **75 وظيفة تنفيذية** دقيقة. تشمل أدوات التعامل مع الملفات، المتصفح، الـ GitHub، بناء الـ Frontend/Backend، وتحليل البيانات. رقم 200 قد يكون مبالغة أو يشير إلى المكتبات الداخلية، لكن الأدوات الأساسية هي 75.";
+        this.train('how many tools', toolCountContext);
+        this.train('كم عدد الادوات', toolCountContext);
+        this.train('كم اداه', toolCountContext);
+        this.train('عدد ادواتك', toolCountContext);
+
         // --- LAYER 2: EXPERT ENGINEERING REFLEXES (Smart Reflex++) ---
 
         // 1. Web Development (Modern Stack)
