@@ -815,7 +815,7 @@ export default function Joe() {
           className="sidebar-toggle-btn-floating"
           style={{
             position: 'fixed',
-            top: '84px', // Lowered to avoid Logo overlap
+            top: '120px', // Further lowered per user request
             insetInlineStart: '20px',
             zIndex: 2147483647, /* MAX INT */
             display: 'flex',
