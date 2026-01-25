@@ -31,7 +31,7 @@ async function ensureToken() {
     // We use raw fetch here because api.post would fail with 401/no token logic loop?
     // Actually api.post handles headers. If we call a public endpoint it's fine.
     // But /auth/dev might need special handling. Let's stick to simple fetch for this bootstrap.
-    const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000';
+    const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
     const res = await fetch(`${API_URL}/auth/dev`, { method: 'POST' });
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));

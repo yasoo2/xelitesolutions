@@ -16,13 +16,11 @@ function inferApiUrl() {
     hostname === '0.0.0.0' ||
     hostname.endsWith('.local');
 
-  if (isLocal) return 'http://localhost:3000';
-
   if (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com') {
-    return 'https://api.xelitesolutions.com';
+    return 'https://xelitesolutions.com/api';
   }
 
-  return window.location.origin;
+  return `${window.location.origin}/api`;
 }
 
 function inferWsUrl(apiUrl: string) {
@@ -56,7 +54,7 @@ const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')
 
 // ELITE FIX: Force localhost for dev
 const isDev = import.meta.env.DEV;
-const API_URL = isDev ? 'http://localhost:3000' : (apiEnv || inferApiUrl());
+const API_URL = isDev ? 'http://localhost:3000/api' : (apiEnv || inferApiUrl());
 const WS_URL = isDev ? 'ws://localhost:3000/ws' : (wsEnv || inferWsUrl(API_URL));
 const readQueryChrome = () => {
   try {
