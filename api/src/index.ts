@@ -131,36 +131,32 @@ async function main() {
   app.get('/', (_req, res) => res.send('Joe API is running'));
 
   // Auth
-  app.use('/auth', authRoutes);
-  // Health Check
-  app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok', time: new Date().toISOString() });
-  });
+  app.use('/api/auth', authRoutes);
 
-  app.use('/tools', toolsRoutes);
-  app.use('/runs', runRoutes);
-  app.use('/run', runDetailsRoutes);
-  app.use('/sessions', sessionsRoutes);
-  app.use('/folders', foldersRoutes);
-  app.use('/files', filesRoutes);
-  app.use('/approvals', approvalsRoutes);
-  app.use('/project', projectRoutes);
-  app.use('/audio', audioRoutes);
-  app.use('/assets', assetsRoutes);
-  app.use('/memory', memoryRoutes);
-  app.use('/knowledge', knowledgeRoutes);
+  app.use('/api/tools', toolsRoutes);
+  app.use('/api/runs', runRoutes);
+  app.use('/api/run', runDetailsRoutes);
+  app.use('/api/sessions', sessionsRoutes);
+  app.use('/api/folders', foldersRoutes);
+  app.use('/api/files', filesRoutes);
+  app.use('/api/approvals', approvalsRoutes);
+  app.use('/api/project', projectRoutes);
+  app.use('/api/audio', audioRoutes);
+  app.use('/api/assets', assetsRoutes);
+  app.use('/api/memory', memoryRoutes);
+  app.use('/api/knowledge', knowledgeRoutes);
 
-  app.use('/system', systemRoutes);
-  app.use('/insta', instaRoutes);
-  app.use('/providers', providersRoutes);
-  app.use('/packages', packagesRoutes);
-  app.use('/git', gitRoutes);
-  app.use('/art', artRoutes);
-  app.use('/database', databaseRoutes);
-  app.use('/actions', actionsRoutes);
+  app.use('/api/system', systemRoutes);
+  app.use('/api/insta', instaRoutes);
+  app.use('/api/providers', providersRoutes);
+  app.use('/api/packages', packagesRoutes);
+  app.use('/api/git', gitRoutes);
+  app.use('/api/art', artRoutes);
+  app.use('/api/database', databaseRoutes);
+  app.use('/api/actions', actionsRoutes);
   app.use('/api/browser', browserRoutes);
   app.use('/api/servers', authenticate, serverRoutes);
-  app.use('/queue', queueRoutes);
+  app.use('/api/queue', queueRoutes);
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {

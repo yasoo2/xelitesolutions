@@ -594,10 +594,11 @@ export async function routeToModel(
     // 1. Try Selected Model First (Happy Path)
     try {
         if (selectedModel.provider === 'groq' && hasGroqKey) {
-            return await callGroq(selectedModel.model, flatMessages, onPartial); // Groq is text-only
+            // Groq is fast, but let's give it 15s
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
+            return await Promise.race([callGroq(selectedModel.model, flatMessages, onPartial), timeoutPromise]) as string;
         }
         if (selectedModel.provider === 'openai' && process.env.OPENAI_API_KEY) {
-            // Keep OpenAI path for explicit model selection, but not for Auto-Free
             throw new Error('UseLegacyOpenAIPath');
         }
     } catch (e: any) {
@@ -613,8 +614,16 @@ export async function routeToModel(
             if (p.name === 'OpenAI') continue;
 
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
-            // Set a strict 5s timeout for Auto-Free to keep it 'Fast'
-            const timeoutValue = p.name === 'Pollinations (Backup)' ? 12000 : 5000;
+
+            // Dynamic Timeout: Complex tasks need more time (up to 60s for the mesh)
+            let timeoutValue = 10000; // Base 10s
+            if (analysis?.complexity === 'high' || analysis?.complexity === 'extreme') {
+                timeoutValue = 30000; // 30s for complex
+            }
+            if (p.name === 'Pollinations (Backup)') {
+                timeoutValue = 60000; // 60s for the ultimate fallback
+            }
+
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
             const ans = await Promise.race([p.run(), timeoutPromise]) as string;
 
