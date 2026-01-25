@@ -92,11 +92,7 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
                     transition: 'all 0.3s ease'
                 }}
             >
-                {cleanContent || (
-                    <span style={{ color: 'rgba(255, 255, 255, 0.2)', fontStyle: 'italic' }}>
-                        {t('thinkingInit')}
-                    </span>
-                )}
+                {cleanContent}
             </div>
         </motion.div>
     );

@@ -2143,19 +2143,6 @@ export default function CommandComposer({
     // We also need to inject an 'activity' placeholder or start the run locally in the UI state
     // but the critical part is the thought.
     setEvents(prev => [...prev, optimisticThoughtEvent]);
-    // Also start the streaming text for thought immediately
-    setEvents(prev => [...prev, {
-      type: 'thought',
-      data: {
-        action: 'chunk',
-        content: t('thinkingInit', 'Analyzing request...'),
-        runId: optimisticRunId
-      },
-      id: `thought_chunk_${Date.now()}_opt`,
-      ts: Date.now() + 1,
-      seq: lastLiveSeqRef.current + 0.2,
-      runId: optimisticRunId
-    }]);
 
     const isLikelyCodeFile = (v: string) => {
       const t = v.toLowerCase();
