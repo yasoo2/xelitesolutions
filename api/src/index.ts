@@ -31,6 +31,9 @@ import serverRoutes from './routes/servers';
 import queueRoutes from './routes/queue';
 import { healthcheckBrowser } from './browser/manager';
 
+// Create Central API Router
+const apiRouter = express.Router();
+
 import { authenticate } from './middleware/auth';
 import http from 'http';
 import { attachWebSocket } from './ws';
@@ -130,33 +133,45 @@ async function main() {
   });
   app.get('/', (_req, res) => res.send('Joe API is running'));
 
-  // Auth
-  app.use('/api/auth', authRoutes);
+  // Mount Central API Router
+  app.use('/api', apiRouter);
 
-  app.use('/api/tools', toolsRoutes);
-  app.use('/api/runs', runRoutes);
-  app.use('/api/run', runDetailsRoutes);
-  app.use('/api/sessions', sessionsRoutes);
-  app.use('/api/folders', foldersRoutes);
-  app.use('/api/files', filesRoutes);
-  app.use('/api/approvals', approvalsRoutes);
-  app.use('/api/project', projectRoutes);
-  app.use('/api/audio', audioRoutes);
-  app.use('/api/assets', assetsRoutes);
-  app.use('/api/memory', memoryRoutes);
-  app.use('/api/knowledge', knowledgeRoutes);
+  // Sub-routes on apiRouter
+  apiRouter.use('/auth', authRoutes);
+  apiRouter.use('/tools', toolsRoutes);
+  apiRouter.use('/runs', runRoutes);
+  apiRouter.use('/run', runDetailsRoutes);
+  apiRouter.use('/sessions', sessionsRoutes);
+  apiRouter.use('/folders', foldersRoutes);
+  apiRouter.use('/files', filesRoutes);
+  apiRouter.use('/approvals', approvalsRoutes);
+  apiRouter.use('/project', projectRoutes);
+  apiRouter.use('/audio', audioRoutes);
+  apiRouter.use('/assets', assetsRoutes);
+  apiRouter.use('/memory', memoryRoutes);
+  apiRouter.use('/knowledge', knowledgeRoutes);
+  apiRouter.use('/system', systemRoutes);
+  apiRouter.use('/insta', instaRoutes);
+  apiRouter.use('/providers', providersRoutes);
+  apiRouter.use('/packages', packagesRoutes);
+  apiRouter.use('/git', gitRoutes);
+  apiRouter.use('/art', artRoutes);
+  apiRouter.use('/database', databaseRoutes);
+  apiRouter.use('/actions', actionsRoutes);
+  apiRouter.use('/browser', browserRoutes);
+  apiRouter.use('/servers', authenticate, serverRoutes);
+  apiRouter.use('/queue', queueRoutes);
 
-  app.use('/api/system', systemRoutes);
-  app.use('/api/insta', instaRoutes);
-  app.use('/api/providers', providersRoutes);
-  app.use('/api/packages', packagesRoutes);
-  app.use('/api/git', gitRoutes);
-  app.use('/api/art', artRoutes);
-  app.use('/api/database', databaseRoutes);
-  app.use('/api/actions', actionsRoutes);
-  app.use('/api/browser', browserRoutes);
-  app.use('/api/servers', authenticate, serverRoutes);
-  app.use('/api/queue', queueRoutes);
+  // Catch-all 404 for API
+  apiRouter.use((req, res) => {
+    res.status(404).json({
+      error: 'Not Found',
+      message: `API Route ${req.method} ${req.originalUrl} not found`,
+      availableModules: [
+        'auth', 'tools', 'runs', 'sessions', 'folders', 'files', 'project', 'system'
+      ]
+    });
+  });
 
   // Example protected route
   app.get('/me', authenticate, async (req, res) => {
