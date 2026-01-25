@@ -2353,7 +2353,7 @@ export default function CommandComposer({
         setActiveRunId(rid);
         ensureTaskBar(rid, { visible: true, analyzing: true });
       }
-      if (data.sessionId && !sessionId && onSessionCreated) {
+      if (data?.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
       }
 
