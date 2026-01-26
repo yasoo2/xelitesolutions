@@ -8,6 +8,7 @@ const Login = lazy(() => import('./pages/Login'));
 const Showcase = lazy(() => import('./pages/Showcase'));
 const BankV2 = lazy(() => import('./pages/BankV2'));
 const Joe = lazy(() => import('./pages/Joe'));
+const JoeWelcome = lazy(() => import('./pages/JoeWelcome'));
 import './theme.css';
 import './global.css';
 import './i18n';
@@ -72,6 +73,7 @@ createRoot(document.getElementById('root')!).render(
                   </RequireAuth>
                 }
               />
+              <Route path="joe-welcome" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><JoeWelcome /></Suspense>} />
             </Route>
           </Routes>
         </BrowserRouter>
