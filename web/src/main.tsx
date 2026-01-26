@@ -17,6 +17,14 @@ const shouldIgnoreNoiseError = (val: any) => {
   return s.includes('solanaActionsContentScript.js');
 };
 
+// Global console.error proxy to filter out extension noise
+const originalConsoleError = console.error;
+console.error = (...args: any[]) => {
+  const msg = args.join(' ');
+  if (shouldIgnoreNoiseError(msg)) return;
+  originalConsoleError.apply(console, args);
+};
+
 window.addEventListener(
   'error',
   (event) => {
