@@ -12,7 +12,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher';
 console.log('JOE System: Login Page v18-Premium-Global Loaded');
 
 export default function Login() {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const nav = useNavigate();
 
     const emailRef = useRef<HTMLInputElement>(null);
