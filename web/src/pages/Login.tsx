@@ -100,8 +100,8 @@ export default function Login() {
     const isRTL = i18n.language === 'ar';
     const googleEnabled = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
-    // DEBUG: Tracking Deployment Version - v9 (Trace)
-    console.log('JOE System: Login Page Gold-v9-Trace Loaded');
+    // DEBUG: Tracking Deployment Version - v10 (Guaranteed Fix)
+    console.log('JOE System: Login Page Gold-v10-GuaranteedFix Loaded');
 
     // State Machine
     const [email, setEmail] = useState('');
@@ -109,9 +109,14 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [isUnlocked, setIsUnlocked] = useState(false);
 
     // Auth Handlers
     async function performManualAuthentication(e?: any) {
+        if (!isUnlocked) {
+            console.error('[SECURITY] Blocked unauthorized auto-execution of login.');
+            return;
+        }
         console.log('[DEBUG] Auth Triggered!', {
             email,
             hasPassword: !!password,
@@ -362,25 +367,37 @@ export default function Login() {
                 </div>
             </div>
 
-            <button
-                onClick={performManualAuthentication}
-                disabled={loading || !email || !password}
-                style={{ ...S.submitBtn, opacity: (loading || !email || !password) ? 0.5 : 1, cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer', transform: (loading || !email || !password) ? 'none' : 'translateY(0)', boxShadow: (loading || !email || !password) ? 'none' : S.submitBtn.boxShadow }}
-                onMouseEnter={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                onMouseLeave={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(0)'; }}
-            >
-                {loading ? <Loader2 size={18} className="spin" /> : <LogIn size={18} />}
-                <span>{t('login')}</span>
-            </button>
-
-            {googleEnabled && (
+            {!isUnlocked ? (
+                <button
+                    onClick={() => setIsUnlocked(true)}
+                    style={{ ...S.submitBtn, background: 'linear-gradient(to right, #444 0%, #222 100%)', color: '#fff', border: '1px solid #666' }}
+                >
+                    <Lock size={18} />
+                    <span>{t('unlock_portal', 'Unlock Secure Portal')}</span>
+                </button>
+            ) : (
                 <>
-                    <div style={S.divider}>
-                        <div style={S.dividerLine} />
-                        <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
-                        <div style={S.dividerLine} />
-                    </div>
-                    <GoogleLoginButton t={t} nav={nav} setError={setError} setLoading={setLoading} S={S} />
+                    <button
+                        onClick={performManualAuthentication}
+                        disabled={loading || !email || !password}
+                        style={{ ...S.submitBtn, opacity: (loading || !email || !password) ? 0.5 : 1, cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer', transform: (loading || !email || !password) ? 'none' : 'translateY(0)', boxShadow: (loading || !email || !password) ? 'none' : S.submitBtn.boxShadow }}
+                        onMouseEnter={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                        onMouseLeave={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(0)'; }}
+                    >
+                        {loading ? <Loader2 size={18} className="spin" /> : <LogIn size={18} />}
+                        <span>{t('login')}</span>
+                    </button>
+
+                    {googleEnabled && (
+                        <>
+                            <div style={S.divider}>
+                                <div style={S.dividerLine} />
+                                <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
+                                <div style={S.dividerLine} />
+                            </div>
+                            <GoogleLoginButton t={t} nav={nav} setError={setError} setLoading={setLoading} S={S} />
+                        </>
+                    )}
                 </>
             )}
         </div>

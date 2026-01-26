@@ -20,19 +20,25 @@ class ApiClient {
         return h;
     }
 
-    private async handleResponse(res: Response) {
+    private async handleResponse(res: Response, endpoint: string) {
         if (res.status === 401) {
-            try {
-                localStorage.removeItem('token');
-            } catch { }
-            window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-            throw new Error('Unauthorized');
+            // DO NOT trigger logout/redirect for login attempts
+            const isAuthRoute = endpoint.includes('/auth/login') || endpoint.includes('/auth/google');
+
+            if (!isAuthRoute) {
+                try {
+                    localStorage.removeItem('token');
+                } catch { }
+                window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+            }
+
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Unauthorized');
         }
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
             throw new Error(data.error || `HTTP ${res.status}`);
         }
-        // Return json if content-type is json, else text? usually json.
         const text = await res.text();
         try {
             return text ? JSON.parse(text) : {};
@@ -50,7 +56,7 @@ class ApiClient {
             method: 'GET',
             headers: this.headers,
         });
-        return this.handleResponse(res);
+        return this.handleResponse(res, endpoint);
     }
 
     async post(endpoint: string, body?: any) {
@@ -59,7 +65,7 @@ class ApiClient {
             headers: this.headers,
             body: body ? JSON.stringify(body) : undefined,
         });
-        return this.handleResponse(res);
+        return this.handleResponse(res, endpoint);
     }
 
     async put(endpoint: string, body?: any) {
@@ -68,7 +74,7 @@ class ApiClient {
             headers: this.headers,
             body: body ? JSON.stringify(body) : undefined,
         });
-        return this.handleResponse(res);
+        return this.handleResponse(res, endpoint);
     }
 
     async patch(endpoint: string, body?: any) {
@@ -77,7 +83,7 @@ class ApiClient {
             headers: this.headers,
             body: body ? JSON.stringify(body) : undefined,
         });
-        return this.handleResponse(res);
+        return this.handleResponse(res, endpoint);
     }
 
     async delete(endpoint: string) {
@@ -85,7 +91,7 @@ class ApiClient {
             method: 'DELETE',
             headers: this.headers,
         });
-        return this.handleResponse(res);
+        return this.handleResponse(res, endpoint);
     }
 }
 
