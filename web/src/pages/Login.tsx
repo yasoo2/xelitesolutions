@@ -100,8 +100,8 @@ export default function Login() {
     const isRTL = i18n.language === 'ar';
     const googleEnabled = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
-    // DEBUG: Tracking Deployment Version - v7 (Google Only)
-    console.log('JOE System: Login Page Gold-v7-GoogleOnly Loaded');
+    // DEBUG: Tracking Deployment Version - v8 (AntiGhost)
+    console.log('JOE System: Login Page Gold-v8-AntiGhost Loaded');
 
     // State Machine
     const [email, setEmail] = useState('');
@@ -112,6 +112,11 @@ export default function Login() {
 
     // Auth Handlers
     async function handleLogin() {
+        console.log('[DEBUG] handleLogin triggered!', { email, hasPassword: !!password });
+        if (!email || !password) {
+            console.warn('[DEBUG] handleLogin called with empty credentials. Skipping fetch.');
+            return;
+        }
         setError(null);
         setLoading(true);
         try {
@@ -420,62 +425,7 @@ export default function Login() {
                     </div>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeUp 0.5s ease-out', width: '100%' }}>
-                    <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: '8px', fontFamily: 'Inter, sans-serif', letterSpacing: '0.5px' }}>
-                        {t('login_subtitle', 'Welcome back')}
-                    </h2>
-
-                    {/* Email */}
-                    <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                        <label style={S.label}>{t('email')}</label>
-                        <div style={S.inputWrapper}>
-                            <input
-                                style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '16px' }}
-                                value={email} onChange={e => setEmail(e.target.value)}
-                                type="email" placeholder="you@example.com"
-                            />
-                            <Mail size={18} style={S.iconStart} />
-                        </div>
-                    </div>
-
-                    {/* Password */}
-                    <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                        <label style={S.label}>{t('password')}</label>
-                        <div style={S.inputWrapper}>
-                            <input
-                                style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '44px' }}
-                                value={password} onChange={e => setPassword(e.target.value)}
-                                type={showPassword ? 'text' : 'password'} placeholder="••••••••"
-                            />
-                            <Lock size={18} style={S.iconStart} />
-                            <button type="button" onClick={() => setShowPassword(!showPassword)} style={S.iconEnd}>
-                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={handleLogin}
-                        disabled={loading || !email || !password}
-                        style={{ ...S.submitBtn, opacity: (loading || !email || !password) ? 0.5 : 1, cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer', transform: (loading || !email || !password) ? 'none' : 'translateY(0)', boxShadow: (loading || !email || !password) ? 'none' : S.submitBtn.boxShadow }}
-                        onMouseEnter={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                        onMouseLeave={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(0)'; }}
-                    >
-                        {loading ? <Loader2 size={18} className="spin" /> : <LogIn size={18} />}
-                        <span>{t('login')}</span>
-                    </button>
-
-                    {googleEnabled && (
-                        <>
-                            <div style={S.divider}>
-                                <div style={S.dividerLine} />
-                                <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
-                                <div style={S.dividerLine} />
-                            </div>
-                            <GoogleLoginButton t={t} nav={nav} setError={setError} setLoading={setLoading} S={S} />
-                        </>
-                    )}
-                </div>
+                <LoginForm />
             </div>
 
             {/* Footer Copyright */}
