@@ -15,21 +15,21 @@ console.log('   Platform:', process.platform);
 // 2. Check Core Modules Load
 console.log('\n2️⃣ Module Loading:');
 try {
-    require('../llm');
+    require('../../llm');
     console.log('   LLM Module: ✅ Loaded');
 } catch (e: any) {
     console.log('   LLM Module: ❌ Failed -', e.message);
 }
 
 try {
-    require('../intelligence/context-analyzer');
+    require('../../intelligence/context-analyzer');
     console.log('   Context Analyzer: ✅ Loaded');
 } catch (e: any) {
     console.log('   Context Analyzer: ❌ Failed -', e.message);
 }
 
 try {
-    require('../tools/registry');
+    require('../../tools/registry');
     console.log('   Tool Registry: ✅ Loaded');
 } catch (e: any) {
     console.log('   Tool Registry: ❌ Failed -', e.message);
@@ -38,7 +38,7 @@ try {
 // 3. Test Context Analyzer in Production
 console.log('\n3️⃣ Context Analyzer Production Test:');
 try {
-    const { analyzeContext } = require('../intelligence/context-analyzer');
+    const { analyzeContext } = require('../../intelligence/context-analyzer');
     const testResult = analyzeContext([
         { role: 'user', content: 'create a React app' }
     ]);
@@ -52,7 +52,7 @@ try {
 // 4. Test Tool Selection
 console.log('\n4️⃣ Tool Selection Test:');
 try {
-    const llm = require('../llm');
+    const llm = require('../../llm');
     const tools = llm.tools || [];
     console.log('   Available Tools:', tools.length);
     console.log('   Sample Tools:', tools.slice(0, 5).map((t: any) => t.name).join(', '));
@@ -63,7 +63,7 @@ try {
 // 5. System Prompt Check
 console.log('\n5️⃣ System Prompt:');
 try {
-    const { getSystemPrompt, BASE_SYSTEM_PROMPT } = require('../llm');
+    const { getSystemPrompt, BASE_SYSTEM_PROMPT } = require('../../llm');
     const prompt = getSystemPrompt();
     console.log('   Length:', prompt.length, 'chars');
     console.log('   Has Task Awareness:', prompt.includes('TASK-AWARE') ? '✅' : '❌');

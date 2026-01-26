@@ -2,8 +2,8 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
-import { BrowserRunTool } from '../tools/definitions/BrowserRunTool';
-import { Session } from '../models/session'; // Assuming model path
+import { BrowserRunTool } from '../../tools/definitions/BrowserRunTool';
+import { Session } from '../../models/session'; // Assuming model path
 
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 

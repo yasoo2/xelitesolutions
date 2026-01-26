@@ -1,7 +1,7 @@
 
 import mongoose from 'mongoose';
-import { tools } from '../tools/registry';
-import { AgentLoopService } from '../services/AgentLoopService';
+import { tools } from '../../tools/registry';
+import { AgentLoopService } from '../../services/AgentLoopService';
 
 async function main() {
     console.log('🔍 Starting System Health Verification...');
