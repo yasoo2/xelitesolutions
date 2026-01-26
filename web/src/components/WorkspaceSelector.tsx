@@ -10,8 +10,12 @@ interface Workspace {
     plan: 'free' | 'pro' | 'enterprise';
 }
 
+import { useNavigate } from 'react-router-dom';
+import { Settings } from 'lucide-react';
+
 export const WorkspaceSelector: React.FC = () => {
     const { t, i18n } = useTranslation();
+    const navigate = useNavigate();
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [activeWs, setActiveWs] = useState<Workspace | null>(null);
     const [isOpen, setIsOpen] = useState(false);
@@ -103,6 +107,14 @@ export const WorkspaceSelector: React.FC = () => {
                             ))}
 
                             <div className="h-px bg-white/10 my-1"></div>
+
+                            <button
+                                onClick={() => { navigate(`/workspace/${activeWs._id}/settings`); setIsOpen(false); }}
+                                className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 text-white/60 hover:text-white transition-colors"
+                            >
+                                <Settings size={14} />
+                                <span className="text-xs">{t('ui.workspace_settings', 'Workspace Settings')}</span>
+                            </button>
 
                             <button className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 text-white/60 hover:text-white transition-colors">
                                 <span className="w-5 h-5 flex items-center justify-center border border-dashed border-white/30 rounded text-xs">+</span>
