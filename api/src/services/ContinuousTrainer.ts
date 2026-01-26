@@ -163,7 +163,21 @@ export class ContinuousTrainer {
             return { trigger, response };
         }
 
-        // 5. Arabic Technical Mastery
+        // 5. PHASE 2: ADVANCED ARABIC TECH MASTERY (Enhanced for User Preference)
+        // Focuses on DevOps, Security, and complex deployments in perfect Arabic.
+        if (type === 4) {
+            const keyTopics = [
+                { t: 'deploy nextjs', r: 'لرفع تطبيق Next.js باحترافية، استخدم Docker Container مع Node.js Alpine لتقليل الحجم. ثم انشره على Kubernetes Cluster مع Ingress Controller لضمان الـ High Availability.' },
+                { t: 'secure api', r: 'لتأمين الـ API، طبق مبدأ Defense in Depth: استخدم Rate Limiting (Redis)، فعل الـ Helmet.js للحماية من الـ Headers، واعتذر دائماً عن قبول الـ HTTP العادي (Force HTTPS).' },
+                { t: 'ci/cd pipeline', r: 'لبناء Pipeline قوي: ابدأ بـ Checkout الكود، ثم تشغيل الـ Tests (Unit/E2E)، بناء الـ Docker Image، فحص الثغرات (Security Scan)، وأخيراً الـ Deploy الآلي باستخدام ArgoCD.' },
+                { t: 'microservices vs monolith', r: 'المونوليث (Monolith) أسهل في البداية، لكن الـ Microservices تمنحك "Scalability" لا محدود. يفضل البدء بـ Modular Monolith ثم فصل الخدمات تدريجياً.' },
+                { t: 'database scaling', r: 'لتوسيع قاعدة البيانات، استخدم Read Replicas لتوزيع حمل القراءة، وفعل الـ Database Sharding إذا تجاوزت البيانات حجم السيرفر الواحد.' }
+            ];
+            const topic = keyTopics[Math.floor(Math.random() * keyTopics.length)];
+            return { trigger: topic.t, response: topic.r };
+        }
+
+        // 6. Basic Arabic Technical Mastery
         const v = this.pick(verbs); // Translate mentally to Ar
         const c = this.pick(concepts);
         const l = this.pick(languages);
