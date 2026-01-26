@@ -16,7 +16,7 @@ export default function App() {
     // [CRITICAL] Absolute Production Guard
     const hostname = window.location.hostname;
     const isTargetDomain = hostname.includes('xelitesolutions.com');
-    const isProdBuild = import.meta.env.PROD || process.env.NODE_ENV === 'production';
+    const isProdBuild = import.meta.env.PROD || import.meta.env.MODE === 'production';
 
     if (isProdBuild || isTargetDomain) {
       console.log(`[JOE] Production Locked: Suppressing dev-login on ${hostname}.`);
