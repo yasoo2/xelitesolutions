@@ -5,26 +5,35 @@ import './rtl-overrides.css';
 import { useEffect } from 'react';
 import { API_URL as API } from './config';
 
+let isLoggingIn = false;
+
 export default function App() {
   const location = useLocation();
   const nav = useNavigate();
   const isLogin = location.pathname === '/login';
 
   async function devLogin() {
-    // SECURITY FIX: Disable dev-login on production domains
+    // [DIAGNOSTIC] Check environment
     const hostname = window.location.hostname;
-    const isProdDomain = hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com';
-    const isProduction = import.meta.env.PROD;
+    const isProd = import.meta.env.PROD;
+    const isTargetDomain = hostname.includes('xelitesolutions.com');
 
-    if (isProdDomain || isProduction) {
-      // Logic for production: only manual or social login
+    if (isProd || isTargetDomain) {
+      console.log(`[JOE] Production Guard: Suppressing automatic dev-login on ${hostname}.`);
       return;
     }
 
-    const email = (window as any).JOE_CONFIG?.DEV_EMAIL || import.meta.env.VITE_DEV_EMAIL;
-    const password = (window as any).JOE_CONFIG?.DEV_PASSWORD || import.meta.env.VITE_DEV_PASSWORD;
-    if (!email || !password) return;
+    if (isLoggingIn) return;
+    isLoggingIn = true;
+
     try {
+      const email = (window as any).JOE_CONFIG?.DEV_EMAIL || import.meta.env.VITE_DEV_EMAIL;
+      const password = (window as any).JOE_CONFIG?.DEV_PASSWORD || import.meta.env.VITE_DEV_PASSWORD;
+
+      if (!email || !password) return;
+
+      console.log(`[JOE] Dev Environment detected (${hostname}). Attempting auto-login...`);
+
       const res = await fetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,7 +45,11 @@ export default function App() {
         if (isLogin) nav('/joe');
         window.dispatchEvent(new Event('auth:authorized'));
       }
-    } catch { }
+    } catch (err) {
+      console.error('[JOE] devLogin failed:', err);
+    } finally {
+      isLoggingIn = false;
+    }
   }
 
   useEffect(() => {
