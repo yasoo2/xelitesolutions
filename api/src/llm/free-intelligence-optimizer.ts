@@ -498,6 +498,12 @@ class FreeIntelligenceOptimizer {
         const cleanText = userText.toLowerCase().trim();
         const userName = 'يونس'; // Hardcoded for this session
 
+        // Extract language from context (passed as the last item or specific object)
+        // We expect the ToolService to pass { language: 'ar' } in the context array or object
+        const langContext = context.find((c: any) => c && c.language) || { language: 'en' };
+        const userLang = langContext.language || 'en';
+        const isAr = userLang.startsWith('ar');
+
         // CRITICAL: Always run planner for workflow markers
         if (cleanText.includes('wf_start') || cleanText.includes('project_plan') || cleanText.includes('eco_plan')) {
             console.info('[Optimizer] Workflow marker detected - forcing full planner');
@@ -525,6 +531,16 @@ class FreeIntelligenceOptimizer {
         // 2. Check Smart Cache (Exact & Fuzzy) - INFO REFLEXES
         for (const [trigger, res] of Array.from(this.cache.entries())) {
             if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
+                // [FIX] Strict Language Check
+                // If user wants Arabic but cache is English (and vice versa), skip cache to force generation
+                const cacheLang = this.detectLanguage(res.response); // 'ar' or 'en'
+                const targetLang = isAr ? 'ar' : 'en';
+
+                if (cacheLang !== targetLang) {
+                    console.log(`[Optimizer] Cache Language Mismatch: Want ${targetLang}, Got ${cacheLang}. Skipping cache.`);
+                    continue;
+                }
+
                 res.hits++;
                 res.lastUsed = Date.now();
                 return {

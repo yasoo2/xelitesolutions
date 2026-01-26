@@ -208,7 +208,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         // But for now, we assume tDef has the handler.
 
         if (typeof (tDef as any).execute === 'function') {
-            const res = await (tDef as any).execute(effectiveInput);
+            const res = await (tDef as any).execute(effectiveInput, context);
             const ok = !!res?.ok;
             const output = res?.output ?? null;
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;

@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
 import {
-    LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, Wifi, WifiOff
+    LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
-// VERSION: v18-Premium-Restored
-console.log('JOE System: Login Page v18-Premium-Restored Loaded');
+// VERSION: v18-Premium-Global
+console.log('JOE System: Login Page v18-Premium-Global Loaded');
 
 export default function Login() {
     const { t } = useTranslation();
@@ -44,7 +45,7 @@ export default function Login() {
         const password = passRef.current?.value || '';
 
         if (!email || !password) {
-            setError('Please enter your credentials');
+            setError(t('login_error_missing'));
             return;
         }
 
@@ -54,14 +55,17 @@ export default function Login() {
         try {
             const res = await fetch(`${API}/auth/login`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept-Language': i18n.language || 'en'
+                },
                 body: JSON.stringify({ email, password }),
             });
 
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                throw new Error(data.error || 'Authentication Failed');
+                throw new Error(data.error || t('login_error_auth'));
             }
 
             localStorage.setItem('token', data.token);
@@ -145,6 +149,8 @@ export default function Login() {
                 transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
             />
 
+            <LanguageSwitcher />
+
             <div style={{ position: 'absolute', top: 24, right: 24, display: 'flex', gap: 8 }}>
                 <div style={{
                     padding: '6px 12px', borderRadius: '20px',
@@ -153,7 +159,7 @@ export default function Login() {
                     display: 'flex', alignItems: 'center', gap: 6, backdropFilter: 'blur(4px)'
                 }}>
                     <div style={{ width: 6, height: 6, borderRadius: '50%', background: health?.status === 'OK' ? '#10b981' : '#ef4444' }} />
-                    SYSTEM {health?.status || 'CONNECTING'}
+                    {t('system')} {health?.status || t('connecting')}
                 </div>
             </div>
 
@@ -165,7 +171,7 @@ export default function Login() {
             >
                 <div style={S.header}>
                     <div style={S.logo}>JOE</div>
-                    <div style={S.subtitle}>Access the Neural Core</div>
+                    <div style={S.subtitle}>{t('login_subtitle')}</div>
                 </div>
 
                 <AnimatePresence>
@@ -226,7 +232,7 @@ export default function Login() {
                         style={S.btn}
                     >
                         {loading ? <Loader2 size={20} className="spin" /> : <LogIn size={20} />}
-                        <span>Sign In</span>
+                        <span>{t('login')}</span>
                     </motion.button>
                 </form>
 
@@ -248,7 +254,7 @@ export default function Login() {
                         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.26.81-.58z" fill="#FBBC05" />
                         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                     </svg>
-                    <span>Google Account</span>
+                    <span>{t('google_login')}</span>
                 </motion.button>
             </motion.div>
 

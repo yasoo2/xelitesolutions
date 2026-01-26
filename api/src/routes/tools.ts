@@ -70,7 +70,8 @@ router.post('/run', async (req: Request, res: Response) => {
 router.post('/:name/execute', authenticate, async (req: Request, res: Response) => {
   const name = String(req.params.name);
   const userId = (req as any)?.auth?.sub;
-  const result = await executeTool(name, { ...(req.body || {}), userId, __userId: userId });
+  const language = req.headers['accept-language'] || 'en';
+  const result = await executeTool(name, { ...(req.body || {}), userId, __userId: userId }, { sessionId: (req.body as any)?.sessionId, language });
   if (result && result.ok && result.output && typeof result.output === 'object') {
   }
   res.json(result);

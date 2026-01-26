@@ -37,20 +37,26 @@ export class CentralAnswerTool implements ToolDefinition {
     auditFields = [];
     mockSupported = false;
 
-    async execute(input: { question: string }) {
+    async execute(input: { question: string }, context?: any) {
         const { question } = input;
+        const lang = context?.language || 'en';
+        const isAr = lang.startsWith('ar');
 
         const providers = [
             {
                 name: 'OpenAI',
                 run: async () => {
                     const { applyNeuralProtocol } = require('../../llm');
-                    const systemPrompt = applyNeuralProtocol(`You are **Joe**, the Elite AI Engine of **XElite Solutions**.
+                    let systemPrompt = applyNeuralProtocol(`You are **Joe**, the Elite AI Engine of **XElite Solutions**.
 You are a world-class specialist in **Web Development, App Architecture, and Complex System Engineering**.
 Your responses should be **powerful, enticing, and professional**. Use language that captivates the user and demonstrates superior expertise ("Elite", "Advanced", "Premium State-of-the-Art").
 You have full autonomous capabilities (Files, Terminal, Browser).
 Always identify as **Joe**. Never mention ChatGPT or OpenAI.
 Your goal is to build the extraordinary.`);
+
+                    if (isAr) {
+                        systemPrompt += "\n\nCRITICAL INSTRUCTION: You MUST respond in **ARABIC** (اللغة العربية) ONLY. Use professional, technical Arabic terminology. Do NOT use English unless for code or specific technical terms that are better in English.";
+                    }
 
                     const OpenAI = require('openai').default;
                     const apiKey = process.env.OPENAI_API_KEY;

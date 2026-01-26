@@ -5,6 +5,11 @@ const resources = {
   en: {
     translation: {
       login: 'Login',
+      login_subtitle: 'Access the Neural Core',
+      login_error_missing: 'Please enter your credentials',
+      login_error_auth: 'Authentication Failed',
+      system: 'SYSTEM',
+      google_login: 'Google Account',
       toggleTheme: 'Toggle Theme',
       homeSubtitle: 'A simple entry to the World of JOE',
       email: 'Email',
@@ -178,6 +183,11 @@ const resources = {
   ar: {
     translation: {
       login: 'تسجيل الدخول',
+      login_subtitle: 'الوصول إلى النواة العصبية',
+      login_error_missing: 'يرجى إدخال بيانات الاعتماد',
+      login_error_auth: 'فشلت المصادقة',
+      system: 'النظام',
+      google_login: 'حساب جوجل',
       toggleTheme: 'تبديل السمة',
       homeSubtitle: 'بوابة الدخول إلى عالم جو',
       email: 'البريد الإلكتروني',
