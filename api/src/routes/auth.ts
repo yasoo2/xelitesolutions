@@ -261,4 +261,30 @@ router.post('/google', async (req: Request, res: Response) => {
   }
 });
 
+// [NEW] GET Route for redirect-based OAuth (fixes the 404 on window.location.href)
+router.get('/google', (req: Request, res: Response) => {
+  const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
+  const options = {
+    redirect_uri: `${process.env.PUBLIC_URL || 'https://xelitesolutions.com'}/auth/callback`,
+    client_id: process.env.GOOGLE_CLIENT_ID || '',
+    access_type: 'offline',
+    response_type: 'code',
+    prompt: 'consent',
+    scope: [
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/userinfo.email',
+    ].join(' '),
+  };
+
+  const qs = new URLSearchParams(options).toString();
+  res.redirect(`${rootUrl}?${qs}`);
+});
+
+router.get('/callback', async (req: Request, res: Response) => {
+  // Basic callback stub - in a real flow this would exchange code for token
+  // For now, redirect to frontend with a query param to handle the exchange client-side or show error
+  const code = req.query.code;
+  res.redirect(`/?google_code=${code}`);
+});
+
 export default router;
