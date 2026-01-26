@@ -1,7 +1,8 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface ISession extends Document {
-  tenantId: Types.ObjectId;
+  tenantId: Types.ObjectId; // Keeping for legacy, eventually replace with workspaceId
+  workspaceId?: Types.ObjectId; // New Workspace Link
   projectId?: Types.ObjectId;
   userId: Types.ObjectId;
   title: string;
@@ -19,6 +20,7 @@ export interface ISession extends Document {
 const SessionSchema = new Schema<ISession>(
   {
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true, required: true },
+    workspaceId: { type: Schema.Types.ObjectId, ref: 'Workspace', index: true },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', index: true, required: true },
     title: { type: String, required: true },

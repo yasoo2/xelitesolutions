@@ -6,6 +6,8 @@ import mongoose from 'mongoose';
 
 const useMock = () => process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
 
+import { workspaceService } from '../services/WorkspaceService';
+
 export async function createSession(req: Request, res: Response) {
     const rawTitle = typeof req.body?.title === 'string' ? req.body.title : '';
     const title = rawTitle && rawTitle.trim() ? rawTitle.trim() : 'New Session';
@@ -26,13 +28,24 @@ export async function createSession(req: Request, res: Response) {
             { upsert: true, new: true }
         );
 
+        // [Workspace] Ensure personal workspace exists
+        const workspace = await workspaceService.ensurePersonalWorkspace(userId);
+
         try {
-            const session = await Session.create({ title, mode, kind, userId, tenantId: tenantDoc._id });
+            const session = await Session.create({
+                title, mode, kind, userId,
+                tenantId: tenantDoc._id,
+                workspaceId: workspace._id // Link to new workspace
+            });
             return res.json(session);
         } catch (err: any) {
             if (err && err.code === 11000) {
                 const uniqueTitle = `${title} - ${new Date().toLocaleString()}`;
-                const session = await Session.create({ title: uniqueTitle, mode, kind, userId, tenantId: tenantDoc._id });
+                const session = await Session.create({
+                    title: uniqueTitle, mode, kind, userId,
+                    tenantId: tenantDoc._id,
+                    workspaceId: workspace._id
+                });
                 return res.json(session);
             }
             throw err;

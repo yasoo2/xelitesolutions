@@ -36,6 +36,9 @@ function checkToolRateLimit(bucketKey: string, limitPerMinute?: number): { allow
 
 export interface ToolContext {
     sessionId?: string;
+    workspaceId?: string; // New: Strict Isolation Context
+    userId?: string;
+    language?: string;
 }
 
 export async function executeTool(name: string, input: any, context?: ToolContext) {
@@ -46,6 +49,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     // --- Aliasing & Compatibility Layer ---
     const contextSessionId = context?.sessionId;
+    const contextWorkspaceId = context?.workspaceId;
+
+    if (!contextWorkspaceId) {
+        console.warn(`[ToolService] ⚠️ SECURITY WARNING: Tool '${name}' executed without Workspace Context! Defaults to global/shared.`);
+    }
 
     if (name === 'browser_open') {
         effectiveName = 'browser_run';

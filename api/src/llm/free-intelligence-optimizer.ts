@@ -498,10 +498,21 @@ class FreeIntelligenceOptimizer {
         const cleanText = userText.toLowerCase().trim();
         const userName = 'يونس'; // Hardcoded for this session
 
-        // Extract language from context (passed as the last item or specific object)
-        // We expect the ToolService to pass { language: 'ar' } in the context array or object
+        // Extract language from context
         const langContext = context.find((c: any) => c && c.language) || { language: 'en' };
         const userLang = langContext.language || 'en';
+
+        // [Workspace] Extract Workspace Context
+        const workspaceContext = context.find((c: any) => c && c.workspaceId);
+        const workspaceId = workspaceContext?.workspaceId;
+        const plan = workspaceContext?.plan || 'free';
+
+        // [Quota] Check Limits (Stub - In real impl, check Redis/DB for daily usage)
+        if (plan === 'free' && Math.random() < 0.001) { // Simulation of quota hit 1/1000
+            console.warn(`[Optimizer] Workspace ${workspaceId} nearing daily limit.`);
+            // In stricter implementation, we would return { ok: false, error: 'Quota Exceeded' }
+        }
+
         const isAr = userLang.startsWith('ar');
 
         // CRITICAL: Always run planner for workflow markers
@@ -559,6 +570,17 @@ class FreeIntelligenceOptimizer {
                 cachedResponse: realKnowledge || undefined, // Pass context if found
                 suggestedModel: 'smart',
                 skipPlanner: false
+            };
+        }
+
+        // [Workspace] Check for Custom Provider Override
+        if (workspaceContext?.integrations?.llmProviders?.openai?.apiKey) {
+            console.log(`[Optimizer] Workspace ${workspaceId} has custom OpenAI key. Recommending Paid Route.`);
+            return {
+                shouldUseCache: false,
+                suggestedModel: 'smart', // In a real router, this would be 'gpt-4o'
+                skipPlanner: false,
+                analysis: { type: 'paid_override', provider: 'openai' }
             };
         }
 

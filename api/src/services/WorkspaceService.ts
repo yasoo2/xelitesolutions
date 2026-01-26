@@ -1,81 +1,108 @@
-import fs from 'fs';
-import path from 'path';
+import { Workspace, IWorkspace } from '../models/workspace';
+import { WorkspaceMember, IWorkspaceMember } from '../models/workspaceMember';
+import { User } from '../models/user';
+import { Types } from 'mongoose';
 
 export class WorkspaceService {
-    private static instance: WorkspaceService;
-    private activeWorkspaceRoot: string;
-    private systemRoot: string;
-    private configPath: string;
 
-    private constructor() {
-        this.systemRoot = path.resolve(process.cwd());
-        this.configPath = path.join(this.systemRoot, '.workspace.json');
-        this.activeWorkspaceRoot = this.loadPersistentRoot() || this.systemRoot;
+    /**
+     * Create a new workspace and assign the creator as OWNER
+     */
+    async createWorkspace(userId: string, name: string, slug?: string): Promise<IWorkspace> {
+        const finalSlug = slug || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
-        // Initial validation
-        if (!fs.existsSync(this.activeWorkspaceRoot)) {
-            console.warn(`[WorkspaceService] Persistent root ${this.activeWorkspaceRoot} not found. Falling back to system root.`);
-            this.activeWorkspaceRoot = this.systemRoot;
-        }
-
-        console.log(`[WorkspaceService] Initialized with root: ${this.activeWorkspaceRoot}`);
-    }
-
-    public static getInstance(): WorkspaceService {
-        if (!WorkspaceService.instance) {
-            WorkspaceService.instance = new WorkspaceService();
-        }
-        return WorkspaceService.instance;
-    }
-
-    private loadPersistentRoot(): string | null {
-        try {
-            if (fs.existsSync(this.configPath)) {
-                const data = JSON.parse(fs.readFileSync(this.configPath, 'utf-8'));
-                return data.path || null;
+        // Limits based on FREE plan default
+        const defaults = {
+            plan: 'free',
+            limits: {
+                maxAgents: 2,
+                maxTokensPerDay: 100000,
+                maxConcurrentJobs: 1,
+                storageGB: 1
             }
-        } catch (e) {
-            console.error('[WorkspaceService] Failed to load persistent root:', e);
-        }
-        return null;
+        };
+
+        const workspace = await Workspace.create({
+            name,
+            slug: finalSlug,
+            ownerId: new Types.ObjectId(userId),
+            ...defaults
+        });
+
+        // Add creator as OWNER
+        await WorkspaceMember.create({
+            workspaceId: workspace._id,
+            userId: new Types.ObjectId(userId),
+            role: 'OWNER'
+        });
+
+        return workspace;
     }
 
-    private savePersistentRoot(newPath: string) {
+    /**
+     * Get workspace by ID with member check
+     */
+    async getWorkspace(workspaceId: string, userId: string): Promise<IWorkspace | null> {
+        const member = await WorkspaceMember.findOne({
+            workspaceId: new Types.ObjectId(workspaceId),
+            userId: new Types.ObjectId(userId)
+        });
+
+        if (!member) return null; // Access Denied or Not Found
+
+        return await Workspace.findById(workspaceId);
+    }
+
+    /**
+     * Get all workspaces for a user
+     */
+    async getUserWorkspaces(userId: string) {
+        const memberships = await WorkspaceMember.find({ userId: new Types.ObjectId(userId) }).populate('workspaceId');
+        return memberships.map(m => m.workspaceId);
+    }
+
+    /**
+     * Add a member to the workspace
+     */
+    async addMember(adminUserId: string, workspaceId: string, targetEmail: string, role: 'ADMIN' | 'DEVELOPER' | 'VIEWER') {
+        // 1. Verify Admin permissions
+        const admin = await WorkspaceMember.findOne({
+            workspaceId: new Types.ObjectId(workspaceId),
+            userId: new Types.ObjectId(adminUserId),
+            role: { $in: ['OWNER', 'ADMIN'] }
+        });
+        if (!admin) throw new Error('Unauthorized: Only Admins can add members');
+
+        // 2. Find target user
+        const targetUser = await User.findOne({ email: targetEmail.toLowerCase() });
+        if (!targetUser) throw new Error('User not found');
+
+        // 3. Add membership
         try {
-            fs.writeFileSync(this.configPath, JSON.stringify({ path: newPath, updatedAt: new Date().toISOString() }, null, 2));
-        } catch (e) {
-            console.error('[WorkspaceService] Failed to save persistent root:', e);
+            await WorkspaceMember.create({
+                workspaceId: new Types.ObjectId(workspaceId),
+                userId: targetUser._id,
+                role
+            });
+        } catch (e: any) {
+            if (e.code === 11000) throw new Error('User is already a member');
+            throw e;
         }
     }
 
-    public getActiveRoot(): string {
-        return this.activeWorkspaceRoot;
-    }
+    /**
+     * Migrate legacy user to have a default workspace
+     */
+    async ensurePersonalWorkspace(userId: string) {
+        const existing = await this.getUserWorkspaces(userId);
+        if (existing.length > 0) return existing[0];
 
-    public async setActiveRoot(newPath: string): Promise<boolean> {
-        const resolved = path.resolve(newPath);
-        try {
-            await fs.promises.access(resolved);
-            this.activeWorkspaceRoot = resolved;
-            this.savePersistentRoot(resolved);
-            return true;
-        } catch {
-            return false;
-        }
-    }
+        const user = await User.findById(userId);
+        if (!user) throw new Error('User not found');
 
-    public resetToSystem(): void {
-        this.activeWorkspaceRoot = this.systemRoot;
-        this.savePersistentRoot(this.systemRoot);
-    }
-
-    public getSystemRoot(): string {
-        return this.systemRoot;
-    }
-
-    public isSystemRoot(): boolean {
-        return this.activeWorkspaceRoot === this.systemRoot;
+        const name = user.name ? `${user.name}'s Workspace` : 'Personal Workspace';
+        return await this.createWorkspace(userId, name);
     }
 }
 
-export const workspaceService = WorkspaceService.getInstance();
+export const workspaceService = new WorkspaceService();
