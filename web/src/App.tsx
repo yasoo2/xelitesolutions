@@ -13,13 +13,13 @@ export default function App() {
   const isLogin = location.pathname === '/login';
 
   async function devLogin() {
-    // [DIAGNOSTIC] Check environment
+    // [CRITICAL] Absolute Production Guard
     const hostname = window.location.hostname;
-    const isProd = import.meta.env.PROD;
     const isTargetDomain = hostname.includes('xelitesolutions.com');
+    const isProdBuild = import.meta.env.PROD || process.env.NODE_ENV === 'production';
 
-    if (isProd || isTargetDomain) {
-      console.log(`[JOE] Production Guard: Suppressing automatic dev-login on ${hostname}.`);
+    if (isProdBuild || isTargetDomain) {
+      console.log(`[JOE] Production Locked: Suppressing dev-login on ${hostname}.`);
       return;
     }
 
