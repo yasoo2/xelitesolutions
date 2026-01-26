@@ -56,12 +56,15 @@ export const WorkspaceSelector: React.FC = () => {
         setIsOpen(false);
     };
 
-    // if (!activeWs) return null; // REMOVED to prevent invisible UI
+    // DEBUG: Force visibility
+    console.log('WorkspaceSelector: Rendering. ActiveWs:', activeWs);
+
+    // REMOVED 'if (!activeWs) return null' in previous step.
 
     return (
-        <div className="relative z-50 mx-2">
+        <div className="relative z-[9999] mx-2 border border-red-500" style={{ pointerEvents: 'auto' }}>
             <button
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={() => { console.log('Selector Clicked'); setIsOpen(!isOpen); }}
                 className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all backdrop-blur-md"
             >
                 {activeWs ? (
