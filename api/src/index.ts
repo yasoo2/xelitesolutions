@@ -29,6 +29,7 @@ import actionsRoutes from './routes/actions';
 import browserRoutes from './routes/browser';
 import serverRoutes from './routes/servers';
 import queueRoutes from './routes/queue';
+import workspacesRoutes from './routes/workspaces';
 import { healthcheckBrowser } from './browser/manager';
 
 // Create Central API Router
@@ -167,6 +168,7 @@ async function main() {
   apiRouter.use('/browser', browserRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);
   apiRouter.use('/queue', queueRoutes);
+  apiRouter.use('/workspaces', workspacesRoutes);
 
   // Catch-all 404 for API
   apiRouter.use((req, res) => {

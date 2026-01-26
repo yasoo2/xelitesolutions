@@ -47,6 +47,11 @@ const WorkspaceSchema = new Schema<IWorkspace>(
             maxConcurrentJobs: { type: Number, default: 1 },
             storageGB: { type: Number, default: 1 }
         },
+        providerConfig: {
+            openai: { apiKey: { type: String } },
+            anthropic: { apiKey: { type: String } },
+            google: { apiKey: { type: String } }
+        },
         integrations: {
             github: {
                 installationId: { type: String },

@@ -1,90 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { Sun, Moon, LogIn, LogOut, Globe, ChevronDown, LayoutDashboard, User, Settings, Shield } from 'lucide-react';
-import ConfirmDialog from './ConfirmDialog';
-import ProfileDialog from './ProfileDialog';
-import SettingsDialog from './SettingsDialog';
-import './UserMenu.css';
-
-const LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'ar', label: 'العربية' },
-  { code: 'fr', label: 'Français' },
-  { code: 'de', label: 'Deutsch' },
-  { code: 'ru', label: 'Русский' },
-  { code: 'es', label: 'Español' }
-];
+import { WorkspaceSelector } from './WorkspaceSelector';
 
 export default function TopBar() {
   const { i18n, t } = useTranslation();
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('theme') as any) || 'dark');
-  const [lang, setLang] = useState<string>(() => localStorage.getItem('lang') || 'en');
+  // ... (existing state)
 
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isConfirmLogoutOpen, setIsConfirmLogoutOpen] = useState(false);
-
-  const [user, setUser] = useState<any>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-  const nav = useNavigate();
-
-  useEffect(() => {
-    try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-
-        // AUTO-FIX: Invalidate legacy tokens that are missing BOTH email AND sub fields
-        // Allow tokens with just sub (for API tokens, dev tokens, etc.)
-        if (!payload.email && !payload.sub) {
-          console.warn('Invalidating legacy token (missing email and sub)');
-          localStorage.removeItem('token');
-          nav('/login');
-          return;
-        }
-
-        setUser({
-          name: payload.name || 'User',
-          email: payload.email || 'user@example.com',
-          role: payload.role || 'USER',
-          picture: payload.picture
-        });
-      } else {
-        setUser(null);
-      }
-    } catch (e) {
-      setUser(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('theme', theme);
-    document.documentElement.dataset.theme = theme;
-    if (theme === 'light') {
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-    }
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem('lang', lang);
-    i18n.changeLanguage(lang);
-    document.documentElement.setAttribute('lang', lang);
-    document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
-  }, [lang, i18n]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setIsUserMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // ... (existing effects)
 
   return (
     <div className="topbar">
@@ -92,6 +12,9 @@ export default function TopBar() {
         <div className="brand-text-3d">JOE</div>
         <div className="brand-ai-badge">AI</div>
       </div>
+
+      {user && <WorkspaceSelector />}
+
       <div className="spacer" />
 
       <div className="topbar-actions">
