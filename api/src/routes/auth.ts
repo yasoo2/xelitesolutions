@@ -53,7 +53,13 @@ router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body || {};
   const emailNormalized = String(email || '').trim().toLowerCase();
   const passwordRaw = String(password || '');
-  if (!emailNormalized || !passwordRaw) return res.status(400).json({ error: 'Missing email/password' });
+
+  console.log(`[AUTH-DEBUG] Login attempt: ${emailNormalized} | pass_len: ${passwordRaw.length}`);
+
+  if (!emailNormalized || !passwordRaw) {
+    console.warn('[AUTH-DEBUG] Missing email or password');
+    return res.status(400).json({ error: 'Missing email/password' });
+  }
 
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
@@ -120,9 +126,16 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!user) {
       user = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
     }
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user) {
+      console.warn(`[AUTH-DEBUG] User not found: ${emailNormalized}`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
     const ok = await bcrypt.compare(passwordRaw, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!ok) {
+      console.warn(`[AUTH-DEBUG] Password mismatch for: ${emailNormalized}`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    console.log(`[AUTH-DEBUG] Success login: ${emailNormalized}`);
     const token = jwt.sign({
       sub: user._id.toString(),
       role: user.role,

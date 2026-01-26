@@ -122,7 +122,13 @@ async function main() {
 
   app.use(morgan('dev'));
 
-  app.get('/health', (_req, res) => res.json({ status: 'OK' }));
+  app.get('/health', (_req, res) => res.json({
+    status: 'OK',
+    db: mongoose.connection.readyState,
+    env: process.env.NODE_ENV,
+    adminSet: !!process.env.ADMIN_EMAIL,
+    uptime: process.uptime()
+  }));
   app.get('/health/browser', async (_req, res) => {
     try {
       const r = await healthcheckBrowser();
