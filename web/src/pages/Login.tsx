@@ -100,8 +100,8 @@ export default function Login() {
     const isRTL = i18n.language === 'ar';
     const googleEnabled = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
-    // DEBUG: Tracking Deployment Version - v8 (AntiGhost)
-    console.log('JOE System: Login Page Gold-v8-AntiGhost Loaded');
+    // DEBUG: Tracking Deployment Version - v9 (Trace)
+    console.log('JOE System: Login Page Gold-v9-Trace Loaded');
 
     // State Machine
     const [email, setEmail] = useState('');
@@ -111,10 +111,17 @@ export default function Login() {
     const [loading, setLoading] = useState(false);
 
     // Auth Handlers
-    async function handleLogin() {
-        console.log('[DEBUG] handleLogin triggered!', { email, hasPassword: !!password });
+    async function performManualAuthentication(e?: any) {
+        console.log('[DEBUG] Auth Triggered!', {
+            email,
+            hasPassword: !!password,
+            isTrusted: e?.isTrusted,
+            eventType: e?.type
+        });
+        console.trace('Authentication Trace');
+
         if (!email || !password) {
-            console.warn('[DEBUG] handleLogin called with empty credentials. Skipping fetch.');
+            console.warn('[DEBUG] Missing credentials. Skipping.');
             return;
         }
         setError(null);
@@ -356,7 +363,7 @@ export default function Login() {
             </div>
 
             <button
-                onClick={handleLogin}
+                onClick={performManualAuthentication}
                 disabled={loading || !email || !password}
                 style={{ ...S.submitBtn, opacity: (loading || !email || !password) ? 0.5 : 1, cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer', transform: (loading || !email || !password) ? 'none' : 'translateY(0)', boxShadow: (loading || !email || !password) ? 'none' : S.submitBtn.boxShadow }}
                 onMouseEnter={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
