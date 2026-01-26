@@ -11,6 +11,16 @@ export default function App() {
   const isLogin = location.pathname === '/login';
 
   async function devLogin() {
+    // SECURITY FIX: Disable dev-login on production domains
+    const hostname = window.location.hostname;
+    const isProdDomain = hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com';
+    const isProduction = import.meta.env.PROD;
+
+    if (isProdDomain || isProduction) {
+      // Logic for production: only manual or social login
+      return;
+    }
+
     const email = (window as any).JOE_CONFIG?.DEV_EMAIL || import.meta.env.VITE_DEV_EMAIL;
     const password = (window as any).JOE_CONFIG?.DEV_PASSWORD || import.meta.env.VITE_DEV_PASSWORD;
     if (!email || !password) return;
