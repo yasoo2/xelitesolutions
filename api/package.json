@@ -8,14 +8,9 @@
     "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js --packages=external",
     "start": "node dist/index.js",
     "lint": "eslint .",
-    "test:system": "ts-node src/scripts/verify_system.ts",
-    "test:e2e": "ts-node src/scripts/test_web_build.ts",
-    "test:heuristics": "ts-node src/scripts/test_heuristics.ts",
-    "test:providers": "ts-node src/scripts/test_providers.ts",
-    "test:healing": "ts-node src/scripts/verify_healing.ts",
-    "test:qa": "ts-node src/scripts/qa_suite.ts",
-    "test:syntax-healing": "ts-node src/scripts/verify_syntax_healing.ts",
-    "test:factory": "ts-node src/scripts/test_factory_capability.ts"
+    "test:system": "ts-node src/tests/manual/verify_system.ts",
+    "test:production": "ts-node src/tests/manual/verify_production.ts",
+    "test:loop": "ts-node src/tests/manual/verify_autonomous_loop.ts"
   },
   "keywords": [],
   "author": "",

@@ -182,7 +182,6 @@ export const tools: ToolDefinition[] = [
   new DirectoryInspectionTool(),
   new FileSearchTool(),
   new SymbolInspectorTool(),
-  new SymbolInspectorTool(),
   new AdvancedFileEditTool(),
   new SafeReadFileTool(),
   new AskUserTool(),
