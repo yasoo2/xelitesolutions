@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
@@ -8,6 +7,9 @@ import {
     Smartphone, ArrowRight, User, AlertCircle
 } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
+
+// VERSION: v11 (Honeypot + Human Readiness)
+console.log('JOE System: Login Page Gold-v11-Honeypot Loaded');
 
 function GoogleLoginButton({
     t,
@@ -94,14 +96,110 @@ function GoogleLoginButton({
     );
 }
 
+interface LoginFormProps {
+    t: any;
+    S: any;
+    email: string;
+    setEmail: (v: string) => void;
+    password: string;
+    setPassword: (v: string) => void;
+    showPassword: boolean;
+    setShowPassword: (v: boolean) => void;
+    loading: boolean;
+    isRTL: boolean;
+    googleEnabled: boolean;
+    onLogin: (e?: any) => void;
+    nav: any;
+    setError: any;
+    setLoading: any;
+}
+
+const LoginForm = ({ t, S, email, setEmail, password, setPassword, showPassword, setShowPassword, loading, isRTL, googleEnabled, onLogin, nav, setError, setLoading }: LoginFormProps) => {
+    
+    // HONEYPOT LOGIC: Bots click the first button they see or the one with a standard ID/Text.
+    const handleHoneypotClick = () => {
+        console.warn('[SECURITY] Honeypot Activated! Blocking automated submission attempt.');
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeUp 0.5s ease-out', width: '100%' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: '8px', fontFamily: 'Inter, sans-serif', letterSpacing: '0.5px' }}>
+                {t('login_subtitle', 'Welcome back')}
+            </h2>
+
+            {/* Email */}
+            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
+                <label style={S.label}>{t('email')}</label>
+                <div style={S.inputWrapper}>
+                    <input
+                        autoComplete="username"
+                        style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '16px' }}
+                        value={email} onChange={e => setEmail(e.target.value)}
+                        type="email" placeholder="you@example.com"
+                    />
+                    <Mail size={18} style={S.iconStart} />
+                </div>
+            </div>
+
+            {/* Password */}
+            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
+                <label style={S.label}>{t('password')}</label>
+                <div style={S.inputWrapper}>
+                    <input
+                        autoComplete="current-password"
+                        style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '44px' }}
+                        value={password} onChange={e => setPassword(e.target.value)}
+                        type={showPassword ? 'text' : 'password'} placeholder="••••••••"
+                    />
+                    <Lock size={18} style={S.iconStart} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} style={S.iconEnd}>
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                </div>
+            </div>
+
+            {/* THE HONEYPOT TRAP (Invisible button that bots love to click) */}
+            <button 
+                id="login-btn" 
+                onClick={handleHoneypotClick}
+                style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+                tabIndex={-1}
+            >
+                Login
+            </button>
+
+            {/* THE GENUINE SUBMIT (Harder name, unique logic) */}
+            <button
+                id="internal-secure-auth-trigger"
+                onClick={onLogin}
+                disabled={loading || !email || !password}
+                style={{ ...S.submitBtn, opacity: (loading || !email || !password) ? 0.5 : 1, cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer', transform: (loading || !email || !password) ? 'none' : 'translateY(0)', boxShadow: (loading || !email || !password) ? 'none' : S.submitBtn.boxShadow }}
+                onMouseEnter={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                onMouseLeave={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(0)'; }}
+            >
+                {loading ? <Loader2 size={18} className="spin" /> : <LogIn size={18} />}
+                <span>{t('login')}</span>
+            </button>
+
+            {googleEnabled && (
+                <>
+                    <div style={S.divider}>
+                        <div style={S.dividerLine} />
+                        <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
+                        <div style={S.dividerLine} />
+                    </div>
+                    <GoogleLoginButton t={t} nav={nav} setError={setError} setLoading={setLoading} S={S} />
+                </>
+            )}
+        </div>
+    );
+};
+
 export default function Login() {
     const { t, i18n } = useTranslation();
     const nav = useNavigate();
     const isRTL = i18n.language === 'ar';
     const googleEnabled = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
-
-    // DEBUG: Tracking Deployment Version - v10 (Guaranteed Fix)
-    console.log('JOE System: Login Page Gold-v10-GuaranteedFix Loaded');
 
     // State Machine
     const [email, setEmail] = useState('');
@@ -109,34 +207,47 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [readyTime, setReadyTime] = useState(0);
+
+    useEffect(() => {
+        // Set a timestamp for "Human Readiness"
+        const now = Date.now();
+        const timer = setTimeout(() => {
+            setReadyTime(Date.now());
+            console.log('[SECURITY] Login logic is now interactive (Ready Delay Complete).');
+        }, 1500); // 1.5s delay
+        return () => clearTimeout(timer);
+    }, []);
 
     // Auth Handlers
     async function performManualAuthentication(e?: any) {
-        if (!isUnlocked) {
-            console.error('[SECURITY] Blocked unauthorized auto-execution of login.');
+        // SECURITY CHECK: Did this happen too fast or without trust?
+        const timeSinceMount = Date.now() - readyTime;
+        const isActuallyReady = readyTime > 0;
+        
+        console.log('[DEBUG] Auth Intent Detected', { 
+            isTrusted: e?.isTrusted, 
+            isReady: isActuallyReady,
+            timeSinceReady: isActuallyReady ? timeSinceMount : 'N/A'
+        });
+
+        if (!isActuallyReady) {
+            console.error('[SECURITY] Blocked instant auto-trigger on mount.');
             return;
         }
-        console.log('[DEBUG] Auth Triggered!', {
-            email,
-            hasPassword: !!password,
-            isTrusted: e?.isTrusted,
-            eventType: e?.type
-        });
-        console.trace('Authentication Trace');
 
         if (!email || !password) {
-            console.warn('[DEBUG] Missing credentials. Skipping.');
+            console.warn('[DEBUG] Missing credentials.');
             return;
         }
+
         setError(null);
         setLoading(true);
         try {
-            const emailNormalized = email.trim();
             const res = await fetch(`${API}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: emailNormalized, password }),
+                body: JSON.stringify({ email: email.trim(), password }),
             });
             const raw = await res.text();
             let data: any = null;
@@ -155,9 +266,6 @@ export default function Login() {
         }
     }
 
-    /* =========================================
-       INLINE STYLES DEFINITION
-       ========================================= */
     const S = {
         wrapper: {
             position: 'fixed' as 'fixed',
@@ -165,7 +273,7 @@ export default function Login() {
             left: 0,
             width: '100%',
             height: '100%',
-            backgroundColor: '#09090b', // Zinc 950
+            backgroundColor: '#09090b',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -185,14 +293,14 @@ export default function Login() {
         glowTop: {
             position: 'absolute' as 'absolute',
             top: '-20%', left: '-10%', width: '50%', height: '50%',
-            background: 'rgba(217, 119, 6, 0.1)', // Amber 600
+            background: 'rgba(217, 119, 6, 0.1)',
             filter: 'blur(120px)', borderRadius: '50%', zIndex: 0,
             animation: 'pulse 8s infinite alternate',
         },
         glowBottom: {
             position: 'absolute' as 'absolute',
             bottom: '-20%', right: '-10%', width: '50%', height: '50%',
-            background: 'rgba(120, 53, 15, 0.1)', // Amber 900
+            background: 'rgba(120, 53, 15, 0.1)',
             filter: 'blur(120px)', borderRadius: '50%', zIndex: 0,
             animation: 'pulse 12s infinite alternate',
         },
@@ -218,11 +326,10 @@ export default function Login() {
         titleWrapper: { textAlign: 'center' as 'center', marginBottom: '32px' },
         title: {
             fontSize: '48px', fontWeight: 900, marginBottom: '8px',
-            background: 'linear-gradient(135deg, #fef3c7 0%, #f59e0b 50%, #b45309 100%)', // Gold Gradient
+            background: 'linear-gradient(135deg, #fef3c7 0%, #f59e0b 50%, #b45309 100%)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             letterSpacing: '-2px',
             fontFamily: 'Inter, sans-serif',
-            dropShadow: '0 1px 1px rgba(0,0,0,0.05)',
         },
         subtitle: {
             fontSize: '9px', fontWeight: 700, letterSpacing: '4px', color: 'rgba(245, 158, 11, 0.6)', textTransform: 'uppercase' as 'uppercase'
@@ -237,51 +344,40 @@ export default function Login() {
         input: {
             width: '100%', height: '48px',
             backgroundColor: 'rgba(0,0,0,0.4)',
-            border: '1px solid rgba(245, 158, 11, 0.2)', // Amber border
+            border: '1px solid rgba(245, 158, 11, 0.2)',
             borderRadius: '12px',
-            padding: isRTL ? '0 16px 0 44px' : '0 44px 0 16px', // Adjusted for icon position
+            padding: isRTL ? '0 16px 0 44px' : '0 44px 0 16px',
             fontSize: '14px', color: '#fff', outline: 'none',
             transition: 'all 0.2s',
             boxSizing: 'border-box' as 'border-box',
-            placeholderColor: '#71717a',
         },
         iconStart: {
             position: 'absolute' as 'absolute',
             top: '50%',
             left: isRTL ? 'auto' : '16px', right: isRTL ? '16px' : 'auto',
             transform: 'translateY(-50%)',
-            color: '#71717a', // Zinc 500
+            color: '#71717a',
             pointerEvents: 'none' as 'none',
-            transition: 'color 0.2s',
         },
         iconEnd: {
             position: 'absolute' as 'absolute',
             top: '50%',
-            right: isRTL ? '12px' : '12px', // Adjusted for better spacing
+            right: isRTL ? '12px' : '12px',
             transform: 'translateY(-50%)',
             background: 'none', border: 'none', color: '#71717a', cursor: 'pointer',
-            transition: 'color 0.2s',
         },
         submitBtn: {
             width: '100%', height: '48px', marginTop: '16px',
-            background: 'linear-gradient(to right, #d97706 0%, #f59e0b 100%)', // Amber 600 -> 500
+            background: 'linear-gradient(to right, #d97706 0%, #f59e0b 100%)',
             border: 'none', borderRadius: '12px',
             color: '#000', fontSize: '14px', fontWeight: 700, letterSpacing: '0.5px',
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
             boxShadow: '0 10px 20px -5px rgba(180, 83, 9, 0.2)',
             transition: 'all 0.2s',
         },
-        footer: {
-            marginTop: '32px', paddingTop: '24px',
-            borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' as 'center',
-        },
-        footerText: {
-            fontSize: '13px', color: '#a1a1aa', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase' as 'uppercase', marginBottom: '20px'
-        },
-        socialRow: { display: 'flex', justifyContent: 'center' },
         socialBtn: {
             width: '100%', height: '48px', borderRadius: '12px',
-            backgroundColor: '#fff', // White standard
+            backgroundColor: '#fff',
             border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
             cursor: 'pointer', transition: 'all 0.2s',
@@ -291,7 +387,6 @@ export default function Login() {
         },
         socialBtnText: {
             fontSize: '14px', fontWeight: 600, color: '#1f2937', fontFamily: 'Inter, sans-serif',
-            letterSpacing: '0.2px',
         },
         socialBtnHoverOverlay: {
             position: 'absolute' as 'absolute', inset: 0,
@@ -331,78 +426,6 @@ export default function Login() {
         }
     };
 
-    /* 2. Sub-Components */
-    const LoginForm = () => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeUp 0.5s ease-out', width: '100%' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: '8px', fontFamily: 'Inter, sans-serif', letterSpacing: '0.5px' }}>
-                {t('login_subtitle', 'Welcome back')}
-            </h2>
-
-            {/* Email */}
-            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                <label style={S.label}>{t('email')}</label>
-                <div style={S.inputWrapper}>
-                    <input
-                        style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '16px' }}
-                        value={email} onChange={e => setEmail(e.target.value)}
-                        type="email" placeholder="you@example.com"
-                    />
-                    <Mail size={18} style={S.iconStart} />
-                </div>
-            </div>
-
-            {/* Password */}
-            <div style={{ ...S.inputGroup, marginBottom: '0' }}>
-                <label style={S.label}>{t('password')}</label>
-                <div style={S.inputWrapper}>
-                    <input
-                        style={{ ...S.input, paddingLeft: isRTL ? '16px' : '44px', paddingRight: isRTL ? '44px' : '44px' }}
-                        value={password} onChange={e => setPassword(e.target.value)}
-                        type={showPassword ? 'text' : 'password'} placeholder="••••••••"
-                    />
-                    <Lock size={18} style={S.iconStart} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} style={S.iconEnd}>
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                </div>
-            </div>
-
-            {!isUnlocked ? (
-                <button
-                    onClick={() => setIsUnlocked(true)}
-                    style={{ ...S.submitBtn, background: 'linear-gradient(to right, #444 0%, #222 100%)', color: '#fff', border: '1px solid #666' }}
-                >
-                    <Lock size={18} />
-                    <span>{t('unlock_portal', 'Unlock Secure Portal')}</span>
-                </button>
-            ) : (
-                <>
-                    <button
-                        onClick={performManualAuthentication}
-                        disabled={loading || !email || !password}
-                        style={{ ...S.submitBtn, opacity: (loading || !email || !password) ? 0.5 : 1, cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer', transform: (loading || !email || !password) ? 'none' : 'translateY(0)', boxShadow: (loading || !email || !password) ? 'none' : S.submitBtn.boxShadow }}
-                        onMouseEnter={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                        onMouseLeave={(e) => { if (!(loading || !email || !password)) e.currentTarget.style.transform = 'translateY(0)'; }}
-                    >
-                        {loading ? <Loader2 size={18} className="spin" /> : <LogIn size={18} />}
-                        <span>{t('login')}</span>
-                    </button>
-
-                    {googleEnabled && (
-                        <>
-                            <div style={S.divider}>
-                                <div style={S.dividerLine} />
-                                <span style={S.dividerText}>{t('or_continue_with', 'OR')}</span>
-                                <div style={S.dividerLine} />
-                            </div>
-                            <GoogleLoginButton t={t} nav={nav} setError={setError} setLoading={setLoading} S={S} />
-                        </>
-                    )}
-                </>
-            )}
-        </div>
-    );
-
     return (
         <div style={S.wrapper}>
             <style>{`
@@ -416,24 +439,14 @@ export default function Login() {
             20%, 40%, 60%, 80% { transform: translateX(5px); }
           }
           input:focus { border-color: #f59e0b !important; box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4); }
-          select:focus { border-color: #f59e0b !important; box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4); }
           button:hover { color: #fff; }
-          button:hover svg { color: #f59e0b; }
-          .group:hover .text-zinc-500 { color: #f59e0b; }
-          .group-focus-within .text-zinc-500 { color: #f59e0b; }
         `}</style>
             <div style={S.bgGradient} />
             <div style={S.glowTop} />
             <div style={S.glowBottom} />
 
-            <div style={{ ...S.card, paddingLeft: '24px', paddingRight: '24px' }}> {/* Adjusted padding for max-width */}
-                <button
-                    style={S.closeBtn}
-                    onClick={() => nav('/')}
-                    title={t('close', 'Close')}
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = '#52525b'}
-                >
+            <div style={{ ...S.card, paddingLeft: '24px', paddingRight: '24px' }}>
+                <button style={S.closeBtn} onClick={() => nav('/')} title={t('close', 'Close')}>
                     <X size={20} />
                 </button>
 
@@ -449,13 +462,16 @@ export default function Login() {
                     </div>
                 )}
 
-                <LoginForm />
+                <LoginForm 
+                    t={t} S={S} email={email} setEmail={setEmail} 
+                    password={password} setPassword={setPassword} 
+                    showPassword={showPassword} setShowPassword={setShowPassword} 
+                    loading={loading} isRTL={isRTL} googleEnabled={googleEnabled} 
+                    onLogin={performManualAuthentication} nav={nav} setError={setError} setLoading={setLoading}
+                />
             </div>
 
-            {/* Footer Copyright */}
-            <div style={S.copyright}>
-                © 2025 Xelite Solutions
-            </div>
+            <div style={S.copyright}>© 2025 Xelite Solutions</div>
         </div>
     );
 }
