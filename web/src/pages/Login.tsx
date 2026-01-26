@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API } from '../config';
@@ -9,8 +9,8 @@ import {
 import { useGoogleLogin } from '@react-oauth/google';
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 
-// VERSION: v12 (Nuclear Shield - Swipe to Unlock)
-console.log('JOE System: Login Page Gold-v12-NuclearShield Loaded');
+// VERSION: v14 (Human-Key Defense)
+console.log('JOE System: Login Page Gold-v14-HumanKey Loaded');
 
 function GoogleLoginButton({ t, nav, setError, setLoading, S }: any) {
     const googleLogin = useGoogleLogin({
@@ -49,26 +49,34 @@ function GoogleLoginButton({ t, nav, setError, setLoading, S }: any) {
 
 const SwipeToUnlock = ({ onUnlock, S }: any) => {
     const x = useMotionValue(0);
-    const width = 340; // Track width minus handle width
+    const trackRef = useRef<HTMLDivElement>(null);
+    const [width, setWidth] = useState(300);
+
+    useEffect(() => {
+        if (trackRef.current) setWidth(trackRef.current.offsetWidth - 56);
+    }, []);
+
     const opacity = useTransform(x, [0, width * 0.8], [1, 0]);
 
     useEffect(() => {
         return x.on('change', (latest) => {
-            if (latest >= width - 10) {
-                onUnlock();
+            if (latest >= width - 5) {
+                // Generate a random "Human Key" to pass back
+                const key = Math.random().toString(36).substring(2) + Date.now();
+                onUnlock(key);
             }
         });
     }, [onUnlock, x, width]);
 
     return (
-        <div style={{
+        <div ref={trackRef} style={{
             width: '100%', height: '56px', background: 'rgba(255,255,255,0.05)',
             borderRadius: '28px', position: 'relative', overflow: 'hidden',
             border: '1px solid rgba(245, 158, 11, 0.2)', display: 'flex', alignItems: 'center',
             padding: '4px', marginBottom: '16px'
         }}>
-            <motion.div style={{ position: 'absolute', width: '100%', textAlign: 'center', fontSize: '12px', fontWeight: 700, color: 'rgba(245, 158, 11, 0.6)', opacity, pointerEvents: 'none', letterSpacing: '1px' }}>
-                SWIPE TO UNLOCK PORTAL
+            <motion.div style={{ position: 'absolute', width: '100%', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'rgba(245, 158, 11, 0.6)', opacity, pointerEvents: 'none', letterSpacing: '1px' }}>
+                SWIPE RIGHT TO UNLOCK LOGIN
             </motion.div>
             <motion.div
                 drag="x"
@@ -88,8 +96,6 @@ export default function Login() {
     const nav = useNavigate();
     const isRTL = i18n.language === 'ar';
     const googleEnabled = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
-
-    // Randomize IDs to evade simple autofill bots
     const idSuffix = useMemo(() => Math.random().toString(36).substring(7), []);
 
     const [email, setEmail] = useState('');
@@ -98,14 +104,34 @@ export default function Login() {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [isUnlocked, setIsUnlocked] = useState(false);
+    
+    // THE CRYPTOGRAPHIC KEY
+    const humanKeyRef = useRef<string | null>(null);
 
-    async function performManualAuthentication(e?: any) {
-        if (!isUnlocked) { console.error('[SECURITY] Blocked non-human trigger.'); return; }
+    async function performManualAuthentication(e: any) {
+        // SECURITY LAYER 1: Key Check
+        if (!humanKeyRef.current) {
+            console.error('[SECURITY] Blocked non-human execution. No Key found.');
+            return;
+        }
+
+        // SECURITY LAYER 2: Coordinate Check
+        // Bots usually trigger clicks at 0,0 or without detail.
+        const isSynthetic = e.clientX === 0 && e.clientY === 0 && e.detail === 0;
+        if (isSynthetic && e.type === 'click') {
+            console.error('[SECURITY] Blocked synthetic click event.');
+            return;
+        }
+
         if (!email || !password) return;
         setError(null); setLoading(true);
+
+        console.log('[SECURITY] Physical verification passed. Proceeding to fetch...');
+
         try {
             const res = await fetch(`${API}/auth/login`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: email.trim(), password }),
             });
             const raw = await res.text();
@@ -153,12 +179,12 @@ export default function Login() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div>
                         <label style={S.label}>{t('email')}</label>
-                        <input id={`u_${idSuffix}`} style={S.input} value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" />
+                        <input autoComplete="off" id={`u_${idSuffix}`} style={S.input} value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" />
                     </div>
                     <div>
                         <label style={S.label}>{t('password')}</label>
                         <div style={{ position: 'relative' }}>
-                            <input id={`p_${idSuffix}`} style={S.input} value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? 'text' : 'password'} placeholder="Password" />
+                            <input autoComplete="off" id={`p_${idSuffix}`} style={S.input} value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? 'text' : 'password'} placeholder="Password" />
                             <button onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer' }}>
                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
@@ -166,9 +192,13 @@ export default function Login() {
                     </div>
 
                     {!isUnlocked ? (
-                        <SwipeToUnlock onUnlock={() => { setIsUnlocked(true); console.log('[SECURITY] Human Verified via physical motion.'); }} S={S} />
+                        <SwipeToUnlock onUnlock={(key: string) => { 
+                            humanKeyRef.current = key;
+                            setIsUnlocked(true); 
+                            console.log('[SECURITY] Human Key Generated. Motion Verified.'); 
+                        }} S={S} />
                     ) : (
-                        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                             <button onClick={performManualAuthentication} disabled={loading || !email || !password} style={S.submitBtn}>
                                 {loading ? <Loader2 size={18} className="spin" /> : <LogIn size={18} />}
                                 <span>{t('login')}</span>
