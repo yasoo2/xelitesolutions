@@ -8,6 +8,7 @@ import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentActivity } from './AgentActivity';
 import { ThinkingProcess } from './ThinkingProcess';
+import { GitHubConnectModal } from './GitHubConnectModal';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -683,6 +684,11 @@ export default function CommandComposer({
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
   const lastAutoOpenedHrefRef = useRef<string>('');
+
+  /* Removed duplicate declaration */
+
+  // GitHub Modal State
+  const [showGithubModal, setShowGithubModal] = useState(false);
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -3823,6 +3829,17 @@ export default function CommandComposer({
               </div>
 
               <div className="right-actions">
+                <GitHubConnectModal
+                  isOpen={showGithubModal}
+                  onClose={() => setShowGithubModal(false)}
+                  onConnected={(repo) => {
+                    setEvents(prev => [...prev, {
+                      type: 'system',
+                      data: { text: `✅ Successfully connected to **${repo}**. The workspace has been updated.` },
+                      duration: 0
+                    }]);
+                  }}
+                />
                 <button
                   className={`action-btn provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
                   onClick={() => setShowProviders(true)}
@@ -3867,6 +3884,20 @@ export default function CommandComposer({
                       </svg>
                     </div>
                   ) : <Paperclip size={20} />}
+                </button>
+                <button
+                  className="action-btn"
+                  onClick={() => setShowGithubModal(true)}
+                  title="Connect to GitHub Repo"
+                >
+                  <Github size={20} />
+                </button>
+                <button
+                  className="action-btn"
+                  onClick={() => setShowGithubModal(true)}
+                  title="Connect to GitHub Repo"
+                >
+                  <Github size={20} />
                 </button>
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}

@@ -15,18 +15,21 @@ const execAsync = util.promisify(exec);
 const spawn = require('child_process').spawn;
 
 // Helper
-function repoRoot() {
-    const cwd = process.cwd();
-    return path.basename(cwd) === 'api' ? path.resolve(cwd, '..') : cwd;
+function getWorkspaceRoot() {
+    try {
+        const { workspaceService } = require('../../services/WorkspaceService');
+        return workspaceService.getActiveRoot();
+    } catch {
+        return process.cwd();
+    }
 }
 
 function resolveToolPath(p: string) {
-    const root = repoRoot();
+    const root = getWorkspaceRoot();
     const val = String(p ?? '').trim();
     if (!val || val === '.') return root;
     if (path.isAbsolute(val)) return val;
-    const fromCwd = path.resolve(process.cwd(), val);
-    if (fs.existsSync(fromCwd)) return fromCwd;
+    // Resolve relative to the current active workspace root
     return path.resolve(root, val);
 }
 
@@ -69,7 +72,7 @@ export class FileEditTool extends BaseTool {
         const filename = String(input?.filename ?? '');
         const find = String(input?.find ?? '');
         const replace = String(input?.replace ?? '');
-        const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+        const full = resolveToolPath(filename);
 
         if (!fs.existsSync(full)) return { ok: false, error: 'File not found', logs };
 
@@ -124,7 +127,7 @@ export class WriteFileTool extends BaseTool {
         const logs: string[] = [];
         const filename = String(input?.filename ?? '');
         const content = String(input?.content ?? '');
-        const full = path.isAbsolute(filename) ? filename : path.resolve(process.cwd(), filename);
+        const full = resolveToolPath(filename);
 
         // Ensure directory exists
         const dir = path.dirname(full);
@@ -177,7 +180,7 @@ export class GrepSearchTool extends BaseTool {
         const include = String(input?.include ?? '');
         const exclude = String(input?.exclude ?? '');
 
-        const root = repoRoot();
+        const root = getWorkspaceRoot();
         const workDir = path.isAbsolute(searchPath) ? searchPath : path.resolve(root, searchPath);
 
         // Escape quotes
@@ -235,13 +238,14 @@ export class NpmManagerTool extends BaseTool {
             if (isDev && (cmd === 'install' || cmd === 'i')) fullCmd += ' -D';
 
             logs.push(`npm.cmd=${fullCmd}`);
-            const { stdout } = await execAsync(fullCmd, { cwd: process.cwd() });
+            const workDir = getWorkspaceRoot();
+            const { stdout } = await execAsync(fullCmd, { cwd: workDir });
 
             if ((cmd === 'install' || cmd === 'i') && pkgs.length > 0) {
                 const typesToInstall = pkgs.filter(p => !p.startsWith('@types/')).map(p => `@types/${p.split('@')[0]}`);
                 if (typesToInstall.length) {
                     try {
-                        await execAsync(`npm install -D ${typesToInstall.join(' ')}`, { cwd: process.cwd() });
+                        await execAsync(`npm install -D ${typesToInstall.join(' ')}`, { cwd: workDir });
                         logs.push(`npm.auto_types=${typesToInstall.join(' ')}`);
                     } catch { }
                 }
@@ -272,7 +276,7 @@ export class ScaffoldProjectTool extends BaseTool {
         const logs: string[] = [];
         const structure = input?.structure || {};
         const baseDir = String(input?.baseDir || '.');
-        const resolvedBase = path.isAbsolute(baseDir) ? baseDir : path.resolve(process.cwd(), baseDir);
+        const resolvedBase = resolveToolPath(baseDir);
         const created: string[] = [];
         const errors: string[] = [];
 
@@ -353,7 +357,8 @@ export class ShellExecuteTool extends BaseTool {
         }
 
         // Persistent CWD
-        const stateFile = path.join(process.cwd(), '.joe', 'shell_state.json');
+        const root = getWorkspaceRoot();
+        const stateFile = path.join(root, '.joe', 'shell_state.json');
         if (!cwdInput && fs.existsSync(stateFile)) {
             try {
                 const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
@@ -361,7 +366,7 @@ export class ShellExecuteTool extends BaseTool {
             } catch { }
         }
 
-        const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(process.cwd(), cwdInput)) : process.cwd();
+        const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(root, cwdInput)) : root;
 
 
 

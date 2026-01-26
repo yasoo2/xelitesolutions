@@ -161,11 +161,12 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     if (name === 'memorize_codebase') {
         try {
-            const root = input.directory || process.cwd();
+            const { workspaceService } = require('./WorkspaceService');
+            const root = input.directory || workspaceService.getActiveRoot();
             const exts = input.extensions || ['ts', 'tsx', 'js', 'json', 'md', 'py', 'css', 'html'];
             const pattern = `**/*.{${exts.join(',')}}`;
             const files = await glob(pattern, { cwd: root, ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**'] });
-            console.log(`[Memory] Indexing ${files.length} files...`);
+            console.log(`[Memory] Indexing ${files.length} files from ${root}...`);
             await vectorDb.clear();
             let count = 0;
             for (const file of files) {

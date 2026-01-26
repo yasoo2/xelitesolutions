@@ -186,12 +186,13 @@ jobs:
 
           ssh_opts=(
             -p "$port"
-            -o ConnectTimeout=20
-            -o ConnectionAttempts=1
-            -o ServerAliveInterval=15
-            -o ServerAliveCountMax=3
+            -o ConnectTimeout=30
+            -o ConnectionAttempts=3
+            -o ServerAliveInterval=10
+            -o ServerAliveCountMax=10
             -o StrictHostKeyChecking="$strict_host_key_checking"
             -o BatchMode=yes
+            -o IPQoS=throughput
             -o LogLevel=VERBOSE
           )
 

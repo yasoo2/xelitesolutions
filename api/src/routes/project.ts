@@ -4,42 +4,19 @@ import path from 'path';
 import { authenticate } from '../middleware/auth';
 import { exec } from 'child_process';
 import util from 'util';
+import { workspaceService } from '../services/WorkspaceService';
 
 const router = Router();
 const execAsync = util.promisify(exec);
 
-// DYNAMIC WORKSPACE ROOT
-// Default to process.cwd() or activeWorkspaceRoot env
-let activeWorkspaceRoot = process.env.activeWorkspaceRoot
-  ? path.resolve(String(process.env.activeWorkspaceRoot))
-  : path.resolve(process.cwd());
-
-// Helper to find valid root if needed (legacy logic)
-function findWorkspaceRootFrom(startDir: string): string {
-  let dir = path.resolve(startDir);
-  for (let i = 0; i < 10; i += 1) {
-    const hasApi = fs.existsSync(path.join(dir, 'api'));
-    const hasWeb = fs.existsSync(path.join(dir, 'web'));
-    if (hasApi && hasWeb) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return path.resolve(startDir);
-}
-
-// Initialize
-if (!process.env.activeWorkspaceRoot) {
-  activeWorkspaceRoot = findWorkspaceRootFrom(process.cwd());
-}
-
-// Updated Resolver to use dynamic activeWorkspaceRoot
+// Updated Resolver to use dynamic workspaceService.getActiveRoot()
 async function resolvePathInsideWorkspace(inputPath: string): Promise<string | null> {
   const raw = String(inputPath || '').trim();
   if (!raw) return null;
 
+  const activeRoot = workspaceService.getActiveRoot();
   const workspaceReal =
-    (await fs.promises.realpath(activeWorkspaceRoot).catch(() => null)) || activeWorkspaceRoot;
+    (await fs.promises.realpath(activeRoot).catch(() => null)) || activeRoot;
 
   // We treat the "workspace" as the root. 
   // Code should be able to access files inside it.
@@ -117,7 +94,8 @@ function getImports(content: string): string[] {
 
 // Get Current Root
 router.get('/root', authenticate as any, (req: Request, res: Response) => {
-  res.json({ path: activeWorkspaceRoot, name: path.basename(activeWorkspaceRoot) });
+  const activeRoot = workspaceService.getActiveRoot();
+  res.json({ path: activeRoot, name: path.basename(activeRoot) });
 });
 
 // Set Active Root (Switch Workspace)
@@ -126,31 +104,35 @@ router.post('/root', authenticate as any, async (req: Request, res: Response) =>
     const { path: newPath } = req.body;
     if (!newPath) return res.status(400).json({ error: 'Path required' });
 
-    const resolved = path.resolve(newPath);
-    try {
-      await fs.promises.access(resolved);
-    } catch {
+    const success = await workspaceService.setActiveRoot(newPath);
+    if (!success) {
       return res.status(404).json({ error: 'Path does not exist' });
     }
 
-    activeWorkspaceRoot = resolved;
-    res.json({ success: true, path: activeWorkspaceRoot, name: path.basename(activeWorkspaceRoot) });
+    const activeRoot = workspaceService.getActiveRoot();
+    res.json({ success: true, path: activeRoot, name: path.basename(activeRoot) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to switch workspace' });
   }
 });
 
+// Reset to System Root
+router.post('/reset', authenticate as any, (req: Request, res: Response) => {
+  workspaceService.resetToSystem();
+  const activeRoot = workspaceService.getActiveRoot();
+  res.json({ success: true, path: activeRoot, name: path.basename(activeRoot) });
+});
+
 // Clone GitHub Repo
 router.post('/git/clone', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const { repoUrl } = req.body;
+    const { repoUrl, token } = req.body;
     if (!repoUrl) return res.status(400).json({ error: 'Repo URL required' });
 
     // Extract repo name
     const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'repo-' + Date.now();
 
     // Clone into uploads/repos/<name>
-    // Just finding a safe place - usually uploads/repos is good
     const baseDir = path.join(process.cwd(), 'uploads', 'repos');
     await fs.promises.mkdir(baseDir, { recursive: true });
 
@@ -159,22 +141,34 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
     // Check if already exists
     if (fs.existsSync(targetDir)) {
       // Just switch to it if it exists
-      activeWorkspaceRoot = targetDir;
-      return res.json({ success: true, path: activeWorkspaceRoot, message: 'Repository already exists, switched to it.' });
+      await workspaceService.setActiveRoot(targetDir);
+      return res.json({ success: true, path: targetDir, message: 'Repository already exists, switched to it.' });
     }
 
-    // Perform clone
-    await execAsync(`git clone "${repoUrl}" "${targetDir}"`);
+    // Prepare Clone Command
+    let cloneUrl = repoUrl;
+    if (token) {
+      // Insert token into URL: https://TOKEN@github.com/user/repo.git
+      // Helper to handle existing protocols
+      const cleanUrl = repoUrl.replace('https://', '').replace('http://', '');
+      cloneUrl = `https://${token}@${cleanUrl}`;
+    }
 
-    activeWorkspaceRoot = targetDir;
-    res.json({ success: true, path: activeWorkspaceRoot });
+    // Perform clone (Mask token in potential logs)
+    console.log(`Cloning ${repoUrl}...`);
+    await execAsync(`git clone "${cloneUrl}" "${targetDir}"`);
+
+    await workspaceService.setActiveRoot(targetDir);
+    res.json({ success: true, path: targetDir });
   } catch (e: any) {
-    console.error('Clone failed:', e);
+    console.error('Clone failed:', e.message); // Don't log full error to avoid leaking token in command string
     // Send clean error message
     const msg = e.message || String(e);
     // Remove potential 'Command failed:' prefix to make it cleaner
     const cleanMsg = msg.replace('Command failed: ', '').trim();
-    res.status(500).json({ error: cleanMsg });
+    // Extra safety: Try to remove token from error message if git prints it
+    const safeMsg = cleanMsg.replace(/https:\/\/[^@]+@/, 'https://***@');
+    res.status(500).json({ error: safeMsg });
   }
 });
 
@@ -184,8 +178,9 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
 
 router.get('/graph', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const cwdRaw = req.query.path ? String(req.query.path) : activeWorkspaceRoot;
-    const cwd = (await resolvePathInsideWorkspace(cwdRaw)) || activeWorkspaceRoot;
+    const activeRoot = workspaceService.getActiveRoot();
+    const cwdRaw = req.query.path ? String(req.query.path) : activeRoot;
+    const cwd = (await resolvePathInsideWorkspace(cwdRaw)) || activeRoot;
 
     try {
       await fs.promises.access(cwd);
@@ -268,7 +263,8 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
 // File Tree Endpoint (Lazy)
 router.get('/tree', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const rootPathRaw = req.query.path ? String(req.query.path) : activeWorkspaceRoot;
+    const activeRoot = workspaceService.getActiveRoot();
+    const rootPathRaw = req.query.path ? String(req.query.path) : activeRoot;
     const rootPath = await resolvePathInsideWorkspace(rootPathRaw);
     if (!rootPath) return res.status(400).json({ error: 'Invalid path' });
 
@@ -313,8 +309,9 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
     const query = String(req.query.q || '').trim();
     if (!query) return res.json({ results: [] });
 
+    const activeRoot = workspaceService.getActiveRoot();
     // Use grep to search recursively
-    const cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${activeWorkspaceRoot}" --exclude-dir={node_modules,.git,dist,build} | head -n 100`;
+    const cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${activeRoot}" --exclude-dir={node_modules,.git,dist,build} | head -n 100`;
 
     const { stdout } = await execAsync(cmd).catch(() => ({ stdout: '' }));
 
@@ -409,10 +406,9 @@ router.post('/file/delete', authenticate as any, async (req: Request, res: Respo
 router.post('/folder/create', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { path: rawPath } = req.body;
-    const folderPath = await resolvePathInsideWorkspace(rawPath);
-    // For new folder, resolvePathToCheck might imply existence, but check if we are creating inside valid root.
-    // Use the raw logic:
-    const workspaceReal = await fs.promises.realpath(activeWorkspaceRoot).catch(() => activeWorkspaceRoot);
+    // For new folder, check if we are creating inside valid root.
+    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceReal = await fs.promises.realpath(activeRoot).catch(() => activeRoot);
     const candidate = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(workspaceReal, rawPath);
     const rel = path.relative(workspaceReal, candidate);
     const isSafe = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -432,7 +428,8 @@ router.post('/content', authenticate as any, async (req: Request, res: Response)
     const { path: filePathRaw, content } = req.body;
 
     // Allow creating new files: check path safety without requiring existence
-    const workspaceReal = await fs.promises.realpath(activeWorkspaceRoot).catch(() => activeWorkspaceRoot);
+    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceReal = await fs.promises.realpath(activeRoot).catch(() => activeRoot);
     const filePath = path.isAbsolute(filePathRaw) ? path.resolve(filePathRaw) : path.resolve(workspaceReal, filePathRaw);
     const rel = path.relative(workspaceReal, filePath);
     const isSafe = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));

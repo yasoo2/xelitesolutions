@@ -309,6 +309,7 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
     const [savedPath, setSavedPath] = useState<string | null>(null);
     const [treeCollapsed, setTreeCollapsed] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, node: null });
+    const [activeWorkspace, setActiveWorkspace] = useState<{ path: string; name: string } | null>(null);
 
     // Modal States
     const [modalConfig, setModalConfig] = useState<{
@@ -343,6 +344,12 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
             const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
             if (!res.ok) return { tree: [] };
             const data = await res.json();
+            if (!path) {
+                // We fetched the root, let's also fetch workspace info
+                const rootRes = await fetch(`${API}/project/root`, { headers: { Authorization: `Bearer ${token}` } });
+                const rootData = await rootRes.json();
+                setActiveWorkspace({ path: rootData.path, name: rootData.name });
+            }
             return { tree: data.tree };
         } catch {
             return { tree: [] };
@@ -668,30 +675,37 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                                 <select
                                     className="elite-select"
                                     value="current"
-                                    onChange={(e) => {
+                                    onChange={async (e) => {
                                         const v = e.target.value;
                                         if (v === 'folder') {
                                             setModalConfig({ open: true, type: 'folder', loading: false });
                                         } else if (v === 'clone') {
                                             setModalConfig({ open: true, type: 'clone', loading: false });
                                         } else if (v === 'system') {
-                                            // Reset to system
-                                            // Ideally we shouldn't hardcode system path but standard API behavior
-                                            // Or we just send empty or special flag. 
-                                            // But for now, user manually switches. 
-                                            // Actually, we should probably add a "Reset to System" option in the backend
-                                            // Or just assume the user knows the system path? 
-                                            // No, "Local System" implies reset.
-                                            // Let's make "Local System" option trigger the folder modal for now to be safe, 
-                                            // or better, implement a reset.
-                                            // I'll leave it as a placeholder that resets the dropdown.
+                                            setLoading(true);
+                                            try {
+                                                await fetch(`${API}/project/reset`, {
+                                                    method: 'POST',
+                                                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                                                });
+                                                await loadRoot();
+                                            } catch {
+                                                alert('Failed to reset');
+                                            }
+                                            setLoading(false);
                                         }
                                     }}
                                 >
-                                    <option value="current">📂 Current Project</option>
-                                    <option value="folder">🖥️ Open Folder...</option>
-                                    <option value="clone">🐙 Clone Repository...</option>
+                                    <option value="current">📂 {activeWorkspace?.name || 'Current Project'}</option>
+                                    <option value="system">🖥️ Local System</option>
+                                    <option value="folder">📁 Open Folder...</option>
+                                    <option value="clone">🐙 Clone Repo...</option>
                                 </select>
+                                {activeWorkspace && (
+                                    <div style={{ fontSize: '10px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeWorkspace.path}>
+                                        {activeWorkspace.path}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="elite-header-actions">
