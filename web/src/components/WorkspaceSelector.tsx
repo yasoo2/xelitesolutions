@@ -56,7 +56,7 @@ export const WorkspaceSelector: React.FC = () => {
         setIsOpen(false);
     };
 
-    if (!activeWs) return null;
+    // if (!activeWs) return null; // REMOVED to prevent invisible UI
 
     return (
         <div className="relative z-50 mx-2">
@@ -64,13 +64,27 @@ export const WorkspaceSelector: React.FC = () => {
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all backdrop-blur-md"
             >
-                <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white">
-                    {activeWs.name.substring(0, 2).toUpperCase()}
-                </div>
-                <div className="flex flex-col items-start">
-                    <span className="text-xs text-white/90 font-medium leading-none mb-0.5">{activeWs.name}</span>
-                    <span className="text-[10px] text-white/50 uppercase tracking-wider leading-none">{activeWs.plan}</span>
-                </div>
+                {activeWs ? (
+                    <>
+                        <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white">
+                            {activeWs.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex flex-col items-start">
+                            <span className="text-xs text-white/90 font-medium leading-none mb-0.5">{activeWs.name}</span>
+                            <span className="text-[10px] text-white/50 uppercase tracking-wider leading-none">{activeWs.plan}</span>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="w-6 h-6 rounded bg-gray-700 flex items-center justify-center text-xs font-bold text-white/50">
+                            ?
+                        </div>
+                        <div className="flex flex-col items-start">
+                            <span className="text-xs text-white/90 font-medium leading-none">Select Workspace</span>
+                        </div>
+                    </>
+                )}
+
                 <svg className={`w-3 h-3 text-white/50 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
