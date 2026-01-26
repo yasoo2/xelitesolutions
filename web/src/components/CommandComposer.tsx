@@ -3893,13 +3893,6 @@ export default function CommandComposer({
                   <Github size={20} />
                 </button>
                 <button
-                  className="action-btn"
-                  onClick={() => setShowGithubModal(true)}
-                  title="Connect to GitHub Repo"
-                >
-                  <Github size={20} />
-                </button>
-                <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
                   onClick={() => setIsVoiceMode(!isVoiceMode)}
                   title="Voice Mode"
