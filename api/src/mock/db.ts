@@ -56,7 +56,8 @@ export const mockDb = {
     return users.find(u => u.email === e) || null;
   },
   createUser(email: string, passwordHash: string, role: Role) {
-    const id = String(users.length + 1);
+    // Generate a random 24-char hex string to mimic MongoDB ObjectId
+    const id = Array.from({ length: 24 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
     const u = { id, email: normalizeEmail(email), passwordHash, role };
     users.push(u);
     saveToDisk();

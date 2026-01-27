@@ -166,7 +166,7 @@ router.post('/dev', async (req: Request, res: Response) => {
   if (!isLoopback) return res.status(404).json({ error: 'Not found' });
 
   const token = jwt.sign({
-    sub: 'dev-user',
+    sub: '507f1f77bcf86cd799439011', // Valid Mongo ObjectId for dev-user
     role: 'OWNER',
     email: 'dev@joe.local',
     name: 'Developer'
