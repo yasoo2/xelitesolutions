@@ -106,6 +106,18 @@ async function main() {
     'http://localhost:3001',
     'http://127.0.0.1:3001',
   ]);
+  // Middleware: Block API requests until DB is ready
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'Service Unavailable',
+        message: 'Database connection initializing, please try again shortly.',
+        retryAfter: 5
+      });
+    }
+    next();
+  });
+
   app.use(cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
@@ -196,7 +208,25 @@ async function main() {
   const server = http.createServer(app);
   attachWebSocket(server);
 
-  // DB connect with Retry Loop
+  server.listen(config.port, '0.0.0.0', () => {
+    logger.info({ port: config.port }, 'API listening (Database connecting in background...)');
+
+    // [NEW] Deep Memory Auto-Indexing
+    setTimeout(() => {
+      logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
+      executeTool('memorize_codebase', {
+        directory: process.cwd(),
+        extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
+      }).catch(() => { });
+
+      // [NEW] Infinite Learning Loop
+      logger.info('[ContinuousTrainer] Starting Infinite Learning Loop (Phase 52)...');
+      import('./services/ContinuousTrainer').then(m => m.continuousTrainer.start());
+
+    }, 5000); // 5 second delay
+  });
+
+  // DB connect with Retry Loop (Background)
   const connectWithRetry = async () => {
     const maxRetries = 30; // Wait up to 60 seconds
     for (let i = 0; i < maxRetries; i++) {
@@ -218,25 +248,7 @@ async function main() {
     process.exit(1);
   };
 
-  await connectWithRetry();
-
-  server.listen(config.port, '0.0.0.0', () => {
-    logger.info({ port: config.port }, 'API listening');
-
-    // [NEW] Deep Memory Auto-Indexing
-    setTimeout(() => {
-      logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
-      executeTool('memorize_codebase', {
-        directory: process.cwd(),
-        extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
-      }).catch(() => { });
-
-      // [NEW] Infinite Learning Loop
-      logger.info('[ContinuousTrainer] Starting Infinite Learning Loop (Phase 52)...');
-      import('./services/ContinuousTrainer').then(m => m.continuousTrainer.start());
-
-    }, 5000); // 5 second delay
-  });
+  void connectWithRetry();
 
   // Global Error Handler
   process.on('uncaughtException', (err) => {
