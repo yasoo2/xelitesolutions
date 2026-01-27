@@ -196,6 +196,20 @@ async function main() {
   const server = http.createServer(app);
   attachWebSocket(server);
 
+  // DB connect (Await BEFORE listening)
+  try {
+    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
+    logger.info('MongoDB connected');
+    try {
+      await ensureOwnerFromEnv();
+    } catch (e) {
+      logger.error(e, 'Owner bootstrap failed');
+    }
+  } catch (e) {
+    logger.error(e, 'MongoDB connection failed - Exiting');
+    process.exit(1);
+  }
+
   server.listen(config.port, '0.0.0.0', () => {
     logger.info({ port: config.port }, 'API listening');
 
@@ -213,21 +227,6 @@ async function main() {
 
     }, 5000); // 5 second delay
   });
-
-  // DB connect (Background async)
-  (async () => {
-    try {
-      await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
-      logger.info('MongoDB connected');
-      try {
-        await ensureOwnerFromEnv();
-      } catch (e) {
-        logger.error(e, 'Owner bootstrap failed');
-      }
-    } catch (e) {
-      logger.error(e, 'MongoDB connection failed (continuing without DB)');
-    }
-  })();
 
   // Global Error Handler
   process.on('uncaughtException', (err) => {
