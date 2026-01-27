@@ -32,6 +32,7 @@ export default function WorkspaceSettings() {
         try {
             setLoading(true);
             const token = localStorage.getItem('token');
+            if (!token) return;
             const wsRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/workspaces/${workspaceId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
