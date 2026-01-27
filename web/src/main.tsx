@@ -5,8 +5,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
-const Showcase = lazy(() => import('./pages/Showcase'));
-const BankV2 = lazy(() => import('./pages/BankV2'));
+
 const Joe = lazy(() => import('./pages/Joe'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 import './theme.css';
@@ -67,8 +66,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/" element={<App />}>
               <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
               <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
-              <Route path="showcase" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Showcase /></Suspense>} />
-              <Route path="showcase/bank-v2" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><BankV2 /></Suspense>} />
+
               <Route
                 path="joe"
                 element={
