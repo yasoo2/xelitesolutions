@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
-import { API_URL } from '../config';
+import { api } from '../services/apiClient';
 
 interface Workspace {
     _id: string;
@@ -50,22 +49,15 @@ export const WorkspaceSelector: React.FC = () => {
 
     const fetchWorkspaces = async () => {
         try {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-
-            const res = await axios.get(`${API_URL}/workspaces`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            setWorkspaces(res.data);
+            const data = await api.get('/workspaces');
+            setWorkspaces(data as Workspace[]);
 
             const savedId = localStorage.getItem('active_workspace_id');
-            const found = res.data.find((w: any) => w._id === savedId) || res.data[0];
+            const found = (data as Workspace[]).find((w: any) => w._id === savedId) || (data as Workspace[])[0];
 
             if (found) {
                 setActiveWs(found);
                 localStorage.setItem('active_workspace_id', found._id);
-                // Dispatch event for other components to reload data if needed
                 window.dispatchEvent(new CustomEvent('workspace:changed', { detail: found }));
             }
         } catch (e) {
@@ -73,7 +65,6 @@ export const WorkspaceSelector: React.FC = () => {
         }
     };
 
-    // Fetch Workspaces on Load
     useEffect(() => {
         fetchWorkspaces();
     }, []);
@@ -93,27 +84,25 @@ export const WorkspaceSelector: React.FC = () => {
         if (!name) return;
 
         try {
-            const token = localStorage.getItem('token');
-            const res = await axios.post(`${API_URL}/workspaces`,
-                { name },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+            const newWs = await api.post('/workspaces', { name });
 
-            // Refresh list and select new
             await fetchWorkspaces();
-            const newWs = res.data;
-            // Ensure we find the new one in the refreshed list if needed, or just set it
-            if (newWs) {
-                selectWorkspace(newWs as Workspace, e);
+
+            if (newWs && (newWs as Workspace)._id) {
+                // The fetchWorkspaces might have already set it if it was the first one, 
+                // but let's explicitly select the new one if we returned it.
+                const created = newWs as Workspace;
+                setActiveWs(created);
+                localStorage.setItem('active_workspace_id', created._id);
+                window.dispatchEvent(new CustomEvent('workspace:changed', { detail: created }));
             }
 
         } catch (err) {
             console.error('Failed to create workspace', err);
             alert('Failed to create workspace');
         }
-
         setIsOpen(false);
-    }
+    };
 
     return (
         <div className={selectorStyles.container} ref={containerRef}>
