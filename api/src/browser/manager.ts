@@ -172,7 +172,7 @@ export async function createSession(sessionId: string) {
   const cfg = DEFAULT_BROWSER_CONFIG;
   const viewport = getBrowserViewport();
 
-  let browser: Browser;
+  let browser: Browser | null = null;
   /* MODIFIED: Logging and Fallback */
   let wsEndpoint = process.env.BROWSER_WS_ENDPOINT || '';
 
@@ -196,13 +196,32 @@ export async function createSession(sessionId: string) {
 
     // Assuming standard Playwright server or compatible wrapper
     // If we have an API key, we might need to pass it in headers.
-    browser = await chromium.connect(wsEndpoint, {
-      headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
-    });
+    // Retry logic for browser worker connection
+    let attempt = 0;
+    const maxRetries = 10;
+    while (!browser) {
+      try {
+        browser = await chromium.connect(wsEndpoint, {
+          headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
+        });
+        /* MODIFIED: Log success */
+        try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Connected to ${wsEndpoint}\n`); } catch { }
+      } catch (e) {
+        attempt++;
+        if (attempt >= maxRetries) {
+          try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Failed to connect after ${maxRetries} attempts\n`); } catch { }
+          throw e; // Final failure
+        }
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff max 10s
+        try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Connection failed, retrying in ${delay}ms (Attempt ${attempt}/${maxRetries})\n`); } catch { }
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
   } else {
     browser = await chromium.launch(getChromiumLaunchOptions());
   }
 
+  if (!browser) throw new Error('browser_connection_failed_after_retries');
   const context = await browser.newContext({
     viewport: { width: viewport.w, height: viewport.h },
     locale: 'ar',
