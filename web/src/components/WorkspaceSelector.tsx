@@ -15,16 +15,16 @@ interface Workspace {
 // Custom Premium Styles for Workspace Selector
 const selectorStyles = {
     container: "relative w-full z-50",
-    triggerBtn: "w-full flex items-center justify-between gap-2 px-3 py-2 bg-[#1E2028] hover:bg-[#2A2D36] border border-white/5 rounded-lg transition-all duration-200 group",
+    triggerBtn: "w-full flex items-center justify-between gap-2 px-3 py-2 bg-[#1E2028] hover:bg-[#2A2D36] border border-white/10 rounded-lg transition-all duration-200 group shadow-sm",
     activeAvatar: "w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-indigo-500 to-purple-600 shadow-sm",
     nameText: "text-xs font-medium text-gray-200 group-hover:text-white truncate max-w-[100px]",
     planBadge: "text-[9px] uppercase tracking-wider text-gray-500 font-semibold bg-white/5 px-1.5 py-0.5 rounded ml-auto",
     chevron: "w-3 h-3 text-gray-500 group-hover:text-gray-300 transition-transform duration-200",
-    dropdown: "absolute top-full left-0 right-0 mt-1 bg-[#181A20] border border-white/10 rounded-lg shadow-xl overflow-hidden backdrop-blur-xl z-[100]",
+    dropdown: "absolute top-full left-0 mt-2 min-w-[240px] bg-[#181A20] border border-white/10 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl z-[9999]",
     itemBtn: "w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors border-l-2 border-transparent hover:border-indigo-500",
     itemAvatar: (isActive: boolean) => `w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white ${isActive ? 'bg-indigo-500' : 'bg-gray-700'}`,
     itemText: "text-xs text-gray-300 font-medium",
-    sectionTitle: "px-3 py-2 text-[10px] uppercase font-bold text-gray-500 tracking-wider",
+    sectionTitle: "px-3 py-2 text-[10px] uppercase font-bold text-gray-500 tracking-wider bg-white/5",
     divider: "h-px bg-white/5 my-1"
 };
 
@@ -47,32 +47,33 @@ export const WorkspaceSelector: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const fetchWorkspaces = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/workspaces`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setWorkspaces(res.data);
+
+            const savedId = localStorage.getItem('active_workspace_id');
+            const found = res.data.find((w: any) => w._id === savedId) || res.data[0];
+
+            if (found) {
+                setActiveWs(found);
+                localStorage.setItem('active_workspace_id', found._id);
+                // Dispatch event for other components to reload data if needed
+                window.dispatchEvent(new CustomEvent('workspace:changed', { detail: found }));
+            }
+        } catch (e) {
+            console.error('Failed to fetch workspaces', e);
+        }
+    };
+
     // Fetch Workspaces on Load
     useEffect(() => {
-        const fetchWorkspaces = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) return;
-
-                const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/workspaces`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-
-                setWorkspaces(res.data);
-
-                const savedId = localStorage.getItem('active_workspace_id');
-                const found = res.data.find((w: any) => w._id === savedId) || res.data[0];
-
-                if (found) {
-                    setActiveWs(found);
-                    localStorage.setItem('active_workspace_id', found._id);
-                    // Dispatch event for other components to reload data if needed
-                    window.dispatchEvent(new CustomEvent('workspace:changed', { detail: found }));
-                }
-            } catch (e) {
-                console.error('Failed to fetch workspaces', e);
-            }
-        };
         fetchWorkspaces();
     }, []);
 
@@ -84,10 +85,32 @@ export const WorkspaceSelector: React.FC = () => {
         setIsOpen(false);
     };
 
-    const handleCreate = (e: React.MouseEvent) => {
+    const handleCreate = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        // Trigger create logic (placeholder)
-        alert(t('ui.create_workspace_placeholder', 'Create Workspace Feature Coming Soon'));
+
+        const name = prompt(t('ui.enter_workspace_name', 'Enter Workspace Name:'));
+        if (!name) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/workspaces`,
+                { name },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            // Refresh list and select new
+            await fetchWorkspaces();
+            const newWs = res.data;
+            // Ensure we find the new one in the refreshed list if needed, or just set it
+            if (newWs) {
+                selectWorkspace(newWs as Workspace, e);
+            }
+
+        } catch (err) {
+            console.error('Failed to create workspace', err);
+            alert('Failed to create workspace');
+        }
+
         setIsOpen(false);
     }
 
@@ -126,6 +149,7 @@ export const WorkspaceSelector: React.FC = () => {
                         exit={{ opacity: 0, y: -5, scale: 0.98 }}
                         transition={{ duration: 0.15, ease: "easeOut" }}
                         className={selectorStyles.dropdown}
+                        style={{ position: 'absolute', top: '100%', left: 0, zIndex: 9999 }}
                     >
                         <div className={selectorStyles.sectionTitle}>{t('ui.workspaces', 'Workspaces')}</div>
 
