@@ -108,8 +108,18 @@ export class WorkspaceService {
 
         if (updates.name) workspace.name = updates.name;
         if (updates.providerConfig) {
-            // Merge or overwrite provider config
-            workspace.providerConfig = { ...workspace.providerConfig, ...updates.providerConfig };
+            // Merge or overwrite provider config into integrations.llmProviders
+            if (!workspace.integrations) workspace.integrations = { llmProviders: {} } as any;
+            if (!workspace.integrations.llmProviders) workspace.integrations.llmProviders = {};
+
+            // Map flat structure to nested structure if needed, or just copy keys
+            // The frontend is sending { openai: {apiKey}, anthropic: {apiKey} }
+            // integrations.llmProviders expects { openai: {apiKey}, openrouter: {apiKey} }
+            // I will support generic keys here to be flexible
+            workspace.integrations.llmProviders = {
+                ...workspace.integrations.llmProviders,
+                ...updates.providerConfig
+            };
         }
 
         await workspace.save();

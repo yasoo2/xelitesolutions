@@ -37,8 +37,8 @@ export default function WorkspaceSettings() {
             });
             setWorkspace(wsRes.data);
             setApiKeys({
-                openai: wsRes.data.providerConfig?.openai?.apiKey || '',
-                anthropic: wsRes.data.providerConfig?.anthropic?.apiKey || ''
+                openai: wsRes.data.integrations?.llmProviders?.openai?.apiKey || '',
+                anthropic: wsRes.data.integrations?.llmProviders?.anthropic?.apiKey || ''
             });
 
             const memRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/workspaces/${workspaceId}/members`, {
