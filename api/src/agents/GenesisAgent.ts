@@ -55,7 +55,7 @@ Output ONLY valid JSON:
             try {
                 const content = await pollinationsProvider.chatComplete([
                     { role: 'system', content: fastPrompt },
-                ], 'jsonMode'); // 'jsonMode' hints json output
+                ], 'openai');
 
                 const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
                 const result = JSON.parse(cleanJson || '{"steps": []}');
@@ -102,7 +102,7 @@ Output ONLY valid JSON:
         try {
             const content = await pollinationsProvider.chatComplete([
                 { role: 'system', content: conversionPrompt },
-            ], 'jsonMode');
+            ], 'openai');
 
             const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
             const result = JSON.parse(cleanJson || '{"steps": []}');

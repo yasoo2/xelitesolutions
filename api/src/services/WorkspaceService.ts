@@ -4,6 +4,26 @@ import { User } from '../models/user';
 import { Types } from 'mongoose';
 
 export class WorkspaceService {
+    private currentRoot: string = process.cwd();
+
+    getActiveRoot(): string {
+        return this.currentRoot;
+    }
+
+    async setActiveRoot(newPath: string): Promise<boolean> {
+        try {
+            // Validate path exists
+            await import('fs').then(fs => fs.promises.access(newPath));
+            this.currentRoot = newPath;
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    resetToSystem() {
+        this.currentRoot = process.cwd();
+    }
 
     /**
      * Create a new workspace and assign the creator as OWNER

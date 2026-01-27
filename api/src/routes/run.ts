@@ -1644,9 +1644,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           initialPlan = await planNextStep(history, {
             provider: providerKey,
-            apiKey: options?.apiKey,
-            baseUrl: options?.baseUrl,
-            model: options?.model,
+            apiKey: apiKey,
+            baseUrl: baseUrl,
+            model: model,
             throwOnError: true,
             onProgress: (msg: string) => ev({ type: 'thought', data: msg })
           });

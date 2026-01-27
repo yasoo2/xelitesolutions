@@ -1,44 +1,62 @@
-import { ToolDefinition } from '../types';
+import { BaseTool } from '../base';
+import { ToolPermission } from '../types';
 
 /**
  * PaymentsTool - Handles Stripe payment integrations
  */
+export class PaymentsTool extends BaseTool {
+    name = 'payments_create_checkout_session';
+    description = 'Creates a Stripe checkout session for payment processing. Requires Stripe API key to be configured.';
+    version = '1.0.0';
+    tags = ['payments', 'stripe', 'finance'];
 
-const paymentsCreateCheckoutSession: ToolDefinition = {
-    name: 'payments_create_checkout_session',
-    description: 'Creates a Stripe checkout session for payment processing. Requires Stripe API key to be configured.',
-    inputSchema: {
-        type: 'object',
+    inputSchema = {
+        type: 'object' as const,
         properties: {
             amount: {
-                type: 'number',
+                type: 'number' as const,
                 description: 'Payment amount in cents (e.g., 1000 = $10.00)'
             },
             currency: {
-                type: 'string',
+                type: 'string' as const,
                 description: 'Currency code (e.g., "usd", "sar", "eur")',
                 default: 'usd'
             },
             productName: {
-                type: 'string',
+                type: 'string' as const,
                 description: 'Name of the product or service being purchased'
             },
             successUrl: {
-                type: 'string',
+                type: 'string' as const,
                 description: 'URL to redirect after successful payment'
             },
             cancelUrl: {
-                type: 'string',
+                type: 'string' as const,
                 description: 'URL to redirect if payment is cancelled'
             },
             sessionId: {
-                type: 'string',
+                type: 'string' as const,
                 description: 'Session ID for tracking'
             }
         },
         required: ['amount', 'productName']
-    },
-    execute: async (input: any) => {
+    };
+
+    outputSchema = {
+        type: 'object' as const,
+        properties: {
+            checkoutUrl: { type: 'string' as const },
+            sessionId: { type: 'string' as const }
+        }
+    };
+
+    permissions: ToolPermission[] = ['internet'];
+    sideEffects: ToolPermission[] = []; // Financial actions are side effects, but not in strict type yet
+    rateLimitPerMinute = 10;
+    auditFields = ['amount', 'currency', 'productName'];
+    mockSupported = true;
+
+    async execute(input: any) {
         const { amount, currency = 'usd', productName, successUrl, cancelUrl, sessionId } = input;
 
         // Check for Stripe API key
@@ -47,23 +65,16 @@ const paymentsCreateCheckoutSession: ToolDefinition = {
             return {
                 ok: false,
                 error: 'stripe_not_configured',
-                output: 'Stripe API key is not configured. Please set STRIPE_SECRET_KEY in environment variables.'
+                output: 'Stripe API key is not configured. Please set STRIPE_SECRET_KEY in environment variables.',
+                logs: ['Configuration check failed: Missing STRIPE_SECRET_KEY']
             };
         }
 
         try {
-            // Dynamically import Stripe to avoid errors if not installed
-            let stripe: any;
-            try {
-                const StripeModule = await import('stripe');
-                stripe = new StripeModule.default(stripeKey);
-            } catch (e) {
-                return {
-                    ok: false,
-                    error: 'stripe_not_installed',
-                    output: 'Stripe package is not installed. Run: npm install stripe'
-                };
-            }
+            // Dynamically import Stripe
+            // @ts-ignore
+            const StripeModule = await import('stripe');
+            const stripe = new StripeModule.default(stripeKey);
 
             // Create checkout session
             const session = await stripe.checkout.sessions.create({
@@ -90,24 +101,23 @@ const paymentsCreateCheckoutSession: ToolDefinition = {
 
             return {
                 ok: true,
-                output: {
+                output: JSON.stringify({
                     checkoutUrl: session.url,
                     sessionId: session.id,
                     amount: amount,
                     currency: currency,
                     productName: productName
-                }
+                }),
+                logs: [`Created Checkout Session: ${session.id}`]
             };
         } catch (e: any) {
             return {
                 ok: false,
                 error: 'stripe_error',
-                output: `Stripe error: ${e.message}`
+                output: `Stripe error: ${e.message}`,
+                logs: [`Stripe API Failed: ${e.message}`]
             };
         }
     }
-};
+}
 
-export const PaymentsTools: ToolDefinition[] = [
-    paymentsCreateCheckoutSession
-];

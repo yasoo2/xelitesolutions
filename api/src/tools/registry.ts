@@ -57,7 +57,7 @@ import { DirectoryInspectionTool, FileSearchTool, SymbolInspectorTool, AdvancedF
 import { SafeReadFileTool, AskUserTool, TerminalManagerTool } from './definitions/TaskInteractionTools';
 import { BrowserVisionTool } from './definitions/BrowserVisionTool';
 import { BrowserActionTool } from './definitions/BrowserActionTool';
-import { PaymentsTools } from './definitions/PaymentsTool';
+import { PaymentsTool } from './definitions/PaymentsTool';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
 import { AutoTrainerTool } from './definitions/AutoTrainerTool';
 
@@ -190,8 +190,7 @@ export const tools: ToolDefinition[] = [
   new BrowserActionTool(),
 
   new GenesisBuilderTool(),
-  // --- Payments ---
-  ...PaymentsTools,
+  new PaymentsTool(),
   // --- Screenshot & Visual QA ---
   new ScreenshotTool(),
   new VisualComparisonTool(),

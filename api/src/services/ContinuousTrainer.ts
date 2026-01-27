@@ -119,7 +119,7 @@ export class ContinuousTrainer {
         }
     }
 
-    private generateDeepReflex() {
+    private generateDeepReflex(): { trigger: string, response: string } {
         const type = Math.floor(Math.random() * 5); // 5 Strategy Types
 
         // 1. "How to [Verb] [Adjective] [Concept] in [Language]?"

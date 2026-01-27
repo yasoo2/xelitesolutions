@@ -283,7 +283,7 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     let requiresTools = false;
 
     // Browser/automation tasks
-    if (/(open|afتح|browse|متصفح|click|انقر|اضغط|extract|استخرج|تصفح|ادخل|روح|زور)/i.test(msg)) {
+    if (/(open|afتح|browse|متصفح|click|anقر|اضغط|extract|استخرج|تصفح|ادخل|روح|زور|search|ابحث|بحث)/i.test(msg)) {
         taskType = 'browser_task';
         requiresTools = true;
     }

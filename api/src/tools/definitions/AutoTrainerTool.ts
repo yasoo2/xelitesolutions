@@ -20,6 +20,18 @@ export class AutoTrainerTool extends BaseTool {
         required: ['domain']
     };
 
+    tags = ['ai', 'training', 'learning', 'optimization'];
+
+    outputSchema = {
+        type: 'object',
+        properties: {
+            status: { type: 'string' },
+            domain: { type: 'string' },
+            reflexesLearned: { type: 'number' },
+            message: { type: 'string' }
+        }
+    };
+
     // --- SYNTHETIC KNOWLEDGE BASE ---
     private webScenarios = [
         { q: ["create navbar", "build nav", "navbar component", "responsive menu"], a: "Here is a responsive React Navbar component using Tailwind CSS..." },
