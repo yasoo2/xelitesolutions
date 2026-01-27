@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import CommandComposer from '../components/CommandComposer';
 import SessionItem from '../components/SessionItem';
+import { WorkspaceSelector } from '../components/WorkspaceSelector';
 import EliteFileExplorer from '../components/EliteFileExplorer';
 import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -542,6 +543,9 @@ export default function Joe() {
             >
               <PanelLeftOpen size={18} />
             </button>
+            <div style={{ flex: 1, margin: '0 8px' }}>
+              <WorkspaceSelector />
+            </div>
             <button className="new-chat-btn premium-btn" onClick={() => createSession()} disabled={isCreatingChatSession}>
               <Plus size={16} /> {t('sidebar.newChat', 'New Chat')}
             </button>

@@ -62,9 +62,9 @@ export const WorkspaceSelector: React.FC = () => {
     // REMOVED 'if (!activeWs) return null' in previous step.
 
     return (
-        <div className="relative z-[9999] mx-2 border border-red-500" style={{ pointerEvents: 'auto' }}>
+        <div className="relative z-50 mx-2">
             <button
-                onClick={() => { console.log('Selector Clicked'); setIsOpen(!isOpen); }}
+                onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all backdrop-blur-md"
             >
                 {activeWs ? (
@@ -109,15 +109,15 @@ export const WorkspaceSelector: React.FC = () => {
                                 <button
                                     key={ws._id}
                                     onClick={() => selectWorkspace(ws)}
-                                    className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${activeWs._id === ws._id ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                                    className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${activeWs && activeWs._id === ws._id ? 'bg-white/10' : 'hover:bg-white/5'}`}
                                 >
-                                    <div className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white ${activeWs._id === ws._id ? 'bg-blue-500' : 'bg-gray-700'}`}>
+                                    <div className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white ${activeWs && activeWs._id === ws._id ? 'bg-blue-500' : 'bg-gray-700'}`}>
                                         {ws.name.substring(0, 2).toUpperCase()}
                                     </div>
                                     <div className="flex-1 text-left">
                                         <div className="text-xs text-white/90 font-medium">{ws.name}</div>
                                     </div>
-                                    {activeWs._id === ws._id && (
+                                    {activeWs && activeWs._id === ws._id && (
                                         <div className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]"></div>
                                     )}
                                 </button>
@@ -126,12 +126,14 @@ export const WorkspaceSelector: React.FC = () => {
                             <div className="h-px bg-white/10 my-1"></div>
 
                             <button
-                                onClick={() => { navigate(`/workspace/${activeWs._id}/settings`); setIsOpen(false); }}
+                                onClick={() => { if (activeWs) { navigate(`/workspace/${activeWs._id}/settings`); setIsOpen(false); } }}
                                 className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 text-white/60 hover:text-white transition-colors"
                             >
                                 <Settings size={14} />
                                 <span className="text-xs">{t('ui.workspace_settings', 'Workspace Settings')}</span>
                             </button>
+
+                            <div className="h-px bg-white/10 my-1"></div>
 
                             <button className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 text-white/60 hover:text-white transition-colors">
                                 <span className="w-5 h-5 flex items-center justify-center border border-dashed border-white/30 rounded text-xs">+</span>

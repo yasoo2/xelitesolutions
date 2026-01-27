@@ -5,7 +5,6 @@ import { Sun, Moon, LogIn, LogOut, ChevronDown, LayoutDashboard, User, Settings 
 import ConfirmDialog from './ConfirmDialog';
 import ProfileDialog from './ProfileDialog';
 import SettingsDialog from './SettingsDialog';
-import { WorkspaceSelector } from './WorkspaceSelector';
 import './UserMenu.css';
 
 export default function TopBar() {
@@ -85,7 +84,7 @@ export default function TopBar() {
         <div className="brand-ai-badge">AI</div>
       </div>
 
-      {user && <WorkspaceSelector />}
+
 
       <div className="spacer" />
 
