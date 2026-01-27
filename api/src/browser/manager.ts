@@ -377,30 +377,47 @@ export async function stopSession(sessionId: string) {
 export async function healthcheckBrowser() {
   const startedAt = Date.now();
   const viewport = getBrowserViewport();
-  const browser = await chromium.launch(getChromiumLaunchOptions());
+  let browser: Browser | null = null;
+  const wsEndpoint = process.env.BROWSER_WS_ENDPOINT;
+  const apiKey = process.env.WORKER_API_KEY;
+
   try {
+    if (wsEndpoint) {
+      // Use connect logic for healthcheck
+      browser = await chromium.connect(wsEndpoint, {
+        headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
+      });
+    } else {
+      // Fallback
+      browser = await chromium.launch(getChromiumLaunchOptions());
+    }
+
     const context = await browser.newContext({ viewport: { width: viewport.w, height: viewport.h } });
     try {
       const page = await context.newPage();
       const url = 'https://example.com';
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
       const buf = await page.screenshot({ type: 'jpeg', quality: 65, animations: 'disabled' });
+
+      // Save artifact if possible
       const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
       try {
         if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
-      } catch { }
-      const fname = `health-browser-${Date.now()}.jpg`;
-      const full = path.join(artifactDir, fname);
-      try {
+        const fname = `health-browser-${Date.now()}.jpg`;
+        const full = path.join(artifactDir, fname);
         fs.writeFileSync(full, buf);
-      } catch { }
-      const href = `/artifacts/${encodeURIComponent(fname)}`;
-      return { ok: true as const, ms: Date.now() - startedAt, url, screenshotHref: href };
+        const href = `/artifacts/${encodeURIComponent(fname)}`;
+        return { ok: true as const, ms: Date.now() - startedAt, url, screenshotHref: href };
+      } catch {
+        // If write fails, still return ok
+        return { ok: true as const, ms: Date.now() - startedAt, url };
+      }
     } finally {
       try { await context.close(); } catch { }
     }
+  } catch (e: any) {
+    throw e;
   } finally {
-    try { await browser.close(); } catch { }
+    try { await browser?.close(); } catch { }
   }
-  return { ok: true as const, ms: Date.now() - startedAt };
 }

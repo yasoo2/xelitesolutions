@@ -21,6 +21,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - MONGO_URI=mongodb://joe_mongo:27017/joe
+      - BROWSER_WS_ENDPOINT=ws://joe_browser_worker:7070
     env_file:
       - .env
     healthcheck:
