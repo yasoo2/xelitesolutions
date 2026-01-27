@@ -24,13 +24,26 @@ function setStatus(state: string, detail?: string) {
   statusListeners.forEach((l) => {
     try {
       l({ state, detail });
-    } catch {}
+    } catch { }
   });
 }
+
+import { isValidToken } from '../utils/auth';
 
 function connect() {
   if (!WS_URL) return;
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token || !isValidToken(token)) {
+    // If no valid token, we cannot connect to the secure WebSocket.
+    // We do NOT necessarily clear the token here (TopBar does that), but we abort connection.
+    if (connectTimer) {
+      clearTimeout(connectTimer);
+      connectTimer = null;
+    }
     return;
   }
 
@@ -41,7 +54,13 @@ function connect() {
 
   const primaryUrl = WS_URL;
   const fallbackUrl = computeFallbackWsUrl(primaryUrl);
-  const urlToUse = (triedFallback || !fallbackUrl) ? primaryUrl : (connectAttempts > 0 ? fallbackUrl : primaryUrl);
+  let urlToUse = (triedFallback || !fallbackUrl) ? primaryUrl : (connectAttempts > 0 ? fallbackUrl : primaryUrl);
+
+  // Append Token
+  const u = new URL(urlToUse);
+  u.searchParams.set('token', token);
+  urlToUse = u.toString();
+
   lastUrl = urlToUse;
 
   let opened = false;
