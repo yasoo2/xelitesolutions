@@ -1,6 +1,7 @@
 import { pollinationsProvider } from '../llm/providers/registry';
 import { ArchitectAgent } from './ArchitectAgent';
 import { analyzeTask } from '../llm/intelligent-router';
+import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
 
 interface TaskStep {
     name: string;
@@ -25,11 +26,19 @@ export class GenesisAgent {
         if (analysis.complexity === 'low' || (analysis.complexity === 'medium' && analysis.type !== 'complex_reasoning')) {
             console.log('[Genesis] ⚡ FAST PATH ACTIVATED: Skipping Architect for speed.');
 
+            // [OPTIMIZATION] Retrieve trained reflexes/knowledge
+            // This reconnects the "6 months of training" to the new Fast Path engine
+            const optimization = await freeIntelligenceOptimizer.optimizeRequest(goal, []);
+            const contextInjection = optimization.cachedResponse
+                ? `\n\n[Learned Reflex/Knowledge]:\n${optimization.cachedResponse}`
+                : '';
+
             const fastPrompt = `You are a fast, efficient Task Executor.
 The user wants: "${goal}"
+${contextInjection}
 
 Generate a concrete list of Tool Execution Steps to achieve this immediately.
-Do NOT plan, just execute.
+Do NOT plan, just execute. Use the [Learned Knowledge] if relevant.
 
 Available Tools:
 - Core: scaffold_project, file_write, shell_execute, npm_install
@@ -52,7 +61,7 @@ Output ONLY valid JSON:
                 const result = JSON.parse(cleanJson || '{"steps": []}');
 
                 return {
-                    plan: `**Fast Track Execution**\n\nTask: ${goal}\n\nDecision: Skipped architecture phase for efficiency. Executing immediately.`,
+                    plan: `**Fast Track Execution**\n\nTask: ${goal}\n\nDecision: Skipped architecture phase for efficiency.\n[Knowledge Base]: ${optimization.shouldUseCache ? 'Used Learned Reflex ✅' : 'Standard Execution'}`,
                     steps: result.steps
                 };
             } catch (e: any) {
