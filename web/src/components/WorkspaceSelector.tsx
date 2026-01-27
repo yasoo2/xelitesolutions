@@ -4,6 +4,7 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface Workspace {
     _id: string;
@@ -52,7 +53,7 @@ export const WorkspaceSelector: React.FC = () => {
             const token = localStorage.getItem('token');
             if (!token) return;
 
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/workspaces`, {
+            const res = await axios.get(`${API_URL}/workspaces`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -93,7 +94,7 @@ export const WorkspaceSelector: React.FC = () => {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/workspaces`,
+            const res = await axios.post(`${API_URL}/workspaces`,
                 { name },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
