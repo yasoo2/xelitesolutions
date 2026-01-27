@@ -48,6 +48,7 @@ export const WorkspaceSelector: React.FC = () => {
     }, []);
 
     const fetchWorkspaces = async () => {
+        if (!localStorage.getItem('token')) return;
         try {
             const data = await api.get('/workspaces');
             setWorkspaces(data as Workspace[]);
@@ -60,7 +61,9 @@ export const WorkspaceSelector: React.FC = () => {
                 localStorage.setItem('active_workspace_id', found._id);
                 window.dispatchEvent(new CustomEvent('workspace:changed', { detail: found }));
             }
-        } catch (e) {
+        } catch (e: any) {
+            // Ignore auth errors, let global handler handle it
+            if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
             console.error('Failed to fetch workspaces', e);
         }
     };

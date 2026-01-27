@@ -89,7 +89,8 @@ export const useSessionStore = create<SessionState>((set) => ({
         selected: state.selected || chatSessions[0]?.id || null,
         agentSelected: state.agentSelected || agentSessions[0]?.id || null,
       }));
-    } catch (e) {
+    } catch (e: any) {
+      if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
       console.error('Failed to load sessions', e);
     }
   },
@@ -98,7 +99,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       const folders: any = await api.get('/folders');
       set({ folders });
-    } catch (e) {
+    } catch (e: any) {
+      if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
       console.error('Failed to load folders', e);
       set({ folders: [] });
     }
