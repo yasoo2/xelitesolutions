@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../services/apiClient';
+import { isValidToken } from '../utils/auth';
 
 export interface Session {
   id: string;
@@ -22,7 +23,7 @@ export interface Folder {
 // This ensureToken logic actually *fetches* a dev token if none exists.
 async function ensureToken() {
   const existing = localStorage.getItem('token');
-  if (existing) return existing;
+  if (existing && isValidToken(existing)) return existing;
 
   const isLocal = /localhost|127\.0\.0\.1/.test(window.location.hostname);
   if (!isLocal) return null;

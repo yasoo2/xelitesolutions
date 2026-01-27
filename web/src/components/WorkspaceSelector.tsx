@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import { api } from '../services/apiClient';
+import { isValidToken } from '../utils/auth';
 
 interface Workspace {
     _id: string;
@@ -47,8 +48,10 @@ export const WorkspaceSelector: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+
+
     const fetchWorkspaces = async () => {
-        if (!localStorage.getItem('token')) return;
+        if (!isValidToken(localStorage.getItem('token'))) return;
         try {
             const data = await api.get('/workspaces');
             setWorkspaces(data as Workspace[]);

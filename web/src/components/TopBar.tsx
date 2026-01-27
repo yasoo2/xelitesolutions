@@ -6,6 +6,7 @@ import ConfirmDialog from './ConfirmDialog';
 import ProfileDialog from './ProfileDialog';
 import SettingsDialog from './SettingsDialog';
 import './UserMenu.css';
+import { isValidToken } from '../utils/auth';
 
 export default function TopBar() {
   const { i18n, t } = useTranslation();
@@ -20,11 +21,10 @@ export default function TopBar() {
   const [user, setUser] = useState<any>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
-
   useEffect(() => {
     try {
       const token = localStorage.getItem('token');
-      if (token) {
+      if (token && isValidToken(token)) {
         const payload = JSON.parse(atob(token.split('.')[1]));
 
         // AUTO-FIX: Invalidate legacy tokens that are missing BOTH email AND sub fields
@@ -43,9 +43,11 @@ export default function TopBar() {
           picture: payload.picture
         });
       } else {
+        if (token) localStorage.removeItem('token');
         setUser(null);
       }
     } catch (e) {
+      localStorage.removeItem('token');
       setUser(null);
     }
   }, [nav]);
