@@ -1,16 +1,13 @@
-import OpenAI from 'openai';
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+import { pollinationsProvider } from '../llm/providers/registry';
 
 export class ArchitectAgent {
-    private openai: OpenAI;
 
     constructor() {
-        this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        // No API key needed for Pollinations
     }
 
     async planProject(goal: string, context: string = ''): Promise<string> {
-        const systemPrompt = `You are the Chief Architect AI, a world-class systems designer known for creating "Premium", "Scalable", and "Modern" web applications.
+        const systemPrompt = `You are the Chier Architect AI, a world-class systems designer known for creating "Premium", "Scalable", and "Modern" web applications.
 Your goal is to design a robust architecture for a user request that WOWS the user.
 
 Output a Markdown document containing:
@@ -28,12 +25,15 @@ Output a Markdown document containing:
 User Goal: ${goal}
 Context: ${context}`;
 
-        const completion = await this.openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [{ role: 'system', content: systemPrompt }],
-            temperature: 0.7,
-        });
+        try {
+            const response = await pollinationsProvider.chatComplete([
+                { role: 'system', content: systemPrompt }
+            ], 'openai'); // 'openai' model alias in Pollinations usually maps to GPT-4o or equivalent
 
-        return completion.choices[0].message.content || 'Failed to generate plan.';
+            return response || 'Failed to generate plan.';
+        } catch (e: any) {
+            console.error('[Architect] Planning failed:', e.message);
+            return 'Failed to generate plan due to AI provider error.';
+        }
     }
 }

@@ -1,7 +1,6 @@
-import OpenAI from 'openai';
+import { pollinationsProvider } from '../llm/providers/registry';
 import { ArchitectAgent } from './ArchitectAgent';
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+import { analyzeTask } from '../llm/intelligent-router';
 
 interface TaskStep {
     name: string;
@@ -10,16 +9,59 @@ interface TaskStep {
 }
 
 export class GenesisAgent {
-    private openai: OpenAI;
     private architect: ArchitectAgent;
 
     constructor() {
-        this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
         this.architect = new ArchitectAgent();
     }
 
     async orchestrate(goal: string): Promise<{ plan: string, steps: TaskStep[] }> {
-        // 1. Architect the solution
+        // 0. Analyze Task Complexity
+        const analysis = analyzeTask(goal);
+        console.log(`[Genesis] Task Analysis: type=${analysis.type}, complexity=${analysis.complexity}`);
+
+        // FAST PATH: Skip Architect for simple/medium tasks that aren't complex reasoning
+        // We trust the direct execution planner for these to save time.
+        if (analysis.complexity === 'low' || (analysis.complexity === 'medium' && analysis.type !== 'complex_reasoning')) {
+            console.log('[Genesis] ⚡ FAST PATH ACTIVATED: Skipping Architect for speed.');
+
+            const fastPrompt = `You are a fast, efficient Task Executor.
+The user wants: "${goal}"
+
+Generate a concrete list of Tool Execution Steps to achieve this immediately.
+Do NOT plan, just execute.
+
+Available Tools:
+- Core: scaffold_project, file_write, shell_execute, npm_install
+- Files: grep_search, file_read, file_edit, ls
+- Web: browser_action (for browsing/searching)
+
+Output ONLY valid JSON:
+{
+  "steps": [
+    { "name": "Step Name", "tool": "tool_name", "args": { ... } }
+  ]
+}`;
+
+            try {
+                const content = await pollinationsProvider.chatComplete([
+                    { role: 'system', content: fastPrompt },
+                ], 'jsonMode'); // 'jsonMode' hints json output
+
+                const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
+                const result = JSON.parse(cleanJson || '{"steps": []}');
+
+                return {
+                    plan: `**Fast Track Execution**\n\nTask: ${goal}\n\nDecision: Skipped architecture phase for efficiency. Executing immediately.`,
+                    steps: result.steps
+                };
+            } catch (e: any) {
+                console.warn('[Genesis] Fast Path failed, falling back to Architect:', e.message);
+                // Fallthrough to normal path if fast path crashes
+            }
+        }
+
+        // 1. Architect the solution (Slow Path)
         console.log('[Genesis] summoning Architect...');
         const planMarkdown = await this.architect.planProject(goal);
 
@@ -48,14 +90,17 @@ Output ONLY valid JSON:
   ]
 }`;
 
-        const completion = await this.openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [{ role: 'system', content: conversionPrompt }],
-            response_format: { type: "json_object" },
-            temperature: 0.2, // Low temp for precise JSON
-        });
+        try {
+            const content = await pollinationsProvider.chatComplete([
+                { role: 'system', content: conversionPrompt },
+            ], 'jsonMode');
 
-        const result = JSON.parse(completion.choices[0].message.content || '{"steps": []}');
-        return { plan: planMarkdown, steps: result.steps };
+            const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
+            const result = JSON.parse(cleanJson || '{"steps": []}');
+            return { plan: planMarkdown, steps: result.steps };
+        } catch (e: any) {
+            console.error('[Genesis] Failed to generate steps:', e.message);
+            return { plan: planMarkdown, steps: [] };
+        }
     }
 }
