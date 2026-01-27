@@ -106,18 +106,6 @@ async function main() {
     'http://localhost:3001',
     'http://127.0.0.1:3001',
   ]);
-  // Middleware: Block API requests until DB is ready
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
-      return res.status(503).json({
-        error: 'Service Unavailable',
-        message: 'Database connection initializing, please try again shortly.',
-        retryAfter: 5
-      });
-    }
-    next();
-  });
-
   app.use(cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
@@ -129,6 +117,18 @@ async function main() {
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Worker-Key', 'x-worker-key'],
   }));
+
+  // Middleware: Block API requests until DB is ready
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'Service Unavailable',
+        message: 'Database connection initializing, please try again shortly.',
+        retryAfter: 5
+      });
+    }
+    next();
+  });
   app.use(express.json({ limit: '10mb' }));
 
   app.all('/api/webviewClick', (_req, res) => res.status(204).end());
