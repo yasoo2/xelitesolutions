@@ -196,19 +196,29 @@ async function main() {
   const server = http.createServer(app);
   attachWebSocket(server);
 
-  // DB connect (Await BEFORE listening)
-  try {
-    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
-    logger.info('MongoDB connected');
-    try {
-      await ensureOwnerFromEnv();
-    } catch (e) {
-      logger.error(e, 'Owner bootstrap failed');
+  // DB connect with Retry Loop
+  const connectWithRetry = async () => {
+    const maxRetries = 30; // Wait up to 60 seconds
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
+        logger.info('MongoDB connected');
+        try {
+          await ensureOwnerFromEnv();
+        } catch (e) {
+          logger.error(e, 'Owner bootstrap failed');
+        }
+        return true; // Success
+      } catch (e) {
+        logger.warn(`MongoDB connection failed (Attempt ${i + 1}/${maxRetries}), retrying in 2s...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
-  } catch (e) {
-    logger.error(e, 'MongoDB connection failed - Exiting');
+    logger.error('MongoDB connection failed after maximum retries - Exiting');
     process.exit(1);
-  }
+  };
+
+  await connectWithRetry();
 
   server.listen(config.port, '0.0.0.0', () => {
     logger.info({ port: config.port }, 'API listening');
