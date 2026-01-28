@@ -155,6 +155,14 @@ async function main() {
   // Mount Central API Router
   app.use('/api', apiRouter);
 
+  apiRouter.get('/health', (_req, res) => res.json({
+    status: 'OK',
+    db: mongoose.connection.readyState,
+    env: process.env.NODE_ENV,
+    adminSet: !!process.env.ADMIN_EMAIL,
+    uptime: process.uptime()
+  }));
+
   // Sub-routes on apiRouter
   apiRouter.use('/auth', authRoutes);
   apiRouter.use('/tools', toolsRoutes);

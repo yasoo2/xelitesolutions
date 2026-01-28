@@ -40,7 +40,7 @@ export class CentralAnswerTool implements ToolDefinition {
     async execute(input: { question: string }, context?: any) {
         const { question } = input;
         const lang = context?.language || 'en';
-        const isAr = lang.startsWith('ar');
+        const isAr = lang.startsWith('ar') || /[؟\u0600-\u06FF]/.test(question);
 
         const { applyNeuralProtocol } = require('../../llm');
         const baseSystemPrompt = applyNeuralProtocol(`You are **Joe**, the Elite AI Engine of **XElite Solutions**.

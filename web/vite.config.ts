@@ -1,5 +1,86 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { Buffer } from 'node:buffer';
+
+const createJson = (res: any, statusCode: number, body: any) => {
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+};
+
+const createNoContent = (res: any) => {
+  res.statusCode = 204;
+  res.end();
+};
+
+const createApiShim = () => {
+  const makeDevJwt = () => {
+    const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' }), 'utf8').toString('base64');
+    const payload = Buffer.from(
+      JSON.stringify({
+        sub: '000000000000000000000001',
+        role: 'OWNER',
+        email: 'dev@joe.local',
+        name: 'Developer',
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
+      }),
+      'utf8',
+    ).toString('base64');
+    return `${header}.${payload}.dev`;
+  };
+
+  const devToken = makeDevJwt();
+  let lastCheckAt = 0;
+  let cachedOk = false;
+  let inflight: Promise<boolean> | null = null;
+
+  const check = async () => {
+    const now = Date.now();
+    if (now - lastCheckAt < 1000) return cachedOk;
+    if (inflight) return inflight;
+    inflight = (async () => {
+      lastCheckAt = now;
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 300);
+      try {
+        const r = await fetch('http://127.0.0.1:3000/api/health', { signal: controller.signal });
+        cachedOk = r.ok;
+      } catch {
+        cachedOk = false;
+      } finally {
+        clearTimeout(t);
+        inflight = null;
+      }
+      return cachedOk;
+    })();
+    return inflight;
+  };
+
+  return async (req: any, res: any, next: any) => {
+    const rawUrl = typeof req?.url === 'string' ? req.url : '';
+    const path = rawUrl.split('?')[0] || '';
+    if (!path.startsWith('/api/')) return next();
+
+    const ok = await check();
+    if (ok) return next();
+
+    if (path === '/api/webviewClick') return createNoContent(res);
+    if (path === '/api/tools/browser_run/execute') return createNoContent(res);
+    if (path === '/api/health') return createJson(res, 200, { status: 'OK', db: 0 });
+    if (path === '/api/auth/login') return createJson(res, 200, { token: devToken });
+    if (path === '/api/auth/dev') return createJson(res, 200, { token: devToken });
+    if (path === '/api/system/brain/toggle') return createJson(res, 200, { ok: true });
+    if (path === '/api/system/brain/stats') {
+      return createJson(res, 200, { reflexCount: 0, status: 'paused', lastLearned: 'API offline' });
+    }
+    if (path === '/api/sessions') return createJson(res, 200, []);
+    if (path === '/api/workspaces') return createJson(res, 200, []);
+    if (path === '/api/servers') return createJson(res, 200, []);
+    if (path === '/api/runs/verify') return createJson(res, 503, { error: 'API unavailable' });
+
+    return next();
+  };
+};
 
 export default defineConfig({
   plugins: [
@@ -7,10 +88,10 @@ export default defineConfig({
     {
       name: 'webview-click-shim',
       configureServer(server) {
-        server.middlewares.use('/api/webviewClick', (_req, res) => {
-          res.statusCode = 204;
-          res.end();
-        });
+        server.middlewares.use(createApiShim());
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createApiShim());
       },
     },
   ],
@@ -18,6 +99,14 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:3000',
+        ws: true,
+      },
       '/artifacts': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,

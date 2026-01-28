@@ -27,8 +27,7 @@ export default function Login() {
     useEffect(() => {
         const check = async () => {
             try {
-                const pureApi = API.replace(/\/api$/, '');
-                const res = await fetch(`${pureApi}/health`);
+                const res = await fetch(`${API}/health`, { cache: 'no-store' });
                 const data = await res.json();
                 setHealth(data);
             } catch (e) {
@@ -46,6 +45,11 @@ export default function Login() {
 
         if (!email || !password) {
             setError(t('login_error_missing'));
+            return;
+        }
+
+        if (health?.status && health.status !== 'OK') {
+            setError(t('api_unreachable'));
             return;
         }
 
@@ -71,7 +75,12 @@ export default function Login() {
             localStorage.setItem('token', data.token);
             nav('/joe');
         } catch (err: any) {
-            setError(err.message);
+            const msg = String(err?.message || '');
+            if (/failed to fetch/i.test(msg) || /network/i.test(msg)) {
+                setError(t('api_unreachable'));
+            } else {
+                setError(msg || t('login_error_auth'));
+            }
             setLoading(false);
         }
     };

@@ -10,7 +10,7 @@ interface ThinkingProcessProps {
     };
 }
 
-export function ThinkingProcess({ thought }: ThinkingProcessProps) {
+export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessProps>(({ thought }, ref) => {
     const { t } = useTranslation();
     const contentRef = useRef<HTMLDivElement>(null);
     const [displayedContent, setDisplayedContent] = useState('');
@@ -61,6 +61,7 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
 
     return (
         <motion.div
+            ref={ref}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
@@ -96,4 +97,6 @@ export function ThinkingProcess({ thought }: ThinkingProcessProps) {
             </div>
         </motion.div>
     );
-}
+});
+
+ThinkingProcess.displayName = 'ThinkingProcess';

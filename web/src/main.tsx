@@ -57,7 +57,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         const header = btoa(JSON.stringify({ alg: 'none', typ: 'JWT' }));
         const payload = btoa(
           JSON.stringify({
-            sub: 'offline_admin',
+            sub: '000000000000000000000001',
             role: 'OWNER',
             email: 'dev@joe.local',
             name: 'Developer',

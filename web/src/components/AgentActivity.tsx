@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Types ---
@@ -24,7 +24,7 @@ export interface AgentActivityProps {
     onToggleTechnical?: () => void;
 }
 
-export const AgentActivity: React.FC<AgentActivityProps> = ({ status, steps }) => {
+export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps>(({ status, steps }, ref) => {
     // Ephemeral: If done, disappear completely.
     if (status === 'done') return null;
 
@@ -32,6 +32,7 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({ status, steps }) =
     if (status === 'failed') {
         return (
             <motion.div
+                ref={ref}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="my-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center justify-center gap-2"
@@ -69,7 +70,7 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({ status, steps }) =
 
     // Active "Thinking" State
     return (
-        <div className="w-full flex items-center justify-center py-8">
+        <div ref={ref} className="w-full flex items-center justify-center py-8">
             <div className="relative flex flex-col items-center justify-center gap-6">
 
                 {/* Visual Orb Container */}
@@ -159,4 +160,6 @@ export const AgentActivity: React.FC<AgentActivityProps> = ({ status, steps }) =
             </div>
         </div>
     );
-};
+});
+
+AgentActivity.displayName = 'AgentActivity';
