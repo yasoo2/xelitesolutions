@@ -33,15 +33,15 @@ if [ ! -f .env ]; then
     JWT_SECRET=$(openssl rand -base64 32)
     WORKER_KEY=$(openssl rand -hex 16)
     
-    cat > .env << 'EOF'
+    cat > .env << EOF
 # Auto-generated production configuration
 MONGO_URI=mongodb://mongo:27017/joe
-JWT_SECRET=$JWT_SECRET
+JWT_SECRET=${JWT_SECRET}
 NODE_ENV=production
 PORT=3000
 REGISTRATION_OPEN=true
 BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
-WORKER_API_KEY=$WORKER_KEY
+WORKER_API_KEY=${WORKER_KEY}
 
 # IMPORTANT: Set these environment variables before running setup-server.sh
 # export OPENAI_API_KEY="your-key-here"

@@ -42,6 +42,22 @@ if command -v docker &> /dev/null; then
     fi
 
     echo "Using compose: $COMPOSE -p $PROJECT_NAME -f $COMPOSE_FILE"
+    if [ -f .env ]; then
+        JWT_LINE="$(grep -E '^JWT_SECRET=' .env | head -n 1 || true)"
+        JWT_VAL="${JWT_LINE#JWT_SECRET=}"
+        if [ -z "${JWT_VAL:-}" ] || [ "$JWT_VAL" = "\$JWT_SECRET" ]; then
+            echo "Fixing JWT_SECRET in .env..."
+            NEW_JWT="$(openssl rand -base64 32)"
+            awk -v v="$NEW_JWT" 'BEGIN{found=0} /^JWT_SECRET=/{print "JWT_SECRET="v; found=1; next} {print} END{if(!found) print "JWT_SECRET="v}' .env > .env.tmp && mv .env.tmp .env
+        fi
+        WORKER_LINE="$(grep -E '^WORKER_API_KEY=' .env | head -n 1 || true)"
+        WORKER_VAL="${WORKER_LINE#WORKER_API_KEY=}"
+        if [ -z "${WORKER_VAL:-}" ] || [ "$WORKER_VAL" = "\$WORKER_KEY" ]; then
+            echo "Fixing WORKER_API_KEY in .env..."
+            NEW_WORKER="$(openssl rand -hex 16)"
+            awk -v v="$NEW_WORKER" 'BEGIN{found=0} /^WORKER_API_KEY=/{print "WORKER_API_KEY="v; found=1; next} {print} END{if(!found) print "WORKER_API_KEY="v}' .env > .env.tmp && mv .env.tmp .env
+        fi
+    fi
     echo "Pre-clean potential name conflicts..."
     for n in joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
         ids="$(docker ps -aq --filter "name=$n" 2>/dev/null || true)"
