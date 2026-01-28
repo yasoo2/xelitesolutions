@@ -139,7 +139,14 @@ export default function Joe() {
       'http://localhost:5174/',
       'http://127.0.0.1:5174/',
     ];
+    let failRounds = 0;
+    let timer: number | null = null;
+    const schedule = (ms: number) => {
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(tick, ms);
+    };
     const tick = async () => {
+      let found = false;
       for (const b of bases) {
         if (!alive) return;
         try {
@@ -149,15 +156,25 @@ export default function Joe() {
         } catch { }
         const ok = await pingUrl(b);
         if (ok) {
+          found = true;
           if (b !== previewUrl) setPreviewUrl(b);
           break;
         }
       }
+      if (!alive) return;
+      if (found) {
+        failRounds = 0;
+        schedule(6000);
+        return;
+      }
+      failRounds += 1;
+      const next = Math.min(60000, 6000 * Math.pow(2, Math.min(4, failRounds)));
+      schedule(next);
     };
-    const id = setInterval(tick, 6000);
+    schedule(6000);
     return () => {
       alive = false;
-      clearInterval(id);
+      if (timer != null) window.clearTimeout(timer);
     };
   }, [autoDetectPreview, previewUrl, isProduction]);
 
