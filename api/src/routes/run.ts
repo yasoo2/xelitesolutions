@@ -437,10 +437,19 @@ function detectWorkflow(raw: string): { kind: WorkflowKind; root: string; tool?:
   if (tool) return { kind: 'tool_shell', root: 'api', tool };
 
   const t = normalizeArabicQuery(s);
+  const isQuestionLike =
+    /[?؟]/.test(s) ||
+    /^(?:من|ما|ماذا|متي|متى|اين|أين|كيف|هل|لماذا)\b/.test(t) ||
+    /^(?:what|when|where|why|how|who|which)\b/i.test(s);
+  const hasBuildIntent =
+    /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(s) ||
+    /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ)/.test(t) ||
+    /^(?:اريد|أريد|ابي|ابغى|عايز|عاوز|احتاج|محتاج|ارغب)\b/.test(t);
   const wantsWebsite = /(website|site|landing|webpage|page)/i.test(s) || /(موقع|صفحه|صفحة|واجهه|واجهة)/.test(t);
   const wantsApi = /(api|backend|server)/i.test(s) || /(باك|خلفي|خلفيه|خلفية|سيرفر|خادم|واجهه\s+برمجه|واجهة\s+برمجه)/.test(t);
   const wantsApp = /(app|application|system)/i.test(s) || /(تطبيق|نظام|منصه|منصة)/.test(t);
   if (!wantsWebsite && !wantsApi && !wantsApp) return null;
+  if (isQuestionLike && !hasBuildIntent) return null;
 
   const kind: WorkflowKind =
     wantsWebsite && wantsApi ? 'fullstack' : wantsApi ? 'node_api' : wantsWebsite ? 'static_site' : 'fullstack';
@@ -518,10 +527,19 @@ async function detectWorkflowAdvanced(
 
   // Fallback to simple keyword-based detection
   const t = normalizeArabicQuery(s);
+  const isQuestionLike =
+    /[?؟]/.test(s) ||
+    /^(?:من|ما|ماذا|متي|متى|اين|أين|كيف|هل|لماذا)\b/.test(t) ||
+    /^(?:what|when|where|why|how|who|which)\b/i.test(s);
+  const hasBuildIntent =
+    /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(s) ||
+    /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ)/.test(t) ||
+    /^(?:اريد|أريد|ابي|ابغى|عايز|عاوز|احتاج|محتاج|ارغب)\b/.test(t);
   const wantsWebsite = /(website|site|landing|webpage|page)/i.test(s) || /(موقع|صفحه|صفحة|واجهه|واجهة)/.test(t);
   const wantsApi = /(api|backend|server)/i.test(s) || /(باك|خلفي|خلفيه|خلفية|سيرفر|خادم|واجهه\s+برمجه|واجهة\s+برمجه)/.test(t);
   const wantsApp = /(app|application|system)/i.test(s) || /(تطبيق|نظام|منصه|منصة)/.test(t);
   if (!wantsWebsite && !wantsApi && !wantsApp) return null;
+  if (isQuestionLike && !hasBuildIntent) return null;
 
   const kind: WorkflowKind =
     wantsWebsite && wantsApi ? 'fullstack' : wantsApi ? 'node_api' : wantsWebsite ? 'static_site' : 'fullstack';
@@ -731,11 +749,11 @@ function isProjectRelatedRequest(raw: string): boolean {
 
   const t = normalizeArabicQuery(s);
   const en =
-    /(repo|repository|project|workspace|code|bug|error|stack|trace|function|class|file|folder|directory|path|npm|node|tsc|eslint|lint|build|deploy|compile|test|git|branch|commit|merge|pull\s+request|pr|issue|api|endpoint|backend|frontend)/i.test(
+    /(repo|repository|project|workspace|code|bug|error|stack|trace|function|class|file|folder|directory|path|npm|node|tsc|eslint|lint|build|deploy|compile|test|git|branch|commit|merge|pull\s+request|pr|issue)/i.test(
       s,
     );
   const ar =
-    /(مستودع|ريبو|مشروع|الكود|كود|برمجه|برمجة|خطا|خطأ|باك|خلفي|واجهة|فرونت|ملف|مجلد|مسار|نصبه|تنصيب|بناء|اختبار|تصحيح|ديباغ|جت|جيت|كوميت|برنش|دمج|API|واجهه\s+برمجه|واجهة\s+برمجه)/.test(
+    /(مستودع|ريبو|مشروع|الكود|كود|برمجه|برمجة|خطا|خطأ|باك|خلفي|فرونت|ملف|مجلد|مسار|نصبه|تنصيب|بناء|اختبار|تصحيح|ديباغ|جت|جيت|كوميت|برنش|دمج)/.test(
       t,
     );
   const explicitTool = /(project_detect|analyze_codebase|grep|file_read|file_edit|ls|npm_install|npm_build)/i.test(s);
@@ -971,7 +989,6 @@ function isGeneralKnowledgeQuestion(text: string) {
   const raw = String(text || '').trim();
   if (!raw) return false;
   const t = normalizeArabicQuery(raw);
-  if (detectWorkflow(raw)) return false;
   const hasQuestionMark = /[?؟]/.test(raw);
   const arQ =
     /^(من|ما|ماذا|متي|متى|اين|أين|اين|كيف|هل|لماذا)\b/.test(t) ||
@@ -987,11 +1004,15 @@ function isGeneralKnowledgeQuestion(text: string) {
     /(open|start|launch|browse|visit|go to|click|run|execute|افتح|شغل|ابدأ|ادخل|اذهب|انقر|اضغط|نفذ|قم\s+ب)/i.test(
       raw,
     );
-  const toolishKeyword =
-    /(browser|web|preview|متصفح|المتصفح|terminal|command|ترمينال|أمر|npm|node|git|repo|repository|ملف|مجلد|path|مسار|build|lint|typecheck|code|كود|برمجه|برمجة|داله|دالة|function|class|typescript|javascript|python|java|golang|rust|api|endpoint|debug|bug|خطا|خطأ)/i.test(
-      raw,
-    );
-  return Boolean((hasQuestionMark || arQ || enQ || infoRequest) && !toolishKeyword && !actionKeyword);
+  const buildKeyword =
+    /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(raw) ||
+    /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ)/.test(t);
+  const questionLike = Boolean(hasQuestionMark || arQ || enQ || infoRequest);
+  if (!questionLike) return false;
+  if (actionKeyword) return false;
+  if (buildKeyword) return false;
+  if (isProjectRelatedRequest(raw)) return false;
+  return true;
 }
 
 function containsBuilderPlanText(raw: string): boolean {
@@ -1781,7 +1802,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         planContext.delete(ap.id);
         return res.json({ ok: true, runId, result });
       }
-      return res.json({ runId, sessionId, blocked: true, approvalId: ap.id, ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}) });
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap.id });
     } else {
       const ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
       ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
@@ -1830,7 +1851,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         return res.json({ ok: true, runId, result });
       } else {
       }
-      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString(), ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}) });
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString() });
     }
   }
 
@@ -2451,7 +2472,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
       if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
         const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
-        const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
+      const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
+      const needsKey = !hasAnyKey && !isFreeProvider;
         plan = {
           name: 'echo',
           input: {
@@ -2493,7 +2515,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     if (consecutiveThoughtSteps > 5) {
       if (!thoughtLoopPauseEmitted) {
-        const needsKey = !process.env.OPENAI_API_KEY && !apiKey;
+        const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
+        const needsKey = !hasAnyKey && !isFreeProvider;
         const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
         const providerLabel = String(providerKey || 'llm').trim() || 'llm';
         const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
@@ -3953,7 +3976,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           blocked: true,
           secretRequired: true,
           secret: { provider: 'generic', key: 'HTTP_BEARER_TOKEN', label: 'Bearer Token' },
-          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
         });
       }
     }
@@ -4004,7 +4026,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           blocked: true,
           secretRequired: true,
           secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
         });
       }
 
@@ -4043,7 +4064,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           blocked: true,
           secretRequired: true,
           secret: { provider: 'stripe', key: 'STRIPE_API_KEY', label: 'Stripe Secret Key' },
-          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
         });
       }
 
@@ -4082,7 +4102,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           blocked: true,
           secretRequired: true,
           secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
         });
       }
       if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
@@ -4120,7 +4139,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           blocked: true,
           secretRequired: true,
           secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-          ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
         });
       }
 
@@ -4241,7 +4259,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     runId,
     sessionId,
     status: 'done',
-    ...(systemPromptCreated ? { systemPrompt: systemPromptText, systemPromptId: systemPromptEventId } : {}),
   });
 });
 

@@ -50,7 +50,50 @@ window.addEventListener(
 );
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const token = localStorage.getItem('token');
+  const getDevBypassToken = () => {
+    if (!import.meta.env.DEV) return null;
+    const makeToken = () => {
+      try {
+        const header = btoa(JSON.stringify({ alg: 'none', typ: 'JWT' }));
+        const payload = btoa(
+          JSON.stringify({
+            sub: 'offline_admin',
+            role: 'OWNER',
+            email: 'dev@joe.local',
+            name: 'Developer',
+            exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
+          }),
+        );
+        return `${header}.${payload}.dev`;
+      } catch {
+        return 'offline_dev';
+      }
+    };
+    const envFlag = String((import.meta as any).env?.VITE_ENABLE_AUTH_BYPASS || '').toLowerCase();
+    if (envFlag === 'true') return makeToken();
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const v = String(qs.get('auth_bypass') || '').toLowerCase();
+      if (v === '1' || v === 'true' || v === 'yes') return makeToken();
+    } catch {}
+    return null;
+  };
+
+  let token: string | null = null;
+  try {
+    token = localStorage.getItem('token');
+  } catch {
+    token = null;
+  }
+  if (!token) {
+    const bypass = getDevBypassToken();
+    if (bypass) {
+      try {
+        localStorage.setItem('token', bypass);
+        token = bypass;
+      } catch {}
+    }
+  }
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }

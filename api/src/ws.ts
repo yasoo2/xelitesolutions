@@ -130,15 +130,13 @@ export function attachWebSocket(server: Server) {
     }
 
     if (url.pathname === '/ws' || url.pathname === '/ws/' || url.pathname === '/api/ws' || url.pathname === '/api/ws/') {
-      // AUTH CHECK
+      const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
       const token = url.searchParams.get('token');
-      if (!token && process.env.ENABLE_AUTH_BYPASS !== 'true') {
-        return reject(401, 'Unauthorized: Missing token');
-      }
-      if (token) {
+      if (!authBypass) {
+        if (!token) return reject(401, 'Unauthorized: Missing token');
         try {
           jwt.verify(token, config.jwtSecret);
-        } catch (e) {
+        } catch {
           return reject(401, 'Unauthorized: Invalid token');
         }
       }
@@ -152,18 +150,13 @@ export function attachWebSocket(server: Server) {
       return;
     }
     if (url.pathname === '/ws/browser') {
-      // AUTH CHECK (Browser socket usually also needs auth, let's secure it too)
+      const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
       const token = url.searchParams.get('token');
-      if (token) {
+      if (!authBypass && token) {
         try {
           jwt.verify(token, config.jwtSecret);
         } catch {
-          // For now maybe looser on browser? Or strict? 
-          // Let's keep it strict but allow NO token if bypass is on, same as above.
-          // Actually browser socket might be used by the worker which has an API key?
-          // Browser worker usually connects via 'X-Worker-Key'. 
-          // Let's leave browser socket auth logic alone for now (or minimally assume it's okay if not causing issues).
-          // The user reported issues with the MAIN socket.
+          return reject(401, 'Unauthorized: Invalid token');
         }
       }
 

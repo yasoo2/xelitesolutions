@@ -120,7 +120,7 @@ async function main() {
 
   // Middleware: Block API requests until DB is ready
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
+    if (process.env.NODE_ENV === 'production' && req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
       return res.status(503).json({
         error: 'Service Unavailable',
         message: 'Database connection initializing, please try again shortly.',

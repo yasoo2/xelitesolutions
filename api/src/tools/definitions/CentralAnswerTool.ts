@@ -42,22 +42,21 @@ export class CentralAnswerTool implements ToolDefinition {
         const lang = context?.language || 'en';
         const isAr = lang.startsWith('ar');
 
-        const providers = [
-            {
-                name: 'OpenAI',
-                run: async () => {
-                    const { applyNeuralProtocol } = require('../../llm');
-                    let systemPrompt = applyNeuralProtocol(`You are **Joe**, the Elite AI Engine of **XElite Solutions**.
+        const { applyNeuralProtocol } = require('../../llm');
+        const baseSystemPrompt = applyNeuralProtocol(`You are **Joe**, the Elite AI Engine of **XElite Solutions**.
 You are a world-class specialist in **Web Development, App Architecture, and Complex System Engineering**.
 Your responses should be **powerful, enticing, and professional**. Use language that captivates the user and demonstrates superior expertise ("Elite", "Advanced", "Premium State-of-the-Art").
 You have full autonomous capabilities (Files, Terminal, Browser).
 Always identify as **Joe**. Never mention ChatGPT or OpenAI.
 Your goal is to build the extraordinary.`);
+        const systemPrompt = isAr
+            ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: You MUST respond in **ARABIC** (اللغة العربية) ONLY. Use professional, technical Arabic terminology. Do NOT use English unless for code or specific technical terms that are better in English.`
+            : baseSystemPrompt;
 
-                    if (isAr) {
-                        systemPrompt += "\n\nCRITICAL INSTRUCTION: You MUST respond in **ARABIC** (اللغة العربية) ONLY. Use professional, technical Arabic terminology. Do NOT use English unless for code or specific technical terms that are better in English.";
-                    }
-
+        const providers = [
+            {
+                name: 'OpenAI',
+                run: async () => {
                     const OpenAI = require('openai').default;
                     const apiKey = process.env.OPENAI_API_KEY;
                     if (!apiKey) throw new Error('OPENAI_API_KEY not found');
@@ -76,9 +75,7 @@ Your goal is to build the extraordinary.`);
                     if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_placeholder') throw new Error('Skipping Groq: No API Key');
                     const { GroqProvider } = require('../../llm/providers/groq');
                     const gp = new GroqProvider();
-                    const { applyNeuralProtocol } = require('../../llm');
-                    const prompt = applyNeuralProtocol(`You are **Joe** (XElite Solutions). Elite Expert in Web/App Dev. Powerful, enticing, professional. Never ChatGPT.`);
-                    return await gp.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
+                    return await gp.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: question }]);
                 }
             },
             {
@@ -87,9 +84,7 @@ Your goal is to build the extraordinary.`);
                     if (!process.env.OPENROUTER_API_KEY) throw new Error('Skipping OpenRouter: No API Key');
                     const { OpenRouterProvider } = require('../../llm/providers/openrouter');
                     const op = new OpenRouterProvider(process.env.OPENROUTER_API_KEY || undefined);
-                    const { applyNeuralProtocol } = require('../../llm');
-                    const prompt = applyNeuralProtocol(`You are **Joe** (XElite Solutions). Elite Expert in Web/App Dev. Powerful, enticing, professional. Never ChatGPT.`);
-                    return await op.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
+                    return await op.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: question }]);
                 }
             },
             {
@@ -97,9 +92,7 @@ Your goal is to build the extraordinary.`);
                 run: async () => {
                     const { PollinationsProvider } = require('../../llm/providers/pollinations');
                     const pp = new PollinationsProvider();
-                    const { applyNeuralProtocol } = require('../../llm');
-                    const prompt = applyNeuralProtocol(`You are **Joe** (XElite Solutions). Elite Expert in Web/App Dev. Powerful, enticing, professional. Never ChatGPT.`);
-                    return await pp.chatComplete([{ role: 'system', content: prompt }, { role: 'user', content: question }]);
+                    return await pp.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: question }]);
                 }
             }
         ];
