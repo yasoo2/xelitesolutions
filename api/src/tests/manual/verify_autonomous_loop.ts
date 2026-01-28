@@ -1,5 +1,3 @@
-
-import { ProjectManagerAgent } from '../../agents/ProjectManagerAgent';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -8,6 +6,13 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 async function verifyAutonomousLoop() {
     console.log('🤖 Verifying Autonomous ReAct Loop...');
+    if (!process.env.JWT_SECRET) process.env.JWT_SECRET = 'test-jwt-secret';
+    if (!process.env.OPENAI_API_KEY) {
+        console.log('⚠️  SKIPPED: OPENAI_API_KEY is missing. Set it to run this test.');
+        process.exit(0);
+    }
+
+    const { ProjectManagerAgent } = await import('../../agents/ProjectManagerAgent');
 
     const TEST_DIR = path.join(__dirname, '../../test_autonomous_loop');
 

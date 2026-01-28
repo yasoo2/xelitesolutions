@@ -4,6 +4,7 @@
  */
 
 console.log('🔍 Production System Verification\n');
+if (!process.env.JWT_SECRET) process.env.JWT_SECRET = 'test-jwt-secret';
 
 // 1. Check Environment
 console.log('1️⃣ Environment Check:');
@@ -52,8 +53,8 @@ try {
 // 4. Test Tool Selection
 console.log('\n4️⃣ Tool Selection Test:');
 try {
-    const llm = require('../../llm');
-    const tools = llm.tools || [];
+    const registry = require('../../tools/registry');
+    const tools = registry.tools || [];
     console.log('   Available Tools:', tools.length);
     console.log('   Sample Tools:', tools.slice(0, 5).map((t: any) => t.name).join(', '));
 } catch (e: any) {

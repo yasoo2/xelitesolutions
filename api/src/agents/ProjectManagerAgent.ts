@@ -13,11 +13,13 @@ export class ProjectManagerAgent {
     private rootDir: string;
     private cortex: CortexState;
     private taskId: string;
+    private hasOpenAiKey: boolean;
 
     constructor(name: string, rootDir: string, taskId?: string) {
         this.name = name;
         this.rootDir = rootDir;
-        this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        this.hasOpenAiKey = !!OPENAI_API_KEY;
+        this.openai = new OpenAI({ apiKey: OPENAI_API_KEY || 'dummy' });
         this.cortex = CortexState.getInstance();
         // Generate a stable ID based on name if not provided, or use random
         this.taskId = taskId || crypto.createHash('md5').update(name + rootDir).digest('hex');
@@ -31,6 +33,9 @@ export class ProjectManagerAgent {
 
     async execute(goal: string) {
         console.log(`[PM:${this.name}] 🧠 Starting Autonomous Persistent Agent for: "${goal}"`);
+        if (!this.hasOpenAiKey) {
+            return { status: 'failed', error: 'OPENAI_API_KEY is missing; cannot run autonomous loop.' };
+        }
 
         // 1. Load or Initialize State
         let state = this.cortex.getTask(this.taskId);
