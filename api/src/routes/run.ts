@@ -682,6 +682,10 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
   if (!providerKey || providerKey === 'llm') {
     return res.status(400).json({ error: 'مزود llm المحلي مُعطّل. اختر مزودًا وأدخل API Key.' });
   }
+
+  if (providerKey === 'auto' || providerKey.includes('auto')) {
+    return res.json({ status: 'ok', message: 'Connected successfully' });
+  }
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   if (providerKey && providerKey !== 'openai' && !providerKey.includes('auto') && !providerKey.includes('hack') && !providerKey.includes('pollinations') && !hasBaseUrl) {
     return res.status(400).json({

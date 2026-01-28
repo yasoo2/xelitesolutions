@@ -74,6 +74,7 @@ const createApiShim = () => {
       return createJson(res, 200, { reflexCount: 0, status: 'paused', lastLearned: 'API offline' });
     }
     if (path === '/api/sessions') return createJson(res, 200, []);
+    if (path === '/api/folders') return createJson(res, 200, []);
     if (path === '/api/workspaces') return createJson(res, 200, []);
     if (path === '/api/servers') return createJson(res, 200, []);
     if (path === '/api/runs/verify') return createJson(res, 503, { error: 'API unavailable' });
