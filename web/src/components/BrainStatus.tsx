@@ -92,226 +92,150 @@ export default function BrainStatus() {
     };
   }, []);
 
+  const pillTone = (kind: 'ok' | 'degraded' | 'down' | 'unknown') => {
+    if (kind === 'ok') {
+      return {
+        bg: 'rgba(16, 185, 129, 0.14)',
+        border: 'rgba(16, 185, 129, 0.35)',
+        text: 'rgb(16, 185, 129)',
+      };
+    }
+    if (kind === 'degraded') {
+      return {
+        bg: 'rgba(245, 158, 11, 0.14)',
+        border: 'rgba(245, 158, 11, 0.35)',
+        text: 'rgb(245, 158, 11)',
+      };
+    }
+    if (kind === 'down') {
+      return {
+        bg: 'rgba(239, 68, 68, 0.14)',
+        border: 'rgba(239, 68, 68, 0.35)',
+        text: 'rgb(239, 68, 68)',
+      };
+    }
+    return {
+      bg: 'var(--bg-secondary)',
+      border: 'var(--border-color)',
+      text: 'var(--text-secondary)',
+    };
+  };
+
+  const apiTone = pillTone(health);
+  const dbTone = pillTone(dbState === 1 ? 'ok' : health === 'unknown' ? 'unknown' : 'down');
+
   return (
-    <div className="brain-status-widget">
-      <div className="brain-header">
-        <Brain size={18} className={isRunning ? 'brain-icon-active' : 'brain-icon'} />
-        <span className="brain-title">Neural Core</span>
+    <div
+      className="rounded-xl p-3 m-2"
+      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
+    >
+      <div className="flex items-center gap-2">
+        <div
+          className="p-1.5 rounded-lg"
+          style={{
+            background: 'rgba(var(--accent-primary-rgb), 0.10)',
+            border: '1px solid rgba(var(--accent-primary-rgb), 0.18)',
+          }}
+        >
+          <Brain
+            size={18}
+            className={isRunning ? 'animate-pulse' : ''}
+            style={{ color: 'var(--accent-primary)' }}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
+            Neural Core
+          </div>
+          <div className="text-[10px] tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+            {isRunning ? 'LEARNING' : stats.status === 'connecting' ? 'CONNECTING' : 'PAUSED'}
+          </div>
+        </div>
+
         <button
           onClick={toggleTraining}
-          className={`brain-toggle ${isRunning ? 'running' : 'paused'}`}
+          className="w-7 h-7 rounded-full grid place-items-center transition-transform active:scale-95"
+          style={{
+            background: isRunning ? 'rgba(16, 185, 129, 0.14)' : 'rgba(239, 68, 68, 0.14)',
+            border: `1px solid ${isRunning ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
+            color: isRunning ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)',
+          }}
           title={isRunning ? 'Pause Training' : 'Resume Training'}
+          type="button"
         >
           {isRunning ? <Pause size={14} /> : <Play size={14} />}
         </button>
       </div>
 
-      <div className="brain-health-row">
-        <div className={`brain-health-pill health-${health}`}>
-          <span className="dot" />
+      <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
+        <div
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold border"
+          style={{ background: apiTone.bg, borderColor: apiTone.border, color: apiTone.text }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: apiTone.text }} />
           {health === 'ok' && 'API: متصل'}
           {health === 'degraded' && 'API: متصل جزئياً'}
           {health === 'down' && 'API: غير متصل'}
           {health === 'unknown' && 'API: جارٍ الفحص'}
         </div>
-        <div className={`brain-health-pill ${dbState === 1 ? 'health-ok' : health === 'unknown' ? 'health-unknown' : 'health-down'}`}>
-          <span className="dot" />
+
+        <div
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold border"
+          style={{ background: dbTone.bg, borderColor: dbTone.border, color: dbTone.text }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: dbTone.text }} />
           {dbState === 1 ? 'DB: جاهزة' : health === 'unknown' ? 'DB: جارٍ الفحص' : 'DB: غير جاهزة'}
         </div>
-        {health === 'down' && (
-          <div className="brain-health-warning" title="تحقق من تشغيل خادم الـ API على المنفذ 3000">
+
+        {health === 'down' ? (
+          <div
+            className="inline-flex items-center gap-1 text-[10px] font-medium"
+            style={{ color: 'rgb(239, 68, 68)' }}
+            title="تحقق من تشغيل خادم الـ API على المنفذ 3000"
+          >
             <AlertTriangle size={12} />
             <span>لا يوجد اتصال بـ API</span>
           </div>
-        )}
+        ) : null}
       </div>
 
-      <div className="brain-stats">
-        <div className="brain-count">
-          <Zap size={14} className="zap-icon" />
-          <span className="count-value">{formatNumber(stats?.reflexCount || 0)}</span>
-
-          <span className="count-label">Reflexes</span>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Zap size={14} style={{ color: 'var(--accent-primary)' }} />
+          <span className="text-lg font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+            {formatNumber(stats?.reflexCount || 0)}
+          </span>
+          <span className="text-[11px] tracking-wide" style={{ color: 'var(--text-muted)' }}>
+            Reflexes
+          </span>
         </div>
 
-        <div className={`brain-status-indicator ${isRunning ? 'active' : 'inactive'}`}>
-          {isRunning ? 'LEARNING' : 'PAUSED'}
+        <div
+          className="text-[10px] font-bold tracking-widest px-2 py-1 rounded-md"
+          style={{
+            background: isRunning ? 'rgba(16, 185, 129, 0.14)' : 'rgba(148, 163, 184, 0.14)',
+            border: `1px solid ${isRunning ? 'rgba(16, 185, 129, 0.35)' : 'var(--border-color)'}`,
+            color: isRunning ? 'rgb(16, 185, 129)' : 'var(--text-secondary)',
+          }}
+        >
+          {isRunning ? 'ACTIVE' : 'IDLE'}
         </div>
       </div>
 
-      {stats.lastLearned && (
-        <div className="brain-ticker">
-          <span className="ticker-label">Latest:</span>
-          <span className="ticker-content">{stats.lastLearned.replace('Learned: ', '')}</span>
+      {stats.lastLearned ? (
+        <div
+          className="mt-2 px-2.5 py-2 rounded-lg text-[11px] flex gap-2 overflow-hidden"
+          style={{ background: 'var(--bg-input)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+        >
+          <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>
+            Latest:
+          </span>
+          <span className="truncate" style={{ color: 'var(--text-primary)' }}>
+            {stats.lastLearned.replace('Learned: ', '')}
+          </span>
         </div>
-      )}
-
-      <style>{`
-        .brain-status-widget {
-          background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1));
-          border: 1px solid rgba(139, 92, 246, 0.3);
-          border-radius: 12px;
-          padding: 12px;
-          margin: 8px;
-        }
-        .brain-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 8px;
-        }
-        .brain-icon { color: #666; }
-        .brain-icon-active { color: #8b5cf6; animation: pulse 1.5s infinite; }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-        .brain-title {
-          flex: 1;
-          font-weight: 600;
-          font-size: 14px;
-          color: #e2e8f0;
-        }
-        .brain-toggle {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          border: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .brain-toggle.running {
-          background: rgba(34, 197, 94, 0.2);
-          color: #22c55e;
-        }
-        .brain-toggle.paused {
-          background: rgba(239, 68, 68, 0.2);
-          color: #ef4444;
-        }
-        .brain-toggle:hover {
-          transform: scale(1.1);
-        }
-        .brain-stats {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 8px;
-        }
-        .brain-health-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 6px;
-          gap: 6px;
-        }
-        .brain-health-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 8px;
-          border-radius: 999px;
-          font-size: 11px;
-          font-weight: 500;
-        }
-        .brain-health-pill .dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 999px;
-          background: #9ca3af;
-        }
-        .brain-health-pill.health-ok {
-          background: rgba(22, 163, 74, 0.18);
-          color: #4ade80;
-        }
-        .brain-health-pill.health-ok .dot {
-          background: #22c55e;
-        }
-        .brain-health-pill.health-degraded {
-          background: rgba(245, 158, 11, 0.18);
-          color: #fde68a;
-        }
-        .brain-health-pill.health-degraded .dot {
-          background: #f59e0b;
-        }
-        .brain-health-pill.health-down {
-          background: rgba(239, 68, 68, 0.18);
-          color: #fecaca;
-        }
-        .brain-health-pill.health-down .dot {
-          background: #ef4444;
-        }
-        .brain-health-pill.health-unknown {
-          background: rgba(148, 163, 184, 0.18);
-          color: #e5e7eb;
-        }
-        .brain-health-pill.health-unknown .dot {
-          background: #9ca3af;
-        }
-        .brain-health-warning {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 10px;
-          color: #fecaca;
-          opacity: 0.9;
-        }
-        .brain-count {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .zap-icon { color: #facc15; }
-        .count-value {
-          font-size: 20px;
-          font-weight: 700;
-          color: #8b5cf6;
-          font-family: monospace;
-        }
-        .count-label {
-          font-size: 11px;
-          color: #94a3b8;
-          text-transform: uppercase;
-        }
-        .brain-status-indicator {
-          font-size: 10px;
-          font-weight: 600;
-          padding: 4px 8px;
-          border-radius: 4px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .brain-status-indicator.active {
-          background: rgba(34, 197, 94, 0.2);
-          color: #22c55e;
-        }
-        .brain-status-indicator.inactive {
-          background: rgba(100, 116, 139, 0.2);
-          color: #94a3b8;
-        }
-        .brain-ticker {
-          font-size: 11px;
-          color: #94a3b8;
-          padding: 6px 8px;
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 6px;
-          display: flex;
-          gap: 6px;
-          overflow: hidden;
-        }
-        .ticker-label {
-          color: #64748b;
-          flex-shrink: 0;
-        }
-        .ticker-content {
-          color: #06b6d4;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-      `}</style>
+      ) : null}
     </div>
   );
 }

@@ -76,33 +76,13 @@ export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessP
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            style={{
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '8px',
-                overflow: 'hidden',
-                marginTop: '8px',
-                marginBottom: '4px',
-                position: 'relative'
-            }}
+            className="mt-2 mb-1 rounded-lg overflow-hidden"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
         >
             <div
                 ref={contentRef}
-                style={{
-                    padding: '4px 12px',
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                    fontSize: '11px',
-                    fontWeight: 300,
-                    fontStyle: 'italic',
-                    lineHeight: '1.5',
-                    color: 'rgba(192, 192, 192, 0.78)',
-                    fontFamily: 'var(--font-sans)',
-                    whiteSpace: 'pre-wrap',
-                    scrollbarWidth: 'none',
-                    filter: 'blur(0.15px)',
-                    transition: 'all 0.3s ease'
-                }}
+                className="px-3 py-2 max-h-52 overflow-auto text-[11px] leading-5 whitespace-pre-wrap"
+                style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}
             >
                 {cleanContent}
             </div>
