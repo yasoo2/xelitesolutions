@@ -1447,8 +1447,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   const ev = (e: LiveEvent) => broadcast({ ...e, runId });
 
   try {
-    // Build messages array for LLM
-    const currentSystemPrompt = getSystemPrompt({ name: (req as any).user?.name });
+    const userSystemInstructions =
+      typeof (req.body as any)?.systemInstructions === 'string'
+        ? (req.body as any).systemInstructions.trim()
+        : '';
+    const currentSystemPrompt = getSystemPrompt({
+      name: (req as any).user?.name,
+      systemInstructions: userSystemInstructions || undefined,
+    });
 
     // ENSURE ENHANCED SYSTEM PROMPT IS ALWAYS FIRST
     const systemMessage: any = { role: 'system', content: currentSystemPrompt };

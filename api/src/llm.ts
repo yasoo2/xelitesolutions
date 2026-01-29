@@ -418,7 +418,7 @@ export const applyNeuralProtocol = (prompt: string) => {
   return prompt + '\\n\\n## NEURAL THOUGHT PROTOCOL (INTERNAL):\\n' + NEURAL_THOUGHT_PROTOCOL;
 };
 
-export const getSystemPrompt = (user?: { name?: string }) => {
+export const getSystemPrompt = (user?: { name?: string; systemInstructions?: string }) => {
   const now = new Date();
   const date = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
@@ -426,6 +426,9 @@ export const getSystemPrompt = (user?: { name?: string }) => {
 
   if (user?.name) {
     systemPromptOutput += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
+  }
+  if (user?.systemInstructions && user.systemInstructions.trim()) {
+    systemPromptOutput += `\n\nUSER CUSTOM INSTRUCTIONS:\n${user.systemInstructions.trim()}`;
   }
   return applyNeuralProtocol(systemPromptOutput);
 };
