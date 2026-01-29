@@ -181,7 +181,7 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                                         ) : null}
                                     </div>
                                     <pre className="text-[11px] leading-5 whitespace-pre-wrap break-words text-slate-200 max-h-64 overflow-auto">
-                                        {showTechnical ? visibleLogs.join('\n') : visibleLogs.slice(-6).join('\n')}
+                                        {showTechnical ? visibleLogs.join('\n') : visibleLogs.slice(-1).join('\n')}
                                     </pre>
                                 </div>
                             ) : null}

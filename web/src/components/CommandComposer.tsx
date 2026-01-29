@@ -951,7 +951,7 @@ export default function CommandComposer({
       }
       if (name.startsWith('execute:')) {
         const tool = name.slice('execute:'.length).trim();
-        return t('executePrefix', { tool: tool || t('toolCategoryGeneric') });
+        return t(`tools.${tool}`, tool || t('toolCategoryGeneric'));
       }
       return name;
     };
@@ -1239,8 +1239,7 @@ export default function CommandComposer({
         return t('thinkingDraftIntro', 'جاري تجهيز الرد…');
       }
       if (toolVisible && activeToolName) {
-        const toolKey = String(activeToolName).trim();
-        return t('thinkingGlimpseTool', { tool: toolKey });
+        return t('thinkingGlimpseUnderstand', 'جاري التنفيذ…');
       }
       return t('thinkingGlimpseUnderstand', 'جاري التنفيذ…');
     };
@@ -2853,9 +2852,13 @@ export default function CommandComposer({
       if (e?.type !== 'evidence_added') continue;
       if (String(e?.data?.kind || '') !== 'log') continue;
       if (typeof e?.data?.text !== 'string') continue;
+      const txt = String(e.data.text || '').trim();
+      if (!txt) continue;
+      if (/^running:/i.test(txt)) continue;
+      if (/^(?:تجميع\s+سياق|مطابقة\s+الأنماط|تشغيل\s+طبقات|تحديث\s+ذاكرة|اختيار\s+أفضل\s+مسار)/.test(txt)) continue;
       const rid = getEventRunId(e);
       if (!out.has(rid)) out.set(rid, []);
-      out.get(rid)!.push(e.data.text);
+      out.get(rid)!.push(txt);
     }
     return out;
   }, [sortedEvents]);
@@ -3584,7 +3587,7 @@ export default function CommandComposer({
                   const total = activeTaskBar.items.length;
                   const done = activeTaskBar.items.filter((x) => x.status === 'done').length;
                   if (total === 0) return 'عملية التفكير';
-                  return `عملية التفكير ${done}/${total} done`;
+                  return `عملية التفكير ${done}/${total}`;
                 })()}
               </div>
               <div className="taskbar-items">
