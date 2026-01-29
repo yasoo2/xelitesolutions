@@ -1430,6 +1430,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   }
 
   try {
+    broadcast({ type: 'user_input', runId, data: { sessionId, text: String(text || '') } });
+  } catch { }
+
+  try {
     const { setSessionRunConfig, getSessionRunConfig } = await import('../services/secrets');
     const curCfg = getSessionRunConfig(String(sessionId)) || ({} as any);
     setSessionRunConfig(String(sessionId), {

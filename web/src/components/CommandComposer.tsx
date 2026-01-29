@@ -580,7 +580,7 @@ export default function CommandComposer({
 }) {
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
-  const showFloatingTaskbar = false;
+  const showFloatingTaskbar = true;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -1343,6 +1343,9 @@ export default function CommandComposer({
             setIsThinking(true);
             setActiveToolName(null);
             setToolVisible(false);
+            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
+            if (rid) ensureTaskBar(rid, { visible: true, analyzing: true });
+            return;
           }
 
           if ((msg.type === 'step_started' || msg.type === 'step_done' || msg.type === 'step_failed') && typeof msg?.data?.name === 'string') {
@@ -1603,7 +1606,7 @@ export default function CommandComposer({
           }
 
           if (!showToolUi && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
-          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed', 'user_input'].includes(msg.type)) {
+          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed'].includes(msg.type)) {
             setEvents(prev => {
               const id = typeof msg?.id === 'string' ? msg.id : '';
               if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
