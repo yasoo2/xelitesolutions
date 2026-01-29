@@ -25,9 +25,6 @@ export interface AgentActivityProps {
 }
 
 export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps>(({ status, steps }, ref) => {
-    // Ephemeral: If done, disappear completely.
-    if (status === 'done') return null;
-
     // Safety: Minimal error state
     if (status === 'failed') {
         return (
@@ -65,28 +62,28 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                     {/* Ring 1: Rotating Outer */}
                     <motion.div
                         className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-500 border-r-blue-500"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2, ease: "linear", repeat: Infinity }}
+                        animate={status === 'done' ? undefined : { rotate: 360 }}
+                        transition={status === 'done' ? undefined : { duration: 2, ease: "linear", repeat: Infinity }}
                     />
 
                     {/* Ring 2: Rotating Inner (Counter) */}
                     <motion.div
                         className="absolute inset-2 rounded-full border-2 border-transparent border-b-purple-500 border-l-pink-500"
-                        animate={{ rotate: -360 }}
-                        transition={{ duration: 3, ease: "linear", repeat: Infinity }}
+                        animate={status === 'done' ? undefined : { rotate: -360 }}
+                        transition={status === 'done' ? undefined : { duration: 3, ease: "linear", repeat: Infinity }}
                     />
 
                     {/* Ring 3: Pulse Ring */}
                     <motion.div
                         className="absolute inset-0 rounded-full border border-blue-400/30"
-                        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
-                        transition={{ duration: 2, ease: "easeInOut", repeat: Infinity }}
+                        animate={status === 'done' ? undefined : { scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
+                        transition={status === 'done' ? undefined : { duration: 2, ease: "easeInOut", repeat: Infinity }}
                     />
 
                     {/* Core: Glowing Center */}
                     <motion.div
                         className="w-4 h-4 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]"
-                        animate={{
+                        animate={status === 'done' ? { opacity: 1, scale: 1 } : {
                             scale: [1, 1.2, 1],
                             opacity: [0.8, 1, 0.8],
                             boxShadow: [
@@ -95,7 +92,7 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                                 "0 0 10px rgba(56, 189, 248, 0.5)"
                             ]
                         }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
+                        transition={status === 'done' ? undefined : { duration: 1.5, repeat: Infinity }}
                     />
                 </div>
 
@@ -106,24 +103,26 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                             className="text-sm font-bold tracking-widest uppercase"
                             style={{ color: '#22d3ee', textShadow: '0 0 10px rgba(34, 211, 238, 0.5)' }}
                         >
-                            تنفيذ
+                            {status === 'done' ? 'تم التنفيذ' : 'تنفيذ'}
                         </h3>
                         {/* Loading Dots */}
-                        <div className="flex gap-1 h-1 justify-center">
-                            {[0, 1, 2].map((i) => (
-                                <motion.div
-                                    key={i}
-                                    className="w-1 h-1 rounded-full bg-white"
-                                    animate={{ y: [0, -3, 0], opacity: [0.3, 1, 0.3] }}
-                                    transition={{
-                                        duration: 0.6,
-                                        repeat: Infinity,
-                                        delay: i * 0.15,
-                                        ease: "easeInOut"
-                                    }}
-                                />
-                            ))}
-                        </div>
+                        {status === 'done' ? null : (
+                            <div className="flex gap-1 h-1 justify-center">
+                                {[0, 1, 2].map((i) => (
+                                    <motion.div
+                                        key={i}
+                                        className="w-1 h-1 rounded-full bg-white"
+                                        animate={{ y: [0, -3, 0], opacity: [0.3, 1, 0.3] }}
+                                        transition={{
+                                            duration: 0.6,
+                                            repeat: Infinity,
+                                            delay: i * 0.15,
+                                            ease: "easeInOut"
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Streaming Thought Text */}

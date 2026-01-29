@@ -1683,6 +1683,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             baseUrl: baseUrl,
             model: model,
             throwOnError: true,
+            onProgress: (msg: string) => {
+              const s = String(msg || '').trim();
+              if (!s) return;
+              ev({ type: 'evidence_added', data: { kind: 'log', text: s } });
+            },
           });
         }
       }
