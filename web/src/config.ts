@@ -24,6 +24,10 @@ function inferApiUrl() {
 }
 
 function inferWsUrl(apiUrl: string) {
+  const hostname = window.location.hostname;
+  if (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com') {
+    return 'wss://ws.xelitesolutions.com/ws';
+  }
   if (apiUrl && apiUrl.startsWith('https')) {
     // If it ends in /api, remove it and add /ws
     // Otherwise just swap https->wss and add /ws

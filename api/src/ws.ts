@@ -40,7 +40,29 @@ export function attachWebSocket(server: Server) {
   browserWssRef = new WebSocketServer({ noServer: true });
   attachBrowserWss(browserWssRef);
 
-  liveWssRef.on('connection', (ws) => {
+  liveWssRef.on('connection', (ws, req: IncomingMessage) => {
+    let url: URL | null = null;
+    try {
+      url = new URL(req.url || '/', 'http://localhost');
+    } catch {
+      url = null;
+    }
+
+    const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+    const token = url?.searchParams.get('token') || '';
+    if (!authBypass) {
+      if (!token) {
+        try { ws.close(1008, 'unauthorized_missing_token'); } catch { }
+        return;
+      }
+      try {
+        jwt.verify(token, config.jwtSecret);
+      } catch {
+        try { ws.close(1008, 'unauthorized_invalid_token'); } catch { }
+        return;
+      }
+    }
+
     console.log('[WS] Client connected to liveWss');
     (ws as any).isAlive = true;
     ws.on('pong', () => {
@@ -130,17 +152,6 @@ export function attachWebSocket(server: Server) {
     }
 
     if (url.pathname === '/ws' || url.pathname === '/ws/' || url.pathname === '/api/ws' || url.pathname === '/api/ws/') {
-      const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
-      const token = url.searchParams.get('token');
-      if (!authBypass) {
-        if (!token) return reject(401, 'Unauthorized: Missing token');
-        try {
-          jwt.verify(token, config.jwtSecret);
-        } catch {
-          return reject(401, 'Unauthorized: Invalid token');
-        }
-      }
-
       console.log('[WS] Upgrading ws connection at:', url.pathname);
       if (!liveWssRef) return reject(503, 'Service Unavailable');
       liveWssRef.handleUpgrade(req, socket, head, (ws) => {

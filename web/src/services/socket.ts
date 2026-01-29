@@ -8,6 +8,8 @@ let connectTimer: number | null = null;
 let connectAttempts = 0;
 let triedFallback = false;
 let lastUrl = '';
+let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
+let lastAuthProbeAt = 0;
 
 function computeFallbackWsUrl(primaryUrl: string) {
   const candidates = [
@@ -29,6 +31,30 @@ function setStatus(state: string, detail?: string) {
 }
 
 import { isValidToken } from '../utils/auth';
+
+async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'> {
+  const now = Date.now();
+  if (authProbePromise && now - lastAuthProbeAt < 5000) return authProbePromise;
+  lastAuthProbeAt = now;
+  authProbePromise = (async () => {
+    try {
+      const res = await fetch(`${API_URL}/sessions`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) return 'unauthorized';
+      if (!res.ok) return 'error';
+      return 'ok';
+    } catch {
+      return 'error';
+    } finally {
+      window.setTimeout(() => {
+        authProbePromise = null;
+      }, 0);
+    }
+  })();
+  return authProbePromise;
+}
 
 function connect() {
   if (!WS_URL) return;
@@ -91,6 +117,21 @@ function connect() {
 
   socket.onclose = (ev) => {
     socket = null;
+    const reason = String((ev as any)?.reason || '');
+    if (ev?.code === 1008 || reason.startsWith('unauthorized')) {
+      try {
+        localStorage.removeItem('token');
+      } catch { }
+      try {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      } catch { }
+      if (connectTimer) {
+        window.clearTimeout(connectTimer);
+        connectTimer = null;
+      }
+      setStatus('unauthorized', reason || `code:${String(ev?.code || '')}`);
+      return;
+    }
     const closedEarly = !opened && Date.now() - startedAt < 2000;
     if (closedEarly && !triedFallback) {
       triedFallback = true;
@@ -98,6 +139,41 @@ function connect() {
       setStatus('error', `closed_early:${String(ev?.code || '')}`);
       connectTimer = window.setTimeout(connect, 250);
       return;
+    }
+
+    if (closedEarly && triedFallback) {
+      const tokenNow = (() => {
+        try {
+          return localStorage.getItem('token');
+        } catch {
+          return null;
+        }
+      })();
+      if (tokenNow && isValidToken(tokenNow)) {
+        setStatus('checking_auth', lastUrl);
+        void probeAuth(tokenNow).then((r) => {
+          if (r === 'unauthorized') {
+            try {
+              localStorage.removeItem('token');
+            } catch { }
+            try {
+              window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+            } catch { }
+            if (connectTimer) {
+              window.clearTimeout(connectTimer);
+              connectTimer = null;
+            }
+            setStatus('unauthorized', 'probe_401');
+            return;
+          }
+
+          connectAttempts += 1;
+          const baseDelay = Math.min(8000, 500 * Math.pow(2, Math.max(0, connectAttempts - 1)));
+          const jitter = Math.floor(Math.random() * 250);
+          connectTimer = window.setTimeout(connect, baseDelay + jitter);
+        });
+        return;
+      }
     }
 
     connectAttempts += 1;
