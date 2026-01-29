@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentActivity } from './AgentActivity';
-import { ThinkingProcess } from './ThinkingProcess';
 import { GitHubConnectModal } from './GitHubConnectModal';
 
 // Web Speech API types
@@ -1234,19 +1233,14 @@ export default function CommandComposer({
     }
 
     const compute = () => {
-      const idx = thinkingGlimpseIndexRef.current++;
       if (status === 'answering') {
-        return idx % 2 === 0 ? t('thinkingDraftIntro', 'Working on it now…') : t('thinkingDraftRefine', 'Refining and organizing the answer…');
+        return t('thinkingDraftIntro', 'جاري تجهيز الرد…');
       }
       if (toolVisible && activeToolName) {
         const toolKey = String(activeToolName).trim();
-        if (toolKey === 'web_search') return t('thinking.searching', 'Searching the web...');
-        if (toolKey === 'deep_research') return t('thinking.researching', 'Conducting deep research...');
-        if (toolKey === 'code_search') return t('thinking.searching_code', 'Searching codebase...');
-        if (toolKey === 'plan') return t('thinkingGlimpsePlan', 'Planning the best approach…');
         return t('thinkingGlimpseTool', { tool: toolKey });
       }
-      return idx % 2 === 0 ? t('thinkingGlimpseUnderstand', 'Understanding your request…') : t('thinkingGlimpsePlan', 'Planning the best approach…');
+      return t('thinkingGlimpseUnderstand', 'جاري التنفيذ…');
     };
 
     setThinkingGlimpse(compute());
@@ -1497,36 +1491,6 @@ export default function CommandComposer({
             }
 
             hideToolSoon();
-          }
-
-          if (msg.type === 'thought') {
-            const action = msg.data?.action;
-            const content = msg.data?.content || '';
-
-            setEvents(prev => {
-              const last = prev[prev.length - 1];
-              // If we are starting a thought
-              if (action === 'start') {
-                // Check if we already have an active thought to avoid dupes if connection glitches
-                if (last && last.type === 'thought' && last.data.active) return prev;
-                return [...prev, { type: 'thought', data: { content: '', active: true }, ts: Date.now() }];
-              }
-              // If we are appending to a thought
-              if (last && last.type === 'thought' && last.data.active) {
-                const updated = {
-                  ...last,
-                  data: { ...last.data, content: last.data.content + content }
-                };
-                // If ending, mark inactive
-                if (action === 'end') {
-                  updated.data.active = false;
-                }
-                return [...prev.slice(0, -1), updated];
-              }
-              return prev;
-            });
-            // Keep scrolling down as thoughts stream in
-            if (autoScrollRef.current) scrollToBottom('auto');
           }
 
           if (msg.type === 'text') {
@@ -2237,25 +2201,6 @@ export default function CommandComposer({
     ]);
     if (!overrideText) setText('');
     // setAttachedFiles([]) moved to after payload construction
-
-    // ELITE 5.0 FIX: Optimistic "Instant" Thought Trigger (0ms Latency)
-    // Inject a local thought event immediately so the UI reacts before the server responds.
-    const optimisticRunId = `run_${Date.now()}_opt`;
-    const optimisticThoughtEvent = {
-      type: 'thought',
-      data: {
-        action: 'start',
-        runId: optimisticRunId
-      },
-      id: `thought_${Date.now()}_opt`,
-      ts: Date.now(),
-      seq: lastLiveSeqRef.current + 0.1,
-      runId: optimisticRunId
-    };
-
-    // We also need to inject an 'activity' placeholder or start the run locally in the UI state
-    // but the critical part is the thought.
-    setEvents(prev => [...prev, optimisticThoughtEvent]);
 
     const isLikelyCodeFile = (v: string) => {
       const t = v.toLowerCase();
@@ -3063,7 +3008,6 @@ export default function CommandComposer({
   const renderItems = useMemo(() => {
     const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
     const inserted = new Set<string>();
-    const renderedThoughts = new Set<string>();
 
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
@@ -3084,19 +3028,6 @@ export default function CommandComposer({
       }
       else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
-      else if (type === 'thought') {
-        const rid = getEventRunId(e);
-        if (!rid || rid === 'no-run') continue;
-        if (rid.endsWith('_opt')) continue;
-        const content = typeof e?.data?.content === 'string' ? e.data.content : '';
-        const active = Boolean(e?.data?.active);
-        if (!active && !content.trim()) continue;
-
-        if (renderedThoughts.has(rid)) continue;
-        renderedThoughts.add(rid);
-
-        out.push({ kind: 'thought', key: `thought:${rid}:${idx}`, e, idx });
-      }
     }
 
     return out;
@@ -3182,12 +3113,6 @@ export default function CommandComposer({
                     showTechnical={!!showTechnicalByRunId[rid]}
                     onToggleTechnical={() => setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }))}
                   />
-                );
-              }
-
-              if (item.kind === 'thought') {
-                return (
-                  <ThinkingProcess key={item.key} thought={item.e?.data} />
                 );
               }
 
@@ -3308,7 +3233,7 @@ export default function CommandComposer({
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.6)' }}></div>
                   <div className="text-[11px] font-medium tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 10px rgba(var(--accent-primary-rgb), 0.3)' }}>
-                    {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Thinking…')}
+                    {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'جاري التنفيذ…')}
                   </div>
                 </div>
               </div>

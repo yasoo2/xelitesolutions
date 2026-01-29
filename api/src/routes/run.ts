@@ -1456,23 +1456,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let systemPromptText: string | null = null;
 
   const ev = (e: LiveEvent) => broadcast({ ...e, runId });
-  let thoughtOpen = false;
-  const thoughtStart = () => {
-    if (thoughtOpen) return;
-    thoughtOpen = true;
-    ev({ type: 'thought', data: { action: 'start' } });
-  };
-  const thoughtChunk = (content: any) => {
-    const s = String(content ?? '');
-    if (!s.trim()) return;
-    thoughtStart();
-    ev({ type: 'thought', data: { action: 'chunk', content: s } });
-  };
-  const thoughtEnd = () => {
-    if (!thoughtOpen) return;
-    thoughtOpen = false;
-    ev({ type: 'thought', data: { action: 'end' } });
-  };
 
   try {
     const userSystemInstructions =
@@ -1654,9 +1637,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
         const answer = optimization.cachedResponse;
 
-        // Broadcast events to satisfy frontend listeners
-        thoughtChunk('أسترجع نتيجة جاهزة من الذاكرة…\n');
-        thoughtEnd();
         ev({ type: 'text', data: answer });
         ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
         ev({ type: 'run_finished', data: { runId, ok: true } });
@@ -1697,19 +1677,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             preferNonLLM: true,
           }) as any;
         } else {
-          thoughtStart();
-          try {
-            initialPlan = await planNextStep(history, {
-              provider: providerKey,
-              apiKey: apiKey,
-              baseUrl: baseUrl,
-              model: model,
-              throwOnError: true,
-              onProgress: (msg: string) => thoughtChunk(`${msg}\n`)
-            });
-          } finally {
-            thoughtEnd();
-          }
+          initialPlan = await planNextStep(history, {
+            provider: providerKey,
+            apiKey: apiKey,
+            baseUrl: baseUrl,
+            model: model,
+            throwOnError: true,
+          });
         }
       }
     }
@@ -1812,10 +1786,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             // Check for thought markers
             const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
             if (thoughtMatch) {
-              let thought = thoughtMatch[1].trim();
-              if (thought.length > 100) thought = `${thought.slice(0, 97)}...`;
-              thoughtChunk(thought || 'تنظيم الرد النهائي…\n');
-              thoughtEnd();
               // Strip thought from answer
               answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
             }
@@ -1861,10 +1831,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             // Check for thought markers
             const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
             if (thoughtMatch) {
-              let thought = thoughtMatch[1].trim();
-              if (thought.length > 100) thought = `${thought.slice(0, 97)}...`;
-              thoughtChunk(thought || 'تنظيم الرد النهائي…\n');
-              thoughtEnd();
               // Strip thought from answer
               answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
             }

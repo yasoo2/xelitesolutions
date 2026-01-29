@@ -38,37 +38,24 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                 className="my-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center justify-center gap-2"
             >
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                Thinking Interrupted
+                توقف التنفيذ
             </motion.div>
         );
     }
 
     if (status === 'idle') return null;
 
-    // Determine current "Thought" based on active step
     const currentThought = useMemo(() => {
         const runningStep = steps.find(s => s.status === 'running');
         const lastStep = steps[steps.length - 1];
 
-        // Prioritize running step, fallback to last step, fallback to generic
         const activeStep = runningStep || lastStep;
 
-        if (!activeStep) return "Initializing neural pathways...";
-
-        // Format the thought to sound natural
-        const name = activeStep.displayName || activeStep.name;
-
-        // Map common technical names to cleaner "thoughts"
-        if (name.includes("fs_read")) return "Reading user files...";
-        if (name.includes("fs_write")) return "Writing code updates...";
-        if (name.includes("browser")) return "Browsing external documentation...";
-        if (name.includes("cmd_run")) return "Executing system commands...";
-        if (name.includes("planning")) return "Formulating implementation plan...";
-
-        return `${name}...`;
+        if (!activeStep) return "جاري التنفيذ…";
+        const name = (activeStep.displayName || activeStep.name || '').trim();
+        return name ? `${name}…` : "جاري التنفيذ…";
     }, [steps]);
 
-    // Active "Thinking" State
     return (
         <div ref={ref} className="w-full flex items-center justify-center py-8">
             <div className="relative flex flex-col items-center justify-center gap-6">
@@ -119,7 +106,7 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                             className="text-sm font-bold tracking-widest uppercase"
                             style={{ color: '#22d3ee', textShadow: '0 0 10px rgba(34, 211, 238, 0.5)' }}
                         >
-                            Thinking
+                            تنفيذ
                         </h3>
                         {/* Loading Dots */}
                         <div className="flex gap-1 h-1 justify-center">
