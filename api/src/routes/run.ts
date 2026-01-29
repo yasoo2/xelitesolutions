@@ -2184,7 +2184,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       lastResult = { ok: false, error: 'stopped' };
       break;
     }
-    ev({ type: 'step_started', data: { name: `thinking_step_${steps + 1}` } });
+    ev({ type: 'step_started', data: { name: `planning_step_${steps + 1}` } });
     plannerUnavailableMode = false;
 
     // Optimization: Reuse initial plan if available for the first step to reduce latency
@@ -3059,7 +3059,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
     }
 
-    ev({ type: 'step_done', data: { name: `thinking_step_${steps + 1}`, plan } });
+    ev({ type: 'step_done', data: { name: `planning_step_${steps + 1}`, plan } });
 
     if (plan?.name === 'browser_run') {
       const acts = Array.isArray((plan as any).input?.actions) ? (plan as any).input.actions : [];

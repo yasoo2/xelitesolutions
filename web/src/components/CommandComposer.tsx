@@ -580,7 +580,7 @@ export default function CommandComposer({
 }) {
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
-  const showFloatingTaskbar = true;
+  const showFloatingTaskbar = false;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -943,8 +943,8 @@ export default function CommandComposer({
 
     const formatStepName = (name: string) => {
       if (name === 'plan') return t('tools.plan');
-      if (name.startsWith('thinking_step_')) {
-        const n = name.replace('thinking_step_', '');
+      if (name.startsWith('planning_step_')) {
+        const n = name.replace('planning_step_', '');
         return t('planNumber', { n });
       }
       if (name.startsWith('execute:')) {
@@ -1471,7 +1471,7 @@ export default function CommandComposer({
             if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
             if (name === 'plan') {
               showTool('plan');
-            } else if (name.startsWith('thinking_step_')) {
+            } else if (name.startsWith('planning_step_')) {
               showTool('plan');
             } else if (name.startsWith('execute:')) {
               showTool(name.slice('execute:'.length));
@@ -2635,8 +2635,8 @@ export default function CommandComposer({
 
   const formatStepDisplayName = (name: string) => {
     if (name === 'plan') return t('tools.plan');
-    if (name.startsWith('thinking_step_')) {
-      const n = name.replace('thinking_step_', '');
+    if (name.startsWith('planning_step_')) {
+      const n = name.replace('planning_step_', '');
       return t('planNumber', { n });
     }
     if (name.startsWith('execute:')) {
@@ -3077,17 +3077,13 @@ export default function CommandComposer({
               if (item.kind === 'activity') {
                 if (!showToolUi) return null;
                 const rid = item.runId || 'no-run';
-                const steps = stepsByRunId.get(rid) || [];
-                const visibleSteps = steps.filter((s: any) => {
-                  const name = String(s?.name || '');
-                  return name !== 'plan' && !name.startsWith('thinking_step_');
-                });
+                const visibleSteps = stepsByRunId.get(rid) || [];
                 const logs = logsByRunId.get(rid) || [];
 
                 const status = (() => {
                   if (visibleSteps.some((s: any) => s?.status === 'running')) return 'running';
                   if (visibleSteps.some((s: any) => s?.status === 'failed')) return 'failed';
-                  if (visibleSteps.length > 0) return 'done';
+                  if (visibleSteps.length > 0 || logs.length > 0) return 'done';
                   return 'idle';
                 })();
 

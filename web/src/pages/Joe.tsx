@@ -352,7 +352,7 @@ export default function Joe() {
 
     for (const s of steps) {
       const name = String(s?.name || '');
-      if (!name || name === 'plan' || name.startsWith('thinking_step_')) continue;
+      if (!name || name === 'plan' || name.startsWith('planning_step_')) continue;
       const status = String(s?.status || '');
       const key = String(s?.key || `${String(s?.runId || '')}::${name}`);
       const prev = stepStatusByKeyRef.current.get(key);
