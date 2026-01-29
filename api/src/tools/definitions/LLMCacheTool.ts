@@ -52,6 +52,16 @@ export class LLMCacheTool implements ToolDefinition {
 
     // LLM-specific cache
     private static cache = new Map<string, { response: string; timestamp: number; hits: number }>();
+    private static maxEntries = (() => {
+        const v = Number(process.env.LLM_CACHE_MAX_ENTRIES);
+        if (Number.isFinite(v) && v > 0) return Math.floor(v);
+        return 500;
+    })();
+    private static ttlMs = (() => {
+        const v = Number(process.env.LLM_CACHE_TTL_MS);
+        if (Number.isFinite(v) && v > 0) return v;
+        return 6 * 60 * 60 * 1000;
+    })();
     private static stats = {
         hits: 0,
         misses: 0,
@@ -100,8 +110,10 @@ export class LLMCacheTool implements ToolDefinition {
     private getCached(prompt: string, model: string | undefined, logs: string[]) {
         const key = this.generateCacheKey(prompt, model);
         const entry = LLMCacheTool.cache.get(key);
+        const now = Date.now();
 
-        if (!entry) {
+        if (!entry || (now - entry.timestamp) > LLMCacheTool.ttlMs) {
+            if (entry) LLMCacheTool.cache.delete(key);
             LLMCacheTool.stats.misses++;
             logs.push(`LLM cache miss`);
             return {
@@ -140,6 +152,22 @@ export class LLMCacheTool implements ToolDefinition {
         };
     }
 
+    private evictOverflow() {
+        const max = LLMCacheTool.maxEntries;
+        while (LLMCacheTool.cache.size > max) {
+            let oldestKey: string | null = null;
+            let oldestTs = Infinity;
+            for (const [k, v] of LLMCacheTool.cache.entries()) {
+                if (v.timestamp < oldestTs) {
+                    oldestTs = v.timestamp;
+                    oldestKey = k;
+                }
+            }
+            if (!oldestKey) break;
+            LLMCacheTool.cache.delete(oldestKey);
+        }
+    }
+
     private setCached(prompt: string, response: string, model: string | undefined, logs: string[]) {
         const key = this.generateCacheKey(prompt, model);
 
@@ -148,6 +176,7 @@ export class LLMCacheTool implements ToolDefinition {
             timestamp: Date.now(),
             hits: 0
         });
+        this.evictOverflow();
 
         LLMCacheTool.stats.sets++;
         logs.push(`LLM response cached (${response.length} chars)`);
@@ -168,6 +197,8 @@ export class LLMCacheTool implements ToolDefinition {
             total,
             hitRate: `${hitRate}%`,
             cacheSize: LLMCacheTool.cache.size,
+            ttlMs: LLMCacheTool.ttlMs,
+            maxEntries: LLMCacheTool.maxEntries,
             estimatedCostSaved: `$${LLMCacheTool.stats.costSaved.toFixed(2)}`
         };
 

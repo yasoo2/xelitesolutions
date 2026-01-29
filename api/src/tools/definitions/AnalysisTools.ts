@@ -4,6 +4,7 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import { Analyst } from '../../system/Analyst';
+import { routeToModel } from '../../llm/intelligent-router';
 // import { OpenAI } from 'openai'; // Peer dep, or import dynamic? Copy logic from registry
 
 // Helper reuse
@@ -107,25 +108,12 @@ export class AnalyzeCodebaseTool extends BaseTool {
         }
 
         // 3. LLM Summary
-        const apiKey = process.env.OPENAI_API_KEY;
-        if (!apiKey) {
-            return { ok: true, output: { summary: `## Structure\n${structure}\n\n## Files\n${fileContents.map(f => f.split('\n')[0]).join('\n')}` }, logs };
-        }
-
         try {
-            // Determine client (Assuming OpenAI direct usage as per registry)
-            const OpenAIConstructor = require('openai').default;
-            const client = new OpenAIConstructor({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
-
-            const completion = await client.chat.completions.create({
-                model: 'gpt-4o',
-                messages: [
-                    { role: 'system', content: 'You are a Senior Software Architect. Analyze the provided codebase context and generate a high-level architectural summary. Focus on: Tech Stack, Key Components, Entry Points, and Project Structure. Be concise.' },
-                    { role: 'user', content: `File Structure (partial):\n${structure}\n\nKey File Contents:\n${fileContents.join('\n')}` }
-                ]
-            });
-            const summary = completion.choices[0].message.content || 'Analysis failed';
-            return { ok: true, output: { summary }, logs };
+            const summary = await routeToModel([
+                { role: 'system', content: 'You are a Senior Software Architect. Analyze the provided codebase context and generate a high-level architectural summary. Focus on: Tech Stack, Key Components, Entry Points, and Project Structure. Be concise.' },
+                { role: 'user', content: `File Structure (partial):\n${structure}\n\nKey File Contents:\n${fileContents.join('\n')}` }
+            ]);
+            return { ok: true, output: { summary: summary || 'Analysis failed' }, logs };
         } catch (e: any) {
             logs.push(`analyze.llm_error=${e.message}`);
             return { ok: true, output: { summary: `## Structure\n${structure}\n\n## Files (LLM Failed)\n${fileContents.map(f => f.split('\n')[0]).join('\n')}` }, logs };

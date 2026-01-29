@@ -1,25 +1,19 @@
-import OpenAI from 'openai';
 import fs from 'fs';
 import { TaskExecutor } from './TaskExecutor';
 import { tools } from '../tools/registry';
 import { CortexState, TaskState } from '../services/CortexState';
 import crypto from 'crypto';
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+import { routeToModel } from '../llm/intelligent-router';
 
 export class ProjectManagerAgent {
-    private openai: OpenAI;
     private name: string;
     private rootDir: string;
     private cortex: CortexState;
     private taskId: string;
-    private hasOpenAiKey: boolean;
 
     constructor(name: string, rootDir: string, taskId?: string) {
         this.name = name;
         this.rootDir = rootDir;
-        this.hasOpenAiKey = !!OPENAI_API_KEY;
-        this.openai = new OpenAI({ apiKey: OPENAI_API_KEY || 'dummy' });
         this.cortex = CortexState.getInstance();
         // Generate a stable ID based on name if not provided, or use random
         this.taskId = taskId || crypto.createHash('md5').update(name + rootDir).digest('hex');
@@ -33,9 +27,13 @@ export class ProjectManagerAgent {
 
     async execute(goal: string) {
         console.log(`[PM:${this.name}] 🧠 Starting Autonomous Persistent Agent for: "${goal}"`);
-        if (!this.hasOpenAiKey) {
-            return { status: 'failed', error: 'OPENAI_API_KEY is missing; cannot run autonomous loop.' };
-        }
+        const extractJsonLike = (text: string) => {
+            const raw = String(text || '').trim();
+            if (!raw) return '';
+            if (raw.startsWith('{') && raw.endsWith('}')) return raw;
+            const m = raw.match(/\{[\s\S]*\}/);
+            return String(m?.[0] || '').trim();
+        };
 
         // 1. Load or Initialize State
         let state = this.cortex.getTask(this.taskId);
@@ -123,20 +121,22 @@ OR
                 // 1. Decide
                 const prompt = `History (Last 5):\n${JSON.stringify(state.history.slice(-5), null, 2)}\n\nWhat is your next move?`;
 
-                const completion = await this.openai.chat.completions.create({
-                    model: "gpt-4o",
-                    messages: [
+                const responseText = await routeToModel(
+                    [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: prompt }
                     ],
-                    response_format: { type: "json_object" },
-                    temperature: 0.1
-                });
+                    {
+                        type: 'code_generation',
+                        complexity: 'medium',
+                        requiresTools: true,
+                        estimatedTokens: 3000,
+                        language: 'en',
+                    }
+                );
 
-                const content = completion.choices[0].message.content;
-                if (!content) throw new Error("Empty response from LLM");
-
-                const decision = JSON.parse(content);
+                const jsonStr = extractJsonLike(responseText);
+                const decision = JSON.parse(jsonStr || '{}');
                 console.log(`[PM:${this.name}] 💭 Thought: ${decision.thought}`);
 
                 if (decision.done) {

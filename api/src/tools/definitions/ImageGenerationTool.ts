@@ -1,7 +1,5 @@
 
-import { OpenAI } from 'openai';
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+import OpenAI from 'openai';
 
 export const ImageGenerationTool = {
     name: 'generate_image',
@@ -29,27 +27,38 @@ export const ImageGenerationTool = {
     mockSupported: true, // We can mock it if needed
 
     execute: async (input: { prompt: string, size?: string }) => {
-        if (!OPENAI_API_KEY) {
-            throw new Error('OPENAI_API_KEY is missing');
+        const prompt = String(input.prompt || '').trim();
+        if (!prompt) return { ok: false, error: 'prompt is required', logs: [] };
+
+        const size = String(input.size || '1024x1024');
+        const [wRaw, hRaw] = size.split('x');
+        const width = Math.max(64, Number.parseInt(wRaw || '1024', 10) || 1024);
+        const height = Math.max(64, Number.parseInt(hRaw || '1024', 10) || 1024);
+
+        const openAiKey = String(process.env.OPENAI_API_KEY || '').trim();
+
+        console.log(`🎨 Generating image for: "${prompt}"`);
+
+        if (openAiKey) {
+            try {
+                const openai = new OpenAI({ apiKey: openAiKey, baseURL: process.env.OPENAI_BASE_URL });
+                const response = await openai.images.generate({
+                    model: "dall-e-3",
+                    prompt,
+                    n: 1,
+                    size: `${width}x${height}` as any,
+                    response_format: "url"
+                });
+
+                const url = response.data?.[0]?.url;
+                return { ok: true, output: { url }, logs: ['Generated via OpenAI'] };
+            } catch (e: any) {
+                console.error('Image Gen failed:', e);
+            }
         }
-        const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-        console.log(`🎨 Generating image for: "${input.prompt}"`);
-
-        try {
-            const response = await openai.images.generate({
-                model: "dall-e-3",
-                prompt: input.prompt,
-                n: 1,
-                size: "1024x1024",
-                response_format: "url"
-            });
-
-            const url = response.data?.[0]?.url;
-            return { ok: true, output: { url }, logs: [] };
-        } catch (e: any) {
-            console.error('Image Gen failed:', e);
-            throw new Error(`Image Generation Failed: ${e.message}`);
-        }
+        const seed = Math.floor(Date.now() % 1000000);
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
+        return { ok: true, output: { url }, logs: ['Generated via Pollinations'] };
     }
 };

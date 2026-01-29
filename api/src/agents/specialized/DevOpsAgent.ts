@@ -1,14 +1,9 @@
-import OpenAI from 'openai';
 import { GenesisAgent } from '../GenesisAgent';
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
 export class DevOpsAgent {
-    private openai: OpenAI;
     private genesis: GenesisAgent;
 
     constructor() {
-        this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
         this.genesis = new GenesisAgent();
     }
 

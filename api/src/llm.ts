@@ -436,6 +436,7 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
 import { pollinationsProvider, openRouterProvider, huggingfaceProvider } from './llm/providers/registry';
+import { LLMCacheTool } from './tools/definitions/LLMCacheTool';
 
 // Export for use in intelligent-router
 export { pollinationsProvider, openRouterProvider, huggingfaceProvider };
@@ -464,7 +465,8 @@ export function getActiveProvider(userId: string): string {
 }
 
 export async function callLLM(prompt: string, context: any[] = [], userId?: string): Promise<string> {
-  const currentProvider = userId ? getActiveProvider(userId) : 'openai';
+  const resolvedUserId = userId || 'anonymous';
+  const currentProvider = getActiveProvider(resolvedUserId);
 
   // Determine configuration for Official Providers (OpenAI / Gemini)
   let forcedBaseUrl = process.env.OPENAI_BASE_URL;
@@ -475,12 +477,6 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
     forcedModel = 'gemini-1.5-flash';
   }
 
-  const key = userId ? getApiKeyForUser(userId) : (apiKey || '');
-
-  if (!String(key).trim()) {
-    throw new Error('NO_API_KEY_CONFIGURED');
-  }
-
   const msgs = [
     { role: 'system', content: getSystemPrompt({ name: userId ? 'Younis' : undefined }) },
     ...context,
@@ -488,6 +484,35 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
   try {
+    const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+    const modelForCache = forcedModel || process.env.OPENAI_MODEL || 'gpt-4o';
+    const cacheText = msgs
+      .map(m => (typeof (m as any)?.content === 'string' ? String((m as any).content) : JSON.stringify((m as any)?.content || '')))
+      .join('\n');
+    const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
+    const cacheKeyPayload = `${resolvedUserId}::${JSON.stringify({
+      provider: currentProvider,
+      forcedBaseUrl,
+      forcedModel,
+      messages: msgs
+    })}`;
+
+    if (!cacheDisabled && !hasSensitive) {
+      const cached = await LLMCacheTool.checkCache(cacheKeyPayload, modelForCache);
+      if (cached) return cached;
+    }
+
+    const key = userId ? getApiKeyForUser(userId) : (apiKey || '');
+    const hasKey = Boolean(String(key).trim());
+
+    if (currentProvider === 'auto' || !hasKey) {
+      const response = await routeToModel(msgs);
+      if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
+        await LLMCacheTool.saveToCache(cacheKeyPayload, response, modelForCache);
+      }
+      return response || '';
+    }
+
     // If we have a specific user key, use a new client instance, otherwise use default
     let client = openai;
 
@@ -507,7 +532,11 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
       model: forcedModel || process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
     });
-    return completion.choices[0]?.message?.content || '';
+    const response = completion.choices[0]?.message?.content || '';
+    if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
+      await LLMCacheTool.saveToCache(cacheKeyPayload, response, modelForCache);
+    }
+    return response;
   } catch (e: any) {
     throw new Error(`LLM call failed: ${e.message}`);
   }
@@ -900,7 +929,9 @@ export async function planNextStep(
 
   if (!shouldMock) {
     if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
-    if (!optKey) throw new Error('NO_API_KEY_CONFIGURED');
+    if (!optKey) {
+      return await planNextStep(messages, { ...options, provider: 'auto' });
+    }
   }
 
   // Determine client to use

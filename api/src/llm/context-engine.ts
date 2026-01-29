@@ -45,9 +45,16 @@ export function extractEntities(text: string, history?: any[]): Record<string, a
     ];
 
     for (const pattern of namePatterns) {
-        const match = text.match(pattern);
-        if (match) {
-            entities.userName = match[1]?.trim();
+        const matches = [...text.matchAll(pattern)];
+        const first = matches.find(m => (m[1] || '').trim().length > 0);
+        if (first?.[1]) {
+            const raw = first[1].trim();
+            const cleaned = raw
+                .replace(/\b(and|then|و|ثم)\b.*$/i, '')
+                .replace(/[^\p{L}\s-]/gu, '')
+                .trim();
+            entities.userName = cleaned;
+            break;
         }
     }
 

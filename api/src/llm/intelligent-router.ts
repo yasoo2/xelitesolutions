@@ -5,6 +5,7 @@
  */
 
 import { pollinationsProvider, openRouterProvider, groqProvider } from './providers/registry';
+import { LLMCacheTool } from '../tools/definitions/LLMCacheTool';
 
 let hack: any = pollinationsProvider;
 let openrouter: any = openRouterProvider;
@@ -520,6 +521,21 @@ export async function routeToModel(
 
     const effectiveMessages = isVisionCapable ? messages : flatMessages;
 
+    const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+    const cacheKeyPayload = JSON.stringify({
+        messages: flatMessages,
+        analysis: taskAnalysis,
+        selectedModel: selectedModel.model
+    });
+    const cacheText = flatMessages
+        .map(m => (typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content || '')))
+        .join('\n');
+    const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
+    if (!cacheDisabled && !hasSensitive) {
+        const cached = await LLMCacheTool.checkCache(cacheKeyPayload, selectedModel.model);
+        if (cached) return cached;
+    }
+
     // Check if Groq API key available
     const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
     const hasOpenRouterKey = !!(process.env.OPENROUTER_API_KEY?.trim());
@@ -560,7 +576,11 @@ export async function routeToModel(
             // Groq is fast, but let's give it 15s
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial), timeoutPromise]) as string;
-            return cleanOutput(rawAns);
+            const ans = cleanOutput(rawAns);
+            if (!cacheDisabled && !hasSensitive && ans && ans.length > 20) {
+                await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
+            }
+            return ans;
         }
 
         // If not Groq or Groq fails, fall through to the Chain of Steel
@@ -592,6 +612,9 @@ export async function routeToModel(
 
             if (ans && ans.length > 2) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
+                if (!cacheDisabled && !hasSensitive && ans.length > 20) {
+                    await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
+                }
                 return ans;
             }
         } catch (e: any) {
@@ -604,7 +627,12 @@ export async function routeToModel(
     try {
         const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
         const cleaned = cleanOutput(finalAns);
-        if (cleaned && cleaned.length > 0) return cleaned;
+        if (cleaned && cleaned.length > 0) {
+            if (!cacheDisabled && !hasSensitive && cleaned.length > 20) {
+                await LLMCacheTool.saveToCache(cacheKeyPayload, cleaned, selectedModel.model);
+            }
+            return cleaned;
+        }
         throw new Error('FINAL_EMPTY_RESPONSE');
     } catch {
         return "سأقوم بمراجعة الأدوات وربطها بشكل أفضل. يرجى إعطائي لحظة أو إرسال طلبك مرة أخرى بشكل أوضح.";
