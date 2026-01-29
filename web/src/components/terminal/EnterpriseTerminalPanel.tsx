@@ -252,7 +252,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                     </div>
                     <div className="flex flex-col">
                         <span className="text-sm font-black text-slate-100 tracking-widest uppercase leading-tight">Joe Elite Shell</span>
-                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Neural Logic Core</span>
+                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Core Runtime</span>
                     </div>
                     <div className="h-6 w-[1px] bg-white/5 mx-2"></div>
                     <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/5 shadow-inner">

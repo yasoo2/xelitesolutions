@@ -69,10 +69,6 @@ const createApiShim = () => {
     if (path === '/api/health') return createJson(res, 200, { status: 'OK', db: 0 });
     if (path === '/api/auth/login') return createJson(res, 200, { token: devToken });
     if (path === '/api/auth/dev') return createJson(res, 200, { token: devToken });
-    if (path === '/api/system/brain/toggle') return createJson(res, 200, { ok: true });
-    if (path === '/api/system/brain/stats') {
-      return createJson(res, 200, { reflexCount: 0, status: 'paused', lastLearned: 'API offline' });
-    }
     if (path === '/api/sessions') return createJson(res, 200, []);
     if (path === '/api/folders') return createJson(res, 200, []);
     if (path === '/api/workspaces') return createJson(res, 200, []);

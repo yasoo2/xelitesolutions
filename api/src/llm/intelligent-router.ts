@@ -139,7 +139,7 @@ export const MODELS: Record<string, ModelConfig> = {
  * Uses a lightweight model to deeply understand the task
  */
 export async function advancedAnalyzeTask(userMessage: string, history?: any[], onProgress?: (msg: string) => void): Promise<TaskAnalysis> {
-    onProgress?.('🧠 تحليل عميق لطلبك... (Neural Analysis)');
+    onProgress?.('🧠 تحليل عميق لطلبك... (Deep Analysis)');
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
 
     try {

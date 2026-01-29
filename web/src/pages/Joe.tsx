@@ -7,7 +7,7 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Package, GitBranch, Camera, Wand2, Database, Play, Plus } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Package, GitBranch, Camera, Wand2, Database, Play, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
@@ -26,7 +26,6 @@ import BrowserChrome from '../components/BrowserChrome';
 import BrowserControlPanel from '../components/BrowserControlPanel';
 import TaskQueue from '../components/TaskQueue';
 import { useTaskQueue } from '../hooks/useTaskQueue';
-import BrainStatus from '../components/BrainStatus';
 const MemoryPanelLazy = lazy(() => import('../components/MemoryPanel'));
 
 export default function Joe() {
@@ -601,8 +600,6 @@ export default function Joe() {
               />
             </div>
           </div>
-
-          <BrainStatus />
 
           {!searchQuery ? (
             <>

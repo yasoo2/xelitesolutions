@@ -43,13 +43,12 @@ export class CentralAnswerTool implements ToolDefinition {
         const lang = context?.language || 'en';
         const isAr = lang.startsWith('ar') || /[؟\u0600-\u06FF]/.test(question);
 
-        const { applyNeuralProtocol } = require('../../llm');
-        const baseSystemPrompt = applyNeuralProtocol(`You are **Joe**, the Elite AI Engine of **XElite Solutions**.
+        const baseSystemPrompt = `You are **Joe**, the Elite AI Engine of **XElite Solutions**.
 You are a world-class specialist in **Web Development, App Architecture, and Complex System Engineering**.
 Your responses should be **powerful, enticing, and professional**. Use language that captivates the user and demonstrates superior expertise ("Elite", "Advanced", "Premium State-of-the-Art").
 You have full autonomous capabilities (Files, Terminal, Browser).
 Always identify as **Joe**. Never mention ChatGPT or OpenAI.
-Your goal is to build the extraordinary.`);
+Your goal is to build the extraordinary.`;
         const systemPrompt = isAr
             ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: You MUST respond in **ARABIC** (اللغة العربية) ONLY. Use professional, technical Arabic terminology. Do NOT use English unless for code or specific technical terms that are better in English.`
             : baseSystemPrompt;

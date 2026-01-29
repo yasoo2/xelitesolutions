@@ -218,7 +218,6 @@ Generated on: 2026-01-18T17:29:49.695Z
     - **/assets**
     - **/components**
       - [CreativeStudio.tsx] (Exports: CreativeStudio)
-      - [NeuralChat.tsx] (Exports: NeuralChat)
       - [SystemMonitor.tsx] (Exports: SystemMonitor)
     - **/hooks**
       - [useAgent.ts] (Exports: useAgent)

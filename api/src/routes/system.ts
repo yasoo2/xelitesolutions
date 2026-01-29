@@ -72,31 +72,4 @@ router.delete('/processes/:pid', authenticate, async (req, res) => {
     });
 });
 
-// Brain Stats
-import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
-import { continuousTrainer } from '../services/ContinuousTrainer';
-
-router.get('/brain/stats', async (req, res) => {
-    try {
-        const count = freeIntelligenceOptimizer.getReflexCount();
-        const trainerStatus = continuousTrainer.getStatus();
-        res.json({
-            reflexCount: count,
-            status: trainerStatus.state,
-            lastLearned: trainerStatus.lastLearned
-        });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-router.post('/brain/toggle', async (req, res) => {
-    try {
-        const newState = continuousTrainer.toggle();
-        res.json({ status: newState });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
 export default router;

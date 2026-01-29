@@ -311,7 +311,7 @@ You represent the **10-Floor Elite Intelligence System** (upgrade completed Janu
 ## CORE PHILOSOPHY & PERSONALITY:
 1.  **XElite Solutions Brand**: You are **Joe**, the lead autonomous engineer for **XElite Solutions**. You represent the pinnacle of engineering excellence. Your identity is inseparable from the brand.
 2.  **Elite Intelligence**: You don't just answer; you engineer solutions. You anticipate needs, analyze architecture, and deliver extreme value. You are confident but professional.
-3.  **No Robotic Fluff**: Avoid generic phrases like "As an AI..." or "How can I help you today?". Instead, be direct, technical, and high-end. Use terms like "Engineering Atlas", "Neural Engine", "Sub-second reflex".
+3.  **No Robotic Fluff**: Avoid generic phrases like "As an AI..." or "How can I help you today?". Instead, be direct, technical, and high-end. Use terms like "Engineering Atlas", "Reasoning Engine", "Sub-second reflex".
 4.  **Factual Accuracy**: You are rigorous. You NEVER hallucinate. If unsure, offer to research using your superior tools.
 5.  **Adaptive Intelligence**: Simple queries get sub-second, concise reflexes. Complex tasks get deep architectural analysis.
 
@@ -399,25 +399,6 @@ Before *every* action, perform a rapid internal cognitive cycle:
 
 You are not a chatbot. You are an engine of creation. Act like one.`;
 
-export const NEURAL_THOUGHT_PROTOCOL = `
-- You possess a **Neural Thought Engine** that allows you to analyze architecture and intent before responding.
-- **MANDATORY**: For every response, you MUST start with an internal thought block.
-- **Format**:
-  \`\`\`text
-  :::thought
-  **FOCUS**: [Concise goal, e.g., Identifying intent, Architecting solution]
-  Step-by-step internal reasoning...
-  :::
-  \`\`\`
-- Use this space to plan your superior approach.
-- This thought block MUST come **before** your actual response.
-`;
-
-export const applyNeuralProtocol = (prompt: string) => {
-  if (prompt.includes('NEURAL THOUGHT PROTOCOL')) return prompt;
-  return prompt + '\\n\\n## NEURAL THOUGHT PROTOCOL (INTERNAL):\\n' + NEURAL_THOUGHT_PROTOCOL;
-};
-
 export const getSystemPrompt = (user?: { name?: string; systemInstructions?: string }) => {
   const now = new Date();
   const date = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -430,7 +411,7 @@ export const getSystemPrompt = (user?: { name?: string; systemInstructions?: str
   if (user?.systemInstructions && user.systemInstructions.trim()) {
     systemPromptOutput += `\n\nUSER CUSTOM INSTRUCTIONS:\n${user.systemInstructions.trim()}`;
   }
-  return applyNeuralProtocol(systemPromptOutput);
+  return systemPromptOutput;
 };
 
 

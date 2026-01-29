@@ -5,7 +5,7 @@ const resources = {
   en: {
     translation: {
       login: 'Login',
-      login_subtitle: 'Access the Neural Core',
+      login_subtitle: 'Access your workspace',
       login_error_missing: 'Please enter your credentials',
       login_error_auth: 'Authentication Failed',
       api_unreachable: 'Cannot reach the API server. Make sure it is running and reachable.',
@@ -72,7 +72,6 @@ const resources = {
       thinkingGlimpseDraft: 'Drafting the response…',
       thinkingDraftIntro: 'Working on it now…',
       thinkingDraftRefine: 'Refining and organizing the answer…',
-      neuralThoughtEngine: 'Neural Thought Engine',
       thinkingDefaultTitle: 'Analyzing Request...',
       thinkingInit: 'Thinking process initialized...',
       thinking: {
@@ -184,7 +183,7 @@ const resources = {
   ar: {
     translation: {
       login: 'تسجيل الدخول',
-      login_subtitle: 'الوصول إلى النواة العصبية',
+      login_subtitle: 'الدخول إلى النظام',
       login_error_missing: 'يرجى إدخال بيانات الاعتماد',
       login_error_auth: 'فشلت المصادقة',
       api_unreachable: 'تعذر الاتصال بخادم الـ API. تأكد أنه يعمل ويمكن الوصول إليه.',
@@ -251,7 +250,6 @@ const resources = {
       thinkingGlimpseDraft: 'أجهّز الرد…',
       thinkingDraftIntro: 'جارٍ العمل الآن…',
       thinkingDraftRefine: 'أرتّب النتيجة وأصيغها بشكل واضح…',
-      neuralThoughtEngine: 'محرك التفكير العصبي',
       thinkingDefaultTitle: 'جاري تحليل الطلب...',
       thinkingInit: 'بدأت عملية التفكير...',
       thinking: {

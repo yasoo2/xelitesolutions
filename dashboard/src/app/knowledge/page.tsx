@@ -37,7 +37,8 @@ export default function KnowledgePage() {
         try {
             await deleteKnowledge(id);
             setItems(items.filter(item => item.id !== id));
-        } catch (err) {
+        } catch (error) {
+            console.error(error);
             alert('Failed to delete item');
         } finally {
             setDeleting(null);

@@ -52,7 +52,7 @@ export default function AgentCentralPanel({
                                         <Loader size={32} className="animate-spin" style={{ color: 'var(--accent-primary)' }} />
                                         <Globe size={16} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                                     </div>
-                                    <span className="text-sm font-semibold animate-pulse">Initializing Neural Link to Browser...</span>
+                                    <span className="text-sm font-semibold animate-pulse">Initializing browser stream...</span>
                                 </div>
                             }>
                                 <ModernBrowserStream sessionId={browserSessionId} showBoxes={showBoxes} />

@@ -48,7 +48,7 @@ function isRunCancelled(runId: string): boolean {
 
 
 
-// Neural Thought Stream Parser
+// Thought Stream Parser
 class ThoughtStreamParser {
   private buffer = '';
   private insideThought = false;
@@ -111,15 +111,6 @@ router.get('/', async (req: Request, res: Response) => {
     } catch {
       return res.json([]);
     }
-  }
-});
-
-router.get('/brain/stats', (req: Request, res: Response) => {
-  try {
-    const count = freeIntelligenceOptimizer.getReflexCount();
-    return res.json({ reflexCount: count, status: 'active' });
-  } catch (e: any) {
-    return res.json({ reflexCount: 0, status: 'error', error: e.message });
   }
 });
 
