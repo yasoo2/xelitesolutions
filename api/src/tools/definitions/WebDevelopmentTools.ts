@@ -9,14 +9,21 @@ import { Builder } from '../../system/Builder';
 
 // Helper to resolve paths (reused logic)
 function resolveToolPath(p: string) {
-    const cwd = process.cwd();
-    const root = path.basename(cwd) === 'api' ? path.resolve(cwd, '..') : cwd;
     const val = String(p ?? '').trim();
+    const { workspaceService } = require('../../services/WorkspaceService');
+    const root = workspaceService.getActiveRoot();
     if (!val || val === '.') return root;
-    if (path.isAbsolute(val)) return val;
-    const fromCwd = path.resolve(cwd, val);
-    if (fs.existsSync(fromCwd)) return fromCwd;
-    return path.resolve(root, val);
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) throw new Error('path_outside_workspace');
+    return absReal;
 }
 
 export class WebPipelineTool extends BaseTool {
@@ -68,6 +75,13 @@ export class WebPipelineTool extends BaseTool {
         const qualityTasks = Array.isArray(input?.qualityTasks) && input.qualityTasks.length
             ? input.qualityTasks
             : ['lint', 'typecheck', 'test', 'build'];
+        const sessionId = typeof input?.sessionId === 'string' && input.sessionId.trim() ? input.sessionId.trim() : undefined;
+        const workspaceId =
+            typeof input?.workspaceId === 'string' && input.workspaceId.trim()
+                ? input.workspaceId.trim()
+                : typeof input?.__workspaceId === 'string' && input.__workspaceId.trim()
+                    ? input.__workspaceId.trim()
+                    : undefined;
 
         logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
 
@@ -76,7 +90,7 @@ export class WebPipelineTool extends BaseTool {
             name, type, features, baseDir,
             aestheticMode: input?.aestheticMode,
             language: input?.language
-        });
+        }, { sessionId, workspaceId });
         if (!scRes?.ok) {
             steps.push({ step: 'scaffold_full_stack', ok: false, error: scRes?.error });
             return { ok: false, output: { path: '', steps }, logs };
@@ -85,7 +99,7 @@ export class WebPipelineTool extends BaseTool {
         steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });
 
         // 2. Detect & Install
-        const detectRes = await executeTool('project_detect', { path: projectPath });
+        const detectRes = await executeTool('project_detect', { path: projectPath }, { sessionId, workspaceId });
         steps.push({ step: 'project_detect', ok: detectRes.ok, output: detectRes.output });
         const detectedNodeProjects: string[] = Array.isArray(detectRes.output?.nodeProjects) ? detectRes.output.nodeProjects : [];
         const allNodeProjects = Array.from(new Set([projectPath, ...detectedNodeProjects].map(p => String(p).trim()).filter(Boolean)));
@@ -104,13 +118,13 @@ export class WebPipelineTool extends BaseTool {
             let r = await executeTool('shell_execute', {
                 command: `cd "${p}" && npm install --include=dev --legacy-peer-deps --no-audit --no-fund --quiet`,
                 timeout: 10 * 60 * 1000
-            });
+            }, { sessionId, workspaceId });
             if (!r.ok) {
                 // Formatting fix in fallback command
                 r = await executeTool('shell_execute', {
                     command: `cd "${p}" && npm ci --legacy-peer-deps --no-audit --no-fund --quiet`,
                     timeout: 10 * 60 * 1000
-                });
+                }, { sessionId, workspaceId });
             }
             return r;
         };
@@ -134,7 +148,7 @@ export class WebPipelineTool extends BaseTool {
         };
 
         for (const proj of allNodeProjects) {
-            const qualityRes = await executeTool('quality_run', { path: proj, tasks: qualityTasks });
+            const qualityRes = await executeTool('quality_run', { path: proj, tasks: qualityTasks }, { sessionId, workspaceId });
             steps.push({ step: 'quality_run', ok: qualityRes.ok, output: { project: proj, ...qualityRes.output } });
 
             if (!qualityRes.ok && autoFix) {
@@ -142,10 +156,10 @@ export class WebPipelineTool extends BaseTool {
                 const lintFailed = results.some((r: any) => r && r.task === 'lint' && r.ok === false && !r.skipped);
                 const scripts = readScripts(proj);
                 if (lintFailed && typeof (scripts as any)?.lint === 'string') {
-                    const fixRes = await executeTool('shell_execute', { command: `cd "${proj}" && npm run lint -- --fix`, timeout: 10 * 60 * 1000 });
+                    const fixRes = await executeTool('shell_execute', { command: `cd "${proj}" && npm run lint -- --fix`, timeout: 10 * 60 * 1000 }, { sessionId, workspaceId });
                     steps.push({ step: 'lint_fix', ok: fixRes.ok, output: { project: proj, ...fixRes.output } });
                     // Retry
-                    const lintRetry = await executeTool('quality_run', { path: proj, tasks: ['lint'] });
+                    const lintRetry = await executeTool('quality_run', { path: proj, tasks: ['lint'] }, { sessionId, workspaceId });
                     steps.push({ step: 'quality_run_retry', ok: lintRetry.ok, output: { project: proj, ...lintRetry.output } });
                 }
             }
@@ -153,31 +167,31 @@ export class WebPipelineTool extends BaseTool {
 
         // 4. Security
         if (securityChecks) {
-            const secretsRes = await executeTool('secrets_scan_repo', { path: projectPath });
+            const secretsRes = await executeTool('secrets_scan_repo', { path: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'secrets_scan_repo', ok: secretsRes.ok, output: secretsRes.output });
-            const depRes = await executeTool('dependency_audit', { path: projectPath });
+            const depRes = await executeTool('dependency_audit', { path: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'dependency_audit', ok: depRes.ok, output: depRes.output });
         }
 
         // 5. CI & Analyze
         try {
-            const ciRes = await executeTool('ci_generate_pipeline', { path: projectPath, kind: 'node' });
+            const ciRes = await executeTool('ci_generate_pipeline', { path: projectPath, kind: 'node' }, { sessionId, workspaceId });
             steps.push({ step: 'ci_generate_pipeline', ok: ciRes.ok, output: ciRes.output });
         } catch { } // optional
 
         try {
-            const analyzeRes = await executeTool('analyze_codebase', { path: projectPath });
+            const analyzeRes = await executeTool('analyze_codebase', { path: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'analyze_codebase', ok: analyzeRes.ok, output: analyzeRes.output });
         } catch { }
 
         try {
-            const projectAnalyzeRes = await executeTool('analyze_project', { path: projectPath });
+            const projectAnalyzeRes = await executeTool('analyze_project', { path: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'analyze_project', ok: projectAnalyzeRes.ok, output: projectAnalyzeRes.output });
         } catch { }
 
         // 6. Preview
         if (!skipDev) {
-            const devRes = await executeTool('dev_server_start', { cwd: projectPath });
+            const devRes = await executeTool('dev_server_start', { cwd: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
             if (devRes.ok) {
                 const previewUrl = String((devRes.output as any)?.previewUrl || 'http://localhost:5173/').trim();
@@ -272,15 +286,13 @@ export class ScaffoldTool extends BaseTool {
         const preferredBase = String(input?.baseDir || '').trim();
 
         // Resolve base directory
-        const cwd = process.cwd();
-        const root = path.basename(cwd) === 'api' ? path.resolve(cwd, '..') : cwd;
-        let baseDir = root;
+        let baseDir = resolveToolPath('.');
 
         if (preferredBase) {
             baseDir = resolveToolPath(preferredBase);
         } else {
             // Heuristic: if project name mentioned alongside 'vivos' repository, create inside that folder
-            const vivosDir = path.join(root, 'vivos');
+            const vivosDir = path.join(baseDir, 'vivos');
             try { if (fs.existsSync(vivosDir) && fs.lstatSync(vivosDir).isDirectory()) baseDir = vivosDir; } catch { }
         }
 

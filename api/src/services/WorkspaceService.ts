@@ -3,6 +3,9 @@ import { WorkspaceMember, IWorkspaceMember } from '../models/workspaceMember';
 import { User } from '../models/user';
 import mongoose, { Types } from 'mongoose';
 import crypto from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+const workspaceAsyncContext = new AsyncLocalStorage<{ workspaceId?: string }>();
 
 type MockWorkspace = {
     _id: string;
@@ -93,24 +96,45 @@ function ensureMockPersonalWorkspace(userId: string) {
 
 export class WorkspaceService {
     private currentRoot: string = process.cwd();
+    private rootsByWorkspaceId = new Map<string, string>();
 
-    getActiveRoot(): string {
+    private resolveWorkspaceId(workspaceId?: string) {
+        const explicit = typeof workspaceId === 'string' ? workspaceId.trim() : '';
+        if (explicit) return explicit;
+        return String(workspaceAsyncContext.getStore()?.workspaceId || '').trim();
+    }
+
+    getActiveRoot(workspaceId?: string): string {
+        const wsId = this.resolveWorkspaceId(workspaceId);
+        if (wsId) {
+            const root = this.rootsByWorkspaceId.get(wsId);
+            if (root) return root;
+        }
         return this.currentRoot;
     }
 
-    async setActiveRoot(newPath: string): Promise<boolean> {
+    async setActiveRoot(newPath: string, workspaceId?: string): Promise<boolean> {
         try {
             // Validate path exists
             await import('fs').then(fs => fs.promises.access(newPath));
-            this.currentRoot = newPath;
+            const wsId = this.resolveWorkspaceId(workspaceId);
+            if (wsId) this.rootsByWorkspaceId.set(wsId, newPath);
+            else this.currentRoot = newPath;
             return true;
         } catch {
             return false;
         }
     }
 
-    resetToSystem() {
-        this.currentRoot = process.cwd();
+    resetToSystem(workspaceId?: string) {
+        const wsId = this.resolveWorkspaceId(workspaceId);
+        if (wsId) this.rootsByWorkspaceId.delete(wsId);
+        else this.currentRoot = process.cwd();
+    }
+
+    async runWithWorkspace<T>(workspaceId: string | undefined, fn: () => Promise<T> | T): Promise<T> {
+        const wsId = typeof workspaceId === 'string' && workspaceId.trim() ? workspaceId.trim() : undefined;
+        return await workspaceAsyncContext.run({ workspaceId: wsId }, async () => await fn());
     }
 
     /**

@@ -46,7 +46,14 @@ export class AgentLoopService {
             userId && pending.input && typeof pending.input === 'object' ? { ...(pending.input as any), userId: String(userId) } : pending.input;
 
         console.log(`[AgentLoop] Executing ${pending.name} for session ${sessionId}`);
-        const result = await executeTool(pending.name, callInput, { sessionId });
+        const cfg = getSessionRunConfig(sessionId);
+        const workspaceId =
+            typeof pending.workspaceId === 'string' && pending.workspaceId.trim()
+                ? pending.workspaceId.trim()
+                : typeof cfg?.workspaceId === 'string' && cfg.workspaceId.trim()
+                    ? cfg.workspaceId.trim()
+                    : undefined;
+        const result = await executeTool(pending.name, callInput, { sessionId, workspaceId });
 
         const eventResult = sanitizeToolResultForBroadcast(pending.name, result);
 
@@ -151,6 +158,16 @@ export class AgentLoopService {
 
             // Check run config
             const runCfg = getSessionRunConfig(sessionId);
+            let workspaceId =
+                typeof runCfg?.workspaceId === 'string' && runCfg.workspaceId.trim() ? runCfg.workspaceId.trim() : undefined;
+            if (!workspaceId && !useMock()) {
+                try {
+                    const s = await Session.findById(sessionId).select({ workspaceId: 1 }).lean();
+                    const wsObj: any = (s as any)?.workspaceId;
+                    const wsStr = wsObj ? String(wsObj) : '';
+                    if (wsStr.trim()) workspaceId = wsStr.trim();
+                } catch { }
+            }
 
             broadcast({ type: 'thinking_start', runId: currentRunId, data: {} });
 
@@ -201,7 +218,7 @@ export class AgentLoopService {
 
             let result;
             try {
-                result = await executeTool(plan.name, callInput, { sessionId });
+                result = await executeTool(plan.name, callInput, { sessionId, workspaceId });
             } catch (e: any) {
                 result = { ok: false, error: e.message };
             }

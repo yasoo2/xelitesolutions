@@ -438,6 +438,13 @@ class FreeIntelligenceOptimizer {
         return technicalKeywords.some(kw => text.includes(kw));
     }
 
+    private isToolIntent(text: string): boolean {
+        const shellCmd = /^(ls|pwd|cd|cat|head|tail|grep|rg|find|tree|npm|git)\b/i.test(text);
+        const fileOpsEn = /(read|write|edit|modify|delete|remove|list|show)\s+(file|files|folder|directory)\b/i.test(text);
+        const fileOpsAr = /(اقرأ|قراءة|اكتب|عدل|تعديل|احذف|حذف|اعرض|عرض|سرد|قائمة)\s+(ملف|ملفات|مجلد|مجلدات|الدليل|مسار)\b/i.test(text);
+        return shellCmd || fileOpsEn || fileOpsAr;
+    }
+
     public getRealKnowledge(query: string): string | null {
         if (this.chunkCache.length === 0) return null;
 
@@ -494,16 +501,17 @@ class FreeIntelligenceOptimizer {
     /**
      * Main optimization entry point
      */
-    public async optimizeRequest(userText: string, context: any[]): Promise<OptimizationResult> {
+    public async optimizeRequest(userText: string, context: any): Promise<OptimizationResult> {
         const cleanText = userText.toLowerCase().trim();
         const userName = 'يونس'; // Hardcoded for this session
+        const ctx = Array.isArray(context) ? context : (context ? [context] : []);
 
         // Extract language from context
-        const langContext = context.find((c: any) => c && c.language) || { language: 'en' };
+        const langContext = ctx.find((c: any) => c && c.language) || { language: 'en' };
         const userLang = langContext.language || 'en';
 
         // [Workspace] Extract Workspace Context
-        const workspaceContext = context.find((c: any) => c && c.workspaceId);
+        const workspaceContext = ctx.find((c: any) => c && c.workspaceId);
         const workspaceId = workspaceContext?.workspaceId;
         const plan = workspaceContext?.plan || 'free';
 
@@ -518,6 +526,15 @@ class FreeIntelligenceOptimizer {
         // CRITICAL: Always run planner for workflow markers
         if (cleanText.includes('wf_start') || cleanText.includes('project_plan') || cleanText.includes('eco_plan')) {
             console.info('[Optimizer] Workflow marker detected - forcing full planner');
+            return {
+                shouldUseCache: false,
+                suggestedModel: 'smart',
+                skipPlanner: false
+            };
+        }
+
+        if (this.isToolIntent(cleanText)) {
+            console.info('[Optimizer] Tool intent detected - forcing planner');
             return {
                 shouldUseCache: false,
                 suggestedModel: 'smart',

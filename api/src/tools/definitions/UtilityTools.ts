@@ -5,6 +5,32 @@ import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
 
+function getWorkspaceRoot() {
+    try {
+        const { workspaceService } = require('../../services/WorkspaceService');
+        return workspaceService.getActiveRoot();
+    } catch {
+        return process.cwd();
+    }
+}
+
+function resolveToolPath(p: string) {
+    const root = getWorkspaceRoot();
+    const val = String(p ?? '').trim();
+    if (!val || val === '.') return root;
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) throw new Error('path_outside_workspace');
+    return absReal;
+}
+
 /**
  * DirectoryInspectionTool: Returns a structured JSON tree of a directory.
  * Equivalent to `list_dir`.
@@ -27,8 +53,7 @@ export class DirectoryInspectionTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {
-        const root = process.cwd();
-        const dirPath = input.path ? (path.isAbsolute(input.path) ? input.path : path.resolve(root, input.path)) : root;
+        const dirPath = resolveToolPath(String(input?.path ?? '.'));
         const depth = Number(input.depth || 1);
 
         if (!fs.existsSync(dirPath)) return { ok: false, error: 'Directory not found', logs: [] };
@@ -80,7 +105,7 @@ export class FileSearchTool extends BaseTool {
 
     async execute(input: any) {
         const pattern = String(input.pattern);
-        const searchPath = input.path ? (path.isAbsolute(input.path) ? input.path : path.resolve(process.cwd(), input.path)) : process.cwd();
+        const searchPath = resolveToolPath(String(input?.path ?? '.'));
 
         try {
             const files = await glob(pattern, {
@@ -123,7 +148,7 @@ export class SymbolInspectorTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {
-        const filePath = input.filePath ? (path.isAbsolute(input.filePath) ? input.filePath : path.resolve(process.cwd(), input.filePath)) : '';
+        const filePath = resolveToolPath(String(input?.filePath ?? ''));
         const symbol = String(input.symbolName);
 
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
@@ -209,7 +234,7 @@ export class AdvancedFileEditTool extends BaseTool {
     sideEffects: ToolPermission[] = ['write'];
 
     async execute(input: any) {
-        const filePath = input.filePath ? (path.isAbsolute(input.filePath) ? input.filePath : path.resolve(process.cwd(), input.filePath)) : '';
+        const filePath = resolveToolPath(String(input?.filePath ?? ''));
         const edits = input.edits || [];
 
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };

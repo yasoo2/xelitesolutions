@@ -28,9 +28,19 @@ function resolveToolPath(p: string) {
     const root = getWorkspaceRoot();
     const val = String(p ?? '').trim();
     if (!val || val === '.') return root;
-    if (path.isAbsolute(val)) return val;
-    // Resolve relative to the current active workspace root
-    return path.resolve(root, val);
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) {
+        throw new Error('path_outside_workspace');
+    }
+    return absReal;
 }
 
 export class EchoTool extends BaseTool {
@@ -152,6 +162,43 @@ export class WriteFileTool extends BaseTool {
     }
 }
 
+export class LsTool extends BaseTool {
+    name = 'ls';
+    description = 'List directory entries.';
+    version = '1.0.0';
+    tags = ['fs', 'ls', 'read'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            path: { type: 'string' },
+            includeHidden: { type: 'boolean' }
+        }
+    };
+    outputSchema = { type: 'object' as const, properties: { path: { type: 'string' }, entries: { type: 'array', items: { type: 'string' } } } };
+    permissions: ToolPermission[] = ['read'];
+    sideEffects: ToolPermission[] = [];
+    rateLimitPerMinute = 120;
+    auditFields = ['path'];
+
+    async execute(input: any) {
+        const logs: string[] = [];
+        const p = String(input?.path ?? '.');
+        const includeHidden = Boolean(input?.includeHidden);
+        const full = resolveToolPath(p);
+
+        try {
+            const names = fs.readdirSync(full, { withFileTypes: true })
+                .filter(d => includeHidden || !d.name.startsWith('.'))
+                .map(d => d.isDirectory() ? `${d.name}/` : d.name)
+                .sort((a, b) => a.localeCompare(b));
+            logs.push(`ls=${p}`);
+            return { ok: true, output: { path: p, entries: names }, logs };
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs };
+        }
+    }
+}
+
 export class GrepSearchTool extends BaseTool {
     name = 'grep_search';
     description = 'Search for text patterns in files using grep.';
@@ -180,8 +227,7 @@ export class GrepSearchTool extends BaseTool {
         const include = String(input?.include ?? '');
         const exclude = String(input?.exclude ?? '');
 
-        const root = getWorkspaceRoot();
-        const workDir = path.isAbsolute(searchPath) ? searchPath : path.resolve(root, searchPath);
+        const workDir = resolveToolPath(searchPath);
 
         // Escape quotes
         let cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${workDir}"`;
@@ -366,7 +412,7 @@ export class ShellExecuteTool extends BaseTool {
             } catch { }
         }
 
-        const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(root, cwdInput)) : root;
+        const workDir = cwdInput ? resolveToolPath(cwdInput) : root;
 
 
 

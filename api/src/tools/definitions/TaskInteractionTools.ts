@@ -7,6 +7,32 @@ import { broadcast } from '../../ws';
 // Store for persistent terminals
 export const terminals = new Map<string, { pty: any, history: string[] }>();
 
+function getWorkspaceRoot() {
+    try {
+        const { workspaceService } = require('../../services/WorkspaceService');
+        return workspaceService.getActiveRoot();
+    } catch {
+        return process.cwd();
+    }
+}
+
+function resolveToolPath(p: string) {
+    const root = getWorkspaceRoot();
+    const val = String(p ?? '').trim();
+    if (!val || val === '.') return root;
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) throw new Error('path_outside_workspace');
+    return absReal;
+}
+
 
 /**
  * TerminalManagerTool: Persistent terminal sessions.
@@ -139,7 +165,7 @@ export class SafeReadFileTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {
-        const filePath = input.path ? (path.isAbsolute(input.path) ? input.path : path.resolve(process.cwd(), input.path)) : '';
+        const filePath = resolveToolPath(String(input?.path ?? ''));
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
 
         try {

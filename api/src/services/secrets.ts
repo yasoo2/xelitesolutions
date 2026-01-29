@@ -2,6 +2,7 @@ type PendingToolContext = {
   runId: string;
   name: string;
   input: any;
+  workspaceId?: string;
 };
 
 type SecretEntry = {
@@ -25,6 +26,7 @@ const runConfigBySession = new Map<
     model?: string;
     kind?: 'chat' | 'agent';
     browserSessionId?: string;
+    workspaceId?: string;
     autoApproveAll?: boolean;
     autoApproveSafe?: boolean;
     expiresAt: number;
@@ -212,6 +214,7 @@ export function setSessionRunConfig(
     model?: string;
     kind?: 'chat' | 'agent';
     browserSessionId?: string;
+    workspaceId?: string;
     autoApproveAll?: boolean;
     autoApproveSafe?: boolean;
     ttlSeconds?: number;
@@ -230,6 +233,7 @@ export function setSessionRunConfig(
     model: cfg.model,
     kind: cfg.kind,
     browserSessionId: cfg.browserSessionId,
+    workspaceId: cfg.workspaceId,
     autoApproveAll: cfg.autoApproveAll,
     autoApproveSafe: cfg.autoApproveSafe,
     expiresAt: nowMs() + ttlSeconds * 1000,

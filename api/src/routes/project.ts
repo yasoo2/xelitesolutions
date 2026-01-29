@@ -94,7 +94,13 @@ function getImports(content: string): string[] {
 
 // Get Current Root
 router.get('/root', authenticate as any, (req: Request, res: Response) => {
-  const activeRoot = workspaceService.getActiveRoot();
+  const workspaceId =
+    (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+      ? req.headers['x-workspace-id'].trim()
+      : (req.query && typeof (req.query as any).workspaceId === 'string' && String((req.query as any).workspaceId).trim())
+        ? String((req.query as any).workspaceId).trim()
+        : '';
+  const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
   res.json({ path: activeRoot, name: path.basename(activeRoot) });
 });
 
@@ -104,12 +110,18 @@ router.post('/root', authenticate as any, async (req: Request, res: Response) =>
     const { path: newPath } = req.body;
     if (!newPath) return res.status(400).json({ error: 'Path required' });
 
-    const success = await workspaceService.setActiveRoot(newPath);
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+          ? String((req.body as any).workspaceId).trim()
+          : '';
+    const success = await workspaceService.setActiveRoot(newPath, workspaceId || undefined);
     if (!success) {
       return res.status(404).json({ error: 'Path does not exist' });
     }
 
-    const activeRoot = workspaceService.getActiveRoot();
+    const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     res.json({ success: true, path: activeRoot, name: path.basename(activeRoot) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to switch workspace' });
@@ -118,8 +130,14 @@ router.post('/root', authenticate as any, async (req: Request, res: Response) =>
 
 // Reset to System Root
 router.post('/reset', authenticate as any, (req: Request, res: Response) => {
-  workspaceService.resetToSystem();
-  const activeRoot = workspaceService.getActiveRoot();
+  const workspaceId =
+    (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+      ? req.headers['x-workspace-id'].trim()
+      : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+        ? String((req.body as any).workspaceId).trim()
+        : '';
+  workspaceService.resetToSystem(workspaceId || undefined);
+  const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
   res.json({ success: true, path: activeRoot, name: path.basename(activeRoot) });
 });
 
@@ -141,7 +159,13 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
     // Check if already exists
     if (fs.existsSync(targetDir)) {
       // Just switch to it if it exists
-      await workspaceService.setActiveRoot(targetDir);
+      const workspaceId =
+        (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+          ? req.headers['x-workspace-id'].trim()
+          : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+            ? String((req.body as any).workspaceId).trim()
+            : '';
+      await workspaceService.setActiveRoot(targetDir, workspaceId || undefined);
       return res.json({ success: true, path: targetDir, message: 'Repository already exists, switched to it.' });
     }
 
@@ -158,7 +182,13 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
     console.log(`Cloning ${repoUrl}...`);
     await execAsync(`git clone "${cloneUrl}" "${targetDir}"`);
 
-    await workspaceService.setActiveRoot(targetDir);
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+          ? String((req.body as any).workspaceId).trim()
+          : '';
+    await workspaceService.setActiveRoot(targetDir, workspaceId || undefined);
     res.json({ success: true, path: targetDir });
   } catch (e: any) {
     console.error('Clone failed:', e.message); // Don't log full error to avoid leaking token in command string

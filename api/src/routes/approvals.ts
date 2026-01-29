@@ -164,7 +164,14 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
     broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
     if (decision === 'approved') {
       broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
-      const result = await executeTool(ctx.name, ctx.input);
+      const sessionId = typeof ctx.input?.sessionId === 'string' && ctx.input.sessionId.trim() ? ctx.input.sessionId.trim() : undefined;
+      const workspaceId =
+        typeof ctx.input?.workspaceId === 'string' && ctx.input.workspaceId.trim()
+          ? ctx.input.workspaceId.trim()
+          : typeof ctx.input?.__workspaceId === 'string' && ctx.input.__workspaceId.trim()
+            ? ctx.input.__workspaceId.trim()
+            : undefined;
+      const result = await executeTool(ctx.name, ctx.input, { sessionId, workspaceId });
       const eventResult = sanitizeToolResultForBroadcast(ctx.name, result);
       broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result: eventResult } });
       if (result.artifacts) {
@@ -190,7 +197,14 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
     broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
     if (decision === 'approved') {
       broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
-      const result = await executeTool(ctx.name, ctx.input);
+      const sessionId = typeof ctx.input?.sessionId === 'string' && ctx.input.sessionId.trim() ? ctx.input.sessionId.trim() : undefined;
+      const workspaceId =
+        typeof ctx.input?.workspaceId === 'string' && ctx.input.workspaceId.trim()
+          ? ctx.input.workspaceId.trim()
+          : typeof ctx.input?.__workspaceId === 'string' && ctx.input.__workspaceId.trim()
+            ? ctx.input.__workspaceId.trim()
+            : undefined;
+      const result = await executeTool(ctx.name, ctx.input, { sessionId, workspaceId });
       const eventResult = sanitizeToolResultForBroadcast(ctx.name, result);
       broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result: eventResult } });
       if (result.artifacts) {

@@ -39,7 +39,7 @@ import { GoBuilderTool } from './definitions/GoBuilderTool';
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
 import { TaskLoopTool } from './definitions/TaskLoopTool';
-import { EchoTool, FileEditTool, GrepSearchTool, NpmManagerTool, ScaffoldProjectTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
+import { EchoTool, FileEditTool, GrepSearchTool, LsTool, NpmManagerTool, ScaffoldProjectTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
 import { AnalyzeProjectTool, AnalyzeCodebaseTool } from './definitions/AnalysisTools';
 import { HttpFetchTool, HtmlExtractTool, RssFetchTool, JsonQueryTool } from './definitions/ContentTools';
 import { KnowledgeSearchTool, KnowledgeAddTool } from './definitions/KnowledgeTools';
@@ -106,6 +106,7 @@ export const tools: ToolDefinition[] = [
   new ShellExecuteTool(),
   new FileEditTool(),
   new WriteFileTool(),
+  new LsTool(),
   new GrepSearchTool(),
   new NpmManagerTool(),
   new ScaffoldProjectTool(),

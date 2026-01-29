@@ -468,7 +468,7 @@ function detectWorkflow(raw: string): { kind: WorkflowKind; root: string; tool?:
  */
 async function detectWorkflowAdvanced(
   raw: string,
-  options?: { useAnalyzer?: boolean }
+  options?: { useAnalyzer?: boolean; workspaceId?: string }
 ): Promise<{ kind: WorkflowKind; root: string; tool?: { name: string; command: string }; analysis?: any } | null> {
   const s = String(raw || '');
   if (!s.trim()) return null;
@@ -493,7 +493,7 @@ async function detectWorkflowAdvanced(
   if (options?.useAnalyzer !== false && isComplexRequest(s)) {
     try {
       const { executeTool } = await import('../services/ToolService');
-      const result = await executeTool('request_analyzer', { userRequest: s });
+      const result = await executeTool('request_analyzer', { userRequest: s }, { workspaceId: options?.workspaceId });
 
       if (result.ok && result.output) {
         const analysis = result.output;
@@ -1106,6 +1106,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let assistantTextEmitted = false;
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
+  const workspaceId =
+    (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+      ? req.headers['x-workspace-id'].trim()
+      : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+        ? String((req.body as any).workspaceId).trim()
+        : (req.query && typeof (req.query as any).workspaceId === 'string' && String((req.query as any).workspaceId).trim())
+          ? String((req.query as any).workspaceId).trim()
+          : (clientContext && typeof (clientContext as any).workspaceId === 'string' && String((clientContext as any).workspaceId).trim())
+            ? String((clientContext as any).workspaceId).trim()
+            : undefined;
   const useMock = !isAuthed ? true : (process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1);
   const kind = sessionKind === 'agent' ? 'agent' : 'chat';
   const normalizedFileIds = normalizeFileIds(fileIds);
@@ -1428,6 +1438,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       baseUrl: typeof baseUrl === 'string' ? baseUrl : undefined,
       model: typeof model === 'string' ? model : undefined,
       kind,
+      workspaceId,
       browserSessionId:
         typeof browserSessionId === 'string' && browserSessionId.trim()
           ? browserSessionId.trim()
@@ -1732,7 +1743,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         userId && initialPlan.input && typeof initialPlan.input === 'object'
           ? { ...(initialPlan.input as any), userId: String(userId) }
           : initialPlan.input;
-      let result = await executeTool(initialPlan.name, callInput);
+      let result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId });
 
       // [INTELLIGENCE UPGRADE] Self-Correction Logic
       if (!result.ok && providerKey === 'auto') {
@@ -1746,7 +1757,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const retryInput = userId && correction.input && typeof correction.input === 'object'
             ? { ...(correction.input as any), userId: String(userId) }
             : correction.input;
-          result = await executeTool(correction.action, retryInput);
+          result = await executeTool(correction.action, retryInput, { sessionId, workspaceId });
         }
       }
 
@@ -1769,14 +1780,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       store.updateRun(runId, { status: 'blocked' });
       // store plan context for continuation
       const { planContext } = await import('../approvals/context');
-      planContext.set(ap.id, { runId, name: initialPlan.name, input: initialPlan.input });
+      planContext.set(ap.id, { runId, sessionId, workspaceId, name: initialPlan.name, input: initialPlan.input });
       if (autoAll || (auto && safe) || /^browser_/.test(initialPlan.name || '')) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
-        let result; try { result = await executeTool(initialPlan.name, callInput); } catch (e) { result = { ok: false, output: String(e) }; }
+        let result; try { result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId }); } catch (e) { result = { ok: false, output: String(e) }; }
         if (initialPlan.name === 'central_answer' && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
@@ -1818,14 +1829,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
       await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
-      planContext.set(ap._id.toString(), { runId, name: initialPlan.name, input: initialPlan.input });
+      planContext.set(ap._id.toString(), { runId, sessionId, workspaceId, name: initialPlan.name, input: initialPlan.input });
       if (autoAll || (auto && safe) || /^browser_/.test(initialPlan.name || '')) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
-        let result; try { result = await executeTool(initialPlan.name, callInput); } catch (e) { result = { ok: false, output: String(e) }; }
+        let result; try { result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId }); } catch (e) { result = { ok: false, output: String(e) }; }
         if ((String(initialPlan.name) === 'central_answer' || String(initialPlan.name) === 'echo') && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
           if (answerText) {
@@ -1870,7 +1881,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const rawUserText = String(text || '');
     if (isLocationLikeQuery(rawUserText)) {
       ev({ type: 'step_started', data: { name: 'execute:http_fetch', input: { url: 'https://ipinfo.io/json', sessionId } } });
-      const result = await executeTool('http_fetch', { url: 'https://ipinfo.io/json', sessionId });
+      const result = await executeTool('http_fetch', { url: 'https://ipinfo.io/json', sessionId }, { sessionId, workspaceId });
       ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:http_fetch', result } });
       if (useMock) {
         store.addExec(runId, 'http_fetch', { url: 'https://ipinfo.io/json', sessionId }, result.output, result.ok, result.logs);
@@ -2669,7 +2680,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
     }
 
-    const wf = !wantsShop ? await detectWorkflowAdvanced(userTextForOverrides, { useAnalyzer: true }) : null;
+    const wf = !wantsShop ? await detectWorkflowAdvanced(userTextForOverrides, { useAnalyzer: true, workspaceId }) : null;
     if (wf && wf.kind !== 'ecommerce' && (!planName || planName === 'echo')) {
       const marker =
         wf.kind === 'tool_shell' && wf.tool
@@ -2726,7 +2737,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const planResult = await executeTool('project_planner', {
               projectDescription: userTextForOverrides,
               analysis: wf.analysis
-            });
+            }, { sessionId, workspaceId });
 
             if (planResult.ok && planResult.output) {
               const plan = planResult.output;
@@ -2741,7 +2752,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   totalPhases: plan.totalPhases,
                   pendingTasks: plan.phases?.flatMap((p: any) => p.tasks || []) || []
                 }
-              });
+              }, { sessionId, workspaceId });
 
               // Store plan in history for reference
               history.push({
@@ -3093,7 +3104,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             type: 'step_started',
             data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
           });
-          const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId });
+          const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId });
           if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
             const answerText = String(result.output.note || result.output.summary || '');
             if (answerText) {
@@ -3120,7 +3131,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
           if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
-            const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
+            const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId });
             if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
               const answerText = String(result.output.note || result.output.summary || '');
               if (answerText) {
@@ -3154,7 +3165,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const safe = !/HIGH|CRITICAL/i.test(String(risk));
           if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
-            const result = await executeTool(plan?.name || '', plan?.input, { sessionId });
+            const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId });
             if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
               const answerText = String(result.output.note || result.output.summary || '');
               if (answerText) {
@@ -3268,7 +3279,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
     const callInput =
       userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
-    const result = await executeTool(plan?.name || '', callInput, { sessionId });
+    const result = await executeTool(plan?.name || '', callInput, { sessionId, workspaceId });
     lastExecutedToolSig = `${String(plan?.name || '')}:${JSON.stringify((plan as any)?.input || {})}`;
     lastExecutedToolName = String(plan?.name || '');
     if (result?.ok && plan?.name === 'browser_open') {
@@ -3638,7 +3649,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const pkgPath = `${rootNode}/package.json`;
         // Execute file_read silently and inject into history
         console.log(`[Smart Context] Auto-reading ${pkgPath}`);
-        const subResult = await executeTool('file_read', { filePath: pkgPath });
+        const subResult = await executeTool('file_read', { filePath: pkgPath }, { sessionId, workspaceId });
         if (subResult.ok) {
           ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Read] Read ${pkgPath} for context.` } });
           history.push({
@@ -3669,7 +3680,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const fpath = String(plan?.input?.filePath || '.');
         const dir = fpath.includes('/') ? fpath.split('/').slice(0, -1).join('/') || '.' : '.';
         console.log(`[Auto-Correction] file_read failed for ${fpath}. Listing ${dir}`);
-        const subResult = await executeTool('ls', { path: dir });
+        const subResult = await executeTool('ls', { path: dir }, { sessionId, workspaceId });
         if (subResult.ok) {
           ev({ type: 'text', data: `⚠️ لم أجد الملف "${fpath}". إليك محتويات المجلد "${dir}" للمساعدة:` });
           ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Correction] ls ${dir}: ${JSON.stringify(subResult.output)}` } });
@@ -3803,7 +3814,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         } else if (base && sym) {
           const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
           ev({ type: 'step_started', data: { name: `execute:http_fetch(fallback)` } });
-          const fbRes = await executeTool('http_fetch', { url: fbUrl });
+          const fbRes = await executeTool('http_fetch', { url: fbUrl }, { sessionId, workspaceId });
           ev({ type: fbRes.ok ? 'step_done' : 'step_failed', data: { name: `execute:http_fetch(fallback)`, result: fbRes } });
           let rate2: number | null = null;
           if (typeof fbRes.output?.json?.rates?.[sym] === 'number') {
