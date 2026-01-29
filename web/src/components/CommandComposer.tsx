@@ -581,7 +581,7 @@ export default function CommandComposer({
 }) {
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
-  const showFloatingTaskbar = false;
+  const showFloatingTaskbar = true;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -3065,27 +3065,6 @@ export default function CommandComposer({
     const inserted = new Set<string>();
     const renderedThoughts = new Set<string>();
 
-    // ELITE REFINEMENT: Track sessions/runs that have text responses to hide their thoughts
-    const hasTextResponse = new Set<string>();
-    for (const { e } of sortedEvents) {
-      if (e?.type === 'text') {
-        const rid = getEventRunId(e);
-        if (rid && rid !== 'no-run') {
-          // If the text has actual content, mark this run as responded
-          const content = e.data?.text || e.data;
-          if (typeof content === 'string' && content.trim()) {
-            hasTextResponse.add(rid);
-          } else if (content && typeof content === 'object' && String(content.text || '').trim()) {
-            hasTextResponse.add(rid);
-          }
-        }
-      }
-    }
-
-    // Also track if we are currently streaming an answer for the active run
-    const activeRunHasText = activeRunId && hasTextResponse.has(activeRunId);
-    const isAnsweringCurrent = status === 'answering' || activeRunHasText;
-
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
 
@@ -3107,26 +3086,11 @@ export default function CommandComposer({
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
       else if (type === 'thought') {
         const rid = getEventRunId(e);
-
-        // ELITE 5.0 FIX (Atomic Disappearance):
-        // Absolute Zero Tolerance for overlap.
-
-        // 1. If we have ANY text response for this run, kill the thought.
-        if (hasTextResponse.has(rid)) continue;
-
-        // 2. If the GLOBAL status is answering, kill ALL thoughts (including optimistic ones).
-        // This is the "Nuclear Option" to prevent overlap.
-        if ((status as string) === 'answering') continue;
-
-        // 3. Specific Run Check
-        if (rid === activeRunId && isAnsweringCurrent) continue;
-
-        // 4. Peak ahead check remains valid
-        const next = sortedEvents[idx + 1];
-        if (next && next.e?.type === 'text' && getEventRunId(next.e) === rid) continue;
-
-        // 5. Special check for optimistic thoughts during answering
-        if (rid.endsWith('_opt') && ((status as string) === 'answering' || isAnsweringCurrent)) continue;
+        if (!rid || rid === 'no-run') continue;
+        if (rid.endsWith('_opt')) continue;
+        const content = typeof e?.data?.content === 'string' ? e.data.content : '';
+        const active = Boolean(e?.data?.active);
+        if (!active && !content.trim()) continue;
 
         if (renderedThoughts.has(rid)) continue;
         renderedThoughts.add(rid);
@@ -3136,7 +3100,7 @@ export default function CommandComposer({
     }
 
     return out;
-  }, [sortedEvents, status, activeRunId]);
+  }, [sortedEvents]);
 
   const activeTaskBar = useMemo(() => {
     if (!showFloatingTaskbar) return null;
@@ -3708,7 +3672,14 @@ export default function CommandComposer({
               className="taskbar-floating"
               dir="auto"
             >
-              <div className="taskbar-title">المهام</div>
+              <div className="taskbar-title">
+                {(() => {
+                  const total = activeTaskBar.items.length;
+                  const done = activeTaskBar.items.filter((x) => x.status === 'done').length;
+                  if (total === 0) return 'عملية التفكير';
+                  return `عملية التفكير ${done}/${total} done`;
+                })()}
+              </div>
               <div className="taskbar-items">
                 {activeTaskBar.analyzing && activeTaskBar.items.length === 0 ? (
                   <div className="task-chip running">
