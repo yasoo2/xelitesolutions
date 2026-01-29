@@ -19,9 +19,10 @@ const allowedOriginsDefault = [
 
 const jwtSecret = process.env.JWT_SECRET || (() => {
   if (isProd) {
-    throw new Error('JWT_SECRET is required in production');
+    console.error('JWT_SECRET غير مضبوط في الإنتاج. سيتم توليد مفتاح مؤقت (غير مستحسن).');
+  } else {
+    console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
   }
-  console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
   return require('crypto').randomBytes(32).toString('hex');
 })();
 
