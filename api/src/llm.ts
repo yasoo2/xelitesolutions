@@ -555,14 +555,15 @@ export async function planNextStep(
   console.info(`[LLM] planNextStep entry - Provider: ${provider}, Resolved Key: ${providerKey}`);
 
   const onProgress = options?.onProgress;
-  onProgress?.('📚 استرجاع المعرفة من طوابق الهندسة الـ 10... (RAG Scan)');
+  onProgress?.('تحليل الطلب…');
+  onProgress?.('تجميع سياق سريع…');
 
   const optimization = await freeIntelligenceOptimizer.optimizeRequest(
     typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
     messages
   );
 
-  onProgress?.('🧩 ربط الطلب بالمعمارية المناسبة... (Pattern Matching)');
+  onProgress?.('مطابقة الأنماط وتحديد المسار…');
 
   const analysis = (optimization as any).analysis || ((optimization as any).skipPlanner ? { type: 'chat', complexity: 'simple', language: 'ar' } : await advancedAnalyzeTask(
     typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
@@ -571,6 +572,7 @@ export async function planNextStep(
   ));
 
   if ((optimization as any).skipPlanner) {
+    onProgress?.('صياغة رد مباشر…');
     const ragContext = (optimization as any).cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${(optimization as any).cachedResponse}` : '';
     console.info('[Auto Enterprise] ⚡ Optimizer: Skipping heavy planner for simple conversational query.');
     const msgs = [
@@ -602,6 +604,7 @@ export async function planNextStep(
   // OpenRouter Provider
   if (providerKey.includes('openrouter')) {
     console.info('[LLM] Planning with OpenRouter Provider');
+    onProgress?.('الاتصال بالمزوّد…');
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
@@ -626,6 +629,7 @@ export async function planNextStep(
   // HuggingFace Provider
   if (providerKey === 'huggingface' || providerKey === 'hf') {
     console.info('[LLM] Planning with HuggingFace Provider');
+    onProgress?.('الاتصال بالمزوّد…');
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
@@ -650,6 +654,7 @@ export async function planNextStep(
   // Auto Mode - Enterprise Intelligence (Multi-Model Router + Context + Memory)
   if (providerKey.includes('auto')) {
     console.info('[LLM] 🚀 Auto Mode Enterprise - Full System Activated');
+    onProgress?.('تشغيل طبقات الذكاء…');
 
     const lastMsg = messages[messages.length - 1];
     const role = (lastMsg?.role as string) || '';
@@ -697,6 +702,7 @@ export async function planNextStep(
     const userId = options?.userId || 'anonymous';
     const sessionId = options?.sessionId || 'session_' + Date.now();
     const context = buildConversationContext(userId, sessionId, messages as any[]);
+    onProgress?.('تحديث ذاكرة المحادثة…');
 
     // 3. Learn from conversation (async, don't block)
     longTermMemory.learnFromConversation(userId, messages as any[]).catch(console.error);
@@ -704,11 +710,13 @@ export async function planNextStep(
     // 4. Analyze contextual intent
     const intent = analyzeContextualIntent(userText, context);
     console.info(`[Enterprise] Intent: ${intent.primary} (${(intent.confidence * 100).toFixed(0)}%)`);
+    onProgress?.('مطابقة الأنماط داخل السياق…');
 
     // 5. Check for context-aware patterns
     const contextMatch = matchPatternWithContext(userText, context);
     if (contextMatch.matched && contextMatch.confidence > 0.7) {
       console.info(`[Enterprise] Context Match: ${contextMatch.action} - executing directly`);
+      onProgress?.('اختيار أداة مباشرة…');
       return { name: contextMatch.action!, input: contextMatch.params };
     }
 
@@ -723,6 +731,7 @@ export async function planNextStep(
     if (smartResponse) {
       console.info('[FREE OPTIMIZER] ✅ 🚀 INSTANT SMART RESPONSE MATCHED! No API call needed!');
       console.info(`[FREE OPTIMIZER] Response preview: "${smartResponse.substring(0, 80)}..."`);
+      onProgress?.('إنتاج رد فوري…');
       return { name: 'echo', input: { text: smartResponse } };
     }
     console.info('[FREE OPTIMIZER] ❌ No instant pattern match - proceeding with API call');
@@ -731,9 +740,11 @@ export async function planNextStep(
     const optimization = await freeIntelligenceOptimizer.optimizeRequest(userText, context);
     if (optimization.shouldUseCache && optimization.cachedResponse) {
       console.info('[FREE OPTIMIZER] ✅ 💾 CACHE HIT! Returning cached response');
+      onProgress?.('استرجاع إجابة مخزنة…');
       return { name: 'echo', input: { text: optimization.cachedResponse } };
     }
     console.info(`[FREE OPTIMIZER] 🎯 Model selected: ${optimization.suggestedModel}`);
+    onProgress?.('اختيار أفضل مسار…');
 
     // Context from RAG to be injected into the LLM later if needed
     const ragContext = optimization.cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${optimization.cachedResponse}` : '';

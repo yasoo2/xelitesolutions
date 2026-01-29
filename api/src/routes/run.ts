@@ -1456,6 +1456,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let systemPromptText: string | null = null;
 
   const ev = (e: LiveEvent) => broadcast({ ...e, runId });
+  let thoughtOpen = false;
+  const thoughtStart = () => {
+    if (thoughtOpen) return;
+    thoughtOpen = true;
+    ev({ type: 'thought', data: { action: 'start' } });
+  };
+  const thoughtChunk = (content: any) => {
+    const s = String(content ?? '');
+    if (!s.trim()) return;
+    thoughtStart();
+    ev({ type: 'thought', data: { action: 'chunk', content: s } });
+  };
+  const thoughtEnd = () => {
+    if (!thoughtOpen) return;
+    thoughtOpen = false;
+    ev({ type: 'thought', data: { action: 'end' } });
+  };
 
   try {
     const userSystemInstructions =
@@ -1638,7 +1655,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const answer = optimization.cachedResponse;
 
         // Broadcast events to satisfy frontend listeners
-        ev({ type: 'thought', data: '🧠 accessing_library_of_alexandria...' });
+        thoughtChunk('أسترجع نتيجة جاهزة من الذاكرة…\n');
+        thoughtEnd();
         ev({ type: 'text', data: answer });
         ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
         ev({ type: 'run_finished', data: { runId, ok: true } });
@@ -1679,19 +1697,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             preferNonLLM: true,
           }) as any;
         } else {
-          // Initialize Thought Parser
-          const parser = new ThoughtStreamParser((data) => {
-            ev({ type: 'thought', data });
-          });
-
-          initialPlan = await planNextStep(history, {
-            provider: providerKey,
-            apiKey: apiKey,
-            baseUrl: baseUrl,
-            model: model,
-            throwOnError: true,
-            onProgress: (msg: string) => ev({ type: 'thought', data: msg })
-          });
+          thoughtStart();
+          try {
+            initialPlan = await planNextStep(history, {
+              provider: providerKey,
+              apiKey: apiKey,
+              baseUrl: baseUrl,
+              model: model,
+              throwOnError: true,
+              onProgress: (msg: string) => thoughtChunk(`${msg}\n`)
+            });
+          } finally {
+            thoughtEnd();
+          }
         }
       }
     }

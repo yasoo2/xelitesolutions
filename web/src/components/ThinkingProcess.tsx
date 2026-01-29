@@ -22,7 +22,7 @@ export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessP
             return;
         }
 
-        const words = (thought.content || '').split(' ');
+        const words = (thought.content || '').split(/(\s+)/).filter(Boolean);
         let current = '';
         let i = 0;
 
@@ -32,7 +32,7 @@ export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessP
                 setDisplayedContent(thought.content || '');
                 return;
             }
-            current += (i === 0 ? '' : ' ') + words[i];
+            current += words[i];
             setDisplayedContent(current);
             i++;
         }, 5); // HYPER-SPEED: 5ms for Ghost/Whisper effect
@@ -85,11 +85,11 @@ export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessP
                     fontWeight: 300,
                     fontStyle: 'italic',
                     lineHeight: '1.5',
-                    color: 'rgba(255, 255, 255, 0.45)', // Ghostly white
+                    color: 'rgba(192, 192, 192, 0.78)',
                     fontFamily: 'var(--font-sans)',
                     whiteSpace: 'pre-wrap',
                     scrollbarWidth: 'none',
-                    filter: 'blur(0.4px)', // The Phantom Blur
+                    filter: 'blur(0.2px)',
                     transition: 'all 0.3s ease'
                 }}
             >
