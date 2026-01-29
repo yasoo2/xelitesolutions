@@ -888,6 +888,7 @@ export default function CommandComposer({
 
       if (e.type === 'step_started' && e.data?.name) {
         const name = String(e.data.name);
+        if (name === 'execute:central_answer') continue;
         const base = `${runId || ''}::${name}`;
         const nextOcc = (occ.get(base) || 0) + 1;
         occ.set(base, nextOcc);
@@ -904,6 +905,7 @@ export default function CommandComposer({
 
       if ((e.type === 'step_done' || e.type === 'step_failed') && e.data?.name) {
         const name = String(e.data.name);
+        if (name === 'execute:central_answer') continue;
         const base = `${runId || ''}::${name}`;
         const stack = open.get(base) || [];
         const key = stack.pop();
@@ -1262,6 +1264,7 @@ export default function CommandComposer({
   const showTool = (name: string) => {
     const next = String(name || '').trim();
     if (!next) return;
+    if (next === 'central_answer') return;
     if (toolHideTimerRef.current != null) {
       window.clearTimeout(toolHideTimerRef.current);
       toolHideTimerRef.current = null;
