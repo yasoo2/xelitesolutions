@@ -37,7 +37,12 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                 ref={ref}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="my-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center justify-center gap-2"
+                className="my-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+                style={{
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: 'rgb(239, 68, 68)',
+                }}
             >
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 {t('errorEncountered', 'حدث خطأ')}
@@ -46,6 +51,20 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
     }
 
     if (status === 'idle' && steps.length === 0 && logs.length === 0) return null;
+
+    const visibleStepsAll = useMemo(() => {
+        const out: AgentStep[] = [];
+        for (const s of Array.isArray(steps) ? steps : []) {
+            const name = String(s?.name || '').trim();
+            const display = String(s?.displayName || '').trim();
+            const tool = name.toLowerCase().startsWith('execute:') ? name.slice('execute:'.length).trim() : '';
+            if (tool === 'central_answer') continue;
+            if (/(?:^|\b)central_answer(?:\b|$)/i.test(name) || /(?:^|\b)central_answer(?:\b|$)/i.test(display)) continue;
+            if (/^عملية التفكير\b/.test(name) || /^thinking\s*process\b/i.test(name)) continue;
+            out.push(s);
+        }
+        return out;
+    }, [steps]);
 
     const phaseLabels = useMemo(() => {
         const rawExecute = t('executePrefix', { tool: '' });
@@ -68,22 +87,22 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
     const [activePhase, setActivePhase] = useState<'all' | 'plan' | 'execute' | 'summarize'>('all');
 
     const currentThought = useMemo(() => {
-        const runningStep = steps.find(s => s.status === 'running');
-        const lastStep = steps[steps.length - 1];
+        const runningStep = visibleStepsAll.find(s => s.status === 'running');
+        const lastStep = visibleStepsAll[visibleStepsAll.length - 1];
 
         const activeStep = runningStep || lastStep;
 
         if (!activeStep) return t('processing', 'جارٍ المعالجة...');
         const name = (activeStep.displayName || activeStep.name || '').trim();
         return name ? `${name}…` : t('processing', 'جارٍ المعالجة...');
-    }, [steps, t]);
+    }, [visibleStepsAll, t]);
 
     const { totalCount, doneCount, failedCount } = useMemo(() => {
-        const total = steps.length;
-        const done = steps.filter((s) => s.status === 'done').length;
-        const failed = steps.filter((s) => s.status === 'failed').length;
+        const total = visibleStepsAll.length;
+        const done = visibleStepsAll.filter((s) => s.status === 'done').length;
+        const failed = visibleStepsAll.filter((s) => s.status === 'failed').length;
         return { totalCount: total, doneCount: done, failedCount: failed };
-    }, [steps]);
+    }, [visibleStepsAll]);
 
     const phaseStats = useMemo(() => {
         const base = {
@@ -92,7 +111,7 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
             summarize: { total: 0, done: 0, running: 0, failed: 0 },
         };
 
-        for (const s of steps) {
+        for (const s of visibleStepsAll) {
             const ph = detectPhase(s.name) as 'plan' | 'execute' | 'summarize';
             base[ph].total += 1;
             if (s.status === 'done') base[ph].done += 1;
@@ -116,16 +135,19 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                 summarize: toStatus('summarize'),
             },
         };
-    }, [steps]);
+    }, [visibleStepsAll]);
 
     const filteredSteps = useMemo(() => {
-        if (activePhase === 'all') return steps;
-        return steps.filter((s) => detectPhase(s.name) === activePhase);
-    }, [activePhase, steps]);
+        if (activePhase === 'all') return visibleStepsAll;
+        return visibleStepsAll.filter((s) => detectPhase(s.name) === activePhase);
+    }, [activePhase, visibleStepsAll]);
 
     const visibleLogs = useMemo(() => {
         const arr = Array.isArray(logs) ? logs : [];
-        return arr.slice(Math.max(0, arr.length - 50));
+        return arr
+            .map((l) => String(l || '').trim())
+            .filter((l) => l && !/(?:^|\b)central_answer(?:\b|$)/i.test(l) && !/^عملية التفكير\b/.test(l) && !/^thinking\s*process\b/i.test(l))
+            .slice(Math.max(0, arr.length - 50));
     }, [logs]);
 
     const progress = totalCount > 0 ? Math.max(0, Math.min(1, doneCount / totalCount)) : 0;
@@ -146,14 +168,14 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
         phStatus: 'pending' | 'running' | 'done' | 'failed'
     ) => {
         const selected = activePhase === id;
-        const base =
+        const pillStyle: React.CSSProperties =
             phStatus === 'done'
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                ? { background: 'rgba(16, 185, 129, 0.14)', borderColor: 'rgba(16, 185, 129, 0.35)', color: 'rgb(16, 185, 129)' }
                 : phStatus === 'failed'
-                    ? 'border-red-500/30 bg-red-500/10 text-red-200'
+                    ? { background: 'rgba(239, 68, 68, 0.14)', borderColor: 'rgba(239, 68, 68, 0.35)', color: 'rgb(239, 68, 68)' }
                     : phStatus === 'running'
-                        ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
-                        : 'border-slate-700/60 bg-slate-900/30 text-slate-300';
+                        ? { background: 'rgba(var(--accent-primary-rgb), 0.14)', borderColor: 'rgba(var(--accent-primary-rgb), 0.35)', color: 'var(--accent-primary)' }
+                        : { background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' };
 
         return (
             <button
@@ -164,10 +186,10 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                     setActivePhase((prev) => (prev === id ? 'all' : id));
                 }}
                 className={[
-                    'px-2.5 py-1 rounded-full border text-[11px] leading-4 font-medium transition-colors',
-                    base,
-                    selected ? 'ring-1 ring-white/10' : 'hover:border-slate-500/60',
+                    'px-2.5 py-1 rounded-full border text-[11px] leading-4 font-semibold transition-colors whitespace-nowrap',
+                    selected ? 'ring-1 ring-black/10' : '',
                 ].join(' ')}
+                style={pillStyle}
             >
                 <span className="inline-flex items-center gap-1.5">
                     {phStatus === 'done' ? <CheckCircle2 size={12} /> : phStatus === 'failed' ? <XCircle size={12} /> : phStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Circle size={10} />}
@@ -185,7 +207,8 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
             className="my-4 w-full"
         >
             <div
-                className="rounded-2xl border border-slate-700/60 bg-slate-900/40 backdrop-blur px-4 py-3"
+                className="rounded-2xl px-4 py-3"
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-md)' }}
                 dir="auto"
             >
                 <button
@@ -196,29 +219,29 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
                             <motion.div
-                                className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-500 border-r-blue-500"
+                                className="absolute inset-0 rounded-full"
                                 animate={status === 'running' ? { rotate: 360 } : undefined}
                                 transition={status === 'running' ? { duration: 2, ease: "linear", repeat: Infinity } : undefined}
+                                style={{
+                                    border: '2px solid rgba(0,0,0,0)',
+                                    borderTopColor: 'var(--accent-primary)',
+                                    borderRightColor: 'rgba(var(--accent-primary-rgb), 0.35)',
+                                }}
                             />
                             <motion.div
-                                className="absolute inset-2 rounded-full border-2 border-transparent border-b-purple-500 border-l-pink-500"
-                                animate={status === 'running' ? { rotate: -360 } : undefined}
-                                transition={status === 'running' ? { duration: 3, ease: "linear", repeat: Infinity } : undefined}
-                            />
-                            <motion.div
-                                className="w-2.5 h-2.5 bg-white rounded-full"
+                                className="w-2.5 h-2.5 rounded-full"
                                 animate={status === 'running' ? { scale: [1, 1.25, 1] } : { scale: 1 }}
                                 transition={status === 'running' ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
-                                style={{ boxShadow: '0 0 18px rgba(56, 189, 248, 0.55)' }}
+                                style={{ background: 'var(--accent-primary)', boxShadow: '0 0 18px var(--accent-glow)' }}
                             />
                         </div>
 
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                                <div className={['text-sm font-semibold', statusTone].join(' ')}>
+                                <div className={['text-sm font-semibold', statusTone].join(' ')} style={{ color: status === 'done' ? 'var(--accent-success)' : 'var(--accent-primary)' }}>
                                     {statusLabel}
                                 </div>
-                                <div className="text-xs text-slate-400 tabular-nums">
+                                <div className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>
                                     {failedCount ? `${t('statusFailed', 'فشل')} ${failedCount}` : totalCount ? `${doneCount}/${totalCount}` : ''}
                                 </div>
                             </div>
@@ -236,20 +259,17 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                                 </motion.div>
                             </AnimatePresence>
                             {totalCount ? (
-                                <div className="mt-2 h-1.5 w-full rounded-full bg-slate-800/70 overflow-hidden">
+                                <div className="mt-2 h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'var(--bg-secondary)' }}>
                                     <div
-                                        className={[
-                                            'h-full rounded-full transition-all',
-                                            status === 'done' ? 'bg-emerald-500/70' : 'bg-cyan-500/70',
-                                        ].join(' ')}
-                                        style={{ width: `${Math.round(progress * 100)}%` }}
+                                        className="h-full rounded-full transition-all"
+                                        style={{ background: 'var(--brand-gradient)', width: `${Math.round(progress * 100)}%` }}
                                     />
                                 </div>
                             ) : null}
                         </div>
                     </div>
 
-                    <div className="text-xs text-slate-400 shrink-0">{expanded ? 'إخفاء' : 'عرض'}</div>
+                    <div className="text-xs shrink-0" style={{ color: 'var(--text-secondary)' }}>{expanded ? 'إخفاء' : 'عرض'}</div>
                 </button>
 
                 <AnimatePresence initial={false}>
@@ -268,40 +288,40 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                                     {phasePill('summarize', phaseLabels.summarize, phaseStats.status.summarize)}
                                 </div>
                                 {activePhase !== 'all' ? (
-                                    <div className="text-[11px] text-slate-400">
+                                    <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                                         {t('stepsLabel', 'خطوات')}: {filteredSteps.length}
                                     </div>
                                 ) : null}
                             </div>
 
                             {filteredSteps.length ? (
-                                <div className="rounded-xl border border-slate-700/50 bg-slate-950/40 px-3 py-2">
-                                    <div className="text-xs font-semibold text-slate-300 mb-2">{t('stepsLabel', 'خطوات')}</div>
+                                <div className="rounded-xl px-3 py-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                                    <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>{t('stepsLabel', 'خطوات')}</div>
                                     <div className="grid gap-2">
                                         {filteredSteps.map((s) => (
                                             <div key={s.key} className="flex items-start justify-between gap-3 text-xs">
                                                 <div className="flex items-start gap-2 min-w-0">
-                                                    <span className="shrink-0 mt-0.5 text-slate-300">
+                                                    <span className="shrink-0 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                                                         {s.status === 'done' ? (
-                                                            <CheckCircle2 size={14} className="text-emerald-400" />
+                                                            <CheckCircle2 size={14} style={{ color: 'var(--accent-success)' }} />
                                                         ) : s.status === 'failed' ? (
-                                                            <XCircle size={14} className="text-red-400" />
+                                                            <XCircle size={14} style={{ color: 'var(--accent-danger)' }} />
                                                         ) : s.status === 'running' ? (
-                                                            <Loader2 size={14} className="text-cyan-300 animate-spin" />
+                                                            <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent-primary)' }} />
                                                         ) : (
-                                                            <Circle size={12} className="text-slate-500" />
+                                                            <Circle size={12} style={{ color: 'var(--text-muted)' }} />
                                                         )}
                                                     </span>
                                                     <div className="min-w-0">
-                                                        <div className="truncate text-slate-200 font-medium">{String(s.displayName || s.name || '')}</div>
+                                                        <div className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{String(s.displayName || s.name || '')}</div>
                                                         {showTechnical && (s.error != null) ? (
-                                                            <div className="mt-0.5 text-[11px] text-red-300 whitespace-pre-wrap break-words">
+                                                            <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words" style={{ color: 'rgb(239, 68, 68)' }}>
                                                                 {String(s.error)}
                                                             </div>
                                                         ) : null}
                                                     </div>
                                                 </div>
-                                                <span className="shrink-0 text-slate-400 tabular-nums">
+                                                <span className="shrink-0 tabular-nums" style={{ color: 'var(--text-muted)' }}>
                                                     {typeof s.duration === 'number' && Number.isFinite(s.duration) ? `${Math.max(0, Math.round(s.duration))}ms` : ''}
                                                 </span>
                                             </div>
@@ -311,9 +331,9 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                             ) : null}
 
                             {visibleLogs.length ? (
-                                <div className="rounded-xl border border-slate-700/50 bg-slate-950/40 px-3 py-2">
+                                <div className="rounded-xl px-3 py-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                                     <div className="flex items-center justify-between gap-2 mb-2">
-                                        <div className="text-xs font-semibold text-slate-300">{t('systemLogs', 'سجلّ النظام')}</div>
+                                        <div className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('systemLogs', 'سجلّ النظام')}</div>
                                         {onToggleTechnical ? (
                                             <button
                                                 type="button"
@@ -322,13 +342,14 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                                                     e.stopPropagation();
                                                     onToggleTechnical();
                                                 }}
-                                                className="text-xs text-slate-400 hover:text-slate-200"
+                                                className="text-xs"
+                                                style={{ color: 'var(--text-secondary)' }}
                                             >
                                                 {showTechnical ? t('hideTechnicalDetails', 'إخفاء التفاصيل التقنية') : t('showTechnicalDetails', 'عرض التفاصيل التقنية')}
                                             </button>
                                         ) : null}
                                     </div>
-                                    <pre className="text-[11px] leading-5 whitespace-pre-wrap break-words text-slate-200 max-h-64 overflow-auto">
+                                    <pre className="text-[11px] leading-5 whitespace-pre-wrap break-words max-h-64 overflow-auto" style={{ color: 'var(--text-primary)' }}>
                                         {showTechnical ? visibleLogs.join('\n') : visibleLogs.slice(-6).join('\n')}
                                     </pre>
                                 </div>

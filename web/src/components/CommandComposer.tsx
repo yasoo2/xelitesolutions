@@ -2856,6 +2856,9 @@ export default function CommandComposer({
       if (!txt) continue;
       if (/^running:/i.test(txt)) continue;
       if (/^(?:تجميع\s+سياق|مطابقة\s+الأنماط|تشغيل\s+طبقات|تحديث\s+ذاكرة|اختيار\s+أفضل\s+مسار)/.test(txt)) continue;
+      if (/(?:^|\b)central_answer(?:\b|$)/i.test(txt)) continue;
+      if (/^عملية التفكير\b/.test(txt)) continue;
+      if (/^thinking\s*process\b/i.test(txt)) continue;
       const rid = getEventRunId(e);
       if (!out.has(rid)) out.set(rid, []);
       out.get(rid)!.push(txt);
