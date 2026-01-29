@@ -3109,26 +3109,6 @@ export default function CommandComposer({
     return taskBarByRunId[rid] || null;
   }, [activeRunId, taskBarByRunId]);
 
-  useEffect(() => {
-    if (!showFloatingTaskbar) return;
-    const rid = activeRunId ? activeRunId.trim() : '';
-    if (!rid) return;
-    const bar = taskBarByRunId[rid];
-    if (!bar?.visible) return;
-    if (!bar.items.length) return;
-    const allDone = bar.items.every((x) => x.status === 'done');
-    if (!allDone) return;
-    const timer = window.setTimeout(() => {
-      setTaskBarByRunId((prev) => {
-        const cur = prev[rid];
-        if (!cur) return prev;
-        if (!cur.items.length || !cur.items.every((x) => x.status === 'done')) return prev;
-        return { ...prev, [rid]: { ...cur, visible: false } };
-      });
-    }, 900);
-    return () => window.clearTimeout(timer);
-  }, [activeRunId, taskBarByRunId]);
-
   return (
     <div className="composer">
       <div className="events" ref={eventsScrollRef}>

@@ -14,31 +14,42 @@ export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessP
     const { t } = useTranslation();
     const contentRef = useRef<HTMLDivElement>(null);
     const [displayedContent, setDisplayedContent] = useState('');
+    const streamTimerRef = useRef<number | null>(null);
+    const targetContentRef = useRef<string>('');
 
-    // High-speed word-by-word streaming for Elite 6.0 (Ghost Mode)
     useEffect(() => {
-        if (!thought.content || !thought.active) {
-            setDisplayedContent(thought.content || '');
+        targetContentRef.current = thought.content || '';
+        if (!thought.active) setDisplayedContent(targetContentRef.current);
+    }, [thought.content, thought.active]);
+
+    useEffect(() => {
+        if (!thought.active) {
+            if (streamTimerRef.current != null) {
+                window.clearInterval(streamTimerRef.current);
+                streamTimerRef.current = null;
+            }
             return;
         }
 
-        const words = (thought.content || '').split(/(\s+)/).filter(Boolean);
-        let current = '';
-        let i = 0;
+        if (streamTimerRef.current == null) {
+            streamTimerRef.current = window.setInterval(() => {
+                setDisplayedContent((prev) => {
+                    const target = targetContentRef.current;
+                    if (prev === target) return prev;
+                    if (prev.length > target.length) return target;
+                    const nextLen = Math.min(prev.length + 30, target.length);
+                    return target.slice(0, nextLen);
+                });
+            }, 50);
+        }
 
-        const interval = setInterval(() => {
-            if (i >= words.length) {
-                clearInterval(interval);
-                setDisplayedContent(thought.content || '');
-                return;
+        return () => {
+            if (streamTimerRef.current != null) {
+                window.clearInterval(streamTimerRef.current);
+                streamTimerRef.current = null;
             }
-            current += words[i];
-            setDisplayedContent(current);
-            i++;
-        }, 5); // HYPER-SPEED: 5ms for Ghost/Whisper effect
-
-        return () => clearInterval(interval);
-    }, [thought.content, thought.active]);
+        };
+    }, [thought.active]);
 
     // Auto-scroll to bottom of thought when active
     useEffect(() => {
@@ -79,7 +90,7 @@ export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessP
                 ref={contentRef}
                 style={{
                     padding: '4px 12px',
-                    maxHeight: '120px',
+                    maxHeight: '200px',
                     overflowY: 'auto',
                     fontSize: '11px',
                     fontWeight: 300,
@@ -89,7 +100,7 @@ export const ThinkingProcess = React.forwardRef<HTMLDivElement, ThinkingProcessP
                     fontFamily: 'var(--font-sans)',
                     whiteSpace: 'pre-wrap',
                     scrollbarWidth: 'none',
-                    filter: 'blur(0.2px)',
+                    filter: 'blur(0.15px)',
                     transition: 'all 0.3s ease'
                 }}
             >

@@ -1812,10 +1812,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             // Check for thought markers
             const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
             if (thoughtMatch) {
-              const thought = thoughtMatch[1].trim();
-              ev({ type: 'thought', data: { action: 'start' } });
-              ev({ type: 'thought', data: { action: 'chunk', content: thought } });
-              ev({ type: 'thought', data: { action: 'end' } });
+              let thought = thoughtMatch[1].trim();
+              if (thought.length > 100) thought = `${thought.slice(0, 97)}...`;
+              thoughtChunk(thought || 'تنظيم الرد النهائي…\n');
+              thoughtEnd();
               // Strip thought from answer
               answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
             }
@@ -1861,10 +1861,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             // Check for thought markers
             const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
             if (thoughtMatch) {
-              const thought = thoughtMatch[1].trim();
-              ev({ type: 'thought', data: { action: 'start' } });
-              ev({ type: 'thought', data: { action: 'chunk', content: thought } });
-              ev({ type: 'thought', data: { action: 'end' } });
+              let thought = thoughtMatch[1].trim();
+              if (thought.length > 100) thought = `${thought.slice(0, 97)}...`;
+              thoughtChunk(thought || 'تنظيم الرد النهائي…\n');
+              thoughtEnd();
               // Strip thought from answer
               answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
             }
