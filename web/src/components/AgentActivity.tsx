@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
+import { CheckCircle2, XCircle, Loader2, Circle } from 'lucide-react';
 
 // --- Types ---
 export interface AgentStep {
@@ -26,6 +28,8 @@ export interface AgentActivityProps {
 
 export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps>(
     ({ status, steps, logs, expanded, onToggle, showTechnical, onToggleTechnical }, ref) => {
+    const { t } = useTranslation();
+
     // Safety: Minimal error state
     if (status === 'failed') {
         return (
@@ -36,12 +40,32 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                 className="my-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center justify-center gap-2"
             >
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                توقف التنفيذ
+                {t('errorEncountered', 'حدث خطأ')}
             </motion.div>
         );
     }
 
     if (status === 'idle' && steps.length === 0 && logs.length === 0) return null;
+
+    const phaseLabels = useMemo(() => {
+        const rawExecute = t('executePrefix', { tool: '' });
+        const execute = String(rawExecute || '').replace(/[:：]\s*$/, '').trim() || t('statusRunning', 'قيد التنفيذ');
+        return {
+            plan: t('tools.plan', 'تحليل وتخطيط'),
+            execute,
+            summarize: t('tools.summarize', 'تلخيص النتائج'),
+        };
+    }, [t]);
+
+    const detectPhase = (stepName: string) => {
+        const name = String(stepName || '');
+        if (name === 'plan' || name.startsWith('planning_step_')) return 'plan';
+        if (name === 'summarize' || name.startsWith('summarize')) return 'summarize';
+        if (name.startsWith('execute:')) return 'execute';
+        return 'execute';
+    };
+
+    const [activePhase, setActivePhase] = useState<'all' | 'plan' | 'execute' | 'summarize'>('all');
 
     const currentThought = useMemo(() => {
         const runningStep = steps.find(s => s.status === 'running');
@@ -49,10 +73,10 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
 
         const activeStep = runningStep || lastStep;
 
-        if (!activeStep) return "جاري التنفيذ…";
+        if (!activeStep) return t('processing', 'جارٍ المعالجة...');
         const name = (activeStep.displayName || activeStep.name || '').trim();
-        return name ? `${name}…` : "جاري التنفيذ…";
-    }, [steps]);
+        return name ? `${name}…` : t('processing', 'جارٍ المعالجة...');
+    }, [steps, t]);
 
     const { totalCount, doneCount, failedCount } = useMemo(() => {
         const total = steps.length;
@@ -61,10 +85,97 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
         return { totalCount: total, doneCount: done, failedCount: failed };
     }, [steps]);
 
+    const phaseStats = useMemo(() => {
+        const base = {
+            plan: { total: 0, done: 0, running: 0, failed: 0 },
+            execute: { total: 0, done: 0, running: 0, failed: 0 },
+            summarize: { total: 0, done: 0, running: 0, failed: 0 },
+        };
+
+        for (const s of steps) {
+            const ph = detectPhase(s.name) as 'plan' | 'execute' | 'summarize';
+            base[ph].total += 1;
+            if (s.status === 'done') base[ph].done += 1;
+            else if (s.status === 'running') base[ph].running += 1;
+            else if (s.status === 'failed') base[ph].failed += 1;
+        }
+
+        const toStatus = (ph: keyof typeof base): 'pending' | 'running' | 'done' | 'failed' => {
+            const st = base[ph];
+            if (st.failed > 0) return 'failed';
+            if (st.running > 0) return 'running';
+            if (st.total > 0 && st.done === st.total) return 'done';
+            return 'pending';
+        };
+
+        return {
+            ...base,
+            status: {
+                plan: toStatus('plan'),
+                execute: toStatus('execute'),
+                summarize: toStatus('summarize'),
+            },
+        };
+    }, [steps]);
+
+    const filteredSteps = useMemo(() => {
+        if (activePhase === 'all') return steps;
+        return steps.filter((s) => detectPhase(s.name) === activePhase);
+    }, [activePhase, steps]);
+
     const visibleLogs = useMemo(() => {
         const arr = Array.isArray(logs) ? logs : [];
         return arr.slice(Math.max(0, arr.length - 50));
     }, [logs]);
+
+    const progress = totalCount > 0 ? Math.max(0, Math.min(1, doneCount / totalCount)) : 0;
+
+    const statusLabel =
+        status === 'done'
+            ? t('statusDone', 'تم')
+            : status === 'running'
+                ? t('statusRunning', 'قيد التنفيذ')
+                : t('processing', 'جارٍ المعالجة...');
+
+    const statusTone =
+        status === 'done' ? 'text-emerald-300' : 'text-cyan-300';
+
+    const phasePill = (
+        id: 'plan' | 'execute' | 'summarize',
+        label: string,
+        phStatus: 'pending' | 'running' | 'done' | 'failed'
+    ) => {
+        const selected = activePhase === id;
+        const base =
+            phStatus === 'done'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                : phStatus === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-200'
+                    : phStatus === 'running'
+                        ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
+                        : 'border-slate-700/60 bg-slate-900/30 text-slate-300';
+
+        return (
+            <button
+                type="button"
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setActivePhase((prev) => (prev === id ? 'all' : id));
+                }}
+                className={[
+                    'px-2.5 py-1 rounded-full border text-[11px] leading-4 font-medium transition-colors',
+                    base,
+                    selected ? 'ring-1 ring-white/10' : 'hover:border-slate-500/60',
+                ].join(' ')}
+            >
+                <span className="inline-flex items-center gap-1.5">
+                    {phStatus === 'done' ? <CheckCircle2 size={12} /> : phStatus === 'failed' ? <XCircle size={12} /> : phStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Circle size={10} />}
+                    <span className="truncate">{label}</span>
+                </span>
+            </button>
+        );
+    };
 
     return (
         <motion.div
@@ -104,11 +215,11 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
 
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                                <div className="text-sm font-semibold" style={{ color: '#22d3ee' }}>
-                                    {status === 'done' ? 'تم التنفيذ' : status === 'running' ? 'قيد التنفيذ' : 'تنفيذ'}
+                                <div className={['text-sm font-semibold', statusTone].join(' ')}>
+                                    {statusLabel}
                                 </div>
-                                <div className="text-xs text-slate-400">
-                                    {failedCount ? `فشل ${failedCount}` : totalCount ? `${doneCount}/${totalCount}` : ''}
+                                <div className="text-xs text-slate-400 tabular-nums">
+                                    {failedCount ? `${t('statusFailed', 'فشل')} ${failedCount}` : totalCount ? `${doneCount}/${totalCount}` : ''}
                                 </div>
                             </div>
                             <AnimatePresence mode="wait">
@@ -124,12 +235,21 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                                     {currentThought}
                                 </motion.div>
                             </AnimatePresence>
+                            {totalCount ? (
+                                <div className="mt-2 h-1.5 w-full rounded-full bg-slate-800/70 overflow-hidden">
+                                    <div
+                                        className={[
+                                            'h-full rounded-full transition-all',
+                                            status === 'done' ? 'bg-emerald-500/70' : 'bg-cyan-500/70',
+                                        ].join(' ')}
+                                        style={{ width: `${Math.round(progress * 100)}%` }}
+                                    />
+                                </div>
+                            ) : null}
                         </div>
                     </div>
 
-                    <div className="text-xs text-slate-400 shrink-0">
-                        {expanded ? 'إخفاء' : 'عرض'}
-                    </div>
+                    <div className="text-xs text-slate-400 shrink-0">{expanded ? 'إخفاء' : 'عرض'}</div>
                 </button>
 
                 <AnimatePresence initial={false}>
@@ -141,19 +261,47 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                             transition={{ duration: 0.18 }}
                             className="mt-3 grid gap-3"
                         >
-                            {steps.length ? (
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {phasePill('plan', phaseLabels.plan, phaseStats.status.plan)}
+                                    {phasePill('execute', phaseLabels.execute, phaseStats.status.execute)}
+                                    {phasePill('summarize', phaseLabels.summarize, phaseStats.status.summarize)}
+                                </div>
+                                {activePhase !== 'all' ? (
+                                    <div className="text-[11px] text-slate-400">
+                                        {t('stepsLabel', 'خطوات')}: {filteredSteps.length}
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            {filteredSteps.length ? (
                                 <div className="rounded-xl border border-slate-700/50 bg-slate-950/40 px-3 py-2">
-                                    <div className="text-xs font-semibold text-slate-300 mb-2">الخطوات</div>
-                                    <div className="grid gap-1">
-                                        {steps.map((s) => (
-                                            <div key={s.key} className="flex items-center justify-between gap-2 text-xs">
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <span className="shrink-0">
-                                                        {s.status === 'done' ? '✓' : s.status === 'failed' ? '✕' : s.status === 'running' ? '…' : '•'}
+                                    <div className="text-xs font-semibold text-slate-300 mb-2">{t('stepsLabel', 'خطوات')}</div>
+                                    <div className="grid gap-2">
+                                        {filteredSteps.map((s) => (
+                                            <div key={s.key} className="flex items-start justify-between gap-3 text-xs">
+                                                <div className="flex items-start gap-2 min-w-0">
+                                                    <span className="shrink-0 mt-0.5 text-slate-300">
+                                                        {s.status === 'done' ? (
+                                                            <CheckCircle2 size={14} className="text-emerald-400" />
+                                                        ) : s.status === 'failed' ? (
+                                                            <XCircle size={14} className="text-red-400" />
+                                                        ) : s.status === 'running' ? (
+                                                            <Loader2 size={14} className="text-cyan-300 animate-spin" />
+                                                        ) : (
+                                                            <Circle size={12} className="text-slate-500" />
+                                                        )}
                                                     </span>
-                                                    <span className="truncate text-slate-200">{String(s.displayName || s.name || '')}</span>
+                                                    <div className="min-w-0">
+                                                        <div className="truncate text-slate-200 font-medium">{String(s.displayName || s.name || '')}</div>
+                                                        {showTechnical && (s.error != null) ? (
+                                                            <div className="mt-0.5 text-[11px] text-red-300 whitespace-pre-wrap break-words">
+                                                                {String(s.error)}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
                                                 </div>
-                                                <span className="shrink-0 text-slate-400">
+                                                <span className="shrink-0 text-slate-400 tabular-nums">
                                                     {typeof s.duration === 'number' && Number.isFinite(s.duration) ? `${Math.max(0, Math.round(s.duration))}ms` : ''}
                                                 </span>
                                             </div>
@@ -165,7 +313,7 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                             {visibleLogs.length ? (
                                 <div className="rounded-xl border border-slate-700/50 bg-slate-950/40 px-3 py-2">
                                     <div className="flex items-center justify-between gap-2 mb-2">
-                                        <div className="text-xs font-semibold text-slate-300">السجلّ</div>
+                                        <div className="text-xs font-semibold text-slate-300">{t('systemLogs', 'سجلّ النظام')}</div>
                                         {onToggleTechnical ? (
                                             <button
                                                 type="button"
@@ -176,12 +324,12 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
                                                 }}
                                                 className="text-xs text-slate-400 hover:text-slate-200"
                                             >
-                                                {showTechnical ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}
+                                                {showTechnical ? t('hideTechnicalDetails', 'إخفاء التفاصيل التقنية') : t('showTechnicalDetails', 'عرض التفاصيل التقنية')}
                                             </button>
                                         ) : null}
                                     </div>
                                     <pre className="text-[11px] leading-5 whitespace-pre-wrap break-words text-slate-200 max-h-64 overflow-auto">
-                                        {showTechnical ? visibleLogs.join('\n') : visibleLogs.slice(-1).join('\n')}
+                                        {showTechnical ? visibleLogs.join('\n') : visibleLogs.slice(-6).join('\n')}
                                     </pre>
                                 </div>
                             ) : null}
