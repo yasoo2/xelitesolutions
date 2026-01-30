@@ -51,7 +51,6 @@ jobs:
           set -euo pipefail
           host_raw="${SSH_HOST_SECRET:-${HOST_SECRET:-}}"
           port_raw="${SSH_PORT_SECRET:-${PORT_SECRET:-}}"
-          host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
           host="$(printf '%s' "${host_raw:-}" | tr -d '\r' | xargs)"
           if [ -z "${host:-}" ]; then
             echo "HOST secret is empty."
@@ -78,14 +77,24 @@ jobs:
             timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${h}/${p}" 2>/dev/null
           }
 
-          ssh_banner_ok() {
+          ssh_probe_ok() {
             local h="$1"
             local p="$2"
             local tries="${3:-4}"
             local attempt=1
             while [ "$attempt" -le "$tries" ]; do
-              banner="$(timeout 25 bash -lc "exec 3<>/dev/tcp/${h}/${p}; printf 'SSH-2.0-bannercheck\r\n' >&3; head -c 64 <&3" 2>/dev/null || true)"
-              if printf '%s' "$banner" | grep -q '^SSH-'; then
+              if command -v ssh-keyscan >/dev/null 2>&1; then
+                keys="$(ssh-keyscan -4 -T 10 -p "$p" -t rsa,ecdsa,ed25519 "$h" 2>/dev/null || true)"
+                if [ -z "${keys:-}" ]; then
+                  keys="$(ssh-keyscan -6 -T 10 -p "$p" -t rsa,ecdsa,ed25519 "$h" 2>/dev/null || true)"
+                fi
+                if [ -n "${keys:-}" ]; then
+                  return 0
+                fi
+              fi
+
+              banner="$(timeout 12 bash -lc "exec 3<>/dev/tcp/${h}/${p}; head -c 64 <&3" 2>/dev/null || true)"
+              if printf '%s' "$banner" | grep -q 'SSH-'; then
                 return 0
               fi
               attempt=$((attempt + 1))
@@ -129,8 +138,8 @@ jobs:
                 continue
               fi
 
-              echo "Checking SSH banner on ${h}:${p} ..."
-              if ssh_banner_ok "$h" "$p" 4; then
+              echo "Checking SSH on ${h}:${p} ..."
+              if ssh_probe_ok "$h" "$p" 4; then
                 selected_host="$h"
                 selected_port="$p"
                 break 2
@@ -143,7 +152,8 @@ jobs:
             echo "No reachable SSH banner found. Tried ports: ${ports[*]}"
             echo "Tried hosts:"
             printf '%s\n' $candidates | head -n 20 || true
-            echo "Hint: secrets.HOST must point to the server SSH endpoint (IP or DNS that reaches sshd)."
+            echo "Hint: secrets.SSH_HOST/HOST must point to the real SSH endpoint (public IP or DNS that reaches sshd)."
+            echo "Hint: if using Cloudflare, ensure DNS record is not proxied (DNS-only) for SSH, or use the server IP."
             exit 1
           fi
 
@@ -176,18 +186,25 @@ jobs:
             exit 1
           fi
           echo "TCP OK"
-          echo "Checking SSH banner on ${host}:${port} ..."
+          echo "Checking SSH on ${host}:${port} ..."
           ok_banner=0
           for i in $(seq 1 6); do
-            banner="$(timeout 25 bash -lc "exec 3<>/dev/tcp/${host}/${port}; printf 'SSH-2.0-bannercheck\r\n' >&3; head -c 64 <&3" 2>/dev/null || true)"
-            if printf '%s' "$banner" | grep -q '^SSH-'; then
+            keys=""
+            if command -v ssh-keyscan >/dev/null 2>&1; then
+              keys="$(ssh-keyscan -4 -T 10 -p "$port" -t rsa,ecdsa,ed25519 "$host" 2>/dev/null || true)"
+              if [ -z "${keys:-}" ]; then
+                keys="$(ssh-keyscan -6 -T 10 -p "$port" -t rsa,ecdsa,ed25519 "$host" 2>/dev/null || true)"
+              fi
+            fi
+            banner="$(timeout 12 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 64 <&3" 2>/dev/null || true)"
+            if [ -n "${keys:-}" ] || printf '%s' "$banner" | grep -q 'SSH-'; then
               ok_banner=1
               break
             fi
             sleep 2
           done
           if [ "$ok_banner" -ne 1 ]; then
-            echo "SSH banner not detected on ${host}:${port} (banner_prefix='${banner}')."
+            echo "SSH not detected on ${host}:${port} (banner_prefix='${banner}')."
             exit 1
           fi
           echo "SSH banner OK"
