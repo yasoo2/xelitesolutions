@@ -46,57 +46,6 @@ function isRunCancelled(runId: string): boolean {
   return cancelledRuns.has(rid);
 }
 
-
-
-// Thought Stream Parser
-class ThoughtStreamParser {
-  private buffer = '';
-  private insideThought = false;
-  private onEvent: (event: any) => void;
-
-  constructor(onEvent: (event: any) => void) {
-    this.onEvent = onEvent;
-  }
-
-  feed(chunk: string) {
-    this.buffer += chunk;
-
-    // Check for start trigger
-    if (!this.insideThought) {
-      // Support markers: :::thought or ::thought (with optional title space)
-      const startMatch = this.buffer.match(/:::(?:thought|THOUGHT)\s*/);
-      if (startMatch && startMatch.index !== undefined) {
-        this.insideThought = true;
-        // Keep the buffer *after* the marker
-        this.buffer = this.buffer.slice(startMatch.index + startMatch[0].length);
-        this.onEvent({ action: 'start' });
-      }
-    }
-
-    // Process content if inside thought
-    if (this.insideThought) {
-      // Look for end marker: ::: or ::: (ensure it's not the start of another thought)
-      const endMatch = this.buffer.match(/:::\s*/);
-      if (endMatch && endMatch.index !== undefined) {
-        // Thought ended
-        const content = this.buffer.slice(0, endMatch.index);
-        if (content) this.onEvent({ action: 'chunk', content });
-        this.onEvent({ action: 'end' });
-        this.insideThought = false;
-        this.buffer = this.buffer.slice(endMatch.index + endMatch[0].length); // Remove marker
-      } else {
-        // Still inside, try to emit what we can safely emit
-        // Keep a larger buffer (e.g., 10 chars) to avoid cutting the potential ":::" marker
-        if (this.buffer.length > 10) {
-          const safeEmit = this.buffer.slice(0, -6);
-          this.onEvent({ action: 'chunk', content: safeEmit });
-          this.buffer = this.buffer.slice(-6);
-        }
-      }
-    }
-  }
-}
-
 router.get('/', async (req: Request, res: Response) => {
   const limit = parseInt(String(req.query.limit || '10'));
   const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;

@@ -530,7 +530,7 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
-): Promise<{ name: string; input: any; thought?: string | null } | null> {
+): Promise<{ name: string; input: any } | null> {
   const provider = options?.provider || getActiveProvider(options?.userId || 'anonymous');
   const providerKey = String(provider || '').trim().toLowerCase();
   console.info(`[LLM] planNextStep entry - Provider: ${provider}, Resolved Key: ${providerKey}`);

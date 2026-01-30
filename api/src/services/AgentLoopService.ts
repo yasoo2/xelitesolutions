@@ -169,8 +169,6 @@ export class AgentLoopService {
                 } catch { }
             }
 
-            broadcast({ type: 'thinking_start', runId: currentRunId, data: {} });
-
             let plan;
             try {
                 // We need to pass the runConfig to planNextStep if needed (e.g. model selection)
@@ -186,11 +184,6 @@ export class AgentLoopService {
                 console.log(`[AgentLoop] No plan returned. Stopping.`);
                 break;
             }
-
-            if (plan.thought) {
-                broadcast({ type: 'thought', runId: currentRunId, data: plan.thought });
-            }
-
 
             // 3. Check for blocking conditions (Secrets, Approvals)
 

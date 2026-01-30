@@ -6,7 +6,6 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AgentActivity } from './AgentActivity';
 import { GitHubConnectModal } from './GitHubConnectModal';
 
 // Web Speech API types
@@ -2613,29 +2612,6 @@ export default function CommandComposer({
     return { label: t('toolCategoryGeneric'), Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
   };
 
-  const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
-  const [runExpandMode, setRunExpandMode] = useState<Record<string, 'auto' | 'manual'>>({});
-  const [expandedStepKeys, setExpandedStepKeys] = useState<Record<string, boolean>>({});
-  const [showTechnicalByRunId, setShowTechnicalByRunId] = useState<Record<string, boolean>>({});
-
-  const formatSystemLogs = (lines: string[]) => {
-    const flat = Array.isArray(lines) ? lines : [];
-    const last = flat.slice(Math.max(0, flat.length - 200));
-    return last
-      .map((x) => {
-        const s = String(x ?? '');
-        if (s.length <= 1400) return s;
-        return `${s.slice(0, 1400)}…`;
-      })
-      .join('\n')
-      .trim();
-  };
-
-  const getEventRunId = (e: any) => {
-    const rid = typeof e?.runId === 'string' ? e.runId : typeof e?.data?.runId === 'string' ? e.data.runId : '';
-    return rid && rid.trim() ? rid.trim() : 'no-run';
-  };
-
   const sortedEvents = useMemo(() => {
     const normalized = events.map((e: any, idx: number) => {
       const ts = typeof e?.ts === 'number' ? e.ts : idx;
@@ -2655,111 +2631,6 @@ export default function CommandComposer({
       return (a.ts - b.ts) || (a.idx - b.idx);
     });
   }, [events]);
-
-  const stepsByRunId = useMemo(() => {
-    const out = new Map<string, any[]>();
-    for (const s of derived.steps || []) {
-      const rid = typeof s?.runId === 'string' && s.runId.trim() ? s.runId.trim() : 'no-run';
-      if (!out.has(rid)) out.set(rid, []);
-      out.get(rid)!.push(s);
-    }
-    return out;
-  }, [derived.steps]);
-
-  const logsByRunId = useMemo(() => {
-    const out = new Map<string, string[]>();
-    for (const { e } of sortedEvents) {
-      if (e?.type !== 'evidence_added') continue;
-      if (String(e?.data?.kind || '') !== 'log') continue;
-      if (typeof e?.data?.text !== 'string') continue;
-      const txt = String(e.data.text || '').trim();
-      if (!txt) continue;
-      if (/^running:/i.test(txt)) continue;
-      if (/^(?:تجميع\s+سياق|مطابقة\s+الأنماط|تشغيل\s+طبقات|تحديث\s+ذاكرة|اختيار\s+أفضل\s+مسار)/.test(txt)) continue;
-      if (/(?:^|\b)central_answer(?:\b|$)/i.test(txt)) continue;
-      if (/^عملية التفكير\b/.test(txt)) continue;
-      if (/^thinking\s*process\b/i.test(txt)) continue;
-      const rid = getEventRunId(e);
-      if (!out.has(rid)) out.set(rid, []);
-      out.get(rid)!.push(txt);
-    }
-    return out;
-  }, [sortedEvents]);
-
-  const terminalByRunId = useMemo(() => {
-    const out = new Map<string, boolean>();
-    for (const { e } of sortedEvents) {
-      const type = String(e?.type || '');
-      if (type !== 'run_finished' && type !== 'run_completed') continue;
-      const rid = getEventRunId(e);
-      out.set(rid, true);
-    }
-    return out;
-  }, [sortedEvents]);
-
-  const runStatusByRunId = useMemo(() => {
-    const allRunIds = new Set<string>();
-    for (const rid of stepsByRunId.keys()) allRunIds.add(rid);
-    for (const rid of terminalByRunId.keys()) allRunIds.add(rid);
-
-    const out = new Map<string, { status: 'idle' | 'running' | 'failed' | 'done'; terminal: boolean }>();
-    for (const rid of allRunIds) {
-      const steps = stepsByRunId.get(rid) || [];
-      const terminal = terminalByRunId.get(rid) === true;
-      const running = steps.some((s: any) => s?.status === 'running');
-      const failed = steps.some((s: any) => s?.status === 'failed');
-      const done = steps.length > 0 && steps.every((s: any) => s?.status !== 'running');
-
-      const status: 'idle' | 'running' | 'failed' | 'done' = running ? 'running' : failed ? 'failed' : terminal || done ? 'done' : 'idle';
-      out.set(rid, { status, terminal });
-    }
-    return out;
-  }, [stepsByRunId, terminalByRunId]);
-
-  useEffect(() => {
-    setExpandedRuns((prev) => {
-      let changed = false;
-      const next = { ...prev };
-
-      for (const [rid, st] of runStatusByRunId.entries()) {
-        const mode = runExpandMode[rid] || 'auto';
-
-        if (st.status === 'running' && mode !== 'manual') {
-          if (!next[rid]) {
-            next[rid] = true;
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : prev;
-    });
-
-    setRunExpandMode((prev) => {
-      let changed = false;
-      const next = { ...prev };
-
-      for (const [rid, st] of runStatusByRunId.entries()) {
-        const mode = next[rid] || 'auto';
-
-        if (st.status === 'running' && mode !== 'manual') {
-          if (next[rid] !== 'auto') {
-            next[rid] = 'auto';
-            changed = true;
-          }
-        }
-
-        if (st.terminal && mode !== 'manual') {
-          if (next[rid] !== 'auto') {
-            next[rid] = 'auto';
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [runStatusByRunId, runExpandMode]);
 
   const cleanAssistantText = (raw: any) => {
     let s =
@@ -2838,20 +2709,12 @@ export default function CommandComposer({
   }, []);
 
   const renderItems = useMemo(() => {
-    const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
-    const inserted = new Set<string>();
+    const out: Array<{ kind: string; key: string; e?: any; idx?: number }> = [];
 
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
 
-      if (type === 'step_started' || type === 'step_progress' || type === 'step_done' || type === 'step_failed' || type === 'evidence_added') {
-        const rid = getEventRunId(e);
-        if (!inserted.has(rid)) {
-          inserted.add(rid);
-          out.push({ kind: 'activity', key: `activity:${rid}:${idx}`, runId: rid });
-        }
-        continue;
-      }
+      if (type === 'step_started' || type === 'step_progress' || type === 'step_done' || type === 'step_failed' || type === 'evidence_added') continue;
 
       if (type === 'user_input') out.push({ kind: 'user', key: `user:${idx}`, e, idx });
       else if (type === 'text') {
@@ -2899,44 +2762,6 @@ export default function CommandComposer({
 
           <AnimatePresence mode="popLayout">
             {renderItems.map((item) => {
-              if (item.kind === 'activity') {
-                if (!showToolUi) return null;
-                const rid = item.runId || 'no-run';
-                const visibleSteps = stepsByRunId.get(rid) || [];
-                const logs = logsByRunId.get(rid) || [];
-
-                const status = (() => {
-                  if (visibleSteps.some((s: any) => s?.status === 'running')) return 'running';
-                  if (visibleSteps.some((s: any) => s?.status === 'failed')) return 'failed';
-                  if (visibleSteps.length > 0 || logs.length > 0) return 'done';
-                  return 'idle';
-                })();
-
-                const expanded = !!expandedRuns[rid];
-                const toggleRun = () => {
-                  setRunExpandMode((prev) => ({ ...prev, [rid]: 'manual' }));
-                  setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
-                };
-
-                const totalDuration = visibleSteps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
-                const failedCount = visibleSteps.filter((s: any) => s?.status === 'failed').length;
-                const doneCount = visibleSteps.filter((s: any) => s?.status === 'done').length;
-
-                return (
-                  <AgentActivity
-                    key={item.key}
-                    runId={rid}
-                    steps={visibleSteps}
-                    status={status}
-                    logs={logs}
-                    expanded={expanded}
-                    onToggle={toggleRun}
-                    showTechnical={!!showTechnicalByRunId[rid]}
-                    onToggleTechnical={() => setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }))}
-                  />
-                );
-              }
-
               if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} variant="user" ts={item.e?.ts} />;
 
               if (item.kind === 'error') {
