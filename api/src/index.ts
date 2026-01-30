@@ -220,14 +220,17 @@ async function main() {
     logger.info({ port: config.port }, 'API listening (Database connecting in background...)');
 
     // [NEW] Deep Memory Auto-Indexing
-    setTimeout(() => {
-      logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
-      executeTool('memorize_codebase', {
-        directory: process.cwd(),
-        extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
-      }).catch(() => { });
-
-    }, 5000); // 5 second delay
+    const autoIndexingEnabled = process.env.ENABLE_STARTUP_AUTO_INDEXING === 'true';
+    const autoIndexingDelayMs = Number(process.env.STARTUP_AUTO_INDEXING_DELAY_MS || '0') || 0;
+    if (autoIndexingEnabled) {
+      setTimeout(() => {
+        logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
+        executeTool('memorize_codebase', {
+          directory: process.cwd(),
+          extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
+        }).catch(() => { });
+      }, autoIndexingDelayMs);
+    }
   });
 
   // DB connect with Retry Loop (Background)
