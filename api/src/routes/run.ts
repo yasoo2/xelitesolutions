@@ -1576,6 +1576,29 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     // [OPTIMIZER] Check cache before other heuristics
     else if (!initialPlan && rawUserText && !hasAttachments) {
+      const fast = freeIntelligenceOptimizer.generateSmartResponse(rawUserText, []);
+      if (fast) {
+        console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
+        const answer = fast;
+
+        ev({ type: 'text', data: answer });
+        ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
+        ev({ type: 'run_finished', data: { runId, ok: true } });
+
+        // Update DB/Mock state asynchronously to avoid blocking response
+        if (useMock) {
+          store.updateRun(runId, { status: 'done' });
+        } else {
+          Run.findByIdAndUpdate(runId, { $set: { status: 'done' } }).catch(console.error);
+        }
+
+        return res.json({
+          ok: true,
+          runId,
+          result: { ok: true, output: { text: answer }, logs: ['Optimizer Cache Hit'] }
+        });
+      }
+
       const optimization = await freeIntelligenceOptimizer.optimizeRequest(rawUserText, []);
       if (optimization.shouldUseCache && optimization.cachedResponse) {
         console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
@@ -1585,7 +1608,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
         ev({ type: 'run_finished', data: { runId, ok: true } });
 
-        // Update DB/Mock state asynchronously to avoid blocking response
         if (useMock) {
           store.updateRun(runId, { status: 'done' });
         } else {

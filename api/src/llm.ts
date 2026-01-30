@@ -897,7 +897,29 @@ export async function planNextStep(
       // [TURBO] Groq Direct Path
       if (selectedModel.name.includes('Groq') && GROQ_AVAILABLE) {
         try {
-          response = await groq.chatComplete(msgs, selectedModel.model);
+          const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+          const cacheKeyPayload = JSON.stringify({
+            messages: msgs,
+            analysis,
+            selectedModel: selectedModel.model,
+            route: 'groq_direct'
+          });
+          const cacheText = msgs
+            .map(m => (typeof (m as any)?.content === 'string' ? (m as any).content : JSON.stringify((m as any)?.content || '')))
+            .join('\n');
+          const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
+
+          if (!cacheDisabled && !hasSensitive) {
+            const cached = await LLMCacheTool.checkCache(cacheKeyPayload, selectedModel.model);
+            if (cached) response = cached;
+          }
+
+          if (!response) {
+            response = await groq.chatComplete(msgs, selectedModel.model);
+            if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
+              await LLMCacheTool.saveToCache(cacheKeyPayload, response, selectedModel.model);
+            }
+          }
         } catch (e) {
           console.error('[Groq] Failed, falling back to router:', e);
         }

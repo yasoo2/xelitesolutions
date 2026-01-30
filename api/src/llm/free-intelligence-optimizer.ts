@@ -506,9 +506,8 @@ class FreeIntelligenceOptimizer {
         const userName = 'يونس'; // Hardcoded for this session
         const ctx = Array.isArray(context) ? context : (context ? [context] : []);
 
-        // Extract language from context
-        const langContext = ctx.find((c: any) => c && c.language) || { language: 'en' };
-        const userLang = langContext.language || 'en';
+        const langContext = ctx.find((c: any) => c && typeof c.language === 'string' && c.language.trim());
+        const userLang = langContext ? String(langContext.language).trim() : this.detectLanguage(userText);
 
         // [Workspace] Extract Workspace Context
         const workspaceContext = ctx.find((c: any) => c && c.workspaceId);
@@ -521,7 +520,7 @@ class FreeIntelligenceOptimizer {
             // In stricter implementation, we would return { ok: false, error: 'Quota Exceeded' }
         }
 
-        const isAr = userLang.startsWith('ar');
+        const isAr = userLang === 'ar' || userLang.toLowerCase().startsWith('ar');
 
         // CRITICAL: Always run planner for workflow markers
         if (cleanText.includes('wf_start') || cleanText.includes('project_plan') || cleanText.includes('eco_plan')) {
@@ -556,37 +555,38 @@ class FreeIntelligenceOptimizer {
             };
         }
 
-        // 2. Check Smart Cache (Exact & Fuzzy) - INFO REFLEXES
-        for (const [trigger, res] of Array.from(this.cache.entries())) {
-            if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
-                // [FIX] Strict Language Check
-                // If user wants Arabic but cache is English (and vice versa), skip cache to force generation
-                const cacheLang = this.detectLanguage(res.response); // 'ar' or 'en'
-                const targetLang = isAr ? 'ar' : 'en';
+        const targetLang = isAr ? 'ar' : 'en';
 
-                if (cacheLang !== targetLang) {
-                    console.log(`[Optimizer] Cache Language Mismatch: Want ${targetLang}, Got ${cacheLang}. Skipping cache.`);
-                    continue;
-                }
-
-                res.hits++;
-                res.lastUsed = Date.now();
+        const exact = this.cache.get(cleanText);
+        if (exact) {
+            const cacheLang = this.detectLanguage(exact.response);
+            if (cacheLang === targetLang) {
+                exact.hits++;
+                exact.lastUsed = Date.now();
                 return {
                     shouldUseCache: true,
-                    cachedResponse: this.injectPersona(res.response, userName),
+                    cachedResponse: this.injectPersona(exact.response, userName),
                     suggestedModel: 'fast',
                     skipPlanner: true
                 };
             }
         }
 
-        // 2. Check for Technical/Action Intent (Force LLM but with RAG Context)
-        if (this.isHighStakesAction(cleanText) || this.isTechnical(cleanText)) {
+        for (const [trigger, res] of this.cache.entries()) {
+            if (trigger === cleanText) continue;
+            if (trigger.length <= 5) continue;
+            if (!cleanText.includes(trigger)) continue;
+
+            const cacheLang = this.detectLanguage(res.response);
+            if (cacheLang !== targetLang) continue;
+
+            res.hits++;
+            res.lastUsed = Date.now();
             return {
-                shouldUseCache: false,
-                cachedResponse: realKnowledge || undefined, // Pass context if found
-                suggestedModel: 'smart',
-                skipPlanner: false
+                shouldUseCache: true,
+                cachedResponse: this.injectPersona(res.response, userName),
+                suggestedModel: 'fast',
+                skipPlanner: true
             };
         }
 
@@ -609,24 +609,6 @@ class FreeIntelligenceOptimizer {
                 suggestedModel: 'fast',
                 skipPlanner: true
             };
-        }
-
-        // 1. Check Smart Cache (Exact & Fuzzy)
-        // DEBUG: Log keys
-        // console.log('Cache Keys:', Array.from(this.cache.keys())); 
-
-        for (const [trigger, res] of Array.from(this.cache.entries())) {
-            // console.log(`Checking "${trigger}" against "${cleanText}"`);
-            if (cleanText === trigger || (trigger.length > 5 && cleanText.includes(trigger))) {
-                res.hits++;
-                res.lastUsed = Date.now();
-                return {
-                    shouldUseCache: true,
-                    cachedResponse: this.injectPersona(res.response, userName),
-                    suggestedModel: 'fast',
-                    skipPlanner: true
-                };
-            }
         }
 
         // Fuzzy match (very basic containment for now to be safe)
