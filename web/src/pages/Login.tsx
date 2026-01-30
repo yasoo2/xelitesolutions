@@ -22,7 +22,11 @@ export default function Login() {
     const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
     const [health, setHealth] = useState<{ status: string, db: number } | null>(null);
-    const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+    const [googleState, setGoogleState] = useState<{
+        ready: boolean;
+        clientIdAvailable: boolean;
+        secretConfigured: boolean;
+    } | null>(null);
 
     // Health Check on mount
     useEffect(() => {
@@ -42,13 +46,19 @@ export default function Login() {
         let alive = true;
         const check = async () => {
             try {
-                const res = await fetch(`${API}/auth/google/config`, { cache: 'no-store' });
+                const u = new URL(`${API}/auth/google/config`);
+                if (GOOGLE_CLIENT_ID) u.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+                const res = await fetch(u.toString(), { cache: 'no-store' });
                 const data = await res.json().catch(() => ({}));
                 if (!alive) return;
-                setGoogleConfigured(!!(data?.configured && data?.clientId));
+                const serverClientId = String(data?.clientId || '').trim();
+                const secretConfigured = !!data?.secretConfigured;
+                const clientIdAvailable = !!serverClientId || !!GOOGLE_CLIENT_ID;
+                const ready = clientIdAvailable && secretConfigured;
+                setGoogleState({ ready, clientIdAvailable, secretConfigured });
             } catch {
                 if (!alive) return;
-                setGoogleConfigured(null);
+                setGoogleState(null);
             }
         };
         check();
@@ -304,9 +314,16 @@ export default function Login() {
                 <motion.button
                     whileHover={{ scale: 1.02, backgroundColor: '#f8fafc' }}
                     whileTap={{ scale: 0.98 }}
+                    disabled={googleState?.ready === false}
                     onClick={() => {
-                        if (googleConfigured === false) {
-                            setError('Google OAuth غير مضبوط على الخادم.');
+                        if (googleState?.ready === false) {
+                            setError(
+                                googleState.secretConfigured === false
+                                    ? 'Google OAuth غير مضبوط: client_secret مفقود.'
+                                    : googleState.clientIdAvailable === false
+                                        ? 'Google OAuth غير مضبوط: client_id مفقود.'
+                                        : 'Google OAuth غير مضبوط على الخادم.'
+                            );
                             return;
                         }
                         const u = new URL(`${API}/auth/google`);
@@ -314,7 +331,11 @@ export default function Login() {
                         if (GOOGLE_CLIENT_ID) u.searchParams.set('client_id', GOOGLE_CLIENT_ID);
                         window.location.href = u.toString();
                     }}
-                    style={S.googleBtn}
+                    style={{
+                        ...S.googleBtn,
+                        opacity: googleState?.ready === false ? 0.6 : 1,
+                        cursor: googleState?.ready === false ? 'not-allowed' : 'pointer'
+                    }}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />

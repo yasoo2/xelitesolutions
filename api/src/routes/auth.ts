@@ -292,10 +292,15 @@ router.get('/google/config', (req: Request, res: Response) => {
   const clientSecret = sec.value;
   const secretSource = sec.value ? sec.source : '';
 
+  const clientIdConfigured = !!clientId;
+  const secretConfigured = !!clientSecret;
+  const oauthConfigured = clientIdConfigured && secretConfigured;
+
   return res.json({
-    configured: !!clientId,
+    configured: oauthConfigured,
+    clientIdConfigured,
     clientId,
-    secretConfigured: !!clientSecret,
+    secretConfigured,
     clientIdSource,
     secretSource,
     acceptedEnvKeys: {
@@ -309,6 +314,7 @@ router.get('/google/config', (req: Request, res: Response) => {
 router.get('/google', (req: Request, res: Response) => {
   const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
   const clientId = resolveGoogleClientId(req);
+  const clientSecret = resolveGoogleClientSecret();
   const publicOrigin = resolvePublicOrigin(req);
   const redirectUri = String(process.env.GOOGLE_REDIRECT_URI || `${publicOrigin}/api/auth/callback`).trim();
 
@@ -318,6 +324,13 @@ router.get('/google', (req: Request, res: Response) => {
     const fallback = returnTo || publicOrigin;
     const u = new URL('/login', fallback);
     u.hash = 'error=google_client_id_missing';
+    return res.redirect(u.toString());
+  }
+
+  if (!clientSecret) {
+    const fallback = returnTo || publicOrigin;
+    const u = new URL('/login', fallback);
+    u.hash = 'error=google_client_secret_missing';
     return res.redirect(u.toString());
   }
 

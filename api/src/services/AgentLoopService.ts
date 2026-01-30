@@ -13,6 +13,10 @@ import { planNextStep } from '../llm';
 import { summarizeBrowserOutputForChat, inferSiteLabel, extractTitleFromHtml, sanitizeToolResultForBroadcast } from '../utils/browserUtils';
 import mongoose from 'mongoose';
 
+function useMock(): boolean {
+    return String(process.env.USE_MOCK || '').trim().toLowerCase() === 'true';
+}
+
 
 
 interface ContinueResult {
