@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { API_URL } from '../config';
+import { API_URL, WS_URL } from '../config';
 import { isValidToken } from '../utils/auth';
 
 type WsEvent =
@@ -243,9 +243,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   };
 
   const wsUrl = useMemo(() => {
-    const base = API_URL.replace(/^http/i, 'ws');
+    const sid = String(sessionId || '').trim();
+    const baseFromWs = String(WS_URL || '').trim();
+    const baseFromApi = API_URL.replace(/\/api\/?$/, '').replace(/^http/i, 'ws');
+    const base = baseFromWs ? baseFromWs.replace(/\/ws\/?$/, '') : baseFromApi;
     const u = new URL('/ws/browser', base);
-    u.searchParams.set('sessionId', sessionId);
+    u.searchParams.set('sessionId', sid);
     try {
       const token = localStorage.getItem('token');
       if (token && isValidToken(token)) u.searchParams.set('token', token);

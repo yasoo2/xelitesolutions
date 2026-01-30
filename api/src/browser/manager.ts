@@ -306,44 +306,53 @@ export function setStreamMask(sessionId: string, maskLocators: Locator[]) {
 
 export function startStreaming(sessionId: string) {
   const sid = String(sessionId || '').trim();
-  const s = sessions.get(sid);
-  if (!s) return;
-  if (s.streaming) return;
-  s.streaming = true;
-  s.lastUsedAt = Date.now();
-  try {
-    broadcastStatus(sid, s, { workerStatus: 'idle' });
-  } catch { }
-  const cfg = DEFAULT_BROWSER_CONFIG;
-  const intervalMs = Math.max(50, Math.floor(1000 / Math.max(1, cfg.streamFps)));
-  s.streamTimer = setInterval(async () => {
-    if (!s.streaming) return;
-    try {
-      const buf = await captureJpeg(s, {
-        quality: 55,
-        timeoutMs: Math.max(1000, Math.min(8000, cfg.actionTimeoutMs)),
-        waitForLock: false,
-        mask: s.maskLocators.length ? s.maskLocators : undefined,
-      });
-
-      // DEBUG LOGGING
+  if (!sid) return;
+  void (async () => {
+    let s = sessions.get(sid);
+    if (!s) {
       try {
-        const logPath = path.join(__dirname, '../stream_debug.log');
-        const msg = `[${new Date().toISOString()}] SID=${sid} Streaming Loop. Buf? ${!!buf} Len=${buf?.length}\n`;
-        fs.appendFileSync(logPath, msg);
-      } catch (e) { }
-
-      if (!buf) return;
-      broadcastBrowserEvent(sid, {
-        type: 'stream_frame',
-        ts: Date.now(),
-        jpegBase64: Buffer.from(buf).toString('base64'),
-        w: s.viewport.w,
-        h: s.viewport.h,
-      });
-      s.lastUsedAt = Date.now();
+        s = await getBrowserSession(sid);
+      } catch {
+        return;
+      }
+    }
+    if (!s || s.streaming) return;
+    s.streaming = true;
+    s.lastUsedAt = Date.now();
+    try {
+      broadcastStatus(sid, s, { workerStatus: 'idle' });
     } catch { }
-  }, intervalMs);
+    const cfg = DEFAULT_BROWSER_CONFIG;
+    const intervalMs = Math.max(50, Math.floor(1000 / Math.max(1, cfg.streamFps)));
+    s.streamTimer = setInterval(async () => {
+      if (!s || !s.streaming) return;
+      try {
+        const buf = await captureJpeg(s, {
+          quality: 55,
+          timeoutMs: Math.max(1000, Math.min(8000, cfg.actionTimeoutMs)),
+          waitForLock: false,
+          mask: s.maskLocators.length ? s.maskLocators : undefined,
+        });
+
+        // DEBUG LOGGING
+        try {
+          const logPath = path.join(__dirname, '../stream_debug.log');
+          const msg = `[${new Date().toISOString()}] SID=${sid} Streaming Loop. Buf? ${!!buf} Len=${buf?.length}\n`;
+          fs.appendFileSync(logPath, msg);
+        } catch (e) { }
+
+        if (!buf) return;
+        broadcastBrowserEvent(sid, {
+          type: 'stream_frame',
+          ts: Date.now(),
+          jpegBase64: Buffer.from(buf).toString('base64'),
+          w: s.viewport.w,
+          h: s.viewport.h,
+        });
+        s.lastUsedAt = Date.now();
+      } catch { }
+    }, intervalMs);
+  })();
 }
 
 export function stopStreaming(sessionId: string) {

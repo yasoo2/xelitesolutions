@@ -11,14 +11,50 @@ type BrowserWssHooks = {
 };
 
 const clientsBySession = new Map<string, Set<Client>>();
+type OwnerEntry = { userId: string; at: number };
+const ownerByBrowserSessionId = new Map<string, OwnerEntry>();
+const OWNER_TTL_MS = 24 * 60 * 60 * 1000;
+const OWNER_MAX_ENTRIES = 5000;
+
+function pruneOwners() {
+  if (ownerByBrowserSessionId.size <= OWNER_MAX_ENTRIES) return;
+  const now = Date.now();
+  for (const [k, v] of ownerByBrowserSessionId) {
+    if (now - v.at > OWNER_TTL_MS) ownerByBrowserSessionId.delete(k);
+  }
+  if (ownerByBrowserSessionId.size <= OWNER_MAX_ENTRIES) return;
+  let removed = 0;
+  for (const k of ownerByBrowserSessionId.keys()) {
+    ownerByBrowserSessionId.delete(k);
+    removed += 1;
+    if (removed >= Math.ceil(OWNER_MAX_ENTRIES / 3)) break;
+  }
+}
+
+function extractOwnerHint(sessionId: string, userId: string) {
+  const sid = String(sessionId || '').trim();
+  const uid = String(userId || '').trim();
+  if (!sid || !uid) return { type: 'none' as const, value: '' };
+  if (mongoose.Types.ObjectId.isValid(sid)) return { type: 'mongoSession' as const, value: sid };
+  if (!sid.startsWith('browser:')) return { type: 'none' as const, value: '' };
+  const parts = sid.split(':').map((p) => p.trim()).filter(Boolean);
+  const second = parts[1] || '';
+  if (!second) return { type: 'none' as const, value: '' };
+  if (mongoose.Types.ObjectId.isValid(second)) return { type: 'mongoSession' as const, value: second };
+  if (second === uid) return { type: 'userId' as const, value: uid };
+  return { type: 'none' as const, value: '' };
+}
 
 async function canAccessSession(userId: string, sessionId: string) {
   const uid = String(userId || '').trim();
   const sid = String(sessionId || '').trim();
   if (!uid || !sid) return false;
-  if (!mongoose.Types.ObjectId.isValid(sid)) return false;
+
+  const hint = extractOwnerHint(sid, uid);
+  if (hint.type === 'userId') return true;
+  if (hint.type !== 'mongoSession') return false;
   if (mongoose.connection.readyState !== 1) return true;
-  const found = await Session.findOne({ _id: sid, userId: uid }).select('_id').lean();
+  const found = await Session.findOne({ _id: hint.value, userId: uid }).select('_id').lean();
   return !!found;
 }
 
@@ -39,10 +75,25 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
         return;
       }
       try {
-        const ok = await canAccessSession(userId, sessionId);
-        if (!ok) {
-          try { ws.close(1008, 'forbidden'); } catch {}
-          return;
+        const ownerHint = extractOwnerHint(sessionId, userId);
+        if (ownerHint.type === 'mongoSession' || ownerHint.type === 'userId') {
+          const ok = await canAccessSession(userId, sessionId);
+          if (!ok) {
+            try { ws.close(1008, 'forbidden'); } catch {}
+            return;
+          }
+        } else {
+          const cur = ownerByBrowserSessionId.get(sessionId);
+          if (cur && cur.userId !== userId) {
+            try { ws.close(1008, 'forbidden'); } catch {}
+            return;
+          }
+          if (!cur) {
+            ownerByBrowserSessionId.set(sessionId, { userId, at: Date.now() });
+            pruneOwners();
+          } else {
+            cur.at = Date.now();
+          }
         }
       } catch {
         try { ws.close(1011, 'internal_error'); } catch {}
