@@ -62,7 +62,7 @@ export class BrowserRunTool extends BaseTool {
 
     permissions: ToolPermission[] = ['internet', 'execute'];
     sideEffects: ToolPermission[] = ['execute', 'internet'];
-    rateLimitPerMinute = 30;
+    rateLimitPerMinute = Number(process.env.BROWSER_TOOL_RATE_LIMIT_PER_MINUTE || 120);
     auditFields = ['sessionId'];
 
     // Helper method to analyze login state (logic ported from registry.ts)
