@@ -12,9 +12,13 @@ let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
 let lastAuthProbeAt = 0;
 
 function computeFallbackWsUrl(primaryUrl: string) {
+  const wsFromHttpBase = (httpUrl: string) => {
+    const base = httpUrl.replace(/\/api\/?$/, '');
+    return `${base.replace(/^http/i, 'ws')}/ws`;
+  };
   const candidates = [
-    API_URL ? `${API_URL.replace(/^http/i, 'ws')}/ws` : '',
-    `${window.location.origin.replace(/^http/i, 'ws')}/ws`,
+    API_URL ? wsFromHttpBase(API_URL) : '',
+    wsFromHttpBase(window.location.origin),
   ].filter(Boolean);
 
   const unique = Array.from(new Set(candidates));
