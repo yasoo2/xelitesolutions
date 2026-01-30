@@ -314,15 +314,14 @@ export default function Login() {
                 <motion.button
                     whileHover={{ scale: 1.02, backgroundColor: '#f8fafc' }}
                     whileTap={{ scale: 0.98 }}
-                    disabled={googleState?.ready === false}
                     onClick={() => {
                         if (googleState?.ready === false) {
                             setError(
                                 googleState.secretConfigured === false
-                                    ? 'Google OAuth غير مضبوط: client_secret مفقود.'
+                                    ? 'Google OAuth غير مضبوط على الخادم: السر (Client Secret) مفقود.'
                                     : googleState.clientIdAvailable === false
-                                        ? 'Google OAuth غير مضبوط: client_id مفقود.'
-                                        : 'Google OAuth غير مضبوط على الخادم.'
+                                        ? 'Google OAuth غير مضبوط: معرف العميل (Client ID) مفقود.'
+                                        : 'تكوين Google OAuth غير مكتمل على الخادم.'
                             );
                             return;
                         }
@@ -333,8 +332,8 @@ export default function Login() {
                     }}
                     style={{
                         ...S.googleBtn,
-                        opacity: googleState?.ready === false ? 0.6 : 1,
-                        cursor: googleState?.ready === false ? 'not-allowed' : 'pointer'
+                        opacity: googleState?.ready === false ? 0.7 : 1,
+                        cursor: 'pointer'
                     }}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24">
