@@ -61,21 +61,31 @@ export class AdvancedInteractionSystem extends EventEmitter {
   ): Promise<void> {
     this.emit('log', `🖱️ Natural mouse move from (${startX}, ${startY}) to (${endX}, ${endY})`);
 
-    const steps = Math.ceil(duration / 16); // 60 FPS
-    const deltaX = endX - startX;
-    const deltaY = endY - startY;
+    // Create a control point for the Bezier curve to make the path non-linear
+    // The control point is offset from the midpoint.
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+    const offset = 30 + Math.random() * 50;
+    const cpX = midX + (Math.random() - 0.5) * offset;
+    const cpY = midY + (Math.random() - 0.5) * offset;
+
+    const steps = Math.ceil(duration / 16); // ~60 FPS
 
     for (let i = 0; i <= steps; i++) {
-      const progress = i / steps;
+      const t = i / steps;
 
-      // منحنى بيزيه للحركة الطبيعية
-      const easeProgress = this.easeInOutCubic(progress);
+      // Easing t for a human-like acceleration/deceleration
+      const easedT = this.easeInOutCubic(t);
 
-      // إضافة ارتجاج طبيعي
-      const jitter = this.humanBehavior ? (Math.random() - 0.5) * 2 : 0;
+      // Calculate position on Quadratic Bezier curve
+      const pos = this.getBezierPoint(easedT, { x: startX, y: startY }, { x: cpX, y: cpY }, { x: endX, y: endY });
 
-      const currentX = startX + deltaX * easeProgress + jitter;
-      const currentY = startY + deltaY * easeProgress + jitter;
+      // Add micro-jitter (subtle muscle tremor)
+      const jitterX = this.humanBehavior ? (Math.random() - 0.5) * 1.5 : 0;
+      const jitterY = this.humanBehavior ? (Math.random() - 0.5) * 1.5 : 0;
+
+      const currentX = pos.x + jitterX;
+      const currentY = pos.y + jitterY;
 
       this.mouseVelocity = {
         x: currentX - this.lastMousePosition.x,
@@ -92,10 +102,11 @@ export class AdvancedInteractionSystem extends EventEmitter {
         x: currentX,
         y: currentY,
         velocity: this.mouseVelocity,
-        progress: easeProgress
+        progress: easedT
       });
 
-      await this.sleep(16);
+      // Variable sleep to avoid perfectly uniform timing
+      await this.sleep(14 + Math.random() * 4);
     }
 
     this.emit('log', `✅ اكتملت الحركة الطبيعية`);
@@ -423,6 +434,16 @@ export class AdvancedInteractionSystem extends EventEmitter {
     });
 
     this.emit('log', `✅ تم الاختيار`);
+  }
+
+  /**
+   * Calculate point on a quadratic bezier curve
+   */
+  private getBezierPoint(t: number, p0: { x: number, y: number }, p1: { x: number, y: number }, p2: { x: number, y: number }) {
+    return {
+      x: (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x,
+      y: (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y
+    };
   }
 
   /**

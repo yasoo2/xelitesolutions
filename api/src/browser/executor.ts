@@ -443,7 +443,9 @@ export async function executePlannedActions(params: {
           try {
             const vp = page.viewportSize();
             if (vp) {
-              await page.mouse.move(vp.width / 2, vp.height / 2);
+              const currentX = (interactions as any).lastMousePosition.x || 0;
+              const currentY = (interactions as any).lastMousePosition.y || 0;
+              await interactions.naturalMouseMove(page, currentX, currentY, vp.width / 2, vp.height / 2, 200);
             }
           } catch { }
 
@@ -468,9 +470,9 @@ export async function executePlannedActions(params: {
               const cy = Math.round(b.y + b.height / 2);
               broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: cx, y: cy });
               broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: now(), boxes: [{ ...b, label: 'hover' }] });
-              try { await page.mouse.move(cx, cy, { steps: 15 }); } catch { }
+              await interactions.hover(page, 'hover', cx, cy, 300);
             }
-            try { await loc.first().hover({ timeout: cfg.actionTimeoutMs }); } catch { }
+            // Base hover already done via interactions.hover above
           }
           await page.waitForTimeout(500);
           const after = await screenshotJpegBase64(page);
@@ -845,8 +847,13 @@ export async function executePlannedActions(params: {
             setStreamMask(sessionId, mask);
             const before = await screenshotJpegBase64(page, mask);
             evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
-            await loc.first().click({ timeout: cfg.actionTimeoutMs });
-            await loc.first().fill(secretValue, { timeout: cfg.actionTimeoutMs });
+            if (targetCenter) {
+              await interactions.naturalClick(page, 'secret_click', targetCenter.x, targetCenter.y);
+              await interactions.naturalType(page, 'secret_type', secretValue);
+            } else {
+              await loc.first().click({ timeout: cfg.actionTimeoutMs });
+              await loc.first().fill(secretValue, { timeout: cfg.actionTimeoutMs });
+            }
             const after = await screenshotJpegBase64(page, mask);
             evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
             setStreamMask(sessionId, []);
