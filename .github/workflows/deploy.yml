@@ -29,6 +29,42 @@ jobs:
             echo "HOST secret is empty."
             exit 1
           fi
+
+          resolve_candidate_hosts() {
+            local h="$1"
+            if printf '%s' "$h" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+              printf '%s\n' "$h"
+              return 0
+            fi
+            if command -v getent >/dev/null 2>&1; then
+              getent ahostsv4 "$h" 2>/dev/null | awk '{print $1}' | head -n 20 | awk '!seen[$0]++'
+              return 0
+            fi
+            printf '%s\n' "$h"
+          }
+
+          tcp_ok() {
+            local h="$1"
+            local p="$2"
+            timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${h}/${p}" 2>/dev/null
+          }
+
+          ssh_banner_ok() {
+            local h="$1"
+            local p="$2"
+            local tries="${3:-4}"
+            local attempt=1
+            while [ "$attempt" -le "$tries" ]; do
+              banner="$(timeout 20 bash -lc "exec 3<>/dev/tcp/${h}/${p}; head -c 32 <&3" 2>/dev/null || true)"
+              if printf '%s' "$banner" | grep -q '^SSH-'; then
+                return 0
+              fi
+              attempt=$((attempt + 1))
+              sleep 2
+            done
+            return 1
+          }
+
           ports=()
           if [ -n "${port_raw:-}" ]; then
             p="$(printf '%s' "$port_raw" | tr -dc '0-9')"
@@ -39,34 +75,53 @@ jobs:
           else
             if [ "${ports[0]}" = "22" ]; then ports+=(443); fi
           fi
-          selected=""
-          for p in "${ports[@]}"; do
-            echo "Testing TCP connectivity to ${host}:${p} ..."
-            ok=0
-            for i in $(seq 1 6); do
-              if timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${host}/${p}" 2>/dev/null; then
-                ok=1
-                break
+          selected_port=""
+          selected_host=""
+          candidates="$(resolve_candidate_hosts "$host" | tr -d '\r' | xargs -n 1 || true)"
+          if [ -z "${candidates:-}" ]; then
+            candidates="$host"
+          fi
+
+          echo "Host candidates:"
+          printf '%s\n' $candidates | head -n 20
+
+          for h in $candidates; do
+            for p in "${ports[@]}"; do
+              echo "Testing TCP connectivity to ${h}:${p} ..."
+              ok=0
+              for i in $(seq 1 6); do
+                if tcp_ok "$h" "$p"; then
+                  ok=1
+                  break
+                fi
+                sleep 2
+              done
+              if [ "$ok" -ne 1 ]; then
+                continue
               fi
-              sleep 2
+
+              echo "Checking SSH banner on ${h}:${p} ..."
+              if ssh_banner_ok "$h" "$p" 4; then
+                selected_host="$h"
+                selected_port="$p"
+                break 2
+              fi
+              echo "Port ${p} reachable but no SSH banner detected on ${h}:${p}."
             done
-            if [ "$ok" -eq 1 ]; then
-              echo "Checking SSH banner on ${host}:${p} ..."
-              banner="$(timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${p}; head -c 12 <&3" 2>/dev/null || true)"
-              if printf '%s' "$banner" | grep -q '^SSH-'; then
-                selected="$p"
-                break
-              fi
-              echo "Port ${p} reachable but no SSH banner detected (banner_prefix='${banner}')."
-            fi
           done
-          if [ -z "$selected" ]; then
-            echo "No reachable SSH TCP port found. Tried: ${ports[*]}"
+
+          if [ -z "$selected_port" ] || [ -z "$selected_host" ]; then
+            echo "No reachable SSH banner found. Tried ports: ${ports[*]}"
+            echo "Tried hosts:"
+            printf '%s\n' $candidates | head -n 20 || true
+            echo "Hint: secrets.HOST must point to the server SSH endpoint (IP or DNS that reaches sshd)."
             exit 1
           fi
-          echo "Selected SSH port: $selected"
-          echo "host=$host" >> "$GITHUB_OUTPUT"
-          echo "port=$selected" >> "$GITHUB_OUTPUT"
+
+          echo "Selected SSH host: $selected_host"
+          echo "Selected SSH port: $selected_port"
+          echo "host=$selected_host" >> "$GITHUB_OUTPUT"
+          echo "port=$selected_port" >> "$GITHUB_OUTPUT"
 
       - name: Check SSH port reachable
         shell: bash
@@ -93,13 +148,20 @@ jobs:
           fi
           echo "TCP OK"
           echo "Checking SSH banner on ${host}:${port} ..."
-          banner="$(timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 12 <&3" 2>/dev/null || true)"
-          if printf '%s' "$banner" | grep -q '^SSH-'; then
-            echo "SSH banner OK"
-          else
+          ok_banner=0
+          for i in $(seq 1 6); do
+            banner="$(timeout 20 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 32 <&3" 2>/dev/null || true)"
+            if printf '%s' "$banner" | grep -q '^SSH-'; then
+              ok_banner=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ok_banner" -ne 1 ]; then
             echo "SSH banner not detected on ${host}:${port} (banner_prefix='${banner}')."
             exit 1
           fi
+          echo "SSH banner OK"
 
       - name: Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
