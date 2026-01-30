@@ -34,10 +34,7 @@ You must output a SINGLE JSON object: { "actions": [ ... ] }
 Goal: Translate user instructions into precise browser actions using the provided UI_GROUNDING_JSON (snapshot of the page) and the attached screenshot. You can SEE the page.
 
 Smart Detection Rules:
-- If user says "Login" (or "دخول"), look for semantic visual cues: buttons labeled "Sign in", "Log in", "Profile", or icons/Avatars.
-- If a specific text selector fails, fallback to coordinates (x,y) from the grounding data.
-- For YouTube/Social Media: "Sign in" often hides behind an Avatar or "Accounts" menu. Look for \`[aria-label="Account"]\` or similar.
-- Do NOT stop at the first step if the instruction implies a sequence (e.g., "Go to X and Login" -> goto + wait + click).
+- **CRITICAL**: If a user mentions a site name (e.g., "Facebook", "فيسبوك", "Youtube"), PRIORITIZE `goto` with the direct URL. Avoid searching unless explicitly asked.
 - **CRITICAL**: For requests like "Read", "Summarize", "Translate", "What are the headlines?": just \`{"type":"goto"}\` and \`{"type":"wait","ms":3000}\`. Do NOT click articles or buttons unless explicitly asked. The system reads the page automatically.
 
 Output Config:
@@ -322,15 +319,26 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
   const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(s);
   const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(s);
   const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s);
-  const wantsExplicitGoogle =
-    /(google|جوجل)/i.test(s) || /(ابحث|بحث|search|find|lookup)\s+(?:في|على|ب)\s*(?:google|جوجل)/i.test(s);
+  const wantsInstagram = /(instagram|انستجرام|إنستغرام|انستغرام|انستقرام)/i.test(s);
+  const wantsTwitter = /(twitter|تويتر)/i.test(s);
+  const wantsGoogle = /(google|جوجل)/i.test(s);
+  const wantsDDG = /(duckduckgo|داك\s*داك\s*جو)/i.test(s);
+  const wantsAmazon = /(amazon|أمازون|امازون)/i.test(s);
+  const wantsNetflix = /(netflix|نتفليكس|نتفلكس)/i.test(s);
+
   const hasSearchIntent = /(ابحث|بحث|search|find|lookup)/i.test(s);
 
-  if (wantsExplicitGoogle && hasSearchIntent) {
+  if (hasSearchIntent) {
     const queryMatch = s.match(/(?:search|find|lookup|research|بحث|عن|for)\s+["'“”]?([^"“”']+)["'“”]?/i);
-    if (queryMatch && queryMatch[1]) {
-      const q = encodeURIComponent(queryMatch[1].trim());
-      actions.push({ type: 'goto', url: `https://www.google.com/search?q=${q}` });
+    const q = queryMatch ? queryMatch[1].trim() : s.replace(/(ابحث|بحث|search|find|lookup|عن|for)/gi, '').trim();
+
+    if (q) {
+      if (wantsGoogle) {
+        actions.push({ type: 'goto', url: `https://www.google.com/search?q=${encodeURIComponent(q)}` });
+      } else {
+        // DEFAULT TO DUCKDUCKGO TO AVOID CAPTCHAS
+        actions.push({ type: 'goto', url: `https://duckduckgo.com/?q=${encodeURIComponent(q)}` });
+      }
       return actions;
     }
   }
@@ -349,17 +357,25 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
             ? 'https://github.com'
             : wantsYoutube
               ? 'https://www.youtube.com'
-              : wantsX
+              : (wantsX || wantsTwitter)
                 ? 'https://x.com'
                 : wantsFacebook
                   ? 'https://www.facebook.com'
                   : wantsLinkedIn
                     ? 'https://www.linkedin.com'
-                    : wantsYahoo
-                      ? 'https://www.yahoo.com'
-                      : wantsExplicitGoogle
-                        ? 'https://www.google.com'
-                        : null);
+                    : wantsInstagram
+                      ? 'https://www.instagram.com'
+                      : wantsAmazon
+                        ? 'https://www.amazon.com'
+                        : wantsNetflix
+                          ? 'https://www.netflix.com'
+                          : wantsYahoo
+                            ? 'https://www.yahoo.com'
+                            : wantsGoogle
+                              ? 'https://www.google.com'
+                              : wantsDDG
+                                ? 'https://duckduckgo.com'
+                                : null);
   if (url) actions.push({ type: 'goto', url });
 
   const clickMatches = [

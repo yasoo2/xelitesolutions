@@ -64,6 +64,24 @@ function normalizeUrlForGoto(raw: any, baseUrl?: string) {
   };
   if (/^https?:\/\//i.test(s)) return fixKnownHosts(s);
   if (/^\/\//.test(s)) return `https:${s}`;
+
+  // Smart label resolution
+  const labels: Record<string, string> = {
+    'facebook': 'https://facebook.com',
+    'فيسبوك': 'https://facebook.com',
+    'youtube': 'https://youtube.com',
+    'يوتيوب': 'https://youtube.com',
+    'instagram': 'https://instagram.com',
+    'انستجرام': 'https://instagram.com',
+    'twitter': 'https://x.com',
+    'تويتر': 'https://x.com',
+    'amazon': 'https://amazon.com',
+    'امازون': 'https://amazon.com',
+    'أمازون': 'https://amazon.com',
+  };
+  const label = s.toLowerCase().replace(/^(?:افتح\s+|open\s+|اذهب\s+الى\s+|visit\s+)/i, '').trim();
+  if (labels[label]) return labels[label];
+
   if (/^\//.test(s)) {
     try {
       if (baseUrl) return fixKnownHosts(new URL(s, baseUrl).toString());
