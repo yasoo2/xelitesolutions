@@ -1,10 +1,7 @@
 
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { handleShellCommand } from '../handlers';
 
 export class SonarAnalysisTool extends BaseTool {
     name = 'sonar_analysis';
@@ -24,18 +21,21 @@ export class SonarAnalysisTool extends BaseTool {
     sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
-        // Check if sonar-scanner exists
         try {
-            const key = input.projectKey;
-            // Assume sonar-scanner is in path or use npx sonar-scanner
-            // For now, we'll try to run it, if it fails, we report that it needs installation
-            const cmd = `npx sonar-scanner -Dsonar.projectKey=${key} -Dsonar.sources=${input.sources}`;
-            const { stdout } = await execAsync(cmd);
-            return { ok: true, output: { summary: stdout.slice(0, 2000) }, logs: ['sonar scan complete'] };
-        } catch (e: any) {
-            if (String(e.message).includes('command not found') || String(e.message).includes('ENOENT')) {
-                return { ok: false, error: 'sonar-scanner/npx not available. Please install dependencies.', logs: [] };
+            const key = String(input.projectKey || '').trim();
+            const sources = String(input.sources || '.').trim();
+            const args = ['sonar-scanner', `-Dsonar.projectKey=${key}`, `-Dsonar.sources=${sources}`];
+            const r = await handleShellCommand('npx', args, process.cwd(), 300000, false);
+            if (!r.ok) {
+                const msg = r.error || 'sonar_failed';
+                if (msg.includes('command not found') || msg.includes('ENOENT')) {
+                    return { ok: false, error: 'sonar-scanner/npx not available. Please install dependencies.', logs: [] };
+                }
+                return { ok: false, error: `Sonar failed: ${msg}`, logs: [] };
             }
+            const summary = String(r.output || '').slice(0, 2000);
+            return { ok: true, output: { summary }, logs: ['sonar scan complete'] };
+        } catch (e: any) {
             return { ok: false, error: `Sonar failed: ${e.message}`, logs: [] };
         }
     }
@@ -58,17 +58,13 @@ export class DependencyAuditorTool extends BaseTool {
 
     async execute(input: any) {
         const pm = input.packageManager || 'npm';
-        let cmd = 'npm audit';
-        if (pm === 'yarn') cmd = 'yarn audit';
-        if (pm === 'pnpm') cmd = 'pnpm audit';
-
-        try {
-            await execAsync(cmd);
+        const cmd = pm === 'yarn' ? 'yarn' : pm === 'pnpm' ? 'pnpm' : 'npm';
+        const args = ['audit'];
+        const r = await handleShellCommand(cmd, args, process.cwd(), 300000, false);
+        if (r.ok) {
             return { ok: true, output: { report: 'No vulnerabilities found!' }, logs: ['audit passed'] };
-        } catch (e: any) {
-            // npm audit returns exit code 1 if vulns found
-            return { ok: true, output: { report: e.stdout || e.message }, logs: ['audit found issues'] };
         }
+        return { ok: true, output: { report: r.error || String(r.output || '') }, logs: ['audit found issues'] };
     }
 }
 

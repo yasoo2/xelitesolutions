@@ -4,11 +4,30 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { exec } from 'child_process';
-import util from 'util';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
+import { handleGitCommand } from '../handlers';
 
-const execAsync = util.promisify(exec);
+const spawn = require('child_process').spawn;
+
+async function runGitWithEnv(operation: string, args: string[], env: any, cwd: string) {
+    const op = String(operation || '');
+    if (!/^[a-z0-9-]+$/.test(op)) {
+        throw new Error('invalid_git_operation');
+    }
+    const finalArgs = [op, ...args.map(a => String(a || ''))];
+    return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        const child = spawn('git', finalArgs, { cwd, env, shell: false });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (d: any) => { stdout += d.toString(); });
+        child.stderr.on('data', (d: any) => { stderr += d.toString(); });
+        child.on('error', (err: any) => reject(err));
+        child.on('close', (code: number) => {
+            if (code === 0) resolve({ stdout, stderr });
+            else reject(new Error(stderr || stdout || `Exit code ${code}`));
+        });
+    });
+}
 
 export class GitOpsTool extends BaseTool {
     name = 'git_ops';
@@ -41,11 +60,17 @@ export class GitOpsTool extends BaseTool {
         let askpassDir = '';
 
         try {
-            // Auto-configure user if committing
             if (op === 'commit') {
-                try { await execAsync('git config user.name'); } catch {
-                    await execAsync('git config user.name "Joe AI"');
-                    await execAsync('git config user.email "joe@xelitesolutions.com"');
+                try {
+                    const checkUser = await handleGitCommand('config', ['user.name'], process.cwd());
+                    if (!checkUser.ok) {
+                        const nameResult = await handleGitCommand('config', ['user.name', 'Joe AI'], process.cwd());
+                        if (!nameResult.ok) throw new Error(nameResult.error || 'git_config_failed');
+                        const emailResult = await handleGitCommand('config', ['user.email', 'joe@xelitesolutions.com'], process.cwd());
+                        if (!emailResult.ok) throw new Error(emailResult.error || 'git_config_failed');
+                    }
+                } catch (e: any) {
+                    logs.push(`git.config_failed=${e.message}`);
                 }
             }
 
@@ -74,13 +99,11 @@ export class GitOpsTool extends BaseTool {
                 }
             }
 
-            let cmd = `git ${op}`;
-            if (args.length) cmd += ` ${args.join(' ')}`;
-
-            logs.push(`git.cmd=${cmd}`);
-            const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd(), env });
+            const safeArgs = Array.isArray(args) ? args.map(a => String(a || '')).filter(a => a.length > 0) : [];
+            const cwd = process.cwd();
+            const envResult = await runGitWithEnv(op, safeArgs, env, cwd);
             logs.push(`git.success=${op}`);
-            return { ok: true, output: { output: stdout || stderr }, logs };
+            return { ok: true, output: { output: envResult.stdout || envResult.stderr }, logs };
 
         } catch (e: any) {
             logs.push(`git.error=${e.message}`);

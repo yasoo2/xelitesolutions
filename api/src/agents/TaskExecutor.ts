@@ -1,11 +1,7 @@
-import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import util from 'util';
 import { tools } from '../tools/registry';
-import { ToolDefinition } from '../tools/types';
-
-const execAsync = util.promisify(exec);
+import { handleShellCommand } from '../tools/handlers';
 
 export interface TaskStep {
     name: string;
@@ -37,12 +33,9 @@ export class TaskExecutor {
                     return await this.scaffoldProject(step.args);
                 case 'file_write':
                     return await this.writeFile(step.args);
-                case 'shell_execute':
-                    return await this.shellExecute(step.args);
                 case 'npm_install':
                     return await this.npmInstall(step.args);
                 default:
-                    // Dynamic Registry Lookup (Universal Tool Execution)
                     const toolDef = tools.find(t => t.name === step.tool);
                     if (toolDef) {
                         return await this.runTool(toolDef, step.args);
@@ -56,14 +49,16 @@ export class TaskExecutor {
     }
 
     private async scaffoldProject(args: { name: string; type?: string }) {
-        const targetDir = this.rootDir; // Scaffold always targets root in this context
+        const targetDir = this.rootDir;
         if (!fs.existsSync(targetDir)) {
             fs.mkdirSync(targetDir, { recursive: true });
         }
 
-        // Init package.json if missing
         if (!fs.existsSync(path.join(targetDir, 'package.json'))) {
-            await execAsync('npm init -y', { cwd: targetDir });
+            const r = await handleShellCommand('npm', ['init', '-y'], targetDir, 300000, false);
+            if (!r.ok) {
+                throw new Error(r.error || 'npm_init_failed');
+            }
         }
 
         return { success: true, output: `Project scaffolded in ${targetDir}` };
@@ -81,45 +76,24 @@ export class TaskExecutor {
         return { success: true, output: `File written: ${filePath}` };
     }
 
-    private async shellExecute(args: { command: string; cwd?: string }) {
-        const cwd = args.cwd ? this.resolveSafePath(args.cwd) : this.rootDir;
-        const cmd = args.command.trim();
-
-        // 1. Block dangerous system commands
-        const blockedPatterns = [
-            /\bsudo\b/i,           // No root escalation
-            /\bsu\b/i,             // No user switching
-            /\bchmod\b/i,          // No permission changes
-            /\bchown\b/i,          // No ownership changes
-            /\brm\s+-[rRf]*\s*[\/\*]+$/i, // No "rm -rf /" or "rm -rf *" at root
-            /:(){:\|:&};:/,       // Fork bombs
-            />\s*\/dev\/sda/,     // Device writing
-            /\bdd\b/,             // Low-level disk writing
-            /\bwget\b|\bcurl\b/   // Prevent uncontrolled downloading (use http_fetch tool instead)
-        ];
-
-        for (const pattern of blockedPatterns) {
-            if (pattern.test(cmd)) {
-                throw new Error(`Security Violocation: Command blocked by safety policy. Pattern: ${pattern}`);
+    private async npmInstall(args: { package: string[] | string }) {
+        const raw = Array.isArray(args.package) ? args.package : [args.package];
+        const packages = raw
+            .map(p => String(p || '').trim())
+            .filter(p => p.length > 0);
+        if (!packages.length) {
+            throw new Error('No packages provided for npm_install');
+        }
+        for (const pkg of packages) {
+            if (!/^[a-zA-Z0-9@/_\.\-]+$/.test(pkg)) {
+                throw new Error(`Invalid package name: ${pkg}`);
             }
         }
-
-        // 2. Validate command structure (prevent obscure shell expansions)
-        // This is a trade-off. We trust 'npm', 'git', 'node', 'tsc', 'ls', 'echo', 'cat', 'mkdir', 'touch'.
-        // We allow complex commands but monitor them.
-
-        console.log(`[TaskExecutor] Running in ${cwd}: ${cmd}`);
-
-        const { stdout, stderr } = await execAsync(cmd, { cwd, maxBuffer: 10 * 1024 * 1024 }); // 10MB buffer
-        return { success: true, output: stdout || stderr };
-    }
-
-    private async npmInstall(args: { package: string[] | string }) {
-        const packages = Array.isArray(args.package) ? args.package.join(' ') : args.package;
-        const cmd = `npm install ${packages}`;
-
-        const { stdout } = await execAsync(cmd, { cwd: this.rootDir });
-        return { success: true, output: stdout };
+        const r = await handleShellCommand('npm', ['install', ...packages], this.rootDir, 600000, false);
+        if (!r.ok) {
+            throw new Error(r.error || 'npm_install_failed');
+        }
+        return { success: true, output: String(r.output || '') };
     }
 
     private async runTool(tool: any, args: any) {

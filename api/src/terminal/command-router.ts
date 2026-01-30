@@ -3,12 +3,9 @@
  * Routes commands to local or remote execution based on context
  */
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { sshManager } from './ssh-manager';
 import { CommandExecutionContext } from '../models/ServerConfig';
-
-const execAsync = promisify(exec);
+import { handleShellCommand } from '../tools/handlers';
 
 export interface CommandResult {
     stdout: string;
@@ -35,23 +32,28 @@ export class CommandRouter {
      */
     private async executeLocal(context: CommandExecutionContext): Promise<CommandResult> {
         try {
-            const { stdout, stderr } = await execAsync(context.command, {
-                cwd: context.workingDirectory || process.cwd(),
-                timeout: context.timeout || 30000, // 30s default
-                maxBuffer: 10 * 1024 * 1024, // 10MB
-            });
+            const raw = String(context.command || '');
+            const parts = raw.trim().split(/\s+/).filter(Boolean);
+            if (!parts.length) {
+                throw new Error('Empty command');
+            }
+            const cmd = parts[0];
+            const args = parts.slice(1);
+            const cwd = context.workingDirectory || process.cwd();
+            const timeoutMs = context.timeout || 30000;
+            const result = await handleShellCommand(cmd, args, cwd, timeoutMs, false);
 
             return {
-                stdout,
-                stderr,
-                code: 0,
+                stdout: String(result.output || ''),
+                stderr: result.ok ? '' : String(result.error || ''),
+                code: result.ok ? 0 : 1,
                 executedOn: 'local',
             };
         } catch (error: any) {
             return {
-                stdout: error.stdout || '',
-                stderr: error.stderr || error.message,
-                code: error.code || 1,
+                stdout: '',
+                stderr: error.message,
+                code: 1,
                 executedOn: 'local',
             };
         }
