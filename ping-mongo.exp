@@ -1,0 +1,13 @@
+#!/usr/bin/env expect -f
+
+set timeout 30
+
+spawn ssh root@46.224.187.142 "docker exec mongodb mongosh --eval 'db.adminCommand({ping: 1})'"
+
+expect {
+    "password:" {
+        send "Younes.sowady2011\r"
+        exp_continue
+    }
+    eof
+}
