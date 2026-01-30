@@ -547,6 +547,7 @@ export async function executePlannedActions(params: {
             if (text === '\n') await page.keyboard.press('Enter');
             else if (text === '\t') await page.keyboard.press('Tab');
             else if (text === '\b') await page.keyboard.press('Backspace');
+            else if (text === '\x7f') await page.keyboard.press('Delete');
             else await interactions.naturalType(page, 'global_type', text);
 
             await page.waitForTimeout(50);

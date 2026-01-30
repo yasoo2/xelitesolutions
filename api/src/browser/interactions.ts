@@ -204,6 +204,19 @@ export class AdvancedInteractionSystem extends EventEmitter {
         await this.sleep(100);
       }
 
+      if (char === '\b') {
+        try { await page.keyboard.press('Backspace'); } catch { }
+        this.emit('backspace', { selector });
+        await this.sleep(this.randomDelay(minDelay, maxDelay));
+        continue;
+      }
+      if (char === '\x7f') {
+        try { await page.keyboard.press('Delete'); } catch { }
+        this.emit('delete', { selector });
+        await this.sleep(this.randomDelay(minDelay, maxDelay));
+        continue;
+      }
+
       try { await page.keyboard.type(char); } catch { }
       this.emit('type', {
         selector,

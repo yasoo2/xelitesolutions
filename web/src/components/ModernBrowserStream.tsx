@@ -444,6 +444,24 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
               });
               return;
             }
+            if (key === 'Backspace') {
+              e.preventDefault();
+              pendingTypeRef.current += '\b';
+              const dt = Date.now() - lastSendAtRef.current;
+              const delay = dt > 700 ? 30 : 90;
+              if (flushTimerRef.current) window.clearTimeout(flushTimerRef.current);
+              flushTimerRef.current = window.setTimeout(() => void flushType(), delay);
+              return;
+            }
+            if (key === 'Delete') {
+              e.preventDefault();
+              pendingTypeRef.current += '\x7f';
+              const dt = Date.now() - lastSendAtRef.current;
+              const delay = dt > 700 ? 30 : 90;
+              if (flushTimerRef.current) window.clearTimeout(flushTimerRef.current);
+              flushTimerRef.current = window.setTimeout(() => void flushType(), delay);
+              return;
+            }
             if (key.length === 1) {
               e.preventDefault();
               pendingTypeRef.current += key;
