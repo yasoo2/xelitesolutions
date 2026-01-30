@@ -158,8 +158,7 @@ router.post('/google', async (req: Request, res: Response) => {
     const picture = String(payload.picture || '').trim();
     const emailNormalized = payload.email.trim().toLowerCase();
 
-
-    user = await User.findOne({ email: emailNormalized });
+    let user = await User.findOne({ email: emailNormalized });
     if (!user) {
       const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
       const count = await User.countDocuments();
@@ -236,10 +235,10 @@ function resolveGoogleClientId(req: Request): string {
 function resolveGoogleClientSecret(): string {
   return String(
     process.env.GOOGLE_CLIENT_SECRET ||
-      process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
-      process.env.GOOGLE_OAUTH_SECRET ||
-      process.env.GOOGLE_SECRET ||
-      ''
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+    process.env.GOOGLE_OAUTH_SECRET ||
+    process.env.GOOGLE_SECRET ||
+    ''
   ).trim();
 }
 
@@ -411,41 +410,27 @@ router.get('/callback', async (req: Request, res: Response) => {
     const picture = String(profile.picture || '').trim();
     const emailNormalized = String(profile.email || '').trim().toLowerCase();
 
-    const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
-    let user: any;
-
-    if (useMock) {
-      user = mockDb.findUserByEmail(emailNormalized);
-      if (!user) {
-        const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
-        const isFirstUser = mockDb.countUsers() === 0;
-        user = mockDb.createUser(emailNormalized, passwordHash, isFirstUser ? 'OWNER' : 'USER');
-        user.name = name;
-        user.picture = picture;
-      }
-    } else {
-      user = await User.findOne({ email: emailNormalized });
-      if (!user) {
-        const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
-        const count = await User.countDocuments();
-        const role = count === 0 ? 'OWNER' : 'USER';
-        user = await User.create({
-          email: emailNormalized,
-          passwordHash,
-          role,
-          name,
-          picture
-        });
-      } else if (name || picture) {
-        user.name = name || user.name;
-        user.picture = picture || user.picture;
-        await user.save();
-      }
+    let user = await User.findOne({ email: emailNormalized });
+    if (!user) {
+      const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
+      const count = await User.countDocuments();
+      const role = count === 0 ? 'OWNER' : 'USER';
+      user = await User.create({
+        email: emailNormalized,
+        passwordHash,
+        role,
+        name,
+        picture
+      });
+    } else if (name || picture) {
+      user.name = name || user.name;
+      user.picture = picture || user.picture;
+      await user.save();
     }
 
     const appToken = jwt.sign(
       {
-        sub: useMock ? user.id : user._id.toString(),
+        sub: user._id.toString(),
         role: user.role,
         email: user.email || emailNormalized,
         name: user.name || name,
