@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Session } from '../models/session';
 import { Tenant } from '../models/tenant';
-import { store } from '../mock/store';
-import mongoose from 'mongoose';
 
-const useMock = () => process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
 
 import { workspaceService } from '../services/WorkspaceService';
 
@@ -16,10 +14,7 @@ export async function createSession(req: Request, res: Response) {
     const userId = (req as any).auth?.sub;
 
     try {
-        if (useMock()) {
-            const session = store.createSession(title, mode, kind);
-            return res.json(session);
-        }
+
 
         const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
         const tenantDoc = await Tenant.findOneAndUpdate(
@@ -59,10 +54,7 @@ export async function createSession(req: Request, res: Response) {
 export async function listSessions(req: Request, res: Response) {
     const userId = (req as any).auth?.sub;
     try {
-        if (useMock()) {
-            // Basic mock listing not fully implemented in snippet but standard store usage
-            return res.json(store.listSessions()); // Assuming store has this
-        }
+
         const sessions = await Session.find({ userId }).sort({ updatedAt: -1 }).limit(100);
         return res.json(sessions);
     } catch (e) {
@@ -73,10 +65,7 @@ export async function listSessions(req: Request, res: Response) {
 export async function deleteSession(req: Request, res: Response) {
     const id = req.params.id;
     try {
-        if (useMock()) {
-            store.deleteSession(id);
-            return res.json({ ok: true });
-        }
+
         await Session.findByIdAndDelete(id);
         return res.json({ ok: true });
     } catch (e) {
@@ -87,10 +76,7 @@ export async function deleteSession(req: Request, res: Response) {
 export async function deleteAllSessions(req: Request, res: Response) {
     const userId = (req as any).auth?.sub;
     try {
-        if (useMock()) {
-            // Mock implementation (stub)
-            return res.json({ ok: true });
-        }
+
         const result = await Session.deleteMany({ userId });
         return res.json({ ok: true, count: result.deletedCount });
     } catch (e) {
@@ -101,13 +87,11 @@ export async function deleteAllSessions(req: Request, res: Response) {
 export async function togglePin(req: Request, res: Response) {
     const id = req.params.id;
     try {
-        if (!useMock()) {
-            const s = await Session.findById(id);
-            if (s) {
-                s.isPinned = !s.isPinned;
-                await s.save();
-                return res.json(s);
-            }
+        const s = await Session.findById(id);
+        if (s) {
+            s.isPinned = !s.isPinned;
+            await s.save();
+            return res.json(s);
         }
         return res.status(404).json({ error: 'Session not found' });
     } catch (e) {
@@ -115,15 +99,13 @@ export async function togglePin(req: Request, res: Response) {
     }
 }
 
+
 export async function moveSession(req: Request, res: Response) {
     const id = req.params.id;
     const folderId = req.body.folderId;
     try {
-        if (!useMock()) {
-            const s = await Session.findByIdAndUpdate(id, { folderId }, { new: true });
-            return res.json(s);
-        }
-        return res.json({ id, folderId, moved: true });
+        const s = await Session.findByIdAndUpdate(id, { folderId }, { new: true });
+        return res.json(s);
     } catch (e) {
         return res.status(500).json({ error: 'Failed to move session' });
     }
@@ -146,9 +128,7 @@ export async function listSessionMessages(req: Request, res: Response) {
     const userId = (req as any).auth?.sub;
 
     try {
-        if (useMock()) {
-            return res.json(store.listMessages(sessionId));
-        }
+
 
         console.log(`[SessionController] Listing messages for sessionId: ${sessionId}, userId: ${userId}`);
 
@@ -248,14 +228,7 @@ export async function searchSessions(req: Request, res: Response) {
     if (!query) return res.json([]);
 
     try {
-        if (useMock()) {
-            const all = store.listSessions();
-            const filtered = all.filter((s: any) =>
-                (s.title || '').toLowerCase().includes(query.toLowerCase()) &&
-                (!kind || s.kind === kind)
-            );
-            return res.json(filtered);
-        }
+
 
         const filter: any = {
             userId,

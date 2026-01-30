@@ -6,14 +6,14 @@ import { ToolExecution } from '../models/toolExecution';
 import { Session } from '../models/session';
 import { broadcast } from '../ws';
 import { executeTool } from '../services/ToolService';
-import { store } from '../mock/store';
+
 import { getSessionRunConfig, popPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted, setPendingTool } from '../services/secrets';
 import { redactToolInputForStorage, safeErrorMessage, redactSecretsFromString } from '../utils/redaction';
 import { planNextStep } from '../llm';
 import { summarizeBrowserOutputForChat, inferSiteLabel, extractTitleFromHtml, sanitizeToolResultForBroadcast } from '../utils/browserUtils';
 import mongoose from 'mongoose';
 
-const useMock = () => process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+
 
 interface ContinueResult {
     done?: boolean;
@@ -33,11 +33,7 @@ export class AgentLoopService {
         if (!pending) return { ok: true, noOp: true };
 
         // Update Run Status
-        if (useMock()) {
-            store.updateRun(pending.runId, { status: 'running' as any });
-        } else {
-            try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch { }
-        }
+        try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch { }
 
         const persistedInput = redactToolInputForStorage(pending.name, pending.input);
         broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${pending.name}`, input: persistedInput } });
@@ -58,39 +54,32 @@ export class AgentLoopService {
         // We will broadcast it for now.
         broadcast({ type: 'text', runId: pending.runId, data: assistantText });
 
-        if (useMock()) {
-            store.addExec(pending.runId, pending.name, persistedInput, result.output, result.ok, result.logs);
-            store.addMessage(sessionId, 'assistant', assistantText, pending.runId);
-            store.updateRun(pending.runId, { status: result.ok ? 'done' as any : 'failed' as any });
-        } else {
-            try {
-                await ToolExecution.create({
-                    runId: pending.runId,
-                    sessionId,
-                    name: pending.name || 'unknown',
-                    input: persistedInput,
-                    output: result.output, // Use raw output for DB, not sanitized
-                    ok: result.ok,
-                    logs: result.logs,
-                });
-            } catch { }
-            try {
-                await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
-            } catch { }
-            try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
-        }
+        try {
+            await ToolExecution.create({
+                runId: pending.runId,
+                sessionId,
+                name: pending.name || 'unknown',
+                input: persistedInput,
+                output: result.output, // Use raw output for DB, not sanitized
+                ok: result.ok,
+                logs: result.logs,
+            });
+        } catch { }
+        try {
+            await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
+        } catch { }
+        try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
         broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: result.ok } });
 
         const runCfg = getSessionRunConfig(sessionId);
         let kind = 'chat';
         if (runCfg?.kind) kind = runCfg.kind;
-        else if (!useMock()) {
-            try {
-                const s = await Session.findById(sessionId).select({ kind: 1 }).lean();
-                if (s?.kind === 'agent') kind = 'agent';
-            } catch { }
-        }
+        try {
+            const s = await Session.findById(sessionId).select({ kind: 1 }).lean();
+            if (s?.kind === 'agent') kind = 'agent';
+        } catch { }
+
 
         if (kind === 'agent' && result.ok) {
             // FIRE AND FORGET - Continue Execution Background
@@ -140,11 +129,7 @@ export class AgentLoopService {
             steps++;
             // 1. Fetch History
             let messages: any[] = [];
-            if (useMock()) {
-                messages = store.listMessages(sessionId);
-            } else {
-                messages = await Message.find({ sessionId }).sort({ createdAt: 1 }).lean();
-            }
+            messages = await Message.find({ sessionId }).sort({ createdAt: 1 }).lean();
 
             // 2. Plan Next Step (LLM)
             const msgsForLLM = messages.map(m => ({ role: m.role || 'user', content: String(m.content || '') }));
@@ -184,13 +169,8 @@ export class AgentLoopService {
 
             // Let's create a new run for the autonomous step
             let newRunId: string;
-            if (useMock()) {
-                const r = store.createRun(sessionId);
-                newRunId = r.id;
-            } else {
-                const r = await Run.create({ sessionId, status: 'running' });
-                newRunId = (r as any)._id.toString();
-            }
+            const r = await Run.create({ sessionId, status: 'running' });
+            newRunId = (r as any)._id.toString();
             currentRunId = newRunId; // Update tracking context
 
             // 5. Execute Tool
@@ -214,27 +194,21 @@ export class AgentLoopService {
             broadcast({ type: 'text', runId: newRunId, data: assistantText });
 
             // Save
-            if (useMock()) {
-                store.addExec(newRunId, plan.name, persistedInput, result.output, result.ok, result.logs || []);
-                store.addMessage(sessionId, 'assistant', assistantText, newRunId);
-                store.updateRun(newRunId, { status: result.ok ? 'done' as any : 'failed' as any });
-            } else {
-                try {
-                    await ToolExecution.create({
-                        runId: newRunId,
-                        sessionId,
-                        name: plan.name || 'unknown',
-                        input: persistedInput,
-                        output: result.output,
-                        ok: result.ok,
-                        logs: result.logs,
-                    });
-                } catch { }
-                try {
-                    await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: newRunId });
-                } catch { }
-                try { await Run.findByIdAndUpdate(newRunId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
-            }
+            try {
+                await ToolExecution.create({
+                    runId: newRunId,
+                    sessionId,
+                    name: plan.name || 'unknown',
+                    input: persistedInput,
+                    output: result.output,
+                    ok: result.ok,
+                    logs: result.logs,
+                });
+            } catch { }
+            try {
+                await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: newRunId });
+            } catch { }
+            try { await Run.findByIdAndUpdate(newRunId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
             // If tool failed, maybe break?
             if (!result.ok) {

@@ -14,16 +14,16 @@ import foldersRoutes from './routes/folders';
 import filesRoutes from './routes/files';
 import approvalsRoutes from './routes/approvals';
 import projectRoutes from './routes/project';
-import audioRoutes from './routes/audio';
+
 import assetsRoutes from './routes/assets';
 import memoryRoutes from './routes/memory';
 import knowledgeRoutes from './routes/knowledge';
 import systemRoutes from './routes/system';
-import instaRoutes from './routes/insta';
+
 import providersRoutes from './routes/providers';
 import packagesRoutes from './routes/packages';
 import gitRoutes from './routes/git';
-import artRoutes from './routes/art';
+
 import databaseRoutes from './routes/database';
 import actionsRoutes from './routes/actions';
 import browserRoutes from './routes/browser';
@@ -165,16 +165,16 @@ async function main() {
   apiRouter.use('/files', filesRoutes);
   apiRouter.use('/approvals', approvalsRoutes);
   apiRouter.use('/project', projectRoutes);
-  apiRouter.use('/audio', audioRoutes);
+
   apiRouter.use('/assets', assetsRoutes);
   apiRouter.use('/memory', memoryRoutes);
   apiRouter.use('/knowledge', knowledgeRoutes);
   apiRouter.use('/system', systemRoutes);
-  apiRouter.use('/insta', instaRoutes);
+
   apiRouter.use('/providers', providersRoutes);
   apiRouter.use('/packages', packagesRoutes);
   apiRouter.use('/git', gitRoutes);
-  apiRouter.use('/art', artRoutes);
+
   apiRouter.use('/database', databaseRoutes);
   apiRouter.use('/actions', actionsRoutes);
   apiRouter.use('/browser', browserRoutes);
