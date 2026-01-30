@@ -4,9 +4,38 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        type: choice
+        description: Deployment mode
+        required: true
+        default: ssh
+        options:
+          - ssh
+          - self-hosted
+
+env:
+  DEPLOY_MODE: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode) || vars.DEPLOY_MODE || 'ssh' }}
 
 jobs:
-  deploy:
+  deploy_self_hosted:
+    if: env.DEPLOY_MODE == 'self-hosted'
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy on runner host
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/deploy.sh
+          ./scripts/deploy.sh
+
+  deploy_ssh:
+    if: env.DEPLOY_MODE != 'self-hosted'
     runs-on: ubuntu-latest
 
     steps:
