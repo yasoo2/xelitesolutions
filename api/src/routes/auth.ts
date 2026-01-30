@@ -276,8 +276,19 @@ function resolvePublicOrigin(req: Request): string {
 }
 
 function resolveGoogleClientId(req: Request): string {
-  const fromEnv = String(process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID || '').trim();
-  if (fromEnv) return fromEnv;
+  const envCandidates: Array<[string, string | undefined]> = [
+    ['GOOGLE_CLIENT_ID', process.env.GOOGLE_CLIENT_ID],
+    ['GOOGLE_OAUTH_CLIENT_ID', process.env.GOOGLE_OAUTH_CLIENT_ID],
+    ['VITE_GOOGLE_CLIENT_ID', process.env.VITE_GOOGLE_CLIENT_ID],
+    ['NEXT_PUBLIC_GOOGLE_CLIENT_ID', process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID],
+    ['REACT_APP_GOOGLE_CLIENT_ID', process.env.REACT_APP_GOOGLE_CLIENT_ID],
+  ];
+
+  for (const [, val] of envCandidates) {
+    const v = String(val || '').trim();
+    if (v) return v;
+  }
+
   return String(req.query?.client_id || '').trim();
 }
 
@@ -285,6 +296,8 @@ function resolveGoogleClientSecret(): string {
   return String(
     process.env.GOOGLE_CLIENT_SECRET ||
       process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      process.env.GOOGLE_OAUTH_SECRET ||
+      process.env.GOOGLE_SECRET ||
       ''
   ).trim();
 }
@@ -308,12 +321,47 @@ function resolveReturnTo(req: Request): string {
 }
 
 router.get('/google/config', (req: Request, res: Response) => {
-  const clientId = resolveGoogleClientId(req);
-  const clientSecret = resolveGoogleClientSecret();
+  const clientIdCandidates: Array<[string, string | undefined]> = [
+    ['GOOGLE_CLIENT_ID', process.env.GOOGLE_CLIENT_ID],
+    ['GOOGLE_OAUTH_CLIENT_ID', process.env.GOOGLE_OAUTH_CLIENT_ID],
+    ['VITE_GOOGLE_CLIENT_ID', process.env.VITE_GOOGLE_CLIENT_ID],
+    ['NEXT_PUBLIC_GOOGLE_CLIENT_ID', process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID],
+    ['REACT_APP_GOOGLE_CLIENT_ID', process.env.REACT_APP_GOOGLE_CLIENT_ID],
+  ];
+  const secretCandidates: Array<[string, string | undefined]> = [
+    ['GOOGLE_CLIENT_SECRET', process.env.GOOGLE_CLIENT_SECRET],
+    ['GOOGLE_OAUTH_CLIENT_SECRET', process.env.GOOGLE_OAUTH_CLIENT_SECRET],
+    ['GOOGLE_OAUTH_SECRET', process.env.GOOGLE_OAUTH_SECRET],
+    ['GOOGLE_SECRET', process.env.GOOGLE_SECRET],
+  ];
+
+  const resolveFirst = (candidates: Array<[string, string | undefined]>) => {
+    for (const [k, val] of candidates) {
+      const v = String(val || '').trim();
+      if (v) return { value: v, source: `env:${k}` };
+    }
+    return { value: '', source: '' };
+  };
+
+  const fromQuery = String(req.query?.client_id || '').trim();
+  const cid = resolveFirst(clientIdCandidates);
+  const clientId = cid.value || fromQuery;
+  const clientIdSource = cid.value ? cid.source : fromQuery ? 'query:client_id' : '';
+
+  const sec = resolveFirst(secretCandidates);
+  const clientSecret = sec.value;
+  const secretSource = sec.value ? sec.source : '';
+
   return res.json({
     configured: !!clientId,
     clientId,
     secretConfigured: !!clientSecret,
+    clientIdSource,
+    secretSource,
+    acceptedEnvKeys: {
+      clientId: clientIdCandidates.map(([k]) => k),
+      clientSecret: secretCandidates.map(([k]) => k),
+    },
   });
 });
 
