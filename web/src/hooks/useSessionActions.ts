@@ -12,7 +12,7 @@ export function useSessionActions() {
     async function createSession(onSuccess?: () => void) {
         setIsCreatingChatSession(true);
         try {
-            const data: any = await api.post('/sessions', { title: t('sidebar.newChat', 'New Chat') });
+            const data: any = await api.post('/sessions', {});
             const id = String(data?.id || data?._id || '').trim();
             if (!id) return;
 

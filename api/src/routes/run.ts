@@ -1319,8 +1319,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     return (
       t === 'New Session' ||
       t === 'Untitled Session' ||
+      t === 'New Chat' ||
       t === 'محادثة جديدة' ||
       t === 'جلسة جديدة' ||
+      t === 'دردشة جديدة' ||
       t.startsWith('Session ') ||
       t.startsWith('جلسة ')
     );
