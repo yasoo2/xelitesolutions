@@ -21,9 +21,12 @@ const jwtSecret = (() => {
   const envSecret = process.env.JWT_SECRET;
   if (envSecret && envSecret.trim()) return envSecret;
   if (isProd) {
-    throw new Error('JWT_SECRET is required in production');
+    console.error(
+      'JWT_SECRET is not set. Generating ephemeral secret. Tokens will reset on restart. Set JWT_SECRET in .env for stable production.',
+    );
+  } else {
+    console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
   }
-  console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
   return require('crypto').randomBytes(32).toString('hex');
 })();
 
