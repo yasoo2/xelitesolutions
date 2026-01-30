@@ -222,10 +222,31 @@ export async function createSession(sessionId: string) {
   }
 
   if (!browser) throw new Error('browser_connection_failed_after_retries');
+
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  ];
+  const selectedUA = userAgents[Math.floor(Math.random() * userAgents.length)];
+
   const context = await browser.newContext({
     viewport: { width: viewport.w, height: viewport.h },
     locale: 'ar',
+    userAgent: selectedUA,
+    extraHTTPHeaders: {
+      'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+    },
   });
+
+  // Apply Stealth
+  try {
+    const { stealth } = require('playwright-stealth');
+    await stealth(context);
+  } catch (e) {
+    try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Stealth plugin failed: ${String(e)}\n`); } catch { }
+  }
+
   context.setDefaultNavigationTimeout(cfg.navTimeoutMs);
   context.setDefaultTimeout(cfg.actionTimeoutMs);
   const page = await context.newPage();

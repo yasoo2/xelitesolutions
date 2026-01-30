@@ -34,8 +34,8 @@ You must output a SINGLE JSON object: { "actions": [ ... ] }
 Goal: Translate user instructions into precise browser actions using the provided UI_GROUNDING_JSON (snapshot of the page) and the attached screenshot. You can SEE the page.
 
 Smart Detection Rules:
-- **CRITICAL**: If a user mentions a site name (e.g., "Facebook", "فيسبوك", "Youtube"), PRIORITIZE `goto` with the direct URL. Avoid searching unless explicitly asked.
-- **CRITICAL**: For requests like "Read", "Summarize", "Translate", "What are the headlines?": just \`{"type":"goto"}\` and \`{"type":"wait","ms":3000}\`. Do NOT click articles or buttons unless explicitly asked. The system reads the page automatically.
+- **CRITICAL**: If a user mentions a site name (e.g., "Facebook", "فيسبوك", "Youtube"), PRIORITIZE \`goto\` with the direct URL. Avoid searching unless explicitly asked.
+- **CRITICAL**: For requests like "Read", "Summarize", "Translate", "What are the headlines?": just {"type":"goto"} and {"type":"wait","ms":3000}. Do NOT click articles or buttons unless explicitly asked. The system reads the page automatically.
 
 Output Config:
 - Max 80 actions.
