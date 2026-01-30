@@ -26,6 +26,20 @@ console.error = (...args: any[]) => {
   originalConsoleError.apply(console, args);
 };
 
+const originalConsoleWarn = console.warn;
+console.warn = (...args: any[]) => {
+  const msg = args.join(' ');
+  if (shouldIgnoreNoiseError(msg)) return;
+  originalConsoleWarn.apply(console, args);
+};
+
+const originalConsoleLog = console.log;
+console.log = (...args: any[]) => {
+  const msg = args.join(' ');
+  if (shouldIgnoreNoiseError(msg)) return;
+  originalConsoleLog.apply(console, args);
+};
+
 window.addEventListener(
   'error',
   (event) => {
