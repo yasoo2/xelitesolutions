@@ -15,12 +15,9 @@ on:
           - ssh
           - self-hosted
 
-env:
-  DEPLOY_MODE: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode) || vars.DEPLOY_MODE || 'ssh' }}
-
 jobs:
   deploy_self_hosted:
-    if: env.DEPLOY_MODE == 'self-hosted'
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted') }}
     runs-on: self-hosted
 
     steps:
@@ -35,7 +32,7 @@ jobs:
           ./scripts/deploy.sh
 
   deploy_ssh:
-    if: env.DEPLOY_MODE != 'self-hosted'
+    if: ${{ !((github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted')) }}
     runs-on: ubuntu-latest
 
     steps:
