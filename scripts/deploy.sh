@@ -139,11 +139,15 @@ if command -v docker &> /dev/null; then
         mkdir -p /opt/joe/certbot/conf /opt/joe/certbot/www || true
         if [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/fullchain.pem ] || [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/privkey.pem ]; then
             echo "TLS certificate not found. Bootstrapping Let's Encrypt..."
-            COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" bash ./scripts/init-letsencrypt.sh
+            COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" timeout 20m bash ./scripts/init-letsencrypt.sh
         fi
     fi
 
-    $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache
+    BUILD_FLAGS=(--pull)
+    if [ "${FORCE_NO_CACHE:-0}" = "1" ]; then
+        BUILD_FLAGS+=(--no-cache)
+    fi
+    $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build "${BUILD_FLAGS[@]}"
     $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans || true
     $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
     WEB_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
