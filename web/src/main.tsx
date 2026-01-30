@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { GOOGLE_CLIENT_ID } from './config';
 import App from './App';
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
@@ -97,8 +98,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

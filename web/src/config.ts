@@ -47,6 +47,7 @@ const runtimeConfig: any = (window as any).JOE_CONFIG || {};
 const apiEnvRaw = cleanUrl(runtimeConfig.API_URL || (import.meta as any).env?.VITE_API_URL);
 const wsEnvRaw = cleanUrl(runtimeConfig.WS_URL || (import.meta as any).env?.VITE_WS_URL);
 const chromeFlagRaw = cleanFlag(runtimeConfig.FEATURE_BROWSER_CHROME || (import.meta as any).env?.VITE_FEATURE_BROWSER_CHROME);
+const googleClientIdRaw = cleanUrl(runtimeConfig.GOOGLE_CLIENT_ID || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID);
 
 const hostname = window.location.hostname;
 const isLocalHost =
@@ -66,6 +67,7 @@ const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')
 
 const API_URL = apiEnv || inferApiUrl();
 const WS_URL = wsEnv || inferWsUrl(API_URL);
+const GOOGLE_CLIENT_ID = googleClientIdRaw;
 const readQueryChrome = () => {
   try {
     return new URLSearchParams(window.location.search).get('chrome') || '';
@@ -104,4 +106,4 @@ function getBrowserChromeEnabled() {
   );
 }
 
-export { API_URL, WS_URL, FEATURE_BROWSER_CHROME, getBrowserChromeEnabled };
+export { API_URL, WS_URL, FEATURE_BROWSER_CHROME, GOOGLE_CLIENT_ID, getBrowserChromeEnabled };

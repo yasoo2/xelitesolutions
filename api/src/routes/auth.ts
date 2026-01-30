@@ -307,6 +307,16 @@ function resolveReturnTo(req: Request): string {
   }
 }
 
+router.get('/google/config', (req: Request, res: Response) => {
+  const clientId = resolveGoogleClientId(req);
+  const clientSecret = resolveGoogleClientSecret();
+  return res.json({
+    configured: !!clientId,
+    clientId,
+    secretConfigured: !!clientSecret,
+  });
+});
+
 // GET Route for redirect-based OAuth
 router.get('/google', (req: Request, res: Response) => {
   const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -315,7 +325,6 @@ router.get('/google', (req: Request, res: Response) => {
   const redirectUri = String(process.env.GOOGLE_REDIRECT_URI || `${publicOrigin}/api/auth/callback`).trim();
 
   const returnTo = resolveReturnTo(req);
-  const state = Buffer.from(JSON.stringify({ returnTo }), 'utf8').toString('base64url');
 
   if (!clientId) {
     const fallback = returnTo || publicOrigin;
@@ -323,6 +332,8 @@ router.get('/google', (req: Request, res: Response) => {
     u.hash = 'error=google_client_id_missing';
     return res.redirect(u.toString());
   }
+
+  const state = Buffer.from(JSON.stringify({ returnTo, clientId }), 'utf8').toString('base64url');
 
   const options = {
     redirect_uri: redirectUri,
@@ -342,18 +353,20 @@ router.get('/google', (req: Request, res: Response) => {
 });
 
 router.get('/callback', async (req: Request, res: Response) => {
-  const clientId = resolveGoogleClientId(req);
+  let clientId = resolveGoogleClientId(req);
   const clientSecret = resolveGoogleClientSecret();
   const publicOrigin = resolvePublicOrigin(req);
   const redirectUri = String(process.env.GOOGLE_REDIRECT_URI || `${publicOrigin}/api/auth/callback`).trim();
 
   const stateRaw = String(req.query?.state || '').trim();
+  let clientIdFromState = '';
   const returnTo = (() => {
     if (!stateRaw) return resolveReturnTo(req);
     try {
       const decoded = Buffer.from(stateRaw, 'base64url').toString('utf8');
       const parsed = JSON.parse(decoded || '{}');
       const rt = String(parsed?.returnTo || '').trim();
+      clientIdFromState = String(parsed?.clientId || '').trim();
       if (!rt) return resolveReturnTo(req);
       const u = new URL(rt);
       const allowed = Array.isArray((config as any).allowedOrigins) ? (config as any).allowedOrigins : [];
@@ -374,6 +387,7 @@ router.get('/callback', async (req: Request, res: Response) => {
   const oauthError = String(req.query?.error || '').trim();
   if (oauthError) return finishRedirect(`error=${encodeURIComponent(oauthError)}`);
 
+  if (!clientId && clientIdFromState) clientId = clientIdFromState;
   if (!clientId) return finishRedirect('error=google_client_id_missing');
   if (!clientSecret) return finishRedirect('error=google_client_secret_missing');
 

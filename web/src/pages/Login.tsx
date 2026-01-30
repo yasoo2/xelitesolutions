@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { API_URL as API } from '../config';
+import { API_URL as API, GOOGLE_CLIENT_ID } from '../config';
 import {
     LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2
 } from 'lucide-react';
@@ -22,6 +22,7 @@ export default function Login() {
     const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
     const [health, setHealth] = useState<{ status: string, db: number } | null>(null);
+    const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
 
     // Health Check on mount
     useEffect(() => {
@@ -35,6 +36,25 @@ export default function Login() {
             }
         };
         check();
+    }, []);
+
+    useEffect(() => {
+        let alive = true;
+        const check = async () => {
+            try {
+                const res = await fetch(`${API}/auth/google/config`, { cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                if (!alive) return;
+                setGoogleConfigured(!!(data?.configured && data?.clientId));
+            } catch {
+                if (!alive) return;
+                setGoogleConfigured(null);
+            }
+        };
+        check();
+        return () => {
+            alive = false;
+        };
     }, []);
 
     useEffect(() => {
@@ -285,10 +305,13 @@ export default function Login() {
                     whileHover={{ scale: 1.02, backgroundColor: '#f8fafc' }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => {
-                        const clientId = String((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '').trim();
+                        if (googleConfigured === false) {
+                            setError('Google OAuth غير مضبوط على الخادم.');
+                            return;
+                        }
                         const u = new URL(`${API}/auth/google`);
                         u.searchParams.set('returnTo', window.location.origin);
-                        if (clientId) u.searchParams.set('client_id', clientId);
+                        if (GOOGLE_CLIENT_ID) u.searchParams.set('client_id', GOOGLE_CLIENT_ID);
                         window.location.href = u.toString();
                     }}
                     style={S.googleBtn}
