@@ -1,11 +1,20 @@
 #!/bin/bash
 
-# Deploy script to pull latest changes and rebuild the web container
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
 echo "Starting deployment process..."
 
 echo "1. Pulling latest changes from git..."
-git fetch origin main && git reset --hard origin/main
-echo "Deployed commit: $(git rev-parse --short HEAD)"
+BRANCH="${BRANCH:-main}"
+if command -v git >/dev/null 2>&1 && [ -d .git ]; then
+    git fetch origin "$BRANCH" && git reset --hard "origin/$BRANCH"
+    echo "Deployed commit: $(git rev-parse --short HEAD)"
+else
+    echo "Skipping git sync (not a git repo)."
+fi
 
 echo "2. Rebuilding and restarting web container..."
 # Check if docker command exists
@@ -126,7 +135,16 @@ if command -v docker &> /dev/null; then
         fi
     done
 
+    if [ "$COMPOSE_FILE" = "docker-compose.production.yml" ]; then
+        mkdir -p /opt/joe/certbot/conf /opt/joe/certbot/www || true
+        if [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/fullchain.pem ] || [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/privkey.pem ]; then
+            echo "TLS certificate not found. Bootstrapping Let's Encrypt..."
+            COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" bash ./scripts/init-letsencrypt.sh
+        fi
+    fi
+
     $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --pull --no-cache
+    $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans || true
     $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
     WEB_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
     if [ -n "$WEB_CID" ]; then
