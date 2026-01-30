@@ -51,8 +51,13 @@ jobs:
               sleep 2
             done
             if [ "$ok" -eq 1 ]; then
-              selected="$p"
-              break
+              echo "Checking SSH banner on ${host}:${p} ..."
+              banner="$(timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${p}; head -c 12 <&3" 2>/dev/null || true)"
+              if printf '%s' "$banner" | grep -q '^SSH-'; then
+                selected="$p"
+                break
+              fi
+              echo "Port ${p} reachable but no SSH banner detected (banner_prefix='${banner}')."
             fi
           done
           if [ -z "$selected" ]; then
@@ -92,7 +97,8 @@ jobs:
           if printf '%s' "$banner" | grep -q '^SSH-'; then
             echo "SSH banner OK"
           else
-            echo "Warning: SSH banner not detected on ${host}:${port} (banner_prefix='${banner}'). Will try ssh-keyscan next."
+            echo "SSH banner not detected on ${host}:${port} (banner_prefix='${banner}')."
+            exit 1
           fi
 
       - name: Setup SSH agent
