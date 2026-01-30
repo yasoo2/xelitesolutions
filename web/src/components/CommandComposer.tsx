@@ -580,7 +580,6 @@ export default function CommandComposer({
 }) {
   const { t } = useTranslation();
   const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
-  const showFloatingTaskbar = true;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -593,16 +592,6 @@ export default function CommandComposer({
     }
   }, [text]);
 
-  const [taskBarByRunId, setTaskBarByRunId] = useState<
-    Record<
-      string,
-      {
-        visible: boolean;
-        analyzing: boolean;
-        items: Array<{ id: string; tool: string; label: string; status: 'pending' | 'running' | 'done' | 'failed' }>;
-      }
-    >
-  >({});
   const [attachedFiles, setAttachedFiles] = useState<Array<{
     id: string;
     name: string;
@@ -650,7 +639,6 @@ export default function CommandComposer({
   const [isThinking, setIsThinking] = useState(false);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [toolVisible, setToolVisible] = useState(false);
-  const [thinkingGlimpse, setThinkingGlimpse] = useState('');
   const [draftText, setDraftText] = useState('');
   const [draftActive, setDraftActive] = useState(false);
 
@@ -675,11 +663,8 @@ export default function CommandComposer({
   const toolVisibleRef = useRef<boolean>(toolVisible);
   const activeToolNameRef = useRef<string | null>(activeToolName);
   const statusRef = useRef<typeof status>(status);
-  const thinkingGlimpseTimerRef = useRef<number | null>(null);
-  const thinkingGlimpseIndexRef = useRef<number>(0);
   const draftTimerRef = useRef<number | null>(null);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
-  const lastExecTaskIdRef = useRef<Record<string, Record<string, string>>>({});
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
   const lastAutoOpenedHrefRef = useRef<string>('');
@@ -749,95 +734,6 @@ export default function CommandComposer({
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
-
-  const getToolLabel = (tool: string, input: any) => {
-    const tname = String(tool || '').trim();
-    const lower = tname.toLowerCase();
-
-    if (tname === 'github_create_repo') {
-      const name = typeof input?.name === 'string' ? input.name.trim() : '';
-      return name ? `إنشاء مستودع على GitHub: ${name}` : 'إنشاء مستودع على GitHub';
-    }
-    if (lower.startsWith('browser_')) return 'تشغيل مهام داخل المتصفح';
-    if (tname === 'file_write') {
-      const filename = typeof input?.filename === 'string' ? input.filename.trim() : '';
-      return filename ? `إنشاء/تعديل ملف: ${filename}` : 'إنشاء/تعديل ملف';
-    }
-    if (tname === 'file_edit') return 'تعديل ملف';
-    if (tname === 'file_read') return 'قراءة ملف';
-    if (tname === 'read_file_tree') return 'استعراض ملفات المشروع';
-    if (tname === 'grep_search') return 'بحث داخل الملفات';
-    if (tname === 'shell_execute') return 'تنفيذ أوامر';
-    if (tname === 'git_ops') return 'عمليات Git';
-    if (tname === 'http_fetch') return 'جلب بيانات من الإنترنت';
-    if (tname === 'quality_run') return 'تشغيل فحوصات الجودة';
-
-    return tname ? `تنفيذ: ${tname}` : 'تنفيذ مهمة';
-  };
-
-  const getTaskId = (rid: string, tool: string, input: any) => {
-    const normalizedTool = String(tool || '').trim();
-    const label = getToolLabel(normalizedTool, input);
-    const stable = `${normalizedTool}::${label}`;
-    return { id: `${rid}::${stable}`, tool: normalizedTool, label };
-  };
-
-  const ensureTaskBar = (rid: string, patch: Partial<{ visible: boolean; analyzing: boolean }>) => {
-    if (!showFloatingTaskbar) return;
-    setTaskBarByRunId((prev) => {
-      const cur = prev[rid];
-      const next = cur
-        ? { ...cur, ...patch }
-        : { visible: true, analyzing: true, items: [], ...patch };
-      return { ...prev, [rid]: next };
-    });
-  };
-
-  const setTaskStatusByExecuteEvent = (
-    rid: string,
-    tool: string,
-    kind: 'start' | 'done' | 'failed',
-    input?: any
-  ) => {
-    if (!showFloatingTaskbar) return;
-    const normalized = String(tool || '').trim();
-    if (!normalized) return;
-
-    setTaskBarByRunId((prev) => {
-      const cur = prev[rid];
-      if (!cur) return prev;
-
-      const items = [...cur.items];
-      const byId = (id: string) => items.findIndex((t) => t.id === id);
-      const byToolStatus = (status: 'pending' | 'running') => items.findIndex((t) => t.tool === normalized && t.status === status);
-
-      const derivedId = input != null ? getTaskId(rid, normalized, input).id : '';
-      if (kind === 'start') {
-        const id = derivedId || (lastExecTaskIdRef.current[rid]?.[normalized] ?? '');
-        const idx = id ? byId(id) : byToolStatus('pending');
-        const taskId = idx >= 0 ? items[idx].id : derivedId || getTaskId(rid, normalized, null).id;
-        if (!lastExecTaskIdRef.current[rid]) lastExecTaskIdRef.current[rid] = {};
-        lastExecTaskIdRef.current[rid][normalized] = taskId;
-
-        const i2 = byId(taskId);
-        if (i2 >= 0) {
-          items[i2] = { ...items[i2], status: 'running' };
-        } else {
-          const created = getTaskId(rid, normalized, input ?? null);
-          items.push({ id: created.id, tool: created.tool, label: created.label, status: 'running' });
-        }
-        return { ...prev, [rid]: { ...cur, visible: true, analyzing: false, items } };
-      }
-
-      const remembered = lastExecTaskIdRef.current[rid]?.[normalized] ?? '';
-      const idx = remembered ? byId(remembered) : byToolStatus('running');
-      if (idx < 0) return prev;
-
-      const nextStatus = kind === 'done' ? 'done' : 'failed';
-      items[idx] = { ...items[idx], status: nextStatus as any };
-      return { ...prev, [rid]: { ...cur, items } };
-    });
-  };
 
   const derived = useMemo(() => {
     const stepsByKey = new Map<string, any>();
@@ -1223,43 +1119,6 @@ export default function CommandComposer({
     activeToolNameRef.current = activeToolName;
   }, [activeToolName]);
 
-  useEffect(() => {
-    if (!isThinking && status !== 'answering') {
-      if (thinkingGlimpseTimerRef.current != null) {
-        window.clearInterval(thinkingGlimpseTimerRef.current);
-        thinkingGlimpseTimerRef.current = null;
-      }
-      thinkingGlimpseIndexRef.current = 0;
-      setThinkingGlimpse('');
-      return;
-    }
-
-    const compute = () => {
-      if (status === 'answering') {
-        return t('thinkingDraftIntro', 'جاري تجهيز الرد…');
-      }
-      if (toolVisible && activeToolName) {
-        return t('thinkingGlimpseUnderstand', 'جاري التنفيذ…');
-      }
-      return t('thinkingGlimpseUnderstand', 'جاري التنفيذ…');
-    };
-
-    setThinkingGlimpse(compute());
-
-    if (thinkingGlimpseTimerRef.current != null) {
-      window.clearInterval(thinkingGlimpseTimerRef.current);
-      thinkingGlimpseTimerRef.current = null;
-    }
-    thinkingGlimpseTimerRef.current = window.setInterval(() => setThinkingGlimpse(compute()), 1100);
-
-    return () => {
-      if (thinkingGlimpseTimerRef.current != null) {
-        window.clearInterval(thinkingGlimpseTimerRef.current);
-        thinkingGlimpseTimerRef.current = null;
-      }
-    };
-  }, [activeToolName, isThinking, status, t, toolVisible]);
-
   const showTool = (name: string) => {
     const next = String(name || '').trim();
     if (!next) return;
@@ -1289,7 +1148,6 @@ export default function CommandComposer({
         setActiveToolName(null);
         setIsThinking(false);
         setStatus('idle');
-        setThinkingGlimpse('');
       }, 50); // SPEED OPTIMIZATION: Reduced from 250ms
     }, wait);
     return totalDelay;
@@ -1342,40 +1200,10 @@ export default function CommandComposer({
             setIsThinking(true);
             setActiveToolName(null);
             setToolVisible(false);
-            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
-            if (rid) ensureTaskBar(rid, { visible: true, analyzing: true });
             return;
           }
 
-          if ((msg.type === 'step_started' || msg.type === 'step_done' || msg.type === 'step_failed') && typeof msg?.data?.name === 'string') {
-            const name = String(msg.data.name);
-            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
-            if (rid && name.startsWith('execute:')) {
-              const tool = name.slice('execute:'.length).trim();
-              if (msg.type === 'step_started') {
-                setTaskStatusByExecuteEvent(rid, tool, 'start', msg?.data?.input);
-              }
-              else if (msg.type === 'step_done') {
-                setTaskStatusByExecuteEvent(rid, tool, 'done');
-              }
-              else setTaskStatusByExecuteEvent(rid, tool, 'failed');
-            }
-          }
-
           if (msg.type === 'run_finished' || msg.type === 'run_completed') {
-            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
-            if (rid) {
-              if (showFloatingTaskbar) {
-                setTaskBarByRunId((prev) => {
-                  const cur = prev[rid];
-                  if (!cur) return prev;
-                  if (!cur.items.length) {
-                    return { ...prev, [rid]: { ...cur, visible: false, analyzing: false } };
-                  }
-                  return prev;
-                });
-              }
-            }
             window.dispatchEvent(new CustomEvent('sessions:refresh'));
           }
 
@@ -1554,7 +1382,6 @@ export default function CommandComposer({
                   });
                   setIsThinking(false);
                   setStatus('idle');
-                  setThinkingGlimpse('');
                   stopDraft();
                   return;
                 }
@@ -1581,12 +1408,10 @@ export default function CommandComposer({
 
                 setIsThinking(false);
                 setStatus('idle');
-                setThinkingGlimpse('');
               } catch (e) {
                 console.error('Error in text streaming:', e);
                 setIsThinking(false);
                 setStatus('idle');
-                setThinkingGlimpse('');
                 stopDraft();
                 setEvents((prev) => {
                   if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
@@ -1635,7 +1460,6 @@ export default function CommandComposer({
             setIsThinking(false);
             setActiveToolName(null);
             setToolVisible(false);
-            setThinkingGlimpse('');
             clearToolTimers();
             clearDraftTimer();
           }
@@ -1663,7 +1487,6 @@ export default function CommandComposer({
             setIsThinking(false);
             setActiveToolName(null);
             setToolVisible(false);
-            setThinkingGlimpse('');
             clearToolTimers();
             clearDraftTimer();
           }
@@ -2417,7 +2240,6 @@ export default function CommandComposer({
       if (typeof data?.runId === 'string' && data.runId.trim()) {
         const rid = data.runId.trim();
         setActiveRunId(rid);
-        ensureTaskBar(rid, { visible: true, analyzing: true });
       }
       if (data?.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
@@ -2473,7 +2295,6 @@ export default function CommandComposer({
       setIsThinking(false);
       setActiveToolName(null);
       setToolVisible(false);
-      setThinkingGlimpse('');
     }
   }
 
@@ -2541,7 +2362,6 @@ export default function CommandComposer({
     setIsThinking(false);
     setActiveToolName(null);
     setToolVisible(false);
-    setThinkingGlimpse('');
   }
 
   async function approve(decision: 'approved' | 'denied') {
@@ -3045,13 +2865,6 @@ export default function CommandComposer({
     return out;
   }, [sortedEvents]);
 
-  const activeTaskBar = useMemo(() => {
-    if (!showFloatingTaskbar) return null;
-    const rid = activeRunId ? activeRunId.trim() : '';
-    if (!rid) return null;
-    return taskBarByRunId[rid] || null;
-  }, [activeRunId, taskBarByRunId]);
-
   return (
     <div className="composer">
       <div className="events" ref={eventsScrollRef}>
@@ -3229,24 +3042,6 @@ export default function CommandComposer({
             ) : null}
           </AnimatePresence>
 
-          {isThinking && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="message-row joe"
-            >
-              <div className="px-3 py-2" dir="auto">
-                {/* Thinking Header with Glow */}
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.6)' }}></div>
-                  <div className="text-[11px] font-medium tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 10px rgba(var(--accent-primary-rgb), 0.3)' }}>
-                    {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'جاري التنفيذ…')}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
           <div ref={endRef} />
         </div>
       </div>
@@ -3574,54 +3369,6 @@ export default function CommandComposer({
       )}
 
       <div className="composer-footer">
-        <AnimatePresence>
-          {showFloatingTaskbar && activeTaskBar?.visible ? (
-            <motion.div
-              key="taskbar-floating"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              transition={{ duration: 0.18 }}
-              className="taskbar-floating"
-              dir="auto"
-            >
-              <div className="taskbar-title">
-                {(() => {
-                  const total = activeTaskBar.items.length;
-                  const done = activeTaskBar.items.filter((x) => x.status === 'done').length;
-                  if (total === 0) return 'عملية التفكير';
-                  return `عملية التفكير ${done}/${total}`;
-                })()}
-              </div>
-              <div className="taskbar-items">
-                {activeTaskBar.analyzing && activeTaskBar.items.length === 0 ? (
-                  <div className="task-chip running">
-                    <Loader2 size={14} className="spin" />
-                    <span>جارٍ تحليل التعليمات…</span>
-                  </div>
-                ) : null}
-                {activeTaskBar.items.map((it) => (
-                  <div
-                    key={it.id}
-                    className={`task-chip ${it.status}`}
-                    title={it.label}
-                  >
-                    {it.status === 'done' ? (
-                      <CheckCircle2 size={14} />
-                    ) : it.status === 'failed' ? (
-                      <XCircle size={14} />
-                    ) : it.status === 'running' ? (
-                      <Loader2 size={14} className="spin" />
-                    ) : (
-                      <Clock size={14} />
-                    )}
-                    <span className="task-chip-text">{it.label}</span>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
         <div
           className={`input-area ${isDragging ? 'drag-active' : ''}`}
           onDragEnter={handleDragEnter}
