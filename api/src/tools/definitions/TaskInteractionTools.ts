@@ -3,9 +3,35 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
-import { broadcast } from '../../ws';
+import { broadcast, registerTerminalOwner } from '../../ws';
 // Store for persistent terminals
 export const terminals = new Map<string, { pty: any, history: string[] }>();
+
+function getWorkspaceRoot() {
+    try {
+        const { workspaceService } = require('../../services/WorkspaceService');
+        return workspaceService.getActiveRoot();
+    } catch {
+        return process.cwd();
+    }
+}
+
+function resolveToolPath(p: string) {
+    const root = getWorkspaceRoot();
+    const val = String(p ?? '').trim();
+    if (!val || val === '.') return root;
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) throw new Error('path_outside_workspace');
+    return absReal;
+}
 
 
 /**
@@ -60,6 +86,8 @@ export class TerminalManagerTool extends BaseTool {
 
                 const term = { pty: ptyProcess, history: [] as string[] };
                 terminals.set(id, term);
+                const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
+                if (userId) registerTerminalOwner(id, userId);
 
                 ptyProcess.onData((data: string) => {
                     term.history.push(data);
@@ -139,7 +167,7 @@ export class SafeReadFileTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {
-        const filePath = input.path ? (path.isAbsolute(input.path) ? input.path : path.resolve(process.cwd(), input.path)) : '';
+        const filePath = resolveToolPath(String(input?.path ?? ''));
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
 
         try {

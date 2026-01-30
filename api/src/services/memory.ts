@@ -1,11 +1,6 @@
 import { MemoryItem } from '../models/memoryItem';
 import { ConversationSummary } from '../models/conversationSummary';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'dummy',
-  baseURL: process.env.OPENAI_BASE_URL,
-});
+import { routeToModel } from '../llm/intelligent-router';
 
 // In-memory message buffer per user (for summarization)
 const userMessageBuffers: Map<string, { messages: string[], sessionId?: string }> = new Map();
@@ -43,35 +38,22 @@ export class MemoryService {
     if (!userId || messages.length === 0) return;
 
     try {
-      let client = openai;
-      if (options?.apiKey) {
-        client = new OpenAI({
-          apiKey: options.apiKey,
-          baseURL: options.baseUrl || process.env.OPENAI_BASE_URL,
-        });
-      }
-
       const conversationText = messages.join('\n');
 
-      const completion = await client.chat.completions.create({
-        model: options?.model || 'gpt-4o-mini', // Use cheaper model for summaries
-        messages: [
-          {
-            role: 'system',
-            content: `أنت ملخص محادثات. قم بتلخيص المحادثة التالية في 2-3 جمل قصيرة.
-استخرج أيضاً المواضيع الرئيسية (3-5 كلمات).
-أجب بصيغة JSON: { "summary": "...", "topics": ["...", "..."] }`
-          },
-          { role: 'user', content: conversationText }
-        ],
-        response_format: { type: 'json_object' },
-        max_tokens: 300
-      });
-
-      const content = completion.choices[0].message.content;
+      const content = await routeToModel([
+        {
+          role: 'system',
+          content: 'أجب فقط بصيغة JSON: {"summary":"...","topics":["..."]} بدون أي نص إضافي.'
+        },
+        {
+          role: 'user',
+          content: `لخّص المحادثة التالية في 2-3 جمل قصيرة، واستخرج 3-5 مواضيع رئيسية:\n\n${conversationText}`
+        }
+      ]);
       if (!content) return;
 
-      const result = JSON.parse(content);
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const result = JSON.parse(jsonMatch ? jsonMatch[0] : content);
 
       // Save summary - completely isolated by userId
       await ConversationSummary.create({
@@ -179,41 +161,20 @@ export class MemoryService {
     await this.trackMessage(userId, userText, 'user', options?.sessionId, options);
 
     try {
-      let client = openai;
-      if (options?.apiKey) {
-        client = new OpenAI({
-          apiKey: options.apiKey,
-          baseURL: options.baseUrl || process.env.OPENAI_BASE_URL,
-        });
-      }
-
-      const completion = await client.chat.completions.create({
-        model: options?.model || 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a Memory Extractor. Your job is to extract permanent user facts from the conversation.
-            
-Rules:
-- Extract ONLY facts that are useful to remember for future conversations (e.g., name, preferences, tech stack, job, specific instructions).
-- Ignore transient info (e.g., "write a function", "fix this bug").
-- Output a JSON object with a "facts" array. Each fact has "key" (short category) and "value" (the fact).
-- If no relevant facts, return empty array.
-
-Example:
-User: "I am a React developer and I hate TypeScript."
-Output: { "facts": [{ "key": "role", "value": "React Developer" }, { "key": "preference", "value": "Dislikes TypeScript" }] }
-`
-          },
-          { role: 'user', content: userText }
-        ],
-        response_format: { type: 'json_object' }
-      });
-
-      const content = completion.choices[0].message.content;
+      const content = await routeToModel([
+        {
+          role: 'system',
+          content: 'Return ONLY valid JSON: {"facts":[{"key":"string","value":"string"}]}'
+        },
+        {
+          role: 'user',
+          content: `Extract ONLY permanent user facts/preferences/instructions worth remembering. Ignore transient tasks. If none, return {"facts":[]}.\n\nText:\n${userText}`
+        }
+      ]);
       if (!content) return;
 
-      const result = JSON.parse(content);
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const result = JSON.parse(jsonMatch ? jsonMatch[0] : content);
       if (result.facts && Array.isArray(result.facts)) {
         for (const fact of result.facts) {
           // Check if fact already exists to avoid dupes (naive check)
@@ -250,4 +211,3 @@ Output: { "facts": [{ "key": "role", "value": "React Developer" }, { "key": "pre
     await this.trackMessage(userId, response, 'assistant', sessionId, options);
   }
 }
-

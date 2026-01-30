@@ -7,7 +7,7 @@ import { SocketService } from '../services/socket';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL as API, getBrowserChromeEnabled } from '../config';
-import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Brain, Package, GitBranch, Camera, Wand2, Database, Play, Plus } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Trash2, Search, FolderPlus, Folder, ChevronRight, ChevronDown, MessageSquare, Bot, Loader, Activity, Package, GitBranch, Camera, Wand2, Database, Play, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ModernBrowserStreamLazy = lazy(() => import('../components/ModernBrowserStream'));
@@ -26,7 +26,6 @@ import BrowserChrome from '../components/BrowserChrome';
 import BrowserControlPanel from '../components/BrowserControlPanel';
 import TaskQueue from '../components/TaskQueue';
 import { useTaskQueue } from '../hooks/useTaskQueue';
-import BrainStatus from '../components/BrainStatus';
 const MemoryPanelLazy = lazy(() => import('../components/MemoryPanel'));
 
 export default function Joe() {
@@ -67,14 +66,18 @@ export default function Joe() {
   const isProduction = !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1');
   const [autoDetectPreview, setAutoDetectPreview] = useState(!isProduction);
   async function pingUrl(u: string): Promise<boolean> {
+    const controller = new AbortController();
+    const t = window.setTimeout(() => controller.abort(), 600);
     try {
       const head = new URL(u);
       head.pathname = '/';
       head.search = '';
-      await fetch(head.toString(), { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+      await fetch(head.toString(), { method: 'GET', mode: 'no-cors', cache: 'no-store', signal: controller.signal });
       return true;
     } catch {
       return false;
+    } finally {
+      window.clearTimeout(t);
     }
   }
   useEffect(() => {
@@ -84,6 +87,13 @@ export default function Joe() {
     async function detect() {
       if (didDetectPreviewRef.current) return;
       didDetectPreviewRef.current = true;
+      const current = (() => {
+        try {
+          return new URL(window.location.href);
+        } catch {
+          return null;
+        }
+      })();
       const bases = [
         'http://localhost:5173/',
         'http://127.0.0.1:5173/',
@@ -94,8 +104,9 @@ export default function Joe() {
       ];
       for (const b of bases) {
         try {
-          const bo = new URL(b).origin;
-          if (bo === window.location.origin) continue;
+          const bu = new URL(b);
+          if (bu.origin === window.location.origin) continue;
+          if (current && bu.protocol === current.protocol && bu.port === current.port) continue;
         } catch { }
         const ok = await pingUrl(b);
         if (ok) {
@@ -112,6 +123,13 @@ export default function Joe() {
     if (isProduction || !autoDetectPreview) return;
 
     let alive = true;
+    const current = (() => {
+      try {
+        return new URL(window.location.href);
+      } catch {
+        return null;
+      }
+    })();
     const bases = [
       'http://localhost:5173/',
       'http://127.0.0.1:5173/',
@@ -120,24 +138,42 @@ export default function Joe() {
       'http://localhost:5174/',
       'http://127.0.0.1:5174/',
     ];
+    let failRounds = 0;
+    let timer: number | null = null;
+    const schedule = (ms: number) => {
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(tick, ms);
+    };
     const tick = async () => {
+      let found = false;
       for (const b of bases) {
         if (!alive) return;
         try {
-          const bo = new URL(b).origin;
-          if (bo === window.location.origin) continue;
+          const bu = new URL(b);
+          if (bu.origin === window.location.origin) continue;
+          if (current && bu.protocol === current.protocol && bu.port === current.port) continue;
         } catch { }
         const ok = await pingUrl(b);
         if (ok) {
+          found = true;
           if (b !== previewUrl) setPreviewUrl(b);
           break;
         }
       }
+      if (!alive) return;
+      if (found) {
+        failRounds = 0;
+        schedule(6000);
+        return;
+      }
+      failRounds += 1;
+      const next = Math.min(60000, 6000 * Math.pow(2, Math.min(4, failRounds)));
+      schedule(next);
     };
-    const id = setInterval(tick, 6000);
+    schedule(6000);
     return () => {
       alive = false;
-      clearInterval(id);
+      if (timer != null) window.clearTimeout(timer);
     };
   }, [autoDetectPreview, previewUrl, isProduction]);
 
@@ -303,6 +339,7 @@ export default function Joe() {
     if (!name) return '';
     if (name.startsWith('execute:')) {
       const tool = name.slice('execute:'.length).trim();
+      if (tool === 'central_answer') return '';
       const toolLabel = t(`tools.${tool}`, tool);
       return t('executePrefix', { tool: toolLabel });
     }
@@ -315,7 +352,7 @@ export default function Joe() {
 
     for (const s of steps) {
       const name = String(s?.name || '');
-      if (!name || name === 'plan' || name.startsWith('thinking_step_')) continue;
+      if (!name || name === 'plan' || name.startsWith('planning_step_') || name === 'execute:central_answer') continue;
       const status = String(s?.status || '');
       const key = String(s?.key || `${String(s?.runId || '')}::${name}`);
       const prev = stepStatusByKeyRef.current.get(key);
@@ -563,8 +600,6 @@ export default function Joe() {
               />
             </div>
           </div>
-
-          <BrainStatus />
 
           {!searchQuery ? (
             <>

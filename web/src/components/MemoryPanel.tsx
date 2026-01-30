@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Brain, Trash2, Edit2, Clock, Share2, Grid, Box } from 'lucide-react';
+import { Search, Database, Trash2, Edit2, Clock, Share2, Grid, Box } from 'lucide-react';
 import { API_URL } from '../config';
 
 // Lazy load the 3D graph to improve initial performance
@@ -58,7 +58,7 @@ export default function MemoryPanel({ sessionId }: { sessionId?: string }) {
         const links: any[] = [];
 
         // Central Nodes
-        nodes.push({ id: 'ROOT', name: 'Brain', val: 20, color: '#ef4444' });
+        nodes.push({ id: 'ROOT', name: 'Memory', val: 20, color: '#ef4444' });
         nodes.push({ id: 'SESSION', name: 'Current Session', val: 10, color: '#3b82f6' });
         nodes.push({ id: 'PROJECT', name: 'Project', val: 10, color: '#10b981' });
 
@@ -86,7 +86,7 @@ export default function MemoryPanel({ sessionId }: { sessionId?: string }) {
         <div className="memory-panel h-full flex flex-col bg-[#0f1117] text-white/90">
             <div className="p-4 border-b border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Brain className="text-red-500" size={20} />
+                    <Database className="text-red-500" size={20} />
                     <h2 className="font-bold text-lg">{t('memory.title', 'Active Memory')}</h2>
                 </div>
                 <div className="flex bg-white/5 rounded-lg p-1">

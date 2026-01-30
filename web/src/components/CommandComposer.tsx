@@ -6,8 +6,6 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AgentActivity } from './AgentActivity';
-import { ThinkingProcess } from './ThinkingProcess';
 import { GitHubConnectModal } from './GitHubConnectModal';
 
 // Web Speech API types
@@ -580,8 +578,7 @@ export default function CommandComposer({
 
 }) {
   const { t } = useTranslation();
-  const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
-  const showFloatingTaskbar = false;
+  const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
@@ -594,16 +591,6 @@ export default function CommandComposer({
     }
   }, [text]);
 
-  const [taskBarByRunId, setTaskBarByRunId] = useState<
-    Record<
-      string,
-      {
-        visible: boolean;
-        analyzing: boolean;
-        items: Array<{ id: string; tool: string; label: string; status: 'pending' | 'running' | 'done' | 'failed' }>;
-      }
-    >
-  >({});
   const [attachedFiles, setAttachedFiles] = useState<Array<{
     id: string;
     name: string;
@@ -651,7 +638,6 @@ export default function CommandComposer({
   const [isThinking, setIsThinking] = useState(false);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [toolVisible, setToolVisible] = useState(false);
-  const [thinkingGlimpse, setThinkingGlimpse] = useState('');
   const [draftText, setDraftText] = useState('');
   const [draftActive, setDraftActive] = useState(false);
 
@@ -676,11 +662,8 @@ export default function CommandComposer({
   const toolVisibleRef = useRef<boolean>(toolVisible);
   const activeToolNameRef = useRef<string | null>(activeToolName);
   const statusRef = useRef<typeof status>(status);
-  const thinkingGlimpseTimerRef = useRef<number | null>(null);
-  const thinkingGlimpseIndexRef = useRef<number>(0);
   const draftTimerRef = useRef<number | null>(null);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
-  const lastExecTaskIdRef = useRef<Record<string, Record<string, string>>>({});
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
   const lastAutoOpenedHrefRef = useRef<string>('');
@@ -692,6 +675,18 @@ export default function CommandComposer({
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
+  const [systemInstructions, setSystemInstructions] = useState<string>(() => {
+    try {
+      return localStorage.getItem('system_instructions') || '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('system_instructions', systemInstructions);
+    } catch { }
+  }, [systemInstructions]);
   const initialProviderState = useMemo(() => {
     // Reorder providers: Auto first, then OpenRouter, then paid providers, then Joe (Free)
     const baseProviders: { [key: string]: ProviderConfig } = {
@@ -738,95 +733,6 @@ export default function CommandComposer({
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
-
-  const getToolLabel = (tool: string, input: any) => {
-    const tname = String(tool || '').trim();
-    const lower = tname.toLowerCase();
-
-    if (tname === 'github_create_repo') {
-      const name = typeof input?.name === 'string' ? input.name.trim() : '';
-      return name ? `إنشاء مستودع على GitHub: ${name}` : 'إنشاء مستودع على GitHub';
-    }
-    if (lower.startsWith('browser_')) return 'تشغيل مهام داخل المتصفح';
-    if (tname === 'file_write') {
-      const filename = typeof input?.filename === 'string' ? input.filename.trim() : '';
-      return filename ? `إنشاء/تعديل ملف: ${filename}` : 'إنشاء/تعديل ملف';
-    }
-    if (tname === 'file_edit') return 'تعديل ملف';
-    if (tname === 'file_read') return 'قراءة ملف';
-    if (tname === 'read_file_tree') return 'استعراض ملفات المشروع';
-    if (tname === 'grep_search') return 'بحث داخل الملفات';
-    if (tname === 'shell_execute') return 'تنفيذ أوامر';
-    if (tname === 'git_ops') return 'عمليات Git';
-    if (tname === 'http_fetch') return 'جلب بيانات من الإنترنت';
-    if (tname === 'quality_run') return 'تشغيل فحوصات الجودة';
-
-    return tname ? `تنفيذ: ${tname}` : 'تنفيذ مهمة';
-  };
-
-  const getTaskId = (rid: string, tool: string, input: any) => {
-    const normalizedTool = String(tool || '').trim();
-    const label = getToolLabel(normalizedTool, input);
-    const stable = `${normalizedTool}::${label}`;
-    return { id: `${rid}::${stable}`, tool: normalizedTool, label };
-  };
-
-  const ensureTaskBar = (rid: string, patch: Partial<{ visible: boolean; analyzing: boolean }>) => {
-    if (!showFloatingTaskbar) return;
-    setTaskBarByRunId((prev) => {
-      const cur = prev[rid];
-      const next = cur
-        ? { ...cur, ...patch }
-        : { visible: true, analyzing: true, items: [], ...patch };
-      return { ...prev, [rid]: next };
-    });
-  };
-
-  const setTaskStatusByExecuteEvent = (
-    rid: string,
-    tool: string,
-    kind: 'start' | 'done' | 'failed',
-    input?: any
-  ) => {
-    if (!showFloatingTaskbar) return;
-    const normalized = String(tool || '').trim();
-    if (!normalized) return;
-
-    setTaskBarByRunId((prev) => {
-      const cur = prev[rid];
-      if (!cur) return prev;
-
-      const items = [...cur.items];
-      const byId = (id: string) => items.findIndex((t) => t.id === id);
-      const byToolStatus = (status: 'pending' | 'running') => items.findIndex((t) => t.tool === normalized && t.status === status);
-
-      const derivedId = input != null ? getTaskId(rid, normalized, input).id : '';
-      if (kind === 'start') {
-        const id = derivedId || (lastExecTaskIdRef.current[rid]?.[normalized] ?? '');
-        const idx = id ? byId(id) : byToolStatus('pending');
-        const taskId = idx >= 0 ? items[idx].id : derivedId || getTaskId(rid, normalized, null).id;
-        if (!lastExecTaskIdRef.current[rid]) lastExecTaskIdRef.current[rid] = {};
-        lastExecTaskIdRef.current[rid][normalized] = taskId;
-
-        const i2 = byId(taskId);
-        if (i2 >= 0) {
-          items[i2] = { ...items[i2], status: 'running' };
-        } else {
-          const created = getTaskId(rid, normalized, input ?? null);
-          items.push({ id: created.id, tool: created.tool, label: created.label, status: 'running' });
-        }
-        return { ...prev, [rid]: { ...cur, visible: true, analyzing: false, items } };
-      }
-
-      const remembered = lastExecTaskIdRef.current[rid]?.[normalized] ?? '';
-      const idx = remembered ? byId(remembered) : byToolStatus('running');
-      if (idx < 0) return prev;
-
-      const nextStatus = kind === 'done' ? 'done' : 'failed';
-      items[idx] = { ...items[idx], status: nextStatus as any };
-      return { ...prev, [rid]: { ...cur, items } };
-    });
-  };
 
   const derived = useMemo(() => {
     const stepsByKey = new Map<string, any>();
@@ -877,6 +783,7 @@ export default function CommandComposer({
 
       if (e.type === 'step_started' && e.data?.name) {
         const name = String(e.data.name);
+        if (name === 'execute:central_answer') continue;
         const base = `${runId || ''}::${name}`;
         const nextOcc = (occ.get(base) || 0) + 1;
         occ.set(base, nextOcc);
@@ -893,6 +800,7 @@ export default function CommandComposer({
 
       if ((e.type === 'step_done' || e.type === 'step_failed') && e.data?.name) {
         const name = String(e.data.name);
+        if (name === 'execute:central_answer') continue;
         const base = `${runId || ''}::${name}`;
         const stack = open.get(base) || [];
         const key = stack.pop();
@@ -932,13 +840,13 @@ export default function CommandComposer({
 
     const formatStepName = (name: string) => {
       if (name === 'plan') return t('tools.plan');
-      if (name.startsWith('thinking_step_')) {
-        const n = name.replace('thinking_step_', '');
+      if (name.startsWith('planning_step_')) {
+        const n = name.replace('planning_step_', '');
         return t('planNumber', { n });
       }
       if (name.startsWith('execute:')) {
         const tool = name.slice('execute:'.length).trim();
-        return t('executePrefix', { tool: tool || t('toolCategoryGeneric') });
+        return t(`tools.${tool}`, tool || t('toolCategoryGeneric'));
       }
       return name;
     };
@@ -1210,52 +1118,10 @@ export default function CommandComposer({
     activeToolNameRef.current = activeToolName;
   }, [activeToolName]);
 
-  useEffect(() => {
-    if (!isThinking && status !== 'answering') {
-      if (thinkingGlimpseTimerRef.current != null) {
-        window.clearInterval(thinkingGlimpseTimerRef.current);
-        thinkingGlimpseTimerRef.current = null;
-      }
-      thinkingGlimpseIndexRef.current = 0;
-      setThinkingGlimpse('');
-      return;
-    }
-
-    const compute = () => {
-      const idx = thinkingGlimpseIndexRef.current++;
-      if (status === 'answering') {
-        return idx % 2 === 0 ? t('thinkingDraftIntro', 'Working on it now…') : t('thinkingDraftRefine', 'Refining and organizing the answer…');
-      }
-      if (toolVisible && activeToolName) {
-        const toolKey = String(activeToolName).trim();
-        if (toolKey === 'web_search') return t('thinking.searching', 'Searching the web...');
-        if (toolKey === 'deep_research') return t('thinking.researching', 'Conducting deep research...');
-        if (toolKey === 'code_search') return t('thinking.searching_code', 'Searching codebase...');
-        if (toolKey === 'plan') return t('thinkingGlimpsePlan', 'Planning the best approach…');
-        return t('thinkingGlimpseTool', { tool: toolKey });
-      }
-      return idx % 2 === 0 ? t('thinkingGlimpseUnderstand', 'Understanding your request…') : t('thinkingGlimpsePlan', 'Planning the best approach…');
-    };
-
-    setThinkingGlimpse(compute());
-
-    if (thinkingGlimpseTimerRef.current != null) {
-      window.clearInterval(thinkingGlimpseTimerRef.current);
-      thinkingGlimpseTimerRef.current = null;
-    }
-    thinkingGlimpseTimerRef.current = window.setInterval(() => setThinkingGlimpse(compute()), 1100);
-
-    return () => {
-      if (thinkingGlimpseTimerRef.current != null) {
-        window.clearInterval(thinkingGlimpseTimerRef.current);
-        thinkingGlimpseTimerRef.current = null;
-      }
-    };
-  }, [activeToolName, isThinking, status, t, toolVisible]);
-
   const showTool = (name: string) => {
     const next = String(name || '').trim();
     if (!next) return;
+    if (next === 'central_answer') return;
     if (toolHideTimerRef.current != null) {
       window.clearTimeout(toolHideTimerRef.current);
       toolHideTimerRef.current = null;
@@ -1281,7 +1147,6 @@ export default function CommandComposer({
         setActiveToolName(null);
         setIsThinking(false);
         setStatus('idle');
-        setThinkingGlimpse('');
       }, 50); // SPEED OPTIMIZATION: Reduced from 250ms
     }, wait);
     return totalDelay;
@@ -1303,8 +1168,21 @@ export default function CommandComposer({
         if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
         try { wsRef.current.close(); } catch { }
       }
-      const primaryUrl = WS;
-      const fallbackUrl = `${API.replace(/^http/, 'ws')}/ws`;
+      const token = (() => {
+        try {
+          return localStorage.getItem('token');
+        } catch {
+          return null;
+        }
+      })();
+      const withToken = (url: string) => {
+        if (!token) return url;
+        const hasQuery = url.includes('?');
+        const sep = hasQuery ? '&' : '?';
+        return `${url}${sep}token=${encodeURIComponent(token)}`;
+      };
+      const primaryUrl = withToken(WS);
+      const fallbackUrl = withToken(`${API.replace(/^http/, 'ws')}/ws`);
 
       const handleMessage = (evt: MessageEvent) => {
         try {
@@ -1321,37 +1199,10 @@ export default function CommandComposer({
             setIsThinking(true);
             setActiveToolName(null);
             setToolVisible(false);
-          }
-
-          if ((msg.type === 'step_started' || msg.type === 'step_done' || msg.type === 'step_failed') && typeof msg?.data?.name === 'string') {
-            const name = String(msg.data.name);
-            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
-            if (rid && name.startsWith('execute:')) {
-              const tool = name.slice('execute:'.length).trim();
-              if (msg.type === 'step_started') {
-                setTaskStatusByExecuteEvent(rid, tool, 'start', msg?.data?.input);
-              }
-              else if (msg.type === 'step_done') {
-                setTaskStatusByExecuteEvent(rid, tool, 'done');
-              }
-              else setTaskStatusByExecuteEvent(rid, tool, 'failed');
-            }
+            return;
           }
 
           if (msg.type === 'run_finished' || msg.type === 'run_completed') {
-            const rid = typeof msg?.runId === 'string' ? msg.runId.trim() : '';
-            if (rid) {
-              if (showFloatingTaskbar) {
-                setTaskBarByRunId((prev) => {
-                  const cur = prev[rid];
-                  if (!cur) return prev;
-                  if (!cur.items.length) {
-                    return { ...prev, [rid]: { ...cur, visible: false, analyzing: false } };
-                  }
-                  return prev;
-                });
-              }
-            }
             window.dispatchEvent(new CustomEvent('sessions:refresh'));
           }
 
@@ -1452,7 +1303,7 @@ export default function CommandComposer({
             if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
             if (name === 'plan') {
               showTool('plan');
-            } else if (name.startsWith('thinking_step_')) {
+            } else if (name.startsWith('planning_step_')) {
               showTool('plan');
             } else if (name.startsWith('execute:')) {
               showTool(name.slice('execute:'.length));
@@ -1472,36 +1323,6 @@ export default function CommandComposer({
             }
 
             hideToolSoon();
-          }
-
-          if (msg.type === 'thought') {
-            const action = msg.data?.action;
-            const content = msg.data?.content || '';
-
-            setEvents(prev => {
-              const last = prev[prev.length - 1];
-              // If we are starting a thought
-              if (action === 'start') {
-                // Check if we already have an active thought to avoid dupes if connection glitches
-                if (last && last.type === 'thought' && last.data.active) return prev;
-                return [...prev, { type: 'thought', data: { content: '', active: true }, ts: Date.now() }];
-              }
-              // If we are appending to a thought
-              if (last && last.type === 'thought' && last.data.active) {
-                const updated = {
-                  ...last,
-                  data: { ...last.data, content: last.data.content + content }
-                };
-                // If ending, mark inactive
-                if (action === 'end') {
-                  updated.data.active = false;
-                }
-                return [...prev.slice(0, -1), updated];
-              }
-              return prev;
-            });
-            // Keep scrolling down as thoughts stream in
-            if (autoScrollRef.current) scrollToBottom('auto');
           }
 
           if (msg.type === 'text') {
@@ -1560,7 +1381,6 @@ export default function CommandComposer({
                   });
                   setIsThinking(false);
                   setStatus('idle');
-                  setThinkingGlimpse('');
                   stopDraft();
                   return;
                 }
@@ -1587,12 +1407,10 @@ export default function CommandComposer({
 
                 setIsThinking(false);
                 setStatus('idle');
-                setThinkingGlimpse('');
               } catch (e) {
                 console.error('Error in text streaming:', e);
                 setIsThinking(false);
                 setStatus('idle');
-                setThinkingGlimpse('');
                 stopDraft();
                 setEvents((prev) => {
                   if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
@@ -1611,7 +1429,7 @@ export default function CommandComposer({
           }
 
           if (!showToolUi && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
-          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed', 'user_input'].includes(msg.type)) {
+          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed'].includes(msg.type)) {
             setEvents(prev => {
               const id = typeof msg?.id === 'string' ? msg.id : '';
               if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
@@ -1641,7 +1459,6 @@ export default function CommandComposer({
             setIsThinking(false);
             setActiveToolName(null);
             setToolVisible(false);
-            setThinkingGlimpse('');
             clearToolTimers();
             clearDraftTimer();
           }
@@ -1669,7 +1486,6 @@ export default function CommandComposer({
             setIsThinking(false);
             setActiveToolName(null);
             setToolVisible(false);
-            setThinkingGlimpse('');
             clearToolTimers();
             clearDraftTimer();
           }
@@ -2213,25 +2029,6 @@ export default function CommandComposer({
     if (!overrideText) setText('');
     // setAttachedFiles([]) moved to after payload construction
 
-    // ELITE 5.0 FIX: Optimistic "Instant" Thought Trigger (0ms Latency)
-    // Inject a local thought event immediately so the UI reacts before the server responds.
-    const optimisticRunId = `run_${Date.now()}_opt`;
-    const optimisticThoughtEvent = {
-      type: 'thought',
-      data: {
-        action: 'start',
-        runId: optimisticRunId
-      },
-      id: `thought_${Date.now()}_opt`,
-      ts: Date.now(),
-      seq: lastLiveSeqRef.current + 0.1,
-      runId: optimisticRunId
-    };
-
-    // We also need to inject an 'activity' placeholder or start the run locally in the UI state
-    // but the critical part is the thought.
-    setEvents(prev => [...prev, optimisticThoughtEvent]);
-
     const isLikelyCodeFile = (v: string) => {
       const t = v.toLowerCase();
       return /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|json|md|yml|yaml|py|go|java|cs|cpp|c|h|hpp|rs|swift|kt|php|rb|sh|sql|toml|lock)(?:$|\?|\#)/i.test(t);
@@ -2401,6 +2198,9 @@ export default function CommandComposer({
         apiKey: providerCfgToSend?.apiKey,
         baseUrl: providerCfgToSend?.baseUrl
       };
+      if (systemInstructions && systemInstructions.trim()) {
+        payload.systemInstructions = systemInstructions.trim();
+      }
       console.log('[DEBUG-SEND] attachedFiles:', attachedFiles);
       console.log('[DEBUG-SEND] payload.fileIds:', payload.fileIds);
 
@@ -2439,7 +2239,6 @@ export default function CommandComposer({
       if (typeof data?.runId === 'string' && data.runId.trim()) {
         const rid = data.runId.trim();
         setActiveRunId(rid);
-        ensureTaskBar(rid, { visible: true, analyzing: true });
       }
       if (data?.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
@@ -2495,7 +2294,6 @@ export default function CommandComposer({
       setIsThinking(false);
       setActiveToolName(null);
       setToolVisible(false);
-      setThinkingGlimpse('');
     }
   }
 
@@ -2563,7 +2361,6 @@ export default function CommandComposer({
     setIsThinking(false);
     setActiveToolName(null);
     setToolVisible(false);
-    setThinkingGlimpse('');
   }
 
   async function approve(decision: 'approved' | 'denied') {
@@ -2662,8 +2459,8 @@ export default function CommandComposer({
 
   const formatStepDisplayName = (name: string) => {
     if (name === 'plan') return t('tools.plan');
-    if (name.startsWith('thinking_step_')) {
-      const n = name.replace('thinking_step_', '');
+    if (name.startsWith('planning_step_')) {
+      const n = name.replace('planning_step_', '');
       return t('planNumber', { n });
     }
     if (name.startsWith('execute:')) {
@@ -2815,29 +2612,6 @@ export default function CommandComposer({
     return { label: t('toolCategoryGeneric'), Icon: Cpu, color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-color)' };
   };
 
-  const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
-  const [runExpandMode, setRunExpandMode] = useState<Record<string, 'auto' | 'manual'>>({});
-  const [expandedStepKeys, setExpandedStepKeys] = useState<Record<string, boolean>>({});
-  const [showTechnicalByRunId, setShowTechnicalByRunId] = useState<Record<string, boolean>>({});
-
-  const formatSystemLogs = (lines: string[]) => {
-    const flat = Array.isArray(lines) ? lines : [];
-    const last = flat.slice(Math.max(0, flat.length - 200));
-    return last
-      .map((x) => {
-        const s = String(x ?? '');
-        if (s.length <= 1400) return s;
-        return `${s.slice(0, 1400)}…`;
-      })
-      .join('\n')
-      .trim();
-  };
-
-  const getEventRunId = (e: any) => {
-    const rid = typeof e?.runId === 'string' ? e.runId : typeof e?.data?.runId === 'string' ? e.data.runId : '';
-    return rid && rid.trim() ? rid.trim() : 'no-run';
-  };
-
   const sortedEvents = useMemo(() => {
     const normalized = events.map((e: any, idx: number) => {
       const ts = typeof e?.ts === 'number' ? e.ts : idx;
@@ -2857,104 +2631,6 @@ export default function CommandComposer({
       return (a.ts - b.ts) || (a.idx - b.idx);
     });
   }, [events]);
-
-  const stepsByRunId = useMemo(() => {
-    const out = new Map<string, any[]>();
-    for (const s of derived.steps || []) {
-      const rid = typeof s?.runId === 'string' && s.runId.trim() ? s.runId.trim() : 'no-run';
-      if (!out.has(rid)) out.set(rid, []);
-      out.get(rid)!.push(s);
-    }
-    return out;
-  }, [derived.steps]);
-
-  const logsByRunId = useMemo(() => {
-    const out = new Map<string, string[]>();
-    for (const { e } of sortedEvents) {
-      if (e?.type !== 'evidence_added') continue;
-      if (String(e?.data?.kind || '') !== 'log') continue;
-      if (typeof e?.data?.text !== 'string') continue;
-      const rid = getEventRunId(e);
-      if (!out.has(rid)) out.set(rid, []);
-      out.get(rid)!.push(e.data.text);
-    }
-    return out;
-  }, [sortedEvents]);
-
-  const terminalByRunId = useMemo(() => {
-    const out = new Map<string, boolean>();
-    for (const { e } of sortedEvents) {
-      const type = String(e?.type || '');
-      if (type !== 'run_finished' && type !== 'run_completed') continue;
-      const rid = getEventRunId(e);
-      out.set(rid, true);
-    }
-    return out;
-  }, [sortedEvents]);
-
-  const runStatusByRunId = useMemo(() => {
-    const allRunIds = new Set<string>();
-    for (const rid of stepsByRunId.keys()) allRunIds.add(rid);
-    for (const rid of terminalByRunId.keys()) allRunIds.add(rid);
-
-    const out = new Map<string, { status: 'idle' | 'running' | 'failed' | 'done'; terminal: boolean }>();
-    for (const rid of allRunIds) {
-      const steps = stepsByRunId.get(rid) || [];
-      const terminal = terminalByRunId.get(rid) === true;
-      const running = steps.some((s: any) => s?.status === 'running');
-      const failed = steps.some((s: any) => s?.status === 'failed');
-      const done = steps.length > 0 && steps.every((s: any) => s?.status !== 'running');
-
-      const status: 'idle' | 'running' | 'failed' | 'done' = running ? 'running' : failed ? 'failed' : terminal || done ? 'done' : 'idle';
-      out.set(rid, { status, terminal });
-    }
-    return out;
-  }, [stepsByRunId, terminalByRunId]);
-
-  useEffect(() => {
-    setExpandedRuns((prev) => {
-      let changed = false;
-      const next = { ...prev };
-
-      for (const [rid, st] of runStatusByRunId.entries()) {
-        const mode = runExpandMode[rid] || 'auto';
-
-        if (st.status === 'running' && mode !== 'manual') {
-          if (!next[rid]) {
-            next[rid] = true;
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : prev;
-    });
-
-    setRunExpandMode((prev) => {
-      let changed = false;
-      const next = { ...prev };
-
-      for (const [rid, st] of runStatusByRunId.entries()) {
-        const mode = next[rid] || 'auto';
-
-        if (st.status === 'running' && mode !== 'manual') {
-          if (next[rid] !== 'auto') {
-            next[rid] = 'auto';
-            changed = true;
-          }
-        }
-
-        if (st.terminal && mode !== 'manual') {
-          if (next[rid] !== 'auto') {
-            next[rid] = 'auto';
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [runStatusByRunId, runExpandMode]);
 
   const cleanAssistantText = (raw: any) => {
     let s =
@@ -3033,42 +2709,12 @@ export default function CommandComposer({
   }, []);
 
   const renderItems = useMemo(() => {
-    const out: Array<{ kind: string; key: string; e?: any; idx?: number; runId?: string }> = [];
-    const inserted = new Set<string>();
-    const renderedThoughts = new Set<string>();
-
-    // ELITE REFINEMENT: Track sessions/runs that have text responses to hide their thoughts
-    const hasTextResponse = new Set<string>();
-    for (const { e } of sortedEvents) {
-      if (e?.type === 'text') {
-        const rid = getEventRunId(e);
-        if (rid && rid !== 'no-run') {
-          // If the text has actual content, mark this run as responded
-          const content = e.data?.text || e.data;
-          if (typeof content === 'string' && content.trim()) {
-            hasTextResponse.add(rid);
-          } else if (content && typeof content === 'object' && String(content.text || '').trim()) {
-            hasTextResponse.add(rid);
-          }
-        }
-      }
-    }
-
-    // Also track if we are currently streaming an answer for the active run
-    const activeRunHasText = activeRunId && hasTextResponse.has(activeRunId);
-    const isAnsweringCurrent = status === 'answering' || activeRunHasText;
+    const out: Array<{ kind: string; key: string; e?: any; idx?: number }> = [];
 
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
 
-      if (type === 'step_started' || type === 'step_progress' || type === 'step_done' || type === 'step_failed' || type === 'evidence_added') {
-        const rid = getEventRunId(e);
-        if (!inserted.has(rid)) {
-          inserted.add(rid);
-          out.push({ kind: 'activity', key: `activity:${rid}:${idx}`, runId: rid });
-        }
-        continue;
-      }
+      if (type === 'step_started' || type === 'step_progress' || type === 'step_done' || type === 'step_failed' || type === 'evidence_added') continue;
 
       if (type === 'user_input') out.push({ kind: 'user', key: `user:${idx}`, e, idx });
       else if (type === 'text') {
@@ -3077,65 +2723,10 @@ export default function CommandComposer({
       }
       else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
-      else if (type === 'thought') {
-        const rid = getEventRunId(e);
-
-        // ELITE 5.0 FIX (Atomic Disappearance):
-        // Absolute Zero Tolerance for overlap.
-
-        // 1. If we have ANY text response for this run, kill the thought.
-        if (hasTextResponse.has(rid)) continue;
-
-        // 2. If the GLOBAL status is answering, kill ALL thoughts (including optimistic ones).
-        // This is the "Nuclear Option" to prevent overlap.
-        if ((status as string) === 'answering') continue;
-
-        // 3. Specific Run Check
-        if (rid === activeRunId && isAnsweringCurrent) continue;
-
-        // 4. Peak ahead check remains valid
-        const next = sortedEvents[idx + 1];
-        if (next && next.e?.type === 'text' && getEventRunId(next.e) === rid) continue;
-
-        // 5. Special check for optimistic thoughts during answering
-        if (rid.endsWith('_opt') && ((status as string) === 'answering' || isAnsweringCurrent)) continue;
-
-        if (renderedThoughts.has(rid)) continue;
-        renderedThoughts.add(rid);
-
-        out.push({ kind: 'thought', key: `thought:${rid}:${idx}`, e, idx });
-      }
     }
 
     return out;
-  }, [sortedEvents, status, activeRunId]);
-
-  const activeTaskBar = useMemo(() => {
-    if (!showFloatingTaskbar) return null;
-    const rid = activeRunId ? activeRunId.trim() : '';
-    if (!rid) return null;
-    return taskBarByRunId[rid] || null;
-  }, [activeRunId, taskBarByRunId]);
-
-  useEffect(() => {
-    if (!showFloatingTaskbar) return;
-    const rid = activeRunId ? activeRunId.trim() : '';
-    if (!rid) return;
-    const bar = taskBarByRunId[rid];
-    if (!bar?.visible) return;
-    if (!bar.items.length) return;
-    const allDone = bar.items.every((x) => x.status === 'done');
-    if (!allDone) return;
-    const timer = window.setTimeout(() => {
-      setTaskBarByRunId((prev) => {
-        const cur = prev[rid];
-        if (!cur) return prev;
-        if (!cur.items.length || !cur.items.every((x) => x.status === 'done')) return prev;
-        return { ...prev, [rid]: { ...cur, visible: false } };
-      });
-    }, 900);
-    return () => window.clearTimeout(timer);
-  }, [activeRunId, taskBarByRunId]);
+  }, [sortedEvents]);
 
   return (
     <div className="composer">
@@ -3171,54 +2762,6 @@ export default function CommandComposer({
 
           <AnimatePresence mode="popLayout">
             {renderItems.map((item) => {
-              if (item.kind === 'activity') {
-                if (!showToolUi) return null;
-                const rid = item.runId || 'no-run';
-                const steps = stepsByRunId.get(rid) || [];
-                const visibleSteps = steps.filter((s: any) => {
-                  const name = String(s?.name || '');
-                  return name !== 'plan' && !name.startsWith('thinking_step_');
-                });
-                const logs = logsByRunId.get(rid) || [];
-
-                const status = (() => {
-                  if (visibleSteps.some((s: any) => s?.status === 'running')) return 'running';
-                  if (visibleSteps.some((s: any) => s?.status === 'failed')) return 'failed';
-                  if (visibleSteps.length > 0) return 'done';
-                  return 'idle';
-                })();
-
-                const expanded = !!expandedRuns[rid];
-                const toggleRun = () => {
-                  setRunExpandMode((prev) => ({ ...prev, [rid]: 'manual' }));
-                  setExpandedRuns((prev) => ({ ...prev, [rid]: !prev[rid] }));
-                };
-
-                const totalDuration = visibleSteps.reduce((acc: number, s: any) => acc + (typeof s?.duration === 'number' ? s.duration : 0), 0);
-                const failedCount = visibleSteps.filter((s: any) => s?.status === 'failed').length;
-                const doneCount = visibleSteps.filter((s: any) => s?.status === 'done').length;
-
-                return (
-                  <AgentActivity
-                    key={item.key}
-                    runId={rid}
-                    steps={visibleSteps}
-                    status={status}
-                    logs={logs}
-                    expanded={expanded}
-                    onToggle={toggleRun}
-                    showTechnical={!!showTechnicalByRunId[rid]}
-                    onToggleTechnical={() => setShowTechnicalByRunId((prev) => ({ ...prev, [rid]: !prev[rid] }))}
-                  />
-                );
-              }
-
-              if (item.kind === 'thought') {
-                return (
-                  <ThinkingProcess key={item.key} thought={item.e?.data} />
-                );
-              }
-
               if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} variant="user" ts={item.e?.ts} />;
 
               if (item.kind === 'error') {
@@ -3324,24 +2867,6 @@ export default function CommandComposer({
             ) : null}
           </AnimatePresence>
 
-          {isThinking && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="message-row joe"
-            >
-              <div className="px-3 py-2" dir="auto">
-                {/* Thinking Header with Glow */}
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(var(--accent-primary-rgb), 0.6)' }}></div>
-                  <div className="text-[11px] font-medium tracking-wide" style={{ color: 'rgba(var(--accent-primary-rgb), 0.9)', textShadow: '0 0 10px rgba(var(--accent-primary-rgb), 0.3)' }}>
-                    {thinkingGlimpse || t('thinkingGlimpseUnderstand', 'Thinking…')}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
           <div ref={endRef} />
         </div>
       </div>
@@ -3496,6 +3021,29 @@ export default function CommandComposer({
                       )}
                     </div>
 
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
+                        تعليمات النظام (خاصة بوضع Auto والموديلات المجانية)
+                      </label>
+                      <textarea
+                        value={systemInstructions}
+                        onChange={(e) => setSystemInstructions(e.target.value)}
+                        placeholder="مثال: رد دائماً بالعربية الفصحى، لا تستخدم أكواد خطيرة، التزم بخطوات واضحة."
+                        rows={3}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          border: '1px solid var(--border-color)',
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                          outline: 'none',
+                          fontSize: 13,
+                          resize: 'vertical'
+                        }}
+                      />
+                    </div>
+
                     {providers[activeProvider].lastError && (
                       <div style={{
                         padding: 12, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)',
@@ -3646,47 +3194,6 @@ export default function CommandComposer({
       )}
 
       <div className="composer-footer">
-        <AnimatePresence>
-          {showFloatingTaskbar && activeTaskBar?.visible ? (
-            <motion.div
-              key="taskbar-floating"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              transition={{ duration: 0.18 }}
-              className="taskbar-floating"
-              dir="auto"
-            >
-              <div className="taskbar-title">المهام</div>
-              <div className="taskbar-items">
-                {activeTaskBar.analyzing && activeTaskBar.items.length === 0 ? (
-                  <div className="task-chip running">
-                    <Loader2 size={14} className="spin" />
-                    <span>جارٍ تحليل التعليمات…</span>
-                  </div>
-                ) : null}
-                {activeTaskBar.items.map((it) => (
-                  <div
-                    key={it.id}
-                    className={`task-chip ${it.status}`}
-                    title={it.label}
-                  >
-                    {it.status === 'done' ? (
-                      <CheckCircle2 size={14} />
-                    ) : it.status === 'failed' ? (
-                      <XCircle size={14} />
-                    ) : it.status === 'running' ? (
-                      <Loader2 size={14} className="spin" />
-                    ) : (
-                      <Clock size={14} />
-                    )}
-                    <span className="task-chip-text">{it.label}</span>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
         <div
           className={`input-area ${isDragging ? 'drag-active' : ''}`}
           onDragEnter={handleDragEnter}

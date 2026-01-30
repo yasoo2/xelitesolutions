@@ -1,9 +1,7 @@
 
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
-import { executePlannedActions } from '../../browser/executor';
-import { runBrowserInstruction } from '../../browser/runner';
-import { getBrowserSession, screenshotSessionJpeg, startStreaming, touchSession } from '../../browser/manager';
+import { getBrowserSession, screenshotSessionJpeg, touchSession } from '../../browser/manager';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
 import path from 'path';
 import fs from 'fs';
@@ -64,7 +62,7 @@ export class BrowserRunTool extends BaseTool {
 
     permissions: ToolPermission[] = ['internet', 'execute'];
     sideEffects: ToolPermission[] = ['execute', 'internet'];
-    rateLimitPerMinute = 30;
+    rateLimitPerMinute = Number(process.env.BROWSER_TOOL_RATE_LIMIT_PER_MINUTE || 120);
     auditFields = ['sessionId'];
 
     // Helper method to analyze login state (logic ported from registry.ts)
@@ -185,6 +183,7 @@ export class BrowserRunTool extends BaseTool {
 
         if (instructionText && (!Array.isArray(actions) || actions.length === 0)) {
             // High-level planner run
+            const { runBrowserInstruction } = await import('../../browser/runner');
             const r = await runBrowserInstruction({ userId, sessionId: sid, instructionText });
             if (r && typeof r === 'object' && (r as any).ok) {
                 execOk = Boolean((r as any).result?.ok);
@@ -215,6 +214,7 @@ export class BrowserRunTool extends BaseTool {
             // Direct Action execution
             let r: any = null;
             try {
+                const { executePlannedActions } = await import('../../browser/executor');
                 r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
             } catch (e: any) {
                 execOk = false;

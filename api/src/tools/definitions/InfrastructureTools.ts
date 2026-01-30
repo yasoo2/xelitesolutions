@@ -1,10 +1,108 @@
 
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
-const execAsync = promisify(exec);
+function getWorkspaceRoot() {
+    try {
+        const { workspaceService } = require('../../services/WorkspaceService');
+        return workspaceService.getActiveRoot();
+    } catch {
+        return process.cwd();
+    }
+}
+
+function resolveToolPath(p: string) {
+    const root = getWorkspaceRoot();
+    const val = String(p ?? '').trim();
+    if (!val || val === '.') return root;
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) {
+        throw new Error('path_outside_workspace');
+    }
+    return absReal;
+}
+
+function splitCommandLine(raw: string) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const args: string[] = [];
+    let cur = '';
+    let quote: '"' | "'" | null = null;
+    for (let i = 0; i < s.length; i += 1) {
+        const ch = s[i];
+        if (quote) {
+            if (ch === quote) {
+                quote = null;
+                continue;
+            }
+            if (ch === '\\' && quote === '"' && i + 1 < s.length) {
+                cur += s[i + 1];
+                i += 1;
+                continue;
+            }
+            cur += ch;
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            quote = ch as any;
+            continue;
+        }
+        if (/\s/.test(ch)) {
+            if (cur) {
+                args.push(cur);
+                cur = '';
+            }
+            continue;
+        }
+        cur += ch;
+    }
+    if (quote) return null;
+    if (cur) args.push(cur);
+    if (args.length === 0) return null;
+    return args;
+}
+
+function spawnWithTimeout(cmd: string, args: string[], cwd: string, timeoutMs: number) {
+    return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+        const child = spawn(cmd, args, { cwd, shell: false });
+        let stdout = '';
+        let stderr = '';
+        let done = false;
+
+        const timer = setTimeout(() => {
+            if (done) return;
+            done = true;
+            try { child.kill('SIGKILL'); } catch { }
+            resolve({ code: 124, stdout, stderr: stderr || 'timeout' });
+        }, Math.max(1, timeoutMs));
+
+        child.stdout.on('data', (d) => { stdout += d.toString(); });
+        child.stderr.on('data', (d) => { stderr += d.toString(); });
+        child.on('close', (code) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr });
+        });
+        child.on('error', (e: any) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({ code: 1, stdout, stderr: String(e?.message || e || 'spawn_failed') });
+        });
+    });
+}
 
 export class TerraformManagerTool extends BaseTool {
     name = 'terraform_manager';
@@ -33,21 +131,22 @@ export class TerraformManagerTool extends BaseTool {
 
     async execute(input: any) {
         const action = String(input.action).toLowerCase();
-        const dir = String(input.directory).trim();
+        const dirRaw = String(input.directory).trim();
+        const dir = resolveToolPath(dirRaw);
         if (!dir) return { ok: false, error: 'directory required', logs: [] };
 
-        let cmd = `terraform -chdir=${dir} ${action}`;
+        const args: string[] = [`-chdir=${dir}`, action];
 
         // Add variables
         if (input.vars) {
             for (const [k, v] of Object.entries(input.vars)) {
-                cmd += ` -var="${k}=${v}"`;
+                args.push('-var', `${k}=${v}`);
             }
         }
 
         // Safety flags
         if ((action === 'apply' || action === 'destroy') && input.autoApprove) {
-            cmd += ' -auto-approve';
+            args.push('-auto-approve');
         } else if (action === 'apply' || action === 'destroy') {
             // By default, terraform waits for input. We must prevent that in automation unless autoApprove is explicit.
             // Actually, for automation, we usually want -auto-approve OR we run 'plan' first.
@@ -56,13 +155,13 @@ export class TerraformManagerTool extends BaseTool {
             // For now, let's assume the agent knows what it's doing or uses plan first.
             // But we must add -input=false to prevent hanging.
         }
-        cmd += ' -input=false -no-color';
+        args.push('-input=false', '-no-color');
 
         try {
-            const { stdout, stderr } = await execAsync(cmd);
-            const combined = stdout + '\n' + stderr;
+            const r = await spawnWithTimeout('terraform', args, getWorkspaceRoot(), 10 * 60_000);
+            const combined = (r.stdout || '') + '\n' + (r.stderr || '');
             return {
-                ok: true,
+                ok: r.code === 0,
                 output: {
                     output: combined.slice(0, 5000),
                     planSummary: action === 'plan' ? this.extractSummary(combined) : undefined
@@ -104,21 +203,21 @@ export class KubernetesOpsTool extends BaseTool {
     sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
-        let cmd = String(input.command).trim();
-        const ns = input.namespace ? `-n ${input.namespace}` : '';
+        const cmdRaw = String(input.command).trim();
+        const parts = splitCommandLine(cmdRaw);
+        if (!parts) return { ok: false, error: 'invalid_command', logs: [] };
 
-        // Sanitize basic injection risks (very basic)
-        if (cmd.includes(';') || cmd.includes('|')) {
-            return { ok: false, error: 'Chained commands not allowed in kubectl tool', logs: [] };
-        }
+        const args = parts[0] === 'kubectl' ? parts.slice(1) : parts;
+        if (!args.length) return { ok: false, error: 'invalid_command', logs: [] };
 
-        const fullCmd = `kubectl ${ns} ${cmd}`;
+        const ns = String(input.namespace || '').trim();
+        const fullArgs = [...(ns ? ['-n', ns] : []), ...args];
         try {
-            const { stdout, stderr } = await execAsync(fullCmd);
+            const r = await spawnWithTimeout('kubectl', fullArgs, getWorkspaceRoot(), 60_000);
             return {
-                ok: true,
-                output: { output: (stdout + stderr).slice(0, 5000) },
-                logs: [`executed: ${fullCmd}`]
+                ok: r.code === 0,
+                output: { output: ((r.stdout || '') + (r.stderr || '')).slice(0, 5000) },
+                logs: [`executed: kubectl ${fullArgs.join(' ')}`]
             };
         } catch (e: any) {
             return { ok: false, error: `kubectl failed: ${e.message}`, logs: [] };
@@ -146,24 +245,29 @@ export class DockerSwarmOpsTool extends BaseTool {
 
     async execute(input: any) {
         const action = input.action;
-        let cmd = '';
+        const cwd = getWorkspaceRoot();
+        let args: string[] = [];
 
         if (action === 'deploy_stack') {
             if (!input.stackName || !input.composeFile) return { ok: false, error: 'stackName and composeFile required', logs: [] };
-            cmd = `docker stack deploy -c ${input.composeFile} ${input.stackName}`;
+            const stackName = String(input.stackName || '').trim();
+            const composeFile = resolveToolPath(String(input.composeFile || '').trim());
+            args = ['stack', 'deploy', '-c', composeFile, stackName];
         } else if (action === 'list_services') {
-            cmd = `docker service ls`;
+            args = ['service', 'ls'];
         } else if (action === 'service_logs') {
             if (!input.stackName) return { ok: false, error: 'stackName (or service name) required', logs: [] };
-            cmd = `docker service logs --tail 100 ${input.stackName}`;
+            const stackName = String(input.stackName || '').trim();
+            args = ['service', 'logs', '--tail', '100', stackName];
         } else if (action === 'remove_stack') {
             if (!input.stackName) return { ok: false, error: 'stackName required', logs: [] };
-            cmd = `docker stack rm ${input.stackName}`;
+            const stackName = String(input.stackName || '').trim();
+            args = ['stack', 'rm', stackName];
         }
 
         try {
-            const { stdout, stderr } = await execAsync(cmd);
-            return { ok: true, output: { output: stdout + stderr }, logs: [`swarm action ${action} executed`] };
+            const r = await spawnWithTimeout('docker', args, cwd, 2 * 60_000);
+            return { ok: r.code === 0, output: { output: (r.stdout || '') + (r.stderr || '') }, logs: [`swarm action ${action} executed`] };
         } catch (e: any) {
             return { ok: false, error: `Swarm action failed: ${e.message}`, logs: [] };
         }

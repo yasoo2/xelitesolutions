@@ -1,9 +1,9 @@
-
-import mongoose from 'mongoose';
-import { tools } from '../../tools/registry';
-import { AgentLoopService } from '../../services/AgentLoopService';
-
 async function main() {
+    if (!process.env.JWT_SECRET) process.env.JWT_SECRET = 'test-jwt-secret';
+    const mongoose = require('mongoose');
+    const { tools } = await import('../../tools/registry');
+    const { AgentLoopService } = await import('../../services/AgentLoopService');
+
     console.log('🔍 Starting System Health Verification...');
 
     // 1. Tool Registry Check

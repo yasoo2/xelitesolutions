@@ -2,12 +2,11 @@ import type { Locator, Page } from 'playwright';
 import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
-import { getBrowserSession, setStreamMask, startStreaming, touchSession, withBrowserConcurrency } from './manager';
+import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
 import { AdvancedInteractionSystem } from './interactions';
 
 type Action =
-  | { type: 'goto'; url: string; optional?: boolean }
   | { type: 'goto'; url: string; optional?: boolean }
   | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean; x?: number; y?: number }
   | { type: 'hover'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean; x?: number; y?: number }
@@ -237,7 +236,6 @@ export async function executePlannedActions(params: {
     const cfg = DEFAULT_BROWSER_CONFIG;
 
     const s = await getBrowserSession(sessionId);
-    startStreaming(sessionId);
 
     const page = s.page;
     const interactions = new AdvancedInteractionSystem();

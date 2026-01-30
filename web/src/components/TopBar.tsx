@@ -6,7 +6,7 @@ import ConfirmDialog from './ConfirmDialog';
 import ProfileDialog from './ProfileDialog';
 import SettingsDialog from './SettingsDialog';
 import './UserMenu.css';
-import { isValidToken } from '../utils/auth';
+import { decodeJwtPayload, isValidToken } from '../utils/auth';
 
 export default function TopBar() {
   const { i18n, t } = useTranslation();
@@ -25,7 +25,7 @@ export default function TopBar() {
     try {
       const token = localStorage.getItem('token');
       if (token && isValidToken(token)) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const payload = decodeJwtPayload(token) || {};
 
         // AUTO-FIX: Invalidate legacy tokens that are missing BOTH email AND sub fields
         // Allow tokens with just sub (for API tokens, dev tokens, etc.)

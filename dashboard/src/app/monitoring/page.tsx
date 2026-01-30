@@ -1,12 +1,10 @@
 'use client';
 
-import { Activity, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { getSystemStats } from '@/lib/api';
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function MonitoringPage() {
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<Array<{ time: string; cpu: number; memory: number; requests: number }>>([]);
 
     // Simulate real-time data
     useEffect(() => {

@@ -3,15 +3,13 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
-import { exec } from 'child_process';
-import util from 'util';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast } from '../../ws';
+import { handleShellCommand } from '../handlers';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, startTime: number, process: any }>();
 
-const execAsync = util.promisify(exec);
 const spawn = require('child_process').spawn;
 
 // Helper
@@ -28,9 +26,65 @@ function resolveToolPath(p: string) {
     const root = getWorkspaceRoot();
     const val = String(p ?? '').trim();
     if (!val || val === '.') return root;
-    if (path.isAbsolute(val)) return val;
-    // Resolve relative to the current active workspace root
-    return path.resolve(root, val);
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) {
+        throw new Error('path_outside_workspace');
+    }
+    return absReal;
+}
+
+function splitCommandLine(raw: string) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const args: string[] = [];
+    let cur = '';
+    let quote: '"' | "'" | null = null;
+    for (let i = 0; i < s.length; i += 1) {
+        const ch = s[i];
+        if (quote) {
+            if (ch === quote) {
+                quote = null;
+                continue;
+            }
+            if (ch === '\\' && quote === '"' && i + 1 < s.length) {
+                cur += s[i + 1];
+                i += 1;
+                continue;
+            }
+            cur += ch;
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            quote = ch as any;
+            continue;
+        }
+        if (/\s/.test(ch)) {
+            if (cur) {
+                args.push(cur);
+                cur = '';
+            }
+            continue;
+        }
+        cur += ch;
+    }
+    if (quote) return null;
+    if (cur) args.push(cur);
+    if (args.length === 0) return null;
+    return { command: args[0], args: args.slice(1) };
+}
+
+function isAllowedLocalCommand(command: string) {
+    const c = String(command || '').trim();
+    const allowedCommands = ['git', 'npm', 'node', 'tsc', 'eslint', 'ls', 'cat', 'grep', 'find'];
+    return allowedCommands.includes(c);
 }
 
 export class EchoTool extends BaseTool {
@@ -152,6 +206,43 @@ export class WriteFileTool extends BaseTool {
     }
 }
 
+export class LsTool extends BaseTool {
+    name = 'ls';
+    description = 'List directory entries.';
+    version = '1.0.0';
+    tags = ['fs', 'ls', 'read'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            path: { type: 'string' },
+            includeHidden: { type: 'boolean' }
+        }
+    };
+    outputSchema = { type: 'object' as const, properties: { path: { type: 'string' }, entries: { type: 'array', items: { type: 'string' } } } };
+    permissions: ToolPermission[] = ['read'];
+    sideEffects: ToolPermission[] = [];
+    rateLimitPerMinute = 120;
+    auditFields = ['path'];
+
+    async execute(input: any) {
+        const logs: string[] = [];
+        const p = String(input?.path ?? '.');
+        const includeHidden = Boolean(input?.includeHidden);
+        const full = resolveToolPath(p);
+
+        try {
+            const names = fs.readdirSync(full, { withFileTypes: true })
+                .filter(d => includeHidden || !d.name.startsWith('.'))
+                .map(d => d.isDirectory() ? `${d.name}/` : d.name)
+                .sort((a, b) => a.localeCompare(b));
+            logs.push(`ls=${p}`);
+            return { ok: true, output: { path: p, entries: names }, logs };
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs };
+        }
+    }
+}
+
 export class GrepSearchTool extends BaseTool {
     name = 'grep_search';
     description = 'Search for text patterns in files using grep.';
@@ -180,33 +271,34 @@ export class GrepSearchTool extends BaseTool {
         const include = String(input?.include ?? '');
         const exclude = String(input?.exclude ?? '');
 
-        const root = getWorkspaceRoot();
-        const workDir = path.isAbsolute(searchPath) ? searchPath : path.resolve(root, searchPath);
+        const workDir = resolveToolPath(searchPath);
 
-        // Escape quotes
-        let cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${workDir}"`;
-
-        if (include) {
-            cmd += ` --include="${include}"`;
-        }
-        if (exclude) {
-            cmd += ` --exclude-dir="${exclude}"`;
-        } else {
-            cmd += ` --exclude-dir="node_modules" --exclude-dir=".git" --exclude-dir="dist" --exclude-dir="build"`;
-        }
-
-        logs.push(`grep.cmd=${cmd}`);
         try {
-            const { stdout } = await execAsync(cmd, { maxBuffer: 1024 * 1024 * 5 });
-            const lines = stdout.split('\n').filter(Boolean).slice(0, 100);
+            const args: string[] = ['-rnI'];
+            if (include) args.push(`--include=${include}`);
+            if (exclude) args.push(`--exclude-dir=${exclude}`);
+            else args.push('--exclude-dir=node_modules', '--exclude-dir=.git', '--exclude-dir=dist', '--exclude-dir=build');
+            args.push('--', query, workDir);
+            logs.push(`grep.args=${args.join(' ')}`);
+
+            const r = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+                const child = spawn('grep', args, { shell: false, cwd: getWorkspaceRoot() });
+                let stdout = '';
+                let stderr = '';
+                child.stdout.on('data', (d: any) => { stdout += d.toString(); });
+                child.stderr.on('data', (d: any) => { stderr += d.toString(); });
+                child.on('close', (code: number) => resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr }));
+                child.on('error', (e: any) => resolve({ code: 1, stdout, stderr: String(e?.message || e || 'spawn_failed') }));
+            });
+
+            if (r.code === 1) return { ok: true, output: { matches: [], count: 0 }, logs };
+            if (r.code !== 0) return { ok: false, error: (r.stderr || 'grep_failed').trim(), logs };
+
+            const lines = (r.stdout || '').split('\n').filter(Boolean).slice(0, 100);
             return { ok: true, output: { matches: lines, count: lines.length, truncated: lines.length === 100 }, logs };
         } catch (err: any) {
-            // grep exit code 1 means no match
-            if (err.code === 1) {
-                return { ok: true, output: { matches: [], count: 0 }, logs };
-            }
-            logs.push(`grep.error=${err.message}`);
-            return { ok: false, error: err.message, logs };
+            logs.push(`grep.error=${String(err?.message || err || 'grep_failed')}`);
+            return { ok: false, error: String(err?.message || err || 'grep_failed'), logs };
         }
     }
 }
@@ -228,30 +320,31 @@ export class NpmManagerTool extends BaseTool {
 
     async execute(input: any) {
         const logs: string[] = [];
-        const cmd = String(input?.command);
+        const cmd = String(input?.command || '').trim();
         const pkgs = (input?.packages as string[]) || [];
         const isDev = !!input?.dev;
 
         try {
-            let fullCmd = `npm ${cmd}`;
-            if (pkgs.length > 0) fullCmd += ` ${pkgs.join(' ')}`;
-            if (isDev && (cmd === 'install' || cmd === 'i')) fullCmd += ' -D';
-
-            logs.push(`npm.cmd=${fullCmd}`);
+            const cmdParts = cmd.split(/\s+/).filter(Boolean);
+            if (!cmdParts.length) return { ok: false, error: 'missing_command', logs };
+            const args = [...cmdParts, ...(Array.isArray(pkgs) ? pkgs : [])];
+            if (isDev && (cmdParts[0] === 'install' || cmdParts[0] === 'i')) args.push('-D');
+            logs.push(`npm.args=${args.join(' ')}`);
             const workDir = getWorkspaceRoot();
-            const { stdout } = await execAsync(fullCmd, { cwd: workDir });
+            const r = await handleShellCommand('npm', args, workDir, 5 * 60_000, false);
+            if (!r.ok) return { ok: false, error: r.error || 'npm_failed', logs: [...logs, ...(r.logs || [])] };
 
-            if ((cmd === 'install' || cmd === 'i') && pkgs.length > 0) {
+            if ((cmdParts[0] === 'install' || cmdParts[0] === 'i') && pkgs.length > 0) {
                 const typesToInstall = pkgs.filter(p => !p.startsWith('@types/')).map(p => `@types/${p.split('@')[0]}`);
                 if (typesToInstall.length) {
                     try {
-                        await execAsync(`npm install -D ${typesToInstall.join(' ')}`, { cwd: workDir });
-                        logs.push(`npm.auto_types=${typesToInstall.join(' ')}`);
+                        const r2 = await handleShellCommand('npm', ['install', '-D', ...typesToInstall], workDir, 5 * 60_000, false);
+                        if (r2.ok) logs.push(`npm.auto_types=${typesToInstall.join(' ')}`);
                     } catch { }
                 }
             }
 
-            return { ok: true, output: { output: stdout }, logs };
+            return { ok: true, output: { output: String(r.output || '') }, logs: [...logs, ...(r.logs || [])] };
         } catch (e: any) {
             return { ok: false, error: e.message || e.stderr, logs };
         }
@@ -366,7 +459,7 @@ export class ShellExecuteTool extends BaseTool {
             } catch { }
         }
 
-        const workDir = cwdInput ? (path.isAbsolute(cwdInput) ? cwdInput : path.resolve(root, cwdInput)) : root;
+        const workDir = cwdInput ? resolveToolPath(cwdInput) : root;
 
 
 
@@ -378,12 +471,11 @@ export class ShellExecuteTool extends BaseTool {
                 }
                 const id = 'bg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 
-                const child = spawn(command, [], {
-                    cwd: workDir,
-                    shell: true,
-                    detached: true,
-                    stdio: 'ignore'
-                });
+                const parsed = splitCommandLine(command);
+                if (!parsed) throw new Error('invalid_command');
+                if (!isAllowedLocalCommand(parsed.command)) throw new Error('command_not_allowed');
+
+                const child = spawn(parsed.command, parsed.args, { cwd: workDir, shell: false, detached: true, stdio: 'ignore' });
 
                 child.unref();
 
@@ -402,28 +494,51 @@ export class ShellExecuteTool extends BaseTool {
                 };
             }
 
-            // Route execution (Local or Remote)
-            const result = await commandRouter.execute({
-                command,
-                serverId: input.serverId,
-                workingDirectory: workDir,
-                timeout: timeoutVal
-            });
+            if (input.serverId) {
+                const result = await commandRouter.execute({
+                    command,
+                    serverId: input.serverId,
+                    workingDirectory: workDir,
+                    timeout: timeoutVal
+                });
 
+                const durationMs = Date.now() - startedAt;
+                logs.push(`exec=${redactCmd(command)} server=${input.serverId || 'local'} exit=${result.code}`);
+
+                return {
+                    ok: result.code === 0,
+                    output: {
+                        status: result.code === 0 ? 'success' : 'failed',
+                        stdout: result.stdout,
+                        stderr: result.stderr,
+                        exitCode: result.code,
+                        cwd: workDir,
+                        durationMs,
+                        executedOn: result.executedOn,
+                        serverId: result.serverId
+                    },
+                    logs
+                };
+            }
+
+            const parsed = splitCommandLine(command);
+            if (!parsed) throw new Error('invalid_command');
+            if (!isAllowedLocalCommand(parsed.command)) throw new Error('command_not_allowed');
+            const r = await handleShellCommand(parsed.command, parsed.args, workDir, timeoutVal, false);
             const durationMs = Date.now() - startedAt;
-            logs.push(`exec=${redactCmd(command)} server=${input.serverId || 'local'} exit=${result.code}`);
+            logs.push(...(r.logs || []));
+            logs.push(`exec=${redactCmd(command)} server=local exit=${r.ok ? 0 : 1}`);
 
             return {
-                ok: result.code === 0,
+                ok: r.ok,
                 output: {
-                    status: result.code === 0 ? 'success' : 'failed',
-                    stdout: result.stdout,
-                    stderr: result.stderr,
-                    exitCode: result.code,
+                    status: r.ok ? 'success' : 'failed',
+                    stdout: String(r.output || ''),
+                    stderr: r.ok ? '' : String(r.error || ''),
+                    exitCode: r.ok ? 0 : 1,
                     cwd: workDir,
                     durationMs,
-                    executedOn: result.executedOn,
-                    serverId: result.serverId
+                    executedOn: 'local',
                 },
                 logs
             };

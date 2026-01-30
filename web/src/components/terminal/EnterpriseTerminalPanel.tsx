@@ -56,6 +56,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
     const containersRef = useRef<Record<string, HTMLDivElement | null>>({});
     const termsRef = useRef<Record<string, Terminal | null>>({});
     const fitAddonsRef = useRef<Record<string, FitAddon | null>>({});
+    const cleanupRef = useRef<Record<string, (() => void) | null>>({});
 
     useEffect(() => {
         loadServers();
@@ -138,26 +139,35 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
         // Resize Handling
         const resizeObserver = new ResizeObserver(() => {
             requestAnimationFrame(() => {
-                fitAddon.fit();
-                const dims = fitAddon.proposeDimensions();
-                if (dims && dims.cols && dims.rows) {
-                    SocketService.send({
-                        type: 'terminal_resize',
-                        id: tabId,
-                        serverId,
-                        cols: dims.cols,
-                        rows: dims.rows
-                    });
-                }
+                if (!termsRef.current[tabId] || !fitAddonsRef.current[tabId]) return;
+                try {
+                    fitAddon.fit();
+                    const dims = fitAddon.proposeDimensions();
+                    if (dims && dims.cols && dims.rows) {
+                        SocketService.send({
+                            type: 'terminal_resize',
+                            id: tabId,
+                            serverId,
+                            cols: dims.cols,
+                            rows: dims.rows
+                        });
+                    }
+                } catch { }
             });
         });
         resizeObserver.observe(container);
 
-        return () => {
+        const cleanup = () => {
             resizeObserver.disconnect();
-            term.dispose();
+            try {
+                term.dispose();
+            } catch { }
             delete termsRef.current[tabId];
+            delete fitAddonsRef.current[tabId];
+            delete cleanupRef.current[tabId];
         };
+        cleanupRef.current[tabId] = cleanup;
+        return cleanup;
     };
 
     const connectRemote = async (tabId: string, serverId: string) => {
@@ -194,10 +204,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
         }
 
         // Clean up
-        if (termsRef.current[id]) {
-            termsRef.current[id]?.dispose();
-            delete termsRef.current[id];
-        }
+        cleanupRef.current[id]?.();
     };
 
     const handleAddServer = async () => {
@@ -245,7 +252,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                     </div>
                     <div className="flex flex-col">
                         <span className="text-sm font-black text-slate-100 tracking-widest uppercase leading-tight">Joe Elite Shell</span>
-                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Neural Logic Core</span>
+                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Core Runtime</span>
                     </div>
                     <div className="h-6 w-[1px] bg-white/5 mx-2"></div>
                     <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/5 shadow-inner">

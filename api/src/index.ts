@@ -120,7 +120,7 @@ async function main() {
 
   // Middleware: Block API requests until DB is ready
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
+    if (process.env.NODE_ENV === 'production' && req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
       return res.status(503).json({
         error: 'Service Unavailable',
         message: 'Database connection initializing, please try again shortly.',
@@ -154,6 +154,14 @@ async function main() {
 
   // Mount Central API Router
   app.use('/api', apiRouter);
+
+  apiRouter.get('/health', (_req, res) => res.json({
+    status: 'OK',
+    db: mongoose.connection.readyState,
+    env: process.env.NODE_ENV,
+    adminSet: !!process.env.ADMIN_EMAIL,
+    uptime: process.uptime()
+  }));
 
   // Sub-routes on apiRouter
   apiRouter.use('/auth', authRoutes);
@@ -212,18 +220,17 @@ async function main() {
     logger.info({ port: config.port }, 'API listening (Database connecting in background...)');
 
     // [NEW] Deep Memory Auto-Indexing
-    setTimeout(() => {
-      logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
-      executeTool('memorize_codebase', {
-        directory: process.cwd(),
-        extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
-      }).catch(() => { });
-
-      // [NEW] Infinite Learning Loop
-      logger.info('[ContinuousTrainer] Starting Infinite Learning Loop (Phase 52)...');
-      import('./services/ContinuousTrainer').then(m => m.continuousTrainer.start());
-
-    }, 5000); // 5 second delay
+    const autoIndexingEnabled = process.env.ENABLE_STARTUP_AUTO_INDEXING === 'true';
+    const autoIndexingDelayMs = Number(process.env.STARTUP_AUTO_INDEXING_DELAY_MS || '0') || 0;
+    if (autoIndexingEnabled) {
+      setTimeout(() => {
+        logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
+        executeTool('memorize_codebase', {
+          directory: process.cwd(),
+          extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
+        }).catch(() => { });
+      }, autoIndexingDelayMs);
+    }
   });
 
   // DB connect with Retry Loop (Background)

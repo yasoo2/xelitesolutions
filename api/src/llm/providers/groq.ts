@@ -1,6 +1,3 @@
-
-import fetch from 'node-fetch';
-
 export class GroqProvider {
     private apiKey: string;
     private baseUrl = 'https://api.groq.com/openai/v1/chat/completions';

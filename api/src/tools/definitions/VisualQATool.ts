@@ -1,7 +1,7 @@
 import { ToolDefinition } from '../types';
-import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import { routeToModel } from '../../llm/intelligent-router';
 
 // Helper to encode image to base64
 function encodeImage(imagePath: string): string {
@@ -50,7 +50,6 @@ export const VisualQATool: ToolDefinition = {
             return { ok: false, error: `Image not found at: ${filePath}`, logs: [] };
         }
 
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         const base64Image = encodeImage(filePath);
         const dataUrl = `data:image/png;base64,${base64Image}`; // Assuming PNG for now from screenshots
 
@@ -68,28 +67,30 @@ Return JSON format:
 }`;
 
         try {
-            const response = await openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
+            const responseText = await routeToModel(
+                [
+                    { role: 'system', content: 'Return ONLY valid JSON. Do not add any markdown or explanations.' },
                     {
-                        role: "user",
+                        role: 'user',
                         content: [
-                            { type: "text", text: prompt },
-                            {
-                                type: "image_url",
-                                image_url: {
-                                    url: dataUrl,
-                                },
-                            },
+                            { type: 'text', text: prompt },
+                            { type: 'image_url', image_url: { url: dataUrl } },
                         ],
                     },
                 ],
-                response_format: { type: "json_object" },
-                max_tokens: 1000,
-            });
+                {
+                    type: 'complex_reasoning',
+                    complexity: 'medium',
+                    requiresTools: false,
+                    estimatedTokens: 1500,
+                    language: 'en',
+                    hasImages: true
+                }
+            );
 
-            const content = response.choices[0].message.content || '{}';
-            const result = JSON.parse(content);
+            const jsonMatch = String(responseText || '').match(/\{[\s\S]*\}/);
+            const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
+            const result = JSON.parse(jsonStr || '{}');
 
             return {
                 ok: true,

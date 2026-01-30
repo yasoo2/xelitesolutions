@@ -49,7 +49,19 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     // --- Aliasing & Compatibility Layer ---
     const contextSessionId = context?.sessionId;
-    const contextWorkspaceId = context?.workspaceId;
+    const contextWorkspaceId =
+        typeof context?.workspaceId === 'string' && context.workspaceId.trim()
+            ? context.workspaceId.trim()
+            : typeof (effectiveInput as any)?.workspaceId === 'string' && String((effectiveInput as any).workspaceId).trim()
+                ? String((effectiveInput as any).workspaceId).trim()
+                : typeof (effectiveInput as any)?.__workspaceId === 'string' && String((effectiveInput as any).__workspaceId).trim()
+                    ? String((effectiveInput as any).__workspaceId).trim()
+                    : undefined;
+    const effectiveContext: ToolContext = { ...(context || {}), workspaceId: contextWorkspaceId };
+
+    if (contextWorkspaceId && typeof (effectiveInput as any).__workspaceId !== 'string') {
+        (effectiveInput as any).__workspaceId = contextWorkspaceId;
+    }
 
     if (!contextWorkspaceId) {
         console.warn(`[ToolService] ⚠️ SECURITY WARNING: Tool '${name}' executed without Workspace Context! Defaults to global/shared.`);
@@ -121,31 +133,58 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     if (name === 'project_scaffold') {
         effectiveName = 'scaffold_project';
     }
-    if (name === 'create_file' || name === 'write_file') {
-        effectiveName = 'file_edit';
-        effectiveInput.mode = 'create';
+    if (name === 'create_file') {
+        effectiveName = 'write_file';
+    }
+    if (name === 'file_write') {
+        effectiveName = 'write_file';
+        const fp = String((effectiveInput as any)?.filePath ?? '');
+        if (fp && (effectiveInput as any)?.filename == null) {
+            (effectiveInput as any).filename = fp;
+            delete (effectiveInput as any).filePath;
+        }
     }
     if (name === 'edit_file' || name === 'modify_file') {
         effectiveName = 'file_edit';
     }
+    if (name === 'file_read') {
+        effectiveName = 'read_file';
+        const fp = String((effectiveInput as any)?.filePath ?? '');
+        if (fp) {
+            (effectiveInput as any).path = fp;
+            delete (effectiveInput as any).filePath;
+        }
+    }
     if (name === 'read_file' || name === 'view_file' || name === 'get_file') {
-        effectiveName = 'file_read';
+        effectiveName = 'read_file';
+    }
+    if (name === 'read_file_tree') {
+        effectiveName = 'inspect_directory';
+        if ((effectiveInput as any)?.path == null && (effectiveInput as any)?.dir != null) {
+            (effectiveInput as any).path = (effectiveInput as any).dir;
+            delete (effectiveInput as any).dir;
+        }
+        if ((effectiveInput as any)?.depth == null) (effectiveInput as any).depth = 3;
     }
     if (name === 'list_files' || name === 'list_directory' || name === 'dir') {
-        effectiveName = 'ls';
+        effectiveName = 'inspect_directory';
+        if ((effectiveInput as any)?.depth == null) (effectiveInput as any).depth = 1;
     }
     if (name === 'search_code' || name === 'find_in_files') {
-        effectiveName = 'grep';
+        effectiveName = 'grep_search';
+    }
+    if (name === 'grep') {
+        effectiveName = 'grep_search';
     }
     if (name === 'browse' || name === 'open_browser' || name === 'web_browse') {
         effectiveName = 'browser_run';
     }
     if (name === 'git_commit' || name === 'commit') {
-        effectiveName = 'git_operations';
+        effectiveName = 'git_ops';
         effectiveInput.operation = 'commit';
     }
     if (name === 'git_push' || name === 'push') {
-        effectiveName = 'git_operations';
+        effectiveName = 'git_ops';
         effectiveInput.operation = 'push';
     }
 
@@ -216,7 +255,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         // But for now, we assume tDef has the handler.
 
         if (typeof (tDef as any).execute === 'function') {
-            const res = await (tDef as any).execute(effectiveInput, context);
+            const run = async () => await (tDef as any).execute(effectiveInput, effectiveContext);
+            const { workspaceService } = require('./WorkspaceService');
+            const res = contextWorkspaceId ? await workspaceService.runWithWorkspace(contextWorkspaceId, run) : await run();
             const ok = !!res?.ok;
             const output = res?.output ?? null;
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;

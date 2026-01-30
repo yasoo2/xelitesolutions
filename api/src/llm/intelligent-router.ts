@@ -5,6 +5,7 @@
  */
 
 import { pollinationsProvider, openRouterProvider, groqProvider } from './providers/registry';
+import { LLMCacheTool } from '../tools/definitions/LLMCacheTool';
 
 let hack: any = pollinationsProvider;
 let openrouter: any = openRouterProvider;
@@ -138,9 +139,8 @@ export const MODELS: Record<string, ModelConfig> = {
  * Uses a lightweight model to deeply understand the task
  */
 export async function advancedAnalyzeTask(userMessage: string, history?: any[], onProgress?: (msg: string) => void): Promise<TaskAnalysis> {
-    onProgress?.('🧠 تحليل عميق لطلبك... (Neural Analysis)');
+    onProgress?.('🧠 تحليل عميق لطلبك... (Deep Analysis)');
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
-    const hasOpenAI = !!(process.env.OPENAI_API_KEY?.trim());
 
     try {
         // [OPTIMIZATION] If query is short, skip LLM-based analysis to save TBT (Time to Bot Talk)
@@ -149,17 +149,12 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[], 
             return analyzeTask(userMessage);
         }
 
-        let analyst = 'openai';
-        let provider = 'hack'; // Default to Pollinations
-
-        if (hasGroq) {
-            console.info('[IntelligentRouter] ⚡ Using Groq (Llama 3) for instant analysis');
-            analyst = 'llama-3.1-8b-instant';
-            provider = 'groq';
-        } else if (hasOpenAI) {
-            analyst = 'gpt-4o-mini'; // Faster/Cheaper for analysis
-            provider = 'openai';
+        if (!hasGroq) {
+            return analyzeTask(userMessage, history);
         }
+
+        console.info('[IntelligentRouter] ⚡ Using Groq (Llama 3) for instant analysis');
+        const analyst = 'llama-3.1-8b-instant';
 
         const systemPrompt = `Analyze the following user request and return a JSON object.
 Be extremely strict with complexity:
@@ -186,11 +181,7 @@ Return exactly this JSON structure:
 
 
         let responseText = "";
-        if (provider === 'groq') {
-            responseText = await callGroq(analyst, [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }]);
-        } else if (provider === 'openai') {
-            responseText = await pollinationsProvider.chatComplete([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'openai');
-        }
+        responseText = await callGroq(analyst, [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }]);
 
 
         // Clean JSON response
@@ -355,9 +346,6 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
     // Vision Support: valid keys required
     if (analysis.hasImages) {
         console.info('[IntelligentRouter] 📷 Image detected in request - Switching to Vision Model');
-        if (availableKeys?.openai || process.env.OPENAI_API_KEY) return MODELS['gpt-4o'];
-        if (availableKeys?.anthropic || process.env.ANTHROPIC_API_KEY) return MODELS['claude-3.5-sonnet'];
-        // Fallback to Pollinations (which uses OpenAI) if no keys
         return MODELS['pollinations'];
     }
 
@@ -367,12 +355,6 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
         // We will default to the best free strategy in routeToModel.
         console.info('[IntelligentRouter] Groq key missing. defaulting to Free Model Strategy.');
         return MODELS['mixtral-8x7b']; // Placeholder config, will be handled by fallback loop
-    }
-
-    // For extreme complexity with available premium keys
-    if (analysis.complexity === 'extreme') {
-        if (availableKeys?.anthropic) return MODELS['claude-3.5-sonnet'];
-        if (availableKeys?.openai) return MODELS['gpt-4o'];
     }
 
     // Task-specific selection (free tier)
@@ -387,7 +369,6 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
             return MODELS['llama-3.1-70b'];
 
         case 'creative':
-            if (availableKeys?.openai) return MODELS['gpt-4o'];
             return MODELS['llama-3.1-70b'];
 
         case 'data_analysis':
@@ -520,7 +501,11 @@ export async function routeToModel(
     );
 
     // Select best model
-    const selectedModel = analysis?.suggestedModel ? MODELS[analysis.suggestedModel] || MODELS['llama-3.1-70b'] : selectBestModel(taskAnalysis, availableKeys);
+    const suggested = analysis?.suggestedModel ? MODELS[analysis.suggestedModel] : undefined;
+    let selectedModel = suggested && suggested.cost === 'free' ? suggested : selectBestModel(taskAnalysis, availableKeys);
+    if (selectedModel.cost !== 'free') {
+        selectedModel = MODELS['llama-3.1-70b'];
+    }
 
     // [SPEED UP] If we already have a selected model from the fast analysis, use it and skip.
     if (!selectedModel) {
@@ -536,48 +521,53 @@ export async function routeToModel(
 
     const effectiveMessages = isVisionCapable ? messages : flatMessages;
 
+    const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+    const cacheKeyPayload = JSON.stringify({
+        messages: flatMessages,
+        analysis: taskAnalysis,
+        selectedModel: selectedModel.model
+    });
+    const cacheText = flatMessages
+        .map(m => (typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content || '')))
+        .join('\n');
+    const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
+    if (!cacheDisabled && !hasSensitive) {
+        const cached = await LLMCacheTool.checkCache(cacheKeyPayload, selectedModel.model);
+        if (cached) return cached;
+    }
+
     // Check if Groq API key available
     const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
+    const hasOpenRouterKey = !!(process.env.OPENROUTER_API_KEY?.trim());
 
     // Unified Multi-Provider Mesh for Auto Mode
 
-    // Order: OpenAI (if key) -> Groq (Free) -> OpenRouter (Free) -> Pollinations (Backup)
-    const meshProviders = [
-        {
-            name: 'OpenAI (Premium)',
-            run: async () => {
-                const key = process.env.OPENAI_API_KEY || '';
-                if (!key || key === 'dummy') throw new Error('No OpenAI API Key');
-                // We reach out to the main LLM call for OpenAI
-                const { callLLM } = require('../llm');
-                return await callLLM(effectiveMessages[effectiveMessages.length - 1].content, effectiveMessages.slice(0, -1));
-            }
-        },
-        {
+    const meshProviders: Array<{ name: string; run: () => Promise<string> }> = [];
+    if (hasGroqKey) {
+        meshProviders.push({
             name: 'Groq (Free)',
             run: async () => {
-                const key = process.env.GROQ_API_KEY || '';
-                if (!key || key === 'gsk_placeholder' || !key.trim()) throw new Error('No Groq API Key');
                 const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.1-70b-versatile';
                 return await callGroq(model, flatMessages, onPartial);
             }
-        },
-        {
+        });
+    }
+    if (hasOpenRouterKey) {
+        meshProviders.push({
             name: 'OpenRouter (Free)',
             run: async () => {
-                if (!process.env.OPENROUTER_API_KEY) throw new Error('No OpenRouter API Key');
                 return await openRouterProvider.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
             }
-        },
-        {
-            name: 'Pollinations (Backup)',
-            run: async () => {
-                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai');
-                if (!res || res.length < 5) throw new Error('Pollinations response too short');
-                return res;
-            }
+        });
+    }
+    meshProviders.push({
+        name: 'Pollinations (Backup)',
+        run: async () => {
+            const res = await pollinationsProvider.chatComplete(flatMessages, 'openai');
+            if (!res || res.length < 5) throw new Error('Pollinations response too short');
+            return res;
         }
-    ];
+    });
     let lastError = '';
 
     // 1. Try Selected Model First (Happy Path)
@@ -586,7 +576,11 @@ export async function routeToModel(
             // Groq is fast, but let's give it 15s
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial), timeoutPromise]) as string;
-            return cleanOutput(rawAns);
+            const ans = cleanOutput(rawAns);
+            if (!cacheDisabled && !hasSensitive && ans && ans.length > 20) {
+                await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
+            }
+            return ans;
         }
 
         // If not Groq or Groq fails, fall through to the Chain of Steel
@@ -618,6 +612,9 @@ export async function routeToModel(
 
             if (ans && ans.length > 2) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
+                if (!cacheDisabled && !hasSensitive && ans.length > 20) {
+                    await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
+                }
                 return ans;
             }
         } catch (e: any) {
@@ -630,7 +627,12 @@ export async function routeToModel(
     try {
         const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
         const cleaned = cleanOutput(finalAns);
-        if (cleaned && cleaned.length > 0) return cleaned;
+        if (cleaned && cleaned.length > 0) {
+            if (!cacheDisabled && !hasSensitive && cleaned.length > 20) {
+                await LLMCacheTool.saveToCache(cacheKeyPayload, cleaned, selectedModel.model);
+            }
+            return cleaned;
+        }
         throw new Error('FINAL_EMPTY_RESPONSE');
     } catch {
         return "سأقوم بمراجعة الأدوات وربطها بشكل أفضل. يرجى إعطائي لحظة أو إرسال طلبك مرة أخرى بشكل أوضح.";

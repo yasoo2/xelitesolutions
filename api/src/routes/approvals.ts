@@ -1,11 +1,12 @@
-import { Router, Request, Response } from 'express';
-import { authenticate } from '../middleware/auth';
+import { Router } from 'express';
 import mongoose from 'mongoose';
-import { Approval } from '../models/Approval';
-import { Artifact } from '../models/Artifact';
-import { ToolExecution } from '../models/ToolExecution';
-import { Session } from '../models/Session';
-import Anthropic from '@anthropic-ai/sdk';
+import { Approval } from '../models/approval';
+import { broadcast } from '../ws';
+import { planContext } from '../approvals/context';
+import { executeTool } from '../services/ToolService';
+import { Run } from '../models/run';
+import { Session } from '../models/session';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
@@ -151,48 +152,52 @@ function sanitizeToolResultForBroadcast(toolName: string, r: any) {
   return next;
 }
 
-router.post('/:id/decision', authenticate as any, async (req: Request, res: Response) => {
+router.post('/:id/decision', authenticate as any, async (req, res) => {
   const id = String(req.params.id);
   const { decision } = req.body || {};
+  if (!['approved', 'denied'].includes(String(decision))) return res.status(400).json({ error: 'Invalid decision' });
 
-  if (!decision || !['approve', 'reject'].includes(decision)) {
-    return res.status(400).json({ error: 'Invalid decision' });
-  }
+  const ctx = planContext.get(id);
 
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ error: 'Database unavailable' });
-  }
+  const userId = String((req as any).auth?.sub || '').trim();
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-  try {
-    const approval = await Approval.findById(id);
-    if (!approval) {
-      return res.status(404).json({ error: 'Approval not found' });
+  const approval = await Approval.findById(id).lean();
+  if (!approval || !ctx) return res.status(404).json({ error: 'Approval not found' });
+
+  const run = await Run.findById((approval as any).runId).select({ sessionId: 1 }).lean();
+  if (!run) return res.status(404).json({ error: 'Approval not found' });
+
+  const allowed = await Session.findOne({ _id: (run as any).sessionId, userId }).select('_id').lean();
+  if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+
+  const a = await Approval.findByIdAndUpdate(id, { $set: { status: decision } }, { new: true });
+  if (!a) return res.status(404).json({ error: 'Approval not found' });
+  broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
+  if (decision === 'approved') {
+    broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
+    const sessionId = typeof ctx.input?.sessionId === 'string' && ctx.input.sessionId.trim() ? ctx.input.sessionId.trim() : undefined;
+    const workspaceId =
+      typeof ctx.input?.workspaceId === 'string' && ctx.input.workspaceId.trim()
+        ? ctx.input.workspaceId.trim()
+        : typeof ctx.input?.__workspaceId === 'string' && ctx.input.__workspaceId.trim()
+          ? ctx.input.__workspaceId.trim()
+          : undefined;
+    const result = await executeTool(ctx.name, ctx.input, { sessionId, workspaceId });
+    const eventResult = sanitizeToolResultForBroadcast(ctx.name, result);
+    broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result: eventResult } });
+    if (result.artifacts) {
+      // Persist artifacts in DB using Artifact model if needed
     }
-
-    const run = await Run.findById(approval.runId);
-    if (!run) {
-      return res.status(404).json({ error: 'Associated run not found' });
-    }
-
-    approval.status = decision;
-    await approval.save();
-
-    if (decision === 'approve') {
-      // Logic for approved decision (e.g., execute tool, update run status)
-      // This part would typically involve calling the actual tool execution service
-      // and updating the run and tool execution records.
-      // For now, we'll just update the run status to 'approved' or 'done'
-      run.status = 'approved'; // Or 'done' if the approval completes the run
-      await run.save();
-      return res.json({ ok: true, message: 'Approval granted and run status updated.' });
-    } else { // decision === 'reject'
-      run.status = 'denied';
-      await run.save();
-      return res.json({ ok: true, message: 'Approval denied and run status updated.' });
-    }
-  } catch (error) {
-    console.error('Error processing approval decision:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    await Run.findByIdAndUpdate(ctx.runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+    broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: result.ok } });
+    planContext.delete(id);
+    return res.json({ ok: true, result });
+  } else {
+    await Run.findByIdAndUpdate(ctx.runId, { $set: { status: 'denied' } });
+    broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: false } });
+    planContext.delete(id);
+    return res.json({ ok: true, denied: true });
   }
 });
 

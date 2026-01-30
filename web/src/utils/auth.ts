@@ -1,10 +1,22 @@
+export function decodeJwtPayload(token: string | null): any | null {
+    if (!token) return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const raw = parts[1] || '';
+    const normalized = raw.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+    try {
+        return JSON.parse(atob(padded));
+    } catch {
+        return null;
+    }
+}
+
 export function isValidToken(token: string | null): boolean {
     if (!token) return false;
     try {
-        const parts = token.split('.');
-        if (parts.length !== 3) return false;
-
-        const payload = JSON.parse(atob(parts[1]));
+        const payload = decodeJwtPayload(token);
+        if (!payload) return false;
         if (!payload || !payload.exp) {
             // If no exp, assume valid if structure is ok? 
             // Better to match TopBar logic: legacy tokens might be missing email/sub, but exp usually exists.

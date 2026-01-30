@@ -1,8 +1,6 @@
-import OpenAI from 'openai';
 import path from 'path';
 import { ProjectManagerAgent } from './ProjectManagerAgent';
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+import { routeToModel } from '../llm/intelligent-router';
 
 interface SubSystem {
     name: string;
@@ -11,16 +9,7 @@ interface SubSystem {
 }
 
 export class GodModeAgent {
-    private openai: OpenAI;
-
-    constructor() {
-        if (OPENAI_API_KEY) {
-            this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-        } else {
-            // Placeholder or throw on usage
-            this.openai = null as any;
-        }
-    }
+    constructor() { }
 
     async buildSystem(userRequest: string, outputDir: string) {
         console.log(`\n🌩️  GOD MODE ACTIVATED: "${userRequest}"\n`);
@@ -72,6 +61,14 @@ export class GodModeAgent {
     }
 
     private async createSystemBreakdown(request: string): Promise<SubSystem[]> {
+        const extractJsonLike = (text: string) => {
+            const raw = String(text || '').trim();
+            if (!raw) return '';
+            if (raw.startsWith('{') && raw.endsWith('}')) return raw;
+            const m = raw.match(/\{[\s\S]*\}/);
+            return String(m?.[0] || '').trim();
+        };
+
         const prompt = `You are the System Orchestrator.
 User Request: "${request}"
 
@@ -84,14 +81,16 @@ Output ONLY valid JSON:
   ]
 }`;
 
-        const completion = await this.openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [{ role: 'system', content: prompt }],
-            response_format: { type: "json_object" },
-            temperature: 0.2,
-        });
+        const content = await routeToModel([
+            { role: 'system', content: prompt }
+        ]);
 
-        const raw = JSON.parse(completion.choices[0].message.content || '{"systems": []}');
-        return raw.systems || [];
+        try {
+            const jsonStr = extractJsonLike(content);
+            const raw = JSON.parse(jsonStr || '{"systems": []}');
+            return Array.isArray(raw.systems) ? raw.systems : [];
+        } catch {
+            return [];
+        }
     }
 }

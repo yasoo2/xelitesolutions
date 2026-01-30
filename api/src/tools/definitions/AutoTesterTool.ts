@@ -50,22 +50,36 @@ export class AutoTesterTool implements ToolDefinition {
     auditFields = ['testType', 'projectPath'];
     mockSupported = false;
 
-    async execute(input: { testType: string; projectPath?: string; files?: string[] }) {
+    async execute(input: { testType: string; projectPath?: string; files?: string[]; sessionId?: string; workspaceId?: string; __workspaceId?: string }, context?: any) {
         const { testType, projectPath = '.', files = [] } = input;
         const logs: string[] = [];
+        const sessionId =
+            typeof context?.sessionId === 'string' && context.sessionId.trim()
+                ? context.sessionId.trim()
+                : typeof input?.sessionId === 'string' && input.sessionId.trim()
+                    ? input.sessionId.trim()
+                    : undefined;
+        const workspaceId =
+            typeof context?.workspaceId === 'string' && context.workspaceId.trim()
+                ? context.workspaceId.trim()
+                : typeof input?.workspaceId === 'string' && input.workspaceId.trim()
+                    ? input.workspaceId.trim()
+                    : typeof input?.__workspaceId === 'string' && input.__workspaceId.trim()
+                        ? input.__workspaceId.trim()
+                        : undefined;
 
         try {
             logs.push(`Running ${testType} test on ${projectPath}`);
 
             switch (testType) {
                 case 'syntax':
-                    return this.checkSyntax(projectPath, files, logs);
+                    return this.checkSyntax(projectPath, files, logs, { sessionId, workspaceId });
 
                 case 'build':
-                    return this.runBuild(projectPath, logs);
+                    return this.runBuild(projectPath, logs, { sessionId, workspaceId });
 
                 case 'unit':
-                    return this.runUnitTests(projectPath, logs);
+                    return this.runUnitTests(projectPath, logs, { sessionId, workspaceId });
 
                 case 'integration':
                     return this.runIntegrationTests(projectPath, logs);
@@ -89,7 +103,7 @@ export class AutoTesterTool implements ToolDefinition {
         }
     }
 
-    private async checkSyntax(projectPath: string, files: string[], logs: string[]) {
+    private async checkSyntax(projectPath: string, files: string[], logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
         logs.push('Checking syntax...');
 
         // Use shell_execute to run syntax check
@@ -98,7 +112,7 @@ export class AutoTesterTool implements ToolDefinition {
                 ? `node --check ${files.join(' ')}`
                 : `find ${projectPath} -name "*.js" -o -name "*.ts" | xargs -I {} node --check {}`,
             cwd: projectPath
-        });
+        }, ctx);
 
         const passed = result.ok && !result.output?.includes('SyntaxError');
 
@@ -113,14 +127,14 @@ export class AutoTesterTool implements ToolDefinition {
         };
     }
 
-    private async runBuild(projectPath: string, logs: string[]) {
+    private async runBuild(projectPath: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
         logs.push('Running build...');
 
         // Check if package.json exists and has build script
         const result = await executeTool('shell_execute', {
             command: 'npm run build',
             cwd: projectPath
-        });
+        }, ctx);
 
         const passed = result.ok;
 
@@ -135,13 +149,13 @@ export class AutoTesterTool implements ToolDefinition {
         };
     }
 
-    private async runUnitTests(projectPath: string, logs: string[]) {
+    private async runUnitTests(projectPath: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
         logs.push('Running unit tests...');
 
         const result = await executeTool('shell_execute', {
             command: 'npm test',
             cwd: projectPath
-        });
+        }, ctx);
 
         const passed = result.ok;
 

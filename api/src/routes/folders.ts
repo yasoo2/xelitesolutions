@@ -9,9 +9,10 @@ const router = Router();
 
 // List folders
 router.get('/', authenticate as any, async (req: Request, res: Response) => {
-
   try {
-    const folders = await Folder.find().sort({ createdAt: 1 });
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const folders = await Folder.find({ userId }).sort({ createdAt: 1 });
     res.json(folders);
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch folders' });
@@ -22,7 +23,11 @@ router.get('/', authenticate as any, async (req: Request, res: Response) => {
 router.post('/', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
-    const folder = await Folder.create({ name });
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const folder = await Folder.create({ name, userId });
     res.json(folder);
   } catch (e) {
     res.status(500).json({ error: 'Failed to create folder' });
@@ -33,11 +38,14 @@ router.post('/', authenticate as any, async (req: Request, res: Response) => {
 router.patch('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
-    const folder = await Folder.findByIdAndUpdate(
-      req.params.id,
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const folder = await Folder.findOneAndUpdate(
+      { _id: req.params.id, userId },
       { name },
       { new: true }
     );
+    if (!folder) return res.status(404).json({ error: 'Not found' });
     res.json(folder);
   } catch (e) {
     res.status(500).json({ error: 'Failed to update folder' });
@@ -47,10 +55,15 @@ router.patch('/:id', authenticate as any, async (req: Request, res: Response) =>
 // Delete folder
 router.delete('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
-    // Unset folderId from sessions in this folder
-    await Session.updateMany({ folderId: req.params.id }, { $unset: { folderId: "" } });
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    await Folder.findByIdAndDelete(req.params.id);
+    const folder = await Folder.findOne({ _id: req.params.id, userId }).select('_id').lean();
+    if (!folder) return res.status(404).json({ error: 'Not found' });
+    // Unset folderId from sessions in this folder
+    await Session.updateMany({ folderId: req.params.id, userId }, { $unset: { folderId: "" } });
+
+    await Folder.deleteOne({ _id: req.params.id, userId });
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete folder' });

@@ -1,5 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { planNextStep } from '../llm';
+import { executeTool } from '../services/ToolService';
+import { workspaceService } from '../services/WorkspaceService';
 
 const TOOLS_DIR = path.resolve(__dirname, '../tools/definitions');
 
@@ -41,4 +44,41 @@ function verifyTools() {
     console.log(`✅ Verified ${files.length} tools.`);
 }
 
-verifyTools();
+async function verifyAutoTooling() {
+    console.log('🤖 Verifying Auto planner tool selection...');
+
+    const workspaceId = 'verify_tools';
+    await workspaceService.setActiveRoot(process.cwd(), workspaceId);
+
+    const planLs = await planNextStep([{ role: 'user', content: 'ls' }], { provider: 'auto' });
+    if (!planLs || planLs.name !== 'ls') {
+        console.error('❌ Auto planner did not select ls:', planLs);
+        process.exit(1);
+    }
+
+    const lsResult = await executeTool(planLs.name, planLs.input, { workspaceId });
+    if (!lsResult.ok || !Array.isArray(lsResult.output?.entries)) {
+        console.error('❌ ls tool failed:', lsResult);
+        process.exit(1);
+    }
+
+    const planRead = await planNextStep([{ role: 'user', content: 'read file package.json' }], { provider: 'auto' });
+    if (!planRead || planRead.name !== 'file_read') {
+        console.error('❌ Auto planner did not select file_read:', planRead);
+        process.exit(1);
+    }
+
+    const readResult = await executeTool(planRead.name, planRead.input, { workspaceId });
+    const content = String(readResult.output?.content || '');
+    if (!readResult.ok || !content.includes('"name"') || !content.includes('"api"')) {
+        console.error('❌ file_read tool failed or returned unexpected content:', readResult);
+        process.exit(1);
+    }
+
+    console.log('✅ Auto planner + tool execution verified.');
+}
+
+(async () => {
+    verifyTools();
+    await verifyAutoTooling();
+})();

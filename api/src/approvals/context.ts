@@ -1,4 +1,4 @@
-type PlanCtx = { runId: string; name: string; input: any };
+type PlanCtx = { runId: string; sessionId?: string; workspaceId?: string; name: string; input: any };
 const map = new Map<string, PlanCtx>();
 
 export const planContext = {

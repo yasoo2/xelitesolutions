@@ -10,7 +10,7 @@ export interface AuthPayload {
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   // FALLBACK: Only allow bypass if explicitly check env var, NO HARDCODED TOKENS.
   if (process.env.ENABLE_AUTH_BYPASS === 'true') {
-    (req as any).auth = { sub: 'offline_admin', role: 'OWNER' };
+    (req as any).auth = { sub: '000000000000000000000001', role: 'OWNER' };
     return next();
   }
 
@@ -30,7 +30,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
 export function authenticateOptional(req: Request, res: Response, next: NextFunction) {
   if (process.env.ENABLE_AUTH_BYPASS === 'true') {
-    (req as any).auth = { sub: 'offline_admin', role: 'OWNER' };
+    (req as any).auth = { sub: '000000000000000000000001', role: 'OWNER' };
     return next();
   }
 

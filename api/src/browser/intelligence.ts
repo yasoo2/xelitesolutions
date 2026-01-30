@@ -130,16 +130,25 @@ function extractInteractiveElements(html: string): InteractiveElement[] {
     }
 
     // Extract inputs
-    const inputRegex = /<input[^>]*type="([^"]*)"[^>]*(?:placeholder="([^"]*)")?\s*(?:name="([^"]*)")?[^>]*>/gi;
-    while ((match = inputRegex.exec(html)) !== null) {
-        const type = match[1];
-        const placeholder = match[2] || '';
-        const name = match[3] || '';
+    const attr = (tag: string, key: string) => {
+        const m = tag.match(new RegExp(`${key}\\s*=\\s*"([^"]*)"`, 'i'));
+        return m?.[1];
+    };
+    const inputTagRegex = /<input\b[^>]*>/gi;
+    while ((match = inputTagRegex.exec(html)) !== null) {
+        const tag = match[0];
+        const type = (attr(tag, 'type') || 'text').toLowerCase();
+        const placeholder = attr(tag, 'placeholder') || '';
+        const name = attr(tag, 'name') || '';
+
+        const selectorParts = [`input[type="${type}"]`];
+        if (name) selectorParts.push(`[name="${name}"]`);
+        else if (placeholder) selectorParts.push(`[placeholder="${placeholder}"]`);
 
         elements.push({
             type: 'input',
             label: placeholder || name || type,
-            selector: `input[type="${type}"]${name ? `[name="${name}"]` : ''}`,
+            selector: selectorParts.join(''),
             importance: type === 'submit' ? 0.9 : 0.6
         });
     }
@@ -149,13 +158,14 @@ function extractInteractiveElements(html: string): InteractiveElement[] {
 
 function extractForms(html: string): FormElement[] {
     const forms: FormElement[] = [];
-    const formRegex = /<form[^>]*action="([^"]*)"[^>]*method="([^"]*)"[^>]*>([\s\S]*?)<\/form>/gi;
+    const formRegex = /<form\b([^>]*)>([\s\S]*?)<\/form>/gi;
 
     let match;
     while ((match = formRegex.exec(html)) !== null) {
-        const action = match[1];
-        const method = match[2];
-        const formContent = match[3];
+        const formAttrs = match[1] || '';
+        const formContent = match[2];
+        const action = (formAttrs.match(/\baction\s*=\s*"([^"]*)"/i)?.[1] || '').trim();
+        const method = (formAttrs.match(/\bmethod\s*=\s*"([^"]*)"/i)?.[1] || 'GET').trim();
 
         const fields = extractFormFields(formContent);
 
@@ -171,15 +181,20 @@ function extractForms(html: string): FormElement[] {
 
 function extractFormFields(formHtml: string): FormElement['fields'] {
     const fields: FormElement['fields'] = [];
-    const inputRegex = /<input[^>]*name="([^"]*)"[^>]*type="([^"]*)"[^>]*(?:required)?[^>]*(?:placeholder="([^"]*)")?[^>]*>/gi;
+    const inputRegex = /<input\b[^>]*>/gi;
 
     let match;
     while ((match = inputRegex.exec(formHtml)) !== null) {
+        const tag = match[0];
+        const name = tag.match(/\bname\s*=\s*"([^"]*)"/i)?.[1] || '';
+        const type = (tag.match(/\btype\s*=\s*"([^"]*)"/i)?.[1] || 'text').toLowerCase();
+        const placeholder = tag.match(/\bplaceholder\s*=\s*"([^"]*)"/i)?.[1];
+
         fields.push({
-            name: match[1],
-            type: match[2],
-            required: /required/i.test(match[0]),
-            placeholder: match[3]
+            name,
+            type,
+            required: /\brequired\b/i.test(tag),
+            placeholder
         });
     }
 

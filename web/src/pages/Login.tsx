@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { API_URL as API } from '../config';
+import { API_URL as API, GOOGLE_CLIENT_ID } from '../config';
 import {
     LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2
 } from 'lucide-react';
@@ -22,13 +22,13 @@ export default function Login() {
     const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
     const [health, setHealth] = useState<{ status: string, db: number } | null>(null);
+    const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
 
     // Health Check on mount
     useEffect(() => {
         const check = async () => {
             try {
-                const pureApi = API.replace(/\/api$/, '');
-                const res = await fetch(`${pureApi}/health`);
+                const res = await fetch(`${API}/health`, { cache: 'no-store' });
                 const data = await res.json();
                 setHealth(data);
             } catch (e) {
@@ -38,6 +38,55 @@ export default function Login() {
         check();
     }, []);
 
+    useEffect(() => {
+        let alive = true;
+        const check = async () => {
+            try {
+                const res = await fetch(`${API}/auth/google/config`, { cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                if (!alive) return;
+                setGoogleConfigured(!!(data?.configured && data?.clientId));
+            } catch {
+                if (!alive) return;
+                setGoogleConfigured(null);
+            }
+        };
+        check();
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        const hash = String(window.location.hash || '').replace(/^#/, '');
+        if (!hash) return;
+        const params = new URLSearchParams(hash);
+        const token = String(params.get('token') || '').trim();
+        const err = String(params.get('error') || '').trim();
+
+        if (token) {
+            try {
+                localStorage.setItem('token', token);
+            } catch { }
+            window.location.hash = '';
+            nav('/joe', { replace: true });
+            return;
+        }
+
+        if (err) {
+            const msg =
+                err === 'google_client_id_missing'
+                    ? 'Google OAuth غير مضبوط: client_id مفقود.'
+                    : err === 'google_client_secret_missing'
+                        ? 'Google OAuth غير مضبوط: client_secret مفقود.'
+                        : err === 'access_denied'
+                            ? 'تم إلغاء تسجيل الدخول عبر Google.'
+                            : `Google OAuth error: ${err}`;
+            setError(msg);
+            window.location.hash = '';
+        }
+    }, [nav]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -46,6 +95,11 @@ export default function Login() {
 
         if (!email || !password) {
             setError(t('login_error_missing'));
+            return;
+        }
+
+        if (health?.status && health.status !== 'OK') {
+            setError(t('api_unreachable'));
             return;
         }
 
@@ -71,7 +125,12 @@ export default function Login() {
             localStorage.setItem('token', data.token);
             nav('/joe');
         } catch (err: any) {
-            setError(err.message);
+            const msg = String(err?.message || '');
+            if (/failed to fetch/i.test(msg) || /network/i.test(msg)) {
+                setError(t('api_unreachable'));
+            } else {
+                setError(msg || t('login_error_auth'));
+            }
             setLoading(false);
         }
     };
@@ -245,7 +304,16 @@ export default function Login() {
                 <motion.button
                     whileHover={{ scale: 1.02, backgroundColor: '#f8fafc' }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => window.location.href = `${API}/auth/google`}
+                    onClick={() => {
+                        if (googleConfigured === false) {
+                            setError('Google OAuth غير مضبوط على الخادم.');
+                            return;
+                        }
+                        const u = new URL(`${API}/auth/google`);
+                        u.searchParams.set('returnTo', window.location.origin);
+                        if (GOOGLE_CLIENT_ID) u.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+                        window.location.href = u.toString();
+                    }}
                     style={S.googleBtn}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24">

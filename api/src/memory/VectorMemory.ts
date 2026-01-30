@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const MEMORY_DB_PATH = path.join(process.cwd(), 'data', 'lance_memory');
@@ -21,12 +22,16 @@ export class VectorMemory {
     private openai: OpenAI | null = null;
     private db: any = null;
     private table: any = null;
-    private tableName = 'joe_memory';
+    private tableName: string;
+    private embeddingMode: 'openai' | 'local';
+    private localDims = 256;
 
     constructor() {
         if (OPENAI_API_KEY) {
             this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
         }
+        this.embeddingMode = this.openai ? 'openai' : 'local';
+        this.tableName = this.embeddingMode === 'openai' ? 'joe_memory' : `joe_memory_local_${this.localDims}`;
     }
 
     async init() {
@@ -56,20 +61,45 @@ export class VectorMemory {
     }
 
     async createEmbedding(text: string): Promise<number[]> {
-        if (!this.openai) {
-            throw new Error('[VectorMemory] OpenAI API key not configured. Memory features unavailable.');
+        if (this.openai) {
+            try {
+                const response = await this.openai.embeddings.create({
+                    model: "text-embedding-3-small",
+                    input: text,
+                    encoding_format: "float",
+                });
+                return response.data[0].embedding;
+            } catch (e) {
+                console.error('[VectorMemory] Embedding failed:', e);
+                throw new Error(`Failed to create embedding: ${e instanceof Error ? e.message : 'Unknown error'}`);
+            }
         }
-        try {
-            const response = await this.openai.embeddings.create({
-                model: "text-embedding-3-small",
-                input: text,
-                encoding_format: "float",
-            });
-            return response.data[0].embedding;
-        } catch (e) {
-            console.error('[VectorMemory] Embedding failed:', e);
-            throw new Error(`Failed to create embedding: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        return this.createLocalEmbedding(text);
+    }
+
+    private createLocalEmbedding(text: string): number[] {
+        const dims = this.localDims;
+        const vec = new Array<number>(dims).fill(0);
+        const normalized = String(text || '').normalize('NFKC').toLowerCase();
+        const tokens = normalized
+            .split(/[^\p{L}\p{N}]+/gu)
+            .map(t => t.trim())
+            .filter(t => t.length >= 2)
+            .slice(0, 5000);
+
+        for (const tok of tokens) {
+            const digest = crypto.createHash('sha256').update(tok).digest();
+            const n = digest.readUInt32BE(0);
+            const idx = n % dims;
+            const sign = (n & 1) === 0 ? 1 : -1;
+            vec[idx] += sign;
         }
+
+        let norm = 0;
+        for (const v of vec) norm += v * v;
+        norm = Math.sqrt(norm) || 1;
+        for (let i = 0; i < vec.length; i++) vec[i] = vec[i] / norm;
+        return vec;
     }
 
     async add(id: string, text: string, metadata: Record<string, any> = {}) {

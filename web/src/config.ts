@@ -24,6 +24,10 @@ function inferApiUrl() {
 }
 
 function inferWsUrl(apiUrl: string) {
+  const hostname = window.location.hostname;
+  if (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com') {
+    return 'wss://ws.xelitesolutions.com/ws';
+  }
   if (apiUrl && apiUrl.startsWith('https')) {
     // If it ends in /api, remove it and add /ws
     // Otherwise just swap https->wss and add /ws
@@ -43,6 +47,7 @@ const runtimeConfig: any = (window as any).JOE_CONFIG || {};
 const apiEnvRaw = cleanUrl(runtimeConfig.API_URL || (import.meta as any).env?.VITE_API_URL);
 const wsEnvRaw = cleanUrl(runtimeConfig.WS_URL || (import.meta as any).env?.VITE_WS_URL);
 const chromeFlagRaw = cleanFlag(runtimeConfig.FEATURE_BROWSER_CHROME || (import.meta as any).env?.VITE_FEATURE_BROWSER_CHROME);
+const googleClientIdRaw = cleanUrl(runtimeConfig.GOOGLE_CLIENT_ID || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID);
 
 const hostname = window.location.hostname;
 const isLocalHost =
@@ -60,10 +65,9 @@ const pointsToLocalhost = (u: string) => {
 const apiEnv = !isLocalHost && pointsToLocalhost(apiEnvRaw) ? '' : apiEnvRaw;
 const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')) ? '' : wsEnvRaw;
 
-// ELITE FIX: Force localhost for dev
-const isDev = (import.meta as any).env?.DEV;
-const API_URL = isDev ? 'http://localhost:3000/api' : (apiEnv || inferApiUrl());
-const WS_URL = isDev ? 'ws://localhost:3000/ws' : (wsEnv || inferWsUrl(API_URL));
+const API_URL = apiEnv || inferApiUrl();
+const WS_URL = wsEnv || inferWsUrl(API_URL);
+const GOOGLE_CLIENT_ID = googleClientIdRaw;
 const readQueryChrome = () => {
   try {
     return new URLSearchParams(window.location.search).get('chrome') || '';
@@ -102,4 +106,4 @@ function getBrowserChromeEnabled() {
   );
 }
 
-export { API_URL, WS_URL, FEATURE_BROWSER_CHROME, getBrowserChromeEnabled };
+export { API_URL, WS_URL, FEATURE_BROWSER_CHROME, GOOGLE_CLIENT_ID, getBrowserChromeEnabled };

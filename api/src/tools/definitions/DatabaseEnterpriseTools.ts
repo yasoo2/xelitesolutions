@@ -1,11 +1,8 @@
 
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import fs from 'fs';
-
-const execAsync = promisify(exec);
+import { handleShellCommand } from '../handlers';
 
 export class DbSchemaMigratorTool extends BaseTool {
     name = 'db_schema_migrator';
@@ -29,27 +26,36 @@ export class DbSchemaMigratorTool extends BaseTool {
     async execute(input: any) {
         const engine = input.engine || 'prisma';
         const action = input.action;
-        let cmd = '';
+        let args: string[] = [];
 
         if (engine === 'prisma') {
-            const schemaArg = input.schemaPath ? `--schema=${input.schemaPath}` : '';
+            const schemaPath = input.schemaPath ? String(input.schemaPath) : '';
+            const schemaArg = schemaPath ? [`--schema=${schemaPath}`] : [];
             if (action === 'migrate') {
-                const nameArg = input.name ? `--name ${input.name}` : '';
-                cmd = `npx prisma migrate dev ${nameArg} ${schemaArg}`; // dev for now, deploy for prod
+                const name = input.name ? String(input.name) : '';
+                const nameArgs = name ? ['--name', name] : [];
+                args = ['prisma', 'migrate', 'dev', ...nameArgs, ...schemaArg];
             } else if (action === 'push') {
-                cmd = `npx prisma db push ${schemaArg}`;
+                args = ['prisma', 'db', 'push', ...schemaArg];
             } else if (action === 'reset') {
-                cmd = `npx prisma migrate reset --force ${schemaArg}`;
+                args = ['prisma', 'migrate', 'reset', '--force', ...schemaArg];
             } else if (action === 'status') {
-                cmd = `npx prisma migrate status ${schemaArg}`;
+                args = ['prisma', 'migrate', 'status', ...schemaArg];
             }
         } else {
             return { ok: false, error: `Engine ${engine} not yet implemented`, logs: [] };
         }
 
+        if (!args.length) {
+            return { ok: false, error: 'Unsupported action', logs: [] };
+        }
+
         try {
-            const { stdout, stderr } = await execAsync(cmd);
-            return { ok: true, output: { output: stdout + stderr }, logs: [`db_migrator ${engine} ${action} success`] };
+            const r = await handleShellCommand('npx', args, process.cwd(), 600000, false);
+            if (!r.ok) {
+                return { ok: false, error: `Migration failed: ${r.error}`, logs: [] };
+            }
+            return { ok: true, output: { output: String(r.output || '') }, logs: [`db_migrator ${engine} ${action} success`] };
         } catch (e: any) {
             return { ok: false, error: `Migration failed: ${e.message}`, logs: [] };
         }

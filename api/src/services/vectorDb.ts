@@ -24,6 +24,24 @@ export class VectorDbService {
         this.load();
     }
 
+    private normalizeForSearch(text: string): string {
+        let t = (text || '').normalize('NFKC').toLowerCase();
+
+        t = t
+            .replace(/[\u0640]/g, '')
+            .replace(/[\u064B-\u065F\u0670]/g, '')
+            .replace(/[أإآٱ]/g, 'ا')
+            .replace(/ؤ/g, 'و')
+            .replace(/ئ/g, 'ي')
+            .replace(/ى/g, 'ي');
+
+        return t;
+    }
+
+    private minTokenLength(token: string): number {
+        return /^[a-z0-9_]+$/i.test(token) ? 3 : 2;
+    }
+
     private load() {
         const file = path.join(this.storagePath, 'index.json');
         if (fs.existsSync(file)) {
@@ -50,10 +68,15 @@ export class VectorDbService {
     }
 
     private tokenize(text: string): Set<string> {
-        const normalized = text.toLowerCase()
-            .replace(/[^a-z0-9_]+/g, ' ')
+        const normalized = this.normalizeForSearch(text)
+            .replace(/[^\p{L}\p{N}_]+/gu, ' ')
             .trim();
-        const words = normalized.split(/\s+/).filter(w => w.length > 2);
+
+        const words = normalized
+            .split(/\s+/)
+            .filter(Boolean)
+            .filter(w => w.length >= this.minTokenLength(w));
+
         return new Set(words);
     }
 

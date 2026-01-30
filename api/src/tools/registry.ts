@@ -39,7 +39,7 @@ import { GoBuilderTool } from './definitions/GoBuilderTool';
 // New Modular Tools
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
 import { TaskLoopTool } from './definitions/TaskLoopTool';
-import { EchoTool, FileEditTool, GrepSearchTool, NpmManagerTool, ScaffoldProjectTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
+import { EchoTool, FileEditTool, GrepSearchTool, LsTool, NpmManagerTool, ScaffoldProjectTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
 import { AnalyzeProjectTool, AnalyzeCodebaseTool } from './definitions/AnalysisTools';
 import { HttpFetchTool, HtmlExtractTool, RssFetchTool, JsonQueryTool } from './definitions/ContentTools';
 import { KnowledgeSearchTool, KnowledgeAddTool } from './definitions/KnowledgeTools';
@@ -59,7 +59,6 @@ import { BrowserVisionTool } from './definitions/BrowserVisionTool';
 import { BrowserActionTool } from './definitions/BrowserActionTool';
 import { PaymentsTool } from './definitions/PaymentsTool';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
-import { AutoTrainerTool } from './definitions/AutoTrainerTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -106,6 +105,7 @@ export const tools: ToolDefinition[] = [
   new ShellExecuteTool(),
   new FileEditTool(),
   new WriteFileTool(),
+  new LsTool(),
   new GrepSearchTool(),
   new NpmManagerTool(),
   new ScaffoldProjectTool(),
@@ -194,5 +194,4 @@ export const tools: ToolDefinition[] = [
   // --- Screenshot & Visual QA ---
   new ScreenshotTool(),
   new VisualComparisonTool(),
-  new AutoTrainerTool(),
 ];

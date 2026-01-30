@@ -311,7 +311,7 @@ You represent the **10-Floor Elite Intelligence System** (upgrade completed Janu
 ## CORE PHILOSOPHY & PERSONALITY:
 1.  **XElite Solutions Brand**: You are **Joe**, the lead autonomous engineer for **XElite Solutions**. You represent the pinnacle of engineering excellence. Your identity is inseparable from the brand.
 2.  **Elite Intelligence**: You don't just answer; you engineer solutions. You anticipate needs, analyze architecture, and deliver extreme value. You are confident but professional.
-3.  **No Robotic Fluff**: Avoid generic phrases like "As an AI..." or "How can I help you today?". Instead, be direct, technical, and high-end. Use terms like "Engineering Atlas", "Neural Engine", "Sub-second reflex".
+3.  **No Robotic Fluff**: Avoid generic phrases like "As an AI..." or "How can I help you today?". Instead, be direct, technical, and high-end. Use terms like "Engineering Atlas", "Reasoning Engine", "Sub-second reflex".
 4.  **Factual Accuracy**: You are rigorous. You NEVER hallucinate. If unsure, offer to research using your superior tools.
 5.  **Adaptive Intelligence**: Simple queries get sub-second, concise reflexes. Complex tasks get deep architectural analysis.
 
@@ -399,26 +399,7 @@ Before *every* action, perform a rapid internal cognitive cycle:
 
 You are not a chatbot. You are an engine of creation. Act like one.`;
 
-export const NEURAL_THOUGHT_PROTOCOL = `
-- You possess a **Neural Thought Engine** that allows you to analyze architecture and intent before responding.
-- **MANDATORY**: For every response, you MUST start with an internal thought block.
-- **Format**:
-  \`\`\`text
-  :::thought
-  **FOCUS**: [Concise goal, e.g., Identifying intent, Architecting solution]
-  Step-by-step internal reasoning...
-  :::
-  \`\`\`
-- Use this space to plan your superior approach.
-- This thought block MUST come **before** your actual response.
-`;
-
-export const applyNeuralProtocol = (prompt: string) => {
-  if (prompt.includes('NEURAL THOUGHT PROTOCOL')) return prompt;
-  return prompt + '\\n\\n## NEURAL THOUGHT PROTOCOL (INTERNAL):\\n' + NEURAL_THOUGHT_PROTOCOL;
-};
-
-export const getSystemPrompt = (user?: { name?: string }) => {
+export const getSystemPrompt = (user?: { name?: string; systemInstructions?: string }) => {
   const now = new Date();
   const date = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
@@ -427,7 +408,10 @@ export const getSystemPrompt = (user?: { name?: string }) => {
   if (user?.name) {
     systemPromptOutput += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
   }
-  return applyNeuralProtocol(systemPromptOutput);
+  if (user?.systemInstructions && user.systemInstructions.trim()) {
+    systemPromptOutput += `\n\nUSER CUSTOM INSTRUCTIONS:\n${user.systemInstructions.trim()}`;
+  }
+  return systemPromptOutput;
 };
 
 
@@ -436,6 +420,7 @@ export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 
 import { pollinationsProvider, openRouterProvider, huggingfaceProvider } from './llm/providers/registry';
+import { LLMCacheTool } from './tools/definitions/LLMCacheTool';
 
 // Export for use in intelligent-router
 export { pollinationsProvider, openRouterProvider, huggingfaceProvider };
@@ -464,7 +449,8 @@ export function getActiveProvider(userId: string): string {
 }
 
 export async function callLLM(prompt: string, context: any[] = [], userId?: string): Promise<string> {
-  const currentProvider = userId ? getActiveProvider(userId) : 'openai';
+  const resolvedUserId = userId || 'anonymous';
+  const currentProvider = getActiveProvider(resolvedUserId);
 
   // Determine configuration for Official Providers (OpenAI / Gemini)
   let forcedBaseUrl = process.env.OPENAI_BASE_URL;
@@ -475,12 +461,6 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
     forcedModel = 'gemini-1.5-flash';
   }
 
-  const key = userId ? getApiKeyForUser(userId) : (apiKey || '');
-
-  if (!String(key).trim()) {
-    throw new Error('NO_API_KEY_CONFIGURED');
-  }
-
   const msgs = [
     { role: 'system', content: getSystemPrompt({ name: userId ? 'Younis' : undefined }) },
     ...context,
@@ -488,6 +468,35 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
   try {
+    const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+    const modelForCache = forcedModel || process.env.OPENAI_MODEL || 'gpt-4o';
+    const cacheText = msgs
+      .map(m => (typeof (m as any)?.content === 'string' ? String((m as any).content) : JSON.stringify((m as any)?.content || '')))
+      .join('\n');
+    const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
+    const cacheKeyPayload = `${resolvedUserId}::${JSON.stringify({
+      provider: currentProvider,
+      forcedBaseUrl,
+      forcedModel,
+      messages: msgs
+    })}`;
+
+    if (!cacheDisabled && !hasSensitive) {
+      const cached = await LLMCacheTool.checkCache(cacheKeyPayload, modelForCache);
+      if (cached) return cached;
+    }
+
+    const key = userId ? getApiKeyForUser(userId) : (apiKey || '');
+    const hasKey = Boolean(String(key).trim());
+
+    if (currentProvider === 'auto' || !hasKey) {
+      const response = await routeToModel(msgs);
+      if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
+        await LLMCacheTool.saveToCache(cacheKeyPayload, response, modelForCache);
+      }
+      return response || '';
+    }
+
     // If we have a specific user key, use a new client instance, otherwise use default
     let client = openai;
 
@@ -507,7 +516,11 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
       model: forcedModel || process.env.OPENAI_MODEL || 'gpt-4o',
       messages: msgs,
     });
-    return completion.choices[0]?.message?.content || '';
+    const response = completion.choices[0]?.message?.content || '';
+    if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
+      await LLMCacheTool.saveToCache(cacheKeyPayload, response, modelForCache);
+    }
+    return response;
   } catch (e: any) {
     throw new Error(`LLM call failed: ${e.message}`);
   }
@@ -517,20 +530,21 @@ export async function callLLM(prompt: string, context: any[] = [], userId?: stri
 export async function planNextStep(
   messages: { role: 'user' | 'assistant' | 'system', content: string | any[] }[],
   options?: PlanOptions
-): Promise<{ name: string; input: any; thought?: string | null } | null> {
+): Promise<{ name: string; input: any } | null> {
   const provider = options?.provider || getActiveProvider(options?.userId || 'anonymous');
   const providerKey = String(provider || '').trim().toLowerCase();
   console.info(`[LLM] planNextStep entry - Provider: ${provider}, Resolved Key: ${providerKey}`);
 
   const onProgress = options?.onProgress;
-  onProgress?.('📚 استرجاع المعرفة من طوابق الهندسة الـ 10... (RAG Scan)');
+  onProgress?.('تحليل الطلب…');
+  onProgress?.('تجميع سياق سريع…');
 
   const optimization = await freeIntelligenceOptimizer.optimizeRequest(
     typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
     messages
   );
 
-  onProgress?.('🧩 ربط الطلب بالمعمارية المناسبة... (Pattern Matching)');
+  onProgress?.('مطابقة الأنماط وتحديد المسار…');
 
   const analysis = (optimization as any).analysis || ((optimization as any).skipPlanner ? { type: 'chat', complexity: 'simple', language: 'ar' } : await advancedAnalyzeTask(
     typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),
@@ -539,6 +553,7 @@ export async function planNextStep(
   ));
 
   if ((optimization as any).skipPlanner) {
+    onProgress?.('صياغة رد مباشر…');
     const ragContext = (optimization as any).cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${(optimization as any).cachedResponse}` : '';
     console.info('[Auto Enterprise] ⚡ Optimizer: Skipping heavy planner for simple conversational query.');
     const msgs = [
@@ -570,6 +585,7 @@ export async function planNextStep(
   // OpenRouter Provider
   if (providerKey.includes('openrouter')) {
     console.info('[LLM] Planning with OpenRouter Provider');
+    onProgress?.('الاتصال بالمزوّد…');
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
@@ -594,6 +610,7 @@ export async function planNextStep(
   // HuggingFace Provider
   if (providerKey === 'huggingface' || providerKey === 'hf') {
     console.info('[LLM] Planning with HuggingFace Provider');
+    onProgress?.('الاتصال بالمزوّد…');
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : '';
@@ -618,6 +635,7 @@ export async function planNextStep(
   // Auto Mode - Enterprise Intelligence (Multi-Model Router + Context + Memory)
   if (providerKey.includes('auto')) {
     console.info('[LLM] 🚀 Auto Mode Enterprise - Full System Activated');
+    onProgress?.('تشغيل طبقات الذكاء…');
 
     const lastMsg = messages[messages.length - 1];
     const role = (lastMsg?.role as string) || '';
@@ -665,6 +683,7 @@ export async function planNextStep(
     const userId = options?.userId || 'anonymous';
     const sessionId = options?.sessionId || 'session_' + Date.now();
     const context = buildConversationContext(userId, sessionId, messages as any[]);
+    onProgress?.('تحديث ذاكرة المحادثة…');
 
     // 3. Learn from conversation (async, don't block)
     longTermMemory.learnFromConversation(userId, messages as any[]).catch(console.error);
@@ -672,11 +691,13 @@ export async function planNextStep(
     // 4. Analyze contextual intent
     const intent = analyzeContextualIntent(userText, context);
     console.info(`[Enterprise] Intent: ${intent.primary} (${(intent.confidence * 100).toFixed(0)}%)`);
+    onProgress?.('مطابقة الأنماط داخل السياق…');
 
     // 5. Check for context-aware patterns
     const contextMatch = matchPatternWithContext(userText, context);
     if (contextMatch.matched && contextMatch.confidence > 0.7) {
       console.info(`[Enterprise] Context Match: ${contextMatch.action} - executing directly`);
+      onProgress?.('اختيار أداة مباشرة…');
       return { name: contextMatch.action!, input: contextMatch.params };
     }
 
@@ -691,6 +712,7 @@ export async function planNextStep(
     if (smartResponse) {
       console.info('[FREE OPTIMIZER] ✅ 🚀 INSTANT SMART RESPONSE MATCHED! No API call needed!');
       console.info(`[FREE OPTIMIZER] Response preview: "${smartResponse.substring(0, 80)}..."`);
+      onProgress?.('إنتاج رد فوري…');
       return { name: 'echo', input: { text: smartResponse } };
     }
     console.info('[FREE OPTIMIZER] ❌ No instant pattern match - proceeding with API call');
@@ -699,9 +721,11 @@ export async function planNextStep(
     const optimization = await freeIntelligenceOptimizer.optimizeRequest(userText, context);
     if (optimization.shouldUseCache && optimization.cachedResponse) {
       console.info('[FREE OPTIMIZER] ✅ 💾 CACHE HIT! Returning cached response');
+      onProgress?.('استرجاع إجابة مخزنة…');
       return { name: 'echo', input: { text: optimization.cachedResponse } };
     }
     console.info(`[FREE OPTIMIZER] 🎯 Model selected: ${optimization.suggestedModel}`);
+    onProgress?.('اختيار أفضل مسار…');
 
     // Context from RAG to be injected into the LLM later if needed
     const ragContext = optimization.cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${optimization.cachedResponse}` : '';
@@ -824,9 +848,20 @@ export async function planNextStep(
         };
       }
 
+      const largeBuildPatterns = /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|app|backend|api|service|microservice|dashboard|portal|saas|نظام|منصة|تطبيق|خدمة|ميكروسيرفس)/i;
+      const explicitLargeScale = /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
+
+      const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
+      if (!isBuildingWebsite && (analysis.type === 'code_generation' || codePatterns.test(userText)) && (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText))) {
+        console.info('[Auto Enterprise] → Large Build Detected: Genesis Build');
+        return {
+          name: 'genesis_build',
+          input: { goal: userText }
+        };
+      }
+
       // 4. Code generation (let the intelligent model handle it via echo)
       if (codePatterns.test(userText) && analysis.type === 'code_generation') {
-        const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
         if (isBuildingWebsite) {
           console.info('[Auto Enterprise] → Detected Website Build Request - using Pipeline');
           return {
@@ -862,7 +897,29 @@ export async function planNextStep(
       // [TURBO] Groq Direct Path
       if (selectedModel.name.includes('Groq') && GROQ_AVAILABLE) {
         try {
-          response = await groq.chatComplete(msgs, selectedModel.model);
+          const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+          const cacheKeyPayload = JSON.stringify({
+            messages: msgs,
+            analysis,
+            selectedModel: selectedModel.model,
+            route: 'groq_direct'
+          });
+          const cacheText = msgs
+            .map(m => (typeof (m as any)?.content === 'string' ? (m as any).content : JSON.stringify((m as any)?.content || '')))
+            .join('\n');
+          const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
+
+          if (!cacheDisabled && !hasSensitive) {
+            const cached = await LLMCacheTool.checkCache(cacheKeyPayload, selectedModel.model);
+            if (cached) response = cached;
+          }
+
+          if (!response) {
+            response = await groq.chatComplete(msgs, selectedModel.model);
+            if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
+              await LLMCacheTool.saveToCache(cacheKeyPayload, response, selectedModel.model);
+            }
+          }
         } catch (e) {
           console.error('[Groq] Failed, falling back to router:', e);
         }
@@ -900,7 +957,9 @@ export async function planNextStep(
 
   if (!shouldMock) {
     if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
-    if (!optKey) throw new Error('NO_API_KEY_CONFIGURED');
+    if (!optKey) {
+      return await planNextStep(messages, { ...options, provider: 'auto' });
+    }
   }
 
   // Determine client to use
@@ -1393,10 +1452,16 @@ export async function planNextStep(
 export async function generateSessionTitle(messages: { role: string; content: string }[]) {
   if (!messages || messages.length === 0) return 'New Session';
 
+  const blob = messages.map(m => String(m.content || '')).join(' ');
+  const hasArabic = /[\u0600-\u06FF]/.test(blob);
+  const systemContent = hasArabic
+    ? 'أنت محرك ذكاء XElite. أنشئ عنوانًا قصيرًا وواضحًا وأنيقًا (بحد أقصى 6 كلمات) لهذه الجلسة باللغة العربية فقط.'
+    : 'You are the XElite Intelligence Engine. Generate a short, concise, and elite title (max 6 words) for this session in English only.';
+
   const msgs = [
     {
       role: 'system',
-      content: 'You are the XElite Intelligence Engine. Generate a short, concise, and elite title (max 6 words) for this session.'
+      content: systemContent
     },
     ...messages.slice(0, 5).map(m => ({ role: 'user', content: String(m.content).slice(0, 500) }))
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];

@@ -22,7 +22,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - MONGO_URI=mongodb://joe_mongo:27017/joe
-      - BROWSER_WS_ENDPOINT=ws://joe_browser_worker:7070
+      - BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
     env_file:
       - .env
     healthcheck:
@@ -107,7 +107,6 @@ services:
 
   certbot:
     image: certbot/certbot
-    container_name: joe_certbot
     volumes:
       - /opt/joe/certbot/conf:/etc/letsencrypt
       - /opt/joe/certbot/www:/var/www/certbot

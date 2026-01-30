@@ -2,7 +2,7 @@ const http = require('http');
 
 const options = {
     host: '127.0.0.1',
-    port: 3000,
+    port: Number(process.env.PORT) || 3000,
     path: '/health',
     timeout: 2000
 };

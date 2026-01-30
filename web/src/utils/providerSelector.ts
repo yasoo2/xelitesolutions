@@ -104,10 +104,9 @@ export function selectAutoProvider(
 ): string {
     const analysis = analyzeComplexity(message);
 
-    // Simple tasks: Use OpenRouter free or OpenAI
+    // Simple tasks: Prefer OpenRouter free, otherwise use Auto
     if (analysis.level === 'simple') {
         if (availableProviders.openrouter) return 'openrouter';
-        if (availableProviders.openai) return 'openai';
         return 'auto';
     }
 
@@ -118,18 +117,8 @@ export function selectAutoProvider(
         }
     }
 
-    // Complex tasks: Use best available paid provider
+    // Complex tasks: Stay on free providers (OpenRouter free or Auto)
     if (analysis.level === 'complex') {
-        if (availableProviders.openrouter && availableProviders.openrouterHasKey) {
-            return 'openrouter'; // Will use premium model
-        }
-        if (availableProviders.anthropic) {
-            return 'anthropic';
-        }
-        if (availableProviders.openai) {
-            return 'openai';
-        }
-        // Fallback to OpenRouter free
         if (availableProviders.openrouter) {
             return 'openrouter';
         }

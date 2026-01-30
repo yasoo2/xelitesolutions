@@ -7,13 +7,14 @@ import { useEffect } from 'react';
 export default function App() {
   const location = useLocation();
   const nav = useNavigate();
-  const isLogin = location.pathname === '/login';
 
   useEffect(() => {
     const onUnauthorized = () => {
-      localStorage.removeItem('token');
+      try {
+        localStorage.removeItem('token');
+      } catch { }
       if (location.pathname !== '/login') {
-        nav('/login');
+        nav('/login', { replace: true });
       }
     };
     window.addEventListener('auth:unauthorized', onUnauthorized as any);

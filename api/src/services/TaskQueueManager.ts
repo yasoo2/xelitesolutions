@@ -1,4 +1,4 @@
-import { OpenAI } from 'openai';
+import { routeToModel } from '../llm/intelligent-router';
 
 interface QueuedTask {
     id: string;
@@ -19,14 +19,7 @@ interface ContextAnalysis {
 class TaskQueueManager {
     private queue: Map<string, QueuedTask[]> = new Map(); // sessionId -> tasks
     private currentTasks: Map<string, string> = new Map(); // sessionId -> current task description
-    private openai: OpenAI;
-
-    constructor() {
-        const envKey = typeof process.env.OPENAI_API_KEY === 'string' ? process.env.OPENAI_API_KEY.trim() : '';
-        this.openai = new OpenAI({
-            apiKey: envKey || 'sk-local-dev',
-        });
-    }
+    constructor() { }
 
     /**
      * Analyze if a new message is a correction/clarification or a new task
@@ -83,19 +76,19 @@ Guidelines:
   * Asks about unrelated functionality
   * Requests a new feature unrelated to current work`;
 
-            const response = await this.openai.chat.completions.create({
-                model: 'gpt-4o-mini',
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3,
-                max_tokens: 200,
-            });
-
-            const content = response.choices[0]?.message?.content;
+            const content = await routeToModel([
+                {
+                    role: 'system',
+                    content: 'Return ONLY valid JSON: {"isCorrection":boolean,"confidence":number,"reason":"string"}'
+                },
+                { role: 'user', content: prompt }
+            ]);
             if (!content) {
                 throw new Error('No response from LLM');
             }
 
-            const analysis = JSON.parse(content);
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            const analysis = JSON.parse(jsonMatch ? jsonMatch[0] : content);
 
             // Boost confidence if correction keywords are present
             if (hasCorrectionKeyword && analysis.isCorrection) {

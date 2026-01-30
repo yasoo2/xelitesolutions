@@ -44,21 +44,21 @@ export default function AgentCentralPanel({
             <div className="w-full h-full relative">
                 {/* Browser Layer */}
                 <div className={`absolute inset-0 z-10 transition-opacity duration-300 ${activeTab === 'browser' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-                    <div className="w-full h-full bg-slate-900">
+                    <div className="w-full h-full" style={{ background: 'var(--bg-dark)' }}>
                         {browserSessionId ? (
                             <Suspense fallback={
-                                <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400">
+                                <div className="flex flex-col items-center justify-center h-full gap-4" style={{ color: 'var(--text-secondary)' }}>
                                     <div className="relative">
-                                        <Loader size={32} className="animate-spin text-blue-500" />
+                                        <Loader size={32} className="animate-spin" style={{ color: 'var(--accent-primary)' }} />
                                         <Globe size={16} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                                     </div>
-                                    <span className="text-sm font-medium animate-pulse">Initializing Neural Link to Browser...</span>
+                                    <span className="text-sm font-semibold animate-pulse">Initializing browser stream...</span>
                                 </div>
                             }>
                                 <ModernBrowserStream sessionId={browserSessionId} showBoxes={showBoxes} />
                             </Suspense>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
+                            <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ color: 'var(--text-secondary)' }}>
                                 <Box size={48} className="mb-4 opacity-20" />
                                 <p className="max-w-xs text-sm font-medium">سيتم تشغيل المتصفح المتطور تلقائياً عند بدء مهمة تتطلب استكشاف الويب.</p>
                             </div>
@@ -68,8 +68,8 @@ export default function AgentCentralPanel({
 
                 {/* Terminal Layer */}
                 <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${activeTab === 'terminal' ? 'opacity-100 pointer-events-auto z-20' : 'opacity-0 pointer-events-none'}`}>
-                    <div className="w-full h-full bg-[#0f172a]">
-                        <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader className="animate-spin text-purple-500" /></div>}>
+                    <div className="w-full h-full" style={{ background: 'var(--bg-dark)' }}>
+                        <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader className="animate-spin" style={{ color: 'var(--accent-primary)' }} /></div>}>
                             <EnterpriseTerminalPanel isEmbedded={true} />
                         </Suspense>
                     </div>
@@ -79,36 +79,44 @@ export default function AgentCentralPanel({
     };
 
     return (
-        <div className="flex flex-col w-full h-full bg-slate-950 overflow-hidden relative">
+        <div className="flex flex-col w-full h-full overflow-hidden relative" style={{ background: 'var(--bg-card)' }}>
             {/* Elite Tab Navigation (Overlay Style) */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center p-1.5 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
+            <div
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center p-1.5 rounded-2xl"
+                style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    boxShadow: 'var(--shadow-md)',
+                    backdropFilter: 'blur(12px)',
+                }}
+            >
                 <div className="flex gap-1">
                     {tabs.map((tab) => {
                         const isActive = activeTab === tab.id;
-                        // Dynamic colors: Gold for dark mode, Blue for light mode
-                        const activeBg = 'linear-gradient(135deg, #F0B90B 0%, #FFD700 100%)';
-                        const activeBgLight = 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)';
+                        const activeBg = 'linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.95) 0%, rgba(var(--accent-primary-rgb), 0.72) 100%)';
 
                         return (
                             <button
                                 key={tab.id}
                                 onClick={() => onTabChange(tab.id as TabType)}
-                                className={`flex items-center gap-3 px-6 py-2.5 rounded-xl text-sm font-black transition-all relative group ${isActive
-                                        ? 'text-slate-950 shadow-[0_0_30px_rgba(240,185,11,0.6)]'
-                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                                    }`}
+                                className="flex items-center gap-3 px-6 py-2.5 rounded-xl text-sm font-black transition-all relative group"
                                 style={isActive ? {
                                     background: activeBg,
-                                } : {}}
+                                    color: 'rgba(0, 0, 0, 0.9)',
+                                    boxShadow: '0 0 24px var(--accent-glow)',
+                                } : {
+                                    color: 'var(--text-secondary)',
+                                }}
                             >
-                                <tab.icon size={18} className={isActive ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-300'} />
+                                <tab.icon size={18} style={{ color: isActive ? 'rgba(0, 0, 0, 0.9)' : 'var(--text-muted)' }} />
                                 <span className="uppercase tracking-widest">{tab.label}</span>
                                 {isActive && (
                                     <motion.div
                                         layoutId="eliteTabGlow"
-                                        className="absolute inset-0 rounded-xl bg-white/10"
+                                        className="absolute inset-0 rounded-xl"
                                         initial={false}
                                         transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                        style={{ background: 'rgba(255,255,255,0.10)' }}
                                     />
                                 )}
                             </button>
@@ -118,7 +126,7 @@ export default function AgentCentralPanel({
             </div>
 
             {/* Content Area (Forced Full Height/Width) */}
-            <div className="flex-1 relative overflow-hidden bg-black">
+            <div className="flex-1 relative overflow-hidden" style={{ background: 'var(--bg-dark)' }}>
                 {renderContent()}
             </div>
         </div>

@@ -24,7 +24,7 @@ export const getSystemStats = async () => {
     try {
         const health = await api.get('/health');
         const tools = await api.get('/tools');
-        const runs = await api.get('/runs?limit=1'); // Just to check if endpoint works
+        await api.get('/runs?limit=1'); // Just to check if endpoint works
 
         return {
             status: health.data.status,
@@ -55,14 +55,4 @@ export const getKnowledge = async () => {
 
 export const deleteKnowledge = async (id: string) => {
     await api.delete(`/knowledge/${id}`);
-};
-
-export const getBrainStats = async () => {
-    const res = await api.get('/system/brain/stats');
-    return res.data;
-};
-
-export const toggleBrainTraining = async () => {
-    const res = await api.post('/system/brain/toggle');
-    return res.data;
 };

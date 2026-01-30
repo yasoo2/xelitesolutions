@@ -13,6 +13,8 @@ export class TaskLoopTool extends BaseTool {
         type: 'object' as const,
         properties: {
             goal: { type: 'string' },
+            sessionId: { type: 'string' },
+            workspaceId: { type: 'string' },
             steps: {
                 type: 'array',
                 items: {
@@ -48,6 +50,13 @@ export class TaskLoopTool extends BaseTool {
         const steps = Array.isArray(input.tasks) ? input.tasks : (input.steps || []);
         const results: any[] = [];
         let success = true;
+        const sessionId = typeof input?.sessionId === 'string' && input.sessionId.trim() ? input.sessionId.trim() : undefined;
+        const workspaceId =
+            typeof input?.workspaceId === 'string' && input.workspaceId.trim()
+                ? input.workspaceId.trim()
+                : typeof input?.__workspaceId === 'string' && input.__workspaceId.trim()
+                    ? input.__workspaceId.trim()
+                    : undefined;
 
         logs.push(`Starting TaskLoop for: ${input.goal || 'unspecified'} (${steps.length} steps)`);
 
@@ -57,14 +66,14 @@ export class TaskLoopTool extends BaseTool {
 
             try {
                 // Execute the tool via Registry Dispatcher
-                const result = await executeTool(step.tool, step.args || {});
+                const result = await executeTool(step.tool, step.args || {}, { sessionId, workspaceId });
                 results.push({ step: i, tool: step.tool, ok: result.ok, output: result.output, error: result.error });
 
                 if (!result.ok) {
                     logs.push(`Step failed: ${result.error}`);
                     // Simple self-correction: retry once
                     logs.push('Retrying step...');
-                    const retry = await executeTool(step.tool, step.args || {});
+                    const retry = await executeTool(step.tool, step.args || {}, { sessionId, workspaceId });
                     results[i] = { step: i, tool: step.tool, ok: retry.ok, output: retry.output, error: retry.error, retried: true };
 
                     if (!retry.ok) {
