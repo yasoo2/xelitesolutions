@@ -1,17 +1,53 @@
 
 import { Router, Request, Response } from 'express';
-import { exec } from 'child_process';
-import util from 'util';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
-const execAsync = util.promisify(exec);
 
 // Helper to find root
 function findWorkspaceRoot() {
     return process.env.WORKSPACE_ROOT || process.cwd();
+}
+
+function isValidNpmPackageName(name: string) {
+    const s = String(name || '').trim();
+    if (!s || s.length > 214) return false;
+    const re = /^(?:@[a-z0-9][a-z0-9-._~]*\/)?[a-z0-9][a-z0-9-._~]*$/;
+    return re.test(s);
+}
+
+function spawnWithTimeout(cmd: string, args: string[], cwd: string, timeoutMs: number) {
+    return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+        const child = spawn(cmd, args, { cwd, shell: false });
+        let stdout = '';
+        let stderr = '';
+        let done = false;
+
+        const timer = setTimeout(() => {
+            if (done) return;
+            done = true;
+            try { child.kill('SIGKILL'); } catch { }
+            resolve({ code: 124, stdout, stderr: stderr || 'timeout' });
+        }, Math.max(1, timeoutMs));
+
+        child.stdout.on('data', (d) => { stdout += d.toString(); });
+        child.stderr.on('data', (d) => { stderr += d.toString(); });
+        child.on('close', (code) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr });
+        });
+        child.on('error', (e: any) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({ code: 1, stdout, stderr: String(e?.message || e || 'spawn_failed') });
+        });
+    });
 }
 
 // GET /packages - List installed packages
@@ -43,14 +79,25 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
     try {
         const q = String(req.query.q || '').trim();
         if (!q) return res.json({ results: [] });
+        if (q.startsWith('-') || q.length > 100) return res.json({ results: [] });
 
         // Use npm search --json
         // Note: npm search can be slow. We might want to set a timeout.
-        const { stdout } = await execAsync(`npm search "${q.replace(/"/g, '\\"')}" --json`, { timeout: 10000 });
-        const results = JSON.parse(stdout);
+        const root = findWorkspaceRoot();
+        const r = await spawnWithTimeout('npm', ['search', q, '--json'], root, 10000);
+        const raw = (r.stdout || '').trim();
+        const parsed = (() => {
+            try { return JSON.parse(raw); } catch { }
+            const start = raw.indexOf('[');
+            const end = raw.lastIndexOf(']');
+            if (start >= 0 && end > start) {
+                try { return JSON.parse(raw.slice(start, end + 1)); } catch { }
+            }
+            return [];
+        })();
 
         // Normalize results
-        const normalized = Array.isArray(results) ? results.map((p: any) => ({
+        const normalized = Array.isArray(parsed) ? parsed.map((p: any) => ({
             name: p.name,
             version: p.version,
             description: p.description,
@@ -74,14 +121,13 @@ router.post('/', authenticate as any, async (req: Request, res: Response) => {
         if (!pkgName) return res.status(400).json({ error: 'Package name required' });
 
         const root = findWorkspaceRoot();
-        let cmd = '';
+        const name = String(pkgName || '').trim();
+        if (!isValidNpmPackageName(name)) return res.status(400).json({ error: 'Invalid package name' });
 
-        if (action === 'uninstall') {
-            cmd = `npm uninstall ${pkgName}`;
-        } else {
-            // Install
-            cmd = `npm install ${pkgName} ${dev ? '--save-dev' : ''}`;
-        }
+        const args =
+            action === 'uninstall'
+                ? ['uninstall', name]
+                : ['install', name, ...(dev ? ['--save-dev'] : [])];
 
         // We run this async and don't wait for full completion to avoid timeout? 
         // Or we wait. npm install can take time.
@@ -95,9 +141,10 @@ router.post('/', authenticate as any, async (req: Request, res: Response) => {
             // We'll leave auto-types to the Agent Tool or user.
         }
 
-        const { stdout, stderr } = await execAsync(cmd, { cwd: root });
+        const r = await spawnWithTimeout('npm', args, root, 5 * 60_000);
+        if (r.code !== 0) return res.status(500).json({ error: (r.stderr || 'Command failed').slice(0, 2000) });
 
-        res.json({ success: true, output: stdout });
+        res.json({ success: true, output: r.stdout });
     } catch (e: any) {
         res.status(500).json({ error: e.message || 'Command failed' });
     }

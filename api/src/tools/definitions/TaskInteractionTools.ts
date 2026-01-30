@@ -3,7 +3,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
-import { broadcast } from '../../ws';
+import { broadcast, registerTerminalOwner } from '../../ws';
 // Store for persistent terminals
 export const terminals = new Map<string, { pty: any, history: string[] }>();
 
@@ -86,6 +86,8 @@ export class TerminalManagerTool extends BaseTool {
 
                 const term = { pty: ptyProcess, history: [] as string[] };
                 terminals.set(id, term);
+                const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
+                if (userId) registerTerminalOwner(id, userId);
 
                 ptyProcess.onData((data: string) => {
                     term.history.push(data);

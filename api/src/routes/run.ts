@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
-import { broadcast, LiveEvent } from '../ws';
+import { broadcast, LiveEvent, registerRunOwner, registerSessionOwner } from '../ws';
 import { executeTool } from '../services/ToolService';
 import { store } from '../mock/store';
 import { ToolExecution } from '../models/toolExecution';
@@ -1368,6 +1368,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
     })();
   }
+
+  try {
+    if (userId && runId) {
+      registerRunOwner(runId, String(userId));
+      registerSessionOwner(String(sessionId), String(userId));
+    }
+  } catch { }
 
   try {
     broadcast({ type: 'user_input', runId, data: { sessionId, text: String(text || '') } });

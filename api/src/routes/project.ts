@@ -2,12 +2,66 @@ import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
-import { exec } from 'child_process';
-import util from 'util';
+import { spawn } from 'child_process';
 import { workspaceService } from '../services/WorkspaceService';
 
 const router = Router();
-const execAsync = util.promisify(exec);
+
+type SpawnResult = { code: number | null; stdout: string; stderr: string };
+
+function maskUrlCredentials(raw: string) {
+  return String(raw || '').replace(/https?:\/\/[^@\s]+@/g, (m) => m.replace(/\/\/[^@]+@/, '//***@'));
+}
+
+function sanitizeRepoDirName(input: string) {
+  const raw = String(input || '').trim();
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 120);
+  const normalized = cleaned.replace(/^\.+$/, '').replace(/^-+/, '').replace(/-+$/, '');
+  return normalized || `repo-${Date.now()}`;
+}
+
+async function spawnWithTimeout(command: string, args: string[], cwd: string, timeoutMs: number, maxOutputChars = 2_000_000): Promise<SpawnResult> {
+  const workDir = path.resolve(cwd || process.cwd());
+  return await new Promise<SpawnResult>((resolve) => {
+    const child = spawn(command, args, { cwd: workDir, shell: false });
+    let stdout = '';
+    let stderr = '';
+    let done = false;
+
+    const finish = (code: number | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr });
+    };
+
+    const kill = () => {
+      try { child.kill('SIGKILL'); } catch { }
+    };
+
+    const timer = setTimeout(() => {
+      kill();
+      finish(-1);
+    }, timeoutMs);
+
+    child.stdout.on('data', (d) => {
+      stdout += d.toString();
+      if (stdout.length + stderr.length > maxOutputChars) {
+        kill();
+        finish(-1);
+      }
+    });
+    child.stderr.on('data', (d) => {
+      stderr += d.toString();
+      if (stdout.length + stderr.length > maxOutputChars) {
+        kill();
+        finish(-1);
+      }
+    });
+    child.on('close', (code) => finish(code));
+    child.on('error', () => finish(-1));
+  });
+}
 
 // Updated Resolver to use dynamic workspaceService.getActiveRoot()
 async function resolvePathInsideWorkspace(inputPath: string): Promise<string | null> {
@@ -88,6 +142,54 @@ function getImports(content: string): string[] {
   return imports;
 }
 
+type SearchResult = { path: string; line: number; preview: string };
+
+async function searchInDir(dirPath: string, query: string, results: SearchResult[], limit: number, ignore: string[]) {
+  if (results.length >= limit) return;
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const ent of entries) {
+    if (results.length >= limit) return;
+    if (ignore.includes(ent.name)) continue;
+    const fullPath = path.join(dirPath, ent.name);
+
+    if (ent.isDirectory()) {
+      await searchInDir(fullPath, query, results, limit, ignore);
+      continue;
+    }
+    if (!ent.isFile()) continue;
+
+    let stat: fs.Stats | null = null;
+    try {
+      stat = await fs.promises.stat(fullPath);
+    } catch {
+      continue;
+    }
+    if (!stat || stat.size > 1_000_000) continue;
+
+    let buf: Buffer;
+    try {
+      buf = await fs.promises.readFile(fullPath);
+    } catch {
+      continue;
+    }
+    if (buf.includes(0)) continue;
+
+    const text = buf.toString('utf8');
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length && results.length < limit; i++) {
+      if (lines[i].includes(query)) {
+        results.push({ path: fullPath, line: i + 1, preview: lines[i].trim().slice(0, 300) });
+      }
+    }
+  }
+}
+
 // ------------------------------------------------------------------
 // WORKSPACE MANAGEMENT ROUTES
 // ------------------------------------------------------------------
@@ -145,10 +247,13 @@ router.post('/reset', authenticate as any, (req: Request, res: Response) => {
 router.post('/git/clone', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { repoUrl, token } = req.body;
-    if (!repoUrl) return res.status(400).json({ error: 'Repo URL required' });
+    const repoUrlRaw = String(repoUrl || '').trim();
+    if (!repoUrlRaw) return res.status(400).json({ error: 'Repo URL required' });
+    if (/\s/.test(repoUrlRaw)) return res.status(400).json({ error: 'Invalid repo URL' });
 
     // Extract repo name
-    const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'repo-' + Date.now();
+    const repoNameRaw = repoUrlRaw.split('/').pop()?.replace(/\.git$/i, '') || '';
+    const repoName = sanitizeRepoDirName(repoNameRaw);
 
     // Clone into uploads/repos/<name>
     const baseDir = path.join(process.cwd(), 'uploads', 'repos');
@@ -170,17 +275,24 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
     }
 
     // Prepare Clone Command
-    let cloneUrl = repoUrl;
-    if (token) {
+    let cloneUrl = repoUrlRaw;
+    const tokenRaw = typeof token === 'string' ? token.trim() : '';
+    if (tokenRaw) {
+      if (/\s/.test(tokenRaw)) return res.status(400).json({ error: 'Invalid token' });
+      if (!cloneUrl.startsWith('https://') && !cloneUrl.startsWith('http://')) {
+        return res.status(400).json({ error: 'Token auth requires http(s) URL' });
+      }
       // Insert token into URL: https://TOKEN@github.com/user/repo.git
       // Helper to handle existing protocols
-      const cleanUrl = repoUrl.replace('https://', '').replace('http://', '');
-      cloneUrl = `https://${token}@${cleanUrl}`;
+      const cleanUrl = cloneUrl.replace('https://', '').replace('http://', '');
+      cloneUrl = `https://${tokenRaw}@${cleanUrl}`;
     }
 
-    // Perform clone (Mask token in potential logs)
-    console.log(`Cloning ${repoUrl}...`);
-    await execAsync(`git clone "${cloneUrl}" "${targetDir}"`);
+    const r = await spawnWithTimeout('git', ['clone', '--', cloneUrl, targetDir], process.cwd(), 2 * 60_000);
+    if (r.code !== 0) {
+      const err = (r.stderr || r.stdout || 'git clone failed').trim();
+      return res.status(500).json({ error: maskUrlCredentials(err) });
+    }
 
     const workspaceId =
       (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
@@ -191,14 +303,8 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
     await workspaceService.setActiveRoot(targetDir, workspaceId || undefined);
     res.json({ success: true, path: targetDir });
   } catch (e: any) {
-    console.error('Clone failed:', e.message); // Don't log full error to avoid leaking token in command string
-    // Send clean error message
-    const msg = e.message || String(e);
-    // Remove potential 'Command failed:' prefix to make it cleaner
-    const cleanMsg = msg.replace('Command failed: ', '').trim();
-    // Extra safety: Try to remove token from error message if git prints it
-    const safeMsg = cleanMsg.replace(/https:\/\/[^@]+@/, 'https://***@');
-    res.status(500).json({ error: safeMsg });
+    const msg = e?.message || String(e || 'clone_failed');
+    res.status(500).json({ error: maskUrlCredentials(msg) });
   }
 });
 
@@ -338,26 +444,11 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
   try {
     const query = String(req.query.q || '').trim();
     if (!query) return res.json({ results: [] });
+    if (query.startsWith('-') || query.length > 200) return res.json({ results: [] });
 
     const activeRoot = workspaceService.getActiveRoot();
-    // Use grep to search recursively
-    const cmd = `grep -rnI "${query.replace(/"/g, '\\"')}" "${activeRoot}" --exclude-dir={node_modules,.git,dist,build} | head -n 100`;
-
-    const { stdout } = await execAsync(cmd).catch(() => ({ stdout: '' }));
-
-    const results = stdout.split('\n').filter(Boolean).map(line => {
-      const parts = line.split(':');
-      if (parts.length < 3) return null;
-      const filePath = parts[0];
-      const lineNum = parts[1];
-      const content = parts.slice(2).join(':');
-      return {
-        path: filePath,
-        line: parseInt(lineNum),
-        preview: content.trim()
-      };
-    }).filter(Boolean);
-
+    const results: SearchResult[] = [];
+    await searchInDir(activeRoot, query, results, 100, ['node_modules', '.git', 'dist', 'build', '.DS_Store']);
     res.json({ results });
   } catch (e) {
     res.status(500).json({ error: 'Search failed' });

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+dotenv.config({ path: path.join(__dirname, '../../../.env') });
 
 async function verifyAutonomousLoop() {
     console.log('🤖 Verifying Autonomous ReAct Loop...');
@@ -14,7 +14,7 @@ async function verifyAutonomousLoop() {
 
     const { ProjectManagerAgent } = await import('../../agents/ProjectManagerAgent');
 
-    const TEST_DIR = path.join(__dirname, '../../test_autonomous_loop');
+    const TEST_DIR = path.join(__dirname, '../../../test_autonomous_loop');
 
     // Cleanup
     if (fs.existsSync(TEST_DIR)) {

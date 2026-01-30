@@ -6,6 +6,7 @@ import { store } from '../mock/store';
 import { planContext } from '../approvals/context';
 import { executeTool } from '../services/ToolService';
 import { Run } from '../models/run';
+import { Session } from '../models/session';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -192,8 +193,20 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
       return res.json({ ok: true, denied: true });
     }
   } else {
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const approval = await Approval.findById(id).lean();
+    if (!approval || !ctx) return res.status(404).json({ error: 'Approval not found' });
+
+    const run = await Run.findById((approval as any).runId).select({ sessionId: 1 }).lean();
+    if (!run) return res.status(404).json({ error: 'Approval not found' });
+
+    const allowed = await Session.findOne({ _id: (run as any).sessionId, userId }).select('_id').lean();
+    if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+
     const a = await Approval.findByIdAndUpdate(id, { $set: { status: decision } }, { new: true });
-    if (!a || !ctx) return res.status(404).json({ error: 'Approval not found' });
+    if (!a) return res.status(404).json({ error: 'Approval not found' });
     broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
     if (decision === 'approved') {
       broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });

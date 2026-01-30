@@ -17,12 +17,13 @@ const allowedOriginsDefault = [
   'http://46.224.187.142:3000',
 ];
 
-const jwtSecret = process.env.JWT_SECRET || (() => {
+const jwtSecret = (() => {
+  const envSecret = process.env.JWT_SECRET;
+  if (envSecret && envSecret.trim()) return envSecret;
   if (isProd) {
-    console.error('JWT_SECRET غير مضبوط في الإنتاج. سيتم توليد مفتاح مؤقت (غير مستحسن).');
-  } else {
-    console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
+    throw new Error('JWT_SECRET is required in production');
   }
+  console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
   return require('crypto').randomBytes(32).toString('hex');
 })();
 

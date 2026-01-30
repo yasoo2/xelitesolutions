@@ -5,7 +5,7 @@ import path from 'path';
 import { BrowserRunTool } from '../../tools/definitions/BrowserRunTool';
 import { Session } from '../../models/session'; // Assuming model path
 
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+dotenv.config({ path: path.join(__dirname, '../../../.env') });
 
 async function verify() {
     console.log('🧪 Starting Verification Suite...');

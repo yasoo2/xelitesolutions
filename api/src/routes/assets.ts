@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { FileModel } from '../models/file';
 import { Artifact } from '../models/artifact';
 import { Run } from '../models/run';
+import { Session } from '../models/session';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -13,6 +14,11 @@ router.get('/', authenticate as any, async (req: Request, res: Response) => {
     if (!sessionId) {
       return res.status(400).json({ error: 'sessionId is required' });
     }
+    const userId = (req as any).auth?.sub;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const allowed = await Session.findOne({ _id: String(sessionId), userId }).select('_id').lean();
+    if (!allowed) return res.status(403).json({ error: 'Forbidden' });
 
     // 1. Get User Uploaded Files
     const files = await FileModel.find({ sessionId }).sort({ createdAt: -1 }).lean();

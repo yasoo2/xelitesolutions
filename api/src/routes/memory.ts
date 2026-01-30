@@ -20,8 +20,12 @@ router.get('/', authenticate as any, async (req: Request, res: Response) => {
 // Delete memory
 router.delete('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
-    await MemoryItem.findByIdAndDelete(req.params.id);
-    res.json({ ok: true });
+    const userId = (req as any).auth?.sub;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const deleted = await MemoryItem.findOneAndDelete({ _id: req.params.id, userId });
+    if (!deleted) return res.status(404).json({ error: 'Not found' });
+    return res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete memory' });
   }

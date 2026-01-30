@@ -1,9 +1,40 @@
 import { Router } from 'express';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import os from 'os';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
+
+function spawnWithTimeout(cmd: string, args: string[], timeoutMs: number) {
+    return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+        const child = spawn(cmd, args, { shell: false });
+        let stdout = '';
+        let stderr = '';
+        let done = false;
+
+        const timer = setTimeout(() => {
+            if (done) return;
+            done = true;
+            try { child.kill('SIGKILL'); } catch { }
+            resolve({ code: 124, stdout, stderr: stderr || 'timeout' });
+        }, Math.max(1, timeoutMs));
+
+        child.stdout.on('data', (d) => { stdout += d.toString(); });
+        child.stderr.on('data', (d) => { stderr += d.toString(); });
+        child.on('close', (code) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr });
+        });
+        child.on('error', (e: any) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({ code: 1, stdout, stderr: String(e?.message || e || 'spawn_failed') });
+        });
+    });
+}
 
 // Get system stats (CPU, RAM, Uptime)
 router.get('/stats', authenticate, async (req, res) => {
@@ -31,30 +62,25 @@ router.get('/stats', authenticate, async (req, res) => {
 
 // List Node/API related processes
 router.get('/processes', authenticate, async (req, res) => {
-    // This command works on macOS/Linux
-    const cmd = "ps aux | grep -E 'node|ts-node' | grep -v grep | head -n 20";
+    const r = await spawnWithTimeout('ps', ['aux'], 5000);
+    if (r.code !== 0) {
+        return res.status(500).json({ error: 'Failed to list processes' });
+    }
 
-    exec(cmd, (err, stdout, stderr) => {
-        if (err) {
-            return res.status(500).json({ error: 'Failed to list processes' });
-        }
-
-        const lines = stdout.trim().split('\n');
-        const processes = lines.map(line => {
-            const parts = line.trim().split(/\s+/);
-            // Basic parsing for ps aux output
-            // USER PID %CPU %MEM VSZ RSS TT STAT STARTED TIME COMMAND
-            return {
-                user: parts[0],
-                pid: parts[1],
-                cpu: parseFloat(parts[2]),
-                mem: parseFloat(parts[3]),
-                command: parts.slice(10).join(' ')
-            };
-        });
-
-        res.json({ processes });
+    const lines = (r.stdout || '').trim().split('\n').slice(1);
+    const filtered = lines.filter((line) => /\b(node|ts-node)\b/i.test(line)).slice(0, 20);
+    const processes = filtered.map((line) => {
+        const parts = line.trim().split(/\s+/);
+        return {
+            user: parts[0],
+            pid: parts[1],
+            cpu: parseFloat(parts[2]),
+            mem: parseFloat(parts[3]),
+            command: parts.slice(10).join(' '),
+        };
     });
+
+    res.json({ processes });
 });
 
 // Kill a process
@@ -62,14 +88,16 @@ router.delete('/processes/:pid', authenticate, async (req, res) => {
     const { pid } = req.params;
 
     // Safety check: Don't let them kill init or root easily if running as root (unlikely but safe)
-    if (pid === '1') return res.status(403).json({ error: 'Cannot kill init process' });
+    const pidNum = Number(pid);
+    if (!Number.isSafeInteger(pidNum) || pidNum <= 1) return res.status(400).json({ error: 'Invalid pid' });
+    if (pidNum === process.pid) return res.status(403).json({ error: 'Cannot kill self' });
 
-    exec(`kill -9 ${pid}`, (err) => {
-        if (err) {
-            return res.status(500).json({ error: `Failed to kill process ${pid}` });
-        }
-        res.json({ success: true, message: `Process ${pid} killed` });
-    });
+    try {
+        process.kill(pidNum, 'SIGKILL');
+        return res.json({ success: true, message: `Process ${pidNum} killed` });
+    } catch {
+        return res.status(500).json({ error: `Failed to kill process ${pidNum}` });
+    }
 });
 
 export default router;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL } from '../config';
+import { isValidToken } from '../utils/auth';
 
 type WsEvent =
   | { type: 'stream_frame'; ts: number; jpegBase64: string; w: number; h: number }
@@ -245,6 +246,10 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     const base = API_URL.replace(/^http/i, 'ws');
     const u = new URL('/ws/browser', base);
     u.searchParams.set('sessionId', sessionId);
+    try {
+      const token = localStorage.getItem('token');
+      if (token && isValidToken(token)) u.searchParams.set('token', token);
+    } catch { }
     if (window.location.protocol === 'https:' && u.protocol === 'ws:') u.protocol = 'wss:';
     return u.toString();
   }, [sessionId]);

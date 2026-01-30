@@ -1,37 +1,70 @@
 
 import { Router, Request, Response } from 'express';
-import { exec } from 'child_process';
-import util from 'util';
+import { spawn } from 'child_process';
+import path from 'path';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
-const execAsync = util.promisify(exec);
 
 // Helper to find root
 function findWorkspaceRoot() {
     return process.env.WORKSPACE_ROOT || process.cwd();
 }
 
-async function gitExec(args: string) {
+function isSafeRepoPath(p: string) {
+    const raw = String(p || '');
+    if (!raw) return false;
+    if (raw.includes('\0')) return false;
+    if (path.isAbsolute(raw)) return false;
+    if (raw.startsWith('-')) return false;
+    const normalized = path.normalize(raw);
+    if (normalized.startsWith('..' + path.sep) || normalized === '..') return false;
+    return true;
+}
+
+async function gitExec(args: string[]) {
     const cwd = findWorkspaceRoot();
-    try {
-        const { stdout, stderr } = await execAsync(`git ${args}`, { cwd });
-        return { ok: true, stdout, stderr };
-    } catch (e: any) {
-        return { ok: false, error: e.message || e.stderr || 'Git command failed', stdout: e.stdout, stderr: e.stderr };
-    }
+    return await new Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }>((resolve) => {
+        const child = spawn('git', args, { cwd, shell: false });
+        let stdout = '';
+        let stderr = '';
+        let done = false;
+
+        const timer = setTimeout(() => {
+            if (done) return;
+            done = true;
+            try { child.kill('SIGKILL'); } catch { }
+            resolve({ ok: false, stdout, stderr: stderr || 'timeout', error: 'Git command timed out' });
+        }, 20000);
+
+        child.stdout.on('data', (d) => { stdout += d.toString(); });
+        child.stderr.on('data', (d) => { stderr += d.toString(); });
+        child.on('close', (code) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            const ok = code === 0;
+            resolve({ ok, stdout, stderr, error: ok ? undefined : (stderr || 'Git command failed') });
+        });
+        child.on('error', (e: any) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({ ok: false, stdout, stderr: String(e?.message || e || 'spawn_failed'), error: 'Git command failed' });
+        });
+    });
 }
 
 // GET /git/status
 router.get('/status', authenticate as any, async (req: Request, res: Response) => {
     // Check if git initialized
-    const check = await gitExec('rev-parse --is-inside-work-tree');
+    const check = await gitExec(['rev-parse', '--is-inside-work-tree']);
     if (!check.ok) {
         return res.json({ initialized: false, files: [] });
     }
 
     // Get status
-    const result = await gitExec('status --porcelain');
+    const result = await gitExec(['status', '--porcelain']);
     if (!result.ok) {
         return res.status(500).json({ error: result.error });
     }
@@ -44,14 +77,14 @@ router.get('/status', authenticate as any, async (req: Request, res: Response) =
     });
 
     // Get branch
-    const branchRes = await gitExec('branch --show-current');
+    const branchRes = await gitExec(['branch', '--show-current']);
     const branch = (branchRes.stdout || '').trim();
 
     // Get stats (ahead/behind)
     let ahead = 0;
     let behind = 0;
     try {
-        const statsRes = await gitExec('rev-list --left-right --count HEAD...@{u}');
+        const statsRes = await gitExec(['rev-list', '--left-right', '--count', 'HEAD...@{u}']);
         if (statsRes.ok) {
             const parts = (statsRes.stdout || '').trim().split(/\s+/);
             if (parts.length >= 2) {
@@ -68,11 +101,11 @@ router.get('/status', authenticate as any, async (req: Request, res: Response) =
 router.get('/diff', authenticate as any, async (req: Request, res: Response) => {
     const file = String(req.query.file || '').trim();
     if (!file) return res.status(400).json({ error: 'File required' });
+    if (!isSafeRepoPath(file)) return res.status(400).json({ error: 'Invalid file path' });
 
     // Check if staged or not
     const stagedReq = String(req.query.staged || '') === 'true';
-    const args = `diff ${stagedReq ? '--staged' : ''} "${file}"`;
-
+    const args = ['diff', ...(stagedReq ? ['--staged'] : []), '--', file];
     const result = await gitExec(args);
     res.json({ ok: result.ok, diff: result.stdout || '' });
 });
@@ -82,8 +115,18 @@ router.post('/stage', authenticate as any, async (req: Request, res: Response) =
     const { files } = req.body;
     if (!files) return res.status(400).json({ error: 'Files required' });
 
-    const target = Array.isArray(files) ? files.join(' ') : files === '.' ? '.' : `"${files}"`;
-    const result = await gitExec(`add ${target}`);
+    const list = Array.isArray(files) ? files.map((f) => String(f || '').trim()).filter(Boolean) : [String(files || '').trim()].filter(Boolean);
+    if (list.length === 0) return res.status(400).json({ error: 'Files required' });
+    if (list.length === 1 && list[0] === '.') {
+        const result = await gitExec(['add', '.']);
+        if (result.ok) res.json({ ok: true });
+        else res.status(500).json({ error: result.error });
+        return;
+    }
+    for (const f of list) {
+        if (!isSafeRepoPath(f)) return res.status(400).json({ error: 'Invalid file path' });
+    }
+    const result = await gitExec(['add', '--', ...list]);
 
     if (result.ok) res.json({ ok: true });
     else res.status(500).json({ error: result.error });
@@ -94,8 +137,18 @@ router.post('/unstage', authenticate as any, async (req: Request, res: Response)
     const { files } = req.body;
     if (!files) return res.status(400).json({ error: 'Files required' });
 
-    const target = Array.isArray(files) ? files.join(' ') : files === '.' ? '.' : `"${files}"`;
-    const result = await gitExec(`restore --staged ${target}`);
+    const list = Array.isArray(files) ? files.map((f) => String(f || '').trim()).filter(Boolean) : [String(files || '').trim()].filter(Boolean);
+    if (list.length === 0) return res.status(400).json({ error: 'Files required' });
+    if (list.length === 1 && list[0] === '.') {
+        const result = await gitExec(['restore', '--staged', '.']);
+        if (result.ok) res.json({ ok: true });
+        else res.status(500).json({ error: result.error });
+        return;
+    }
+    for (const f of list) {
+        if (!isSafeRepoPath(f)) return res.status(400).json({ error: 'Invalid file path' });
+    }
+    const result = await gitExec(['restore', '--staged', '--', ...list]);
 
     if (result.ok) res.json({ ok: true });
     else res.status(500).json({ error: result.error });
@@ -107,10 +160,11 @@ router.post('/commit', authenticate as any, async (req: Request, res: Response) 
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     // Set user config if needed (done by agent usually, but here simple fallback)
-    await gitExec('config user.name "Joe AI"');
-    await gitExec('config user.email "joe@xelitesolutions.com"');
+    await gitExec(['config', 'user.name', 'Joe AI']);
+    await gitExec(['config', 'user.email', 'joe@xelitesolutions.com']);
 
-    const result = await gitExec(`commit -m "${message.replace(/"/g, '\\"')}"`);
+    const msg = String(message || '').trim();
+    const result = await gitExec(['commit', '-m', msg]);
     if (result.ok) res.json({ ok: true, output: result.stdout });
     else res.status(500).json({ error: result.error });
 });
@@ -120,14 +174,14 @@ router.post('/push', authenticate as any, async (req: Request, res: Response) =>
     // For now, simpler push. Authentication might fail without agent ASKPASS hook.
     // Ideally we should use the GitOpsTool logic which sets up ASKPASS.
     // But for UI Parity MVP, we might try simple push if SSH is set up, or fail and tell user to use Agent.
-    const result = await gitExec('push');
+    const result = await gitExec(['push']);
     if (result.ok) res.json({ ok: true, output: result.stdout });
     else res.status(500).json({ error: "Authenticated push requires Agent intervention. Please ask Joe to push." });
 });
 
 // POST /git/pull
 router.post('/pull', authenticate as any, async (req: Request, res: Response) => {
-    const result = await gitExec('pull');
+    const result = await gitExec(['pull']);
     if (result.ok) res.json({ ok: true, output: result.stdout });
     else res.status(500).json({ error: result.error });
 });
