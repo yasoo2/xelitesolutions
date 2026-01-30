@@ -25,18 +25,12 @@ if command -v docker &> /dev/null; then
 
     PROJECT_NAME="joe"
 
-    if [ -f docker-compose.production.yml ] && [ -f /opt/joe/env/web.env ] && [ -f /opt/joe/env/api.env ]; then
+    if [ -f docker-compose.production.yml ]; then
         COMPOSE_FILE="docker-compose.production.yml"
-    elif [ -f docker-compose.server.yml ] && [ -f ./env/web.env ]; then
+    elif [ -f docker-compose.server.yml ]; then
         COMPOSE_FILE="docker-compose.server.yml"
     elif [ -f docker-compose.yml ]; then
         COMPOSE_FILE="docker-compose.yml"
-    elif [ -f docker-compose.server.yml ]; then
-        COMPOSE_FILE="docker-compose.server.yml"
-        echo "Warning: ./env/web.env not found; compose may fail if env_file is required."
-    elif [ -f docker-compose.production.yml ]; then
-        COMPOSE_FILE="docker-compose.production.yml"
-        echo "Warning: /opt/joe/env/*.env not found; compose may fail if env_file is required."
     else
         echo "No docker-compose file found in $(pwd)" && exit 1
     fi
@@ -121,8 +115,7 @@ if command -v docker &> /dev/null; then
         GOOGLE_SECRET_LINE="$(grep -E '^GOOGLE_CLIENT_SECRET=' .env | head -n 1 || true)"
         GOOGLE_SECRET_VAL="${GOOGLE_SECRET_LINE#GOOGLE_CLIENT_SECRET=}"
         if [ -z "${GOOGLE_ID_VAL:-}" ] || [ -z "${GOOGLE_SECRET_VAL:-}" ]; then
-            echo "ERROR: Google OAuth غير مضبوط. اضبط GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET داخل ملف .env ثم أعد تشغيل ./deploy.sh"
-            exit 1
+            echo "Warning: Google OAuth غير مضبوط (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET). سيتم إكمال النشر لكن تسجيل Google قد لا يعمل."
         fi
     fi
     echo "Pre-clean potential name conflicts..."

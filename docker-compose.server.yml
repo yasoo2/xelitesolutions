@@ -82,7 +82,6 @@ services:
     networks: [ joe_net ]
     env_file:
       - .env
-      - ./env/web.env
 
   nginx:
     image: nginx:alpine

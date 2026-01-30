@@ -296,6 +296,71 @@ jobs:
           git reset --hard "origin/$BRANCH"
           echo "Deployed commit: $(git rev-parse --short HEAD)"
 
+          OPT_API_ENV="/opt/joe/env/api.env"
+          OPT_WEB_ENV="/opt/joe/env/web.env"
+          if [ ! -f .env ] && [ -f "$OPT_API_ENV" ]; then
+            cp "$OPT_API_ENV" .env
+          fi
+
+          read_env_val() {
+            local file="$1"
+            local key="$2"
+            if [ ! -f "$file" ]; then
+              echo ""
+              return 0
+            fi
+            local line
+            line="$(grep -E "^${key}=" "$file" | head -n 1 || true)"
+            if [ -z "${line:-}" ]; then
+              echo ""
+              return 0
+            fi
+            echo "${line#${key}=}" | tr -d '\r'
+          }
+
+          ensure_env_key() {
+            local key="$1"
+            local value="$2"
+            if [ -z "${value:-}" ] || [ ! -f .env ]; then
+              return 0
+            fi
+            awk -v k="$key" -v v="$value" 'BEGIN{found=0} $0 ~ "^"k"=" {print k"="v; found=1; next} {print} END{if(!found) print k"="v}' .env > .env.tmp && mv .env.tmp .env
+          }
+
+          if [ -f .env ]; then
+            google_id="$(read_env_val ".env" "GOOGLE_CLIENT_ID")"
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_API_ENV" "GOOGLE_CLIENT_ID")"
+            fi
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_WEB_ENV" "GOOGLE_CLIENT_ID")"
+            fi
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_API_ENV" "VITE_GOOGLE_CLIENT_ID")"
+            fi
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_WEB_ENV" "VITE_GOOGLE_CLIENT_ID")"
+            fi
+            ensure_env_key "GOOGLE_CLIENT_ID" "$google_id"
+
+            google_secret="$(read_env_val ".env" "GOOGLE_CLIENT_SECRET")"
+            if [ -z "${google_secret:-}" ]; then
+              google_secret="$(read_env_val "$OPT_API_ENV" "GOOGLE_CLIENT_SECRET")"
+            fi
+            if [ -z "${google_secret:-}" ]; then
+              google_secret="$(read_env_val "$OPT_API_ENV" "GOOGLE_OAUTH_CLIENT_SECRET")"
+            fi
+            ensure_env_key "GOOGLE_CLIENT_SECRET" "$google_secret"
+
+            google_id="$(read_env_val ".env" "GOOGLE_CLIENT_ID")"
+            google_secret="$(read_env_val ".env" "GOOGLE_CLIENT_SECRET")"
+            if [ -z "${google_id:-}" ] || [ -z "${google_secret:-}" ]; then
+              echo "Warning: Google OAuth غير مضبوط (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)."
+            fi
+          else
+            echo "Warning: .env not found; containers may start without secrets."
+          fi
+
           if docker compose version >/dev/null 2>&1; then
             COMPOSE="docker compose"
           elif command -v docker-compose >/dev/null 2>&1; then
