@@ -2729,7 +2729,7 @@ export default function CommandComposer({
   }, [sortedEvents]);
 
   return (
-    <div className="composer">
+    <div className={`composer ${sessionKind === 'agent' ? 'composer-agent' : ''}`}>
       <div className="events" ref={eventsScrollRef}>
         <div className="events-content" ref={eventsContentRef}>
           {events.length === 0 && (
@@ -3193,7 +3193,7 @@ export default function CommandComposer({
         </div>
       )}
 
-      <div className="composer-footer">
+      <div className={`composer-footer ${sessionKind === 'agent' ? 'composer-footer-embedded' : ''}`}>
         <div
           className={`input-area ${isDragging ? 'drag-active' : ''}`}
           onDragEnter={handleDragEnter}

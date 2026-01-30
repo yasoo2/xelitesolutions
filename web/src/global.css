@@ -3413,6 +3413,23 @@ html[data-theme="light"] .chat-bubble-content code {
   /* Re-enable clicks on the content */
 }
 
+.composer-agent .events-content {
+  padding-bottom: 16px !important;
+}
+
+.composer-footer-embedded {
+  position: static;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  padding: 12px 0 0 0;
+  background: transparent;
+  z-index: auto;
+  pointer-events: auto;
+}
+
 /* Ensure nothing covers the floating bar */
 .composer {
   position: relative;
