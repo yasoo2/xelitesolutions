@@ -57,6 +57,15 @@ if command -v docker &> /dev/null; then
             NEW_WORKER="$(openssl rand -hex 16)"
             awk -v v="$NEW_WORKER" 'BEGIN{found=0} /^WORKER_API_KEY=/{print "WORKER_API_KEY="v; found=1; next} {print} END{if(!found) print "WORKER_API_KEY="v}' .env > .env.tmp && mv .env.tmp .env
         fi
+
+        GOOGLE_ID_LINE="$(grep -E '^GOOGLE_CLIENT_ID=' .env | head -n 1 || true)"
+        GOOGLE_ID_VAL="${GOOGLE_ID_LINE#GOOGLE_CLIENT_ID=}"
+        GOOGLE_SECRET_LINE="$(grep -E '^GOOGLE_CLIENT_SECRET=' .env | head -n 1 || true)"
+        GOOGLE_SECRET_VAL="${GOOGLE_SECRET_LINE#GOOGLE_CLIENT_SECRET=}"
+        if [ -z "${GOOGLE_ID_VAL:-}" ] || [ -z "${GOOGLE_SECRET_VAL:-}" ]; then
+            echo "ERROR: Google OAuth غير مضبوط. اضبط GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET داخل ملف .env ثم أعد تشغيل ./deploy.sh"
+            exit 1
+        fi
     fi
     echo "Pre-clean potential name conflicts..."
     for n in joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
