@@ -37,6 +37,36 @@ export default function Login() {
         check();
     }, []);
 
+    useEffect(() => {
+        const hash = String(window.location.hash || '').replace(/^#/, '');
+        if (!hash) return;
+        const params = new URLSearchParams(hash);
+        const token = String(params.get('token') || '').trim();
+        const err = String(params.get('error') || '').trim();
+
+        if (token) {
+            try {
+                localStorage.setItem('token', token);
+            } catch { }
+            window.location.hash = '';
+            nav('/joe', { replace: true });
+            return;
+        }
+
+        if (err) {
+            const msg =
+                err === 'google_client_id_missing'
+                    ? 'Google OAuth غير مضبوط: client_id مفقود.'
+                    : err === 'google_client_secret_missing'
+                        ? 'Google OAuth غير مضبوط: client_secret مفقود.'
+                        : err === 'access_denied'
+                            ? 'تم إلغاء تسجيل الدخول عبر Google.'
+                            : `Google OAuth error: ${err}`;
+            setError(msg);
+            window.location.hash = '';
+        }
+    }, [nav]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -254,7 +284,13 @@ export default function Login() {
                 <motion.button
                     whileHover={{ scale: 1.02, backgroundColor: '#f8fafc' }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => window.location.href = `${API}/auth/google`}
+                    onClick={() => {
+                        const clientId = String((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '').trim();
+                        const u = new URL(`${API}/auth/google`);
+                        u.searchParams.set('returnTo', window.location.origin);
+                        if (clientId) u.searchParams.set('client_id', clientId);
+                        window.location.href = u.toString();
+                    }}
                     style={S.googleBtn}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24">

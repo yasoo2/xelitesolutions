@@ -261,12 +261,72 @@ router.post('/google', async (req: Request, res: Response) => {
   }
 });
 
-// [NEW] GET Route for redirect-based OAuth (fixes the 404 on window.location.href)
+function readForwardedHeaderValue(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  return v.split(',')[0]?.trim() || '';
+}
+
+function resolvePublicOrigin(req: Request): string {
+  const forwardedProto = readForwardedHeaderValue(req.headers['x-forwarded-proto']);
+  const forwardedHost = readForwardedHeaderValue(req.headers['x-forwarded-host']);
+  const host = forwardedHost || String(req.get('host') || '').trim();
+  const proto = forwardedProto || (req as any).protocol || 'https';
+  if (host) return `${proto}://${host}`;
+  return String(process.env.PUBLIC_URL || 'https://xelitesolutions.com').replace(/\/+$/, '');
+}
+
+function resolveGoogleClientId(req: Request): string {
+  const fromEnv = String(process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID || '').trim();
+  if (fromEnv) return fromEnv;
+  return String(req.query?.client_id || '').trim();
+}
+
+function resolveGoogleClientSecret(): string {
+  return String(
+    process.env.GOOGLE_CLIENT_SECRET ||
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      ''
+  ).trim();
+}
+
+function resolveReturnTo(req: Request): string {
+  const raw = String(req.query?.returnTo || '').trim();
+  const ref = String(req.get('referer') || '').trim();
+
+  const candidate = raw || ref;
+  if (!candidate) return String(process.env.PUBLIC_URL || '').trim();
+
+  try {
+    const u = new URL(candidate);
+    const origin = u.origin;
+    const allowed = Array.isArray((config as any).allowedOrigins) ? (config as any).allowedOrigins : [];
+    if (allowed.includes(origin)) return origin;
+    return String(process.env.PUBLIC_URL || '').trim() || origin;
+  } catch {
+    return String(process.env.PUBLIC_URL || '').trim();
+  }
+}
+
+// GET Route for redirect-based OAuth
 router.get('/google', (req: Request, res: Response) => {
   const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
+  const clientId = resolveGoogleClientId(req);
+  const publicOrigin = resolvePublicOrigin(req);
+  const redirectUri = String(process.env.GOOGLE_REDIRECT_URI || `${publicOrigin}/api/auth/callback`).trim();
+
+  const returnTo = resolveReturnTo(req);
+  const state = Buffer.from(JSON.stringify({ returnTo }), 'utf8').toString('base64url');
+
+  if (!clientId) {
+    const fallback = returnTo || publicOrigin;
+    const u = new URL('/login', fallback);
+    u.hash = 'error=google_client_id_missing';
+    return res.redirect(u.toString());
+  }
+
   const options = {
-    redirect_uri: `${process.env.PUBLIC_URL || 'https://xelitesolutions.com'}/auth/callback`,
-    client_id: process.env.GOOGLE_CLIENT_ID || '',
+    redirect_uri: redirectUri,
+    client_id: clientId,
     access_type: 'offline',
     response_type: 'code',
     prompt: 'consent',
@@ -274,17 +334,129 @@ router.get('/google', (req: Request, res: Response) => {
       'https://www.googleapis.com/auth/userinfo.profile',
       'https://www.googleapis.com/auth/userinfo.email',
     ].join(' '),
+    state,
   };
 
   const qs = new URLSearchParams(options).toString();
-  res.redirect(`${rootUrl}?${qs}`);
+  return res.redirect(`${rootUrl}?${qs}`);
 });
 
 router.get('/callback', async (req: Request, res: Response) => {
-  // Basic callback stub - in a real flow this would exchange code for token
-  // For now, redirect to frontend with a query param to handle the exchange client-side or show error
-  const code = req.query.code;
-  res.redirect(`/?google_code=${code}`);
+  const clientId = resolveGoogleClientId(req);
+  const clientSecret = resolveGoogleClientSecret();
+  const publicOrigin = resolvePublicOrigin(req);
+  const redirectUri = String(process.env.GOOGLE_REDIRECT_URI || `${publicOrigin}/api/auth/callback`).trim();
+
+  const stateRaw = String(req.query?.state || '').trim();
+  const returnTo = (() => {
+    if (!stateRaw) return resolveReturnTo(req);
+    try {
+      const decoded = Buffer.from(stateRaw, 'base64url').toString('utf8');
+      const parsed = JSON.parse(decoded || '{}');
+      const rt = String(parsed?.returnTo || '').trim();
+      if (!rt) return resolveReturnTo(req);
+      const u = new URL(rt);
+      const allowed = Array.isArray((config as any).allowedOrigins) ? (config as any).allowedOrigins : [];
+      if (allowed.includes(u.origin)) return u.origin;
+      return resolveReturnTo(req) || u.origin;
+    } catch {
+      return resolveReturnTo(req);
+    }
+  })();
+
+  const finishRedirect = (hash: string) => {
+    const base = returnTo || publicOrigin;
+    const u = new URL('/login', base);
+    u.hash = hash;
+    return res.redirect(u.toString());
+  };
+
+  const oauthError = String(req.query?.error || '').trim();
+  if (oauthError) return finishRedirect(`error=${encodeURIComponent(oauthError)}`);
+
+  if (!clientId) return finishRedirect('error=google_client_id_missing');
+  if (!clientSecret) return finishRedirect('error=google_client_secret_missing');
+
+  const code = String(req.query?.code || '').trim();
+  if (!code) return finishRedirect('error=google_missing_code');
+
+  try {
+    const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
+    const tokenResult = await oauth2Client.getToken(code);
+    const tokens = tokenResult?.tokens || {};
+    const accessToken = String((tokens as any).access_token || '').trim();
+    const idToken = String((tokens as any).id_token || '').trim();
+
+    let profile: any = null;
+
+    if (idToken) {
+      const ticket = await oauth2Client.verifyIdToken({ idToken, audience: clientId });
+      profile = ticket.getPayload() || null;
+    }
+
+    if (!profile && accessToken) {
+      const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!userInfoRes.ok) return finishRedirect('error=google_userinfo_failed');
+      profile = await userInfoRes.json();
+    }
+
+    if (!profile || !profile.email) return finishRedirect('error=google_profile_missing_email');
+
+    const name = String(profile.name || '').trim();
+    const picture = String(profile.picture || '').trim();
+    const emailNormalized = String(profile.email || '').trim().toLowerCase();
+
+    const useMock = process.env.MOCK_DB === '1' || mongoose.connection.readyState !== 1;
+    let user: any;
+
+    if (useMock) {
+      user = mockDb.findUserByEmail(emailNormalized);
+      if (!user) {
+        const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
+        const isFirstUser = mockDb.countUsers() === 0;
+        user = mockDb.createUser(emailNormalized, passwordHash, isFirstUser ? 'OWNER' : 'USER');
+        user.name = name;
+        user.picture = picture;
+      }
+    } else {
+      user = await User.findOne({ email: emailNormalized });
+      if (!user) {
+        const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
+        const count = await User.countDocuments();
+        const role = count === 0 ? 'OWNER' : 'USER';
+        user = await User.create({
+          email: emailNormalized,
+          passwordHash,
+          role,
+          name,
+          picture
+        });
+      } else if (name || picture) {
+        user.name = name || user.name;
+        user.picture = picture || user.picture;
+        await user.save();
+      }
+    }
+
+    const appToken = jwt.sign(
+      {
+        sub: useMock ? user.id : user._id.toString(),
+        role: user.role,
+        email: user.email || emailNormalized,
+        name: user.name || name,
+        picture: user.picture || picture
+      },
+      config.jwtSecret,
+      { expiresIn: '7d' }
+    );
+
+    return finishRedirect(`token=${encodeURIComponent(appToken)}`);
+  } catch (error) {
+    console.error('Google OAuth Callback Error:', error);
+    return finishRedirect('error=google_callback_failed');
+  }
 });
 
 export default router;
