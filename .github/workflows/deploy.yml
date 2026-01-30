@@ -274,6 +274,8 @@ jobs:
           USERNAME: ${{ secrets.USERNAME }}
           PORT: ${{ steps.select_ssh_port.outputs.port }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           host="$(printf '%s' "${HOST:-}" | tr -d '\r' | xargs)"
@@ -468,6 +470,10 @@ jobs:
             fi
             if [ -z "${google_secret:-}" ]; then
               google_secret="$(read_env_val "$OPT_API_ENV" "GOOGLE_OAUTH_CLIENT_SECRET")"
+            fi
+            # Fallback to GitHub Secrets injected by workflow
+            if [ -z "${google_secret:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ]; then
+              google_secret="$GOOGLE_CLIENT_SECRET"
             fi
             ensure_env_key "GOOGLE_CLIENT_SECRET" "$google_secret"
 
