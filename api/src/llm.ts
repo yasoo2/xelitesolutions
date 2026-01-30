@@ -1452,10 +1452,16 @@ export async function planNextStep(
 export async function generateSessionTitle(messages: { role: string; content: string }[]) {
   if (!messages || messages.length === 0) return 'New Session';
 
+  const blob = messages.map(m => String(m.content || '')).join(' ');
+  const hasArabic = /[\u0600-\u06FF]/.test(blob);
+  const systemContent = hasArabic
+    ? 'أنت محرك ذكاء XElite. أنشئ عنوانًا قصيرًا وواضحًا وأنيقًا (بحد أقصى 6 كلمات) لهذه الجلسة باللغة العربية فقط.'
+    : 'You are the XElite Intelligence Engine. Generate a short, concise, and elite title (max 6 words) for this session in English only.';
+
   const msgs = [
     {
       role: 'system',
-      content: 'You are the XElite Intelligence Engine. Generate a short, concise, and elite title (max 6 words) for this session.'
+      content: systemContent
     },
     ...messages.slice(0, 5).map(m => ({ role: 'user', content: String(m.content).slice(0, 500) }))
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
