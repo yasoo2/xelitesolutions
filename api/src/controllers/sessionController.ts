@@ -197,10 +197,23 @@ export async function listSessionMessages(req: Request, res: Response) {
 
         events.sort((a, b) => (a.ts || 0) - (b.ts || 0));
 
-        // Auto-Title Check (Lazy)
-        if (session && (session.title === 'New Session' || session.title.startsWith('Session '))) {
+        const isAutoTitleCandidate = (title: string) => {
+            const t = String(title || '').trim();
+            return (
+                t === 'New Session' ||
+                t === 'Untitled Session' ||
+                t === 'New Chat' ||
+                t === 'محادثة جديدة' ||
+                t === 'جلسة جديدة' ||
+                t === 'دردشة جديدة' ||
+                t.startsWith('Session ') ||
+                t.startsWith('جلسة ')
+            );
+        };
+
+        if (session && isAutoTitleCandidate(session.title)) {
             const userMsgs = messages.filter(m => m.role === 'user');
-            if (userMsgs.length > 0 && userMsgs.length <= 5) {
+            if (userMsgs.length > 0) {
                 (async () => {
                     try {
                         const newTitle = await generateSessionTitle(userMsgs.map(m => ({ role: 'user', content: m.content || '' })));
