@@ -579,7 +579,7 @@ export default function CommandComposer({
 
 }) {
   const { t } = useTranslation();
-  const showToolUi = sessionKind === 'agent' || sessionKind === 'chat' || DEBUG_TOOL_UI;
+  const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));

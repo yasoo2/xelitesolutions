@@ -30,31 +30,13 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
     ({ status, steps, logs, expanded, onToggle, showTechnical, onToggleTechnical }, ref) => {
     const { t } = useTranslation();
 
-    // Safety: Minimal error state
-    if (status === 'failed') {
-        return (
-            <motion.div
-                ref={ref}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="my-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
-                style={{
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
-                    color: 'rgb(239, 68, 68)',
-                }}
-            >
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                {t('errorEncountered', 'حدث خطأ')}
-            </motion.div>
-        );
-    }
-
-    if (status === 'idle' && steps.length === 0 && logs.length === 0) return null;
+    const safeSteps = Array.isArray(steps) ? steps : [];
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    const hideWhenEmpty = status === 'idle' && safeSteps.length === 0 && safeLogs.length === 0;
 
     const visibleStepsAll = useMemo(() => {
         const out: AgentStep[] = [];
-        for (const s of Array.isArray(steps) ? steps : []) {
+        for (const s of safeSteps) {
             const name = String(s?.name || '').trim();
             const display = String(s?.displayName || '').trim();
             const tool = name.toLowerCase().startsWith('execute:') ? name.slice('execute:'.length).trim() : '';
@@ -64,7 +46,7 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
             out.push(s);
         }
         return out;
-    }, [steps]);
+    }, [safeSteps]);
 
     const phaseLabels = useMemo(() => {
         const rawExecute = t('executePrefix', { tool: '' });
@@ -143,12 +125,12 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
     }, [activePhase, visibleStepsAll]);
 
     const visibleLogs = useMemo(() => {
-        const arr = Array.isArray(logs) ? logs : [];
+        const arr = safeLogs;
         return arr
             .map((l) => String(l || '').trim())
             .filter((l) => l && !/(?:^|\b)central_answer(?:\b|$)/i.test(l) && !/^عملية التفكير\b/.test(l) && !/^thinking\s*process\b/i.test(l))
             .slice(Math.max(0, arr.length - 50));
-    }, [logs]);
+    }, [safeLogs]);
 
     const progress = totalCount > 0 ? Math.max(0, Math.min(1, doneCount / totalCount)) : 0;
 
@@ -198,6 +180,27 @@ export const AgentActivity = React.forwardRef<HTMLDivElement, AgentActivityProps
             </button>
         );
     };
+
+    if (status === 'failed') {
+        return (
+            <motion.div
+                ref={ref}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="my-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+                style={{
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: 'rgb(239, 68, 68)',
+                }}
+            >
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                {t('errorEncountered', 'حدث خطأ')}
+            </motion.div>
+        );
+    }
+
+    if (hideWhenEmpty) return null;
 
     return (
         <motion.div
