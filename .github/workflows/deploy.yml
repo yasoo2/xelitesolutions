@@ -18,17 +18,20 @@ jobs:
         shell: bash
         env:
           HOST_SECRET: ${{ secrets.HOST }}
+          SSH_HOST_SECRET: ${{ secrets.SSH_HOST }}
           PORT_SECRET: ${{ secrets.PORT }}
+          SSH_PORT_SECRET: ${{ secrets.SSH_PORT }}
         run: |
           set -euo pipefail
-          host="$HOST_SECRET"
-          port_raw="$PORT_SECRET"
+          host_raw="${SSH_HOST_SECRET:-${HOST_SECRET:-}}"
+          port_raw="${SSH_PORT_SECRET:-${PORT_SECRET:-}}"
           host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
-          port_raw="$(printf '%s' "${port_raw:-}" | tr -d '\r' | xargs)"
+          host="$(printf '%s' "${host_raw:-}" | tr -d '\r' | xargs)"
           if [ -z "${host:-}" ]; then
             echo "HOST secret is empty."
-            exit 1
+            echo "SSH_HOST/HOST secret is empty."
           fi
+
 
           resolve_candidate_hosts() {
             local h="$1"
@@ -55,7 +58,7 @@ jobs:
             local tries="${3:-4}"
             local attempt=1
             while [ "$attempt" -le "$tries" ]; do
-              banner="$(timeout 20 bash -lc "exec 3<>/dev/tcp/${h}/${p}; head -c 32 <&3" 2>/dev/null || true)"
+              banner="$(timeout 25 bash -lc "exec 3<>/dev/tcp/${h}/${p}; printf 'SSH-2.0-bannercheck\r\n' >&3; head -c 64 <&3" 2>/dev/null || true)"
               if printf '%s' "$banner" | grep -q '^SSH-'; then
                 return 0
               fi
@@ -150,7 +153,7 @@ jobs:
           echo "Checking SSH banner on ${host}:${port} ..."
           ok_banner=0
           for i in $(seq 1 6); do
-            banner="$(timeout 20 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 32 <&3" 2>/dev/null || true)"
+            banner="$(timeout 25 bash -lc "exec 3<>/dev/tcp/${host}/${port}; printf 'SSH-2.0-bannercheck\r\n' >&3; head -c 64 <&3" 2>/dev/null || true)"
             if printf '%s' "$banner" | grep -q '^SSH-'; then
               ok_banner=1
               break
