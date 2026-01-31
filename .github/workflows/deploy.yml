@@ -320,8 +320,9 @@ jobs:
             timeout 900 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' || code=$?
           set -euo pipefail
           
-          # Clean up disk space before build
-          docker system prune -f || true
+          # Clean up disk space before build - Aggressive
+          docker system prune -a --volumes -f || true
+          docker builder prune -a -f || true
 
           REPO_URL="https://github.com/yasoo2/xelitesolutions.git"
           REPO_HINT="yasoo2/xelitesolutions"

@@ -1,16 +1,18 @@
-FROM node:20-bookworm
+FROM node:20-bookworm-slim
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
 
-# Install system dependencies and Chromium matching the local package version
-RUN npx playwright install --with-deps chromium chromium-headless-shell
+# Install prod deps and clean cache
+RUN npm install && \
+    npx playwright install --with-deps chromium chromium-headless-shell && \
+    npm cache clean --force && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY . .
 
-# Build if needed (tsconfig present)
+# Build and cleanup source maps/docs if applicable
 RUN npm run build
 
 EXPOSE 7070
