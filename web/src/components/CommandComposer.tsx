@@ -578,6 +578,7 @@ export default function CommandComposer({
   onPreviewArtifact,
   onStepsUpdate,
   onMessagesUpdate,
+  hideHistory = false,
 
 }: {
   sessionId?: string;
@@ -588,6 +589,7 @@ export default function CommandComposer({
   onPreviewArtifact?: (content: string, lang: string) => void;
   onStepsUpdate?: (steps: any[]) => void;
   onMessagesUpdate?: (msgs: any[]) => void;
+  hideHistory?: boolean;
 
 }) {
   const { t } = useTranslation();
@@ -2757,146 +2759,148 @@ export default function CommandComposer({
 
   return (
     <div className={`composer ${sessionKind === 'agent' ? 'composer-agent' : ''}`}>
-      <div className="events" ref={eventsScrollRef}>
-        <div className="events-content" ref={eventsContentRef}>
-          {events.length === 0 && (
-            <div className="empty-state-hero">
-              <div className="hero-logo-container">
-                <div className="hero-logo-glow"></div>
-                <div className="hero-logo-content">
-                  <div className="brand-mark brand-mark-hero" aria-hidden="true" />
+      {!hideHistory && (
+        <div className="events" ref={eventsScrollRef}>
+          <div className="events-content" ref={eventsContentRef}>
+            {events.length === 0 && (
+              <div className="empty-state-hero">
+                <div className="hero-logo-container">
+                  <div className="hero-logo-glow"></div>
+                  <div className="hero-logo-content">
+                    <div className="brand-mark brand-mark-hero" aria-hidden="true" />
+                  </div>
                 </div>
+
+                <h1 className="hero-title">
+                  <span className="hero-title-main">Build Faster.</span>
+                  <span className="hero-title-sub">Think Deeper.</span>
+                </h1>
+
+                <p className="hero-subtitle">
+                  Your elite autonomous pair programmer is ready to engineer the future.
+                </p>
+
+
+                {/* Joe's Refined Premium Logo */}
+                <div className="hero-elite-logo-container" style={{ marginTop: 40, marginBottom: 20 }}>
+                  <EliteLogo size={160} />
+                </div>
+
+
               </div>
+            )}
 
-              <h1 className="hero-title">
-                <span className="hero-title-main">Build Faster.</span>
-                <span className="hero-title-sub">Think Deeper.</span>
-              </h1>
+            <AnimatePresence mode="popLayout">
+              {renderItems.map((item) => {
+                if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} variant="user" ts={item.e?.ts} />;
 
-              <p className="hero-subtitle">
-                Your elite autonomous pair programmer is ready to engineer the future.
-              </p>
-
-
-              {/* Joe's Refined Premium Logo */}
-              <div className="hero-elite-logo-container" style={{ marginTop: 40, marginBottom: 20 }}>
-                <EliteLogo size={160} />
-              </div>
-
-
-            </div>
-          )}
-
-          <AnimatePresence mode="popLayout">
-            {renderItems.map((item) => {
-              if (item.kind === 'user') return <ChatBubble key={item.key} event={item.e} isUser={true} variant="user" ts={item.e?.ts} />;
-
-              if (item.kind === 'error') {
-                const msg = typeof item.e?.data === 'string' ? item.e.data : String(item.e?.data ?? '');
-                return (
-                  <ChatBubble
-                    key={item.key}
-                    event={{ data: { text: `⚠️ ${msg}` } }}
-                    isUser={false}
-                    variant="system"
-                    tone="danger"
-                    ts={item.e?.ts}
-                  />
-                );
-              }
-
-              if (item.kind === 'text') {
-                let content = item.e?.data;
-                try {
-                  if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                    const p = JSON.parse(content);
-                    content = p.text || p.output || content;
-                  }
-                } catch { }
-
-                const cleaned = cleanAssistantText(content);
-                if (!cleaned) return null;
-                const system = isSystemNoticeText(cleaned);
-                return (
-                  <ChatBubble
-                    key={item.key}
-                    event={{ data: { text: cleaned } }}
-                    isUser={false}
-                    variant={system ? 'system' : 'ai'}
-                    tone={system ? 'info' : 'normal'}
-                    ts={item.e?.ts}
-                    onOptionClick={(q) => run(q)}
-                    userPicture={userPicture}
-                  />
-                );
-              }
-
-              if (item.kind === 'artifact') {
-                const e = item.e;
-                const href = e?.data?.href;
-                const nameStr = String(e?.data?.name || '');
-                const hrefStr = typeof href === 'string' ? href : '';
-                const looksLikeBrowserScreenshot =
-                  nameStr.trim().toLowerCase() === 'screenshot' || /\/artifacts\/(browser-|health-browser-)/i.test(hrefStr);
-                if (!attachScreenshots && looksLikeBrowserScreenshot) return null;
-                const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.href || '');
-                const isVideo = /\.(mp4|webm|mov)$/i.test(e?.data?.name || '') || /\.(mp4|webm|mov)$/i.test(e?.data?.href || '');
-
-                if (isImage) {
+                if (item.kind === 'error') {
+                  const msg = typeof item.e?.data === 'string' ? item.e.data : String(item.e?.data ?? '');
                   return (
-                    <motion.div key={item.key} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="message-row joe">
-                      <div className="image-generation-frame">
-                        <div className="scanline-overlay"></div>
-                        <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
+                    <ChatBubble
+                      key={item.key}
+                      event={{ data: { text: `⚠️ ${msg}` } }}
+                      isUser={false}
+                      variant="system"
+                      tone="danger"
+                      ts={item.e?.ts}
+                    />
+                  );
+                }
+
+                if (item.kind === 'text') {
+                  let content = item.e?.data;
+                  try {
+                    if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                      const p = JSON.parse(content);
+                      content = p.text || p.output || content;
+                    }
+                  } catch { }
+
+                  const cleaned = cleanAssistantText(content);
+                  if (!cleaned) return null;
+                  const system = isSystemNoticeText(cleaned);
+                  return (
+                    <ChatBubble
+                      key={item.key}
+                      event={{ data: { text: cleaned } }}
+                      isUser={false}
+                      variant={system ? 'system' : 'ai'}
+                      tone={system ? 'info' : 'normal'}
+                      ts={item.e?.ts}
+                      onOptionClick={(q) => run(q)}
+                      userPicture={userPicture}
+                    />
+                  );
+                }
+
+                if (item.kind === 'artifact') {
+                  const e = item.e;
+                  const href = e?.data?.href;
+                  const nameStr = String(e?.data?.name || '');
+                  const hrefStr = typeof href === 'string' ? href : '';
+                  const looksLikeBrowserScreenshot =
+                    nameStr.trim().toLowerCase() === 'screenshot' || /\/artifacts\/(browser-|health-browser-)/i.test(hrefStr);
+                  if (!attachScreenshots && looksLikeBrowserScreenshot) return null;
+                  const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.name || '') || /\.(png|jpg|jpeg|webp|gif)$/i.test(e?.data?.href || '');
+                  const isVideo = /\.(mp4|webm|mov)$/i.test(e?.data?.name || '') || /\.(mp4|webm|mov)$/i.test(e?.data?.href || '');
+
+                  if (isImage) {
+                    return (
+                      <motion.div key={item.key} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="message-row joe">
+                        <div className="image-generation-frame">
+                          <div className="scanline-overlay"></div>
+                          <img src={e.data.href} alt={e.data.name} className="image-generation-img" />
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  return (
+                    <motion.div key={item.key} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message-row joe">
+                      <div className="event-artifact">
+                        {isVideo ? (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <VideoIcon size={16} className="artifact-icon" />
+                              <div className="artifact-title">{t('artifacts.video')}</div>
+                            </div>
+                            <video controls src={e.data.href} style={{ width: '100%', borderRadius: 8 }} />
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <FileCode size={20} className="artifact-icon" />
+                              <div className="artifact-info">
+                                <div className="artifact-title">{t('artifacts.file')}</div>
+                                <div className="artifact-name">{e.data.name}</div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                          <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
+                            <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
+                          </a>
+                        </div>
                       </div>
                     </motion.div>
                   );
                 }
 
-                return (
-                  <motion.div key={item.key} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message-row joe">
-                    <div className="event-artifact">
-                      {isVideo ? (
-                        <>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                            <VideoIcon size={16} className="artifact-icon" />
-                            <div className="artifact-title">{t('artifacts.video')}</div>
-                          </div>
-                          <video controls src={e.data.href} style={{ width: '100%', borderRadius: 8 }} />
-                        </>
-                      ) : (
-                        <>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <FileCode size={20} className="artifact-icon" />
-                            <div className="artifact-info">
-                              <div className="artifact-title">{t('artifacts.file')}</div>
-                              <div className="artifact-name">{e.data.name}</div>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-                        <a href={e.data.href} target="_blank" rel="noopener noreferrer" className="artifact-link">
-                          <LinkIcon size={12} /> {t('artifacts.openNewWindow')}
-                        </a>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              }
+                return null;
+              })}
+              {status === 'answering' && draftActive && draftText ? (
+                <div data-joe-draft="1">
+                  <ChatBubble key="draft:typing" event={{ data: { text: draftText } }} isUser={false} variant="ai" ts={Date.now()} isTyping={true} />
+                </div>
+              ) : null}
+            </AnimatePresence>
 
-              return null;
-            })}
-            {status === 'answering' && draftActive && draftText ? (
-              <div data-joe-draft="1">
-                <ChatBubble key="draft:typing" event={{ data: { text: draftText } }} isUser={false} variant="ai" ts={Date.now()} isTyping={true} />
-              </div>
-            ) : null}
-          </AnimatePresence>
-
-          <div ref={endRef} />
+            <div ref={endRef} />
+          </div>
         </div>
-      </div>
+      )}
 
       {null}
 

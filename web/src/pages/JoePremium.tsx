@@ -236,6 +236,7 @@ export default function JoePremium() {
             chatChildren={
                 <CommandComposer
                     sessionId={(mode === 'chat' ? selected : agentSelected) || undefined}
+                    hideHistory={true}
                 />
             }
         />
