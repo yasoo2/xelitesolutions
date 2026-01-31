@@ -121,15 +121,27 @@ async function connect() {
 
   socket = new WebSocket(urlToUse);
 
-  socket.onopen = () => {
+  socket.onopen = (event) => {
+    const ws = event.target as WebSocket;
     opened = true;
     connectAttempts = 0;
     triedFallback = false;
     setStatus('connected', lastUrl);
-    // Flush pending
+
+    // Flush pending safely using the socket instance that just opened
     while (pendingQueue.length > 0) {
+      if (ws.readyState !== WebSocket.OPEN) break;
       const msg = pendingQueue.shift();
-      if (msg) socket?.send(msg);
+      if (msg) {
+        try {
+          ws.send(msg);
+        } catch (err) {
+          console.error('WebSocket send error in onopen:', err);
+          // Put it back? Or drop it. Dropping prevents infinite loop of failing msg.
+          // But maybe we should re-queue if it was a transient error?
+          // For invalid state, it's fatal for this send attempt.
+        }
+      }
     }
   };
 
