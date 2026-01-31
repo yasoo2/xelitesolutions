@@ -3136,28 +3136,7 @@ export default function CommandComposer({
                       </div>
                     )}
 
-                    <div style={{ marginBottom: 20 }}>
-                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                        تعليمات النظام (خاصة بوضع Auto والموديلات المجانية)
-                      </label>
-                      <textarea
-                        value={systemInstructions}
-                        onChange={(e) => setSystemInstructions(e.target.value)}
-                        placeholder="مثال: رد دائماً بالعربية الفصحى، لا تستخدم أكواد خطيرة، التزم بخطوات واضحة."
-                        rows={3}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: 8,
-                          border: '1px solid var(--border-color)',
-                          background: 'var(--bg-secondary)',
-                          color: 'var(--text-primary)',
-                          outline: 'none',
-                          fontSize: 13,
-                          resize: 'vertical'
-                        }}
-                      />
-                    </div>
+
 
                     {providers[activeProvider].lastError && (
                       <div style={{
