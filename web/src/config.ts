@@ -20,6 +20,11 @@ function inferApiUrl() {
     return 'https://xelitesolutions.com/api';
   }
 
+  // For local development, use port 3000 where the API runs
+  if (isLocal) {
+    return 'http://localhost:3000/api';
+  }
+
   return `${window.location.origin}/api`;
 }
 
