@@ -6,10 +6,10 @@
 /* Premium Color Variables */
 :root {
     /* Primary Backgrounds */
-    --joe-bg-primary: #0a0c10;
-    --joe-bg-secondary: rgba(13, 17, 23, 0.85);
-    --joe-bg-panel: rgba(8, 12, 18, 0.92);
-    --joe-bg-card: rgba(22, 27, 34, 0.8);
+    --joe-bg-primary: #0a0b0e;
+    --joe-bg-secondary: #0a0b0e;
+    --joe-bg-panel: #0a0b0e;
+    --joe-bg-card: rgba(20, 20, 25, 0.8);
     --joe-bg-hover: rgba(240, 193, 75, 0.12);
 
     /* Gold Accents */
@@ -247,11 +247,9 @@
 .joe-workspace,
 .joe-files-panel {
     background: var(--joe-bg-panel);
-    border: 1px solid var(--joe-gold-border);
+    border: 1px solid rgba(240, 193, 75, 0.15);
     border-radius: var(--joe-border-radius);
-    box-shadow:
-        var(--joe-border-glow),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     overflow: hidden;
@@ -337,103 +335,60 @@
 
 .joe-chat-input-area {
     padding: 0 !important;
-    background: rgba(8, 8, 12, 0.95) !important;
-    border-top: 1px solid rgba(240, 193, 75, 0.12) !important;
-    /* Elegant separator */
+    background: #000 !important;
+    /* Absolute dark for input stripe */
+    border-top: 1px solid rgba(240, 193, 75, 0.15) !important;
     flex-shrink: 0;
     position: relative;
     width: 100% !important;
     z-index: 20;
     box-sizing: border-box;
-    display: flex;
-    justify-content: center;
-    align-items: center;
 }
 
-/* V8 Seamless Full-Width Precision */
+/* THE SEAMLESS STRIPE: V9 Absolute Edge-to-Edge */
 .joe-chat-input-area .command-composer,
 .joe-chat-input-area .composer,
-.joe-chat-input-area .composer-footer {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    position: relative !important;
-    display: flex !important;
-    flex-direction: column !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-/* The Stealth Strip: Edge-to-Edge, Nano-Thin */
+.joe-chat-input-area .composer-footer,
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
-    background: transparent !important;
-    /* Seamless connection */
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     border: none !important;
     border-radius: 0 !important;
-    padding: 1px 12px !important;
-    /* Ultra-Nano height */
+    background: transparent !important;
     box-shadow: none !important;
-    width: 100% !important;
-    height: auto !important;
-    box-sizing: border-box !important;
-    display: flex;
-    align-items: center;
-    gap: 10px !important;
-    margin: 0 !important;
-    transition: background 0.2s ease;
+    display: flex !important;
+    flex-direction: row !important;
+    /* Force inline layout for edge-to-edge */
+    align-items: center !important;
 }
 
-.joe-chat-input-area .composer .input-area:focus-within,
-.joe-chat-input-wrapper:focus-within {
-    background: rgba(255, 255, 255, 0.02) !important;
+.joe-chat-input-area .composer {
+    flex-direction: column !important;
+    /* Main composer stack */
 }
 
-/* Hide internal noise */
-.joe-chat-input-area .composer .events,
-.joe-chat-input-area .composer .empty-state-hero,
-.joe-chat-input-area .composer .connection-status {
-    display: none !important;
+.joe-chat-input-area .composer .input-area {
+    padding: 2px 10px !important;
+    gap: 8px !important;
 }
 
-/* Microscopic Buttons: Elegant Nano */
+/* Micro microscopic buttons */
 .joe-chat-input-area .composer .action-btn,
 .joe-chat-input-area .composer .provider-btn,
 .joe-chat-input-area .composer .send-btn {
-    width: 24px !important;
-    height: 24px !important;
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
     padding: 0 !important;
     background: transparent !important;
     border: none !important;
     border-radius: 4px !important;
-    color: rgba(255, 255, 255, 0.3) !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    transition: all 0.15s ease;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-.joe-chat-input-area .composer .action-btn:hover,
-.joe-chat-input-area .composer .provider-btn:hover {
-    background: rgba(255, 255, 255, 0.05) !important;
-    color: #fff !important;
-}
-
-.joe-chat-input-area .composer .send-btn {
-    background: rgba(255, 215, 0, 0.07) !important;
-    color: var(--joe-gold-primary) !important;
-}
-
-.joe-chat-input-area .composer .send-btn:hover {
-    background: var(--joe-gold-primary) !important;
-    color: #111 !important;
-    transform: translateY(-1px);
+    color: rgba(255, 255, 255, 0.25) !important;
+    transition: all 0.1s ease;
 }
 
 .joe-chat-input-area .composer .action-btn svg,
@@ -443,63 +398,23 @@
     height: 12px !important;
 }
 
-.joe-chat-input-area .composer .provider-btn .provider-label {
-    display: none !important;
-}
-
-/* Micro Textarea: V7 Thin */
 .joe-chat-input-area .composer .main-input {
     background: transparent !important;
     border: none !important;
-    padding: 4px 0 !important;
+    padding: 6px 0 !important;
     margin: 0 !important;
     font-size: 13px !important;
     line-height: 1.3 !important;
     color: #fff !important;
-    opacity: 0.8;
-    box-shadow: none !important;
-    resize: none !important;
+    opacity: 0.7;
     flex: 1;
     font-family: var(--joe-font-main) !important;
-}
-
-.joe-chat-input-area .composer .main-input::placeholder {
-    color: rgba(255, 255, 255, 0.2);
-}
-
-.joe-chat-input-area .composer .action-btn svg,
-.joe-chat-input-area .composer .provider-btn svg,
-.joe-chat-input-area .composer .send-btn svg {
-    width: 20px !important;
-    height: 20px !important;
-}
-
-.joe-chat-input-area .composer .provider-btn .provider-label {
-    display: none !important;
-}
-
-/* Modern Minimal Textarea */
-.joe-chat-input-area .composer .main-input {
-    background: transparent !important;
-    border: none !important;
-    padding: 10px 0 !important;
-    margin: 0 !important;
-    font-size: 16px !important;
-    line-height: 1.6 !important;
-    color: #fff !important;
-    opacity: 0.9;
-    box-shadow: none !important;
     resize: none !important;
-    flex: 1;
 }
 
-.joe-chat-input-area .composer .main-input::placeholder {
-    color: rgba(255, 255, 255, 0.3);
-}
-
-/* Hide duplicate headers or extras if any */
+/* V9 Footer Cleanup */
 .joe-chat-input-area .composer .composer-header {
-    display: none;
+    display: none !important;
 }
 
 /* Provider dots indicator */
