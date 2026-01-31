@@ -21,6 +21,7 @@ export default function Login() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+    const [mode, setMode] = useState<'login' | 'register'>('login');
     const [health, setHealth] = useState<{ status: string, db: number } | null>(null);
     const [googleState, setGoogleState] = useState<{
         ready: boolean;
@@ -117,7 +118,8 @@ export default function Login() {
         setLoading(true);
 
         try {
-            const res = await fetch(`${API}/auth/login`, {
+            const endpoint = mode === 'register' ? `${API}/auth/register` : `${API}/auth/login`;
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -129,10 +131,34 @@ export default function Login() {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                throw new Error(data.error || t('login_error_auth'));
+                const serverError = String(data?.error || '').trim();
+                if (res.status === 401) {
+                    throw new Error(i18n.language?.startsWith('ar') ? 'بيانات الدخول غير صحيحة أو الحساب غير موجود.' : 'Invalid credentials.');
+                }
+                if (res.status === 403 && /registration is currently closed/i.test(serverError)) {
+                    throw new Error(i18n.language?.startsWith('ar') ? 'التسجيل مغلق حالياً.' : 'Registration is currently closed.');
+                }
+                throw new Error(serverError || t('httpRequestFailed', { status: res.status }));
             }
 
-            localStorage.setItem('token', data.token);
+            if (mode === 'register') {
+                setMode('login');
+                const res2 = await fetch(`${API}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept-Language': i18n.language || 'en'
+                    },
+                    body: JSON.stringify({ email, password }),
+                });
+                const data2 = await res2.json().catch(() => ({}));
+                if (!res2.ok) throw new Error(String(data2?.error || '').trim() || t('login_error_auth'));
+                localStorage.setItem('token', String(data2?.token || ''));
+                nav('/joe');
+                return;
+            }
+
+            localStorage.setItem('token', String(data?.token || ''));
             nav('/joe');
         } catch (err: any) {
             const msg = String(err?.message || '');
@@ -141,8 +167,8 @@ export default function Login() {
             } else {
                 setError(msg || t('login_error_auth'));
             }
-            setLoading(false);
         }
+        setLoading(false);
     };
 
     const S: any = {
@@ -301,9 +327,32 @@ export default function Login() {
                         style={S.btn}
                     >
                         {loading ? <Loader2 size={20} className="spin" /> : <LogIn size={20} />}
-                        <span>{t('login')}</span>
+                        <span>{mode === 'register' ? t('register') : t('login')}</span>
                     </motion.button>
                 </form>
+
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+                    <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => {
+                            setError(null);
+                            setMode((m) => (m === 'login' ? 'register' : 'login'));
+                        }}
+                        style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#a1a1aa',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            textDecoration: 'underline',
+                            padding: 0,
+                        }}
+                    >
+                        {mode === 'login' ? t('register') : t('login')}
+                    </button>
+                </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0', gap: '16px' }}>
                     <div style={{ height: '1px', flex: 1, background: 'rgba(255,255,255,0.1)' }} />
