@@ -2510,7 +2510,8 @@ export default function CommandComposer({
       if (isLogin) header += ` (${t('browserSummaryPageTypeLogin')})`;
       lines.push(header);
 
-      if (url) lines.push(`${t('browserSummaryUrlLabel')}: ${url}`);
+      const cleanUrl = url.replace(/`+/g, '').trim();
+      if (cleanUrl) lines.push(`${t('browserSummaryUrlLabel')}: ${cleanUrl}`);
       if (hasScreenshot) lines.push(t('browserSummaryScreenshotTaken'));
       if (typeof redactionEnabled === 'boolean') {
         lines.push(`${t('browserSummaryRedactionLabel')}: ${redactionEnabled ? t('yes') : t('no')}`);
