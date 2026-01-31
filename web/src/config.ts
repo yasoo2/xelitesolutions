@@ -71,7 +71,10 @@ const apiEnv = !isLocalHost && pointsToLocalhost(apiEnvRaw) ? '' : apiEnvRaw;
 const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')) ? '' : wsEnvRaw;
 
 const API_URL = apiEnv || inferApiUrl();
-const WS_URL = wsEnv || inferWsUrl(API_URL);
+// Critical: Force correct WS subdomain for prod to avoid env var mismatches
+const WS_URL = (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com')
+  ? 'wss://ws.xelitesolutions.com/ws'
+  : (wsEnv || inferWsUrl(API_URL));
 const GOOGLE_CLIENT_ID = googleClientIdRaw;
 const readQueryChrome = () => {
   try {

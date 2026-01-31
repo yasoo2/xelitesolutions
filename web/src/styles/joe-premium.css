@@ -589,23 +589,56 @@
 }
 
 .joe-send-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    border: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    border: 1px solid rgba(240, 193, 75, 0.4);
     background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%);
-    color: var(--joe-bg-primary);
+    color: #000;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.25s ease;
     flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(240, 193, 75, 0.3);
+}
+
+.joe-send-btn svg {
+    width: 18px;
+    height: 18px;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
 .joe-send-btn:hover {
-    transform: scale(1.05);
-    box-shadow: var(--joe-shadow-gold);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(240, 193, 75, 0.4);
+    border-color: var(--joe-gold-primary);
+}
+
+/* Update inner send button in CommandComposer (which uses .send-btn class) */
+.joe-chat-input-area .send-btn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    border-radius: 10px !important;
+    background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%) !important;
+    color: #000 !important;
+    border: 1px solid rgba(240, 193, 75, 0.4) !important;
+    opacity: 1 !important;
+    box-shadow: 0 2px 10px rgba(240, 193, 75, 0.2) !important;
+}
+
+.joe-chat-input-area .send-btn:hover {
+    transform: scale(1.05) !important;
+    box-shadow: 0 6px 16px rgba(240, 193, 75, 0.3) !important;
+}
+
+.joe-chat-input-area .send-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+    color: #1a1a1a !important;
+    /* Dark icon on gold button */
 }
 
 .joe-send-btn:disabled {

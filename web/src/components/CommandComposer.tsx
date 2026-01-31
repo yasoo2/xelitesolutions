@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, forwardRef } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -2907,7 +2908,7 @@ export default function CommandComposer({
 
 
       {/* AI Providers Modal */}
-      {showProviders && (
+      {showProviders && createPortal(
         <div className="providers-modal-overlay" onClick={() => setShowProviders(false)}>
           <div className="providers-modal" onClick={e => e.stopPropagation()}>
             <button
@@ -3222,7 +3223,8 @@ export default function CommandComposer({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {secretPrompt && (
