@@ -246,11 +246,15 @@ export async function executePlannedActions(params: {
   userId: string;
   sessionId: string;
   actions: Action[];
+  stepOffset?: number;
+  emitFinalReport?: boolean;
 }) {
   return await withBrowserConcurrency(async () => {
     const userId = String(params.userId || '').trim();
     const sessionId = String(params.sessionId || '').trim();
     const actions = Array.isArray(params.actions) ? params.actions : [];
+    const stepOffset = Math.max(0, Math.floor(Number(params.stepOffset || 0)));
+    const emitFinalReport = params.emitFinalReport !== false;
     const cfg = DEFAULT_BROWSER_CONFIG;
 
     const s = await getBrowserSession(sessionId);
@@ -273,7 +277,7 @@ export async function executePlannedActions(params: {
       touchSession(sessionId);
       const a: any = actions[i];
       const name = String(a?.type || 'unknown');
-      const sid = stepId(i);
+      const sid = stepId(i + stepOffset);
       try {
         const rawText = name === 'type' ? String(a?.text || '') : '';
         const secretMatch = name === 'type' ? rawText.match(SECRET_TOKEN_RE) : null;
@@ -991,22 +995,24 @@ export async function executePlannedActions(params: {
 
     const ok = results.every((r) => r.ok);
     const summary = ok ? 'تم تنفيذ المهمة بنجاح.' : 'فشل تنفيذ بعض الخطوات.';
-    broadcastBrowserEvent(sessionId, {
-      type: 'final_report',
-      ts: now(),
-      ok,
-      summary,
-      steps: results,
-      evidence,
-    });
-    if (ok) {
-      broadcastBrowserEvent(sessionId, { type: 'final_success', ts: now(), summary });
-    } else {
-      broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'some_steps_failed' });
+    if (emitFinalReport) {
+      broadcastBrowserEvent(sessionId, {
+        type: 'final_report',
+        ts: now(),
+        ok,
+        summary,
+        steps: results,
+        evidence,
+      });
+      if (ok) {
+        broadcastBrowserEvent(sessionId, { type: 'final_success', ts: now(), summary });
+      } else {
+        broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'some_steps_failed' });
+      }
+      try {
+        broadcastBrowserEvent(sessionId, { type: 'session_status', ts: now(), sessionId, url: page.url(), workerStatus: 'idle' });
+      } catch { }
     }
-    try {
-      broadcastBrowserEvent(sessionId, { type: 'session_status', ts: now(), sessionId, url: page.url(), workerStatus: 'idle' });
-    } catch { }
 
     touchSession(sessionId);
     return { ok, summary, steps: results, evidence };

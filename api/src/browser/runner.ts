@@ -505,6 +505,69 @@ function shouldFastOpen(text: string) {
   return false;
 }
 
+function splitBrowserInstructionIntoSteps(text: string) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+
+  const urls: string[] = [];
+  const protectedText = raw.replace(/https?:\/\/[^\s"'<>]+/gi, (m) => {
+    const i = urls.length;
+    const mm = String(m || '');
+    const suffixMatch = mm.match(/^(.*)([)\]}>.,،;؛!?؟]+)$/u);
+    const url = suffixMatch?.[1] ? suffixMatch[1] : mm;
+    const suffix = suffixMatch?.[2] ? suffixMatch[2] : '';
+    urls.push(url);
+    return `__URL_${i}__${suffix}`;
+  });
+
+  const stripPrefix = (s: string) => s.replace(/^\s*(?:\d+\s*[\).:-]|[-*•]\s*)\s*/g, '').trim();
+  const restoreUrls = (s: string) => s.replace(/__URL_(\d+)__/g, (_m, n) => urls[Number(n)] || '');
+  const splitByConjunctions = (s: string) =>
+    s
+      .split(
+        /(?:\s*(?:->|→|⇒)\s*|\s*(?:ثم|ثمّ|وبعدها|وبعد ذلك|بعد ذلك|وبعدين|بعدين|ومن ثم)\s*[,،;؛]?\s*|\s*(?:and\s+then|then|after\s+that|next)\s*[,،;؛]?\s*|\s*(?:et\s+puis|puis|ensuite|après\s+ça|apres\s+ça|après\s+cela|apres\s+cela)\s*[,،;؛]?\s*|\s*(?:und\s+dann|dann|danach|anschließend|anschliessend|als\s+nächstes|als\s+naechstes)\s*[,،;؛]?\s*|\s*(?:y\s+luego|y\s+después|y\s+despues|luego|después\s+de\s+eso|despues\s+de\s+eso|después|despues|a\s+continuación|a\s+continuacion)\s*[,،;؛]?\s*|\s*(?:и\s+потом|и\s+затем|затем|потом|далее|после\s+этого)\s*[,،;؛]?\s*)/giu,
+      )
+      .map((p) => p.trim())
+      .filter(Boolean);
+  const normalizePart = (s: string) =>
+    stripPrefix(s).replace(/^[\s,،;؛]+/g, '').replace(/[\s,،;؛]+$/g, '').trim();
+
+  const lines = protectedText
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const parts: string[] = [];
+  for (const line of lines.length ? lines : [protectedText]) {
+    for (const p of splitByConjunctions(line)) {
+      const cleaned = normalizePart(p);
+      if (cleaned) parts.push(restoreUrls(cleaned));
+    }
+  }
+
+  const uniq: string[] = [];
+  for (const p of parts) {
+    const v = p.trim();
+    if (!v) continue;
+    if (uniq.length && uniq[uniq.length - 1] === v) continue;
+    uniq.push(v);
+  }
+
+  if (uniq.length > 6) {
+    const head = uniq.slice(0, 5);
+    const joiner = /[\u0600-\u06FF]/.test(raw) ? ' ثم ' : ' then ';
+    const tail = uniq.slice(5).join(joiner);
+    return [...head, tail].filter(Boolean);
+  }
+
+  return uniq;
+}
+
+export function splitBrowserInstructionIntoStepsForDebug(text: string) {
+  return splitBrowserInstructionIntoSteps(text);
+}
+
 function classifyBrowserRuntimeError(e: any) {
   const msg = String(e?.message || e || '').trim();
   const lower = msg.toLowerCase();
@@ -627,6 +690,177 @@ export async function runBrowserInstruction(params: {
         return { ok: false as const, error: 'browser_unavailable', detail: c, debug: debugBase };
       }
     }
+  }
+
+  const instructionSteps = splitBrowserInstructionIntoSteps(safeInstruction);
+  if (instructionSteps.length >= 2) {
+    const runCfg = getSessionRunConfig(sessionId);
+    const providerKey = String(runCfg?.provider || '').trim().toLowerCase();
+    const provider = providerKey && providerKey !== 'llm' ? providerKey : 'openai';
+
+    const allSteps: Array<{ stepId: string; name: string; ok: boolean; reason?: any; message?: string }> = [];
+    const allEvidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
+    const compiledPlan: any[] = [];
+    const compiledActions: any[] = [];
+    let stepOffset = 0;
+    let overallOk = true;
+
+    for (let i = 0; i < instructionSteps.length; i += 1) {
+      const stepText = String(instructionSteps[i] || '').trim();
+      if (!stepText) continue;
+
+      let plannedStep: Planned | null = null;
+      let compilerUsedStep = false;
+      try {
+        const wantsGrounding =
+          /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق|login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول|ابحث|بحث|search|find|lookup)/i.test(
+            stepText,
+          );
+        const navUrl = extractUrl(stepText);
+        const hasOpenKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(stepText);
+        if (wantsGrounding && navUrl && hasOpenKeyword) {
+          try {
+            const s = await getBrowserSession(sessionId);
+            touchSession(sessionId);
+            await s.page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs });
+            await s.page.waitForTimeout(350);
+          } catch { }
+        }
+
+        const grounding = wantsGrounding ? await collectUiGroundingSnapshot(sessionId) : null;
+        let screenshotBase64: string | null = null;
+        if (wantsGrounding) {
+          try {
+            const buf = await screenshotSessionJpeg(sessionId, { quality: 40, timeoutMs: 3000 });
+            screenshotBase64 = buf.toString('base64');
+          } catch { }
+        }
+
+        const groundingJson = grounding ? (() => { try { return JSON.stringify(grounding); } catch { return ''; } })() : '';
+        const urlBlock = grounding?.url ? `\n\nCURRENT_URL:\n${String(grounding.url).slice(0, 800)}` : '';
+        const groundingBlock = groundingJson ? `${urlBlock}\n\nUI_GROUNDING_JSON:\n${groundingJson.slice(0, 24000)}` : urlBlock;
+
+        const userText = `GLOBAL_GOAL:\n${safeInstruction}\n\nCURRENT_STEP (${i + 1}/${instructionSteps.length}):\n${stepText}`;
+        const userContent: any[] = [{ type: 'text', text: userText + groundingBlock }];
+        if (screenshotBase64) {
+          userContent.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` } });
+        }
+
+        const r = await planNextStep(
+          [
+            { role: 'system', content: COMPILER_SYSTEM },
+            { role: 'user', content: userContent },
+          ],
+          {
+            provider,
+            apiKey: runCfg?.apiKey,
+            baseUrl: runCfg?.baseUrl,
+            model: runCfg?.model,
+            userId,
+          } as any,
+        );
+        compilerUsedStep = true;
+        plannedStep = plannedFromUnknown(r);
+      } catch {
+        plannedStep = null;
+      }
+
+      if (plannedStep) {
+        plannedStep.actions = plannedStep.actions.slice(0, cfg.maxSteps);
+        const multiStepHint =
+          /(click|type|scroll|assert|انقر|اضغط|اكتب|تمرير|تحقق|login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول)/i.test(
+            stepText,
+          );
+        if (multiStepHint && plannedStep.actions.length < 2) {
+          const fallback = fallbackActionsFromInstruction(stepText).slice(0, cfg.maxSteps);
+          if (fallback.length > plannedStep.actions.length) plannedStep = { actions: fallback };
+        }
+        const wantsLogin =
+          /(login|log\s*in|sign\s*in|signin|تسجيل\s*الدخول|سجل\s*دخول|سجّل\s*دخول|دخول)/i.test(stepText) ||
+          /\{\{\s*SECRET\s*:\s*JOE_LOGIN_(?:EMAIL|PASSWORD)\s*\}\}/i.test(stepText);
+        const hasTypeOrClick = plannedStep.actions.some((a: any) => {
+          const t = String(a?.type || '').toLowerCase();
+          return t === 'type' || t === 'click';
+        });
+        if (wantsLogin && (!hasTypeOrClick || plannedStep.actions.length < 4)) {
+          const fallback = fallbackActionsFromInstruction(stepText).slice(0, cfg.maxSteps);
+          if (fallback.length > plannedStep.actions.length) plannedStep = { actions: fallback };
+        }
+      }
+
+      if (!plannedStep) {
+        const fallback = fallbackActionsFromInstruction(stepText).slice(0, cfg.maxSteps);
+        if (fallback.length) plannedStep = { actions: fallback };
+      }
+
+      if (!plannedStep || plannedStep.actions.length === 0) {
+        overallOk = false;
+        debugBase.stop_reason = compilerUsedStep ? 'plan_to_actions_empty' : 'compiler_failed';
+        break;
+      }
+
+      if (compiledActions.length + plannedStep.actions.length > cfg.maxSteps) {
+        overallOk = false;
+        debugBase.stop_reason = 'max_steps_exceeded';
+        break;
+      }
+
+      compiledPlan.push(plannedStep.actions.map((a: any) => ({ type: String(a?.type || 'unknown') })));
+      compiledActions.push(...plannedStep.actions);
+
+      try {
+        const exec = await executePlannedActions({
+          userId,
+          sessionId,
+          actions: plannedStep.actions as any,
+          stepOffset,
+          emitFinalReport: false,
+        });
+        allSteps.push(...(exec.steps || []));
+        allEvidence.push(...(exec.evidence || []));
+        stepOffset += Array.isArray(exec.steps) ? exec.steps.length : 0;
+        if (!exec.ok) {
+          overallOk = false;
+          break;
+        }
+      } catch (e: any) {
+        overallOk = false;
+        const c = classifyBrowserRuntimeError(e);
+        debugBase.stop_reason = String(c.code || 'browser_unavailable');
+        break;
+      }
+    }
+
+    debugBase.compiled_plan_json = compiledPlan;
+    debugBase.actions_json = deepRedactForDebug(compiledActions);
+    debugBase.action_count = compiledActions.length;
+    debugBase.stop_reason = debugBase.stop_reason || (overallOk ? 'executed_multi_step' : 'multi_step_failed');
+
+    const summary = overallOk ? 'تم تنفيذ المهمة بنجاح.' : 'فشل تنفيذ بعض الخطوات.';
+    broadcastBrowserEvent(sessionId, {
+      type: 'final_report',
+      ts: now(),
+      ok: overallOk,
+      summary,
+      steps: allSteps,
+      evidence: allEvidence,
+    });
+    if (overallOk) {
+      broadcastBrowserEvent(sessionId, { type: 'final_success', ts: now(), summary });
+    } else {
+      broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary, reason: 'some_steps_failed' });
+    }
+    try {
+      const s = await getBrowserSession(sessionId);
+      touchSession(sessionId);
+      broadcastBrowserEvent(sessionId, { type: 'session_status', ts: now(), sessionId, url: s.page.url(), workerStatus: 'idle' });
+    } catch { }
+
+    if (closeAfterRun) {
+      try { await stopSession(sessionId); } catch { }
+    }
+    emitDebugSnapshot();
+    return { ok: true as const, result: { ok: overallOk, summary, steps: allSteps, evidence: allEvidence }, debug: debugBase };
   }
 
   let planned: Planned | null = null;
