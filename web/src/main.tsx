@@ -7,7 +7,7 @@ import App from './App';
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
 
-const Joe = lazy(() => import('./pages/Joe'));
+
 const JoePremium = lazy(() => import('./pages/JoePremium'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 import './theme.css';

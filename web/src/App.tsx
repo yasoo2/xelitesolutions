@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import TopBar from './components/TopBar';
+
 import { LiveBackground } from './components/LiveBackground';
 import './rtl-overrides.css';
 import { useEffect } from 'react';
@@ -24,7 +24,7 @@ export default function App() {
   return (
     <div className="app">
       <LiveBackground />
-      {location.pathname === '/joe' && <TopBar />}
+      {/* TopBar removed for Premium Layout */}
       <div className="content">
         <Outlet />
       </div>
