@@ -134,7 +134,7 @@ createRoot(document.getElementById('root')!).render(
                 element={
                   <RequireAuth>
                     <Suspense fallback={<div className="route-loading">Loading…</div>}>
-                      <Joe />
+                      <JoePremium />
                     </Suspense>
                   </RequireAuth>
                 }
