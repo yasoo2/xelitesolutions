@@ -205,7 +205,7 @@ export const GitHubConnectModal: React.FC<GitHubConnectModalProps> = ({ isOpen, 
                                 animate={{ opacity: 1, height: 'auto' }}
                                 exit={{ opacity: 0, height: 0 }}
                                 style={{
-                                    color: '#ff4444', fontSize: '13px',
+                                    color: 'var(--accent-danger, #ef4444)', fontSize: '13px',
                                     display: 'flex', alignItems: 'center', gap: '6px',
                                     background: 'rgba(255, 68, 68, 0.1)', padding: '8px', borderRadius: '6px'
                                 }}
