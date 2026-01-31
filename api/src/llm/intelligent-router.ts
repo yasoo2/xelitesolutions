@@ -4,7 +4,7 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider } from './providers/registry';
 import { LLMCacheTool } from '../tools/definitions/LLMCacheTool';
 
 let hack: any = pollinationsProvider;
@@ -273,18 +273,27 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     let taskType: TaskAnalysis['type'] = 'simple_chat';
     let requiresTools = false;
 
-    // Browser/automation tasks
-    if (/(open|afتح|browse|متصفح|click|anقر|اضغط|extract|استخرج|تصفح|ادخل|روح|زور|search|ابحث|بحث)/i.test(msg)) {
-        taskType = 'browser_task';
-        requiresTools = true;
-    }
+    const hasBuildVerb = /(build|create|implement|develop|generate|scaffold|ابني|انشئ|أنشئ|نفذ|صمم|برمج|سوي|اعمل)/i.test(msg);
+    const hasDevObject = /(website|site|web\s*app|application|app|landing|dashboard|admin|api|backend|frontend|موقع|تطبيق|منصة|لوحة|لوحه|واجهة|متجر|سلة|دفع)/i.test(msg);
+    const isBuildIntent = hasBuildVerb && hasDevObject;
+
     // File/System Operations
-    else if (/(file|folder|directory|system|terminal|command|ملف|مجلد|نظام|امر)/i.test(msg) && /(create|write|read|edit|delete|run|execute|list|انشئ|اكتب|اقرأ|عدل|احذف|شغل|نفذ|اعرض)/i.test(msg)) {
+    if (/(file|folder|directory|system|terminal|command|ملف|مجلد|نظام|امر)/i.test(msg) && /(create|write|read|edit|delete|run|execute|list|انشئ|اكتب|اقرأ|عدل|احذف|شغل|نفذ|اعرض)/i.test(msg)) {
         taskType = 'code_generation';
         requiresTools = true;
     }
+    // Build / large project creation
+    else if (isBuildIntent) {
+        taskType = 'code_generation';
+        requiresTools = true;
+    }
+    // Browser/automation tasks
+    else if (/(open|afتح|browse|متصفح|click|anقر|اضغط|extract|استخرج|تصفح|ادخل|روح|زور|search|ابحث|بحث)/i.test(msg)) {
+        taskType = 'browser_task';
+        requiresTools = true;
+    }
     // Code generation & Building
-    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create|انشئ|أنشئ|app|تطبيق|برمج|سوي|اعمل|صمم|نظام|تطبيق|منصة|صفحة|موقع)/i.test(msg)) {
+    else if (/(code|كود|function|دالة|class|كلاس|api|endpoint|implement|نفذ|build|ابني|create|انشئ|أنشئ|app|application|برمج|سوي|اعمل|صمم|نظام|منصة|backend|frontend|database|auth|login|payment|دفع|مصادقة|قاعدة\s*بيانات)/i.test(msg)) {
         taskType = 'code_generation';
         requiresTools = length > 40; // Lower threshold to ensure tools are triggered for build requests
     }
@@ -539,10 +548,24 @@ export async function routeToModel(
     // Check if Groq API key available
     const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
     const hasOpenRouterKey = !!(process.env.OPENROUTER_API_KEY?.trim());
+    const hasLocal =
+        localProvider.isConfigured() &&
+        String(process.env.LOCAL_LLM_DISABLE || '').trim() !== '1';
+    const localStrict = String(process.env.LOCAL_LLM_STRICT || '').trim() === '1';
 
     // Unified Multi-Provider Mesh for Auto Mode
 
     const meshProviders: Array<{ name: string; run: () => Promise<string> }> = [];
+    if (hasLocal) {
+        meshProviders.push({
+            name: 'Local (Auto)',
+            run: async () => {
+                const res = await localProvider.chatComplete(flatMessages);
+                if (!res || res.length < 2) throw new Error('Local response too short');
+                return res;
+            }
+        });
+    }
     if (hasGroqKey) {
         meshProviders.push({
             name: 'Groq (Free)',
@@ -560,14 +583,16 @@ export async function routeToModel(
             }
         });
     }
-    meshProviders.push({
-        name: 'Pollinations (Backup)',
-        run: async () => {
-            const res = await pollinationsProvider.chatComplete(flatMessages, 'openai');
-            if (!res || res.length < 5) throw new Error('Pollinations response too short');
-            return res;
-        }
-    });
+    if (!localStrict) {
+        meshProviders.push({
+            name: 'Pollinations (Backup)',
+            run: async () => {
+                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai');
+                if (!res || res.length < 5) throw new Error('Pollinations response too short');
+                return res;
+            }
+        });
+    }
     let lastError = '';
 
     // 1. Try Selected Model First (Happy Path)
@@ -601,6 +626,9 @@ export async function routeToModel(
             if (taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme') {
                 timeoutValue = 20000;
             }
+            if (p.name === 'Local (Auto)') {
+                timeoutValue = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme' ? 25000 : 15000;
+            }
             if (p.name === 'Pollinations (Backup)') {
                 timeoutValue = 25000;
             }
@@ -625,6 +653,9 @@ export async function routeToModel(
 
     // Final catch-all (Guarantee a response)
     try {
+        if (localStrict) {
+            return lastError || 'LOCAL_LLM_FAILED';
+        }
         const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
         const cleaned = cleanOutput(finalAns);
         if (cleaned && cleaned.length > 0) {

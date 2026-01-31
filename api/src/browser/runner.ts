@@ -469,7 +469,7 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
   if (wantsUiAudit) actions.push({ type: 'ui_audit' });
 
   if (actions.length === 0) return [{ type: 'ui_audit' }];
-  if (hasSearchIntent && !wantsExplicitGoogle && actions.length === 1 && actions[0]?.type === 'goto') return actions;
+  if (hasSearchIntent && actions.length === 1 && actions[0]?.type === 'goto') return actions;
   return actions;
 }
 

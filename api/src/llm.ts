@@ -852,6 +852,53 @@ export async function planNextStep(
       const explicitLargeScale = /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
 
       const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
+      const parseWebsitePipelineInput = () => {
+        const text = String(userText || '');
+        const lower = text.toLowerCase();
+        const nameMatch =
+          text.match(/(?:named|called)\s+([a-z0-9_-]{2,})/i) ||
+          text.match(/(?:اسم|اسمه|سميه|سَمِّه|سمه)\s+([a-z0-9_-]{2,})/i);
+        const name = String(nameMatch?.[1] || '').trim() || 'mega-web';
+
+        const isEcom =
+          /(ecommerce|e-commerce|shop|store|checkout|cart|stripe|paypal|payments?|سلة|دفع|متجر|تجارة\s*الكترونية)/i.test(text);
+        const isBlog = /(blog|مدونة|مقال|مقالات|اخبار|أخبار)/i.test(text);
+        const type = isEcom ? 'ecommerce' : isBlog ? 'blog' : 'saas';
+
+        const features = Array.from(
+          new Set(
+            [
+              /(auth|login|signup|oauth|jwt|مصادقة|تسجيل\s*الدخول|حسابات)/i.test(text) ? 'auth' : null,
+              /(admin|dashboard|cms|لوحة|لوحه|تحكم|ادارة|إدارة)/i.test(text) ? 'admin' : null,
+              /(payment|checkout|stripe|paypal|دفع|بوابة\s*دفع)/i.test(text) ? 'payments' : null,
+              /(search|filter|فلاتر|بحث)/i.test(text) ? 'search' : null,
+              /(seo|سيو|meta|structured\s*data)/i.test(text) ? 'seo' : null,
+              /(i18n|multilingual|arabic|english|عربي|انجليزي|ثنائي)/i.test(text) ? 'i18n' : null,
+            ].filter(Boolean) as string[],
+          ),
+        );
+
+        const aestheticMode =
+          /(glass|زجاج)/i.test(text)
+            ? 'glass'
+            : /(neon|نيون)/i.test(text)
+              ? 'neon'
+              : /(minimal|مينيمال|بسيط)/i.test(text)
+                ? 'minimal'
+                : /(corporate|رسمي|شركات)/i.test(text)
+                  ? 'corporate'
+                  : undefined;
+
+        const language =
+          analysis?.language === 'ar'
+            ? 'ar'
+            : analysis?.language === 'mixed'
+              ? 'dual'
+              : 'en';
+
+        const qualityTasks = ['lint', 'typecheck', 'test', 'build'];
+        return { name, type, features, qualityTasks, securityChecks: true, autoFix: true, aestheticMode, language };
+      };
       if (!isBuildingWebsite && (analysis.type === 'code_generation' || codePatterns.test(userText)) && (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText))) {
         console.info('[Auto Enterprise] → Large Build Detected: Genesis Build');
         return {
@@ -863,13 +910,17 @@ export async function planNextStep(
       // 4. Code generation (let the intelligent model handle it via echo)
       if (codePatterns.test(userText) && analysis.type === 'code_generation') {
         if (isBuildingWebsite) {
+          if (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText)) {
+            console.info('[Auto Enterprise] → Large Website Build Detected: Genesis Build');
+            return {
+              name: 'genesis_build',
+              input: { goal: userText }
+            };
+          }
           console.info('[Auto Enterprise] → Detected Website Build Request - using Pipeline');
           return {
             name: 'website_full_pipeline',
-            input: {
-              prompt: userText,
-              projectType: 'vanilla'
-            }
+            input: parseWebsitePipelineInput()
           };
         }
 
