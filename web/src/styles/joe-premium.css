@@ -472,6 +472,38 @@
     display: none !important;
 }
 
+/* CRITICAL: Override global.css fixed positioning for composer-footer */
+.joe-chat-input-area .composer-footer,
+.joe-chat-input-area .command-composer .composer-footer,
+.joe-chat-panel .composer-footer {
+    position: static !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    z-index: 1 !important;
+    pointer-events: auto !important;
+}
+
+/* CRITICAL: Override global.css for input-area */
+.joe-chat-input-area .input-area,
+.joe-chat-input-area .composer .input-area,
+.joe-chat-panel .input-area {
+    position: static !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 12px 16px !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+
 /* Provider dots indicator */
 .joe-chat-input-area .provider-indicator {
     display: flex;
