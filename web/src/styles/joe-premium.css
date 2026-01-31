@@ -372,8 +372,8 @@
 }
 
 .joe-chat-input-area {
-    padding: 12px 0;
-    /* Micro vertical spacing */
+    padding: 0 !important;
+    /* Unified single-rect: No outer padding */
     background: transparent !important;
     border: none !important;
     flex-shrink: 0;
@@ -386,13 +386,13 @@
     align-items: center;
 }
 
-/* V4 Ultra-Thin Sharp Stealth */
+/* V7 Single-Rect Ultra-Nano Precision */
 .joe-chat-input-area .command-composer,
 .joe-chat-input-area .composer,
 .joe-chat-input-area .composer-footer {
     width: 100% !important;
-    max-width: 660px !important;
-    /* Micro focused width */
+    max-width: 100% !important;
+    /* Full Chat Stretch */
     min-width: 0 !important;
     background: transparent !important;
     border: none !important;
@@ -405,22 +405,19 @@
     padding: 0 !important;
 }
 
-/* The Stealth Box: Sharper, Slimmer, More Professional */
+/* The Stealth Bar: Single Rect, Full Width, Microscopic Height */
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
-    background: rgba(14, 14, 18, 0.8) !important;
-    /* Deeper stealth */
-    backdrop-filter: blur(25px) saturate(160%) !important;
-    -webkit-backdrop-filter: blur(25px) saturate(160%) !important;
-    border: 0.5px solid rgba(255, 255, 255, 0.1) !important;
-    /* Micro thin border */
-    border-radius: 8px !important;
-    /* Sharper geometric precision */
-    padding: 4px 12px !important;
-    /* Micro height */
-    box-shadow:
-        0 10px 30px rgba(0, 0, 0, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
+    background: rgba(8, 8, 12, 0.98) !important;
+    /* Solidly stealth */
+    backdrop-filter: blur(10px) saturate(120%) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(120%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 0 !important;
+    /* Sharp corners for full-width look */
+    padding: 1px 8px !important;
+    /* Ultra-Nano height */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
     width: 100% !important;
     height: auto !important;
     box-sizing: border-box !important;
@@ -428,16 +425,13 @@
     align-items: center;
     gap: 8px !important;
     margin: 0 !important;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
 }
 
 .joe-chat-input-area .composer .input-area:focus-within,
 .joe-chat-input-wrapper:focus-within {
-    background: rgba(18, 18, 24, 0.9) !important;
-    border-color: rgba(255, 215, 0, 0.2) !important;
-    box-shadow:
-        0 20px 50px rgba(0, 0, 0, 0.8),
-        0 0 0 1px rgba(255, 215, 0, 0.05) !important;
+    background: #000 !important;
+    border-top-color: rgba(255, 215, 0, 0.2) !important;
 }
 
 /* Hide internal noise */
@@ -447,22 +441,21 @@
     display: none !important;
 }
 
-/* Ghost Buttons: Micro Precision */
+/* Microscopic Buttons: Elegant Nano */
 .joe-chat-input-area .composer .action-btn,
 .joe-chat-input-area .composer .provider-btn,
 .joe-chat-input-area .composer .send-btn {
-    width: 28px !important;
-    height: 28px !important;
+    width: 24px !important;
+    height: 24px !important;
     padding: 0 !important;
     background: transparent !important;
     border: none !important;
-    border-radius: 6px !important;
-    /* Matching micro radius */
-    color: rgba(255, 255, 255, 0.35) !important;
+    border-radius: 4px !important;
+    color: rgba(255, 255, 255, 0.3) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     cursor: pointer;
     flex-shrink: 0;
 }
@@ -487,24 +480,24 @@
 .joe-chat-input-area .composer .action-btn svg,
 .joe-chat-input-area .composer .provider-btn svg,
 .joe-chat-input-area .composer .send-btn svg {
-    width: 14px !important;
-    height: 14px !important;
+    width: 12px !important;
+    height: 12px !important;
 }
 
 .joe-chat-input-area .composer .provider-btn .provider-label {
     display: none !important;
 }
 
-/* Clean Micro Textarea: V5 Nano */
+/* Micro Textarea: V7 Thin */
 .joe-chat-input-area .composer .main-input {
     background: transparent !important;
     border: none !important;
-    padding: 6px 0 !important;
+    padding: 4px 0 !important;
     margin: 0 !important;
-    font-size: 14px !important;
-    line-height: 1.4 !important;
+    font-size: 13px !important;
+    line-height: 1.3 !important;
     color: #fff !important;
-    opacity: 0.85;
+    opacity: 0.8;
     box-shadow: none !important;
     resize: none !important;
     flex: 1;
