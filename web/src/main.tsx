@@ -8,6 +8,7 @@ const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
 
 const Joe = lazy(() => import('./pages/Joe'));
+const JoePremium = lazy(() => import('./pages/JoePremium'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 import './theme.css';
 import './global.css';
@@ -90,7 +91,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
       const qs = new URLSearchParams(window.location.search);
       const v = String(qs.get('auth_bypass') || '').toLowerCase();
       if (v === '1' || v === 'true' || v === 'yes') return makeToken();
-    } catch {}
+    } catch { }
     return null;
   };
 
@@ -106,7 +107,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
       try {
         localStorage.setItem('token', bypass);
         token = bypass;
-      } catch {}
+      } catch { }
     }
   }
   if (!token) return <Navigate to="/login" replace />;
@@ -144,6 +145,16 @@ createRoot(document.getElementById('root')!).render(
                   <RequireAuth>
                     <Suspense fallback={<div className="route-loading">Loading...</div>}>
                       <WorkspaceSettings />
+                    </Suspense>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="joe-premium"
+                element={
+                  <RequireAuth>
+                    <Suspense fallback={<div className="route-loading">Loading...</div>}>
+                      <JoePremium />
                     </Suspense>
                   </RequireAuth>
                 }
