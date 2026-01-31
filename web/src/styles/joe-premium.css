@@ -372,8 +372,8 @@
 }
 
 .joe-chat-input-area {
-    padding: 16px 24px;
-    /* More horizontal room */
+    padding: 20px 0;
+    /* Vertical spacing only, child centers itself */
     background: transparent !important;
     border-top: none !important;
     flex-shrink: 0;
@@ -383,118 +383,138 @@
     box-sizing: border-box;
     display: flex;
     justify-content: center;
-    /* Center the box */
 }
 
-/* Flatten hierarchy: Remove borders/bgs from intermediate divs */
+/* Base Stealth UI: Remove all nested structural noise */
 .joe-chat-input-area .command-composer,
 .joe-chat-input-area .composer,
 .joe-chat-input-area .composer-footer {
     width: 100% !important;
-    max-width: 1000px !important;
-    /* Elegant max width */
+    max-width: 820px !important;
+    /* Slightly narrower for modern focus */
     min-width: 0 !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     position: static !important;
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
     box-sizing: border-box !important;
     margin: 0 auto !important;
-    /* Perfect centering */
     padding: 0 !important;
-    left: auto !important;
-    right: auto !important;
-    transform: none !important;
 }
 
-/* The ONE visible container: Clean, Glassmorphic, Modern */
+/* The Stealth Pill: High-End Minimalist Container */
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
-    background: rgba(15, 20, 28, 0.7) !important;
-    backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(255, 215, 0, 0.25) !important;
-    border-radius: 18px !important;
-    padding: 10px 16px !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
-    width: 100% !important;
+    background: rgba(10, 10, 15, 0.45) !important;
+    /* Deep Stealth */
+    backdrop-filter: blur(35px) saturate(180%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.12) !important;
+    /* Hairline Border */
+    border-radius: 28px !important;
+    /* High-radius modern pill */
+    padding: 12px 20px !important;
+    box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+    /* Outer subtle ring */
+    width: calc(100% - 32px) !important;
     height: auto !important;
     box-sizing: border-box !important;
     display: flex;
     align-items: flex-end;
-    gap: 12px !important;
-    margin: 0 !important;
-    transition: all 0.3s ease;
+    gap: 14px !important;
+    margin: 0 auto !important;
+    transition: all 0.4s cubic-bezier(0.2, 0, 0, 1);
 }
 
+/* Neon Focus State: Only show color when active */
 .joe-chat-input-area .composer .input-area:focus-within,
 .joe-chat-input-wrapper:focus-within {
-    border-color: var(--joe-gold-primary) !important;
-    box-shadow: 0 0 20px rgba(255, 215, 0, 0.15) !important;
+    background: rgba(13, 13, 18, 0.6) !important;
+    border-color: rgba(255, 215, 0, 0.4) !important;
+    /* Subtle Gold glow only on focus */
+    box-shadow:
+        0 15px 50px rgba(0, 0, 0, 0.6),
+        0 0 30px rgba(255, 215, 0, 0.08) !important;
+    transform: translateY(-1px);
 }
 
-/* Hide internal clutter */
+/* Cleanup */
 .joe-chat-input-area .composer .events,
 .joe-chat-input-area .composer .empty-state-hero,
 .joe-chat-input-area .composer .connection-status {
     display: none !important;
 }
 
-/* Compact Buttons */
+/* Ghost Buttons: Minimal noise */
 .joe-chat-input-area .composer .action-btn,
 .joe-chat-input-area .composer .provider-btn,
 .joe-chat-input-area .composer .send-btn {
-    width: 34px !important;
-    height: 34px !important;
+    width: 38px !important;
+    height: 38px !important;
     padding: 0 !important;
-    background: rgba(255, 255, 255, 0.03) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-radius: 10px !important;
-    color: var(--joe-text-secondary) !important;
+    background: transparent !important;
+    /* Transparent by default */
+    border: none !important;
+    border-radius: 50% !important;
+    /* Circular for buttons */
+    color: rgba(255, 255, 255, 0.5) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
 }
 
 .joe-chat-input-area .composer .action-btn:hover,
 .joe-chat-input-area .composer .provider-btn:hover {
     background: rgba(255, 255, 255, 0.08) !important;
-    color: var(--joe-gold-primary) !important;
+    color: #fff !important;
+    transform: scale(1.1);
 }
 
 .joe-chat-input-area .composer .send-btn {
-    background: var(--joe-gold-primary) !important;
-    color: #000 !important;
-    border: none !important;
+    background: rgba(255, 215, 0, 0.1) !important;
+    /* Very faint gold ghost */
+    color: var(--joe-gold-primary) !important;
 }
 
 .joe-chat-input-area .composer .send-btn:hover {
-    box-shadow: 0 0 15px var(--joe-gold-primary);
-    transform: translateY(-1px);
+    background: var(--joe-gold-primary) !important;
+    color: #000 !important;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
 }
 
 .joe-chat-input-area .composer .action-btn svg,
 .joe-chat-input-area .composer .provider-btn svg,
 .joe-chat-input-area .composer .send-btn svg {
-    width: 18px !important;
-    height: 18px !important;
+    width: 20px !important;
+    height: 20px !important;
 }
 
 .joe-chat-input-area .composer .provider-btn .provider-label {
     display: none !important;
 }
 
-/* Main Textarea Clean Fix */
+/* Modern Minimal Textarea */
 .joe-chat-input-area .composer .main-input {
     background: transparent !important;
     border: none !important;
-    padding: 8px 0 !important;
+    padding: 10px 0 !important;
     margin: 0 !important;
-    font-size: 15px !important;
+    font-size: 16px !important;
+    line-height: 1.6 !important;
     color: #fff !important;
+    opacity: 0.9;
     box-shadow: none !important;
     resize: none !important;
+    flex: 1;
+}
+
+.joe-chat-input-area .composer .main-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
 }
 
 /* Hide duplicate headers or extras if any */
