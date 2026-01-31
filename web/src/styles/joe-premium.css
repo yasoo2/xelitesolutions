@@ -410,6 +410,37 @@
     display: none !important;
 }
 
+/* Hide 'Auto' status indicator as requested */
+.joe-chat-input-area .composer .connection-status {
+    display: none !important;
+}
+
+/* Shrink action buttons to fit nicely */
+.joe-chat-input-area .composer .action-btn,
+.joe-chat-input-area .composer .provider-btn,
+.joe-chat-input-area .composer .send-btn {
+    width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    min-width: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
+}
+
+.joe-chat-input-area .composer .action-btn svg,
+.joe-chat-input-area .composer .provider-btn svg,
+.joe-chat-input-area .composer .send-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+/* Hide provider label (text) to save space, keep icon */
+.joe-chat-input-area .composer .provider-btn .provider-label {
+    display: none !important;
+}
+
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
     background: var(--joe-bg-card);
@@ -422,7 +453,8 @@
     box-sizing: border-box !important;
     display: flex;
     align-items: flex-end;
-    gap: 10px;
+    gap: 8px !important;
+    /* Reduced gap */
     margin: 0 !important;
 }
 
