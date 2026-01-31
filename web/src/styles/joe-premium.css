@@ -997,19 +997,10 @@
 }
 
 .joe-chat-input-area .command-composer,
-.joe-chat-input-area [class*="composer"],
-.joe-chat-input-area>div {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    margin: 0 !important;
-    position: relative !important;
-    left: auto !important;
-    right: auto !important;
-    transform: none !important;
+.joe-chat-input-area [class*="composer"] {
+    width: 100%;
+    max-width: 100%;
+    background: transparent;
 }
 
 .joe-chat-panel .command-composer-wrapper,

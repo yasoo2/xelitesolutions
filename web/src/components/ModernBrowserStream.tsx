@@ -276,113 +276,113 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       ws.onopen = () => setStatus('connected');
       ws.onerror = () => setStatus('error');
       ws.onmessage = (ev) => {
-      let msg: WsEvent | null = null;
-      try {
-        const parsed = JSON.parse(String(ev.data || ''));
-        const candidate =
-          parsed && typeof parsed === 'object'
-            ? (typeof (parsed as any)?.type === 'string'
-              ? parsed
-              : typeof (parsed as any)?.event?.type === 'string'
-                ? (parsed as any).event
-                : typeof (parsed as any)?.data?.type === 'string'
-                  ? (parsed as any).data
-                  : null)
-            : null;
-        msg = candidate as any;
-      } catch {
-        msg = null;
-      }
-      if (!msg) return;
-      if (msg.type === 'stream_frame') {
-        setW(msg.w);
-        setH(msg.h);
-        const img = new Image();
-        img.onload = () => {
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          canvas.width = msg.w;
-          canvas.height = msg.h;
-          ctx.drawImage(img, 0, 0, msg.w, msg.h);
-          const curBoxes = showBoxes ? (boxesRef.current || []) : [];
-          if (showBoxes && curBoxes.length) {
-            ctx.save();
-            ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
-            ctx.lineWidth = 2;
-            for (const b of curBoxes) {
-              ctx.strokeRect(b.x, b.y, b.width, b.height);
-            }
-            ctx.restore();
-          }
-        };
-        img.src = `data:image/jpeg;base64,${msg.jpegBase64}`;
-        return;
-      }
-      if (msg.type === 'cursor_move') {
-        const fs = frameSizeRef.current;
-        const nx = fs.w ? msg.x / fs.w : 0;
-        const ny = fs.h ? msg.y / fs.h : 0;
-        cursorTargetNormRef.current = { x: Math.max(0, Math.min(1, nx)), y: Math.max(0, Math.min(1, ny)) };
-        return;
-      }
-      if (msg.type === 'highlight_boxes') {
-        setBoxes(showBoxes ? (msg.boxes || []) : []);
-        return;
-      }
-      if (msg.type === 'action_sent' || msg.type === 'action_ack' || msg.type === 'action_done' || msg.type === 'action_error') {
-        setActions((prev) => {
-          const next = prev.concat([
-            {
-              ts: msg.ts,
-              type: msg.type,
-              actionId: msg.actionId,
-              actionType: msg.actionType,
-              summary: msg.summary,
-              reason: msg.reason,
-              error: msg.error,
-            },
-          ]);
-          return next.length > 60 ? next.slice(next.length - 60) : next;
-        });
-        return;
-      }
-      if (msg.type === 'step_start') {
-        setLastStep(`${msg.stepId}: ${msg.name}`);
-        return;
-      }
-      if (msg.type === 'final_report') {
-        setFinal({ ok: msg.ok, summary: msg.summary });
-        return;
-      }
-      if (msg.type === 'final_success') {
-        setFinal({ ok: true, summary: msg.summary });
-        return;
-      }
-      if (msg.type === 'final_failed') {
-        const reason = String(msg.reason || '').trim();
-        const s = reason ? `${msg.summary}\n${reason}` : msg.summary;
-        setFinal({ ok: false, summary: s });
-        return;
-      }
-      if ((msg as any).type === 'session_status') {
+        let msg: WsEvent | null = null;
         try {
-          const d = (msg as any);
-          const det = { url: String(d?.url || ''), sessionId: String(d?.sessionId || '') };
-          window.dispatchEvent(new CustomEvent('browser:session_status', { detail: det }));
-        } catch { }
-        return;
-      }
-      if (msg.type === 'debug_snapshot') {
-        setDebug({
-          compiledPlanJson: (msg as any).compiledPlanJson,
-          actionsJson: (msg as any).actionsJson,
-          actionCount: Number((msg as any).actionCount || 0),
-          stopReason: String((msg as any).stopReason || ''),
-        });
-        return;
-      }
+          const parsed = JSON.parse(String(ev.data || ''));
+          const candidate =
+            parsed && typeof parsed === 'object'
+              ? (typeof (parsed as any)?.type === 'string'
+                ? parsed
+                : typeof (parsed as any)?.event?.type === 'string'
+                  ? (parsed as any).event
+                  : typeof (parsed as any)?.data?.type === 'string'
+                    ? (parsed as any).data
+                    : null)
+              : null;
+          msg = candidate as any;
+        } catch {
+          msg = null;
+        }
+        if (!msg) return;
+        if (msg.type === 'stream_frame') {
+          setW(msg.w);
+          setH(msg.h);
+          const img = new Image();
+          img.onload = () => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            canvas.width = msg.w;
+            canvas.height = msg.h;
+            ctx.drawImage(img, 0, 0, msg.w, msg.h);
+            const curBoxes = showBoxes ? (boxesRef.current || []) : [];
+            if (showBoxes && curBoxes.length) {
+              ctx.save();
+              ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
+              ctx.lineWidth = 2;
+              for (const b of curBoxes) {
+                ctx.strokeRect(b.x, b.y, b.width, b.height);
+              }
+              ctx.restore();
+            }
+          };
+          img.src = `data:image/jpeg;base64,${msg.jpegBase64}`;
+          return;
+        }
+        if (msg.type === 'cursor_move') {
+          const fs = frameSizeRef.current;
+          const nx = fs.w ? msg.x / fs.w : 0;
+          const ny = fs.h ? msg.y / fs.h : 0;
+          cursorTargetNormRef.current = { x: Math.max(0, Math.min(1, nx)), y: Math.max(0, Math.min(1, ny)) };
+          return;
+        }
+        if (msg.type === 'highlight_boxes') {
+          setBoxes(showBoxes ? (msg.boxes || []) : []);
+          return;
+        }
+        if (msg.type === 'action_sent' || msg.type === 'action_ack' || msg.type === 'action_done' || msg.type === 'action_error') {
+          setActions((prev) => {
+            const next = prev.concat([
+              {
+                ts: msg.ts,
+                type: msg.type,
+                actionId: msg.actionId,
+                actionType: msg.actionType,
+                summary: msg.summary,
+                reason: msg.reason,
+                error: msg.error,
+              },
+            ]);
+            return next.length > 60 ? next.slice(next.length - 60) : next;
+          });
+          return;
+        }
+        if (msg.type === 'step_start') {
+          setLastStep(`${msg.stepId}: ${msg.name}`);
+          return;
+        }
+        if (msg.type === 'final_report') {
+          setFinal({ ok: msg.ok, summary: msg.summary });
+          return;
+        }
+        if (msg.type === 'final_success') {
+          setFinal({ ok: true, summary: msg.summary });
+          return;
+        }
+        if (msg.type === 'final_failed') {
+          const reason = String(msg.reason || '').trim();
+          const s = reason ? `${msg.summary}\n${reason}` : msg.summary;
+          setFinal({ ok: false, summary: s });
+          return;
+        }
+        if ((msg as any).type === 'session_status') {
+          try {
+            const d = (msg as any);
+            const det = { url: String(d?.url || ''), sessionId: String(d?.sessionId || '') };
+            window.dispatchEvent(new CustomEvent('browser:session_status', { detail: det }));
+          } catch { }
+          return;
+        }
+        if (msg.type === 'debug_snapshot') {
+          setDebug({
+            compiledPlanJson: (msg as any).compiledPlanJson,
+            actionsJson: (msg as any).actionsJson,
+            actionCount: Number((msg as any).actionCount || 0),
+            stopReason: String((msg as any).stopReason || ''),
+          });
+          return;
+        }
       };
     };
 
@@ -395,7 +395,78 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
 
   return (
     <div style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
-      <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+      {/* Chrome-like Header */}
+      <div style={{ display: 'flex', flexDirection: 'column', background: '#1e1e1e', borderBottom: '1px solid #333' }}>
+        {/* Tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '8px 8px 0', gap: 6, background: '#111' }}>
+          <div style={{
+            padding: '8px 16px',
+            background: '#1e1e1e',
+            borderRadius: '10px 10px 0 0',
+            fontSize: 12,
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            minWidth: 120
+          }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e' }} />
+            <span>Browser Session</span>
+            <span style={{ marginLeft: 'auto', cursor: 'pointer', opacity: 0.7 }}>×</span>
+          </div>
+          <div style={{ padding: '8px 12px', fontSize: 18, color: '#666', cursor: 'pointer' }}>+</div>
+        </div>
+
+        {/* Address Bar & Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px' }}>
+          {/* Nav Icons */}
+          <div style={{ display: 'flex', gap: 12, color: '#a0a0a0' }}>
+            <button style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>←</button>
+            <button style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>→</button>
+            <button
+              onClick={() => {
+                void flushType().finally(() => {
+                  enqueueActions([{ type: 'key', text: 'F5' }]); // Approximate reload
+                });
+              }}
+              style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}
+            >
+              ↻
+            </button>
+          </div>
+
+          {/* Address Input */}
+          <div style={{
+            flex: 1,
+            background: '#111',
+            borderRadius: 20,
+            padding: '6px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            border: '1px solid #333'
+          }}>
+            <span style={{ color: '#666' }}>🔒</span>
+            <input
+              readOnly
+              value={lastStep ? lastStep.split(': ')[1] || 'about:blank' : 'about:blank'}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#ddd',
+                width: '100%',
+                outline: 'none',
+                fontSize: 13
+              }}
+            />
+          </div>
+
+          {/* Menu */}
+          <div style={{ color: '#a0a0a0', cursor: 'pointer' }}>⋮</div>
+        </div>
+      </div>
+
+      <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fff' }}>
         <style>{`
         .browser-cursor {
           width: 26px;
