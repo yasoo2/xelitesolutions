@@ -372,7 +372,8 @@
 }
 
 .joe-chat-input-area {
-    padding: 24px 16px;
+    padding: 16px 0;
+    /* Slimmer vertical spacing */
     background: transparent !important;
     border: none !important;
     flex-shrink: 0;
@@ -385,13 +386,13 @@
     align-items: center;
 }
 
-/* V3 Ultra-Modern Stealth Pill */
+/* V4 Ultra-Thin Sharp Stealth */
 .joe-chat-input-area .command-composer,
 .joe-chat-input-area .composer,
 .joe-chat-input-area .composer-footer {
     width: 100% !important;
-    max-width: 720px !important;
-    /* Perfect visual balance */
+    max-width: 680px !important;
+    /* Slimmer and more focused */
     min-width: 0 !important;
     background: transparent !important;
     border: none !important;
@@ -404,36 +405,40 @@
     padding: 0 !important;
 }
 
-/* The Stealth Pill Container */
+/* The Stealth Box: Sharper, Slimmer, More Professional */
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
-    background: rgba(10, 10, 12, 0.45) !important;
-    backdrop-filter: blur(40px) saturate(200%) !important;
-    -webkit-backdrop-filter: blur(40px) saturate(200%) !important;
-    border: 0.5px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 32px !important;
-    padding: 14px 24px !important;
+    background: rgba(14, 14, 18, 0.8) !important;
+    /* Deeper stealth */
+    backdrop-filter: blur(25px) saturate(160%) !important;
+    -webkit-backdrop-filter: blur(25px) saturate(160%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    /* Sharp thin border */
+    border-radius: 12px !important;
+    /* Sharper corners */
+    padding: 8px 16px !important;
+    /* Slimmer padding */
     box-shadow:
-        0 20px 60px rgba(0, 0, 0, 0.8),
-        inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+        0 15px 40px rgba(0, 0, 0, 0.7),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
     width: 100% !important;
     height: auto !important;
     box-sizing: border-box !important;
     display: flex;
-    align-items: flex-end;
-    gap: 16px !important;
+    align-items: center;
+    /* Center buttons vertically with thin text */
+    gap: 12px !important;
     margin: 0 !important;
-    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .joe-chat-input-area .composer .input-area:focus-within,
 .joe-chat-input-wrapper:focus-within {
-    background: rgba(15, 15, 20, 0.6) !important;
-    border-color: rgba(250, 200, 50, 0.3) !important;
+    background: rgba(18, 18, 24, 0.9) !important;
+    border-color: rgba(255, 215, 0, 0.2) !important;
     box-shadow:
-        0 25px 70px rgba(0, 0, 0, 0.9),
-        0 0 40px rgba(250, 200, 50, 0.05) !important;
-    transform: translateY(-2px);
+        0 20px 50px rgba(0, 0, 0, 0.8),
+        0 0 0 1px rgba(255, 215, 0, 0.05) !important;
 }
 
 /* Hide internal noise */
@@ -443,40 +448,72 @@
     display: none !important;
 }
 
-/* Ghost Buttons - Modern Minimalism */
+/* Ghost Buttons: Compact & Precise */
 .joe-chat-input-area .composer .action-btn,
 .joe-chat-input-area .composer .provider-btn,
 .joe-chat-input-area .composer .send-btn {
-    width: 40px !important;
-    height: 40px !important;
+    width: 36px !important;
+    height: 36px !important;
     padding: 0 !important;
     background: transparent !important;
     border: none !important;
-    border-radius: 50% !important;
-    color: rgba(255, 255, 255, 0.45) !important;
+    border-radius: 8px !important;
+    /* Matching box radius */
+    color: rgba(255, 255, 255, 0.4) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+    transition: all 0.2s ease;
     cursor: pointer;
     flex-shrink: 0;
 }
 
 .joe-chat-input-area .composer .action-btn:hover,
 .joe-chat-input-area .composer .provider-btn:hover {
-    transform: scale(1.1);
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #fff !important;
 }
 
 .joe-chat-input-area .composer .send-btn {
-    background: rgba(255, 215, 0, 0.1) !important;
-    /* Very faint gold ghost */
+    background: rgba(255, 215, 0, 0.07) !important;
     color: var(--joe-gold-primary) !important;
 }
 
 .joe-chat-input-area .composer .send-btn:hover {
     background: var(--joe-gold-primary) !important;
-    color: #000 !important;
-    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+    color: #111 !important;
+    transform: translateY(-1px);
+}
+
+.joe-chat-input-area .composer .action-btn svg,
+.joe-chat-input-area .composer .provider-btn svg,
+.joe-chat-input-area .composer .send-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.joe-chat-input-area .composer .provider-btn .provider-label {
+    display: none !important;
+}
+
+/* Clean Professional Textarea: V4 Thin */
+.joe-chat-input-area .composer .main-input {
+    background: transparent !important;
+    border: none !important;
+    padding: 10px 0 !important;
+    margin: 0 !important;
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+    color: #fff !important;
+    opacity: 0.9;
+    box-shadow: none !important;
+    resize: none !important;
+    flex: 1;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+}
+
+.joe-chat-input-area .composer .main-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
 }
 
 .joe-chat-input-area .composer .action-btn svg,
