@@ -380,43 +380,34 @@
     width: 100%;
     z-index: 20;
     box-sizing: border-box;
+    display: block;
+    /* Ensure block layout */
 }
 
 /* Fix for CommandComposer inside input area */
 .joe-chat-input-area .command-composer,
-.joe-chat-input-area .composer {
-    width: 100%;
-    max-width: 100%;
-    background: transparent;
-    position: relative;
+.joe-chat-input-area .composer,
+.joe-chat-input-area .composer-footer {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    background: transparent !important;
+    position: static !important;
+    /* Reset positioning */
     z-index: 5;
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+    display: block !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
 }
 
 /* Hide the internal message list and hero when embedded in chat panel input */
 .joe-chat-input-area .composer .events,
 .joe-chat-input-area .composer .empty-state-hero {
     display: none !important;
-}
-
-/* Ensure the footer (input part) is visible and reset positioning */
-.joe-chat-input-area .composer .composer-footer {
-    position: relative;
-    bottom: auto;
-    left: auto;
-    right: auto;
-    padding: 0;
-    margin: 0;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    width: 100%;
-    box-sizing: border-box;
-    max-width: 100%;
 }
 
 .joe-chat-input-area .composer .input-area,
@@ -426,11 +417,13 @@
     border-radius: var(--joe-border-radius-sm);
     padding: 8px 12px;
     box-shadow: none;
-    width: 100%;
-    box-sizing: border-box;
+    width: 100% !important;
+    height: auto !important;
+    box-sizing: border-box !important;
     display: flex;
     align-items: flex-end;
     gap: 10px;
+    margin: 0 !important;
 }
 
 .joe-chat-input-area .composer .input-area:focus-within,
