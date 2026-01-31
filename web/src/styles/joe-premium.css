@@ -367,9 +367,9 @@
 }
 
 .joe-chat-input-area {
-    padding: 16px !important;
+    padding: 0 !important;
     background: transparent !important;
-    border-top: none !important;
+    border-top: 1px solid rgba(240, 193, 75, 0.15) !important;
     flex-shrink: 0;
     position: relative;
     width: 100% !important;
@@ -377,32 +377,7 @@
     box-sizing: border-box;
 }
 
-/* Wave effect at bottom of chat messages */
-.joe-chat-messages::after {
-    content: '';
-    position: absolute;
-    bottom: 80px;
-    left: 0;
-    right: 0;
-    height: 150px;
-    background:
-        radial-gradient(ellipse 150% 100% at 50% 100%, rgba(240, 193, 75, 0.06) 0%, transparent 70%);
-    pointer-events: none;
-}
-
-/* Gold dots indicator before input */
-.joe-chat-input-area::before {
-    content: '•••';
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 16px;
-    color: var(--joe-gold-primary);
-    font-size: 18px;
-    letter-spacing: 4px;
-    opacity: 0.7;
-}
-
-/* Clean Modern Command Box */
+/* Simple edge-to-edge command box */
 .joe-chat-input-area .command-composer,
 .joe-chat-input-area .composer {
     width: 100% !important;
@@ -418,36 +393,29 @@
 
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
-    background: rgba(20, 22, 28, 0.95) !important;
-    border: 1px solid rgba(240, 193, 75, 0.2) !important;
-    border-radius: 12px !important;
-    padding: 10px 14px !important;
-    gap: 10px !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 12px 16px !important;
+    gap: 12px !important;
     display: flex !important;
     align-items: center !important;
     width: 100% !important;
     box-sizing: border-box !important;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.joe-chat-input-area .composer .input-area:focus-within,
-.joe-chat-input-wrapper:focus-within {
-    border-color: rgba(240, 193, 75, 0.5) !important;
-    box-shadow: 0 0 20px rgba(240, 193, 75, 0.1) !important;
-}
-
-/* Clean minimal buttons */
+/* Simple minimal buttons */
 .joe-chat-input-area .composer .action-btn,
 .joe-chat-input-area .composer .provider-btn,
 .joe-chat-input-area .composer .send-btn {
-    width: 32px !important;
-    height: 32px !important;
-    min-width: 32px !important;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
     padding: 0 !important;
     background: transparent !important;
     border: none !important;
-    border-radius: 8px !important;
-    color: rgba(255, 255, 255, 0.5) !important;
+    border-radius: 6px !important;
+    color: rgba(255, 255, 255, 0.4) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -457,26 +425,17 @@
 }
 
 .joe-chat-input-area .composer .action-btn:hover,
-.joe-chat-input-area .composer .provider-btn:hover {
-    color: #fff !important;
-    background: rgba(255, 255, 255, 0.1) !important;
-}
-
-.joe-chat-input-area .composer .send-btn {
-    background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%) !important;
-    color: #000 !important;
-}
-
+.joe-chat-input-area .composer .provider-btn:hover,
 .joe-chat-input-area .composer .send-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(240, 193, 75, 0.4);
+    color: var(--joe-gold-primary) !important;
+    background: rgba(240, 193, 75, 0.08) !important;
 }
 
 .joe-chat-input-area .composer .action-btn svg,
 .joe-chat-input-area .composer .provider-btn svg,
 .joe-chat-input-area .composer .send-btn svg {
-    width: 16px !important;
-    height: 16px !important;
+    width: 14px !important;
+    height: 14px !important;
 }
 
 /* Hide provider label text - show only icon */
@@ -487,22 +446,23 @@
 .joe-chat-input-area .composer .main-input {
     background: transparent !important;
     border: none !important;
-    padding: 6px 4px !important;
+    outline: none !important;
+    padding: 4px 0 !important;
     margin: 0 !important;
     font-size: 14px !important;
-    line-height: 1.5 !important;
-    color: #fff !important;
+    line-height: 1.4 !important;
+    color: rgba(255, 255, 255, 0.9) !important;
     flex: 1 !important;
     resize: none !important;
-    min-height: 24px !important;
-    max-height: 150px !important;
+    min-height: 20px !important;
+    max-height: 120px !important;
 }
 
 .joe-chat-input-area .composer .main-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.3);
 }
 
-/* Hide extras */
+/* Hide unnecessary elements */
 .joe-chat-input-area .composer .composer-header,
 .joe-chat-input-area .composer .connection-status {
     display: none !important;
