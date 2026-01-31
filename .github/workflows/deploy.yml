@@ -317,7 +317,7 @@ jobs:
           for attempt in 1 2; do
             echo "SSH deploy attempt ${attempt}/2..."
             code=0
-            timeout 900 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' bash -s" <<'REMOTE' || code=$?
+            timeout 900 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' || code=$?
           set -euo pipefail
           
           # Clean up disk space before build
@@ -461,6 +461,10 @@ jobs:
             fi
             if [ -z "${google_id:-}" ]; then
               google_id="$(read_env_val "$OPT_WEB_ENV" "VITE_GOOGLE_CLIENT_ID")"
+            fi
+            # Fallback to GitHub Secrets injected by workflow
+            if [ -z "${google_id:-}" ] && [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
+              google_id="$GOOGLE_CLIENT_ID"
             fi
             ensure_env_key "GOOGLE_CLIENT_ID" "$google_id"
 
