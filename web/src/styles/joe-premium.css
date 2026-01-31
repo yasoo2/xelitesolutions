@@ -375,12 +375,11 @@
     padding: 12px;
     border-top: 1px solid var(--joe-border);
     background: rgba(8, 12, 18, 0.95);
-    /* darker bg to standout */
     flex-shrink: 0;
     position: relative;
     width: 100%;
     z-index: 20;
-    /* Ensure on top */
+    box-sizing: border-box;
 }
 
 /* Fix for CommandComposer inside input area */
@@ -393,6 +392,9 @@
     z-index: 5;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
 /* Hide the internal message list and hero when embedded in chat panel input */
@@ -413,17 +415,26 @@
     border: none;
     box-shadow: none;
     width: 100%;
+    box-sizing: border-box;
+    max-width: 100%;
 }
 
-.joe-chat-input-area .composer .input-area {
+.joe-chat-input-area .composer .input-area,
+.joe-chat-input-wrapper {
     background: var(--joe-bg-card);
     border: 1px solid var(--joe-gold-border);
     border-radius: var(--joe-border-radius-sm);
-    padding: 8px;
+    padding: 8px 12px;
     box-shadow: none;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
 }
 
-.joe-chat-input-area .composer .input-area:focus-within {
+.joe-chat-input-area .composer .input-area:focus-within,
+.joe-chat-input-wrapper:focus-within {
     border-color: var(--joe-gold-primary);
     box-shadow: var(--joe-border-glow);
 }
