@@ -27,6 +27,10 @@ import BrowserControlPanel from '../components/BrowserControlPanel';
 import TaskQueue from '../components/TaskQueue';
 import { useTaskQueue } from '../hooks/useTaskQueue';
 const MemoryPanelLazy = lazy(() => import('../components/MemoryPanel'));
+const BottomPanelLazy = lazy(() => import('../components/BottomPanel'));
+const EmbeddedTerminalLazy = lazy(() => import('../components/EmbeddedTerminal'));
+const EmbeddedBrowserLazy = lazy(() => import('../components/EmbeddedBrowser'));
+const PreviewPanelLazy = lazy(() => import('../components/PreviewPanel'));
 
 export default function Joe() {
   const {
@@ -104,6 +108,12 @@ export default function Joe() {
   const [showDB, setShowDB] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const featureChrome = getBrowserChromeEnabled();
+
+  // Bottom Panel State
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+  const [bottomPanelTab, setBottomPanelTab] = useState<'problems' | 'output' | 'terminal' | 'browser' | 'preview' | 'ports'>('terminal');
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(280);
+  const [bottomPanelMaximized, setBottomPanelMaximized] = useState(false);
 
   const makeBrowserSessionId = useCallback(
     (kind: 'agent' | 'chat') => {
@@ -917,6 +927,43 @@ export default function Joe() {
           )}
         </div>
       </main>
+
+      {/* IDE Bottom Panel - Terminal, Browser, Preview */}
+      <Suspense fallback={null}>
+        <BottomPanelLazy
+          isOpen={bottomPanelOpen}
+          onToggle={() => setBottomPanelOpen(v => !v)}
+          activeTab={bottomPanelTab}
+          onTabChange={setBottomPanelTab}
+          badges={{}}
+          height={bottomPanelHeight}
+          onHeightChange={setBottomPanelHeight}
+          isMaximized={bottomPanelMaximized}
+          onMaximize={() => setBottomPanelMaximized(v => !v)}
+        >
+          {bottomPanelTab === 'terminal' && (
+            <div style={{ height: '100%' }}>
+              <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-muted)' }}>Loading terminal...</div>}>
+                <EmbeddedTerminalLazy />
+              </Suspense>
+            </div>
+          )}
+          {bottomPanelTab === 'browser' && (
+            <div style={{ height: '100%' }}>
+              <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-muted)' }}>Loading browser...</div>}>
+                <EmbeddedBrowserLazy />
+              </Suspense>
+            </div>
+          )}
+          {bottomPanelTab === 'preview' && (
+            <div style={{ height: '100%' }}>
+              <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-muted)' }}>Loading preview...</div>}>
+                <PreviewPanelLazy />
+              </Suspense>
+            </div>
+          )}
+        </BottomPanelLazy>
+      </Suspense>
 
       <TaskQueue
         tasks={queuedTasks}
