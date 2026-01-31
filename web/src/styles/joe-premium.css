@@ -381,9 +381,9 @@
     box-sizing: border-box;
 }
 
-/* Simple edge-to-edge command box */
+/* Clean Modern Command Box */
 .joe-chat-input-area .command-composer,
-.joe-chat-input-area .composer {
+.joe-chat-input-area .composer-footer {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -395,7 +395,7 @@
     flex-direction: column !important;
 }
 
-.joe-chat-input-area .composer .input-area,
+.joe-chat-input-area .input-area,
 .joe-chat-input-wrapper {
     background: transparent !important;
     border: none !important;
@@ -409,9 +409,9 @@
 }
 
 /* Simple minimal buttons */
-.joe-chat-input-area .composer .action-btn,
-.joe-chat-input-area .composer .provider-btn,
-.joe-chat-input-area .composer .send-btn {
+.joe-chat-input-area .action-btn,
+.joe-chat-input-area .provider-btn,
+.joe-chat-input-area .send-btn {
     width: 28px !important;
     height: 28px !important;
     min-width: 28px !important;
@@ -428,26 +428,26 @@
     flex-shrink: 0;
 }
 
-.joe-chat-input-area .composer .action-btn:hover,
-.joe-chat-input-area .composer .provider-btn:hover,
-.joe-chat-input-area .composer .send-btn:hover {
+.joe-chat-input-area .action-btn:hover,
+.joe-chat-input-area .provider-btn:hover,
+.joe-chat-input-area .send-btn:hover {
     color: var(--joe-gold-primary) !important;
     background: rgba(240, 193, 75, 0.08) !important;
 }
 
-.joe-chat-input-area .composer .action-btn svg,
-.joe-chat-input-area .composer .provider-btn svg,
-.joe-chat-input-area .composer .send-btn svg {
+.joe-chat-input-area .action-btn svg,
+.joe-chat-input-area .provider-btn svg,
+.joe-chat-input-area .send-btn svg {
     width: 14px !important;
     height: 14px !important;
 }
 
 /* Hide provider label text - show only icon */
-.joe-chat-input-area .composer .provider-btn .provider-label {
+.joe-chat-input-area .provider-btn .provider-label {
     display: none !important;
 }
 
-.joe-chat-input-area .composer .main-input {
+.joe-chat-input-area .main-input {
     background: transparent !important;
     border: none !important;
     outline: none !important;
@@ -462,13 +462,13 @@
     max-height: 120px !important;
 }
 
-.joe-chat-input-area .composer .main-input::placeholder {
+.joe-chat-input-area .main-input::placeholder {
     color: rgba(255, 255, 255, 0.3);
 }
 
 /* Hide unnecessary elements */
-.joe-chat-input-area .composer .composer-header,
-.joe-chat-input-area .composer .connection-status {
+.joe-chat-input-area .composer-header,
+.joe-chat-input-area .connection-status {
     display: none !important;
 }
 
@@ -492,7 +492,6 @@
 
 /* CRITICAL: Override global.css for input-area */
 .joe-chat-input-area .input-area,
-.joe-chat-input-area .composer .input-area,
 .joe-chat-panel .input-area {
     position: static !important;
     max-width: 100% !important;
