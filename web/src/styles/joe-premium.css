@@ -798,9 +798,52 @@
 }
 
 /* ========== Fix CommandComposer integration ========== */
+.joe-chat-input-area {
+    position: relative;
+    max-width: 100%;
+    overflow: hidden;
+}
+
 .joe-chat-input-area .command-composer,
-.joe-chat-input-area [class*="composer"] {
+.joe-chat-input-area [class*="composer"],
+.joe-chat-input-area>div {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+}
+
+/* Override any fixed/absolute positioning in CommandComposer */
+.joe-chat-panel .command-composer-wrapper,
+.joe-chat-panel [class*="composer-container"],
+.joe-chat-panel [class*="command-input"] {
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    top: auto !important;
+    transform: none !important;
+}
+
+/* Ensure textarea in CommandComposer fits */
+.joe-chat-input-area textarea,
+.joe-chat-input-area input[type="text"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Hide any overflow content */
+.joe-chat-panel {
+    contain: layout style;
 }
