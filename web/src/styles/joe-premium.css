@@ -372,96 +372,129 @@
 }
 
 .joe-chat-input-area {
-    padding: 12px;
-    border-top: 1px solid var(--joe-border);
-    background: rgba(8, 12, 18, 0.95);
+    padding: 16px 24px;
+    /* More horizontal room */
+    background: transparent !important;
+    border-top: none !important;
     flex-shrink: 0;
     position: relative;
     width: 100%;
     z-index: 20;
     box-sizing: border-box;
-    display: block;
-    /* Ensure block layout */
+    display: flex;
+    justify-content: center;
+    /* Center the box */
 }
 
-/* Fix for CommandComposer inside input area */
+/* Flatten hierarchy: Remove borders/bgs from intermediate divs */
 .joe-chat-input-area .command-composer,
 .joe-chat-input-area .composer,
 .joe-chat-input-area .composer-footer {
     width: 100% !important;
-    max-width: 100% !important;
+    max-width: 1000px !important;
+    /* Elegant max width */
     min-width: 0 !important;
     background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
     position: static !important;
-    /* Reset positioning */
-    z-index: 5;
     display: block !important;
     box-sizing: border-box !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
+    /* Perfect centering */
     padding: 0 !important;
     left: auto !important;
     right: auto !important;
     transform: none !important;
 }
 
-/* Hide the internal message list and hero when embedded in chat panel input */
-.joe-chat-input-area .composer .events,
-.joe-chat-input-area .composer .empty-state-hero {
-    display: none !important;
-}
-
-/* Hide 'Auto' status indicator as requested */
-.joe-chat-input-area .composer .connection-status {
-    display: none !important;
-}
-
-/* Shrink action buttons to fit nicely */
-.joe-chat-input-area .composer .action-btn,
-.joe-chat-input-area .composer .provider-btn,
-.joe-chat-input-area .composer .send-btn {
-    width: 32px !important;
-    height: 32px !important;
-    padding: 0 !important;
-    min-width: 32px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    border-radius: 8px !important;
-}
-
-.joe-chat-input-area .composer .action-btn svg,
-.joe-chat-input-area .composer .provider-btn svg,
-.joe-chat-input-area .composer .send-btn svg {
-    width: 16px !important;
-    height: 16px !important;
-}
-
-/* Hide provider label (text) to save space, keep icon */
-.joe-chat-input-area .composer .provider-btn .provider-label {
-    display: none !important;
-}
-
+/* The ONE visible container: Clean, Glassmorphic, Modern */
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
-    background: var(--joe-bg-card);
-    border: 1px solid var(--joe-gold-border);
-    border-radius: var(--joe-border-radius-sm);
-    padding: 8px 12px;
-    box-shadow: none;
+    background: rgba(15, 20, 28, 0.7) !important;
+    backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(255, 215, 0, 0.25) !important;
+    border-radius: 18px !important;
+    padding: 10px 16px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
     width: 100% !important;
     height: auto !important;
     box-sizing: border-box !important;
     display: flex;
     align-items: flex-end;
-    gap: 8px !important;
-    /* Reduced gap */
+    gap: 12px !important;
     margin: 0 !important;
+    transition: all 0.3s ease;
 }
 
 .joe-chat-input-area .composer .input-area:focus-within,
 .joe-chat-input-wrapper:focus-within {
-    border-color: var(--joe-gold-primary);
-    box-shadow: var(--joe-border-glow);
+    border-color: var(--joe-gold-primary) !important;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.15) !important;
+}
+
+/* Hide internal clutter */
+.joe-chat-input-area .composer .events,
+.joe-chat-input-area .composer .empty-state-hero,
+.joe-chat-input-area .composer .connection-status {
+    display: none !important;
+}
+
+/* Compact Buttons */
+.joe-chat-input-area .composer .action-btn,
+.joe-chat-input-area .composer .provider-btn,
+.joe-chat-input-area .composer .send-btn {
+    width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 10px !important;
+    color: var(--joe-text-secondary) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s ease;
+}
+
+.joe-chat-input-area .composer .action-btn:hover,
+.joe-chat-input-area .composer .provider-btn:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: var(--joe-gold-primary) !important;
+}
+
+.joe-chat-input-area .composer .send-btn {
+    background: var(--joe-gold-primary) !important;
+    color: #000 !important;
+    border: none !important;
+}
+
+.joe-chat-input-area .composer .send-btn:hover {
+    box-shadow: 0 0 15px var(--joe-gold-primary);
+    transform: translateY(-1px);
+}
+
+.joe-chat-input-area .composer .action-btn svg,
+.joe-chat-input-area .composer .provider-btn svg,
+.joe-chat-input-area .composer .send-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.joe-chat-input-area .composer .provider-btn .provider-label {
+    display: none !important;
+}
+
+/* Main Textarea Clean Fix */
+.joe-chat-input-area .composer .main-input {
+    background: transparent !important;
+    border: none !important;
+    padding: 8px 0 !important;
+    margin: 0 !important;
+    font-size: 15px !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    resize: none !important;
 }
 
 /* Hide duplicate headers or extras if any */
