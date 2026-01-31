@@ -372,10 +372,9 @@
 }
 
 .joe-chat-input-area {
-    padding: 20px 0;
-    /* Vertical spacing only, child centers itself */
+    padding: 24px 16px;
     background: transparent !important;
-    border-top: none !important;
+    border: none !important;
     flex-shrink: 0;
     position: relative;
     width: 100%;
@@ -383,95 +382,88 @@
     box-sizing: border-box;
     display: flex;
     justify-content: center;
+    align-items: center;
 }
 
-/* Base Stealth UI: Remove all nested structural noise */
+/* V3 Ultra-Modern Stealth Pill */
 .joe-chat-input-area .command-composer,
 .joe-chat-input-area .composer,
 .joe-chat-input-area .composer-footer {
     width: 100% !important;
-    max-width: 820px !important;
-    /* Slightly narrower for modern focus */
+    max-width: 720px !important;
+    /* Perfect visual balance */
     min-width: 0 !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    position: static !important;
+    position: relative !important;
     display: flex !important;
     flex-direction: column !important;
     box-sizing: border-box !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     padding: 0 !important;
 }
 
-/* The Stealth Pill: High-End Minimalist Container */
+/* The Stealth Pill Container */
 .joe-chat-input-area .composer .input-area,
 .joe-chat-input-wrapper {
-    background: rgba(10, 10, 15, 0.45) !important;
-    /* Deep Stealth */
-    backdrop-filter: blur(35px) saturate(180%) !important;
-    border: 0.5px solid rgba(255, 255, 255, 0.12) !important;
-    /* Hairline Border */
-    border-radius: 28px !important;
-    /* High-radius modern pill */
-    padding: 12px 20px !important;
+    background: rgba(10, 10, 12, 0.45) !important;
+    backdrop-filter: blur(40px) saturate(200%) !important;
+    -webkit-backdrop-filter: blur(40px) saturate(200%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 32px !important;
+    padding: 14px 24px !important;
     box-shadow:
-        0 12px 40px rgba(0, 0, 0, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.05) !important;
-    /* Outer subtle ring */
-    width: calc(100% - 32px) !important;
+        0 20px 60px rgba(0, 0, 0, 0.8),
+        inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+    width: 100% !important;
     height: auto !important;
     box-sizing: border-box !important;
     display: flex;
     align-items: flex-end;
-    gap: 14px !important;
-    margin: 0 auto !important;
-    transition: all 0.4s cubic-bezier(0.2, 0, 0, 1);
+    gap: 16px !important;
+    margin: 0 !important;
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Neon Focus State: Only show color when active */
 .joe-chat-input-area .composer .input-area:focus-within,
 .joe-chat-input-wrapper:focus-within {
-    background: rgba(13, 13, 18, 0.6) !important;
-    border-color: rgba(255, 215, 0, 0.4) !important;
-    /* Subtle Gold glow only on focus */
+    background: rgba(15, 15, 20, 0.6) !important;
+    border-color: rgba(250, 200, 50, 0.3) !important;
     box-shadow:
-        0 15px 50px rgba(0, 0, 0, 0.6),
-        0 0 30px rgba(255, 215, 0, 0.08) !important;
-    transform: translateY(-1px);
+        0 25px 70px rgba(0, 0, 0, 0.9),
+        0 0 40px rgba(250, 200, 50, 0.05) !important;
+    transform: translateY(-2px);
 }
 
-/* Cleanup */
+/* Hide internal noise */
 .joe-chat-input-area .composer .events,
 .joe-chat-input-area .composer .empty-state-hero,
 .joe-chat-input-area .composer .connection-status {
     display: none !important;
 }
 
-/* Ghost Buttons: Minimal noise */
+/* Ghost Buttons - Modern Minimalism */
 .joe-chat-input-area .composer .action-btn,
 .joe-chat-input-area .composer .provider-btn,
 .joe-chat-input-area .composer .send-btn {
-    width: 38px !important;
-    height: 38px !important;
+    width: 40px !important;
+    height: 40px !important;
     padding: 0 !important;
     background: transparent !important;
-    /* Transparent by default */
     border: none !important;
     border-radius: 50% !important;
-    /* Circular for buttons */
-    color: rgba(255, 255, 255, 0.5) !important;
+    color: rgba(255, 255, 255, 0.45) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
     cursor: pointer;
+    flex-shrink: 0;
 }
 
 .joe-chat-input-area .composer .action-btn:hover,
 .joe-chat-input-area .composer .provider-btn:hover {
-    background: rgba(255, 255, 255, 0.08) !important;
-    color: #fff !important;
     transform: scale(1.1);
 }
 
@@ -1103,35 +1095,4 @@
     height: 100% !important;
 }
 
-/* ========== Fix CommandComposer integration ========== */
-.joe-chat-input-area {
-    position: relative;
-    max-width: 100%;
-    overflow: hidden;
-}
-
-.joe-chat-input-area .command-composer,
-.joe-chat-input-area [class*="composer"] {
-    width: 100%;
-    max-width: 100%;
-    background: transparent;
-}
-
-.joe-chat-panel .command-composer-wrapper,
-.joe-chat-panel [class*="composer-container"],
-.joe-chat-panel [class*="command-input"] {
-    position: relative !important;
-    width: 100% !important;
-    max-width: 100% !important;
-}
-
-.joe-chat-input-area textarea,
-.joe-chat-input-area input[type="text"] {
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-.joe-chat-panel {
-    contain: layout style;
-}
+/* ========== End of Layout Styles ========== */
