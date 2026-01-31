@@ -385,47 +385,52 @@
 
 /* Fix for CommandComposer inside input area */
 .joe-chat-input-area .command-composer,
-.joe-chat-input-area [class*="composer"] {
+.joe-chat-input-area .composer {
     width: 100%;
     max-width: 100%;
     background: transparent;
     position: relative;
     z-index: 5;
+    display: flex;
+    flex-direction: column;
 }
 
-.joe-chat-input-wrapper {
-    display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    background: var(--joe-bg-card);
-    border: 1px solid var(--joe-gold-border);
-    border-radius: var(--joe-border-radius-sm);
-    padding: 10px 14px;
-    transition: all 0.25s ease;
+/* Hide the internal message list and hero when embedded in chat panel input */
+.joe-chat-input-area .composer .events,
+.joe-chat-input-area .composer .empty-state-hero {
+    display: none !important;
+}
+
+/* Ensure the footer (input part) is visible and reset positioning */
+.joe-chat-input-area .composer .composer-footer {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
     width: 100%;
 }
 
-.joe-chat-input-wrapper:focus-within {
+.joe-chat-input-area .composer .input-area {
+    background: var(--joe-bg-card);
+    border: 1px solid var(--joe-gold-border);
+    border-radius: var(--joe-border-radius-sm);
+    padding: 8px;
+    box-shadow: none;
+}
+
+.joe-chat-input-area .composer .input-area:focus-within {
     border-color: var(--joe-gold-primary);
     box-shadow: var(--joe-border-glow);
 }
 
-.joe-chat-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--joe-text-primary);
-    font-size: 14px;
-    resize: none;
-    outline: none;
-    min-height: 24px;
-    max-height: 100px;
-    line-height: 1.5;
-    width: 100%;
-}
-
-.joe-chat-input::placeholder {
-    color: var(--joe-text-muted);
+/* Hide duplicate headers or extras if any */
+.joe-chat-input-area .composer .composer-header {
+    display: none;
 }
 
 /* Provider dots indicator */
