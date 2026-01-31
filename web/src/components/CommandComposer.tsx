@@ -2910,6 +2910,23 @@ export default function CommandComposer({
       {showProviders && (
         <div className="providers-modal-overlay" onClick={() => setShowProviders(false)}>
           <div className="providers-modal" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setShowProviders(false)}
+              className="modal-close-btn"
+              style={{
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: 4,
+                zIndex: 10
+              }}
+            >
+              <X size={20} />
+            </button>
             {/* Left Sidebar */}
             <div className="providers-left">
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
