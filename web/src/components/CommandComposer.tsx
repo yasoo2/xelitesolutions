@@ -545,11 +545,24 @@ interface ProviderConfig {
   isCustom?: boolean;
   isVerifying?: boolean;
   lastError?: string;
+  isFree?: boolean;
 }
 
+// OpenRouter available models
+const OPENROUTER_MODELS = [
+  { id: 'moonshotai/kimi-k2:free', name: 'Kimi K2', free: true, description: 'ممتاز للأدوات - مجاني' },
+  { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B', free: true, description: 'سريع وخفيف - مجاني' },
+  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B', free: true, description: 'من Google - مجاني' },
+  { id: 'minimax/minimax-m2', name: 'MiniMax M2.1 ⭐', free: false, description: 'الأقوى للأدوات والمتصفح' },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', free: false, description: 'ذكي ورخيص جداً' },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', free: false, description: 'سريع ودقيق' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', free: false, description: 'الأقوى من OpenAI' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, description: 'ممتاز للكود' },
+];
+
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
-  openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free' },
-  auto: { name: 'Auto (Intelligent)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true },
+  auto: { name: 'Auto (مجاني)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
+  openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
   gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-1.5-flash' },
@@ -2947,84 +2960,156 @@ export default function CommandComposer({
                   </div>
 
                   <div style={{ flex: 1 }}>
-                    <div style={{ marginBottom: 20 }}>
-                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
-                      <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
-                        <div style={{ position: 'relative', flex: 1 }}>
-                          <input
-                            type={showKey[activeProvider] ? "text" : "password"}
-                            value={providers[activeProvider].apiKey}
-                            onChange={(e) => {
-                              const newKey = e.target.value;
-                              setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
-                              // Send API key to server for OpenAI
-                              if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
-                                fetch(`${API}/providers/openai/key`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ apiKey: newKey.trim() })
-                                }).catch(err => console.error('Failed to send API key to server:', err));
+                    {/* OpenRouter Model Selection */}
+                    {activeProvider === 'openrouter' && (
+                      <div style={{ marginBottom: 20 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>اختر النموذج</label>
+                        <select
+                          value={providers[activeProvider].model || ''}
+                          onChange={(e) => {
+                            const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
+                            const isFreeModel = selectedModel?.free ?? true;
+                            setProviders(prev => ({
+                              ...prev,
+                              [activeProvider]: {
+                                ...prev[activeProvider],
+                                model: e.target.value,
+                                isFree: isFreeModel,
+                                // Auto-connect for free models, require API key for paid
+                                isConnected: isFreeModel || !!prev[activeProvider].apiKey
                               }
-                            }}
-                            placeholder="sk-..."
-                            style={{
-                              width: '100%', padding: '10px 12px', borderRadius: 8,
-                              border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                              color: 'var(--text-primary)', outline: 'none', fontSize: 14
-                            }}
-                          />
-                          <button
-                            onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
-                            style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5 }}
-                          >
-                            {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => {
-                            deleteProviderKey(activeProvider);
-                            // Clear API key on server for OpenAI
-                            if (activeProvider === 'openai') {
-                              fetch(`${API}/providers/clear`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' }
-                              }).catch(err => console.error('Failed to clear API key on server:', err));
-                            }
+                            }));
                           }}
-                          title="Clear Key"
                           style={{
-                            padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
-                            background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
+                            width: '100%', padding: '12px', borderRadius: 8,
+                            border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                            color: 'var(--text-primary)', outline: 'none', fontSize: 14, cursor: 'pointer'
                           }}
                         >
-                          <Trash2 size={18} />
-                        </button>
+                          <optgroup label="🆓 نماذج مجانية">
+                            {OPENROUTER_MODELS.filter(m => m.free).map(m => (
+                              <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="💳 نماذج مدفوعة (تحتاج API Key)">
+                            {OPENROUTER_MODELS.filter(m => !m.free).map(m => (
+                              <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
+                            ))}
+                          </optgroup>
+                        </select>
+                        {/* Show selected model info */}
+                        {(() => {
+                          const selected = OPENROUTER_MODELS.find(m => m.id === providers[activeProvider].model);
+                          if (!selected) return null;
+                          return (
+                            <div style={{
+                              marginTop: 8, padding: '8px 12px', borderRadius: 8,
+                              background: selected.free ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                              border: `1px solid ${selected.free ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                              fontSize: 12
+                            }}>
+                              {selected.free ? (
+                                <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
+                              ) : (
+                                <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
-                    </div>
+                    )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Model ID</label>
-                        <input
-                          type="text"
-                          value={providers[activeProvider].model || ''}
-                          onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
-                          placeholder="gpt-4o"
-                          style={{
-                            width: '100%', padding: '10px 12px', borderRadius: 8,
-                            border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                            color: 'var(--text-primary)', outline: 'none', fontSize: 14
-                          }}
-                        />
+                    {/* API Key - Hide for Auto, and for OpenRouter with free model */}
+                    {activeProvider !== 'auto' && !(activeProvider === 'openrouter' && OPENROUTER_MODELS.find(m => m.id === providers[activeProvider].model)?.free) && (
+                      <div style={{ marginBottom: 20 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
+                        <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
+                          <div style={{ position: 'relative', flex: 1 }}>
+                            <input
+                              type={showKey[activeProvider] ? "text" : "password"}
+                              value={providers[activeProvider].apiKey}
+                              onChange={(e) => {
+                                const newKey = e.target.value;
+                                setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
+                                // Send API key to server for OpenAI
+                                if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
+                                  fetch(`${API}/providers/openai/key`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ apiKey: newKey.trim() })
+                                  }).catch(err => console.error('Failed to send API key to server:', err));
+                                }
+                              }}
+                              placeholder={activeProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
+                              style={{
+                                width: '100%', padding: '10px 12px', borderRadius: 8,
+                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                              }}
+                            />
+                            <button
+                              onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
+                              style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5 }}
+                            >
+                              {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => {
+                              deleteProviderKey(activeProvider);
+                              // Clear API key on server for OpenAI
+                              if (activeProvider === 'openai') {
+                                fetch(`${API}/providers/clear`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' }
+                                }).catch(err => console.error('Failed to clear API key on server:', err));
+                              }
+                            }}
+                            title="Clear Key"
+                            style={{
+                              padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
+                              background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
+                            }}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                        {activeProvider === 'openrouter' && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                            احصل على API Key من <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)' }}>openrouter.ai/keys</a>
+                          </div>
+                        )}
                       </div>
-                      {activeProvider === 'grok' && (
+                    )}
+
+                    {/* Auto Provider Info */}
+                    {activeProvider === 'auto' && (
+                      <div style={{
+                        marginBottom: 20, padding: '16px', borderRadius: 12,
+                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(59, 130, 246, 0.1))',
+                        border: '1px solid rgba(34, 197, 94, 0.2)'
+                      }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#22c55e' }}>
+                          ✨ الوضع التلقائي المجاني
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                          يستخدم نماذج AI مجانية بذكاء. لا يحتاج أي مفتاح API.
+                          <br />
+                          مناسب للمحادثات العامة والمهام البسيطة.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}
+                    {activeProvider !== 'auto' && activeProvider !== 'openrouter' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: activeProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
                         <div>
-                          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Base URL</label>
+                          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Model ID</label>
                           <input
                             type="text"
-                            value={providers[activeProvider].baseUrl || ''}
-                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
-                            placeholder="https://api..."
+                            value={providers[activeProvider].model || ''}
+                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
+                            placeholder="gpt-4o"
                             style={{
                               width: '100%', padding: '10px 12px', borderRadius: 8,
                               border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
@@ -3032,8 +3117,24 @@ export default function CommandComposer({
                             }}
                           />
                         </div>
-                      )}
-                    </div>
+                        {activeProvider === 'grok' && (
+                          <div>
+                            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Base URL</label>
+                            <input
+                              type="text"
+                              value={providers[activeProvider].baseUrl || ''}
+                              onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
+                              placeholder="https://api..."
+                              style={{
+                                width: '100%', padding: '10px 12px', borderRadius: 8,
+                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)', outline: 'none', fontSize: 14
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div style={{ marginBottom: 20 }}>
                       <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
