@@ -199,6 +199,8 @@ export async function listSessionMessages(req: Request, res: Response) {
 
         const isAutoTitleCandidate = (title: string) => {
             const t = String(title || '').trim();
+            // Detect date patterns in titles (e.g., "Session 1/31/2026, 3:23:04 AM")
+            const hasDatePattern = /\d{1,2}\/\d{1,2}\/\d{4}/.test(t);
             return (
                 t === 'New Session' ||
                 t === 'Untitled Session' ||
@@ -207,7 +209,10 @@ export async function listSessionMessages(req: Request, res: Response) {
                 t === 'جلسة جديدة' ||
                 t === 'دردشة جديدة' ||
                 t.startsWith('Session ') ||
-                t.startsWith('جلسة ')
+                t.startsWith('جلسة ') ||
+                t.startsWith('New Session -') ||
+                t.startsWith('جلسة جديدة -') ||
+                hasDatePattern  // Match any title with date pattern
             );
         };
 
