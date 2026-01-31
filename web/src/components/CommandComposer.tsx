@@ -3049,7 +3049,7 @@ export default function CommandComposer({
                             />
                             <button
                               onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
-                              style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5 }}
+                              style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
                             >
                               {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
