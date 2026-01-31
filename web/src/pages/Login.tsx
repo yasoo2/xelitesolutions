@@ -15,6 +15,12 @@ export default function Login() {
     const { t, i18n } = useTranslation();
     const nav = useNavigate();
 
+    const isLocalHost =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '0.0.0.0' ||
+        window.location.hostname.endsWith('.local');
+
     const emailRef = useRef<HTMLInputElement>(null);
     const passRef = useRef<HTMLInputElement>(null);
 
@@ -28,6 +34,31 @@ export default function Login() {
         clientIdAvailable: boolean;
         secretConfigured: boolean;
     } | null>(null);
+
+    const handleDevLogin = async () => {
+        if (!isLocalHost) return;
+        setError(null);
+        setLoading(true);
+        try {
+            const res = await fetch(`${API}/auth/dev`, {
+                method: 'POST',
+                headers: { 'Accept-Language': i18n.language || 'en' },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const serverError = String(data?.error || '').trim();
+                throw new Error(serverError || t('httpRequestFailed', { status: res.status }));
+            }
+            const token = String(data?.token || '').trim();
+            if (!token) throw new Error('missing_token');
+            localStorage.setItem('token', token);
+            nav('/joe');
+        } catch (err: any) {
+            const msg = String(err?.message || '');
+            setError(msg || t('login_error_auth'));
+        }
+        setLoading(false);
+    };
 
     // Health Check on mount
     useEffect(() => {
@@ -353,6 +384,28 @@ export default function Login() {
                         {mode === 'login' ? t('register') : t('login')}
                     </button>
                 </div>
+
+                {isLocalHost && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+                        <button
+                            type="button"
+                            disabled={loading}
+                            onClick={handleDevLogin}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid rgba(255, 255, 255, 0.12)',
+                                color: '#e4e4e7',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                fontSize: 13,
+                                fontWeight: 700,
+                                borderRadius: 10,
+                                padding: '8px 12px',
+                            }}
+                        >
+                            {i18n.language?.startsWith('ar') ? 'دخول تطويري' : 'Dev Login'}
+                        </button>
+                    </div>
+                )}
 
                 <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0', gap: '16px' }}>
                     <div style={{ height: '1px', flex: 1, background: 'rgba(255,255,255,0.1)' }} />
