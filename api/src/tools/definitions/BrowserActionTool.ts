@@ -41,8 +41,17 @@ export class BrowserActionTool extends BaseTool {
 
             if (action === 'goto') {
                 if (!input.url) throw new Error('url required for goto');
-                await page.goto(input.url, { waitUntil: 'domcontentloaded' });
-                result = 'Navigated to ' + input.url;
+                let url = String(input.url || '').trim();
+                while (url.length >= 2) {
+                    const first = url[0];
+                    const last = url[url.length - 1];
+                    const wrap = (c: string) => c === '`' || c === '"' || c === "'" || c === '“' || c === '”';
+                    if (wrap(first) && wrap(last)) url = url.slice(1, -1).trim();
+                    else break;
+                }
+                url = url.replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
+                await page.goto(url, { waitUntil: 'domcontentloaded' });
+                result = 'Navigated to ' + url;
             }
             else if (action === 'click') {
                 if (!input.selector) throw new Error('selector required for click');

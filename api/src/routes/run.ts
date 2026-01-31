@@ -752,12 +752,12 @@ function fallbackPlanWhenPlannerUnavailable(params: {
       userText,
     );
   const extractUrlCandidate = (text: string) => {
-    const http = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
-    if (http) return http;
+    const http = text.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
+    if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
     const m = text.match(
       /(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i,
     );
-    const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+    const candidate = (m?.[1] || '').replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
     if (!candidate) return '';
     const isLocal =
       /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
@@ -2247,10 +2247,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (!wantsLocationEarly) {
       const s = userTextForOverrides;
       const extractUrlCandidate = (text: string) => {
-        const http = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
-        if (http) return http;
+        const http = text.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
+        if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
         const m = text.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
-        const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+        const candidate = (m?.[1] || '').replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
         if (!candidate) return undefined;
         const isLocal =
           /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||

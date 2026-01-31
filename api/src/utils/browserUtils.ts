@@ -5,8 +5,25 @@ export function extractTitleFromHtml(html: string) {
     return t || '';
 }
 
+function normalizeDisplayUrl(raw: any) {
+    let s = String(raw ?? '').trim();
+    while (s.length >= 2) {
+        const first = s[0];
+        const last = s[s.length - 1];
+        const wrap = (c: string) => c === '`' || c === '"' || c === "'" || c === '“' || c === '”' || c === '‘' || c === '’';
+        if (wrap(first) && wrap(last)) s = s.slice(1, -1).trim();
+        else break;
+    }
+    s = s.replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
+    if (!s) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s)) return `https:${s}`;
+    if (/^(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/|$)/i.test(s)) return `https://${s}`;
+    return s;
+}
+
 export function inferSiteLabel(url: string, dom: string) {
-    const u = String(url || '').trim();
+    const u = normalizeDisplayUrl(url);
     try {
         if (u) {
             const host = new URL(u).hostname.replace(/^www\./i, '');
@@ -30,7 +47,13 @@ export function summarizeBrowserOutputForChat(out: any) {
         typeof (out as any).screenshot === 'string' ||
         typeof (out as any).screenshotHref === 'string';
     if (!isBrowserStateLike) return out;
-    const url = typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
+    const urlRaw =
+        typeof (out as any).url === 'string'
+            ? (out as any).url
+            : typeof (out as any).pageUrl === 'string'
+                ? (out as any).pageUrl
+                : '';
+    const url = normalizeDisplayUrl(urlRaw);
     const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
     const title = dom ? extractTitleFromHtml(dom) : '';
     const site = inferSiteLabel(url, dom);

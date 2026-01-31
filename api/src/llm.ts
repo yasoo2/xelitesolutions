@@ -1122,10 +1122,10 @@ export async function planNextStep(
     const sessionId = sessionIdMatch?.[1];
 
     const extractUrlCandidate = (s: string) => {
-      const http = s.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
-      if (http) return http;
+      const http = s.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
+      if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
       const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
-      const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+      const candidate = (m?.[1] || '').replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
       if (!candidate) return undefined;
       const isLocal =
         /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
