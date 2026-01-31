@@ -64,18 +64,25 @@ const createApiShim = () => {
     const ok = await check();
     if (ok) return next();
 
+    res.setHeader('x-joe-api-shim', '1');
+
     if (path === '/api/webviewClick') return createNoContent(res);
     if (path === '/api/tools/browser_run/execute') return createNoContent(res);
-    if (path === '/api/health') return createJson(res, 200, { status: 'OK', db: 0 });
+    if (path === '/api/health') return createJson(res, 200, { status: 'OK', db: 0, apiAvailable: false, shim: true });
     if (path === '/api/auth/login') return createJson(res, 200, { token: devToken });
     if (path === '/api/auth/dev') return createJson(res, 200, { token: devToken });
+    if (path === '/api/auth/google/config') return createJson(res, 200, { clientId: '', secretConfigured: false, shim: true });
     if (path === '/api/sessions') return createJson(res, 200, []);
+    if (path.startsWith('/api/sessions/') && path.endsWith('/history')) return createJson(res, 200, { events: [] });
     if (path === '/api/folders') return createJson(res, 200, []);
     if (path === '/api/workspaces') return createJson(res, 200, []);
     if (path === '/api/servers') return createJson(res, 200, []);
+    if (path === '/api/project/tree') return createJson(res, 200, { tree: [] });
+    if (path === '/api/project/root') return createJson(res, 200, { path: '', name: 'Local Workspace' });
+    if (path === '/api/runs/start') return createJson(res, 503, { error: 'API unavailable (start the API on http://127.0.0.1:3000)' });
     if (path === '/api/runs/verify') return createJson(res, 503, { error: 'API unavailable' });
 
-    return next();
+    return createJson(res, 503, { error: `API unavailable (${path})` });
   };
 };
 

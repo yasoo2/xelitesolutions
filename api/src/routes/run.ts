@@ -1040,6 +1040,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   let assistantTextEmitted = false;
   const isAuthed = Boolean((req as any).auth);
   const userId = (req as any).auth?.sub;
+  const dbReady = mongoose.connection.readyState === 1;
   const workspaceId =
     (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
       ? req.headers['x-workspace-id'].trim()
@@ -1062,6 +1063,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     provider,
     model
   });
+
+  if (!dbReady) {
+    return res.status(503).json({
+      error: 'db_unavailable',
+      message: 'Database connection not ready. Set MONGO_URI and start MongoDB.',
+      db: mongoose.connection.readyState
+    });
+  }
 
   // [MOVED] Free Intelligence Optimizer logic moved to initialPlan calculation phase to avoid response stream corruption
 
@@ -1111,7 +1120,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   console.log('[File Processing] mongoose.connection.readyState:', mongoose.connection.readyState);
 
   if (normalizedFileIds.length > 0) {
-    if (true) {
+    if (dbReady) {
       // Normal path: Read from MongoDB
       try {
         const { objectIds, filenames } = splitFileIdCandidates(normalizedFileIds);

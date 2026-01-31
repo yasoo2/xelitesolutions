@@ -258,11 +258,24 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   }, [sessionId]);
 
   useEffect(() => {
-    const ws = new WebSocket(wsUrl);
-    setStatus('connecting');
-    ws.onopen = () => setStatus('connected');
-    ws.onerror = () => setStatus('error');
-    ws.onmessage = (ev) => {
+    let ws: WebSocket | null = null;
+    let alive = true;
+    const start = async () => {
+      try {
+        const healthRes = await fetch(`${API_URL}/health`, { cache: 'no-store' });
+        const isShim = healthRes.headers.get('x-joe-api-shim') === '1';
+        if (isShim) {
+          setStatus('error');
+          return;
+        }
+      } catch { }
+
+      if (!alive) return;
+      ws = new WebSocket(wsUrl);
+      setStatus('connecting');
+      ws.onopen = () => setStatus('connected');
+      ws.onerror = () => setStatus('error');
+      ws.onmessage = (ev) => {
       let msg: WsEvent | null = null;
       try {
         const parsed = JSON.parse(String(ev.data || ''));
@@ -370,9 +383,13 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         });
         return;
       }
+      };
     };
+
+    void start();
     return () => {
-      try { ws.close(); } catch { }
+      alive = false;
+      try { ws?.close(); } catch { }
     };
   }, [wsUrl]);
 

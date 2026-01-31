@@ -235,7 +235,8 @@ async function main() {
 
   // DB connect with Retry Loop (Background)
   const connectWithRetry = async () => {
-    const maxRetries = 30; // Wait up to 60 seconds
+    const isProd = process.env.NODE_ENV === 'production';
+    const maxRetries = isProd ? 30 : Number.POSITIVE_INFINITY;
     for (let i = 0; i < maxRetries; i++) {
       try {
         await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
@@ -247,7 +248,8 @@ async function main() {
         }
         return true; // Success
       } catch (e) {
-        logger.warn(`MongoDB connection failed (Attempt ${i + 1}/${maxRetries}), retrying in 2s...`);
+        const label = Number.isFinite(maxRetries) ? `${i + 1}/${maxRetries}` : `${i + 1}`;
+        logger.warn(`MongoDB connection failed (Attempt ${label}), retrying in 2s...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }

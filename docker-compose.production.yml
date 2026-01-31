@@ -21,7 +21,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - MONGO_URI=mongodb://joe_mongo:27017/joe
+      - MONGO_URI=mongodb://mongo:27017/joe
       - BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
     env_file:
       - .env

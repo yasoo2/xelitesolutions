@@ -10,6 +10,8 @@ let triedFallback = false;
 let lastUrl = '';
 let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
 let lastAuthProbeAt = 0;
+let lastShimCheckAt = 0;
+let cachedIsShim: boolean | null = null;
 
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
@@ -36,6 +38,20 @@ function setStatus(state: string, detail?: string) {
 
 import { isValidToken } from '../utils/auth';
 
+async function isApiShimActive(): Promise<boolean> {
+  const now = Date.now();
+  if (cachedIsShim != null && now - lastShimCheckAt < 3000) return cachedIsShim;
+  lastShimCheckAt = now;
+  try {
+    const res = await fetch(`${API_URL}/health`, { cache: 'no-store' });
+    cachedIsShim = res.headers.get('x-joe-api-shim') === '1';
+    return cachedIsShim;
+  } catch {
+    cachedIsShim = false;
+    return false;
+  }
+}
+
 async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'> {
   const now = Date.now();
   if (authProbePromise && now - lastAuthProbeAt < 5000) return authProbePromise;
@@ -60,7 +76,7 @@ async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'
   return authProbePromise;
 }
 
-function connect() {
+async function connect() {
   if (!WS_URL) return;
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
@@ -80,6 +96,12 @@ function connect() {
   if (connectTimer != null) {
     window.clearTimeout(connectTimer);
     connectTimer = null;
+  }
+
+  if (await isApiShimActive()) {
+    setStatus('error', 'api_shim');
+    connectTimer = window.setTimeout(() => void connect(), 15000);
+    return;
   }
 
   const primaryUrl = WS_URL;
@@ -141,7 +163,7 @@ function connect() {
       triedFallback = true;
       connectAttempts = 1;
       setStatus('error', `closed_early:${String(ev?.code || '')}`);
-      connectTimer = window.setTimeout(connect, 250);
+      connectTimer = window.setTimeout(() => void connect(), 250);
       return;
     }
 
@@ -174,7 +196,7 @@ function connect() {
           connectAttempts += 1;
           const baseDelay = Math.min(8000, 500 * Math.pow(2, Math.max(0, connectAttempts - 1)));
           const jitter = Math.floor(Math.random() * 250);
-          connectTimer = window.setTimeout(connect, baseDelay + jitter);
+          connectTimer = window.setTimeout(() => void connect(), baseDelay + jitter);
         });
         return;
       }
@@ -183,7 +205,7 @@ function connect() {
     connectAttempts += 1;
     const baseDelay = Math.min(8000, 500 * Math.pow(2, Math.max(0, connectAttempts - 1)));
     const jitter = Math.floor(Math.random() * 250);
-    connectTimer = window.setTimeout(connect, baseDelay + jitter);
+    connectTimer = window.setTimeout(() => void connect(), baseDelay + jitter);
   };
 
   socket.onerror = () => {

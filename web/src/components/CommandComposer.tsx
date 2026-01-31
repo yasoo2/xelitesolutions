@@ -1153,7 +1153,7 @@ export default function CommandComposer({
   };
 
   useEffect(() => {
-    connectWS();
+    void connectWS();
     return () => {
       if (wsRef.current) wsRef.current.close();
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
@@ -1162,12 +1162,24 @@ export default function CommandComposer({
     };
   }, []);
 
-  function connectWS() {
+  async function connectWS() {
     try {
       if (wsRef.current) {
         if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
         try { wsRef.current.close(); } catch { }
       }
+
+      try {
+        const healthRes = await fetch(`${API}/health`, { cache: 'no-store' });
+        const isShim = healthRes.headers.get('x-joe-api-shim') === '1';
+        if (isShim) {
+          setIsConnected(false);
+          if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = window.setTimeout(() => void connectWS(), 15000);
+          return;
+        }
+      } catch { }
+
       const token = (() => {
         try {
           return localStorage.getItem('token');
@@ -1182,7 +1194,8 @@ export default function CommandComposer({
         return `${url}${sep}token=${encodeURIComponent(token)}`;
       };
       const primaryUrl = withToken(WS);
-      const fallbackUrl = withToken(`${API.replace(/^http/, 'ws')}/ws`);
+      const fallbackBase = API.replace(/\/api\/?$/, '').replace(/^http/, 'ws');
+      const fallbackUrl = withToken(`${fallbackBase}/ws`);
 
       const handleMessage = (evt: MessageEvent) => {
         try {
@@ -1474,7 +1487,7 @@ export default function CommandComposer({
             } catch { }
           }
 
-          reconnectTimerRef.current = window.setTimeout(() => connectWS(), 2000);
+          reconnectTimerRef.current = window.setTimeout(() => void connectWS(), 2000);
         };
 
         ws.onerror = () => {

@@ -17,6 +17,12 @@ const allowedOriginsDefault = [
   'http://46.224.187.142:3000',
 ];
 
+const defaultMongoUri = isProd ? 'mongodb://mongo:27017/joe' : 'mongodb://localhost:27017/joe';
+const mongoUri = (process.env.MONGO_URI && process.env.MONGO_URI.trim()) ? process.env.MONGO_URI.trim() : defaultMongoUri;
+if (/^mongodb\+srv:\/\//i.test(mongoUri)) {
+  throw new Error('Mongo Atlas (mongodb+srv) is disabled for this deployment. Use MongoDB Docker (mongodb://...).');
+}
+
 const jwtSecret = (() => {
   const envSecret = process.env.JWT_SECRET;
   if (envSecret && envSecret.trim()) return envSecret;
@@ -32,7 +38,7 @@ const jwtSecret = (() => {
 
 export const config = {
   port: Number(process.env.PORT) || 3000,
-  mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/joe',
+  mongoUri,
   jwtSecret,
   allowedOrigins: (process.env.ALLOWED_ORIGINS?.split(',').map(s => s.trim()) || allowedOriginsDefault),
 };
