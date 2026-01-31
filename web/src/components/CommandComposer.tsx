@@ -3416,18 +3416,8 @@ export default function CommandComposer({
 
 
             <div className="input-actions">
-              {/* [UI] Enhanced Status Indicator */}
-              <div
-                className="connection-status"
-                title={isConnected ? t('connected') : t('connecting')}
-              >
-                <div
-                  className={`status-dot ${isConnected ? 'connected' : ''}`}
-                />
-                <span className="status-text hide-mobile">
-                  {activeProvider === 'auto' ? 'Auto' : activeProvider}
-                </span>
-              </div>
+              {/* [UI] Status Indicator - Hidden */}
+
 
               <div className="right-actions">
                 <GitHubConnectModal
