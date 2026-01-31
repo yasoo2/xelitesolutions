@@ -952,15 +952,33 @@
     }
 }
 
-/* ========== Prevent Overflow ========== */
+/* ========== Prevent Overflow on Layout Only ========== */
 .joe-ide-layout,
 .joe-header,
 .joe-main,
-.joe-chat-panel,
-.joe-workspace,
-.joe-files-panel,
 .joe-statusbar {
     overflow: hidden;
+}
+
+/* Allow scrolling in content areas */
+.joe-chat-panel,
+.joe-workspace,
+.joe-files-panel {
+    overflow: hidden;
+}
+
+.joe-chat-messages {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+.joe-workspace-content {
+    overflow: auto !important;
+}
+
+.joe-files-content {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 }
 
 /* ========== Fix for nested components ========== */
