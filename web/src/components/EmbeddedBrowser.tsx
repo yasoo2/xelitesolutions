@@ -1,0 +1,282 @@
+/**
+ * EmbeddedBrowser - Browser component for BottomPanel
+ * Wraps ModernBrowserStream with panel-specific controls
+ */
+
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import {
+    Globe,
+    RefreshCw,
+    ArrowLeft,
+    ArrowRight,
+    Home,
+    ExternalLink,
+    Maximize2,
+    Camera,
+    Search,
+    X
+} from 'lucide-react';
+import ModernBrowserStream from './ModernBrowserStream';
+import { API_URL } from '../config';
+
+interface EmbeddedBrowserProps {
+    sessionId?: string;
+    onReady?: () => void;
+}
+
+export default function EmbeddedBrowser({
+    sessionId = 'panel-browser',
+    onReady
+}: EmbeddedBrowserProps) {
+    const [currentUrl, setCurrentUrl] = useState('');
+    const [inputUrl, setInputUrl] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isConnected, setIsConnected] = useState(false);
+    const [showUrlInput, setShowUrlInput] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Listen for session status from ModernBrowserStream
+    useEffect(() => {
+        const handleStatus = (e: CustomEvent) => {
+            const detail = e.detail as { url?: string; sessionId?: string };
+            if (detail?.url) {
+                setCurrentUrl(detail.url);
+                setInputUrl(detail.url);
+            }
+            if (detail?.sessionId) {
+                setIsConnected(true);
+                onReady?.();
+            }
+        };
+
+        window.addEventListener('browser:session_status', handleStatus as any);
+        return () => window.removeEventListener('browser:session_status', handleStatus as any);
+    }, [onReady]);
+
+    // Navigate to URL
+    const handleNavigate = useCallback(async (url: string) => {
+        if (!url.trim()) return;
+
+        // Add protocol if missing
+        let targetUrl = url.trim();
+        if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+            // Check if it looks like a URL or a search query
+            if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
+                targetUrl = 'https://' + targetUrl;
+            } else {
+                // Treat as search query
+                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(targetUrl)}`;
+            }
+        }
+
+        setIsLoading(true);
+        setShowUrlInput(false);
+
+        try {
+            const token = localStorage.getItem('token');
+            await fetch(`${API_URL}/tools/browser_run/execute`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    sessionId,
+                    actions: [{ type: 'goto', url: targetUrl }]
+                })
+            });
+            setCurrentUrl(targetUrl);
+            setInputUrl(targetUrl);
+        } catch (e) {
+            console.error('Navigation failed:', e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [sessionId]);
+
+    // Browser actions
+    const sendAction = useCallback(async (action: any) => {
+        setIsLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            await fetch(`${API_URL}/tools/browser_run/execute`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    sessionId,
+                    actions: [action]
+                })
+            });
+        } catch (e) {
+            console.error('Action failed:', e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [sessionId]);
+
+    const handleBack = () => sendAction({ type: 'back' });
+    const handleForward = () => sendAction({ type: 'forward' });
+    const handleRefresh = () => sendAction({ type: 'reload' });
+    const handleHome = () => handleNavigate('https://www.google.com');
+    const handleScreenshot = () => sendAction({ type: 'screenshot' });
+
+    const openExternal = () => {
+        if (currentUrl) {
+            window.open(currentUrl, '_blank');
+        }
+    };
+
+    return (
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+            background: 'var(--bg-dark)'
+        }}>
+            {/* Toolbar */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 8px',
+                borderBottom: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+            }}>
+                {/* Navigation buttons */}
+                <div style={{ display: 'flex', gap: 2 }}>
+                    <BrowserButton icon={ArrowRight} tooltip="رجوع" onClick={handleBack} />
+                    <BrowserButton icon={ArrowLeft} tooltip="تقدم" onClick={handleForward} />
+                    <BrowserButton
+                        icon={isLoading ? RefreshCw : RefreshCw}
+                        tooltip="تحديث"
+                        onClick={handleRefresh}
+                        spinning={isLoading}
+                    />
+                    <BrowserButton icon={Home} tooltip="الرئيسية" onClick={handleHome} />
+                </div>
+
+                {/* URL Bar */}
+                <div
+                    onClick={() => {
+                        setShowUrlInput(true);
+                        setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
+                    style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 12px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 6,
+                        cursor: 'text',
+                        minWidth: 0,
+                    }}
+                >
+                    {showUrlInput ? (
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={inputUrl}
+                            onChange={e => setInputUrl(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    handleNavigate(inputUrl);
+                                } else if (e.key === 'Escape') {
+                                    setShowUrlInput(false);
+                                    setInputUrl(currentUrl);
+                                }
+                            }}
+                            onBlur={() => {
+                                setShowUrlInput(false);
+                                setInputUrl(currentUrl);
+                            }}
+                            placeholder="ادخل رابط أو ابحث..."
+                            style={{
+                                flex: 1,
+                                background: 'transparent',
+                                border: 'none',
+                                outline: 'none',
+                                color: 'var(--text-primary)',
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                            }}
+                        />
+                    ) : (
+                        <>
+                            <Globe size={12} style={{ color: isConnected ? '#22c55e' : 'var(--text-muted)', flexShrink: 0 }} />
+                            <span style={{
+                                flex: 1,
+                                fontSize: 12,
+                                color: currentUrl ? 'var(--text-primary)' : 'var(--text-muted)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                fontFamily: 'monospace',
+                                direction: 'ltr',
+                            }}>
+                                {currentUrl || 'لا يوجد صفحة محملة'}
+                            </span>
+                        </>
+                    )}
+                </div>
+
+                {/* Extra actions */}
+                <div style={{ display: 'flex', gap: 2 }}>
+                    <BrowserButton icon={Camera} tooltip="لقطة شاشة" onClick={handleScreenshot} />
+                    <BrowserButton icon={ExternalLink} tooltip="فتح خارجياً" onClick={openExternal} disabled={!currentUrl} />
+                </div>
+            </div>
+
+            {/* Browser View */}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+                <ModernBrowserStream sessionId={sessionId} showBoxes={true} />
+            </div>
+        </div>
+    );
+}
+
+function BrowserButton({
+    icon: Icon,
+    tooltip,
+    onClick,
+    disabled = false,
+    spinning = false
+}: {
+    icon: React.ElementType;
+    tooltip: string;
+    onClick: () => void;
+    disabled?: boolean;
+    spinning?: boolean;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            title={tooltip}
+            style={{
+                width: 28,
+                height: 28,
+                borderRadius: 4,
+                border: 'none',
+                background: 'transparent',
+                color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: disabled ? 0.5 : 1,
+                transition: 'all 0.15s',
+            }}
+        >
+            <Icon
+                size={14}
+                style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}
+            />
+        </button>
+    );
+}

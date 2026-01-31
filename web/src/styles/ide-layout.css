@@ -1,0 +1,133 @@
+/* ===== IDE Layout Components ===== */
+
+/* Bottom Panel Styles */
+.bottom-panel {
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-card);
+}
+
+/* No scrollbar utility */
+.no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* Hide on mobile utility */
+@media (max-width: 640px) {
+    .hide-mobile {
+        display: none !important;
+    }
+}
+
+/* Spin animation for loading */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Terminal Styles Override for Theme */
+.xterm {
+    padding: 4px;
+}
+
+.xterm-viewport {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+/* Sessions Bar */
+.sessions-bar {
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-card);
+}
+
+/* Panel Content Wrapper */
+.panel-content {
+    flex: 1;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.panel-content::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.panel-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .ide-sidebar {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 100;
+        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .bottom-panel {
+        max-height: 50vh;
+    }
+}
+
+/* Preview Panel Device Frames */
+.preview-device-frame {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+/* Problem/Error Item */
+.problem-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--bg-hover);
+    transition: background 0.15s;
+}
+
+.problem-item:hover {
+    background: rgba(var(--accent-primary-rgb), 0.1);
+}
+
+/* Output Log Line */
+.output-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
