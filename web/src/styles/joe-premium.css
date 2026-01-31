@@ -403,9 +403,20 @@
     padding: 12px 16px !important;
     gap: 12px !important;
     display: flex !important;
-    align-items: center !important;
+    align-items: flex-end !important;
+    /* Align to bottom */
     width: 100% !important;
     box-sizing: border-box !important;
+    position: relative !important;
+}
+
+/* Container for right-side buttons */
+.joe-chat-input-area .composer-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding-bottom: 4px !important;
+    /* Align with input text baseline */
 }
 
 /* Simple minimal buttons */
