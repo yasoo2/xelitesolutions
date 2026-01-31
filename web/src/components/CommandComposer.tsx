@@ -548,7 +548,7 @@ interface ProviderConfig {
 }
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
-  openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemma-2-9b-it:free' },
+  openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free' },
   auto: { name: 'Auto (Intelligent)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
