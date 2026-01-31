@@ -414,6 +414,10 @@ jobs:
 
           echo "Working directory: $(pwd)"
           echo "Git syncing..."
+          
+          # Remove stale git lock files if they exist (prevents crash failures)
+          rm -f .git/index.lock .git/HEAD.lock .git/refs/heads/*.lock 2>/dev/null || true
+          
           git fetch origin "$BRANCH"
           git reset --hard "origin/$BRANCH"
           echo "Deployed commit: $(git rev-parse --short HEAD)"
