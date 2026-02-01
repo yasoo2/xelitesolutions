@@ -2300,11 +2300,18 @@ export default function CommandComposer({
         }
       }
 
-      if (!isConnected && data?.result) {
+      // Always process result from HTTP response as a fallback/accelerator, 
+      // even if connected, to ensure the user sees the immediate response.
+      if (data?.result) {
         const r = data.result;
         if (r?.output) {
           const txt = typeof r.output === 'string' ? r.output : JSON.stringify(r.output);
-          setEvents(prev => [...prev, { type: 'text', data: txt }]);
+          // Simple dedup: check if the last event has the same text
+          setEvents(prev => {
+            const last = prev[prev.length - 1];
+            if (last && last.type === 'text' && last.data === txt) return prev;
+            return [...prev, { type: 'text', data: txt }];
+          });
         }
       }
       setAttachedFiles([]);
