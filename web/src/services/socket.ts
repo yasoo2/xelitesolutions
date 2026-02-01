@@ -63,7 +63,7 @@ async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401) return 'unauthorized';
-      if (!res.ok) return 'error';
+      if (!res.ok) return 'error';f
       return 'ok';
     } catch {
       return 'error';
@@ -109,7 +109,7 @@ async function connect() {
 
   // Append Token
   const u = new URL(urlToUse);
-  u.searchParams.set('token', token);
+if (token)  u.searchParams.set('token', token);
   urlToUse = u.toString();
 
   lastUrl = urlToUse;
