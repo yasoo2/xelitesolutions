@@ -247,10 +247,14 @@ const resources = {
         ls: 'عرض الملفات',
         web_search: 'بحث في الويب',
         shell_execute: 'تنفيذ أمر النظام',
-        http_fetch: 'جلب رابط',
         file_edit: 'تعديل ملف',
-        plan: 'تحليل وتخطيط',
-        summarize: 'تلخيص النتائج',
+        plan: 'تخطيط وتحليل',
+        summarize: 'تلخيص',
+        visual_qa: 'تحليل واجهة المستخدم (Vision)',
+        architect_plan: 'تخطيط معماري',
+        code_reviewer: 'مراجعة الكود AI',
+        genesis_builder: 'بناء المشروع (God Mode)',
+        task_loop: 'تنفيذ المهام الدوري',
         unknown: 'أداة غير معروفة'
       },
       artifacts: {
@@ -794,6 +798,11 @@ const resources = {
         file_edit: 'Editar archivo',
         plan: 'Planificar y Analizar',
         summarize: 'Resumir',
+        visual_qa: 'Análisis de UI (Vision)',
+        architect_plan: 'Planificación arquitectónica',
+        code_reviewer: 'Revisión de código AI',
+        genesis_builder: 'Constructor de proyectos',
+        task_loop: 'Bucle de tareas',
         unknown: 'Herramienta desconocida'
       },
       artifacts: {
