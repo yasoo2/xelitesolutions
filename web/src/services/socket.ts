@@ -63,7 +63,7 @@ async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401) return 'unauthorized';
-      if (!res.ok) return 'error';f
+      if (!res.ok) return 'error';
       return 'ok';
     } catch {
       return 'error';
