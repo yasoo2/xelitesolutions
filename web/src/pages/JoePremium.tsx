@@ -118,12 +118,29 @@ export default function JoePremium() {
             try {
                 // ELITE FIX: Use apiClient for consistent auth
                 const data: any = await api.get(`/sessions/${sessionId}/messages`);
-                setMessages(data.messages?.map((m: any) => ({
-                    id: m.id || m._id,
-                    role: m.role,
-                    content: m.content,
-                    timestamp: new Date(m.createdAt || Date.now())
-                })) || []);
+
+                // API returns 'events', map them to Message[]
+                const validMessages = (data.events || []).flatMap((e: any) => {
+                    if (e.type === 'user_input') {
+                        return [{
+                            id: e.id || `msg-${e.ts}`,
+                            role: 'user',
+                            content: typeof e.data === 'string' ? e.data : (e.data?.text || JSON.stringify(e.data)),
+                            timestamp: new Date(e.ts || Date.now())
+                        }];
+                    }
+                    if (e.type === 'text') {
+                        return [{
+                            id: e.id || `msg-${e.ts}`,
+                            role: 'assistant',
+                            content: e.data?.text || '',
+                            timestamp: new Date(e.ts || Date.now())
+                        }];
+                    }
+                    return [];
+                });
+
+                setMessages(validMessages as Message[]);
             } catch (e) {
                 console.error('Failed to load messages:', e);
             }
