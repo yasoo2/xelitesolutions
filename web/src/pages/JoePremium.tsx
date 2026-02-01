@@ -160,6 +160,35 @@ export default function JoePremium() {
         loadMessages();
     }, [mode, selected, agentSelected]);
 
+    // Workspace Management
+    const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+
+    const ensuresWorkspace = useCallback(async () => {
+        try {
+            // 1. Try to get existing workspaces
+            const workspaces: any = await api.get('/workspaces');
+            if (Array.isArray(workspaces) && workspaces.length > 0) {
+                setWorkspaceId(workspaces[0]._id || workspaces[0].id);
+                return workspaces[0]._id || workspaces[0].id;
+            }
+
+            // 2. If none, create one
+            console.log('No workspace found, creating default...');
+            const newWs: any = await api.post('/workspaces', { name: 'My Workspace' });
+            if (newWs && (newWs._id || newWs.id)) {
+                setWorkspaceId(newWs._id || newWs.id);
+                return newWs._id || newWs.id;
+            }
+        } catch (e) {
+            console.error('Failed to ensure workspace:', e);
+        }
+        return null;
+    }, []);
+
+    useEffect(() => {
+        ensuresWorkspace();
+    }, [ensuresWorkspace]);
+
     // Send message
     const handleSend = useCallback(async () => {
         if (!inputValue.trim() || isLoading) return;
@@ -183,16 +212,23 @@ export default function JoePremium() {
         setIsLoading(true);
 
         try {
+            // Ensure we have a workspace ID before sending
+            let currentWorkspaceId = workspaceId;
+            if (!currentWorkspaceId) {
+                currentWorkspaceId = await ensuresWorkspace();
+            }
+
             // ELITE FIX: Use /run/start to trigger AI processing
             await api.post('/run/start', {
                 text: inputValue,
-                sessionId
+                sessionId,
+                workspaceId: currentWorkspaceId // Pass workspace context
             });
         } catch (e) {
             console.error('Failed to send message:', e);
             setIsLoading(false);
         }
-    }, [inputValue, isLoading, mode, selected, agentSelected, createSession]);
+    }, [inputValue, isLoading, mode, selected, agentSelected, createSession, workspaceId, ensuresWorkspace]);
 
     // Mode change
     const handleModeChange = useCallback((newMode: 'agent' | 'chat') => {
