@@ -290,6 +290,7 @@ export default function JoePremium() {
                 <CommandComposer
                     sessionId={(mode === 'chat' ? selected : agentSelected) || undefined}
                     hideHistory={true}
+                    workspaceId={workspaceId}
                 />
             }
         />

@@ -580,6 +580,7 @@ export default function CommandComposer({
   onStepsUpdate,
   onMessagesUpdate,
   hideHistory = false,
+  workspaceId
 
 }: {
   sessionId?: string;
@@ -591,6 +592,7 @@ export default function CommandComposer({
   onStepsUpdate?: (steps: any[]) => void;
   onMessagesUpdate?: (msgs: any[]) => void;
   hideHistory?: boolean;
+  workspaceId?: string | null;
 
 }) {
   const { t } = useTranslation();
@@ -2225,7 +2227,8 @@ export default function CommandComposer({
         provider: providerToSend,
         model: providerCfgToSend?.model,
         apiKey: providerCfgToSend?.apiKey,
-        baseUrl: providerCfgToSend?.baseUrl
+        baseUrl: providerCfgToSend?.baseUrl,
+        workspaceId: workspaceId || undefined
       };
       if (systemInstructions && systemInstructions.trim()) {
         payload.systemInstructions = systemInstructions.trim();
