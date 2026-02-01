@@ -455,8 +455,10 @@
 .joe-chat-input-area .composer-actions {
     display: flex !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    /* Push Send button to right */
+    justify-content: flex-end !important;
+    /* Group ALL buttons to right */
+    gap: 8px !important;
+    /* Space between tools group and send button */
     position: absolute !important;
     bottom: 8px !important;
     left: 12px !important;
