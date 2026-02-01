@@ -1792,8 +1792,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         let result; try { result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId }); } catch (e) { result = { ok: false, output: String(e) }; }
-        const visibleTools = ['central_answer', 'echo', 'code_generator', 'write_to_file', 'visual_qa', 'search_web', 'ask_user', 'project_planner'];
-        if (visibleTools.includes(String(initialPlan.name)) && result.ok && result.output) {
+        const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
+        if (!ignoredTools.includes(String(initialPlan.name)) && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || '');
           if (answerText) {
             // Check for thought markers
@@ -3047,8 +3047,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
             });
             const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId });
-            const visibleTools = ['central_answer', 'echo', 'code_generator', 'write_to_file', 'visual_qa', 'search_web', 'ask_user', 'project_planner'];
-            if (visibleTools.includes(String(plan?.name)) && result.ok && result.output) {
+            const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
+            if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
               const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
               if (answerText) {
                 ev({ type: 'text', data: answerText });
@@ -3075,8 +3075,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (autoAll || (auto && safe)) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId });
-            const visibleTools = ['central_answer', 'echo', 'code_generator', 'write_to_file', 'visual_qa', 'search_web', 'ask_user', 'project_planner'];
-            if (visibleTools.includes(String(plan?.name)) && result.ok && result.output) {
+            const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
+            if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
               const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
               if (answerText) {
                 ev({ type: 'text', data: answerText });

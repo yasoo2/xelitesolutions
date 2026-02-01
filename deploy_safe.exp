@@ -1,0 +1,28 @@
+#!/usr/bin/expect
+
+set timeout 1200
+set host "46.224.187.142"
+set user "root"
+set password "Younes.sowady2011"
+
+spawn ssh -o StrictHostKeyChecking=no $user@$host
+
+expect {
+    "password:" { send "$password\r" }
+    "yes/no" { send "yes\r"; exp_continue }
+}
+
+expect "#"
+send "cd /opt/joe && git reset --hard origin/main && git pull origin main\r"
+
+expect "#"
+send "bash update_prod.sh\r"
+
+expect "SUCCESS" {
+    send_user "\nDeployment Successful!\n"
+}
+
+expect "#"
+send "exit\r"
+
+expect eof
