@@ -230,8 +230,10 @@ export const SocketService = {
   send(data: any) {
     const msg = JSON.stringify(data);
     if (socket && socket.readyState === WebSocket.OPEN) {
+      console.log('[Socket] Sending:', msg);
       socket.send(msg);
     } else {
+      console.warn('[Socket] Not connected. Queuing message:', msg);
       pendingQueue.push(msg);
       if (!socket) connect();
     }
