@@ -3438,11 +3438,9 @@ export default function CommandComposer({
 
 
 
-            <div className="input-actions">
-              {/* [UI] Status Indicator - Hidden */}
-
-
-              <div className="right-actions">
+            {/* Actions Footer Refactored for Corner Positioning */}
+            <div className="composer-actions">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <GitHubConnectModal
                   isOpen={showGithubModal}
                   onClose={() => setShowGithubModal(false)}
@@ -3454,16 +3452,7 @@ export default function CommandComposer({
                     }]);
                   }}
                 />
-                <button
-                  className={`action-btn provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
-                  onClick={() => setShowProviders(true)}
-                  title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
-                >
-                  <Cpu size={16} />
-                  <span className="provider-label">
-                    {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
-                  </span>
-                </button>
+
                 <input
                   type="file"
                   multiple
@@ -3471,6 +3460,18 @@ export default function CommandComposer({
                   onChange={handleFileSelect}
                   style={{ display: 'none' }}
                 />
+
+                <button
+                  className={`provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
+                  onClick={() => setShowProviders(true)}
+                  title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+                >
+                  <Cpu size={14} />
+                  <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
+                    {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
+                  </span>
+                </button>
+
                 <button
                   className="action-btn"
                   onClick={() => fileInputRef.current?.click()}
@@ -3478,57 +3479,43 @@ export default function CommandComposer({
                   disabled={isUploading}
                 >
                   {isUploading ? (
-                    <div className="relative flex items-center justify-center w-5 h-5">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                        <path
-                          className="text-gray-400/20"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="text-blue-500 transition-all duration-200 ease-out"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          strokeDasharray={`${uploadProgress}, 100`}
-                        />
-                      </svg>
-                    </div>
-                  ) : <Paperclip size={20} />}
+                    <Loader2 size={14} className="spin" />
+                  ) : <Paperclip size={14} />}
                 </button>
+
                 <button
                   className="action-btn"
                   onClick={() => setShowGithubModal(true)}
                   title="Connect to GitHub Repo"
                 >
-                  <Github size={20} />
+                  <Github size={14} />
                 </button>
+
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
                   onClick={() => setIsVoiceMode(!isVoiceMode)}
                   title="Voice Mode"
                 >
-                  {isVoiceMode ? <Mic size={20} /> : <MicOff size={20} />}
-                </button>
-                <button
-                  className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
-                  onClick={() => {
-                    if (status !== 'idle' || !!approval || !!secretPrompt) {
-                      stopCurrentRun();
-                      return;
-                    }
-                    if (isUploading) return;
-                    run();
-                  }}
-                  disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
-                  title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
-                >
-                  {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={18} /> : <ArrowUp size={20} />}
+                  {isVoiceMode ? <Mic size={14} /> : <MicOff size={14} />}
                 </button>
               </div>
+
+              {/* Send Button - Pushed to right via CSS space-between */}
+              <button
+                className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
+                onClick={() => {
+                  if (status !== 'idle' || !!approval || !!secretPrompt) {
+                    stopCurrentRun();
+                    return;
+                  }
+                  if (isUploading) return;
+                  run();
+                }}
+                disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
+                title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+              >
+                {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={14} fill="currentColor" /> : <ArrowUp size={16} />}
+              </button>
             </div>
           </div>
 

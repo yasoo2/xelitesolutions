@@ -449,17 +449,29 @@
     display: none !important;
 }
 
-/* CRITICAL: Absolute position to pin to corner */
+/* Container for ALL actions (Tools + Send) */
+/* Absolute position to pin to bottom of input area */
 .joe-chat-input-area .composer-actions {
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    justify-content: space-between !important;
+    /* Push Send button to right */
     position: absolute !important;
-    bottom: 14px !important;
-    right: 16px !important;
+    bottom: 8px !important;
+    left: 12px !important;
+    /* Start from left */
+    right: 12px !important;
+    /* Span to right */
     z-index: 10 !important;
     margin: 0 !important;
     padding: 0 !important;
+    pointer-events: none;
+    /* Let clicks pass through empty space */
+}
+
+/* Enable pointer events on buttons */
+.joe-chat-input-area .composer-actions>* {
+    pointer-events: auto;
 }
 
 /* Add padding to input so text doesn't go under buttons */
