@@ -36,11 +36,12 @@ function inferWsUrl(apiUrl: string) {
   if (apiUrl && apiUrl.startsWith('http')) {
     const base = apiUrl.replace(/\/api\/?$/, '');
     // Replace http->ws, https->wss
-    return base.replace(/^http/i, 'ws') + '/ws';
+    // ELITE FIX: Use /api/ws so Nginx routes it to the backend correctly
+    return base.replace(/^http/i, 'ws') + '/api/ws';
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/ws`;
+  return `${protocol}//${window.location.host}/api/ws`;
 }
 
 const runtimeConfig: any = (window as any).JOE_CONFIG || {};

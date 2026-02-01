@@ -16,7 +16,7 @@ let cachedIsShim: boolean | null = null;
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
     const base = httpUrl.replace(/\/api\/?$/, '');
-    return `${base.replace(/^http/i, 'ws')}/ws`;
+    return `${base.replace(/^http/i, 'ws')}/api/ws`;
   };
   const candidates = [
     API_URL ? wsFromHttpBase(API_URL) : '',
