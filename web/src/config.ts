@@ -17,7 +17,7 @@ function inferApiUrl() {
     hostname.endsWith('.local');
 
   if (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com') {
-    return 'https://xelitesolutions.com/api';
+    return `${window.location.origin}/api`;
   }
 
   // For local development, use port 3000 where the API runs
@@ -29,20 +29,16 @@ function inferApiUrl() {
 }
 
 function inferWsUrl(apiUrl: string) {
-  const hostname = window.location.hostname;
-  if (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com') {
-    return 'wss://ws.xelitesolutions.com/ws';
-  }
-  if (apiUrl && apiUrl.startsWith('https')) {
-    // If it ends in /api, remove it and add /ws
-    // Otherwise just swap https->wss and add /ws
+  // If we are on production, derive WS from the API URL to match the domain
+  // This avoids issues where 'ws.xelitesolutions.com' might not be set up
+  // or 'www' vs non-www mismatches occur.
+
+  if (apiUrl && apiUrl.startsWith('http')) {
     const base = apiUrl.replace(/\/api\/?$/, '');
-    return base.replace(/^https/i, 'wss') + '/ws';
-  }
-  if (apiUrl) {
-    const base = apiUrl.replace(/\/api\/?$/, '');
+    // Replace http->ws, https->wss
     return base.replace(/^http/i, 'ws') + '/ws';
   }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws`;
 }
@@ -68,13 +64,11 @@ const pointsToLocalhost = (u: string) => {
 };
 
 const apiEnv = !isLocalHost && pointsToLocalhost(apiEnvRaw) ? '' : apiEnvRaw;
-const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')) ? '' : wsEnvRaw;
+// const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')) ? '' : wsEnvRaw;
 
 const API_URL = apiEnv || inferApiUrl();
-// Critical: Force correct WS subdomain for prod to avoid env var mismatches
-const WS_URL = (hostname === 'xelitesolutions.com' || hostname === 'www.xelitesolutions.com')
-  ? 'wss://ws.xelitesolutions.com/ws'
-  : (wsEnv || inferWsUrl(API_URL));
+// Use the derived WS URL based on the final API_URL to ensure consistency
+const WS_URL = inferWsUrl(API_URL);
 const GOOGLE_CLIENT_ID = googleClientIdRaw;
 const readQueryChrome = () => {
   try {
