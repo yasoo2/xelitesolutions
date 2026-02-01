@@ -1,6 +1,19 @@
 import { API_URL } from '../config';
 
 class ApiClient {
+    private apiBaseUrl() {
+        const raw = String(API_URL || '').trim();
+        if (/^https?:\/\//i.test(raw)) return raw.replace(/\/+$/, '');
+        const p = raw.startsWith('/') ? raw : `/${raw}`;
+        return `${window.location.origin}${p}`.replace(/\/+$/, '');
+    }
+
+    private buildUrl(endpoint: string) {
+        const ep = String(endpoint || '').trim();
+        const path = ep.startsWith('/') ? ep : `/${ep}`;
+        return `${this.apiBaseUrl()}${path}`;
+    }
+
     private get token() {
         try {
             return localStorage.getItem('token');
@@ -48,7 +61,7 @@ class ApiClient {
     }
 
     async get(endpoint: string, query?: Record<string, string>) {
-        const url = new URL(`${API_URL}${endpoint}`);
+        const url = new URL(this.buildUrl(endpoint));
         if (query) {
             Object.entries(query).forEach(([k, v]) => url.searchParams.append(k, v));
         }
@@ -60,7 +73,7 @@ class ApiClient {
     }
 
     async post(endpoint: string, body?: any) {
-        const res = await fetch(`${API_URL}${endpoint}`, {
+        const res = await fetch(this.buildUrl(endpoint), {
             method: 'POST',
             headers: this.headers,
             body: body ? JSON.stringify(body) : undefined,
@@ -69,7 +82,7 @@ class ApiClient {
     }
 
     async put(endpoint: string, body?: any) {
-        const res = await fetch(`${API_URL}${endpoint}`, {
+        const res = await fetch(this.buildUrl(endpoint), {
             method: 'PUT',
             headers: this.headers,
             body: body ? JSON.stringify(body) : undefined,
@@ -78,7 +91,7 @@ class ApiClient {
     }
 
     async patch(endpoint: string, body?: any) {
-        const res = await fetch(`${API_URL}${endpoint}`, {
+        const res = await fetch(this.buildUrl(endpoint), {
             method: 'PATCH',
             headers: this.headers,
             body: body ? JSON.stringify(body) : undefined,
@@ -87,7 +100,7 @@ class ApiClient {
     }
 
     async delete(endpoint: string) {
-        const res = await fetch(`${API_URL}${endpoint}`, {
+        const res = await fetch(this.buildUrl(endpoint), {
             method: 'DELETE',
             headers: this.headers,
         });
