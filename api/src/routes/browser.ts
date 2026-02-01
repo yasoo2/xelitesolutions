@@ -3,8 +3,19 @@ import { authenticate } from '../middleware/auth';
 import { runBrowserInstruction } from '../browser/runner';
 import { executePlannedActions } from '../browser/executor';
 import { stopSession, getBrowserSession } from '../browser/manager';
+import { canAccessBrowserSession } from '../browser/wsHub';
 
 const router = Router();
+
+async function ensureBrowserSessionAccess(req: Request, res: Response, sessionId: string) {
+  const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+  if (authBypass) return { ok: true as const };
+  const userId = String((req as any).auth?.sub || '').trim();
+  if (!userId) return { ok: false as const, status: 401, body: { error: 'unauthorized' } };
+  const ok = await canAccessBrowserSession(userId, sessionId);
+  if (!ok) return { ok: false as const, status: 403, body: { error: 'forbidden' } };
+  return { ok: true as const, userId };
+}
 
 router.post('/run', authenticate as any, async (req: Request, res: Response) => {
   try {
@@ -17,8 +28,9 @@ router.post('/run', authenticate as any, async (req: Request, res: Response) => 
     if (!text) return res.status(400).json({ error: 'instructionText required' });
     if (m !== 'execute') return res.status(400).json({ error: 'unsupported_mode' });
 
-    const userId = String((req as any).auth?.sub || '').trim();
-    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    const access = await ensureBrowserSessionAccess(req, res, sid);
+    if (!access.ok) return res.status(access.status).json(access.body);
+    const userId = String((access as any).userId || '').trim();
 
     const r = await runBrowserInstruction({ userId, sessionId: sid, instructionText: text });
     if (!r.ok) {
@@ -40,8 +52,9 @@ router.post('/actions', authenticate as any, async (req: Request, res: Response)
     if (!sid) return res.status(400).json({ error: 'sessionId required' });
     if (!Array.isArray(actions)) return res.status(400).json({ error: 'actions must be an array' });
 
-    const userId = String((req as any).auth?.sub || '').trim();
-    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    const access = await ensureBrowserSessionAccess(req, res, sid);
+    if (!access.ok) return res.status(access.status).json(access.body);
+    const userId = String((access as any).userId || '').trim();
 
     try {
       const r = await executePlannedActions({ userId, sessionId: sid, actions });
@@ -60,6 +73,8 @@ router.post('/stop', authenticate as any, async (req: Request, res: Response) =>
   try {
     const sid = String(req.body?.sessionId || '').trim();
     if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    const access = await ensureBrowserSessionAccess(req, res, sid);
+    if (!access.ok) return res.status(access.status).json(access.body);
     try {
       await stopSession(sid);
     } catch {}
@@ -73,6 +88,8 @@ router.post('/nav/back', authenticate as any, async (req: Request, res: Response
   try {
     const sid = String(req.body?.sessionId || '').trim();
     if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    const access = await ensureBrowserSessionAccess(req, res, sid);
+    if (!access.ok) return res.status(access.status).json(access.body);
     const s = await getBrowserSession(sid);
     let ok = false;
     try {
@@ -89,6 +106,8 @@ router.post('/nav/forward', authenticate as any, async (req: Request, res: Respo
   try {
     const sid = String(req.body?.sessionId || '').trim();
     if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    const access = await ensureBrowserSessionAccess(req, res, sid);
+    if (!access.ok) return res.status(access.status).json(access.body);
     const s = await getBrowserSession(sid);
     let ok = false;
     try {
@@ -105,6 +124,8 @@ router.post('/nav/refresh', authenticate as any, async (req: Request, res: Respo
   try {
     const sid = String(req.body?.sessionId || '').trim();
     if (!sid) return res.status(400).json({ error: 'sessionId required' });
+    const access = await ensureBrowserSessionAccess(req, res, sid);
+    if (!access.ok) return res.status(access.status).json(access.body);
     const s = await getBrowserSession(sid);
     try { await s.page.reload({ waitUntil: 'domcontentloaded' }); } catch {}
     return res.json({ ok: true });
@@ -119,6 +140,8 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
     const raw = String(req.body?.url || '').trim();
     if (!sid) return res.status(400).json({ error: 'sessionId required' });
     if (!raw) return res.status(400).json({ error: 'url required' });
+    const access = await ensureBrowserSessionAccess(req, res, sid);
+    if (!access.ok) return res.status(access.status).json(access.body);
     const s = await getBrowserSession(sid);
     let u = raw;
     if (!/^[a-z]+:\/\//i.test(u)) u = `https://${u}`;

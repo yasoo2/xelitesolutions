@@ -39,10 +39,10 @@ class LongTermMemory {
     private memoryStore: Map<string, MemoryEntry[]> = new Map(); // userId -> memories
     private profiles: Map<string, UserProfile> = new Map(); // userId -> profile
     private memoryDir: string;
+    private initPromise: Promise<void> | null = null;
 
     constructor(memoryDir: string = './data/memory') {
         this.memoryDir = memoryDir;
-        this.initialize();
     }
 
     private async initialize() {
@@ -54,10 +54,18 @@ class LongTermMemory {
         }
     }
 
+    private async ensureInitialized(): Promise<void> {
+        if (!this.initPromise) {
+            this.initPromise = this.initialize();
+        }
+        await this.initPromise;
+    }
+
     /**
      * Store a new memory
      */
     async remember(userId: string, entry: Omit<MemoryEntry, 'id' | 'userId' | 'timestamp' | 'accessCount' | 'lastAccessed'>): Promise<void> {
+        await this.ensureInitialized();
         const memory: MemoryEntry = {
             ...entry,
             id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -86,6 +94,7 @@ class LongTermMemory {
      * Recall memories relevant to a query
      */
     async recall(userId: string, query: string, limit: number = 10): Promise<MemoryEntry[]> {
+        await this.ensureInitialized();
         const userMemories = this.memoryStore.get(userId) || [];
 
         if (userMemories.length === 0) return [];
@@ -140,6 +149,7 @@ class LongTermMemory {
      * Get or create user profile
      */
     async getProfile(userId: string): Promise<UserProfile> {
+        await this.ensureInitialized();
         if (!this.profiles.has(userId)) {
             const profile: UserProfile = {
                 userId,
@@ -160,6 +170,7 @@ class LongTermMemory {
      * Update user profile
      */
     async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<void> {
+        await this.ensureInitialized();
         const profile = await this.getProfile(userId);
 
         Object.assign(profile, updates);
@@ -172,6 +183,7 @@ class LongTermMemory {
      * Learn from conversation
      */
     async learnFromConversation(userId: string, messages: any[]): Promise<void> {
+        await this.ensureInitialized();
         const profile = await this.getProfile(userId);
 
         // Extract learnings
@@ -228,6 +240,7 @@ class LongTermMemory {
      * Get conversation summary for context
      */
     async getContextSummary(userId: string): Promise<string> {
+        await this.ensureInitialized();
         const profile = await this.getProfile(userId);
         const recentMemories = await this.recall(userId, '', 5);
 

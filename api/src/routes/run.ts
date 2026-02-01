@@ -9,7 +9,7 @@ import { Artifact } from '../models/artifact';
 import { Approval } from '../models/approval';
 import { Run } from '../models/run';
 import { planNextStep, generateSessionTitle, getSystemPrompt } from '../llm';
-import { authenticateOptional } from '../middleware/auth';
+import { authenticate, authenticateOptional } from '../middleware/auth';
 import { Session } from '../models/session';
 import { Message } from '../models/message';
 import { FileModel } from '../models/file';
@@ -17,6 +17,7 @@ import { MemoryService } from '../services/memory';
 import { MemoryItem } from '../models/memoryItem';
 import { rewriteInlineLoginCredentialsToSecrets } from '../browser/secrets';
 import { stopSession } from '../browser/manager';
+import { canAccessBrowserSession } from '../browser/wsHub';
 import { setSessionSecretEncrypted } from '../services/secrets';
 import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
 
@@ -39,36 +40,91 @@ const browserRunGuard = new Map<
 const BROWSER_RUN_MAX_PER_SESSION = 6;
 const BROWSER_RUN_MIN_INTERVAL_MS = 7000;
 
+const CANCELLED_RUN_TTL_MS = 24 * 60 * 60 * 1000;
+const CANCELLED_RUN_MAX_ENTRIES = 5000;
+
+function pruneCancelledRuns() {
+  if (cancelledRuns.size <= CANCELLED_RUN_MAX_ENTRIES) return;
+  const now = Date.now();
+  for (const [k, v] of cancelledRuns) {
+    if (now - v.at > CANCELLED_RUN_TTL_MS) cancelledRuns.delete(k);
+  }
+  if (cancelledRuns.size <= CANCELLED_RUN_MAX_ENTRIES) return;
+  let removed = 0;
+  for (const k of cancelledRuns.keys()) {
+    cancelledRuns.delete(k);
+    removed += 1;
+    if (removed >= Math.ceil(CANCELLED_RUN_MAX_ENTRIES / 3)) break;
+  }
+}
+
+function clampInt(value: any, fallback: number, min: number, max: number) {
+  const n = Number.parseInt(String(value ?? ''), 10);
+  const v = Number.isFinite(n) ? n : fallback;
+  return Math.max(min, Math.min(max, v));
+}
+
 function isRunCancelled(runId: string): boolean {
   const rid = String(runId || '').trim();
   if (!rid) return false;
   return cancelledRuns.has(rid);
 }
 
-router.get('/', async (req: Request, res: Response) => {
-  const limit = parseInt(String(req.query.limit || '10'));
+router.get('/', authenticate as any, async (req: Request, res: Response) => {
+  const userId = String((req as any).auth?.sub || '').trim();
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const limit = clampInt(req.query.limit, 10, 1, 100);
 
+  const workspaceIdRaw =
+    (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+      ? req.headers['x-workspace-id'].trim()
+      : (req.query && typeof (req.query as any).workspaceId === 'string' && String((req.query as any).workspaceId).trim())
+        ? String((req.query as any).workspaceId).trim()
+        : '';
+  const sessionsQuery: any = { userId };
+  if (workspaceIdRaw && mongoose.Types.ObjectId.isValid(workspaceIdRaw)) {
+    sessionsQuery.workspaceId = workspaceIdRaw;
+  }
 
   try {
-    const runs = await Run.find().sort({ createdAt: -1 }).limit(limit).lean();
+    const sessions = await Session.find(sessionsQuery)
+      .sort({ updatedAt: -1 })
+      .limit(500)
+      .select({ _id: 1 })
+      .lean();
+    const sessionIds = (sessions || []).map((s: any) => s._id).filter(Boolean);
+    if (sessionIds.length === 0) return res.json([]);
+
+    const runs = await Run.find({ sessionId: { $in: sessionIds } }).sort({ createdAt: -1 }).limit(limit).lean();
     return res.json(runs);
   } catch {
     return res.json([]);
   }
-
 });
 
-router.post('/stop', authenticateOptional as any, async (req: Request, res: Response) => {
+router.post('/stop', authenticate as any, async (req: Request, res: Response) => {
   try {
     const runId = String(req.body?.runId || '').trim();
     const browserSessionId = String(req.body?.browserSessionId || '').trim();
     if (!runId) return res.status(400).json({ error: 'runId required' });
+    if (!mongoose.Types.ObjectId.isValid(runId)) return res.status(400).json({ error: 'Invalid runId' });
+
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const run = await Run.findById(runId).select({ sessionId: 1 }).lean();
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+
+    const allowed = await Session.findOne({ _id: (run as any).sessionId, userId }).select('_id').lean();
+    if (!allowed) return res.status(403).json({ error: 'Forbidden' });
 
     cancelledRuns.set(runId, { at: Date.now(), reason: 'user_stop' });
+    pruneCancelledRuns();
 
     if (browserSessionId) {
       try {
-        await stopSession(browserSessionId);
+        const ok = await canAccessBrowserSession(userId, browserSessionId);
+        if (ok) await stopSession(browserSessionId);
       } catch { }
     }
 
@@ -1668,9 +1724,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
       const autoAll =
         authRole === 'OWNER' || cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
-      const auto =
-        autoAll || cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
-      const safe = !/HIGH|CRITICAL/i.test(String(risk));
+      const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
+      const auto = autoAll || cfg.autoApproveSafe === true ? true : envAutoSafe ? envAutoSafe === '1' : true;
+      const safe = !/(high|critical)/i.test(String(risk));
       if (autoAll || (auto && safe)) {
         ev({
           type: 'step_started',
@@ -1715,7 +1771,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, sessionId, workspaceId, name: initialPlan.name, input: initialPlan.input });
-      if (autoAll || (auto && safe) || /^browser_/.test(initialPlan.name || '')) {
+      if (autoAll || (auto && safe)) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
@@ -2996,10 +3052,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
 
 
-          const auto = cfg.autoApproveSafe === true ? true : process.env.AUTO_APPROVE_SAFE === '1';
+          const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
+          const auto = cfg.autoApproveSafe === true ? true : envAutoSafe ? envAutoSafe === '1' : true;
 
-          const safe = !/HIGH|CRITICAL/i.test(String(risk));
-          if (autoAll || (auto && safe) || /^browser_/.test(plan?.name || '')) {
+          const safe = !/(high|critical)/i.test(String(risk));
+          if (autoAll || (auto && safe)) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId });
             if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {

@@ -2,6 +2,7 @@
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { getBrowserSession, screenshotSessionJpeg, touchSession } from '../../browser/manager';
+import { canAccessBrowserSession } from '../../browser/wsHub';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
 import path from 'path';
 import fs from 'fs';
@@ -151,6 +152,12 @@ export class BrowserRunTool extends BaseTool {
         const sid = String(input?.sessionId || '').trim();
         if (!sid) return { ok: false, error: 'sessionId_required', logs };
         const userId = String(input?.userId || input?.__userId || '').trim();
+        const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+        if (!authBypass) {
+            if (!userId) return { ok: false, error: 'unauthorized', logs };
+            const allowed = await canAccessBrowserSession(userId, sid);
+            if (!allowed) return { ok: false, error: 'forbidden', logs };
+        }
 
         const instructionText = String(input?.instructionText || '').trim();
         const rawActs = Array.isArray(input?.actions) ? input.actions : [];

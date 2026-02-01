@@ -53,9 +53,26 @@ async function canAccessSession(userId: string, sessionId: string) {
   const hint = extractOwnerHint(sid, uid);
   if (hint.type === 'userId') return true;
   if (hint.type !== 'mongoSession') return false;
-  if (mongoose.connection.readyState !== 1) return true;
+  if (mongoose.connection.readyState !== 1) return false;
   const found = await Session.findOne({ _id: hint.value, userId: uid }).select('_id').lean();
   return !!found;
+}
+
+export async function canAccessBrowserSession(userId: string, sessionId: string) {
+  const uid = String(userId || '').trim();
+  const sid = String(sessionId || '').trim();
+  if (!uid || !sid) return false;
+
+  const hint = extractOwnerHint(sid, uid);
+  if (hint.type === 'userId' || hint.type === 'mongoSession') {
+    return canAccessSession(uid, sid);
+  }
+
+  const cur = ownerByBrowserSessionId.get(sid);
+  if (!cur) return false;
+  if (cur.userId !== uid) return false;
+  cur.at = Date.now();
+  return true;
 }
 
 export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) {

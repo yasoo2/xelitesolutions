@@ -41,6 +41,56 @@ export interface ToolContext {
     language?: string;
 }
 
+function normalizeUserId(v: any) {
+    const s = String(v ?? '').trim();
+    return s || undefined;
+}
+
+function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' | 'critical' {
+    const n = String(name || '').trim();
+    const s = (() => {
+        try { return JSON.stringify(input || {}); } catch { return String(input || ''); }
+    })();
+    if (n === 'shell_execute') {
+        const cmd = String((input as any)?.command || '').toLowerCase();
+        if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(cmd)) return 'critical';
+        if (/(chmod\s+777|chown\s+root|mkfs|dd\s+if=|:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;:)/i.test(cmd)) return 'critical';
+        return 'high';
+    }
+    if (n === 'git_ops') {
+        const op = String((input as any)?.operation || '').toLowerCase();
+        if (op === 'push' || op === 'commit') return 'high';
+        return 'medium';
+    }
+    if (n === 'browser_run') {
+        const acts = Array.isArray((input as any)?.actions) ? (input as any).actions : [];
+        const txt = String((input as any)?.instructionText || '');
+        if (/(password|cvv|iban|ssn|card|otp|2fa|payment|checkout|pay|delete|drop|remove|حذف|دفع|بطاقة|كلمة المرور|تحقق)/i.test(txt)) return 'high';
+        for (const a of acts) {
+            const t = String(a?.type || '').toLowerCase();
+            if (t === 'uploadfile') return 'high';
+            if (t === 'fillform') return 'high';
+            if (t === 'evaluate') return 'high';
+            if (t === 'type') {
+                const v = String(a?.text || '');
+                if (/\{\{\s*SECRET\s*:/i.test(v)) return 'high';
+            }
+            if (t === 'click') {
+                const combined = `${String(a?.text || '')} ${String(a?.selector || '')} ${String(a?.name || '')} ${String(a?.role || '')}`.toLowerCase();
+                if (/(delete|remove|drop|pay|checkout|submit|login|sign\s*in|حذف|دفع|ارسال|تسجيل)/i.test(combined)) return 'high';
+            }
+        }
+        return 'medium';
+    }
+    if (/(delete|deploy)/.test(n)) return 'high';
+    if (/(write_file|file_edit|scaffold_project|npm_manager|auto_tester|java_builder)/.test(n)) return 'medium';
+    if (/(read_file|inspect_directory|inspect_symbol|grep_search|codebase_navigator|project_detect|analyze_codebase)/.test(n)) return 'low';
+    if (/(http_fetch|payments_create_checkout_session)/.test(n)) return 'medium';
+    if (/(echo|central_answer|task_lifecycle)/.test(n)) return 'low';
+    if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(s)) return 'critical';
+    return 'medium';
+}
+
 export async function executeTool(name: string, input: any, context?: ToolContext) {
     const logs: string[] = [];
     const t0 = Date.now();
@@ -66,7 +116,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     // --- Aliasing & Compatibility Layer ---
     const contextSessionId = context?.sessionId;
-    const contextWorkspaceId =
+    let contextWorkspaceId =
         typeof context?.workspaceId === 'string' && context.workspaceId.trim()
             ? context.workspaceId.trim()
             : typeof (effectiveInput as any)?.workspaceId === 'string' && String((effectiveInput as any).workspaceId).trim()
@@ -74,10 +124,17 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 : typeof (effectiveInput as any)?.__workspaceId === 'string' && String((effectiveInput as any).__workspaceId).trim()
                     ? String((effectiveInput as any).__workspaceId).trim()
                     : undefined;
-    const effectiveContext: ToolContext = { ...(context || {}), workspaceId: contextWorkspaceId };
+    const contextUserId =
+        normalizeUserId(context?.userId) ||
+        normalizeUserId((effectiveInput as any)?.userId) ||
+        normalizeUserId((effectiveInput as any)?.__userId);
+    const effectiveContext: ToolContext = { ...(context || {}), workspaceId: contextWorkspaceId, userId: contextUserId };
 
     if (contextWorkspaceId && typeof (effectiveInput as any).__workspaceId !== 'string') {
         (effectiveInput as any).__workspaceId = contextWorkspaceId;
+    }
+    if (contextUserId && typeof (effectiveInput as any).__userId !== 'string') {
+        (effectiveInput as any).__userId = contextUserId;
     }
 
     if (!contextWorkspaceId) {
@@ -256,6 +313,59 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const tDef = tools.find(t => t.name === effectiveName);
         if (!tDef) {
             return { ok: false, error: 'unknown_tool', logs };
+        }
+
+        const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+        if (!authBypass) {
+            const perms = Array.isArray((tDef as any).permissions) ? (tDef as any).permissions : [];
+            const effects = Array.isArray((tDef as any).sideEffects) ? (tDef as any).sideEffects : [];
+            const needsWorkspace = perms.length > 0 || effects.length > 0;
+            const needsUser = perms.length > 0 || effects.length > 0;
+            const sid = String(effectiveContext.sessionId || (effectiveInput as any)?.sessionId || '').trim();
+            if ((needsWorkspace && !contextWorkspaceId) || (needsUser && !effectiveContext.userId)) {
+                try {
+                    const m = await import('mongoose');
+                    const mongoose: any = (m as any).default || m;
+                    if (sid && mongoose?.Types?.ObjectId?.isValid?.(sid) && mongoose?.connection?.readyState === 1) {
+                        const { Session } = await import('../models/session');
+                        const sess: any = await Session.findById(sid).select({ userId: 1, workspaceId: 1 }).lean();
+                        if (sess) {
+                            const resolvedUserId = normalizeUserId(sess.userId);
+                            const resolvedWorkspaceId = normalizeUserId(sess.workspaceId);
+                            if (!effectiveContext.userId && resolvedUserId) {
+                                effectiveContext.userId = resolvedUserId;
+                                if (typeof (effectiveInput as any).__userId !== 'string') (effectiveInput as any).__userId = resolvedUserId;
+                            }
+                            if (!contextWorkspaceId && resolvedWorkspaceId) {
+                                contextWorkspaceId = resolvedWorkspaceId;
+                                effectiveContext.workspaceId = resolvedWorkspaceId;
+                                if (typeof (effectiveInput as any).__workspaceId !== 'string') (effectiveInput as any).__workspaceId = resolvedWorkspaceId;
+                            }
+                        }
+                    }
+                } catch { }
+            }
+            if (needsWorkspace && !contextWorkspaceId) {
+                logs.push('blocked=1 reason=workspace_required');
+                return { ok: false, error: 'workspace_required', logs };
+            }
+            if (needsUser && !effectiveContext.userId) {
+                logs.push('blocked=1 reason=unauthorized');
+                return { ok: false, error: 'unauthorized', logs };
+            }
+            const { getSessionRunConfig } = await import('./secrets');
+            const cfg = sid ? (getSessionRunConfig(sid) as any) : ({} as any);
+            const envAutoAll = process.env.AUTO_APPROVE_ALL;
+            const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
+            const autoAll = cfg.autoApproveAll === true ? true : envAutoAll === '1';
+            const autoSafe = autoAll || cfg.autoApproveSafe === true ? true : envAutoSafe ? envAutoSafe === '1' : true;
+            const risk = classifyToolRisk(effectiveName, effectiveInput);
+            const requiresAll = risk === 'high' || risk === 'critical';
+            const allowed = requiresAll ? autoAll : (autoAll || autoSafe);
+            if (!allowed) {
+                logs.push(`blocked=1 reason=approval_required risk=${risk}`);
+                return { ok: false, error: 'approval_required', output: { risk }, logs };
+            }
         }
 
         // Rate Limit Check

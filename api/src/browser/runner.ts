@@ -1,6 +1,6 @@
 import type { BrowserWsEvent } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
-import { broadcastBrowserEvent } from './wsHub';
+import { broadcastBrowserEvent, canAccessBrowserSession } from './wsHub';
 import { resolveSecretsInText, redactSecretsFromString, rewriteInlineLoginCredentialsToSecrets } from './secrets';
 import { planNextStep } from '../llm';
 import { executePlannedActions } from './executor';
@@ -599,6 +599,17 @@ export async function runBrowserInstruction(params: {
   if (!userId) throw new Error('userId_required');
   if (!sessionId) throw new Error('sessionId_required');
   if (!instructionTextRaw) throw new Error('instructionText_required');
+
+  const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+  if (!authBypass) {
+    const ok = await canAccessBrowserSession(userId, sessionId);
+    if (!ok) {
+      const ev: BrowserWsEvent = { type: 'final_report', ts: now(), ok: false, summary: 'forbidden', steps: [], evidence: [] };
+      broadcastBrowserEvent(sessionId, ev);
+      broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: 'forbidden', reason: 'forbidden' });
+      return { ok: false as const, error: 'forbidden' };
+    }
+  }
 
   let instructionText = instructionTextRaw;
   try {
