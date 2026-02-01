@@ -1632,7 +1632,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
           const answer = fast;
 
-          ev({ type: 'text', data: answer });
+          ev({ type: 'text', data: { text: answer } });
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
           ev({ type: 'run_finished', data: { runId, ok: true } });
 
@@ -1653,7 +1653,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
           const answer = optimization.cachedResponse;
 
-          ev({ type: 'text', data: answer });
+          ev({ type: 'text', data: { text: answer } });
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
           ev({ type: 'run_finished', data: { runId, ok: true } });
 
@@ -1796,7 +1796,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
             }
             if (answerText) {
-              ev({ type: 'text', data: answerText });
+              ev({ type: 'text', data: { text: answerText } });
               assistantTextEmitted = true;
             }
           }
@@ -1854,7 +1854,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         } else {
           finalText = 'تعذّر استخراج الإحداثيات من مزود الموقع. حاول مرة أخرى بعد قليل.';
         }
-        ev({ type: 'text', data: finalText });
+        ev({ type: 'text', data: { text: finalText } });
         ev({ type: 'run_completed', data: { runId, result } });
         ev({ type: 'run_finished', data: { runId, status: 'done' } });
 
