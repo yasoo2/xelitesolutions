@@ -77,20 +77,18 @@ async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'
 }
 
 async function connect() {
-  if (!WS_URL) return;
+  console.log('[Socket Debug] connect() called');
+  if (!WS_URL) {
+    console.error('[Socket Debug] WS_URL is missing or empty');
+    return;
+  }
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    console.log('[Socket Debug] Socket already open/connecting', socket.readyState);
     return;
   }
 
   const token = localStorage.getItem('token');
-  // Allow anonymous connections if no token
-  // if (!token || !isValidToken(token)) {
-  //   if (connectTimer) {
-  //     clearTimeout(connectTimer);
-  //     connectTimer = null;
-  //   }
-  //   return;
-  // }
+  console.log('[Socket Debug] Token found:', token ? token.slice(0, 10) + '...' : 'null');
 
   if (connectTimer != null) {
     window.clearTimeout(connectTimer);
@@ -98,6 +96,7 @@ async function connect() {
   }
 
   if (await isApiShimActive()) {
+    console.log('[Socket Debug] API Shim Active, backing off');
     setStatus('error', 'api_shim');
     connectTimer = window.setTimeout(() => void connect(), 15000);
     return;
@@ -106,6 +105,7 @@ async function connect() {
   const primaryUrl = WS_URL;
   const fallbackUrl = computeFallbackWsUrl(primaryUrl);
   let urlToUse = (triedFallback || !fallbackUrl) ? primaryUrl : (connectAttempts > 0 ? fallbackUrl : primaryUrl);
+  console.log('[Socket Debug] Initial URL:', urlToUse);
 
   // Append Token
   const u = new URL(urlToUse);
@@ -113,6 +113,7 @@ async function connect() {
     u.searchParams.set('token', token);
   }
   urlToUse = u.toString();
+  console.log('[Socket Debug] Connecting to:', urlToUse);
 
   lastUrl = urlToUse;
 
@@ -120,9 +121,15 @@ async function connect() {
   const startedAt = Date.now();
   setStatus(connectAttempts > 0 ? 'reconnecting' : 'connecting', urlToUse);
 
-  socket = new WebSocket(urlToUse);
+  try {
+    socket = new WebSocket(urlToUse);
+  } catch (err) {
+    console.error('[Socket Debug] new WebSocket() threw:', err);
+    return;
+  }
 
   socket.onopen = (event) => {
+    console.log('[Socket Debug] onopen fired');
     const ws = event.target as WebSocket;
     opened = true;
     connectAttempts = 0;
@@ -138,9 +145,6 @@ async function connect() {
           ws.send(msg);
         } catch (err) {
           console.error('WebSocket send error in onopen:', err);
-          // Put it back? Or drop it. Dropping prevents infinite loop of failing msg.
-          // But maybe we should re-queue if it was a transient error?
-          // For invalid state, it's fatal for this send attempt.
         }
       }
     }
@@ -155,6 +159,7 @@ async function connect() {
   };
 
   socket.onclose = (ev) => {
+    console.log('[Socket Debug] onclose:', ev.code, ev.reason);
     socket = null;
     const reason = String((ev as any)?.reason || '');
     if (ev?.code === 1008 || reason.startsWith('unauthorized')) {
@@ -221,7 +226,8 @@ async function connect() {
     connectTimer = window.setTimeout(() => void connect(), baseDelay + jitter);
   };
 
-  socket.onerror = () => {
+  socket.onerror = (e) => {
+    console.error('[Socket Debug] onerror:', e);
     setStatus('error', lastUrl);
   };
 }
