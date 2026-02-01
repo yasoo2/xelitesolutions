@@ -62,9 +62,7 @@ services:
     restart: always
     env_file:
       - .env
-    environment:
-      # - VITE_API_URL=https://xelitesolutions.com/api
-      # - VITE_WS_URL=wss://xelitesolutions.com/ws
+    environment: {}
     networks:
       - joe-network
     depends_on:
