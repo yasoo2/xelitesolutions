@@ -410,15 +410,6 @@
     position: relative !important;
 }
 
-/* Container for right-side buttons */
-.joe-chat-input-area .composer-actions {
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    padding-bottom: 4px !important;
-    /* Align with input text baseline */
-}
-
 /* Simple minimal buttons */
 .joe-chat-input-area .action-btn,
 .joe-chat-input-area .provider-btn,
@@ -458,11 +449,27 @@
     display: none !important;
 }
 
+/* CRITICAL: Absolute position to pin to corner */
+.joe-chat-input-area .composer-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    position: absolute !important;
+    bottom: 14px !important;
+    right: 16px !important;
+    z-index: 10 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Add padding to input so text doesn't go under buttons */
 .joe-chat-input-area .main-input {
     background: transparent !important;
     border: none !important;
     outline: none !important;
     padding: 4px 0 !important;
+    padding-right: 140px !important;
+    /* Space for absolute buttons */
     margin: 0 !important;
     font-size: 14px !important;
     line-height: 1.4 !important;
