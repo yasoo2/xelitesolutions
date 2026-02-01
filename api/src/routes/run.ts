@@ -1786,7 +1786,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
         let result; try { result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId }); } catch (e) { result = { ok: false, output: String(e) }; }
-        if ((String(initialPlan.name) === 'central_answer' || String(initialPlan.name) === 'echo') && result.ok && result.output) {
+        const visibleTools = ['central_answer', 'echo', 'code_generator', 'write_to_file', 'visual_qa', 'search_web', 'ask_user', 'project_planner'];
+        if (visibleTools.includes(String(initialPlan.name)) && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || '');
           if (answerText) {
             // Check for thought markers
