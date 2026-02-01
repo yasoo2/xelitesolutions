@@ -1,5 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import { Sparkles, Send, Mic } from 'lucide-react';
+import { Sparkles, Send, Mic, User, Bot } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface Message {
     id: string;
@@ -94,7 +97,29 @@ export default function ChatPanel({
                             </div>
                             <div className="joe-message-content">
                                 <div className="joe-message-bubble">
-                                    {msg.content}
+                                    <ReactMarkdown
+                                        components={{
+                                            code({ className, children, ...props }: any) {
+                                                const match = /language-(\w+)/.exec(className || '');
+                                                return match ? (
+                                                    <SyntaxHighlighter
+                                                        style={vscDarkPlus as any}
+                                                        language={match[1]}
+                                                        PreTag="div"
+                                                        {...props}
+                                                    >
+                                                        {String(children).replace(/\n$/, '')}
+                                                    </SyntaxHighlighter>
+                                                ) : (
+                                                    <code className={className} {...props}>
+                                                        {children}
+                                                    </code>
+                                                );
+                                            }
+                                        }}
+                                    >
+                                        {msg.content}
+                                    </ReactMarkdown>
                                 </div>
                             </div>
                         </div>
