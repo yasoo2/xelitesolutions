@@ -82,15 +82,26 @@ export default function JoePremium() {
                 setWorkspaceTab('browser');
             }
 
-            // Handle messages
-            if (msg.type === 'message' && msg.sessionId === (mode === 'chat' ? selected : agentSelected)) {
-                setMessages(prev => [...prev, {
-                    id: msg.id || `msg-${Date.now()}`,
-                    role: msg.role,
-                    content: msg.content,
-                    timestamp: new Date()
-                }]);
-                if (msg.role === 'assistant') {
+            // Handle messages (Legacy & New Events)
+            if ((msg.type === 'message' || msg.type === 'user_input' || msg.type === 'text') &&
+                (msg.sessionId === (mode === 'chat' ? selected : agentSelected) || msg.data?.sessionId === (mode === 'chat' ? selected : agentSelected))) {
+
+                const role = msg.type === 'user_input' ? 'user' : (msg.role || 'assistant');
+                const content = msg.type === 'user_input' ? (typeof msg.data === 'string' ? msg.data : msg.data?.text || msg.data) : (msg.data?.text || msg.content);
+                const id = msg.id || (msg.type === 'user_input' ? `msg-${msg.ts || Date.now()}` : `msg-${Date.now()}`);
+
+                setMessages(prev => {
+                    // Avoid duplicates
+                    if (prev.some(m => m.id === id)) return prev;
+                    return [...prev, {
+                        id,
+                        role,
+                        content,
+                        timestamp: new Date()
+                    }];
+                });
+
+                if (role === 'assistant') {
                     setIsLoading(false);
                 }
             }
