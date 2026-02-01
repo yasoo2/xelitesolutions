@@ -1364,9 +1364,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         { upsert: true, new: true }
       );
 
-      const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id });
+      const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id, workspaceId });
       sessionId = s._id.toString();
 
+    } else if (workspaceId) {
+      // [FIX] Persist workspaceId on existing sessions that may be missing it
+      try {
+        const { Session } = await import('../models/session');
+        await Session.findByIdAndUpdate(sessionId, { $set: { workspaceId } }, { new: false });
+      } catch (e) {
+        console.warn('[Run] Failed to update session workspaceId:', e);
+      }
     }
 
     // Update session with new files if any
