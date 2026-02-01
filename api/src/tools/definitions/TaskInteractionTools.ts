@@ -75,7 +75,8 @@ export class TerminalManagerTool extends BaseTool {
                     return { ok: false, error: 'node-pty module not found or failed to load on this system.', logs: [] };
                 }
 
-                const shell = input.shell || (process.platform === 'win32' ? 'powershell.exe' : 'bash');
+                // [FIX] Use /bin/sh on Linux for Alpine compatibility (no bash by default)
+                const shell = input.shell || (process.platform === 'win32' ? 'powershell.exe' : '/bin/sh');
                 const ptyProcess = pty.spawn(shell, [], {
                     name: 'xterm-color',
                     cols: input.cols || 80,
