@@ -1468,7 +1468,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     let systemPromptCreated = false;
     let systemPromptText: string | null = null;
 
-    const ev = (e: LiveEvent) => broadcast({ ...e, runId });
+    const ev = (e: LiveEvent) => broadcast({ ...e, runId, sessionId });
 
     try {
       const userSystemInstructions =
