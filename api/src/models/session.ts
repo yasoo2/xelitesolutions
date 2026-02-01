@@ -22,7 +22,7 @@ const SessionSchema = new Schema<ISession>(
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true, required: true },
     workspaceId: { type: Schema.Types.ObjectId, ref: 'Workspace', index: true },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', index: true, required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     title: { type: String, required: true },
     mode: { type: String, enum: ['ADVISOR', 'BUILDER', 'SAFE', 'OWNER'], default: 'ADVISOR' },
     kind: { type: String, enum: ['chat', 'agent'], default: 'chat', index: true },
