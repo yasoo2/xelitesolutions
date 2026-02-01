@@ -83,15 +83,14 @@ async function connect() {
   }
 
   const token = localStorage.getItem('token');
-  if (!token || !isValidToken(token)) {
-    // If no valid token, we cannot connect to the secure WebSocket.
-    // We do NOT necessarily clear the token here (TopBar does that), but we abort connection.
-    if (connectTimer) {
-      clearTimeout(connectTimer);
-      connectTimer = null;
-    }
-    return;
-  }
+  // Allow anonymous connections if no token
+  // if (!token || !isValidToken(token)) {
+  //   if (connectTimer) {
+  //     clearTimeout(connectTimer);
+  //     connectTimer = null;
+  //   }
+  //   return;
+  // }
 
   if (connectTimer != null) {
     window.clearTimeout(connectTimer);
