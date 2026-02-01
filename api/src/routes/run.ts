@@ -1787,7 +1787,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             : initialPlan.input;
         let result; try { result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId }); } catch (e) { result = { ok: false, output: String(e) }; }
         if ((String(initialPlan.name) === 'central_answer' || String(initialPlan.name) === 'echo') && result.ok && result.output) {
-          let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || '');
+          let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || '');
           if (answerText) {
             // Check for thought markers
             const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
