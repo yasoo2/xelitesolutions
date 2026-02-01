@@ -109,7 +109,9 @@ async function connect() {
 
   // Append Token
   const u = new URL(urlToUse);
-if (token)  u.searchParams.set('token', token);
+  if (token) {
+    u.searchParams.set('token', token);
+  }
   urlToUse = u.toString();
 
   lastUrl = urlToUse;

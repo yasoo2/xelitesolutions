@@ -123,11 +123,7 @@ export function attachWebSocket(server: Server) {
 
     const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
     const token = url?.searchParams.get('token') || '';
-    if (!authBypass) {
-      if (!token) {
-        try { ws.close(1008, 'unauthorized_missing_token'); } catch { }
-        return;
-      }
+    if (!authBypass && token && token !== 'null') {
       try {
         const payload = jwt.verify(token, config.jwtSecret);
         (req as any).auth = payload;
