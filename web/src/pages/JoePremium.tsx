@@ -183,8 +183,11 @@ export default function JoePremium() {
         setIsLoading(true);
 
         try {
-            // ELITE FIX: Use apiClient
-            await api.post(`/sessions/${sessionId}/message`, { content: inputValue });
+            // ELITE FIX: Use /run/start to trigger AI processing
+            await api.post('/run/start', {
+                text: inputValue,
+                sessionId
+            });
         } catch (e) {
             console.error('Failed to send message:', e);
             setIsLoading(false);
