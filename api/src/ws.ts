@@ -273,7 +273,10 @@ export function attachWebSocket(server: Server) {
 export function broadcast(
   event: LiveEvent | { type: string; data: any; id?: string; runId?: string; seq?: number; ts?: number }
 ) {
-  if (!liveWssRef) return;
+  if (!liveWssRef) {
+    console.warn('[WS] broadcast called but liveWssRef is null');
+    return;
+  }
   const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
   const normalized: LiveEvent = {
     ...(event as any),
@@ -287,13 +290,23 @@ export function broadcast(
           : undefined,
   };
   const payload = JSON.stringify(normalized);
-  const targetUserId = authBypass ? '' : resolveEventUserId(normalized);
+
+  // Fix: Ensure "undefined" string is treated as empty
+  let targetUserId = authBypass ? '' : resolveEventUserId(normalized);
+  if (targetUserId === 'undefined') targetUserId = '';
+
+  console.log(`[WS] Broadcast type=${normalized.type} target=${targetUserId || 'ALL'} clients=${liveWssRef.clients.size}`);
+
   liveWssRef.clients.forEach((client: WebSocket) => {
     if (client.readyState === WebSocket.OPEN) {
       if (!authBypass && targetUserId) {
         const clientUserId = trimId((client as any).userId);
-        if (!clientUserId || clientUserId !== targetUserId) return;
+        if (!clientUserId || clientUserId !== targetUserId) {
+          // console.log('[WS] Skipping client', clientUserId, 'target', targetUserId);
+          return;
+        }
       }
+      // console.log('[WS] Sending to client', (client as any).userId || 'anon');
       client.send(payload);
     }
   });
