@@ -1468,7 +1468,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     let systemPromptCreated = false;
     let systemPromptText: string | null = null;
 
-    const ev = (e: LiveEvent) => broadcast({ ...e, runId, sessionId });
+    const ev = (e: LiveEvent) => {
+      // Auto-wrap string data for text events (frontend expects { text: string })
+      if (e.type === 'text' && typeof e.data === 'string') {
+        e.data = { text: e.data };
+      }
+      return broadcast({ ...e, runId, sessionId });
+    };
 
     try {
       const userSystemInstructions =
@@ -3041,8 +3047,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
             });
             const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId });
-            if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
-              const answerText = String(result.output.note || result.output.summary || '');
+            const visibleTools = ['central_answer', 'echo', 'code_generator', 'write_to_file', 'visual_qa', 'search_web', 'ask_user', 'project_planner'];
+            if (visibleTools.includes(String(plan?.name)) && result.ok && result.output) {
+              const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
               if (answerText) {
                 ev({ type: 'text', data: answerText });
                 assistantTextEmitted = true;
@@ -3068,8 +3075,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (autoAll || (auto && safe)) {
             ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
             const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId });
-            if ((String(plan?.name) === 'central_answer' || String(plan?.name) === 'web_search') && result.ok && result.output) {
-              const answerText = String(result.output.note || result.output.summary || '');
+            const visibleTools = ['central_answer', 'echo', 'code_generator', 'write_to_file', 'visual_qa', 'search_web', 'ask_user', 'project_planner'];
+            if (visibleTools.includes(String(plan?.name)) && result.ok && result.output) {
+              const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
               if (answerText) {
                 ev({ type: 'text', data: answerText });
                 assistantTextEmitted = true;
