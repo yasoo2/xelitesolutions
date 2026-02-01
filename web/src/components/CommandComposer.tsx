@@ -2212,7 +2212,12 @@ export default function CommandComposer({
 
       let providerToSend = activeProvider;
       let providerCfgToSend = providers[providerToSend];
-      if (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected) {
+
+      // [FIX] Allow 'auto' mode to proceed without API key check
+      const isAuto = providerToSend === 'auto';
+      const isFreeOpenRouter = providerToSend === 'openrouter' && providers['openrouter']?.isFree;
+
+      if (!isAuto && !isFreeOpenRouter && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
         const valid = pickFirstValidProvider();
         providerToSend = valid;
         providerCfgToSend = providers[valid];
