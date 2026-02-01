@@ -421,7 +421,8 @@
     background: transparent !important;
     border: none !important;
     border-radius: 6px !important;
-    color: rgba(255, 255, 255, 0.4) !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    /* High visibility */
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -462,7 +463,8 @@
     /* Start from left */
     right: 12px !important;
     /* Span to right */
-    z-index: 10 !important;
+    z-index: 9999 !important;
+    /* Force on top */
     margin: 0 !important;
     padding: 0 !important;
     pointer-events: none;
@@ -480,8 +482,10 @@
     border: none !important;
     outline: none !important;
     padding: 4px 0 !important;
-    padding-right: 140px !important;
-    /* Space for absolute buttons */
+    padding-bottom: 40px !important;
+    /* Prevent text overlap */
+    padding-right: 0 !important;
+    /* Space handled by padding-bottom now mostly, but keep right safe? No, remove right padding if using bottom row */
     margin: 0 !important;
     font-size: 14px !important;
     line-height: 1.4 !important;
