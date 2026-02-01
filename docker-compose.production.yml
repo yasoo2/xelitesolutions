@@ -63,8 +63,8 @@ services:
     env_file:
       - .env
     environment:
-      - VITE_API_URL=https://xelitesolutions.com/api
-      - VITE_WS_URL=wss://xelitesolutions.com/ws
+      # - VITE_API_URL=https://xelitesolutions.com/api
+      # - VITE_WS_URL=wss://xelitesolutions.com/ws
     networks:
       - joe-network
     depends_on:
