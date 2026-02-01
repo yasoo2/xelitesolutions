@@ -893,4 +893,27 @@ i18n
     interpolation: { escapeValue: false }
   });
 
+i18n.on('languageChanged', (lng) => {
+  if (typeof document !== 'undefined') {
+    const isRtl = lng === 'ar';
+    document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
+    document.documentElement.lang = lng;
+    if (isRtl) {
+      document.body.classList.add('rtl');
+    } else {
+      document.body.classList.remove('rtl');
+    }
+  }
+  localStorage.setItem('lang', lng);
+});
+
+// Initial direction set
+if (typeof document !== 'undefined') {
+  const currentLng = i18n.language;
+  const isRtl = currentLng === 'ar';
+  document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
+  document.documentElement.lang = currentLng;
+  if (isRtl) document.body.classList.add('rtl');
+}
+
 export default i18n;
