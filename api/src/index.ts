@@ -30,6 +30,7 @@ import browserRoutes from './routes/browser';
 import serverRoutes from './routes/servers';
 import queueRoutes from './routes/queue';
 import workspacesRoutes from './routes/workspaces';
+import godmodeRoutes from './routes/godmode';
 import { healthcheckBrowser } from './browser/manager';
 
 // Create Central API Router
@@ -189,6 +190,7 @@ async function main() {
   apiRouter.use('/servers', authenticate, serverRoutes);
   apiRouter.use('/queue', queueRoutes);
   apiRouter.use('/workspaces', workspacesRoutes);
+  apiRouter.use('/godmode', godmodeRoutes);
 
   // Catch-all 404 for API
   apiRouter.use((req, res) => {

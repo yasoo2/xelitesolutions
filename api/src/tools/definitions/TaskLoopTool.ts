@@ -3,11 +3,18 @@ import { BaseTool } from '../base';
 import { executeTool } from '../../services/ToolService'; // Import the dispatcher
 import { ToolPermission } from '../types';
 
+/**
+ * TaskLoopTool V2.0 - Enhanced with Exponential Backoff & Wolverine
+ * 
+ * Modes:
+ * - 'fixed_steps': Execute steps in order, abort on failure (legacy)
+ * - 'until_success': Retry each step until it succeeds (Wolverine mode)
+ */
 export class TaskLoopTool extends BaseTool {
     name = 'task_loop';
-    description = 'Execute a multi-step plan with self-correction and context preservation.';
-    version = '1.0.1'; // 1.0.1: Extracted to class
-    tags = ['agent', 'recursive', 'loop', 'automation'];
+    description = 'Execute a multi-step plan with self-correction, exponential backoff, and Wolverine self-healing.';
+    version = '2.0.0'; // 2.0.0: Added exponential backoff and Wolverine integration
+    tags = ['agent', 'recursive', 'loop', 'automation', 'god-mode'];
 
     inputSchema = {
         type: 'object' as const,
@@ -15,6 +22,11 @@ export class TaskLoopTool extends BaseTool {
             goal: { type: 'string' },
             sessionId: { type: 'string' },
             workspaceId: { type: 'string' },
+            mode: {
+                type: 'string',
+                enum: ['fixed_steps', 'until_success'],
+                description: 'Execution mode. "until_success" retries failed steps with backoff.'
+            },
             steps: {
                 type: 'array',
                 items: {
@@ -26,7 +38,8 @@ export class TaskLoopTool extends BaseTool {
                     }
                 }
             },
-            maxIterations: { type: 'number' }
+            maxIterations: { type: 'number', description: 'Max retries per step (default: 10)' },
+            enableWolverine: { type: 'boolean', description: 'Use Wolverine self-healing on errors (default: true)' }
         },
         required: ['goal', 'steps']
     };
@@ -36,6 +49,7 @@ export class TaskLoopTool extends BaseTool {
         properties: {
             success: { type: 'boolean' },
             completedSteps: { type: 'number' },
+            totalIterations: { type: 'number' },
             results: { type: 'array' }
         }
     };
@@ -58,37 +72,100 @@ export class TaskLoopTool extends BaseTool {
                     ? input.__workspaceId.trim()
                     : undefined;
 
-        logs.push(`Starting TaskLoop for: ${input.goal || 'unspecified'} (${steps.length} steps)`);
+        const mode = input.mode || 'fixed_steps';
+        const maxIterations = input.maxIterations || 10;
+        const enableWolverine = input.enableWolverine !== false;
+        let totalIterations = 0;
+
+        logs.push(`🔄 TaskLoop V2.0: "${input.goal || 'unspecified'}" (${steps.length} steps, mode: ${mode})`);
 
         for (let i = 0; i < steps.length; i++) {
             const step = steps[i];
-            logs.push(`Step ${i + 1}: ${step.name || step.tool}`);
+            logs.push(`\n📌 Step ${i + 1}: ${step.name || step.tool}`);
 
-            try {
-                // Execute the tool via Registry Dispatcher
-                const result = await executeTool(step.tool, step.args || {}, { sessionId, workspaceId });
-                results.push({ step: i, tool: step.tool, ok: result.ok, output: result.output, error: result.error });
+            let stepSuccess = false;
+            let retryCount = 0;
+            let lastError = '';
 
-                if (!result.ok) {
-                    logs.push(`Step failed: ${result.error}`);
-                    // Simple self-correction: retry once
-                    logs.push('Retrying step...');
-                    const retry = await executeTool(step.tool, step.args || {}, { sessionId, workspaceId });
-                    results[i] = { step: i, tool: step.tool, ok: retry.ok, output: retry.output, error: retry.error, retried: true };
+            while (!stepSuccess && retryCount < maxIterations) {
+                try {
+                    // Execute the tool via Registry Dispatcher
+                    const result = await executeTool(step.tool, step.args || {}, { sessionId, workspaceId });
+                    totalIterations++;
 
-                    if (!retry.ok) {
-                        success = false;
-                        logs.push(`Retry failed. Aborting loop.`);
-                        break;
+                    if (result.ok) {
+                        stepSuccess = true;
+                        results.push({ step: i, tool: step.tool, ok: true, output: result.output, retries: retryCount });
+                        logs.push(`✅ Step succeeded${retryCount > 0 ? ` (after ${retryCount} retries)` : ''}`);
+                    } else {
+                        lastError = result.error || 'Unknown error';
+                        logs.push(`❌ Attempt ${retryCount + 1} failed: ${lastError}`);
+
+                        // Attempt Wolverine self-healing
+                        if (enableWolverine && lastError) {
+                            logs.push(`🦸 Wolverine attempting to heal...`);
+                            try {
+                                const healResult = await executeTool('error_recovery', {
+                                    error: lastError,
+                                    attemptFix: true
+                                }, { sessionId, workspaceId });
+
+                                if (healResult.ok && healResult.output?.recovered) {
+                                    logs.push(`✅ Wolverine healed the error, retrying...`);
+                                }
+                            } catch (healErr: any) {
+                                logs.push(`⚠️ Wolverine heal failed: ${healErr.message}`);
+                            }
+                        }
+
+                        // Exponential backoff (only in until_success mode)
+                        if (mode === 'until_success') {
+                            const delay = Math.min(30000, 1000 * Math.pow(2, retryCount));
+                            logs.push(`⏳ Backoff: ${delay}ms before retry ${retryCount + 2}...`);
+                            await new Promise(r => setTimeout(r, delay));
+                        }
+
+                        retryCount++;
                     }
+                } catch (e: any) {
+                    lastError = e.message;
+                    logs.push(`💥 Exception: ${e.message}`);
+                    retryCount++;
+                    totalIterations++;
                 }
-            } catch (e: any) {
-                logs.push(`Exception in step: ${e.message}`);
-                success = false;
-                break;
+
+                // In fixed_steps mode, only retry once
+                if (mode === 'fixed_steps' && retryCount >= 1 && !stepSuccess) {
+                    break;
+                }
+            }
+
+            if (!stepSuccess) {
+                results.push({ step: i, tool: step.tool, ok: false, error: lastError, retries: retryCount });
+
+                if (mode === 'fixed_steps') {
+                    success = false;
+                    logs.push(`⛔ Step failed after ${retryCount} attempts. Aborting loop.`);
+                    break;
+                } else {
+                    // In until_success mode, we continue but mark overall as failed
+                    logs.push(`⚠️ Step failed after ${retryCount} attempts. Moving to next step...`);
+                    success = false;
+                }
             }
         }
 
-        return { ok: success, output: { success, completedSteps: results.length, results }, logs };
+        logs.push(`\n🏁 TaskLoop completed: ${results.filter(r => r.ok).length}/${steps.length} steps succeeded`);
+
+        return {
+            ok: success,
+            output: {
+                success,
+                completedSteps: results.filter(r => r.ok).length,
+                totalIterations,
+                results
+            },
+            logs
+        };
     }
 }

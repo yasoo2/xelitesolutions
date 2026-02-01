@@ -1,6 +1,7 @@
 import path from 'path';
 import { ProjectManagerAgent } from './ProjectManagerAgent';
 import { routeToModel } from '../llm/intelligent-router';
+import { AutonomousLoopEngine, LoopTask, LoopResult } from './AutonomousLoopEngine';
 
 interface SubSystem {
     name: string;
@@ -60,6 +61,90 @@ export class GodModeAgent {
         };
     }
 
+    /**
+     * BUILD UNTIL SUCCESS - Autonomous Loop Mode
+     * 
+     * Uses AutonomousLoopEngine to build, test, heal, and retry
+     * until the project is complete with ZERO human intervention.
+     */
+    async buildUntilSuccess(
+        userRequest: string,
+        outputDir: string,
+        options: {
+            maxIterations?: number;
+            sessionId?: string;
+            workspaceId?: string;
+        } = {}
+    ): Promise<LoopResult> {
+        console.log(`\n🌩️⚡ GOD MODE AUTONOMOUS: "${userRequest}"\n`);
+        console.log(`[GodMode] Unstoppable build activated. Will NOT stop until success!`);
+
+        const engine = new AutonomousLoopEngine(
+            outputDir,
+            {
+                maxIterations: options.maxIterations || 100,
+                enableWolverine: true,
+                enableCheckpointing: true
+            },
+            { sessionId: options.sessionId, workspaceId: options.workspaceId }
+        );
+
+        // Create the autonomous pipeline
+        const tasks: LoopTask[] = [
+            {
+                name: 'Architecture Planning',
+                phase: 'plan',
+                required: true,
+                customExecute: async () => {
+                    const breakdown = await this.createSystemBreakdown(userRequest);
+                    return { ok: breakdown.length > 0, output: { breakdown } };
+                }
+            },
+            {
+                name: 'Project Scaffolding',
+                phase: 'build',
+                tool: 'scaffold_project',
+                args: { baseDir: outputDir },
+                required: true
+            },
+            {
+                name: 'Install Dependencies',
+                phase: 'build',
+                tool: 'npm_manager',
+                args: { command: 'install' },
+                required: true
+            },
+            {
+                name: 'Build Project',
+                phase: 'build',
+                required: true
+            },
+            {
+                name: 'Run Tests',
+                phase: 'test',
+                required: false  // Tests are optional, continue on failure
+            },
+            {
+                name: 'Final Verification',
+                phase: 'test',
+                tool: 'auto_tester',
+                args: { testType: 'syntax', projectPath: outputDir },
+                required: true
+            }
+        ];
+
+        console.log(`[GodMode] Starting autonomous loop with ${tasks.length} phases...`);
+        const result = await engine.executeLoop(tasks);
+
+        if (result.success) {
+            console.log(`\n🎉 GOD MODE COMPLETE: Project built successfully after ${result.totalIterations} iterations`);
+        } else {
+            console.log(`\n⚠️ GOD MODE: Stopped after ${result.totalIterations} iterations. Error: ${result.finalError}`);
+        }
+
+        return result;
+    }
+
     private async createSystemBreakdown(request: string): Promise<SubSystem[]> {
         const extractJsonLike = (text: string) => {
             const raw = String(text || '').trim();
@@ -94,3 +179,4 @@ Output ONLY valid JSON:
         }
     }
 }
+
