@@ -172,7 +172,10 @@ export class WorkspaceService {
             return ws as unknown as IWorkspace;
         }
 
-        const finalSlug = slug || slugify(name);
+        // [FIX] Make slug unique by including userId prefix to avoid duplicate key errors
+        const baseSlug = slug || slugify(name);
+        const userPrefix = String(userId || '').slice(-6);
+        const finalSlug = `${baseSlug}-${userPrefix}`;
 
         // Limits based on FREE plan default
         const defaults = {
@@ -185,19 +188,32 @@ export class WorkspaceService {
             }
         };
 
-        const workspace = await Workspace.create({
-            name,
-            slug: finalSlug,
-            ownerId: new Types.ObjectId(userId),
-            ...defaults
-        });
+        // [FIX] Use findOneAndUpdate with upsert to handle duplicate slugs gracefully
+        const workspace = await Workspace.findOneAndUpdate(
+            { ownerId: new Types.ObjectId(userId), slug: finalSlug },
+            {
+                $setOnInsert: {
+                    name,
+                    slug: finalSlug,
+                    ownerId: new Types.ObjectId(userId),
+                    ...defaults
+                }
+            },
+            { upsert: true, new: true }
+        );
 
-        // Add creator as OWNER
-        await WorkspaceMember.create({
-            workspaceId: workspace._id,
-            userId: new Types.ObjectId(userId),
-            role: 'OWNER'
-        });
+        // Ensure owner membership exists
+        await WorkspaceMember.findOneAndUpdate(
+            { workspaceId: workspace._id, userId: new Types.ObjectId(userId) },
+            {
+                $setOnInsert: {
+                    workspaceId: workspace._id,
+                    userId: new Types.ObjectId(userId),
+                    role: 'OWNER'
+                }
+            },
+            { upsert: true }
+        );
 
         return workspace;
     }
