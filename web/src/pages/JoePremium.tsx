@@ -10,7 +10,7 @@ import CommandComposer from '../components/CommandComposer';
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
 import { SocketService } from '../services/socket';
-import { API_URL as API } from '../config';
+import { api } from '../services/apiClient';
 
 interface Message {
     id: string;
@@ -115,22 +115,15 @@ export default function JoePremium() {
         }
 
         const loadMessages = async () => {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-
             try {
-                const res = await fetch(`${API}/sessions/${sessionId}/messages`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setMessages(data.messages?.map((m: any) => ({
-                        id: m.id || m._id,
-                        role: m.role,
-                        content: m.content,
-                        timestamp: new Date(m.createdAt || Date.now())
-                    })) || []);
-                }
+                // ELITE FIX: Use apiClient for consistent auth
+                const data: any = await api.get(`/sessions/${sessionId}/messages`);
+                setMessages(data.messages?.map((m: any) => ({
+                    id: m.id || m._id,
+                    role: m.role,
+                    content: m.content,
+                    timestamp: new Date(m.createdAt || Date.now())
+                })) || []);
             } catch (e) {
                 console.error('Failed to load messages:', e);
             }
@@ -161,16 +154,9 @@ export default function JoePremium() {
         setInputValue('');
         setIsLoading(true);
 
-        const token = localStorage.getItem('token');
         try {
-            await fetch(`${API}/sessions/${sessionId}/message`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ content: inputValue })
-            });
+            // ELITE FIX: Use apiClient
+            await api.post(`/sessions/${sessionId}/message`, { content: inputValue });
         } catch (e) {
             console.error('Failed to send message:', e);
             setIsLoading(false);
