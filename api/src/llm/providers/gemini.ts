@@ -11,9 +11,11 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai
 // Robust Model List with Fallbacks
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 const FALLBACK_MODELS = [
-    'gemini-2.0-flash-exp',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-2.0-flash-lite',
+    'gemini-flash-latest',
     'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
     'gemini-1.5-pro'
 ];
 
@@ -78,13 +80,15 @@ export class GeminiProvider {
 
                 return message?.content || '';
             } catch (error: any) {
-                // Special case: Rate limits or 404s
-                const isQuota = error.message?.includes('429') || error.status === 429;
-                const isNotFound = error.message?.includes('404') || error.status === 404;
+                const isQuota = error.status === 429 || error.message?.includes('429');
+                const isNotFound = error.status === 404 || error.message?.includes('404');
 
                 if (isQuota) {
-                    console.warn(`[Gemini] Model ${currentModel} QUOTA EXCEEDED. Switching...`);
-                } else if (isNotFound) {
+                    console.error(`[Gemini] Model ${currentModel} QUOTA EXCEEDED.`);
+                    throw error; // Stop immediately on quota
+                }
+
+                if (isNotFound) {
                     console.warn(`[Gemini] Model ${currentModel} NOT FOUND. Switching...`);
                 } else {
                     console.warn(`[Gemini] Model ${currentModel} failed: ${error.message}`);
@@ -123,6 +127,11 @@ export class GeminiProvider {
 
                 return completion;
             } catch (error: any) {
+                const isQuota = error.status === 429 || error.message?.includes('429');
+                if (isQuota) {
+                    console.error(`[Gemini] Tool Chat model ${currentModel} QUOTA EXHAUSTED.`);
+                    throw error;
+                }
                 console.warn(`[Gemini] Tool Chat Model ${currentModel} failed: ${error.message}`);
                 lastError = error;
             }

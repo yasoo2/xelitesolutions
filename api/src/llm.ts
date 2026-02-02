@@ -627,7 +627,7 @@ export async function planNextStep(
         }));
 
         // Call Gemini with tool support
-        const completion = await activeGemini.chatWithTools(msgs, toolDefs);
+        const completion = await activeGemini.chatWithTools(msgs, toolDefs, options?.model);
         const message = completion.choices[0]?.message;
 
         // Check for tool calls
