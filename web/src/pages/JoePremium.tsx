@@ -281,6 +281,7 @@ export default function JoePremium() {
             chatChildren={
                 <CommandComposer
                     sessionId={selected || undefined}
+                    sessionKind="agent"
                     hideHistory={true}
                     workspaceId={workspaceId}
                 />
