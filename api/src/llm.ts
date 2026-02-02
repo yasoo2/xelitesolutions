@@ -611,9 +611,9 @@ export async function planNextStep(
           ...messages
         ];
 
-        // Select tools based on context
-        const selectedTools = selectToolDefsForProvider(tools, MAX_PROVIDER_TOOLS, messages);
-        console.info(`[LLM] Gemini: Selected ${selectedTools.length} tools for this request`);
+        // Select tools with a hard cap of 10 for Gemini stability (Google endpoint limit ~10-15 tools)
+        const selectedTools = selectToolDefsForProvider(tools, 256, messages).slice(0, 10);
+        console.info(`[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 10) for this request`);
         onProgress?.(`تجهيز ${selectedTools.length} أداة…`);
 
         // Convert tools to OpenAI format

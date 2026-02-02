@@ -122,7 +122,6 @@ export class GeminiProvider {
                     model: currentModel,
                     messages: messages as any,
                     tools: tools,
-                    tool_choice: 'auto',
                 });
 
                 return completion;
