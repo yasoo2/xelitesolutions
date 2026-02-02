@@ -147,6 +147,8 @@ router.post('/switch', (req: Request, res: Response) => {
   res.json({ success: true, provider: getActiveProvider(userId) });
 });
 
+import { GeminiProvider } from '../llm/providers/gemini';
+
 /**
  * POST /providers/gemini/key
  * Set Gemini API Key
@@ -162,6 +164,91 @@ router.post('/gemini/key', (req: Request, res: Response) => {
   setActiveProvider(userId, 'gemini');
 
   res.json({ success: true, message: 'Gemini Key Configured' });
+});
+
+/**
+ * GET /providers/gemini/status
+ * Check if Gemini API key is configured
+ */
+router.get('/gemini/status', (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'User not authenticated' });
+    }
+    const dynamicKey = String(getDynamicOpenAIKey(userId) || '').trim();
+    const envKey = String(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
+
+    // Check if the current provider is actually gemini
+    const activeInfo = getActiveProvider(userId);
+    const isGeminiActive = activeInfo === 'gemini';
+
+    const hasKey = Boolean(dynamicKey || envKey);
+
+    res.json({
+      provider: 'gemini',
+      configured: hasKey,
+      isActive: isGeminiActive,
+      source: dynamicKey ? 'dynamic' : (envKey ? 'env' : 'none'),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error checking Gemini status:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: 'Failed to check API key status'
+    });
+  }
+});
+
+/**
+ * POST /providers/gemini/test
+ * Test Gemini API connection
+ */
+router.post('/gemini/test', async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+
+    if (!apiKey || typeof apiKey !== 'string') {
+      return res.status(400).json({
+        error: 'Invalid API key',
+        message: 'apiKey must be a non-empty string'
+      });
+    }
+
+    // Gemini keys start with AIza
+    if (!apiKey.startsWith('AIza')) {
+      // Warn but don't block, in case format changes
+      console.warn('Gemini Key format warning: Does not start with AIza');
+    }
+
+    const testProvider = new GeminiProvider(apiKey);
+
+    // Simple test chat
+    await testProvider.chatComplete([{ role: 'user', content: 'Hi' }]);
+
+    res.json({
+      success: true,
+      message: 'Gemini API connection successful',
+      modelsAvailable: true,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error testing Gemini API:', error);
+
+    let errorMessage = 'Failed to connect to Gemini API';
+    if (error.status === 401 || error.message?.includes('API key')) {
+      errorMessage = 'Invalid API key';
+    } else if (error.status === 429) {
+      errorMessage = 'Rate limit exceeded';
+    }
+
+    res.status(error.status || 500).json({
+      error: 'API connection failed',
+      message: errorMessage,
+      details: error.message
+    });
+  }
 });
 
 /**

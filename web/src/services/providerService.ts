@@ -104,6 +104,31 @@ export async function testOpenAIConnection(apiKey: string): Promise<TestResponse
 }
 
 /**
+ * Test Gemini API connection
+ */
+export async function testGeminiConnection(apiKey: string): Promise<TestResponse> {
+  try {
+    const response = await fetch(`${API_BASE}/providers/gemini/test`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ apiKey }),
+    });
+
+    if (!response.ok) {
+      const error: ErrorResponse = await response.json();
+      throw new Error(error.message || 'Failed to test Gemini connection');
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error testing Gemini connection:', error);
+    throw error;
+  }
+}
+
+/**
  * Clear all provider configurations
  */
 export async function clearProviders(): Promise<SetKeyResponse> {

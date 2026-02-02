@@ -677,7 +677,7 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
     return res.json({ status: 'ok', message: 'Connected successfully' });
   }
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
-  if (providerKey && providerKey !== 'openai' && !providerKey.includes('auto') && !providerKey.includes('hack') && !providerKey.includes('pollinations') && !hasBaseUrl) {
+  if (providerKey && providerKey !== 'openai' && !providerKey.includes('auto') && !providerKey.includes('hack') && !providerKey.includes('pollinations') && !providerKey.includes('gemini') && !providerKey.includes('google') && !hasBaseUrl) {
     return res.status(400).json({
       error: `Provider "${providerKey}" requires an OpenAI-compatible Base URL (or select OpenAI).`,
     });
