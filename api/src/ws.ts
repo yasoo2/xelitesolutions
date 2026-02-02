@@ -104,6 +104,7 @@ export interface LiveEvent {
   data: any;
   id?: string;
   runId?: string;
+  sessionId?: string;
   seq?: number;
   ts?: number;
 }
