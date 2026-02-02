@@ -5,7 +5,7 @@ try {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
-        cwd: process.cwd(),
+        cwd: '/tmp',
         env: process.env
     });
     console.log('PTY spawned, pid:', ptyProcess.pid);

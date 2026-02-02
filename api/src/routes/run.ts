@@ -1108,7 +1108,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             : (clientContext && typeof (clientContext as any).workspaceId === 'string' && String((clientContext as any).workspaceId).trim())
               ? String((clientContext as any).workspaceId).trim()
               : undefined;
-    const kind = sessionKind === 'agent' ? 'agent' : 'chat';
+    // [WAKIL ENFORCEMENT] Always Agent.
+    const kind = 'agent';
     const normalizedFileIds = normalizeFileIds(fileIds);
 
     // [DEBUG] Log incoming request for file debugging

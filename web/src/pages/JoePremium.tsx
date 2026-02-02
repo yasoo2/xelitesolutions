@@ -25,18 +25,16 @@ export default function JoePremium() {
     // Session store
     const {
         sessions,
-        agentSessions,
         selected,
-        agentSelected,
         loadAllSessions,
         setSelected,
-        setAgentSelected,
     } = useSessionStore();
 
     const { createSession } = useSessionActions();
 
     // State
-    const [mode, setMode] = useState<'agent' | 'chat'>('chat');
+    // State
+    // [WAKIL REFACTOR] Mode is always 'agent' now. Toggle removed.
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -84,7 +82,7 @@ export default function JoePremium() {
 
             // Handle messages (Legacy & New Events)
             if ((msg.type === 'message' || msg.type === 'user_input' || msg.type === 'text') &&
-                (msg.sessionId === (mode === 'chat' ? selected : agentSelected) || msg.data?.sessionId === (mode === 'chat' ? selected : agentSelected))) {
+                (msg.sessionId === selected || msg.data?.sessionId === selected)) {
 
                 const role = msg.type === 'user_input' ? 'user' : (msg.role || 'assistant');
                 const content = msg.type === 'user_input' ? (typeof msg.data === 'string' ? msg.data : msg.data?.text || msg.data) : (msg.data?.text || msg.content);
@@ -107,19 +105,19 @@ export default function JoePremium() {
             }
         });
         return () => { unsub(); };
-    }, [mode, selected, agentSelected]);
+    }, [selected]);
 
     // Browser session ID
     useEffect(() => {
-        const sessionId = mode === 'agent' ? agentSelected : selected;
+        const sessionId = selected;
         if (sessionId) {
             setBrowserSessionId(sessionId);
         }
-    }, [mode, selected, agentSelected]);
+    }, [selected]);
 
     // Load messages when session changes
     useEffect(() => {
-        const sessionId = mode === 'chat' ? selected : agentSelected;
+        const sessionId = selected;
         if (!sessionId) {
             setMessages([]);
             return;
@@ -158,7 +156,7 @@ export default function JoePremium() {
         };
 
         loadMessages();
-    }, [mode, selected, agentSelected]);
+    }, [selected]);
 
     // Workspace Management
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -189,11 +187,10 @@ export default function JoePremium() {
         ensuresWorkspace();
     }, [ensuresWorkspace]);
 
-    // Send message
     const handleSend = useCallback(async () => {
         if (!inputValue.trim() || isLoading) return;
 
-        const sessionId = mode === 'chat' ? selected : agentSelected;
+        const sessionId = selected;
         if (!sessionId) {
             // Create new session
             await createSession();
@@ -228,13 +225,10 @@ export default function JoePremium() {
             console.error('Failed to send message:', e);
             setIsLoading(false);
         }
-    }, [inputValue, isLoading, mode, selected, agentSelected, createSession, workspaceId, ensuresWorkspace]);
+        setIsLoading(false);
+    }, [inputValue, isLoading, selected, createSession, workspaceId, ensuresWorkspace]);
 
-    // Mode change
-    const handleModeChange = useCallback((newMode: 'agent' | 'chat') => {
-        setMode(newMode);
-        setMessages([]);
-    }, []);
+
 
     // Theme toggle
     const handleThemeToggle = useCallback(() => {
@@ -253,9 +247,7 @@ export default function JoePremium() {
 
     return (
         <JoeIDELayout
-            // Mode
-            mode={mode}
-            onModeChange={handleModeChange}
+            // Mode removed (Unified Agent System)
 
             // User
             userAvatar={userInfo.avatar || userInfo.picture}
@@ -272,10 +264,10 @@ export default function JoePremium() {
             workspaceTab={workspaceTab}
             onWorkspaceTabChange={setWorkspaceTab}
             browserSessionId={browserSessionId || undefined}
-            terminalId={selected || agentSelected || undefined}
+            terminalId={selected || undefined}
 
             // Session
-            sessionId={mode === 'chat' ? selected || undefined : agentSelected || undefined}
+            sessionId={selected || undefined}
 
             // Theme
             theme={theme}
@@ -288,7 +280,7 @@ export default function JoePremium() {
             // Children - CommandComposer for chat input
             chatChildren={
                 <CommandComposer
-                    sessionId={(mode === 'chat' ? selected : agentSelected) || undefined}
+                    sessionId={selected || undefined}
                     hideHistory={true}
                     workspaceId={workspaceId}
                 />

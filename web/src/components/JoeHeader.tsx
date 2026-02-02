@@ -2,8 +2,7 @@ import React from 'react';
 import { Bot, MessageSquare, Settings, Moon, Sun } from 'lucide-react';
 
 interface JoeHeaderProps {
-    mode: 'agent' | 'chat';
-    onModeChange: (mode: 'agent' | 'chat') => void;
+
     userAvatar?: string;
     userName?: string;
     onSettingsClick?: () => void;
@@ -12,8 +11,7 @@ interface JoeHeaderProps {
 }
 
 export default function JoeHeader({
-    mode,
-    onModeChange,
+
     userAvatar,
     userName,
     onSettingsClick,
@@ -31,23 +29,22 @@ export default function JoeHeader({
                 </div>
             </div>
 
-            {/* Center: Mode Toggle */}
+            {/* Center: System Status */}
             <div className="joe-header-center">
-                <div className="joe-mode-toggle">
-                    <button
-                        className={`joe-mode-btn ${mode === 'agent' ? 'active' : ''}`}
-                        onClick={() => onModeChange('agent')}
-                    >
-                        <Bot size={16} />
-                        Agent Mode
-                    </button>
-                    <button
-                        className={`joe-mode-btn ${mode === 'chat' ? 'active' : ''}`}
-                        onClick={() => onModeChange('chat')}
-                    >
-                        <MessageSquare size={16} />
-                        Chat Mode
-                    </button>
+                <div className="joe-system-badge" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 16px',
+                    borderRadius: 20,
+                    background: 'rgba(255, 215, 0, 0.1)',
+                    border: '1px solid rgba(255, 215, 0, 0.2)',
+                    color: 'var(--joe-gold-primary)',
+                    fontSize: 13,
+                    fontWeight: 500
+                }}>
+                    <Bot size={16} />
+                    <span>Autonomous Agent Active</span>
                 </div>
             </div>
 

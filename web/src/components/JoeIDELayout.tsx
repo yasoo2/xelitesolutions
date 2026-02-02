@@ -17,9 +17,7 @@ interface Message {
 type WorkspaceTab = 'browser' | 'terminal' | 'preview';
 
 interface JoeIDELayoutProps {
-    // Mode
-    mode: 'agent' | 'chat';
-    onModeChange: (mode: 'agent' | 'chat') => void;
+
 
     // User
     userAvatar?: string;
@@ -62,9 +60,7 @@ interface JoeIDELayoutProps {
 }
 
 export default function JoeIDELayout({
-    // Mode
-    mode,
-    onModeChange,
+
 
     // User
     userAvatar,
@@ -122,8 +118,7 @@ export default function JoeIDELayout({
         <div className="joe-ide-layout" data-theme={theme}>
             {/* Header */}
             <JoeHeader
-                mode={mode}
-                onModeChange={onModeChange}
+
                 userAvatar={userAvatar}
                 userName={userName}
                 onSettingsClick={onSettingsClick}

@@ -298,13 +298,14 @@ export interface PlanOptions {
   onProgress?: (msg: string) => void;
 }
 
-export const BASE_SYSTEM_PROMPT = `You are Joe, an elite AI autonomous engineer and technical architect for Xelite Solutions. You are the embodiment of speed, precision, and intelligence. 
-You represent the **10-Floor Elite Intelligence System** (upgrade completed January 2026).
+You are Joe, an elite AI autonomous engineer and technical architect for Xelite Solutions.You are the embodiment of speed, precision, and intelligence. 
+You are ** Wakil ** (The Agent) - a unified, all - encompassing system that controls the entire environment.You are NOT a chatbot.You are the system itself.
+You represent the ** 10 - Floor Elite Intelligence System ** (upgrade completed January 2026).
 
 ## CRITICAL TEMPORAL CONTEXT:
-**IMPORTANT**: Today's date is **January 22, 2026**. Your internal knowledge cutoff is October 2023.
-- When asked about current events (2024-2026), people in power (presidents, kings, ministers), or recent news:
-- You **MUST** use the \`web_search\` or \`deep_research\` tools.
+** IMPORTANT **: Today's date is **January 22, 2026**. Your internal knowledge cutoff is October 2023.
+  - When asked about current events(2024 - 2026), people in power(presidents, kings, ministers), or recent news:
+- You ** MUST ** use the \`web_search\` or \`deep_research\` tools.
 - Do **NOT** rely on your pre-trained knowledge for any facts that could have changed after 2023.
 - If the user asks "Who is the president of X?", do not answer from memory. **SEARCH** first.
 
@@ -397,7 +398,9 @@ Before *every* action, perform a rapid internal cognitive cycle:
 - **Third Attempt**: Break down into smaller steps.
 - **If Still Failing**: Report to user with clear explanation and suggested alternatives.
 
-You are not a chatbot. You are an engine of creation. Act like one.`;
+- **If Still Failing**: Report to user with clear explanation and suggested alternatives.
+
+This is your core directive: You are the **Autonomous Agent**. You own the tools. You own the environment. Act with absolute authority and precision.`;
 
 export const getSystemPrompt = (user?: { name?: string; systemInstructions?: string }) => {
   const now = new Date();
@@ -553,15 +556,13 @@ export async function planNextStep(
   ));
 
   if ((optimization as any).skipPlanner) {
-    onProgress?.('صياغة رد مباشر…');
-    const ragContext = (optimization as any).cachedResponse ? `\n\n## RELATED KNOWLEDGE (10-LAYER CONTEXT):\n${(optimization as any).cachedResponse}` : '';
-    console.info('[Auto Enterprise] ⚡ Optimizer: Skipping heavy planner for simple conversational query.');
-    const msgs = [
-      { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) + ragContext },
-      ...messages
-    ];
-    const response = await routeToModel(msgs, analysis, undefined, options?.onThought);
-    return { name: 'echo', input: { text: response || 'مرحباً! كيف يمكنني مساعدتك؟' } };
+    // [WAKIL ENFORCEMENT] The user requested a FULL AGENT system.
+    // We DISABLE the "skipPlanner" short-circuit to ensure the system ALWAYS
+    // uses the robust tool-use path (Enterprise Agent).
+    console.info('[Wakil] 🛡️ Short-circuit bypassed. Enforcing full Agent analysis for all queries.');
+
+    // Instead of returning 'echo', we fall through to the planner logic below.
+    // This ensures even "Hi" gets analyzed for potential context/intent.
   }
 
   // Resolve Key: Option > UserMap > Env

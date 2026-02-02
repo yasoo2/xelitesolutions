@@ -67,24 +67,132 @@ export class TerminalManagerTool extends BaseTool {
             if (terminals.has(id)) return { ok: false, error: 'Terminal already exists', logs: [] };
 
             try {
-                let pty: any;
+                let ptyProcess: any = null;
+                let useFallback = false;
+
+                // Try node-pty first
                 try {
-                    // Lazy load node-pty to prevent startup crashes if native bindings fail
-                    pty = require('node-pty');
-                } catch (e) {
-                    return { ok: false, error: 'node-pty module not found or failed to load on this system.', logs: [] };
+                    const pty = require('node-pty');
+                    const shell = input.shell || (process.platform === 'win32' ? 'powershell.exe' : '/bin/zsh');
+                    ptyProcess = pty.spawn(shell, [], {
+                        name: 'xterm-256color',
+                        cols: input.cols || 80,
+                        rows: input.rows || 30,
+                        cwd: getWorkspaceRoot(),
+                        env: { ...process.env, TERM: 'xterm-256color' }
+                    });
+                } catch (ptyError: any) {
+                    // PTY failed, use child_process fallback
+                    useFallback = true;
+                    console.log('[Terminal] PTY failed, using child_process fallback:', ptyError.message);
                 }
 
-                // [FIX] Use /bin/sh on Linux for Alpine compatibility (no bash by default)
-                const shell = input.shell || (process.platform === 'win32' ? 'powershell.exe' : '/bin/sh');
-                const ptyProcess = pty.spawn(shell, [], {
-                    name: 'xterm-color',
-                    cols: input.cols || 80,
-                    rows: input.rows || 30,
-                    cwd: process.cwd(),
-                    env: process.env
-                });
+                if (useFallback) {
+                    // Fallback: Use child_process for an interactive-like shell
+                    const { spawn, exec } = require('child_process');
+                    const workDir = getWorkspaceRoot();
 
+                    // Create a line buffer for commands
+                    let currentLine = '';
+                    let currentCwd = workDir;
+
+                    // Helper to execute a command and return output
+                    const executeCommand = (cmd: string): Promise<string> => {
+                        return new Promise((resolve) => {
+                            // Handle cd specially
+                            const cdMatch = cmd.match(/^cd\s+(.+)$/);
+                            if (cdMatch) {
+                                const newPath = cdMatch[1].trim();
+                                const targetPath = path.isAbsolute(newPath) ? newPath : path.resolve(currentCwd, newPath);
+                                if (fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()) {
+                                    currentCwd = targetPath;
+                                    resolve('');
+                                } else {
+                                    resolve(`cd: no such directory: ${newPath}\n`);
+                                }
+                                return;
+                            }
+
+                            exec(cmd, { cwd: currentCwd, shell: '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
+                                if (err && !stdout && !stderr) {
+                                    resolve(`Error: ${err.message}\n`);
+                                } else {
+                                    resolve((stdout || '') + (stderr || ''));
+                                }
+                            });
+                        });
+                    };
+
+                    // Create a wrapper that mimics PTY interface
+                    const ptyWrapper = {
+                        pid: process.pid, // Use current process as fallback pid
+                        write: (data: string) => {
+                            const term = terminals.get(id);
+                            if (!term) return;
+
+                            // Echo input character by character
+                            for (const char of data) {
+                                if (char === '\r' || char === '\n') {
+                                    // Execute command when Enter is pressed
+                                    broadcast({ type: 'terminal_output', id, data: '\r\n' });
+                                    const cmd = currentLine.trim();
+                                    currentLine = '';
+
+                                    if (cmd) {
+                                        executeCommand(cmd).then((output) => {
+                                            if (output) {
+                                                term.history.push(output);
+                                                broadcast({ type: 'terminal_output', id, data: output });
+                                            }
+                                            // Show next prompt
+                                            const prompt = `${path.basename(currentCwd)}$ `;
+                                            broadcast({ type: 'terminal_output', id, data: prompt });
+                                        });
+                                    } else {
+                                        // Empty command, just show prompt
+                                        const prompt = `${path.basename(currentCwd)}$ `;
+                                        broadcast({ type: 'terminal_output', id, data: prompt });
+                                    }
+                                } else if (char === '\x7f' || char === '\b') {
+                                    // Backspace
+                                    if (currentLine.length > 0) {
+                                        currentLine = currentLine.slice(0, -1);
+                                        broadcast({ type: 'terminal_output', id, data: '\b \b' });
+                                    }
+                                } else if (char === '\x03') {
+                                    // Ctrl+C
+                                    currentLine = '';
+                                    broadcast({ type: 'terminal_output', id, data: '^C\r\n' });
+                                    const prompt = `${path.basename(currentCwd)}$ `;
+                                    broadcast({ type: 'terminal_output', id, data: prompt });
+                                } else {
+                                    // Regular character - echo and add to buffer
+                                    currentLine += char;
+                                    broadcast({ type: 'terminal_output', id, data: char });
+                                }
+                            }
+                        },
+                        resize: () => { /* No-op for fallback */ },
+                        kill: () => { /* No-op - no actual process to kill */ },
+                        onData: () => { /* Data is broadcast directly in write() */ },
+                        _isFallback: true
+                    };
+
+                    const term = { pty: ptyWrapper, history: [] as string[] };
+                    terminals.set(id, term);
+                    const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
+                    if (userId) registerTerminalOwner(id, userId);
+
+                    // Send initial prompt
+                    setTimeout(() => {
+                        const prompt = `${path.basename(currentCwd)}$ `;
+                        broadcast({ type: 'terminal_output', id, data: prompt });
+                    }, 100);
+
+                    return { ok: true, output: { id, pid: ptyWrapper.pid, message: 'Terminal created (fallback mode).', fallback: true }, logs: [`term_create=${id} fallback=true`] };
+                }
+
+                // PTY succeeded
                 const term = { pty: ptyProcess, history: [] as string[] };
                 terminals.set(id, term);
                 const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
@@ -98,7 +206,7 @@ export class TerminalManagerTool extends BaseTool {
 
                 return { ok: true, output: { id, pid: ptyProcess.pid, message: 'Terminal created.' }, logs: [`term_create=${id}`] };
             } catch (e: any) {
-                return { ok: false, error: `Failed to spawn PTY: ${e.message}`, logs: [] };
+                return { ok: false, error: `Failed to spawn terminal: ${e.message}`, logs: [] };
             }
         }
 
