@@ -57,6 +57,7 @@ interface JoeIDELayoutProps {
     // Custom content
     chatChildren?: React.ReactNode; // For CommandComposer
     workspaceChildren?: React.ReactNode;
+    children?: React.ReactNode;
 }
 
 export default function JoeIDELayout({
@@ -99,7 +100,8 @@ export default function JoeIDELayout({
 
     // Custom content
     chatChildren,
-    workspaceChildren
+    workspaceChildren,
+    children
 }: JoeIDELayoutProps) {
 
     // Internal state for workspace tab if not controlled
@@ -165,6 +167,8 @@ export default function JoeIDELayout({
                 sessionId={sessionId}
                 language="TypeScript"
             />
+
+            {children}
         </div>
     );
 }
