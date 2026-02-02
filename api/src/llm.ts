@@ -579,6 +579,82 @@ export async function planNextStep(
 
 
 
+  // Gemini Provider - Full Tool Calling Support
+  if (providerKey.includes('gemini') || providerKey.includes('google')) {
+    console.info('[LLM] 🌟 Planning with Google Gemini Provider (Tool Calling Enabled)');
+    onProgress?.('الاتصال بـ Google Gemini…');
+
+    const lastMsg = messages[messages.length - 1];
+    const role = lastMsg ? (lastMsg.role as string) : '';
+    if (role === 'tool' || role === 'function') {
+      console.info('[LLM] Gemini: Detected tool output, continuing planning.');
+    }
+
+    try {
+      const { geminiProvider } = require('./llm/providers/registry');
+
+      if (!geminiProvider.isAvailable()) {
+        console.error('[LLM] Gemini: API key not configured, falling back to auto mode');
+        // Fall through to auto mode
+      } else {
+        // Prepare messages with system prompt
+        const msgs = [
+          { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) },
+          ...messages
+        ];
+
+        // Select tools based on context
+        const selectedTools = selectToolDefsForProvider(tools, MAX_PROVIDER_TOOLS, messages);
+        console.info(`[LLM] Gemini: Selected ${selectedTools.length} tools for this request`);
+        onProgress?.(`تجهيز ${selectedTools.length} أداة…`);
+
+        // Convert tools to OpenAI format
+        const toolDefs = selectedTools.map((t: any) => ({
+          type: 'function' as const,
+          function: {
+            name: t.name,
+            description: t.description || '',
+            parameters: t.inputSchema || { type: 'object', properties: {} }
+          }
+        }));
+
+        // Call Gemini with tool support
+        const completion = await geminiProvider.chatWithTools(msgs, toolDefs);
+        const message = completion.choices[0]?.message;
+
+        // Check for tool calls
+        if (message?.tool_calls && message.tool_calls.length > 0) {
+          const toolCall = message.tool_calls[0];
+          const toolName = toolCall.function.name;
+          let toolInput = {};
+
+          try {
+            toolInput = JSON.parse(toolCall.function.arguments || '{}');
+          } catch (e) {
+            toolInput = { raw: toolCall.function.arguments };
+          }
+
+          console.info(`[LLM] Gemini: Tool call detected - ${toolName}`);
+          onProgress?.(`تنفيذ الأداة: ${toolName}…`);
+
+          return { name: toolName, input: toolInput };
+        }
+
+        // No tool call, return as echo
+        const textContent = message?.content || '';
+        if (textContent) {
+          return { name: 'echo', input: { text: textContent } };
+        }
+
+        return null;
+      }
+    } catch (err: any) {
+      console.error('[LLM] Gemini Provider Failed:', err.message);
+      onProgress?.('فشل الاتصال، محاولة بديلة…');
+      // Fall through to auto mode as fallback
+    }
+  }
+
   // OpenRouter Provider
   if (providerKey.includes('openrouter')) {
     console.info('[LLM] Planning with OpenRouter Provider');
