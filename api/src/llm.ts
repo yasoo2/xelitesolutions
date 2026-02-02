@@ -591,10 +591,18 @@ export async function planNextStep(
     }
 
     try {
-      const { geminiProvider } = require('./llm/providers/registry');
+      const { GeminiProvider, geminiProvider: defaultGemini } = require('./llm/providers/gemini');
 
-      if (!geminiProvider.isAvailable()) {
-        console.error('[LLM] Gemini: API key not configured, falling back to auto mode');
+      // Use the provided key if available, otherwise use the default singleton
+      let geminiOverride: any = null;
+      if (options?.apiKey) {
+        geminiOverride = new GeminiProvider(options.apiKey);
+      }
+
+      const activeGemini = geminiOverride || defaultGemini;
+
+      if (!activeGemini.isAvailable()) {
+        console.error('[LLM] Gemini: API key not configured');
         // Fall through to auto mode
       } else {
         // Prepare messages with system prompt
@@ -619,7 +627,7 @@ export async function planNextStep(
         }));
 
         // Call Gemini with tool support
-        const completion = await geminiProvider.chatWithTools(msgs, toolDefs);
+        const completion = await activeGemini.chatWithTools(msgs, toolDefs);
         const message = completion.choices[0]?.message;
 
         // Check for tool calls
@@ -650,6 +658,7 @@ export async function planNextStep(
       }
     } catch (err: any) {
       console.error('[LLM] Gemini Provider Failed:', err.message);
+      if (options?.throwOnError) throw err;
       onProgress?.('فشل الاتصال، محاولة بديلة…');
       // Fall through to auto mode as fallback
     }

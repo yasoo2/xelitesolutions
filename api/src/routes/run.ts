@@ -157,7 +157,9 @@ function safeErrorMessage(err: any): string {
   const raw = typeof err?.message === 'string' ? err.message : String(err);
   const cleaned = redactSecretsFromString(raw);
   return cleaned
-    .replace(/https:\/\/platform\.openai\.com\/docs\/guides\/error-codes\/api-errors\.?\/?/gi, 'https://platform.openai.com/docs/guides/error-codes');
+    .replace(/You can find your API key at https:\/\/platform\.openai\.com\/account\/api-keys\.?/gi, '')
+    .replace(/https:\/\/platform\.openai\.com\/docs\/guides\/error-codes\/api-errors\.?\/?/gi, 'https://platform.openai.com/docs/guides/error-codes')
+    .trim();
 }
 
 function hostFromUrlMaybe(raw: any): string | null {
