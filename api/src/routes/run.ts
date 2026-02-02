@@ -708,7 +708,7 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
     const out = msg && hint ? `${msg}\n${hint}` : (msg || hint || 'Connection failed');
     console.error('Verify error:', msg);
 
-    if (isProviderAuthError(err, msg)) return res.status(401).json({ error: out });
+    if (isProviderAuthError(err, msg)) return res.status(400).json({ error: out });
     if (isProviderRateLimitError(err, msg)) return res.status(429).json({ error: out });
     if (isProviderTimeoutError(err, msg)) return res.status(408).json({ error: out });
     return res.status(502).json({ error: out });
