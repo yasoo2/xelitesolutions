@@ -895,14 +895,10 @@ i18n
 
 i18n.on('languageChanged', (lng) => {
   if (typeof document !== 'undefined') {
-    const isRtl = lng === 'ar';
-    document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
+    // [WAKIL DESIGN CHOICE] Keep LTR layout even for Arabic to prevent UI flip.
+    document.documentElement.dir = 'ltr';
     document.documentElement.lang = lng;
-    if (isRtl) {
-      document.body.classList.add('rtl');
-    } else {
-      document.body.classList.remove('rtl');
-    }
+    document.body.classList.remove('rtl');
   }
   localStorage.setItem('lang', lng);
 });
@@ -910,10 +906,9 @@ i18n.on('languageChanged', (lng) => {
 // Initial direction set
 if (typeof document !== 'undefined') {
   const currentLng = i18n.language;
-  const isRtl = currentLng === 'ar';
-  document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
+  document.documentElement.dir = 'ltr';
   document.documentElement.lang = currentLng;
-  if (isRtl) document.body.classList.add('rtl');
+  document.body.classList.remove('rtl');
 }
 
 export default i18n;

@@ -11,6 +11,8 @@ import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
 import { SocketService } from '../services/socket';
 import { api } from '../services/apiClient';
+import SettingsDialog from '../components/SettingsDialog';
+import { useTranslation } from 'react-i18next';
 
 interface Message {
     id: string;
@@ -42,6 +44,9 @@ export default function JoePremium() {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [isConnected, setIsConnected] = useState(true);
     const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    const { i18n } = useTranslation();
 
     // Check auth
     useEffect(() => {
@@ -232,9 +237,14 @@ export default function JoePremium() {
 
     // Theme toggle
     const handleThemeToggle = useCallback(() => {
-        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-        document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'light' : 'dark');
+        const newTheme = theme === 'dark' ? 'light' : 'dark';
+        setTheme(newTheme);
+        document.documentElement.setAttribute('data-theme', newTheme);
     }, [theme]);
+
+    const handleLangChange = useCallback((newLang: string) => {
+        i18n.changeLanguage(newLang);
+    }, [i18n]);
 
     // Get user info
     const userInfo = (() => {
@@ -272,6 +282,7 @@ export default function JoePremium() {
             // Theme
             theme={theme}
             onThemeToggle={handleThemeToggle}
+            onSettingsClick={() => setIsSettingsOpen(true)}
 
             // Connection
             isConnected={isConnected}
@@ -286,6 +297,15 @@ export default function JoePremium() {
                     workspaceId={workspaceId}
                 />
             }
-        />
+        >
+            <SettingsDialog
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
+                theme={theme}
+                setTheme={setTheme}
+                lang={i18n.language}
+                setLang={handleLangChange}
+            />
+        </JoeIDELayout>
     );
 }

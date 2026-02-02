@@ -9,8 +9,6 @@ export default function LanguageSwitcher() {
 
     const changeLanguage = (lang: string) => {
         i18n.changeLanguage(lang);
-        document.dir = lang === 'ar' ? 'rtl' : 'ltr';
-        document.documentElement.lang = lang;
         setIsOpen(false);
     };
 
