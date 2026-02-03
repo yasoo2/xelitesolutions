@@ -368,7 +368,7 @@ export class ScaffoldProjectTool extends BaseTool {
     async execute(input: any) {
         const logs: string[] = [];
         const structure = input?.structure || {};
-        const baseDir = String(input?.baseDir || '.');
+        const baseDir = String(input?.baseDir || input?.name || '.');
         const resolvedBase = resolveToolPath(baseDir);
         const created: string[] = [];
         const errors: string[] = [];
