@@ -85,14 +85,14 @@ export default function ChatPanel({
                         <div key={msg.id} className={`joe-message ${msg.role}`}>
                             <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
                                 {msg.role === 'assistant' ? 'J' : (
-                                    <img
-                                        src="/avatar-placeholder.png"
-                                        alt="User"
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
-                                        onError={(e) => {
-                                            (e.target as HTMLImageElement).style.display = 'none';
-                                        }}
-                                    />
+                                    <div style={{
+                                        width: '100%', height: '100%', borderRadius: 8,
+                                        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                                        color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: 12, fontWeight: 700
+                                    }}>
+                                        U
+                                    </div>
                                 )}
                             </div>
                             <div className="joe-message-content">

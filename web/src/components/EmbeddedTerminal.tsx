@@ -76,7 +76,9 @@ export default function EmbeddedTerminal({
         // Delay fit to ensure container has size
         setTimeout(() => {
             try {
-                fitAddon.fit();
+                if (containerRef.current && containerRef.current.clientWidth > 0) {
+                    fitAddon.fit();
+                }
             } catch (e) {
                 console.warn('Initial fit failed:', e);
             }
@@ -140,8 +142,12 @@ export default function EmbeddedTerminal({
 
         // Handle resize
         const resizeObserver = new ResizeObserver(() => {
-            if (fitAddonRef.current) {
+            if (fitAddonRef.current && containerRef.current) {
                 try {
+                    // Check if container is visible and has dimensions
+                    const { clientWidth, clientHeight } = containerRef.current;
+                    if (clientWidth === 0 || clientHeight === 0) return;
+
                     fitAddonRef.current.fit();
                     const dims = fitAddonRef.current.proposeDimensions();
                     if (dims?.cols && dims?.rows) {
