@@ -285,7 +285,7 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     let requiresTools = false;
 
     const hasBuildVerb = /(build|create|implement|develop|generate|scaffold|ابن[يى]?|انش[ئأؤا]?|نفذ|صم[مم]|برم?ج|سو[يى]|عمل|اعمل)/i.test(msg);
-    const hasDevObject = /(website|site|web\s*app|application|app|landing|dashboard|admin|api|backend|frontend|موق[عق]|تطب[قي]ق|منص[هة]|لوح[هة]|واجه[هة]|متجر|سل[هة]|دفع)/i.test(msg);
+    const hasDevObject = /(website|site|web\s*app|application|app|landing|dashboard|admin|api|backend|frontend|game|calculator|tool|utility|موق[عق]|تطب[قي]ق|منص[هة]|لوح[هة]|واجه[هة]|متجر|سل[هة]|دفع|حاسبة|لعبة|أداة)/i.test(msg);
     const isBuildIntent = hasBuildVerb && hasDevObject;
 
     // File/System Operations

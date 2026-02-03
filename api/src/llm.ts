@@ -930,7 +930,7 @@ export async function planNextStep(
         };
       }
 
-      const largeBuildPatterns = /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|app|backend|api|service|microservice|dashboard|portal|saas|نظام|منصة|تطبيق|خدمة|ميكروسيرفس)/i;
+      const largeBuildPatterns = /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|app|backend|api|service|microservice|dashboard|portal|saas|game|calculator|tool|utility|نظام|منصة|تطبيق|خدمة|ميكروسيرفس|لعبة|حاسبة|أداة)/i;
       const explicitLargeScale = /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
 
       const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
