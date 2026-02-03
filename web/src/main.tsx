@@ -10,6 +10,7 @@ const Login = lazy(() => import('./pages/Login'));
 
 const JoePremium = lazy(() => import('./pages/JoePremium'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
 import './theme.css';
 import './global.css';
 import './i18n';
@@ -128,6 +129,8 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/" element={<App />}>
               <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
               <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
+              <Route path="welcome" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
+              <Route path="landing" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
 
               <Route
                 path="joe"
