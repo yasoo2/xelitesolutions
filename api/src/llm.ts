@@ -932,7 +932,11 @@ export async function planNextStep(
         };
       }
 
-      const largeBuildPatterns = /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|app|backend|api|service|microservice|dashboard|portal|saas|game|calculator|tool|utility|نظام|منصة|تطبيق|خدمة|ميكروسيرفس|لعبة|حاسبة|أداة)/i;
+      // Simple build requests (any app/calculator/game/tool request)
+      const simpleBuildPatterns = /(build|create|make|ابني|انشئ|أنشئ|سوي|اعمل)\s+(.{0,20})?(calculator|game|todo|app|tool|حاسبة|لعبة|مهام|تطبيق|أداة)/i;
+
+      // Large-scale build patterns (enterprise systems)
+      const largeBuildPatterns = /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|backend|api|service|microservice|dashboard|portal|saas|نظام|منصة|خدمة|ميكروسيرفس)/i;
       const explicitLargeScale = /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
 
       const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
@@ -941,7 +945,7 @@ export async function planNextStep(
         const lower = text.toLowerCase();
         const nameMatch =
           text.match(/(?:named|called)\s+([a-z0-9_-]{2,})/i) ||
-          text.match(/(?:اسم|اسمه|سميه|سَمِّه|سمه)\s+([a-z0-9_-]{2,})/i);
+          text.match(/(?:اسم|اسمه|سميه|سَمِّه|سمه)\s+([a-z0-9_-]{2,})/i);
         const name = String(nameMatch?.[1] || '').trim() || 'mega-web';
 
         const isEcom =
@@ -983,6 +987,17 @@ export async function planNextStep(
         const qualityTasks = ['lint', 'typecheck', 'test', 'build'];
         return { name, type, features, qualityTasks, securityChecks: true, autoFix: true, aestheticMode, language };
       };
+
+      // [FIX] Simple build requests → Use GenesisAgent for any app building
+      if (!isBuildingWebsite && simpleBuildPatterns.test(userText)) {
+        console.info('[Auto Enterprise] → Simple Build Detected: Genesis Build');
+        return {
+          name: 'genesis_build',
+          input: { goal: userText }
+        };
+      }
+
+      // Large-scale builds → Genesis Build
       if (!isBuildingWebsite && (analysis.type === 'code_generation' || codePatterns.test(userText)) && (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText))) {
         console.info('[Auto Enterprise] → Large Build Detected: Genesis Build');
         return {
