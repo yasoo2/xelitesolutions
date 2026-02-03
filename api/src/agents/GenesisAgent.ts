@@ -49,12 +49,14 @@ export class GenesisAgent {
             const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
             if (geminiApiKey) {
                 console.log('[Genesis] Trying Gemini fallback...');
-                const { geminiProvider } = await import('../llm/providers/gemini');
-                const result = await geminiProvider.chat(messages, {}, geminiApiKey);
-                const text = typeof result === 'string' ? result : result?.text || '';
-                if (text && text.trim().length > 10) {
-                    console.log('[Genesis] ✅ Gemini fallback succeeded');
-                    return text;
+                const { GeminiProvider } = await import('../llm/providers/gemini');
+                const gemini = new GeminiProvider(geminiApiKey);
+                if (gemini.isAvailable()) {
+                    const result = await gemini.chatComplete(messages);
+                    if (result && result.trim().length > 10) {
+                        console.log('[Genesis] ✅ Gemini fallback succeeded');
+                        return result;
+                    }
                 }
             }
         } catch (e: any) {

@@ -69,16 +69,29 @@ export class GeminiProvider {
 
                 const completion = await this.client.chat.completions.create(params);
 
+                // Safely access response - handle empty or malformed responses
+                if (!completion || !completion.choices || completion.choices.length === 0) {
+                    console.warn(`[Gemini] Model ${currentModel} returned empty response, trying next model...`);
+                    lastError = new Error('Empty response from Gemini');
+                    continue;
+                }
+
                 // Check for tool calls
                 const message = completion.choices[0]?.message;
-                if (message?.tool_calls && message.tool_calls.length > 0) {
+                if (!message) {
+                    console.warn(`[Gemini] Model ${currentModel} returned no message, trying next model...`);
+                    lastError = new Error('No message in Gemini response');
+                    continue;
+                }
+
+                if (message.tool_calls && message.tool_calls.length > 0) {
                     return JSON.stringify({
                         type: 'tool_calls',
                         tool_calls: message.tool_calls,
                     });
                 }
 
-                return message?.content || '';
+                return message.content || '';
             } catch (error: any) {
                 const isQuota = error.status === 429 || error.message?.includes('429');
                 const isNotFound = error.status === 404 || error.message?.includes('404');
