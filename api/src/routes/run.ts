@@ -948,7 +948,8 @@ function fallbackPlanWhenPlannerUnavailable(params: {
     if (hasProjectDetect && !hasAnalyze) {
       return { name: 'analyze_codebase', input: { path: '.' } } as any;
     }
-    if (hasProjectDetect && hasAnalyze) {
+    const wantsBuild = /\b(build|create|generate|scaffold|construct|make|implement|develop|ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ)\b/i.test(userText);
+    if (hasProjectDetect && hasAnalyze && !wantsBuild) {
       return {
         name: 'echo',
         input: {

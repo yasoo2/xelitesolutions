@@ -1,6 +1,7 @@
 
 import { BaseTool } from '../base';
-import { executeTool } from '../../services/ToolService'; // Import the dispatcher
+import { BaseTool } from '../base';
+import { ToolPermission } from '../types';
 import { ToolPermission } from '../types';
 
 /**
@@ -89,7 +90,8 @@ export class TaskLoopTool extends BaseTool {
 
             while (!stepSuccess && retryCount < maxIterations) {
                 try {
-                    // Execute the tool via Registry Dispatcher
+                    // Execute the tool via Registry Dispatcher (Lazy load to avoid circular dependency)
+                    const { executeTool } = require('../../services/ToolService');
                     const result = await executeTool(step.tool, step.args || {}, { sessionId, workspaceId });
                     totalIterations++;
 
