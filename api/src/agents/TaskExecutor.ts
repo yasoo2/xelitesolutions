@@ -48,12 +48,13 @@ export class TaskExecutor {
         }
     }
 
-    private async scaffoldProject(args: { name: string; type?: string }) {
+    private async scaffoldProject(args: { name: string; structure?: Record<string, string> }) {
         const targetDir = this.rootDir;
         if (!fs.existsSync(targetDir)) {
             fs.mkdirSync(targetDir, { recursive: true });
         }
 
+        // 1. Initialize npm if needed
         if (!fs.existsSync(path.join(targetDir, 'package.json'))) {
             const r = await handleShellCommand('npm', ['init', '-y'], targetDir, 300000, false);
             if (!r.ok) {
@@ -61,7 +62,23 @@ export class TaskExecutor {
             }
         }
 
-        return { success: true, output: `Project scaffolded in ${targetDir}` };
+        // 2. Write structure files
+        const structure = args.structure || {};
+        let writtenCount = 0;
+
+        for (const [filename, content] of Object.entries(structure)) {
+            const filePath = path.join(targetDir, filename);
+            const fileDir = path.dirname(filePath);
+
+            if (!fs.existsSync(fileDir)) {
+                fs.mkdirSync(fileDir, { recursive: true });
+            }
+
+            fs.writeFileSync(filePath, content, 'utf-8');
+            writtenCount++;
+        }
+
+        return { success: true, output: `Project scaffolded in ${targetDir}. Created ${writtenCount} files.` };
     }
 
     private async writeFile(args: { path: string; content: string }) {
