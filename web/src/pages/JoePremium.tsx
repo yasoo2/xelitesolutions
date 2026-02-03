@@ -233,6 +233,29 @@ export default function JoePremium() {
         setIsLoading(false);
     }, [inputValue, isLoading, selected, createSession, workspaceId, ensuresWorkspace]);
 
+    // Listen for errors from CommandComposer (since history is hidden there)
+    const handleComposerMessages = useCallback((events: any[]) => {
+        if (!events || events.length === 0) return;
+        const last = events[events.length - 1];
+        if (last.type === 'error') {
+            const errorId = last.id || `err-${last.ts}`;
+            const errorText = String(last.data || 'Unknown error');
+
+            setMessages(prev => {
+                // Avoid redundant error messages
+                if (prev.some(m => m.id === errorId || m.content === errorText)) return prev;
+                return [...prev, {
+                    id: errorId,
+                    role: 'assistant', // Display as assistant message but maybe style it?
+                    content: `⚠️ Error: ${errorText}`,
+                    timestamp: new Date(last.ts || Date.now())
+                }];
+            });
+            setIsLoading(false);
+        }
+    }, []);
+
+
 
 
     // Theme toggle
@@ -295,6 +318,7 @@ export default function JoePremium() {
                     sessionKind="agent"
                     hideHistory={true}
                     workspaceId={workspaceId}
+                    onMessagesUpdate={handleComposerMessages}
                 />
             }
         >
