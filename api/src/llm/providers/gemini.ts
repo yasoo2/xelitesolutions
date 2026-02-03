@@ -137,6 +137,21 @@ export class GeminiProvider {
                     tools: tools,
                 });
 
+                // Safely access response - handle empty or malformed responses
+                if (!completion || !completion.choices || completion.choices.length === 0) {
+                    console.warn(`[Gemini] Tool Chat model ${currentModel} returned empty response, trying next model...`);
+                    lastError = new Error('Empty response from Gemini Tool Chat');
+                    continue;
+                }
+
+                // Validate message exists
+                const message = completion.choices[0]?.message;
+                if (!message) {
+                    console.warn(`[Gemini] Tool Chat model ${currentModel} returned no message, trying next model...`);
+                    lastError = new Error('No message in Gemini Tool Chat response');
+                    continue;
+                }
+
                 return completion;
             } catch (error: any) {
                 const isQuota = error.status === 429 || error.message?.includes('429');
