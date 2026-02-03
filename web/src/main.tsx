@@ -127,7 +127,7 @@ createRoot(document.getElementById('root')!).render(
         >
           <Routes>
             <Route path="/" element={<App />}>
-              <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Home /></Suspense>} />
+              <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
               <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
               <Route path="welcome" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
               <Route path="landing" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
