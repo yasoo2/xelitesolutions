@@ -276,6 +276,7 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           set -euo pipefail
           host="$(printf '%s' "${HOST:-}" | tr -d '\r' | xargs)"
@@ -486,6 +487,14 @@ jobs:
             fi
             ensure_env_key "GOOGLE_CLIENT_SECRET" "$google_secret"
 
+            # Inject GOOGLE_API_KEY (Gemini)
+            google_key="$(read_env_val ".env" "GOOGLE_API_KEY")"
+            # Fallback to GitHub Secrets injected by workflow
+            if [ -z "${google_key:-}" ] && [ -n "${GOOGLE_API_KEY:-}" ]; then
+              google_key="$GOOGLE_API_KEY"
+            fi
+            ensure_env_key "GOOGLE_API_KEY" "$google_key"
+
             google_id="$(read_env_val ".env" "GOOGLE_CLIENT_ID")"
             google_secret="$(read_env_val ".env" "GOOGLE_CLIENT_SECRET")"
             if [ -z "${google_id:-}" ] || [ -z "${google_secret:-}" ]; then
@@ -542,7 +551,7 @@ jobs:
           docker network prune -f || true
 
           echo "Docker restarting..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --remove-orphans
 
           NGINX_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q nginx 2>/dev/null || true)"
           if [ -n "$NGINX_CID" ]; then
