@@ -1635,7 +1635,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
 
       // [OPTIMIZER] Check cache before other heuristics
-      else if (!initialPlan && rawUserText && !hasAttachments) {
+      else if (!initialPlan && rawUserText && !hasAttachments && (providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack')) {
         const fast = freeIntelligenceOptimizer.generateSmartResponse(rawUserText, []);
         if (fast) {
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
