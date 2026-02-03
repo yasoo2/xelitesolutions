@@ -1033,7 +1033,7 @@ function isWeatherLikeQuery(text: string) {
 function isLocationLikeQuery(text: string) {
   const t = normalizeArabicQuery(text);
   if (!t) return false;
-  if (/(geo|coordinates|coordinate|lat(?:itude)?|lon(?:gitude)?)/i.test(text)) return true;
+  if (/(geo|coordinates|coordinate|\blat(?:itude)?\b|\blon(?:gitude)?\b)/i.test(text)) return true;
   if (/(احداثيات|إحداثيات|موقعي|موقعي|مكاني|موقعك|مكاني الحالي|موقعي الحالي|خط\s+العرض|خط\s+الطول)/.test(t)) return true;
   if (/ما\s+هي\s+احداثيات/.test(t)) return true;
   return false;

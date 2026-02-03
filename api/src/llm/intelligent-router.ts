@@ -4,7 +4,7 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider, localProvider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider } from './providers/registry';
 import { LLMCacheTool } from '../tools/definitions/LLMCacheTool';
 
 let hack: any = pollinationsProvider;
@@ -142,36 +142,11 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[], 
     onProgress?.('🧠 تحليل عميق لطلبك... (Deep Analysis)');
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
 
-    try {
-        // [OPTIMIZATION] If query is short, skip LLM-based analysis to save TBT (Time to Bot Talk)
-        if (userMessage.length < 120) {
-            console.info('[IntelligentRouter] Short message - using fast regex analysis');
-            return analyzeTask(userMessage);
-        }
-
-        if (!hasGroq) {
-            // Attempt Gemini if Groq is missing (Superior to regex)
-            const { geminiProvider } = require('../providers/gemini');
-            if (geminiProvider.isAvailable()) {
-                console.info('[IntelligentRouter] 🌟 Using Gemini for advanced task analysis (Fuzzy understanding enabled)');
-                const result = await geminiProvider.chatComplete([
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userMessage }
-                ]);
-                const jsonMatch = result.match(/\{[\s\S]*\}/);
-                if (jsonMatch) return JSON.parse(jsonMatch[0]);
-            }
-            return analyzeTask(userMessage, history);
-        }
-
-        console.info('[IntelligentRouter] ⚡ Using Groq (Llama 3) for instant analysis');
-        const analyst = 'llama-3.1-8b-instant';
-
-        const systemPrompt = `Analyze the following user request and return a JSON object.
+    const systemPrompt = `Analyze the following user request and return a JSON object.
 Be extremely strict with complexity:
 - "extreme": Building full applications, complex systems, multi-step deployment, or "from scratch" projects.
 - "high": Complex coding tasks, deep analysis, or multi-module changes.
-- "medium": Browser automation, explaining complex concepts (like Kubernetes), single component logic, or multi-step file operations.
+- "medium": Browser automation, explaining complex concepts, single component logic, or multi-step file operations.
 - "low": Simple questions, greetings, or basic file reads.
 
 Task Types:
@@ -186,23 +161,43 @@ Return exactly this JSON structure:
   "requiresTools": boolean,
   "language": "ar" | "en" | "mixed",
   "shortSummary": "string"
-} - Do not add any talk before or after JSON.`;
+}`;
 
-        onProgress?.('🔍 تحديد نوع المهمة ومدى تعقيدها... (Task Classification)');
+    try {
+        // [OPTIMIZATION] If query is short, skip LLM-based analysis
+        if (userMessage.length < 120) {
+            console.info('[IntelligentRouter] Short message - using fast regex analysis');
+            return analyzeTask(userMessage);
+        }
 
+        if (!hasGroq) {
+            // Attempt Gemini if Groq is missing
+            const { geminiProvider } = require('./providers/gemini');
+            if (geminiProvider.isAvailable()) {
+                console.info('[IntelligentRouter] 🌟 Using Gemini for advanced task analysis');
+                const result = await geminiProvider.chatComplete([
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage }
+                ]);
+                const jsonMatch = result.match(/\{[\s\S]*\}/);
+                if (jsonMatch) return JSON.parse(jsonMatch[0]);
+            }
+            return analyzeTask(userMessage, history);
+        }
 
-        let responseText = "";
-        responseText = await callGroq(analyst, [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }]);
+        console.info('[IntelligentRouter] ⚡ Using Groq (Llama 3) for instant analysis');
+        const analyst = 'llama-3.1-8b-instant';
+        onProgress?.('🔍 تحديد نوع المهمة ومدى تعقيدها...');
 
+        const responseText = await callGroq(analyst, [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+        ]);
 
-        // Clean JSON response
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             const analysis = JSON.parse(jsonMatch[0]);
-            return {
-                ...analysis,
-                estimatedTokens: userMessage.length * 10
-            };
+            return { ...analysis, estimatedTokens: userMessage.length * 10 };
         }
     } catch (err) {
         console.warn('[IntelligentRouter] Advanced analysis failed, falling back to regex:', err);
@@ -218,7 +213,7 @@ export async function generateActionPlan(userMessage: string, analysis: TaskAnal
     if (analysis.complexity === 'low' && !analysis.requiresTools) return [];
 
     try {
-        const systemPrompt = `You are a technical planner. Break down the user's request into 3-5 logical steps. 
+        const systemPrompt = `You are a technical planner.Break down the user's request into 3-5 logical steps. 
 Respond ONLY with a numbered list of steps.`;
 
         const messages = [
@@ -429,7 +424,7 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Authorization': `Bearer ${GROQ_API_KEY} `,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -442,7 +437,7 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
         });
 
         if (!response.ok) {
-            throw new Error(`Groq API error: ${response.status}`);
+            throw new Error(`Groq API error: ${response.status} `);
         }
 
         if (stream && response.body) {
@@ -594,6 +589,16 @@ export async function routeToModel(
             }
         });
     }
+
+    // [ELITE FIX] Enable Gemini Fallback if available
+    if (geminiProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'Gemini (Backup)',
+            run: async () => {
+                return await geminiProvider.chatComplete(effectiveMessages);
+            }
+        });
+    }
     if (!localStrict) {
         meshProviders.push({
             name: 'Pollinations (Backup)',
@@ -621,7 +626,7 @@ export async function routeToModel(
 
         // If not Groq or Groq fails, fall through to the Chain of Steel
     } catch (e: any) {
-        console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message}`);
+        console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message} `);
         lastError = e.message;
     }
 
@@ -650,14 +655,14 @@ export async function routeToModel(
             const ans = cleanOutput(rawAns);
 
             if (ans && ans.length > 2) {
-                console.info(`[IntelligentRouter] ✅ Success via ${p.name}`);
+                console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);
                 if (!cacheDisabled && !hasSensitive && ans.length > 20) {
                     await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
                 }
                 return ans;
             }
         } catch (e: any) {
-            console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message}`);
+            console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
             lastError = e.message;
         }
     }
@@ -693,10 +698,10 @@ export async function suggestCorrection(
     try {
         const taskAnalysis = analysis || analyzeTask(originalTask);
         const systemPrompt = `The AI was trying to execute a task but the tool failed. 
-Analyze the error and suggest a correction (alternative tool or modified parameters).
-Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_correction": true }`;
+Analyze the error and suggest a correction(alternative tool or modified parameters).
+Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_correction": true } `;
 
-        const userMessage = `Task: ${originalTask}\nFailed Tool: ${failedTool}\nError: ${JSON.stringify(error)}`;
+        const userMessage = `Task: ${originalTask} \nFailed Tool: ${failedTool} \nError: ${JSON.stringify(error)} `;
 
         const messages = [
             { role: 'system', content: systemPrompt },

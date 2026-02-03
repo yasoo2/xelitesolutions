@@ -20,9 +20,9 @@ function inferApiUrl() {
     return `${window.location.origin}/api`;
   }
 
-  // For local development, use port 3000 where the API runs
+  // For local development, use relative path to leverage Vite proxy
   if (isLocal) {
-    return 'http://localhost:3000/api';
+    return '/api';
   }
 
   return `${window.location.origin}/api`;

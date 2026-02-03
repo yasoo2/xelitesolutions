@@ -16,10 +16,19 @@ const spawn = require('child_process').spawn;
 function getWorkspaceRoot() {
     try {
         const { workspaceService } = require('../../services/WorkspaceService');
-        return workspaceService.getActiveRoot();
-    } catch {
-        return process.cwd();
+        const active = workspaceService.getActiveRoot();
+        if (active) return active;
+    } catch { }
+
+    const cwd = process.cwd();
+    // If we are in the 'api' folder of the project, use the parent
+    const isApiFolder = path.basename(cwd).toLowerCase() === 'api';
+    if (isApiFolder) {
+        const parent = path.resolve(cwd, '..');
+        console.log(`[SystemTools] Workspace root redirected from 'api' to: ${parent}`);
+        return parent;
     }
+    return cwd;
 }
 
 function resolveToolPath(p: string) {
