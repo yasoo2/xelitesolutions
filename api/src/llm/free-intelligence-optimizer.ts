@@ -71,6 +71,8 @@ class FreeIntelligenceOptimizer {
         this.synonymMap.set('ui', ['interface', 'component', 'react', 'design', 'frontend']);
         this.synonymMap.set('docker', ['container', 'kubernetes', 'k8s', 'deploy', 'image']);
         this.synonymMap.set('database', ['sql', 'mongo', 'postgres', 'redis', 'query']);
+        this.synonymMap.set('موقع', ['مقع', 'واق', 'سيت', 'ويب']);
+        this.synonymMap.set('تطبيق', ['تبق', 'ابق', 'تطبق', 'تطبيج', 'ابب']);
     }
 
     /**
@@ -416,7 +418,7 @@ class FreeIntelligenceOptimizer {
             'create', 'write', 'generate', 'build', 'deploy', 'run', 'execute',
             'fix', 'debug', 'delete', 'remove', 'install', 'update', 'upgrade',
             // Arabic actions
-            'أنشئ', 'اكتب', 'ابني', 'شغل', 'نفذ', 'صلح', 'احذف', 'ركب', 'حدث'
+            'أنشئ', 'انشأ', 'اكتب', 'ابني', 'ابن', 'شغل', 'نفذ', 'صلح', 'صلحلي', 'احذف', 'ركب', 'حدث', 'سو', 'سوي', 'اعمل', 'عمل'
         ];
         // Check if starts with verb or contains strong command pattern
         const words = text.split(' ');
@@ -649,8 +651,8 @@ class FreeIntelligenceOptimizer {
             // Arabic
             /^(مرحبا|اهلا|سلام|مساء|صباح|هويتك|مين|شكون)/,
             /^(شكرا|مشكور|تسلم|يعطيك)/,
-            /^(رائع|جميل|تمام|اوكي|طيب|ماشي)/,
-            /^(من انت|عرف بنفسك|انت مين|شو اسمك|من انت؟)/
+            /^(رائع|جميل|تمام|اوكي|طيب|ماشي|اوك|كفو)/,
+            /^(من انت|عرف بنفسك|انت مين|شو اسمك|من انت؟|وش انت|منو انت)/
         ];
 
         return conversationalPatterns.some(p => p.test(text));

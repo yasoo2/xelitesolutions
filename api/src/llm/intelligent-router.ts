@@ -150,6 +150,17 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[], 
         }
 
         if (!hasGroq) {
+            // Attempt Gemini if Groq is missing (Superior to regex)
+            const { geminiProvider } = require('../providers/gemini');
+            if (geminiProvider.isAvailable()) {
+                console.info('[IntelligentRouter] 🌟 Using Gemini for advanced task analysis (Fuzzy understanding enabled)');
+                const result = await geminiProvider.chatComplete([
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage }
+                ]);
+                const jsonMatch = result.match(/\{[\s\S]*\}/);
+                if (jsonMatch) return JSON.parse(jsonMatch[0]);
+            }
             return analyzeTask(userMessage, history);
         }
 
@@ -273,8 +284,8 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     let taskType: TaskAnalysis['type'] = 'simple_chat';
     let requiresTools = false;
 
-    const hasBuildVerb = /(build|create|implement|develop|generate|scaffold|ابني|انشئ|أنشئ|نفذ|صمم|برمج|سوي|اعمل)/i.test(msg);
-    const hasDevObject = /(website|site|web\s*app|application|app|landing|dashboard|admin|api|backend|frontend|موقع|تطبيق|منصة|لوحة|لوحه|واجهة|متجر|سلة|دفع)/i.test(msg);
+    const hasBuildVerb = /(build|create|implement|develop|generate|scaffold|ابن[يى]?|انش[ئأؤا]?|نفذ|صم[مم]|برم?ج|سو[يى]|عمل|اعمل)/i.test(msg);
+    const hasDevObject = /(website|site|web\s*app|application|app|landing|dashboard|admin|api|backend|frontend|موق[عق]|تطب[قي]ق|منص[هة]|لوح[هة]|واجه[هة]|متجر|سل[هة]|دفع)/i.test(msg);
     const isBuildIntent = hasBuildVerb && hasDevObject;
 
     // File/System Operations
@@ -288,7 +299,7 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
         requiresTools = true;
     }
     // Browser/automation tasks
-    else if (/(open|afتح|browse|متصفح|click|anقر|اضغط|extract|استخرج|تصفح|ادخل|روح|زور|search|ابحث|بحث)/i.test(msg)) {
+    else if (/(open|af[ت|ح]ح|browse|متصفح|click|anقر|اضغط|extract|استخرج|تصفح|ادخل|روح|زور|search|ابحث|بحث)/i.test(msg)) {
         taskType = 'browser_task';
         requiresTools = true;
     }

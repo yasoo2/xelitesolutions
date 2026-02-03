@@ -342,7 +342,7 @@ function isGreetingOnly(raw: string): boolean {
   if (s.length > 80) return false;
   const lower = s.toLowerCase();
   const re =
-    /^(?:(?:hi|hello|hey|yo|sup)(?:\s+(?:joe|jo|ai))?|good\s+(?:morning|evening)|how\s+are\s+you|مرحبا|اهلا|أهلا|هلا|السلام\s+عليكم|صباح\s+الخير|مساء\s+الخير|كيف\s+حال(?:ك|كم)|شلون(?:ك|كم))(?:\s+(?:joe|jo|ai|جو|جوي))?$/i;
+    /^(?:(?:hi|hello|hey|yo|sup)(?:\s+(?:joe|jo|ai))?|good\s+(?:morning|evening)|how\s+are\s+you|مرحبا|اهلا|أهلا|هلا|اهلين|هلاو|السلام\s+عليكم|صباح\s+الخير|مساء\s+الخير|كيف\s+حال(?:ك|كم|ج)|شلون(?:ك|كم|ج)|اهلي?ن)(?:\s+(?:joe|jo|ai|جو|جوي))?$/i;
   return re.test(lower);
 }
 
@@ -731,10 +731,9 @@ function normalizeArabicQuery(input: string) {
     .replace(/[\u064B-\u065F\u0670]/g, '')
     .replace(/ـ/g, '')
     .replace(/[أإآ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ؤ/g, 'و')
-    .replace(/ئ/g, 'ي')
-    .replace(/ة/g, 'ه')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/[ؤئ]/g, 'ي')
+    .replace(/[ةه]/g, 'ه')
     .trim();
 }
 
