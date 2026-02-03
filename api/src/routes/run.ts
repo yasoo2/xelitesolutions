@@ -4083,7 +4083,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
         history.push({
           role: 'assistant',
-          content: `Tool '${plan?.name}' FAILED. Error: ${errorMsg}. \nYou must analyze this error and attempt to fix the issue in the next step. If it's a syntax error, correct it. If it's a missing file or dependency, resolve it.`
+          content: `CRITICAL: Tool '${plan?.name}' FAILED with error: ${errorMsg}. 
+You must analyze this error and take IMMEDIATE ACTION to fix it using available tools (e.g., shell_execute, patch_file, git_fix). 
+Do NOT just repeat this message or give general advice. 
+If it is a connection error (like localhost), ensure you are using the correct network host (e.g. 'api' instead of 'localhost' in Docker).`
         });
       } else {
         history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(String(plan?.name || ''), result.output)}` });

@@ -49,7 +49,7 @@ export class MemoryService {
           role: 'user',
           content: `لخّص المحادثة التالية في 2-3 جمل قصيرة، واستخرج 3-5 مواضيع رئيسية:\n\n${conversationText}`
         }
-      ]);
+      ], undefined, { groq: options?.apiKey, anthropic: options?.apiKey, openai: options?.apiKey }); // Basic mapping of keys
       if (!content) return;
 
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -170,7 +170,7 @@ export class MemoryService {
           role: 'user',
           content: `Extract ONLY permanent user facts/preferences/instructions worth remembering. Ignore transient tasks. If none, return {"facts":[]}.\n\nText:\n${userText}`
         }
-      ]);
+      ], undefined, { groq: options?.apiKey, anthropic: options?.apiKey, openai: options?.apiKey });
       if (!content) return;
 
       const jsonMatch = content.match(/\{[\s\S]*\}/);

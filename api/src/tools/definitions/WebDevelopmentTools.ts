@@ -233,7 +233,7 @@ export class DevServerTool extends BaseTool {
             });
             child.unref(); // Fire and forget (keep running)
 
-            const previewUrl = `http://localhost:${port}/`;
+            const previewUrl = `http://api:${port}/`;
             logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview
