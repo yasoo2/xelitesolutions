@@ -3,10 +3,18 @@ import JoeHeader from './JoeHeader';
 import ChatPanel from './ChatPanel';
 import WorkspacePanel from './WorkspacePanel';
 import FileExplorerPanel from './FileExplorerPanel';
+import SessionsBar from './SessionsBar';
 import StatusBar from './StatusBar';
 import '../styles/joe-premium.css';
 
-// Types
+interface Session {
+    id: string;
+    title: string;
+    preview?: string;
+    timestamp: Date;
+    isActive: boolean;
+}
+
 interface Message {
     id: string;
     role: 'user' | 'assistant';
@@ -39,6 +47,10 @@ interface JoeIDELayoutProps {
 
     // Session
     sessionId?: string;
+    sessions?: Session[];
+    onSelectSession?: (id: string) => void;
+    onDeleteSession?: (id: string) => void;
+    onNewSession?: () => void;
 
     // Callbacks
     onSettingsClick?: () => void;
@@ -83,6 +95,10 @@ export default function JoeIDELayout({
 
     // Session
     sessionId,
+    sessions = [],
+    onSelectSession,
+    onDeleteSession,
+    onNewSession,
 
     // Callbacks
     onSettingsClick,
@@ -159,6 +175,15 @@ export default function JoeIDELayout({
                     onGitChanges={onGitChanges}
                 />
             </div>
+
+            {/* Sessions Bar */}
+            <SessionsBar
+                sessions={sessions}
+                onSelect={onSelectSession || (() => { })}
+                onDelete={onDeleteSession || (() => { })}
+                onNew={onNewSession || (() => { })}
+                showInAgentMode={true}
+            />
 
             {/* Status Bar */}
             <StatusBar

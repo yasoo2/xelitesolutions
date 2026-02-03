@@ -26,10 +26,11 @@ export default function JoePremium() {
 
     // Session store
     const {
-        sessions,
-        selected,
+        agentSessions,
+        agentSelected,
         loadAllSessions,
-        setSelected,
+        setAgentSelected,
+        deleteSession,
     } = useSessionStore();
 
     const { createSession } = useSessionActions();
@@ -87,7 +88,7 @@ export default function JoePremium() {
 
             // Handle messages (Legacy & New Events)
             if ((msg.type === 'message' || msg.type === 'user_input' || msg.type === 'text') &&
-                (msg.sessionId === selected || msg.data?.sessionId === selected)) {
+                (msg.sessionId === agentSelected || msg.data?.sessionId === agentSelected)) {
 
                 const role = msg.type === 'user_input' ? 'user' : (msg.role || 'assistant');
                 const content = msg.type === 'user_input' ? (typeof msg.data === 'string' ? msg.data : msg.data?.text || msg.data) : (msg.data?.text || msg.content);
@@ -110,19 +111,19 @@ export default function JoePremium() {
             }
         });
         return () => { unsub(); };
-    }, [selected]);
+    }, [agentSelected]);
 
     // Browser session ID
     useEffect(() => {
-        const sessionId = selected;
+        const sessionId = agentSelected;
         if (sessionId) {
             setBrowserSessionId(sessionId);
         }
-    }, [selected]);
+    }, [agentSelected]);
 
     // Load messages when session changes
     useEffect(() => {
-        const sessionId = selected;
+        const sessionId = agentSelected;
         if (!sessionId) {
             setMessages([]);
             return;
@@ -161,7 +162,7 @@ export default function JoePremium() {
         };
 
         loadMessages();
-    }, [selected]);
+    }, [agentSelected]);
 
     // Workspace Management
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -195,7 +196,7 @@ export default function JoePremium() {
     const handleSend = useCallback(async () => {
         if (!inputValue.trim() || isLoading) return;
 
-        const sessionId = selected;
+        const sessionId = agentSelected;
         if (!sessionId) {
             // Create new session
             await createSession();
@@ -231,7 +232,11 @@ export default function JoePremium() {
             setIsLoading(false);
         }
         setIsLoading(false);
-    }, [inputValue, isLoading, selected, createSession, workspaceId, ensuresWorkspace]);
+    }, [inputValue, isLoading, agentSelected, createSession, workspaceId, ensuresWorkspace]);
+
+    const handleCreateSession = useCallback(async () => {
+        await createSession();
+    }, [createSession]);
 
     // Listen for errors from CommandComposer (since history is hidden there)
     const handleComposerMessages = useCallback((events: any[]) => {
@@ -255,9 +260,6 @@ export default function JoePremium() {
         }
     }, []);
 
-
-
-
     // Theme toggle
     const handleThemeToggle = useCallback(() => {
         const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -278,10 +280,16 @@ export default function JoePremium() {
         return { name: 'User', avatar: '' };
     })();
 
+    // Transform sessions for SessionsBar
+    const sessionsList = agentSessions.map(s => ({
+        id: s.id,
+        title: s.title,
+        timestamp: new Date(), // We don't have this on session object yet
+        isActive: s.id === agentSelected
+    }));
+
     return (
         <JoeIDELayout
-            // Mode removed (Unified Agent System)
-
             // User
             userAvatar={userInfo.avatar || userInfo.picture}
             userName={userInfo.name || userInfo.email}
@@ -297,10 +305,14 @@ export default function JoePremium() {
             workspaceTab={workspaceTab}
             onWorkspaceTabChange={setWorkspaceTab}
             browserSessionId={browserSessionId || undefined}
-            terminalId={selected || undefined}
+            terminalId={agentSelected || undefined}
 
             // Session
-            sessionId={selected || undefined}
+            sessionId={agentSelected || undefined}
+            sessions={sessionsList}
+            onSelectSession={setAgentSelected}
+            onDeleteSession={deleteSession}
+            onNewSession={handleCreateSession}
 
             // Theme
             theme={theme}
@@ -314,7 +326,7 @@ export default function JoePremium() {
             // Children - CommandComposer for chat input
             chatChildren={
                 <CommandComposer
-                    sessionId={selected || undefined}
+                    sessionId={agentSelected || undefined}
                     sessionKind="agent"
                     hideHistory={true}
                     workspaceId={workspaceId}

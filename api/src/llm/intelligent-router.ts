@@ -266,11 +266,14 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     }
 
     // Detect language: Stronger Arabic detection
-    const arabicRatio = (userMessage.match(/[\u0600-\u06FF]/g) || []).length / (userMessage.length || 1);
-    const hasArabicWords = /(أنا|أنت|هو|هي|نحن|في|من|على|إلى|عن|مع|هل|كيف|لماذا|متى|أين|ماذا|كم)/.test(userMessage);
+    const arabicChars = (userMessage.match(/[\u0600-\u06FF]/g) || []).length;
+    const arabicRatio = arabicChars / (userMessage.length || 1);
+    const hasArabicWords = /(أنا|أنت|هو|هي|نحن|في|من|على|إلى|عن|مع|هل|كيف|لماذا|متى|أين|ماذا|كم|يونس|جو)/.test(userMessage);
+
+    // If there's ANY Arabic and it's substantial (more than 2 chars or high ratio)
     const language: 'ar' | 'en' | 'mixed' =
-        arabicRatio > 0.4 || (arabicRatio > 0.05 && hasArabicWords) ? 'ar' :
-            arabicRatio > 0.1 ? 'mixed' : 'en';
+        (arabicChars > 2 || arabicRatio > 0.1 || hasArabicWords) ? 'ar' :
+            arabicRatio > 0.05 ? 'mixed' : 'en';
 
     // SPEED OPTIMIZATION: Check for Fast Lane candidates immediately
     const isShortQuestion = length < 60 && /(ما|من|كيف|اين|متى|what|who|how|where|when)/i.test(msg);

@@ -3,7 +3,7 @@ import { TaskExecutor } from './TaskExecutor';
 import { tools } from '../tools/registry';
 import { CortexState, TaskState } from '../services/CortexState';
 import crypto from 'crypto';
-import { routeToModel } from '../llm/intelligent-router';
+import { routeToModel, analyzeTask } from '../llm/intelligent-router';
 
 export class ProjectManagerAgent {
     private name: string;
@@ -131,7 +131,7 @@ OR
                         complexity: 'medium',
                         requiresTools: true,
                         estimatedTokens: 3000,
-                        language: 'en',
+                        language: analyzeTask(goal).language,
                     }
                 );
 
