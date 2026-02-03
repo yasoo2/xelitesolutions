@@ -660,7 +660,9 @@ export async function planNextStep(
       console.error('[LLM] Gemini Provider Failed:', err.message);
       if (options?.throwOnError) throw err;
       onProgress?.('فشل الاتصال، محاولة بديلة…');
-      // Fall through to auto mode as fallback
+      // ACTUAL Fallback to auto mode - recursively call with auto provider
+      console.info('[LLM] Gemini failed, falling back to Auto mode...');
+      return await planNextStep(messages, { ...options, provider: 'auto' });
     }
   }
 
