@@ -2452,7 +2452,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
 
           // Safety: Prevent immediate repeats of same tool execution
-          if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer'].includes(planName)) {
+          if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run'].includes(planName)) {
             const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
 
             if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
@@ -4096,16 +4096,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               });
             }
 
-            // Self-Healing Notification
-            ev({ type: 'text', data: `⚠️ **Self-Healing Activated**: Detected error in '${plan?.name}'.\nAnalyzing fix...\n\n**Error Details:**\n_${String(errorMsg).slice(0, 300)}_` });
+            // Self-Healing Notification (user-facing, simplified)
+            const userFriendlyError = isArabicText(userTextForOverrides)
+              ? `⚠️ حدث خطأ أثناء تنفيذ الأداة '${plan?.name}'.\\n**السبب**: ${String(errorMsg).slice(0, 200)}`
+              : `⚠️ An error occurred while executing tool '${plan?.name}'.\\n**Reason**: ${String(errorMsg).slice(0, 200)}`;
+            ev({ type: 'text', data: userFriendlyError });
             assistantTextEmitted = true;
 
+            // Internal history for AI self-healing (not shown to user)
             history.push({
               role: 'assistant',
-              content: `CRITICAL: Tool '${plan?.name}' FAILED with error: ${errorMsg}. 
-You must analyze this error and take IMMEDIATE ACTION to fix it using available tools (e.g., shell_execute, patch_file, git_fix). 
-Do NOT just repeat this message or give general advice. 
-If it is a connection error (like localhost), ensure you are using the correct network host (e.g. 'api' instead of 'localhost' in Docker).`
+              content: `INTERNAL: Tool '${plan?.name}' FAILED with error: ${errorMsg}. 
+Analyze this error. If it's a network/connection issue (localhost vs container hostname), check your network configuration. 
+If this is a browser_open failure, DO NOT automatically retry the same URL. Ask the user for clarification or skip the preview step.`
             });
           } else {
             history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(String(plan?.name || ''), result.output)}` });
