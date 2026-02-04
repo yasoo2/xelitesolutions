@@ -116,13 +116,15 @@ export class WebPipelineTool extends BaseTool {
 
         const runInstall = async (p: string) => {
             let r = await executeTool('shell_execute', {
-                command: `cd "${p}" && npm install --include=dev --legacy-peer-deps --no-audit --no-fund --quiet`,
+                command: `npm install --include=dev --legacy-peer-deps --no-audit --no-fund --quiet`,
+                cwd: p,
                 timeout: 10 * 60 * 1000
             }, { sessionId, workspaceId });
             if (!r.ok) {
                 // Formatting fix in fallback command
                 r = await executeTool('shell_execute', {
-                    command: `cd "${p}" && npm ci --legacy-peer-deps --no-audit --no-fund --quiet`,
+                    command: `npm ci --legacy-peer-deps --no-audit --no-fund --quiet`,
+                    cwd: p,
                     timeout: 10 * 60 * 1000
                 }, { sessionId, workspaceId });
             }
@@ -156,7 +158,7 @@ export class WebPipelineTool extends BaseTool {
                 const lintFailed = results.some((r: any) => r && r.task === 'lint' && r.ok === false && !r.skipped);
                 const scripts = readScripts(proj);
                 if (lintFailed && typeof (scripts as any)?.lint === 'string') {
-                    const fixRes = await executeTool('shell_execute', { command: `cd "${proj}" && npm run lint -- --fix`, timeout: 10 * 60 * 1000 }, { sessionId, workspaceId });
+                    const fixRes = await executeTool('shell_execute', { command: `npm run lint -- --fix`, cwd: proj, timeout: 10 * 60 * 1000 }, { sessionId, workspaceId });
                     steps.push({ step: 'lint_fix', ok: fixRes.ok, output: { project: proj, ...fixRes.output } });
                     // Retry
                     const lintRetry = await executeTool('quality_run', { path: proj, tasks: ['lint'] }, { sessionId, workspaceId });
