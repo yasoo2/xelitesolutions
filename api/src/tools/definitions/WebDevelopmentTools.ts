@@ -213,7 +213,7 @@ export class DevServerTool extends BaseTool {
     version = '2.0.0';
     tags = ['dev', 'server', 'preview'];
     inputSchema = { type: 'object' as const, properties: { cwd: { type: 'string' }, command: { type: 'string' }, port: { type: 'number' } }, required: ['cwd'] };
-    outputSchema = { type: 'object' as const, properties: { previewUrl: { type: 'string' } } };
+    outputSchema = { type: 'object' as const, properties: { previewUrl: { type: 'string' }, userPreviewUrl: { type: 'string' } } };
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = ['execute']; // it starts a process
     rateLimitPerMinute = 5;
@@ -235,7 +235,8 @@ export class DevServerTool extends BaseTool {
             });
             child.unref(); // Fire and forget (keep running)
 
-            const previewUrl = `http://localhost:${port}/`;
+            const previewUrl = `http://api:${port}/`;
+            const userPreviewUrl = `http://localhost:${port}/`;
             logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview
@@ -249,7 +250,7 @@ export class DevServerTool extends BaseTool {
                 }
             });
 
-            return { ok: true, output: { previewUrl }, logs };
+            return { ok: true, output: { previewUrl, userPreviewUrl }, logs };
         } catch (e: any) {
             const msg = e?.message || String(e);
             logs.push(`dev_error=${msg}`);

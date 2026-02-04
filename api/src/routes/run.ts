@@ -3569,10 +3569,20 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               postDevScheduled = true;
             }
           } else if (result.ok && String(plan?.name || '') === 'dev_server_start') {
-            const url = String((result as any)?.output?.previewUrl || '').trim();
-            if (url && !postPreviewScheduled) {
-              pendingPlan = { name: 'browser_open', input: { url } } as any;
+            const internalUrl = String((result as any)?.output?.previewUrl || '').trim();
+            const userUrl = String((result as any)?.output?.userPreviewUrl || internalUrl).trim();
+
+            if (internalUrl && !postPreviewScheduled) {
+              pendingPlan = { name: 'browser_open', input: { url: internalUrl } } as any;
               postPreviewScheduled = true;
+
+              // Emit a helpful message with the USER-accessible URL immediately
+              ev({
+                type: 'text',
+                data: isArabicText(userTextForOverrides)
+                  ? `🚀 **خادم المعاينة يعمل!**\nيمكنك فتحه في متصفحك: [${userUrl}](${userUrl})`
+                  : `🚀 **Preview Server is Running!**\nYou can open it in your browser: [${userUrl}](${userUrl})`
+              });
             }
           }
 
