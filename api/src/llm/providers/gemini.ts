@@ -9,14 +9,12 @@ const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 // Robust Model List with Fallbacks
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-1.5-flash';
 const FALLBACK_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
+    'gemini-1.5-pro',
+    'gemini-2.0-flash',
     'gemini-2.0-flash-lite',
-    'gemini-flash-latest',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro'
+    'gemini-flash-latest'
 ];
 
 export class GeminiProvider {
@@ -49,8 +47,18 @@ export class GeminiProvider {
             throw new Error('Gemini API key not configured');
         }
 
-        // Try default model first, then fallbacks
-        const modelsToTry = model ? [model] : [DEFAULT_MODEL, ...FALLBACK_MODELS];
+        const modelsToTry = (() => {
+            const ordered = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
+            const seen = new Set<string>();
+            const out: string[] = [];
+            for (const m of ordered) {
+                if (!m.trim()) continue;
+                if (seen.has(m)) continue;
+                seen.add(m);
+                out.push(m);
+            }
+            return out;
+        })();
         let lastError: any;
 
         for (const currentModel of modelsToTry) {
@@ -93,8 +101,20 @@ export class GeminiProvider {
 
                 return message.content || '';
             } catch (error: any) {
+                const status = Number(error?.status ?? error?.response?.status ?? NaN);
                 const isQuota = error.status === 429 || error.message?.includes('429');
                 const isNotFound = error.status === 404 || error.message?.includes('404');
+                const isBadRequest = error.status === 400 || error.message?.includes('400');
+                const detail = (() => {
+                    try {
+                        const data = (error as any)?.response?.data ?? (error as any)?.data ?? (error as any)?.error;
+                        if (data == null) return '';
+                        if (typeof data === 'string') return data.slice(0, 500);
+                        return JSON.stringify(data).slice(0, 800);
+                    } catch {
+                        return '';
+                    }
+                })();
 
                 if (isQuota) {
                     console.error(`[Gemini] Model ${currentModel} QUOTA EXCEEDED.`);
@@ -102,9 +122,11 @@ export class GeminiProvider {
                 }
 
                 if (isNotFound) {
-                    console.warn(`[Gemini] Model ${currentModel} NOT FOUND. Switching...`);
+                    console.warn(`[Gemini] Model ${currentModel} NOT FOUND (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...`);
+                } else if (isBadRequest) {
+                    console.warn(`[Gemini] Model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...${detail ? ` details=${detail}` : ''}`);
                 } else {
-                    console.warn(`[Gemini] Model ${currentModel} failed: ${error.message}`);
+                    console.warn(`[Gemini] Model ${currentModel} failed (status=${Number.isFinite(status) ? status : 'n/a'}): ${error.message}${detail ? ` details=${detail}` : ''}`);
                 }
 
                 lastError = error;
@@ -125,7 +147,18 @@ export class GeminiProvider {
             throw new Error('Gemini API key not configured');
         }
 
-        const modelsToTry = model ? [model] : [DEFAULT_MODEL, ...FALLBACK_MODELS];
+        const modelsToTry = (() => {
+            const ordered = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
+            const seen = new Set<string>();
+            const out: string[] = [];
+            for (const m of ordered) {
+                if (!m.trim()) continue;
+                if (seen.has(m)) continue;
+                seen.add(m);
+                out.push(m);
+            }
+            return out;
+        })();
         let lastError: any;
 
         for (const currentModel of modelsToTry) {
@@ -154,12 +187,31 @@ export class GeminiProvider {
 
                 return completion;
             } catch (error: any) {
+                const status = Number(error?.status ?? error?.response?.status ?? NaN);
                 const isQuota = error.status === 429 || error.message?.includes('429');
+                const isNotFound = error.status === 404 || error.message?.includes('404');
+                const isBadRequest = error.status === 400 || error.message?.includes('400');
+                const detail = (() => {
+                    try {
+                        const data = (error as any)?.response?.data ?? (error as any)?.data ?? (error as any)?.error;
+                        if (data == null) return '';
+                        if (typeof data === 'string') return data.slice(0, 500);
+                        return JSON.stringify(data).slice(0, 800);
+                    } catch {
+                        return '';
+                    }
+                })();
                 if (isQuota) {
                     console.error(`[Gemini] Tool Chat model ${currentModel} QUOTA EXHAUSTED.`);
                     throw error;
                 }
-                console.warn(`[Gemini] Tool Chat Model ${currentModel} failed: ${error.message}`);
+                if (isNotFound) {
+                    console.warn(`[Gemini] Tool Chat model ${currentModel} NOT FOUND (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...`);
+                } else if (isBadRequest) {
+                    console.warn(`[Gemini] Tool Chat model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...${detail ? ` details=${detail}` : ''}`);
+                } else {
+                    console.warn(`[Gemini] Tool Chat Model ${currentModel} failed (status=${Number.isFinite(status) ? status : 'n/a'}): ${error.message}${detail ? ` details=${detail}` : ''}`);
+                }
                 lastError = error;
             }
         }
