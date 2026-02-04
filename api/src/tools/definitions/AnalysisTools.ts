@@ -120,3 +120,92 @@ export class AnalyzeCodebaseTool extends BaseTool {
         }
     }
 }
+
+export class ProjectDetectTool extends BaseTool {
+    name = 'project_detect';
+    description = 'Detect common project roots (Node/Python/Go) under a given path.';
+    version = '1.0.0';
+    tags = ['analysis', 'detect', 'project'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            path: { type: 'string', description: 'Root path to scan. Defaults to workspace root.' },
+            maxDepth: { type: 'number', description: 'Max directory depth to scan. Defaults to 4.' }
+        },
+        required: []
+    };
+    outputSchema = {
+        type: 'object' as const,
+        properties: {
+            root: { type: 'string' },
+            nodeProjects: { type: 'array', items: { type: 'string' } },
+            pythonProjects: { type: 'array', items: { type: 'string' } },
+            goProjects: { type: 'array', items: { type: 'string' } }
+        }
+    };
+    permissions: ToolPermission[] = ['read'];
+    sideEffects: ToolPermission[] = [];
+    rateLimitPerMinute = 30;
+
+    async execute(input: any) {
+        const root = resolveToolPath(String(input?.path || '.'));
+        const maxDepth = Number.isFinite(input?.maxDepth) ? Math.max(1, Math.min(10, Number(input.maxDepth))) : 4;
+        const logs: string[] = [];
+
+        if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
+
+        const isIgnoredDir = (name: string) =>
+            name === 'node_modules' ||
+            name === 'dist' ||
+            name === 'build' ||
+            name === 'coverage' ||
+            name === '.git' ||
+            name === '.next' ||
+            name === '.turbo' ||
+            name === '.cache';
+
+        const hasAny = (dir: string, files: string[]) => files.some(f => fs.existsSync(path.join(dir, f)));
+
+        const nodeProjects = new Set<string>();
+        const pythonProjects = new Set<string>();
+        const goProjects = new Set<string>();
+
+        const scan = (dir: string, depth: number) => {
+            if (depth > maxDepth) return;
+            let entries: Array<fs.Dirent> = [];
+            try {
+                entries = fs.readdirSync(dir, { withFileTypes: true });
+            } catch {
+                return;
+            }
+
+            if (hasAny(dir, ['package.json'])) nodeProjects.add(dir);
+            if (hasAny(dir, ['pyproject.toml', 'requirements.txt', 'Pipfile', 'setup.py'])) pythonProjects.add(dir);
+            if (hasAny(dir, ['go.mod'])) goProjects.add(dir);
+
+            for (const e of entries) {
+                if (!e.isDirectory()) continue;
+                if (e.name.startsWith('.')) continue;
+                if (isIgnoredDir(e.name)) continue;
+                scan(path.join(dir, e.name), depth + 1);
+            }
+        };
+
+        scan(root, 0);
+
+        const toSorted = (s: Set<string>) => Array.from(s).map(p => path.resolve(p)).sort((a, b) => a.localeCompare(b));
+
+        const output = {
+            root: path.resolve(root),
+            nodeProjects: toSorted(nodeProjects),
+            pythonProjects: toSorted(pythonProjects),
+            goProjects: toSorted(goProjects)
+        };
+
+        logs.push(`project_detect.root=${output.root}`);
+        logs.push(`project_detect.count.node=${output.nodeProjects.length}`);
+        logs.push(`project_detect.count.python=${output.pythonProjects.length}`);
+        logs.push(`project_detect.count.go=${output.goProjects.length}`);
+        return { ok: true, output, logs };
+    }
+}

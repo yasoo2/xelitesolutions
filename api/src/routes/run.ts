@@ -1720,10 +1720,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } catch { }
 
 
-    // Save User Message to DB (Keep full content for history context)
-    let persistedUserText = redactSecretsFromString(String(fullPromptText || text || ''));
+    const rawTextForDb = String(text || '');
+    let persistedUserText = redactSecretsFromString(rawTextForDb);
     try {
-      const r = rewriteInlineLoginCredentialsToSecrets(String(fullPromptText || text || ''));
+      const r = rewriteInlineLoginCredentialsToSecrets(rawTextForDb);
       if (r.ok) persistedUserText = redactSecretsFromString(String(r.sanitizedText || persistedUserText));
     } catch { }
     try {
