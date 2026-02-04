@@ -70,6 +70,34 @@ function isRunCancelled(runId: string): boolean {
   return cancelledRuns.has(rid);
 }
 
+async function executeToolWithRateLimitRetry(
+  toolName: string,
+  input: any,
+  context: { sessionId?: any; workspaceId?: any },
+  options?: { runId?: string; maxRetries?: number; maxWaitMs?: number; onWait?: (waitMs: number, retryAfterMs: number) => void },
+) {
+  const maxRetries = Number.isFinite(options?.maxRetries) ? Math.max(0, Number(options?.maxRetries)) : 1;
+  const maxWaitMs = Number.isFinite(options?.maxWaitMs) ? Math.max(500, Number(options?.maxWaitMs)) : 60_000;
+  let retries = 0;
+
+  while (true) {
+    const result: any = await executeTool(toolName, input, context as any);
+    if (String(result?.error || '') !== 'rate_limited') return result;
+
+    const retryAfterMsRaw = Number(result?.output?.retryAfterMs ?? 0);
+    const retryAfterMs = Number.isFinite(retryAfterMsRaw) ? Math.max(0, retryAfterMsRaw) : 0;
+
+    if (retries >= maxRetries) return result;
+    if (options?.runId && isRunCancelled(options.runId)) return { ok: false, error: 'stopped', logs: Array.isArray(result?.logs) ? result.logs : [] };
+
+    const waitMs = Math.max(500, Math.min(maxWaitMs, retryAfterMs || 1000 * Math.pow(2, retries)));
+    if (typeof options?.onWait === 'function') options.onWait(waitMs, retryAfterMs);
+
+    await new Promise<void>(resolve => setTimeout(resolve, waitMs));
+    retries += 1;
+  }
+}
+
 router.get('/', authenticate as any, async (req: Request, res: Response) => {
   const userId = String((req as any).auth?.sub || '').trim();
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -1753,7 +1781,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
-        let result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId });
+        let result = await executeToolWithRateLimitRetry(initialPlan.name, callInput, { sessionId, workspaceId }, { runId });
 
         // [INTELLIGENCE UPGRADE] Self-Correction Logic
         if (!result.ok && providerKey === 'auto') {
@@ -1767,7 +1795,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const retryInput = userId && correction.input && typeof correction.input === 'object'
               ? { ...(correction.input as any), userId: String(userId) }
               : correction.input;
-            result = await executeTool(correction.action, retryInput, { sessionId, workspaceId });
+            result = await executeToolWithRateLimitRetry(correction.action, retryInput, { sessionId, workspaceId }, { runId });
           }
         }
 
@@ -1794,7 +1822,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }
             : initialPlan.input;
-        let result; try { result = await executeTool(initialPlan.name, callInput, { sessionId, workspaceId }); } catch (e) { result = { ok: false, output: String(e) }; }
+        let result;
+        try {
+          result = await executeToolWithRateLimitRetry(initialPlan.name, callInput, { sessionId, workspaceId }, { runId });
+        } catch (e) {
+          result = { ok: false, output: String(e) };
+        }
         const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
         if (!ignoredTools.includes(String(initialPlan.name)) && result.ok && result.output) {
           let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || '');
@@ -1836,7 +1869,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const rawUserText = String(text || '');
       if (isLocationLikeQuery(rawUserText)) {
         ev({ type: 'step_started', data: { name: 'execute:http_fetch', input: { url: 'https://ipinfo.io/json', sessionId } } });
-        const result = await executeTool('http_fetch', { url: 'https://ipinfo.io/json', sessionId }, { sessionId, workspaceId });
+        const result = await executeToolWithRateLimitRetry('http_fetch', { url: 'https://ipinfo.io/json', sessionId }, { sessionId, workspaceId }, { runId });
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:http_fetch', result } });
 
         await ToolExecution.create({ runId, name: 'http_fetch', input: { url: 'https://ipinfo.io/json', sessionId }, output: result.output, ok: result.ok, logs: result.logs });
@@ -2452,7 +2485,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
 
           // Safety: Prevent immediate repeats of same tool execution
-          if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run'].includes(planName)) {
+          if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run', 'website_full_pipeline'].includes(planName)) {
             const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
 
             if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
@@ -3211,7 +3244,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
           const callInput =
             userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
-          const result = await executeTool(plan?.name || '', callInput, { sessionId, workspaceId });
+          const result = await executeToolWithRateLimitRetry(plan?.name || '', callInput, { sessionId, workspaceId }, {
+            runId,
+            maxRetries: 2,
+            maxWaitMs: 70_000,
+            onWait: (waitMs, retryAfterMs) => {
+              const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
+              const msg = isArabicText(userTextForOverrides)
+                ? `⚠️ تم تقييد تنفيذ الأداة مؤقتًا (rate_limited). سأعيد المحاولة تلقائياً بعد حوالي ${waitSec}s.`
+                : `⚠️ Tool is rate-limited. I’ll auto-retry in about ${waitSec}s.`;
+              const now = Date.now();
+              const last = loopPauseThrottle.get(String(sessionId));
+              if (!last || now - last > 6000) {
+                ev({ type: 'text', data: msg });
+                assistantTextEmitted = true;
+                loopPauseThrottle.set(String(sessionId), now);
+              }
+            },
+          });
           lastExecutedToolSig = `${String(plan?.name || '')}:${JSON.stringify((plan as any)?.input || {})}`;
           lastExecutedToolName = String(plan?.name || '');
           if (result?.ok && plan?.name === 'browser_open') {
