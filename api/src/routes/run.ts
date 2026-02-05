@@ -1435,31 +1435,40 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     let runId: string;
 
-    const run = await Run.create({ sessionId, status: 'running', steps: [] });
-    runId = run._id.toString();
+    // [OFFLINE MODE GUARD] Skip DB persistence when running without MongoDB
+    let run: any = null;
+    if (offlineMode) {
+      runId = `offline-run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      console.log(`[Run/Start] OFFLINE MODE: Using mock runId: ${runId}`);
+    } else {
+      run = await Run.create({ sessionId, status: 'running', steps: [] });
+      runId = run._id.toString();
+    }
 
-    // Auto-Title Logic
-    (async () => {
-      try {
-        const session = await Session.findById(sessionId);
-        if (session && isAutoTitleCandidate(session.title)) {
-          const messageCount = await Message.countDocuments({ sessionId });
-          // Only trigger if it's the first or second message
-          if (messageCount <= 2) {
-            // Get the user message and potential context
-            const seed = fullPromptText;
-            const messages = [{ role: 'user', content: seed }];
-            const newTitle = await generateSessionTitle(messages);
-            if (newTitle && newTitle !== 'New Session') {
-              await Session.findByIdAndUpdate(sessionId, { title: newTitle });
-              broadcast({ type: 'sessions:refresh', data: { sessionId } });
+    // Auto-Title Logic (skip in offline mode)
+    if (!offlineMode) {
+      (async () => {
+        try {
+          const session = await Session.findById(sessionId);
+          if (session && isAutoTitleCandidate(session.title)) {
+            const messageCount = await Message.countDocuments({ sessionId });
+            // Only trigger if it's the first or second message
+            if (messageCount <= 2) {
+              // Get the user message and potential context
+              const seed = fullPromptText;
+              const messages = [{ role: 'user', content: seed }];
+              const newTitle = await generateSessionTitle(messages);
+              if (newTitle && newTitle !== 'New Session') {
+                await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+                broadcast({ type: 'sessions:refresh', data: { sessionId } });
+              }
             }
           }
+        } catch (e) {
+          console.error('Auto-title background task failed', e);
         }
-      } catch (e) {
-        console.error('Auto-title background task failed', e);
-      }
-    })();
+      })();
+    }
 
 
     try {
@@ -1508,10 +1517,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     };
 
     try {
-      const userSystemInstructions =
-        typeof (req.body as any)?.systemInstructions === 'string'
-          ? (req.body as any).systemInstructions.trim()
-          : '';
+      // Inject God Mode into instructions for planning
+      const plannerInstructions = isGodMode
+        ? (text || '') + '\n[GOD MODE ACTIVE: Full Autonomy Enforced]'
+        : text;
       const currentSystemPrompt = getSystemPrompt({
         name: (req as any).user?.name,
         systemInstructions: userSystemInstructions || undefined,
@@ -1527,13 +1536,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         hasErrorRecovery: currentSystemPrompt.includes('ERROR HANDLING')
       });
 
-      const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
-      if (!existing) {
-        await Message.create({ sessionId, role: 'system', content: currentSystemPrompt, runId });
-        systemPromptCreated = true;
+      // [OFFLINE MODE GUARD] Skip DB operations for system prompt in offline mode
+      if (!offlineMode) {
+        const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
+        if (!existing) {
+          await Message.create({ sessionId, role: 'system', content: currentSystemPrompt, runId });
+          systemPromptCreated = true;
+          systemPromptText = currentSystemPrompt;
+        }
+      } else {
+        console.log('[Run/Start] OFFLINE MODE: Skipping system prompt persistence');
         systemPromptText = currentSystemPrompt;
-        // System prompt is internal, do not emit to UI
-        // ev({ type: 'text', id: systemPromptEventId, data: currentSystemPrompt });
       }
 
     } catch (e) {
@@ -1759,7 +1772,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       if (pw) persistedUserText = persistedUserText.split(pw).join('[REDACTED]');
     } catch { }
 
-    await Message.create({ sessionId, role: 'user', content: persistedUserText, runId });
+    // [OFFLINE MODE GUARD] Skip user message persistence
+    if (!offlineMode) {
+      await Message.create({ sessionId, role: 'user', content: persistedUserText, runId });
+    } else {
+      console.log('[Run/Start] OFFLINE MODE: Skipping user message persistence');
+    }
 
 
     const risk = detectRisk(String(text || ''));

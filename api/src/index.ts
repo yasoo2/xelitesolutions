@@ -252,6 +252,14 @@ async function main() {
       } catch (e) {
         const label = Number.isFinite(maxRetries) ? `${i + 1}/${maxRetries}` : `${i + 1}`;
         logger.warn(`MongoDB connection failed (Attempt ${label}), retrying in 2s...`);
+
+        // [OFFLINE MODE] Check if we should fallback
+        if (!isProd && i >= 4) {
+          logger.warn('⚠️ MongoDB unavailable - API running in OFFLINE mode (LLM-only features available)');
+          process.env.OFFLINE_MODE = 'true';
+          return false;
+        }
+
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }

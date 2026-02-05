@@ -565,6 +565,19 @@ export async function routeToModel(
     // Unified Multi-Provider Mesh for Auto Mode
 
     const meshProviders: Array<{ name: string; run: () => Promise<string> }> = [];
+    const preferredProvider = String(process.env.LLM_PROVIDER || '').trim().toLowerCase();
+
+    // [PRIORITY] Check for forced provider via env
+    if (preferredProvider === 'pollinations') {
+        meshProviders.push({
+            name: 'Pollinations (Forced)',
+            run: async () => {
+                const res = await pollinationsProvider.chatComplete(effectiveMessages, 'gpt-4o');
+                if (!res || res.length < 5) throw new Error('Pollinations response too short');
+                return res;
+            }
+        });
+    }
     if (hasLocal) {
         meshProviders.push({
             name: 'Local (Auto)',
