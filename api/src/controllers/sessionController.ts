@@ -214,11 +214,29 @@ export async function listSessionMessages(req: Request, res: Response) {
         // Transform to unified events format for frontend
         const events: any[] = [];
 
+        const sanitizeUserMessageForUi = (raw: any) => {
+            const s = typeof raw === 'string' ? raw : String(raw ?? '');
+            const markers = [
+                '\n\n[System Note: Known facts about this user (Memory)]:',
+                '\n\n[Client Context]:',
+                '\n\n--- [Attached File:',
+                '\n\nList of available tools',
+                '\n\nAvailable tools',
+                '\n\nAVAILABLE TOOLS',
+            ];
+            let cut = s.length;
+            for (const m of markers) {
+                const idx = s.indexOf(m);
+                if (idx >= 0 && idx < cut) cut = idx;
+            }
+            return s.slice(0, cut).trim();
+        };
+
         messages.forEach((m: any) => {
             if (m.role === 'user') {
                 events.push({
                     type: 'user_input',
-                    data: m.content,
+                    data: sanitizeUserMessageForUi(m.content),
                     ts: new Date(m.createdAt).getTime(),
                     id: m._id.toString(),
                     seq: 0

@@ -13,7 +13,8 @@ const router = Router();
 function extractWorkspaceId(req: Request) {
   const fromReq = (req as any)?.workspace?._id ? String((req as any).workspace._id) : '';
   const fromBody = req.body && typeof req.body === 'object' ? String((req.body as any)?.workspaceId || (req.body as any)?.__workspaceId || '') : '';
-  const val = (fromReq || fromBody || '').trim();
+  const fromQuery = req.query && typeof req.query === 'object' ? String((req.query as any)?.workspaceId || '') : '';
+  const val = (fromReq || fromBody || fromQuery || '').trim();
   return val || undefined;
 }
 
@@ -63,6 +64,33 @@ router.post('/run', async (req: Request, res: Response) => {
   } catch { }
 
   return res.json({ runId, sessionId, result });
+});
+
+router.post('/selftest', authenticate, async (req: Request, res: Response) => {
+  const workspaceId = extractWorkspaceId(req);
+  if (!workspaceId) return res.status(400).json({ ok: false, error: 'workspace_required' });
+
+  const userId = String((req as any)?.auth?.sub || '').trim();
+  if (!userId) return res.status(401).json({ ok: false, error: 'unauthorized' });
+
+  const requiredTools = ['project_detect', 'auth_builder', 'swagger_docs', 'dead_code_detector', 'mobile_builder'];
+  const available = new Set(tools.map(t => String((t as any)?.name || '').trim()).filter(Boolean));
+  const toolPresence = Object.fromEntries(requiredTools.map(n => [n, available.has(n)]));
+
+  const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : undefined;
+  const detectPath = typeof req.body?.path === 'string' ? req.body.path : '.';
+  const detect = await executeTool(
+    'project_detect',
+    { path: detectPath, userId, __userId: userId, workspaceId, __workspaceId: workspaceId },
+    { sessionId, workspaceId }
+  );
+
+  const ok = requiredTools.every(n => toolPresence[n]) && !!detect?.ok;
+  return res.json({
+    ok,
+    toolPresence,
+    projectDetect: detect
+  });
 });
 
 router.post('/:name/execute', authenticate, async (req: Request, res: Response) => {

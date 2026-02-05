@@ -40,7 +40,7 @@ import { GoBuilderTool } from './definitions/GoBuilderTool';
 import { WebPipelineTool, DevServerTool, ScaffoldTool } from './definitions/WebDevelopmentTools';
 import { TaskLoopTool } from './definitions/TaskLoopTool';
 import { EchoTool, FileEditTool, GrepSearchTool, LsTool, NpmManagerTool, ScaffoldProjectTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
-import { AnalyzeProjectTool, AnalyzeCodebaseTool } from './definitions/AnalysisTools';
+import { AnalyzeProjectTool, AnalyzeCodebaseTool, ProjectDetectTool } from './definitions/AnalysisTools';
 import { HttpFetchTool, HtmlExtractTool, RssFetchTool, JsonQueryTool } from './definitions/ContentTools';
 import { KnowledgeSearchTool, KnowledgeAddTool } from './definitions/KnowledgeTools';
 import { GitOpsTool } from './definitions/GitTools';
@@ -59,6 +59,10 @@ import { BrowserVisionTool } from './definitions/BrowserVisionTool';
 import { BrowserActionTool } from './definitions/BrowserActionTool';
 import { PaymentsTool } from './definitions/PaymentsTool';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
+import { AuthBuilderTool } from './definitions/AuthBuilderTool';
+import { SwaggerDocsTool } from './definitions/SwaggerDocsTool';
+import { DeadCodeTool } from './definitions/DeadCodeTool';
+import { MobileBuilderTool } from './definitions/MobileBuilderTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -141,6 +145,7 @@ export const tools: ToolDefinition[] = [
   CodebaseNavigatorTool as any,
 
   // --- Analysis ---
+  new ProjectDetectTool(),
   new AnalyzeProjectTool(),
   new AnalyzeCodebaseTool(),
 
@@ -192,6 +197,10 @@ export const tools: ToolDefinition[] = [
   new TerminalManagerTool(),
   new BrowserVisionTool(),
   new BrowserActionTool(),
+  new AuthBuilderTool(),
+  new SwaggerDocsTool(),
+  new DeadCodeTool(),
+  new MobileBuilderTool(),
 
   new GenesisBuilderTool(),
   new PaymentsTool(),
