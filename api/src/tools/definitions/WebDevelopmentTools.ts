@@ -229,7 +229,7 @@ export class DevServerTool extends BaseTool {
             const parts = command.split(' ');
             const child = spawn(parts[0], parts.slice(1), {
                 cwd,
-                env: { ...process.env, PORT: String(port) },
+                env: { ...process.env, PORT: String(port), HOST: '0.0.0.0', BROWSER: 'none' },
                 stdio: 'ignore',
                 detached: true,
             });
