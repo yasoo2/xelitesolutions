@@ -1121,9 +1121,11 @@ function extractWeatherCity(text: string) {
 
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
   try {
-    let { text, sessionId, fileIds, attachedFiles, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
-    if (!fileIds && Array.isArray(attachedFiles)) {
-      fileIds = attachedFiles;
+    const offlineMode = process.env.OFFLINE_MODE === 'true';
+    let { text, sessionId, attachments, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
+    let fileIds = attachments || (req.body && (req.body as any).fileIds);
+    if (!fileIds && Array.isArray(attachments)) {
+      fileIds = attachments;
     }
     let assistantTextEmitted = false;
     const isAuthed = Boolean((req as any).auth);
@@ -1153,7 +1155,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       model
     });
 
-    if (!dbReady) {
+    if (!dbReady && !offlineMode) {
       return res.status(503).json({
         error: 'db_unavailable',
         message: 'Database connection not ready. Set MONGO_URI and start MongoDB.',
@@ -1387,17 +1389,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     if (!sessionId) {
 
-      const { Session } = await import('../models/session');
-      const { Tenant } = await import('../models/tenant');
-      const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
-      const tenantDoc = await Tenant.findOneAndUpdate(
-        { name: tenantName },
-        { $setOnInsert: { name: tenantName } },
-        { upsert: true, new: true }
-      );
+      // [OFFLINE MODE GUARD] Skip session/tenant DB operations
+      if (!offlineMode) {
+        const { Session } = await import('../models/session');
+        const { Tenant } = await import('../models/tenant');
+        const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
+        const tenantDoc = await Tenant.findOneAndUpdate(
+          { name: tenantName },
+          { $setOnInsert: { name: tenantName } },
+          { upsert: true, new: true }
+        );
 
-      const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id, workspaceId });
-      sessionId = s._id.toString();
+        const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id, workspaceId });
+        sessionId = s._id.toString();
+      } else {
+        sessionId = `offline-session-${Date.now()}`;
+        console.log('[Run/Start] OFFLINE MODE: Using mock sessionId', sessionId);
+      }
 
     } else if (workspaceId) {
       // [FIX] Persist workspaceId on existing sessions that may be missing it
