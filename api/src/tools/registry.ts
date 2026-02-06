@@ -63,6 +63,16 @@ import { AuthBuilderTool } from './definitions/AuthBuilderTool';
 import { SwaggerDocsTool } from './definitions/SwaggerDocsTool';
 import { DeadCodeTool } from './definitions/DeadCodeTool';
 import { MobileBuilderTool } from './definitions/MobileBuilderTool';
+import {
+  DependencyGraphTool,
+  BusinessLogicTool,
+  ChaosTestingTool,
+  ComplianceValidatorTool,
+  CostEstimatorTool,
+  AmbiguityResolverTool,
+  MultiAgentDebateTool,
+  SelfConfidenceTool
+} from './definitions/EliteTools';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -207,4 +217,14 @@ export const tools: ToolDefinition[] = [
   // --- Screenshot & Visual QA ---
   new ScreenshotTool(),
   new VisualComparisonTool(),
+
+  // --- Elite Tools Suite (God Mode Upgrade) ---
+  new DependencyGraphTool(),
+  new BusinessLogicTool(),
+  new ChaosTestingTool(),
+  new ComplianceValidatorTool(),
+  new CostEstimatorTool(),
+  new AmbiguityResolverTool(),
+  new MultiAgentDebateTool(),
+  new SelfConfidenceTool(),
 ];

@@ -101,6 +101,27 @@ export class GodModeAgent {
                 }
             },
             {
+                name: 'Ambiguity Check',
+                phase: 'plan',
+                tool: 'ambiguity_resolver',
+                args: { text: userRequest },
+                required: false
+            },
+            {
+                name: 'Cost Estimation',
+                phase: 'plan',
+                tool: 'cloud_cost_estimator',
+                args: { resources: ['Frontend', 'Backend', 'Database'], traffic: 'High' },
+                required: false
+            },
+            {
+                name: 'Compliance Audit',
+                phase: 'plan',
+                tool: 'compliance_validator',
+                args: { content: userRequest, standard: 'GDPR' },
+                required: false
+            },
+            {
                 name: 'Project Scaffolding',
                 phase: 'build',
                 tool: 'scaffold_project',
@@ -130,6 +151,13 @@ export class GodModeAgent {
                 tool: 'auto_tester',
                 args: { testType: 'syntax', projectPath: outputDir },
                 required: true
+            },
+            {
+                name: 'Chaos Engineering Plan',
+                phase: 'test',
+                tool: 'chaos_test_plan',
+                args: { architecture: userRequest },
+                required: false
             }
         ];
 
