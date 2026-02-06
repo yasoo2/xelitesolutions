@@ -77,10 +77,12 @@ export function normalizeUrlForGoto(raw: any, baseUrl?: string) {
     const lower = s.toLowerCase();
 
     // GOD MODE: Check if any label is CONTAINED in the string, prioritizing longer matches
+    // Normalize all whitespaces to standard space for robust matching
+    const cleanLower = lower.replace(/\s+/g, ' ').trim();
     const allLabels = { ...labels, ...arLabels };
     const sortedKeys = Object.keys(allLabels).sort((a, b) => b.length - a.length);
     for (const key of sortedKeys) {
-        if (lower.includes(key)) return allLabels[key];
+        if (cleanLower.includes(key)) return allLabels[key];
     }
 
     // Fallback to extraction if not a sharp label

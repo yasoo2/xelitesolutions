@@ -2136,13 +2136,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (isSimpleBrowserOpenRequest) {
           const s = initialUserTextForOpen;
           const normalized = normalizeUrlForGoto(s);
+          console.log(`[URLBIZ] Input: "${s}" -> Normalized: "${normalized}"`);
 
-          if (normalized && normalized !== s && /^https?:\/\//i.test(normalized)) {
-            // High confidence resolution using God Mode labels
+          if (normalized && /^https?:\/\//i.test(normalized)) {
+            // High confidence resolution using God Mode labels or direct URL
+            console.log(`[URLBIZ] RESOLVED: ${normalized}`);
             simpleBrowserOpenUrl = normalized;
             const host = urlToHost(normalized);
             simpleBrowserOpenLabel = host ? (host.includes('github') ? 'GitHub' : host.includes('google') ? 'Google' : host.includes('openai') ? 'OpenAI' : host.includes('yahoo') ? 'Yahoo' : host.includes('youtube') ? 'YouTube' : 'الموقع') : 'الموقع';
           } else {
+            console.log(`[URLBIZ] Fallback needed for: "${s}"`);
             // Try standard URL extraction
             const directUrl =
               s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
