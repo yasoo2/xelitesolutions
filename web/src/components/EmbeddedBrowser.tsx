@@ -41,7 +41,10 @@ export default function EmbeddedBrowser({
             const detail = e.detail as { url?: string; sessionId?: string };
             if (detail?.url) {
                 setCurrentUrl(detail.url);
-                setInputUrl(detail.url);
+                // Only update input if user isn't actively editing
+                if (!showUrlInput) {
+                    setInputUrl(detail.url);
+                }
             }
             if (detail?.sessionId) {
                 setIsConnected(true);
@@ -51,7 +54,14 @@ export default function EmbeddedBrowser({
 
         window.addEventListener('browser:session_status', handleStatus as any);
         return () => window.removeEventListener('browser:session_status', handleStatus as any);
-    }, [onReady]);
+    }, [onReady, showUrlInput]);
+
+    // Reset state when sessionId changes
+    useEffect(() => {
+        setCurrentUrl('');
+        setInputUrl('');
+        setIsLoading(false);
+    }, [sessionId]);
 
     // Navigate to URL
     const handleNavigate = useCallback(async (url: string) => {
@@ -270,11 +280,23 @@ function BrowserButton({
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: disabled ? 0.5 : 1,
-                transition: 'all 0.15s',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+            onMouseOver={(e) => {
+                if (!disabled) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.color = 'var(--text-primary)';
+                }
+            }}
+            onMouseOut={(e) => {
+                if (!disabled) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--text-secondary)';
+                }
             }}
         >
             <Icon
-                size={14}
+                size={16}
                 style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}
             />
         </button>

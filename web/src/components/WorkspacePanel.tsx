@@ -78,13 +78,7 @@ export default function WorkspacePanel({
                 {/* Browser Tab */}
                 {activeTab === 'browser' && (
                     <Suspense fallback={<LoadingFallback />}>
-                        {browserSessionId ? (
-                            <ModernBrowserStream
-                                sessionId={browserSessionId}
-                            />
-                        ) : (
-                            <EmbeddedBrowser />
-                        )}
+                        <EmbeddedBrowser sessionId={browserSessionId || 'panel-browser'} />
                     </Suspense>
                 )}
 
