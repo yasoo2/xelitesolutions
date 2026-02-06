@@ -914,7 +914,7 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   const wantsBrowser = Boolean(hasUrl || openKeyword || browserKeyword);
   if (wantsBrowser) {
     const directUrl = extractUrlCandidate(userText);
-    const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(userText);
+    const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userText);
     const wantsYoutube = /(youtube|يوتيوب)/i.test(userText);
     const wantsGoogle = /(google|جوجل)/i.test(userText);
     const wantsYahoo = /(yahoo|ياهو)/i.test(userText);
@@ -2121,7 +2121,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
           const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
           const hasSiteKeyword =
-            /(github|جيتهاب|جيت\s+هاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
+            /(github|git\s*hub|جيتهاب|جيت\s+هاب|جيت\s*هاب|كتهاب|كت\s*هاب|كيتهاب|كيت\s*هاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
               s,
             ) ||
             /(website|site|page|موقع|صفحة|صفحه)/i.test(s) ||
@@ -2136,16 +2136,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (isSimpleBrowserOpenRequest) {
           const s = initialUserTextForOpen;
           const normalized = normalizeUrlForGoto(s);
-          console.log(`[URLBIZ] Input: "${s}" -> Normalized: "${normalized}"`);
 
           if (normalized && /^https?:\/\//i.test(normalized)) {
-            // High confidence resolution using God Mode labels or direct URL
-            console.log(`[URLBIZ] RESOLVED: ${normalized}`);
             simpleBrowserOpenUrl = normalized;
             const host = urlToHost(normalized);
             simpleBrowserOpenLabel = host ? (host.includes('github') ? 'GitHub' : host.includes('google') ? 'Google' : host.includes('openai') ? 'OpenAI' : host.includes('yahoo') ? 'Yahoo' : host.includes('youtube') ? 'YouTube' : 'الموقع') : 'الموقع';
           } else {
-            console.log(`[URLBIZ] Fallback needed for: "${s}"`);
             // Try standard URL extraction
             const directUrl =
               s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
@@ -2422,7 +2418,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               );
             const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
             const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
-            const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(s);
+            const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(s);
             const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
 
             const testKeyword = /(اختبر|اختبار|شيك|شيّك|تشييك|جرّب|جرب|تاكد|تأكد|تفقد|تفقده|تحقق)/i.test(s);
@@ -2595,7 +2591,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             if (bare && bare[1]) requestedRepoName = bare[1].trim();
           }
           const wantsGithubRepo =
-            /(github|جيت\s*هاب|جيتهاب|كتهاب|كيتهاب)/i.test(userTextForOverrides) &&
+            /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides) &&
             /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
             /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
           if (wantsGithubRepo || (awaitingRepoName && requestedRepoName)) {
@@ -2858,7 +2854,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
 
           if (String(plan?.name || '') === 'github_create_repo') {
-            const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
+            const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
             if (wantsAccess) {
               plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
             } else if (!wantsGithubRepo && (!planName || planName === 'echo')) {
@@ -2893,7 +2889,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 const goto = actions.find((a: any) => String(a?.type || '').toLowerCase() === 'goto' && typeof a?.url === 'string' && a.url.trim());
                 const urlFromActions = goto ? String(goto.url).trim() : '';
                 const wantsYoutube = /youtube|يوتيوب/i.test(userText);
-                const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(userText);
+                const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userText);
                 const desiredUrl =
                   (urlFromUser || urlFromInput || urlFromActions || '').trim() ||
                   (wantsYoutube
@@ -3031,7 +3027,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               );
             const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(userTextForOverrides);
             const mentionsKnownSite =
-              /(yahoo|ياهو|youtube|يوتيوب|github|جيتهاب|قيتهب|كتهاب|كيتهاب|google|جوجل|microsoft|مايكروسوفت|مايكروسوت|x\.com|\btwitter\b|تويتر|facebook|فيس\s*بوك|الفيس\s*بوك|linkedin|لينكد\s*ان|لينكدإن)/i.test(
+            /(yahoo|ياهو|youtube|يوتيوب|github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب|google|جوجل|microsoft|مايكروسوفت|مايكروسوت|x\.com|\btwitter\b|تويتر|facebook|فيس\s*بوك|الفيس\s*بوك|linkedin|لينكد\s*ان|لينكدإن)/i.test(
                 userTextForOverrides,
               );
             const looksLikeOpenIntent = Boolean(hasUrlInUserText || openKeyword || browserKeyword || mentionsKnownSite);
@@ -3042,7 +3038,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               const directUrl = urlCandidate;
               const wantsYahoo = /(yahoo|ياهو)/i.test(userTextForOverrides);
               const wantsYoutube = /youtube|يوتيوب/i.test(userTextForOverrides);
-              const wantsGithub = /(github|جيتهاب|قيتهب|كتهاب|كيتهاب)/i.test(userTextForOverrides);
+            const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
               const wantsGoogle = /google|جوجل/i.test(userTextForOverrides);
               const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(userTextForOverrides);
               const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(userTextForOverrides);
@@ -3602,13 +3598,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               pendingPlan = { name: 'browser_open', input: { url } } as any;
               endAfterBrowserState = true;
             } else {
-              const msg = isArabicText(userTextForOverrides)
-                ? `تعذّر العثور على رابط واضح لفتح "${target}".\nأرسل الرابط مباشرة (مثال: https://example.com).`
-                : `I couldn’t find a clear URL to open "${target}".\nPlease send the URL directly (e.g. https://example.com).`;
-              forcedText = msg;
-              ev({ type: 'text', data: msg });
-              assistantTextEmitted = true;
-              break;
+              const q = String(target || '').trim();
+              const searchUrl = q ? `https://www.google.com/search?q=${encodeURIComponent(q)}` : 'https://www.google.com';
+              simpleBrowserOpenLabel = q || simpleBrowserOpenLabel || 'الموقع';
+              pendingPlan = { name: 'browser_open', input: { url: searchUrl } } as any;
+              endAfterBrowserState = true;
             }
           }
           if (plannerUnavailableMode && result.ok && plan?.name === 'web_search' && !pendingPlan) {

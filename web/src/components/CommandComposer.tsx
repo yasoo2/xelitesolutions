@@ -2106,7 +2106,7 @@ export default function CommandComposer({
       if (explicitBrowser) return true;
 
       const openKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
-      const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(s);
+      const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(s);
       const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
 
       if (openKeyword && githubKeyword && analysisKeyword) return false;
@@ -2141,7 +2141,7 @@ export default function CommandComposer({
         const directUrl = urlMatch?.[0];
         const extractedUrl = extractLikelyUrl(inputText);
         const wantsYoutube = /youtube|يوتيوب/i.test(inputText);
-        const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(inputText);
+        const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(inputText);
         const wantsPreview = /(preview|معاينة|المعاينة|عرض الموقع|show site)/i.test(inputText);
         const normalizePreviewUrl = (u: string) => {
           try {
