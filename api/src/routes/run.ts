@@ -3319,6 +3319,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
           ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
+          // [ELITE FIX] Emit specific tool_start event for frontend auto-switching (Browser/Terminal)
+          ev({ type: 'tool_start', tool: plan?.name || '', input: plan?.input });
           const callInput =
             userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
           const result = await executeToolWithRateLimitRetry(plan?.name || '', callInput, { sessionId, workspaceId }, {
