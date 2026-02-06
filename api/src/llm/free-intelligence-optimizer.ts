@@ -417,8 +417,10 @@ class FreeIntelligenceOptimizer {
         const actionVerbs = [
             'create', 'write', 'generate', 'build', 'deploy', 'run', 'execute',
             'fix', 'debug', 'delete', 'remove', 'install', 'update', 'upgrade',
+            'open', 'goto', 'visit', 'browse', 'launch',
             // Arabic actions
-            'أنشئ', 'انشأ', 'اكتب', 'ابني', 'ابن', 'شغل', 'نفذ', 'صلح', 'صلحلي', 'احذف', 'ركب', 'حدث', 'سو', 'سوي', 'اعمل', 'عمل'
+            'أنشئ', 'انشأ', 'اكتب', 'ابني', 'ابن', 'شغل', 'نفذ', 'صلح', 'صلحلي', 'احذف', 'ركب', 'حدث', 'سو', 'سوي', 'اعمل', 'عمل',
+            'افتح', 'ادخل', 'اذهب', 'زيارة', 'زور', 'روح', 'وديني', 'وريني'
         ];
         // Check if starts with verb or contains strong command pattern
         const words = text.split(' ');
@@ -435,7 +437,8 @@ class FreeIntelligenceOptimizer {
             'docker', 'aws', 'kubernetes', 'k8s', 'api', 'database', 'sql', 'mongo',
             'react', 'nextjs', 'tailwind', 'css', 'html', 'javascript', 'typescript',
             'npm', 'pnpm', 'yarn', 'git', 'github', 'commit', 'deploy', 'pipeline',
-            'ci/cd', 'test', 'jest', 'eslint', 'prettier'
+            'ci/cd', 'test', 'jest', 'eslint', 'prettier',
+            'browser', 'متمتصفح', 'internet', 'إنترنت', 'ويب'
         ];
         return technicalKeywords.some(kw => text.includes(kw));
     }
@@ -444,7 +447,8 @@ class FreeIntelligenceOptimizer {
         const shellCmd = /^(ls|pwd|cd|cat|head|tail|grep|rg|find|tree|npm|git)\b/i.test(text);
         const fileOpsEn = /(read|write|edit|modify|delete|remove|list|show)\s+(file|files|folder|directory)\b/i.test(text);
         const fileOpsAr = /(اقرأ|قراءة|اكتب|عدل|تعديل|احذف|حذف|اعرض|عرض|سرد|قائمة)\s+(ملف|ملفات|مجلد|مجلدات|الدليل|مسار)\b/i.test(text);
-        return shellCmd || fileOpsEn || fileOpsAr;
+        const browserOps = /(open|goto|browse|visit|search|google|github|افتح|اذهب|ادخل|بحث|جوجل|جيتهاب)\b/i.test(text);
+        return shellCmd || fileOpsEn || fileOpsAr || browserOps;
     }
 
     public getRealKnowledge(query: string): string | null {

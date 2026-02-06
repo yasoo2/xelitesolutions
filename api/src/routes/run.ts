@@ -843,14 +843,28 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   const preferNonLLM = Boolean(params.preferNonLLM);
   const stopProjectDetectRepeats = params.stopProjectDetectRepeats !== false;
 
-  const hasUrl =
-    /https?:\/\/[^\s"'<>]+/i.test(userText) ||
-    /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(userText);
-  const openKeyword =
-    /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
-      userText,
+  const routingTextRaw = userText; // Use userText directly for routing logic
+  const browserKeyword = /(?:browser|internet|متصفح|ويب|إنترنت|نت)\b/i.test(routingTextRaw);
+  const githubKeyword = /\b(?:github|github\.com|جيتهاب|جيت\s*هاب)\b/i.test(routingTextRaw);
+  const googleKeyword = /\b(?:google|google\.com|جوجل|قوقل)\b/i.test(routingTextRaw);
+  const joeKeyword = /\b(?:joe|جو|نظام|سيستم)\b/i.test(routingTextRaw) && /(?:joe|نظام جو|جو)\b/i.test(routingTextRaw);
+
+  const hasSiteKeyword =
+    /https?:\/\/\S+/i.test(routingTextRaw) ||
+    /\b(?:[a-z0-9][a-z0-9-]*\.(?:com|org|net|io|edu|gov|ly|me|sh|app))\b/i.test(routingTextRaw) ||
+    githubKeyword ||
+    googleKeyword ||
+    joeKeyword ||
+    /\b(?:facebook|youtube|twitter|x\.com|linkedin|reddit|amazon|apple|microsoft|openai|chatgpt|claude|gemini|perplexity|فيسبوك|يوتيوب|تويتر|لينكد|ريديت|أمازون|آبل|مايكروسوفت|أوبن\s*إيه\s*آي|تشات\s*جي\s*بي\s*تي|كود|جمناي)\b/i.test(
+      routingTextRaw
     );
-  const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(userText);
+
+  const openVerb =
+    /\b(?:open|goto|visit|show|preview|start|run|launch|افتح|ادخل|اذهب|زيارة|شغل|ابدأ|روح|زور|اعرض|وريني|ورني)\b/i.test(
+      routingTextRaw
+    );
+
+  const isSimpleBrowserOpenRequest = openVerb && (hasSiteKeyword || browserKeyword);
   const multiStepKeyword =
     /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
       userText,
@@ -2140,12 +2154,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
           const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
           const hasSiteKeyword =
-            /(github|git\s*hub|جيتهاب|جيت\s+هاب|جت\s+هاب|غيت\s+هاب|كتهاب|كت\s*هاب|كيتهاب|كيت\s*هاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
+            /(joe|نظام جو|جو|github|git\s*hub|جيتهاب|جيت\s+هاب|جت\s+هاب|غيت\s+هاب|كتهاب|كت\s*هاب|كيتهاب|كيت\s*هاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
               sNorm,
             ) ||
             /(website|site|page|موقع|صفحة|صفحه)/i.test(sNorm) ||
             /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
-          if (!hasUrl && !hasSiteKeyword) return false;
+          if (!hasUrl && !hasSiteKeyword && !browserKeyword) return false;
           if (!(openKeyword || browserKeyword || hasUrl)) return false;
           if (multiStepKeyword) return false;
           if (isFileOp && !hasUrl) return false;
@@ -2551,26 +2565,26 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               if (planName === 'browser_get_state') {
                 // no-op
               } else {
-              const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
-              const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
-              const needsKey = !hasAnyKey && !isFreeProvider;
-              plan = {
-                name: 'echo',
-                input: {
-                  text: isArabicText(userTextForOverrides)
-                    ? (isGeneral
-                      ? (needsKey
-                        ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
-                        : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
-                      : `تم تكرار نفس الخطوة بدون تقدم (${planName}).\nأعد صياغة الطلب أو حدّد الخطوة التالية بشكل أوضح.`)
-                    : (isGeneral
-                      ? (needsKey
-                        ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
-                        : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
-                      : `The same step repeated without progress (${planName}).\nPlease rephrase or tell me the next concrete action.`),
-                }
-              } as any;
-              planName = 'echo';
+                const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
+                const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
+                const needsKey = !hasAnyKey && !isFreeProvider;
+                plan = {
+                  name: 'echo',
+                  input: {
+                    text: isArabicText(userTextForOverrides)
+                      ? (isGeneral
+                        ? (needsKey
+                          ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
+                          : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
+                        : `تم تكرار نفس الخطوة بدون تقدم (${planName}).\nأعد صياغة الطلب أو حدّد الخطوة التالية بشكل أوضح.`)
+                      : (isGeneral
+                        ? (needsKey
+                          ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
+                          : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
+                        : `The same step repeated without progress (${planName}).\nPlease rephrase or tell me the next concrete action.`),
+                  }
+                } as any;
+                planName = 'echo';
               }
             } else {
               executedToolSigs.add(sig);
@@ -3069,7 +3083,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               );
             const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(userTextForOverrides);
             const mentionsKnownSite =
-            /(yahoo|ياهو|youtube|يوتيوب|github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب|google|جوجل|microsoft|مايكروسوفت|مايكروسوت|x\.com|\btwitter\b|تويتر|facebook|فيس\s*بوك|الفيس\s*بوك|linkedin|لينكد\s*ان|لينكدإن)/i.test(
+              /(yahoo|ياهو|youtube|يوتيوب|github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب|google|جوجل|microsoft|مايكروسوفت|مايكروسوت|x\.com|\btwitter\b|تويتر|facebook|فيس\s*بوك|الفيس\s*بوك|linkedin|لينكد\s*ان|لينكدإن)/i.test(
                 userTextForOverrides,
               );
             const looksLikeOpenIntent = Boolean(hasUrlInUserText || openKeyword || browserKeyword || mentionsKnownSite);
@@ -3080,7 +3094,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               const directUrl = urlCandidate;
               const wantsYahoo = /(yahoo|ياهو)/i.test(userTextForOverrides);
               const wantsYoutube = /youtube|يوتيوب/i.test(userTextForOverrides);
-            const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
+              const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
               const wantsGoogle = /google|جوجل/i.test(userTextForOverrides);
               const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(userTextForOverrides);
               const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(userTextForOverrides);
