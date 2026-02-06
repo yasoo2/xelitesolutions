@@ -76,13 +76,25 @@ export function normalizeUrlForGoto(raw: any, baseUrl?: string) {
 
     const lower = s.toLowerCase();
 
+    // SUPER ROBUST ARABIC NORMALIZATION
+    // Normalizes various forms of Alif, Ya, and Ha/Ta Marbuta
+    const normalizeArabic = (str: string) => {
+        return str
+            .replace(/[\u064A\u0649]/g, 'ي') // Ya / Alif Maqsura -> Ya
+            .replace(/[\u0647\u0629]/g, 'ه') // Ha / Ta Marbuta -> Ha
+            .replace(/[\u0622\u0623\u0625\u0627]/g, 'ا') // Various Alifs -> Alif
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    const cleanLower = normalizeArabic(lower);
+
     // GOD MODE: Check if any label is CONTAINED in the string, prioritizing longer matches
-    // Normalize all whitespaces to standard space for robust matching
-    const cleanLower = lower.replace(/\s+/g, ' ').trim();
     const allLabels = { ...labels, ...arLabels };
     const sortedKeys = Object.keys(allLabels).sort((a, b) => b.length - a.length);
     for (const key of sortedKeys) {
-        if (cleanLower.includes(key)) return allLabels[key];
+        const normKey = normalizeArabic(key.toLowerCase());
+        if (cleanLower.includes(normKey)) return allLabels[key];
     }
 
     // Fallback to extraction if not a sharp label
