@@ -248,20 +248,29 @@ export function attachWebSocket(server: Server) {
       return;
     }
     if (url.pathname === '/ws/browser') {
+      console.log('[WS] Upgrading browser connection');
       const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
       const token = url.searchParams.get('token') || '';
       if (!authBypass) {
-        if (!token) return reject(401, 'Unauthorized: Missing token');
+        if (!token) {
+          console.warn('[WS] Browser upgrade rejected: Missing token');
+          return reject(401, 'Unauthorized: Missing token');
+        }
         try {
           const payload = jwt.verify(token, config.jwtSecret);
           (req as any).auth = payload;
-        } catch {
+        } catch (e: any) {
+          console.warn(`[WS] Browser upgrade rejected: Invalid token - ${e.message}`);
           return reject(401, 'Unauthorized: Invalid token');
         }
       }
 
-      if (!browserWssRef) return reject(503, 'Service Unavailable');
+      if (!browserWssRef) {
+        console.error('[WS] Browser upgrade failed: browserWssRef is null');
+        return reject(503, 'Service Unavailable');
+      }
       browserWssRef.handleUpgrade(req, socket, head, (ws) => {
+        console.log('[WS] Browser connection upgraded');
         browserWssRef?.emit('connection', ws, req);
       });
       return;

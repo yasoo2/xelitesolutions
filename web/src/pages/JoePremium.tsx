@@ -117,7 +117,7 @@ export default function JoePremium() {
     useEffect(() => {
         const sessionId = agentSelected;
         if (sessionId) {
-            setBrowserSessionId(sessionId);
+            setBrowserSessionId(`browser:${sessionId}`);
         }
     }, [agentSelected]);
 

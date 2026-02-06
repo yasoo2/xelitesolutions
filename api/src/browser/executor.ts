@@ -15,7 +15,11 @@ type Action =
   | { type: 'scroll'; direction: 'down' | 'up'; amount?: number; optional?: boolean }
   | { type: 'wait'; ms: number; optional?: boolean }
   | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
-  | { type: 'ui_audit'; optional?: boolean };
+  | { type: 'ui_audit'; optional?: boolean }
+  | { type: 'back'; optional?: boolean }
+  | { type: 'forward'; optional?: boolean }
+  | { type: 'reload'; optional?: boolean }
+  | { type: 'screenshot'; optional?: boolean };
 
 const SECRET_TOKEN_RE = /^\{\{\s*SECRET\s*:\s*([A-Z0-9_]+)\s*\}\}$/;
 
@@ -894,6 +898,54 @@ export async function executePlannedActions(params: {
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }
+          continue;
+        }
+
+        if (name === 'back') {
+          const before = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+          await page.goBack({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }).catch(() => null);
+          await page.waitForTimeout(250);
+          const after = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+          results.push({ stepId: sid, name, ok: true });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+          continue;
+        }
+
+        if (name === 'forward') {
+          const before = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+          await page.goForward({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }).catch(() => null);
+          await page.waitForTimeout(250);
+          const after = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+          results.push({ stepId: sid, name, ok: true });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+          continue;
+        }
+
+        if (name === 'reload') {
+          const before = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }).catch(() => null);
+          await page.waitForTimeout(250);
+          const after = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+          results.push({ stepId: sid, name, ok: true });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+          continue;
+        }
+
+        if (name === 'screenshot') {
+          const current = await screenshotJpegBase64(page);
+          evidence.push({ kind: 'screenshot', jpegBase64: current, ts: now(), stepId: sid });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+          results.push({ stepId: sid, name, ok: true });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
         }
 

@@ -271,10 +271,17 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       } catch { }
 
       if (!alive) return;
+      console.log('[BrowserStream] Connecting to:', wsUrl);
       ws = new WebSocket(wsUrl);
       setStatus('connecting');
-      ws.onopen = () => setStatus('connected');
-      ws.onerror = () => setStatus('error');
+      ws.onopen = () => {
+        console.log('[BrowserStream] Connected');
+        setStatus('connected');
+      };
+      ws.onerror = (err) => {
+        console.error('[BrowserStream] WebSocket Error:', err);
+        setStatus('error');
+      };
       ws.onmessage = (ev) => {
         let msg: WsEvent | null = null;
         try {

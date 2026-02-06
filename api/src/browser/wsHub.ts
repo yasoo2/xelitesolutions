@@ -80,7 +80,7 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
     const url = new URL(req.url || '/', 'http://localhost');
     const sessionId = String(url.searchParams.get('sessionId') || '').trim();
     if (!sessionId) {
-      try { ws.close(1008, 'missing_sessionId'); } catch {}
+      try { ws.close(1008, 'missing_sessionId'); } catch { }
       return;
     }
 
@@ -88,7 +88,7 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
     const userId = String(((req as any)?.auth?.sub || '')).trim();
     if (!authBypass) {
       if (!userId) {
-        try { ws.close(1008, 'unauthorized'); } catch {}
+        try { ws.close(1008, 'unauthorized'); } catch { }
         return;
       }
       try {
@@ -96,13 +96,13 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
         if (ownerHint.type === 'mongoSession' || ownerHint.type === 'userId') {
           const ok = await canAccessSession(userId, sessionId);
           if (!ok) {
-            try { ws.close(1008, 'forbidden'); } catch {}
+            try { ws.close(1008, 'forbidden'); } catch { }
             return;
           }
         } else {
           const cur = ownerByBrowserSessionId.get(sessionId);
           if (cur && cur.userId !== userId) {
-            try { ws.close(1008, 'forbidden'); } catch {}
+            try { ws.close(1008, 'forbidden'); } catch { }
             return;
           }
           if (!cur) {
@@ -113,12 +113,13 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
           }
         }
       } catch {
-        try { ws.close(1011, 'internal_error'); } catch {}
+        try { ws.close(1011, 'internal_error'); } catch { }
         return;
       }
     }
 
     const client: Client = { ws, sessionId };
+    console.log(`[BrowserWS] Client connect. sid=${sessionId} userId=${userId}`);
     let set = clientsBySession.get(sessionId);
     if (!set) {
       set = new Set();
@@ -127,17 +128,22 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
     set.add(client);
     if (set.size === 1) {
       try {
+        console.log(`[BrowserWS] First client for sid=${sessionId}. Calling onFirstClient.`);
         hooks?.onFirstClient?.(sessionId);
-      } catch { }
+      } catch (e: any) {
+        console.error(`[BrowserWS] Error in onFirstClient: ${e.message}`);
+      }
     }
 
     ws.on('close', () => {
+      console.log(`[BrowserWS] Client disconnect. sid=${sessionId}`);
       const cur = clientsBySession.get(sessionId);
       if (!cur) return;
       cur.delete(client);
       if (cur.size === 0) {
         clientsBySession.delete(sessionId);
         try {
+          console.log(`[BrowserWS] Last client for sid=${sessionId}. Calling onLastClient.`);
           hooks?.onLastClient?.(sessionId);
         } catch { }
       }
@@ -153,6 +159,6 @@ export function broadcastBrowserEvent(sessionId: string, ev: BrowserWsEvent) {
   const payload = JSON.stringify(ev);
   for (const c of set) {
     if (c.ws.readyState !== WebSocket.OPEN) continue;
-    try { c.ws.send(payload); } catch {}
+    try { c.ws.send(payload); } catch { }
   }
 }

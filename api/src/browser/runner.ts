@@ -24,6 +24,10 @@ type Planned = {
     | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
     | { type: 'key'; key: string; optional?: boolean }
     | { type: 'ui_audit'; optional?: boolean }
+    | { type: 'back'; optional?: boolean }
+    | { type: 'forward'; optional?: boolean }
+    | { type: 'reload'; optional?: boolean }
+    | { type: 'screenshot'; optional?: boolean }
   >;
 };
 
@@ -50,6 +54,10 @@ Action Types:
 - {"type":"wait","ms":2000} (Use generous waits for complex apps like YouTube)
 - {"type":"ui_audit"} (If lost or page changed drastically)
 - {"type":"key","key":"Enter"}
+- {"type":"back"} (Go back in history)
+- {"type":"forward"} (Go forward in history)
+- {"type":"reload"} (Refresh page)
+- {"type":"screenshot"} (Capture image)
 `;
 
 function extractJsonLike(text: string) {
