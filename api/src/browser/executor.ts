@@ -78,6 +78,12 @@ function normalizeUrlForGoto(raw: any, baseUrl?: string) {
     'amazon': 'https://amazon.com',
     'امازون': 'https://amazon.com',
     'أمازون': 'https://amazon.com',
+    'github': 'https://github.com',
+    'جيت هاب': 'https://github.com',
+    'google': 'https://google.com',
+    'جوجل': 'https://google.com',
+    'openai': 'https://openai.com',
+    'chatgpt': 'https://chat.openai.com',
   };
   const label = s.toLowerCase().replace(/^(?:افتح\s+|open\s+|اذهب\s+الى\s+|visit\s+)/i, '').trim();
   if (labels[label]) return labels[label];
