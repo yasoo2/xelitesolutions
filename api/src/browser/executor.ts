@@ -826,13 +826,18 @@ export async function executePlannedActions(params: {
 
           try {
             if (name === 'click') {
-              if (targetCenter) await interactions.naturalClick(page, 'selector_click', targetCenter.x, targetCenter.y);
-              else await loc.first().click({ timeout: cfg.actionTimeoutMs });
+              if (targetCenter) {
+                await interactions.naturalClick(page, 'selector_click', targetCenter.x, targetCenter.y);
+              } else {
+                await loc.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
+                await loc.first().click({ timeout: cfg.actionTimeoutMs });
+              }
             } else {
               if (targetCenter) {
                 await interactions.naturalClick(page, 'type_click', targetCenter.x, targetCenter.y);
                 await interactions.naturalType(page, 'type_text', textRaw);
               } else {
+                await loc.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
                 await loc.first().click({ timeout: cfg.actionTimeoutMs });
                 await loc.first().fill(textRaw);
               }
@@ -842,13 +847,17 @@ export async function executePlannedActions(params: {
             try {
               if (name === 'click') {
                 if (targetCenter) await interactions.naturalClick(page, 'selector_click_retry', targetCenter.x, targetCenter.y);
-                else await loc.first().click({ timeout: cfg.actionTimeoutMs });
+                else {
+                  await loc.first().scrollIntoViewIfNeeded().catch(() => { });
+                  await loc.first().click({ timeout: cfg.actionTimeoutMs, force: true });
+                }
               } else {
                 if (targetCenter) {
                   await interactions.naturalClick(page, 'type_click_retry', targetCenter.x, targetCenter.y);
                   await interactions.naturalType(page, 'type_text_retry', textRaw);
                 } else {
-                  await loc.first().click({ timeout: cfg.actionTimeoutMs });
+                  await loc.first().scrollIntoViewIfNeeded().catch(() => { });
+                  await loc.first().click({ timeout: cfg.actionTimeoutMs, force: true });
                   await loc.first().fill(textRaw);
                 }
               }

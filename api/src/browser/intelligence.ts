@@ -240,6 +240,19 @@ function calculateImportance(text: string): number {
 }
 
 /**
+ * Enhanced vision-based analysis for proactive understanding
+ */
+export async function analyzePageVision(params: {
+    screenshotBase64: string;
+    url: string;
+    description: string;
+}): Promise<string> {
+    // This is a placeholder for a vision LLM call
+    // In practice, it would use the screenshot to describe the page layout, content, and state
+    return `Page ${params.url} appears to be a ${params.description} with visible elements at the provided coordinates. Visual state looks stable.`;
+}
+
+/**
  * Smart interaction planner
  */
 export function planInteraction(goal: string, pageAnalysis: PageAnalysis): string[] {

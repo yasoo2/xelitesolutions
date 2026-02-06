@@ -32,32 +32,31 @@ type Planned = {
 };
 
 const COMPILER_SYSTEM = `
-You are an intelligent, visually-aware browser agent.
-You must output a SINGLE JSON object: { "actions": [ ... ] }
+You are an advanced, visually-aware browser autonomous agent. 
+Your goal is to translate user instructions into a sequence of precise browser actions to achieve the GLOBAL_GOAL.
 
-Goal: Translate user instructions into precise browser actions using the provided UI_GROUNDING_JSON (snapshot of the page) and the attached screenshot. You can SEE the page.
+Instructions:
+1. **Analyze Visuals**: Use the provided screenshot and UI_GROUNDING_JSON to understand the page structure, element positions, and visual state (e.g., if a menu is open, if an error is present).
+2. **Multi-Step Reasoning**: If the goal requires multiple interactions (e.g., searching, then clicking a result), plan the necessary actions. You can output up to 80 actions.
+3. **Smart Element Selection**: Prefer selecting elements by ID or unique attributes if available. Use 'text' or 'aria-label' match for icons and buttons. Use coordinates (x, y) as a fallback if no selector is reliable.
+4. **Proactive Navigation**: If the user mentions a site (e.g., "YouTube", "GitHub"), use a 'goto' action to navigate there directly.
+5. **Wait for Success**: Include 'wait' steps after significant actions (like form submissions or navigations) to allow the page to update.
+6. **Error Handling**: If an element isn't found or an error occurs, use 'ui_audit' to re-examine the page or 'screenshot' to see what went wrong.
 
-Smart Detection Rules:
-- **CRITICAL**: If a user mentions a site name (e.g., "Facebook", "فيسبوك", "Youtube"), PRIORITIZE \`goto\` with the direct URL. Avoid searching unless explicitly asked.
-- **CRITICAL**: For requests like "Read", "Summarize", "Translate", "What are the headlines?": just {"type":"goto"} and {"type":"wait","ms":3000}. Do NOT click articles or buttons unless explicitly asked. The system reads the page automatically.
-
-Output Config:
-- Max 80 actions.
-- Use explicit selectors when confident, otherwise use coordinates or 'text' match.
-- PREFER \`aria-label\` or \`placeholder\` over strict innerText matching for icons/inputs.
-
-Action Types:
+Available Actions:
 - {"type":"goto","url":"..."}
-- {"type":"click","text":"..."} OR {"type":"click","selector":"..."} OR {"type":"click","x":123,"y":456}
-- {"type":"type","text":"...", "selector":"..."} (Always use selector/x,y if possible for inputs)
-- {"type":"scroll","direction":"down","amount":500}
-- {"type":"wait","ms":2000} (Use generous waits for complex apps like YouTube)
-- {"type":"ui_audit"} (If lost or page changed drastically)
-- {"type":"key","key":"Enter"}
-- {"type":"back"} (Go back in history)
-- {"type":"forward"} (Go forward in history)
-- {"type":"reload"} (Refresh page)
-- {"type":"screenshot"} (Capture image)
+- {"type":"click","selector":"..."} OR {"type":"click","text":"..."} OR {"type":"click","x":123,"y":456}
+- {"type":"type","text":"...", "selector":"..."} OR {"type":"type","text":"...", "x":123, "y":456}
+- {"type":"scroll","direction":"down"|"up","amount":500}
+- {"type":"wait","ms":2000}
+- {"type":"key","key":"Enter"|"Escape"|"ArrowDown"|...}
+- {"type":"ui_audit"} - Analyze the DOM for significant changes.
+- {"type":"back"} | {"type":"forward"} | {"type":"reload"}
+- {"type":"screenshot"} - Take a visual snapshot for reasoning.
+- {"type":"hover","selector":"..."} - Useful for triggering dropdowns.
+
+Output Format:
+You MUST output a valid JSON object: { "actions": [ ... ], "thought": "Brief explanation of your plan based on what you see." }
 `;
 
 function extractJsonLike(text: string) {
@@ -107,12 +106,12 @@ async function collectUiGroundingSnapshot(sessionId: string) {
           .slice(0, maxTextLen);
 
       const isVisible = (el: Element, rect: DOMRect) => {
-        if (rect.width < 2 || rect.height < 2) return false;
+        if (rect.width < 1 || rect.height < 1) return false;
         const s = window.getComputedStyle(el as any);
         if (!s) return false;
         if (s.display === 'none' || s.visibility === 'hidden') return false;
         const o = Number(s.opacity || '1');
-        if (Number.isFinite(o) && o < 0.02) return false;
+        if (Number.isFinite(o) && o < 0.01) return false;
         if ((el as any).hasAttribute?.('hidden')) return false;
         return true;
       };
@@ -128,7 +127,7 @@ async function collectUiGroundingSnapshot(sessionId: string) {
       };
 
       const tag = (el: Element) => String((el as any).tagName || '').toLowerCase();
-      const role = (el: Element) => pickAttr(el, 'role');
+      const role = (el: Element) => pickAttr(el, 'role') || (el as any).getAttribute?.('type') === 'button' ? 'button' : '';
 
       const kindOf = (el: Element) => {
         const t = tag(el);
@@ -138,6 +137,7 @@ async function collectUiGroundingSnapshot(sessionId: string) {
         if (t === 'input') {
           const ty = pickAttr(el, 'type').toLowerCase();
           if (ty === 'submit' || ty === 'button' || ty === 'reset') return 'button';
+          if (ty === 'checkbox' || ty === 'radio') return 'checkbox';
           return 'input';
         }
         if (t === 'textarea') return 'textarea';
@@ -145,7 +145,7 @@ async function collectUiGroundingSnapshot(sessionId: string) {
         if (t === 'img') return 'image';
         if (r === 'button') return 'button';
         if (r === 'link') return 'link';
-        if (r === 'textbox') return 'input';
+        if (r === 'textbox' || r === 'searchbox') return 'input';
         if ((el as any).isContentEditable) return 'input';
         const txt = clampText((el as any).innerText || '');
         if (txt) return 'text';
@@ -153,36 +153,19 @@ async function collectUiGroundingSnapshot(sessionId: string) {
       };
 
       const elements: any[] = [];
-      const candidates = Array.from(
-        document.querySelectorAll(
-          [
-            'a[href]',
-            'button',
-            'input',
-            'textarea',
-            'select',
-            '[role="button"]',
-            '[role="link"]',
-            '[role="textbox"]',
-            '[contenteditable="true"]',
-            '[tabindex]',
-            '[class*="btn"]',
-            '[class*="button"]',
-            '[id*="login"]',
-            '[id*="signin"]',
-            '[aria-label]',
-            'label',
-            'summary',
-            'h1,h2,h3,h4,h5,h6,p,li,span',
-          ].join(','),
-        ),
-      );
+      const selectors = [
+        'a[href]', 'button', 'input', 'textarea', 'select', '[role]',
+        '[contenteditable="true"]', '[tabindex]', '[aria-label]', 'label', 'summary',
+        'h1,h2,h3,h4,h5,h6,p,li,span'
+      ];
+      const candidates = Array.from(document.querySelectorAll(selectors.join(',')));
 
       for (const el of candidates) {
         try {
           const rect = (el as any).getBoundingClientRect?.();
           if (!rect) continue;
           if (!isVisible(el, rect)) continue;
+
           const k = kindOf(el);
           if (k === 'unknown') continue;
 
@@ -192,31 +175,22 @@ async function collectUiGroundingSnapshot(sessionId: string) {
               ? clampText((el as any).value || pickAttr(el, 'placeholder') || pickAttr(el, 'aria-label') || '')
               : clampText((el as any).innerText || pickAttr(el, 'aria-label') || pickAttr(el, 'title') || '');
 
-          if (k === 'text') {
-            if (!text) continue;
-            if (text.length > 80) continue;
-            const childCount = (el as any).children?.length || 0;
-            if (childCount > 3) continue;
-          }
-
-          const ariaLabel = pickAttr(el, 'aria-label');
-          const placeholder = t === 'input' || t === 'textarea' ? pickAttr(el, 'placeholder') : '';
-          const nameAttr = pickAttr(el, 'name');
-          const idAttr = pickAttr(el, 'id');
-          const href = t === 'a' ? pickAttr(el, 'href') : '';
-          const typeAttr = t === 'input' ? pickAttr(el, 'type') : '';
+          if (k === 'text' && (!text || text.length > 100)) continue;
 
           elements.push({
             kind: k,
             tag: t,
             role: role(el),
             text,
-            ariaLabel,
-            placeholder,
-            nameAttr,
-            idAttr,
-            href,
-            typeAttr,
+            ariaLabel: pickAttr(el, 'aria-label'),
+            placeholder: (t === 'input' || t === 'textarea') ? pickAttr(el, 'placeholder') : '',
+            nameAttr: pickAttr(el, 'name'),
+            idAttr: pickAttr(el, 'id'),
+            href: t === 'a' ? pickAttr(el, 'href') : '',
+            typeAttr: t === 'input' ? pickAttr(el, 'type') : '',
+            ariaExpanded: pickAttr(el, 'aria-expanded'),
+            ariaChecked: pickAttr(el, 'aria-checked'),
+            value: (el as any).value || '',
             rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           });
         } catch { }
@@ -225,15 +199,15 @@ async function collectUiGroundingSnapshot(sessionId: string) {
       const byPos = (a: any, b: any) => (a.rect.y === b.rect.y ? a.rect.x - b.rect.x : a.rect.y - b.rect.y);
       elements.sort(byPos);
 
-      const viewport = {
-        w: window.innerWidth || 0,
-        h: window.innerHeight || 0,
-        scrollX: window.scrollX || 0,
-        scrollY: window.scrollY || 0,
-        dpr: window.devicePixelRatio || 1,
+      return {
+        viewport: {
+          w: window.innerWidth,
+          h: window.innerHeight,
+          scrollX: window.scrollX,
+          scrollY: window.scrollY
+        },
+        elements: elements.slice(0, 500)
       };
-
-      return { viewport, elements: elements.slice(0, 400) };
     });
 
     const els = Array.isArray(raw?.elements) ? raw.elements : [];
