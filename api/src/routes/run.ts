@@ -2487,8 +2487,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                                   ? 'https://www.linkedin.com'
                                   : '');
               if (desiredUrl) {
-                plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
-                planName = 'browser_open';
+                const candidateSig = `browser_open:${JSON.stringify({ url: desiredUrl })}`;
+                if (!executedToolSigs.has(candidateSig) && lastExecutedToolSig !== candidateSig) {
+                  plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
+                  planName = 'browser_open';
+                }
               } else if (openKeyword) {
                 const openTarget = extractOpenTargetText(s);
                 if (openTarget) {
