@@ -1,6 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import path from 'path';
-import fs from 'fs';
 
 // Helper to get LLM function lazily to avoid circular dependency
 const getLLM = () => {
