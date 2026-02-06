@@ -6,6 +6,7 @@ import path from 'path';
 import { glob } from 'glob';
 import { ToolDefinition } from '../tools/types';
 import { redactSecretsFromString } from '../utils/redaction';
+import { normalizeUrlForGoto } from '../utils/url';
 
 // Rate Limiting Logic (Ported)
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -97,22 +98,6 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     let effectiveName = name;
     let effectiveInput = { ...input };
 
-    const normalizeUrl = (raw: any) => {
-        let s = String(raw || '').trim();
-        while (s.length >= 2) {
-            const first = s[0];
-            const last = s[s.length - 1];
-            const wrap = (c: string) => c === '`' || c === '"' || c === "'" || c === '“' || c === '”';
-            if (wrap(first) && wrap(last)) s = s.slice(1, -1).trim();
-            else break;
-        }
-        s = s.replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
-        if (!s) return '';
-        if (/^https?:\/\//i.test(s)) return s;
-        if (/^\/\//.test(s)) return `https:${s}`;
-        if (/^(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/|$)/i.test(s)) return `https://${s}`;
-        return s;
-    };
 
     // --- Aliasing & Compatibility Layer ---
     const contextSessionId = context?.sessionId;
@@ -143,7 +128,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     if (name === 'browser_open') {
         effectiveName = 'browser_run';
-        const url = normalizeUrl(effectiveInput.url || effectiveInput.input || '');
+        const url = normalizeUrlForGoto(effectiveInput.url || effectiveInput.input || '');
         if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
         if (url) {
             effectiveInput.actions.unshift({ type: 'goto', url });

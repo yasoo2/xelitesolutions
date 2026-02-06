@@ -2136,27 +2136,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (isSimpleBrowserOpenRequest) {
           const s = initialUserTextForOpen;
           const normalized = normalizeUrlForGoto(s);
-          const hasDirectUrl =
-            /https?:\/\/[^\s"'<>]+/i.test(s) ||
-            /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
 
           if (normalized && normalized !== s && /^https?:\/\//i.test(normalized)) {
-            // It resolved to a smart label or normalized URL
+            // High confidence resolution using God Mode labels
             simpleBrowserOpenUrl = normalized;
             const host = urlToHost(normalized);
-            simpleBrowserOpenLabel = host ? (host.includes('github') ? 'GitHub' : host.includes('google') ? 'Google' : host.includes('openai') ? 'OpenAI' : host.includes('yahoo') ? 'Yahoo' : 'الموقع') : 'الموقع';
+            simpleBrowserOpenLabel = host ? (host.includes('github') ? 'GitHub' : host.includes('google') ? 'Google' : host.includes('openai') ? 'OpenAI' : host.includes('yahoo') ? 'Yahoo' : host.includes('youtube') ? 'YouTube' : 'الموقع') : 'الموقع';
           } else {
-            // Not a direct label, try extraction
+            // Try standard URL extraction
             const directUrl =
               s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
               (() => {
                 const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
                 const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
-                if (!candidate) return '';
                 const isLocal =
                   /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
                   /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
                   /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+                if (!candidate) return '';
                 return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
               })();
 
@@ -2429,7 +2426,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword || (testKeyword && hasUrl));
             if (openKeyword && githubKeyword && analysisKeyword) wantsBrowser = false;
             if (openKeyword && isFileOp) wantsBrowser = false;
-            browserIntentThisTurn = wantsBrowser;
+            browserIntentThisTurn = wantsBrowser || isSimpleBrowserOpenRequest;
 
             const looksLikeInPageBrowserAction =
               !hasUrl &&
