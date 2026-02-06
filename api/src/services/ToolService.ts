@@ -126,9 +126,27 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         console.warn(`[ToolService] ⚠️ SECURITY WARNING: Tool '${name}' executed without Workspace Context! Defaults to global/shared.`);
     }
 
+    const deriveBrowserSessionIdFromUrl = (rawUrl: any) => {
+        const urlStr = String(rawUrl ?? '').trim();
+        const base = (contextUserId || String(contextSessionId || 's')).replace(/[^a-z0-9_-]/gi, '_').slice(0, 32) || 's';
+        let hostKey = 'site';
+        if (urlStr) {
+            try {
+                const u = new URL(/^[a-z]+:\/\//i.test(urlStr) ? urlStr : `https://${urlStr.replace(/^\/\//, '')}`);
+                hostKey = String(u.hostname || 'site')
+                    .toLowerCase()
+                    .replace(/^www\./i, '')
+                    .replace(/[^a-z0-9_-]/gi, '_')
+                    .slice(0, 40) || 'site';
+            } catch { }
+        }
+        return `browser:${base}:${hostKey}`;
+    };
+
     if (name === 'browser_open') {
         effectiveName = 'browser_run';
         const url = normalizeUrlForGoto(effectiveInput.url || effectiveInput.input || '');
+        if (!effectiveInput.sessionId) effectiveInput.sessionId = deriveBrowserSessionIdFromUrl(url || effectiveInput.url || effectiveInput.input);
         if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
         if (url) {
             effectiveInput.actions.unshift({ type: 'goto', url });
@@ -153,6 +171,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     if (name === 'web_search') {
         effectiveName = 'browser_run';
         const query = effectiveInput.query || effectiveInput.q || effectiveInput.input || '';
+        if (!effectiveInput.sessionId) effectiveInput.sessionId = deriveBrowserSessionIdFromUrl('https://www.google.com');
         if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
         if (query) {
             effectiveInput.actions.unshift({ type: 'goto', url: `https://www.google.com/search?q=${encodeURIComponent(query)}` });
@@ -249,7 +268,8 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     // Universal Session Injection
     if ((effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') && !effectiveInput.sessionId && contextSessionId) {
-        effectiveInput.sessionId = contextSessionId;
+        const sid = String(contextSessionId || '').trim();
+        if (/^browser:/i.test(sid)) effectiveInput.sessionId = sid;
     }
 
     // [NEW] Deep Memory Handlers
