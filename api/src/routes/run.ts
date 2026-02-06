@@ -3616,7 +3616,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
             const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
             if (sidNext && !pendingPlan) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
-            if (kind === 'agent' && browserIntentThisTurn) endAfterBrowserState = true;
+            if (browserIntentThisTurn && (kind === 'agent' || isSimpleBrowserOpenRequest)) endAfterBrowserState = true;
           }
           // Auto post-scaffold steps: install and build
           if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
