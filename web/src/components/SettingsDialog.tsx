@@ -28,32 +28,32 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose, theme,
     return (
         <div className="dialog-overlay" onClick={onClose}>
             <div className="dialog-box settings-dialog" onClick={(e) => e.stopPropagation()}>
-                <h3>{t('settings', 'Settings')}</h3>
+                <h3>{t('settings', 'خيارات النظام')}</h3>
 
                 <div className="settings-section">
-                    <h4>{t('appearance', 'Appearance')}</h4>
+                    <h4>{t('appearance', 'المظهر العام')}</h4>
                     <div className="theme-toggles">
                         <button
                             className={`theme-btn ${theme === 'light' ? 'active' : ''}`}
                             onClick={() => setTheme('light')}
                         >
-                            <Sun size={20} />
-                            <span>{t('lightMode', 'Light')}</span>
+                            <Sun size={24} />
+                            <span>{t('lightMode', 'الوضع النهاري')}</span>
                             {theme === 'light' && <Check size={16} className="check" />}
                         </button>
                         <button
                             className={`theme-btn ${theme === 'dark' ? 'active' : ''}`}
                             onClick={() => setTheme('dark')}
                         >
-                            <Moon size={20} />
-                            <span>{t('darkMode', 'Dark')}</span>
+                            <Moon size={24} />
+                            <span>{t('darkMode', 'الوضع الليلي')}</span>
                             {theme === 'dark' && <Check size={16} className="check" />}
                         </button>
                     </div>
                 </div>
 
                 <div className="settings-section">
-                    <h4>{t('language', 'Language')}</h4>
+                    <h4>{t('language', 'لغة الواجهة')}</h4>
                     <div className="lang-grid">
                         {LANGUAGES.map(l => (
                             <button
@@ -62,14 +62,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose, theme,
                                 onClick={() => setLang(l.code)}
                             >
                                 <span className="lang-name">{l.label}</span>
-                                {lang === l.code && <Check size={14} />}
+                                {lang === l.code && <Check size={14} className="check-icon" />}
                             </button>
                         ))}
                     </div>
                 </div>
 
                 <div className="dialog-actions">
-                    <button onClick={onClose} className="btn btn-primary">{t('done', 'Done')}</button>
+                    <button onClick={onClose} className="btn btn-primary">{t('done', 'تم الحفظ')}</button>
                 </div>
             </div>
         </div>

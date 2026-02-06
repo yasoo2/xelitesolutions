@@ -212,41 +212,104 @@
 .joe-header-right {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 16px;
     flex-shrink: 0;
 }
 
-.joe-header-btn {
-    width: 38px;
-    height: 38px;
+.joe-user-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    border: 1px solid rgba(240, 193, 75, 0.1);
+    transition: all 0.2s ease;
+}
+
+.joe-user-profile:hover {
+    background: rgba(240, 193, 75, 0.05);
+    border-color: rgba(240, 193, 75, 0.2);
+}
+
+.joe-user-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+}
+
+.joe-welcome-text {
+    font-size: 10px;
+    color: var(--joe-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+}
+
+.joe-user-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--joe-text-primary);
+    line-height: 1.2;
+    text-shadow: 0 0 10px rgba(240, 193, 75, 0.3);
+}
+
+.joe-avatar,
+.joe-avatar-placeholder {
+    width: 36px;
+    height: 36px;
     border-radius: 10px;
+    border: 2px solid var(--joe-gold-primary);
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 0 10px rgba(240, 193, 75, 0.2);
+}
+
+.joe-avatar-placeholder {
+    background: linear-gradient(135deg, var(--joe-gold-primary), var(--joe-gold-dark));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--joe-bg-primary);
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.joe-header-divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(240, 193, 75, 0.15);
+}
+
+.joe-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.joe-header-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
     border: 1px solid var(--joe-border);
-    background: var(--joe-bg-panel);
+    background: rgba(13, 17, 23, 0.6);
     color: var(--joe-text-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.25s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     flex-shrink: 0;
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(8px);
 }
 
 .joe-header-btn:hover {
     background: var(--joe-bg-hover);
     color: var(--joe-gold-primary);
     border-color: var(--joe-gold-primary);
-    box-shadow: var(--joe-border-glow);
-}
-
-.joe-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    border: 2px solid var(--joe-gold-primary);
-    object-fit: cover;
-    flex-shrink: 0;
-    box-shadow: var(--joe-shadow-gold);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(240, 193, 75, 0.2);
 }
 
 /* ========== Main Content Area ========== */
@@ -1225,3 +1288,132 @@
 }
 
 /* ========== End of Layout Styles ========== */
+/* ========== Settings Dialog (Premium) ========== */
+.settings-dialog {
+    background: rgba(10, 14, 20, 0.95) !important;
+    border: 1px solid var(--joe-gold-primary) !important;
+    backdrop-filter: blur(25px) !important;
+    box-shadow: 0 0 50px rgba(240, 193, 75, 0.15), 0 20px 60px rgba(0, 0, 0, 0.6) !important;
+    max-width: 480px !important;
+    padding: 32px !important;
+    border-radius: 20px !important;
+    margin-top: 0 !important;
+}
+
+.settings-dialog h3 {
+    text-align: right;
+    font-size: 22px;
+    margin-bottom: 24px;
+    color: var(--joe-gold-primary);
+    border-bottom: 1px solid rgba(240, 193, 75, 0.2);
+    padding-bottom: 12px;
+}
+
+.settings-section {
+    margin-bottom: 24px;
+    text-align: right;
+}
+
+.settings-section h4 {
+    margin-bottom: 12px;
+    color: var(--joe-text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.theme-toggles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.theme-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: var(--joe-text-secondary);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.theme-btn.active {
+    background: rgba(240, 193, 75, 0.08);
+    border-color: var(--joe-gold-primary);
+    color: var(--joe-gold-primary);
+    box-shadow: 0 0 15px rgba(240, 193, 75, 0.1);
+}
+
+.theme-btn:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--joe-text-primary);
+}
+
+.theme-btn .check {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    color: var(--joe-gold-primary);
+}
+
+.lang-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.lang-option-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: var(--joe-text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.lang-option-btn.active {
+    background: rgba(240, 193, 75, 0.08);
+    border-color: var(--joe-gold-primary);
+    color: var(--joe-gold-primary);
+}
+
+.lang-option-btn:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--joe-text-primary);
+}
+
+.lang-option-btn .check-icon {
+    color: var(--joe-gold-primary);
+}
+
+.dialog-actions .btn-primary {
+    width: 100%;
+    margin-top: 12px;
+    background: linear-gradient(135deg, var(--joe-gold-primary), var(--joe-gold-dark));
+    color: var(--joe-bg-primary);
+    border: none;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 15px rgba(240, 193, 75, 0.3);
+}
+
+.dialog-actions .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(240, 193, 75, 0.4);
+}

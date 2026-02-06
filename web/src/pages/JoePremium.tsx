@@ -260,11 +260,9 @@ export default function JoePremium() {
         }
     }, []);
 
-    // Theme toggle
-    const handleThemeToggle = useCallback(() => {
-        const newTheme = theme === 'dark' ? 'light' : 'dark';
-        setTheme(newTheme);
-        document.documentElement.setAttribute('data-theme', newTheme);
+    // Theme synchronization
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
     }, [theme]);
 
     const handleLangChange = useCallback((newLang: string) => {
@@ -275,10 +273,24 @@ export default function JoePremium() {
     const userInfo = (() => {
         try {
             const stored = localStorage.getItem('user');
-            if (stored) return JSON.parse(stored);
+            if (stored) {
+                const u = JSON.parse(stored);
+                const fullName = u.name || u.email || 'User';
+                // Extract first name for a more personal touch
+                const firstName = fullName.split(' ')[0];
+                return {
+                    name: firstName,
+                    avatar: u.picture || u.avatar || ''
+                };
+            }
         } catch { }
         return { name: 'User', avatar: '' };
     })();
+
+    // Theme toggle (triggers sync effect)
+    const toggleTheme = useCallback(() => {
+        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    }, []);
 
     // Transform sessions for SessionsBar
     const sessionsList = agentSessions.map(s => ({
@@ -291,8 +303,8 @@ export default function JoePremium() {
     return (
         <JoeIDELayout
             // User
-            userAvatar={userInfo.avatar || userInfo.picture}
-            userName={userInfo.name || userInfo.email}
+            userAvatar={userInfo.avatar}
+            userName={userInfo.name}
 
             // Chat
             messages={messages}
@@ -316,7 +328,7 @@ export default function JoePremium() {
 
             // Theme
             theme={theme}
-            onThemeToggle={handleThemeToggle}
+            onThemeToggle={toggleTheme}
             onSettingsClick={() => setIsSettingsOpen(true)}
 
             // Connection

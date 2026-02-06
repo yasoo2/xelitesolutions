@@ -50,29 +50,32 @@ export default function JoeHeader({
 
             {/* Right: Settings & Profile */}
             <div className="joe-header-right">
-                {onThemeToggle && (
-                    <button className="joe-header-btn" onClick={onThemeToggle} title="Toggle Theme">
-                        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                    </button>
-                )}
-                <button className="joe-header-btn" onClick={onSettingsClick} title="Settings">
-                    <Settings size={18} />
-                </button>
-                {userAvatar ? (
-                    <img src={userAvatar} alt={userName || 'User'} className="joe-avatar" />
-                ) : (
-                    <div className="joe-avatar" style={{
-                        background: 'linear-gradient(135deg, var(--joe-gold-primary), var(--joe-gold-dark))',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--joe-bg-primary)',
-                        fontWeight: 600,
-                        fontSize: 14
-                    }}>
-                        {userName?.charAt(0)?.toUpperCase() || 'U'}
+                <div className="joe-user-profile">
+                    <div className="joe-user-info hide-mobile">
+                        <span className="joe-welcome-text">أهلاً بك،</span>
+                        <span className="joe-user-name">{userName || (theme === 'dark' ? 'مستخدم' : 'User')}</span>
                     </div>
-                )}
+                    {userAvatar ? (
+                        <img src={userAvatar} alt={userName || 'User'} className="joe-avatar" />
+                    ) : (
+                        <div className="joe-avatar-placeholder">
+                            {userName?.charAt(0)?.toUpperCase() || 'U'}
+                        </div>
+                    )}
+                </div>
+
+                <div className="joe-header-divider"></div>
+
+                <div className="joe-header-actions">
+                    {onThemeToggle && (
+                        <button className="joe-header-btn" onClick={onThemeToggle} title="تبديل المظهر">
+                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                        </button>
+                    )}
+                    <button className="joe-header-btn" onClick={onSettingsClick} title="الإعدادات">
+                        <Settings size={18} />
+                    </button>
+                </div>
             </div>
         </header>
     );
