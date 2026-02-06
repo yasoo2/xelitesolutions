@@ -5,6 +5,7 @@ import { broadcastBrowserEvent } from './wsHub';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
 import { AdvancedInteractionSystem } from './interactions';
+import { normalizeUrlForGoto } from '../utils/url';
 
 type Action =
   | { type: 'goto'; url: string; optional?: boolean }
@@ -37,78 +38,6 @@ function isSameSiteAllowed(allowedOrigin: string | null, nextUrl: string) {
   }
 }
 
-function normalizeUrlForGoto(raw: any, baseUrl?: string) {
-  let s = String(raw ?? '').trim();
-  s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
-  if (!s) return s;
-  const fixKnownHosts = (u: string) => {
-    const input = String(u || '').trim();
-    if (!input) return input;
-    try {
-      const parsed = new URL(input);
-      const host = String(parsed.hostname || '').trim().toLowerCase();
-      const hadWww = /^www\./i.test(host);
-      const hostNoWww = host.replace(/^www\./i, '');
-      const isXeliteLike =
-        (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
-        /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
-      if (isXeliteLike) {
-        const tld = /\.com$/i.test(hostNoWww) ? 'com' : 'co';
-        parsed.hostname = `${hadWww ? 'www.' : ''}xelitesolutions.${tld}`;
-        return parsed.toString();
-      }
-      return input;
-    } catch {
-      return input;
-    }
-  };
-  if (/^https?:\/\//i.test(s)) return fixKnownHosts(s);
-  if (/^\/\//.test(s)) return `https:${s}`;
-
-  // Smart label resolution
-  const labels: Record<string, string> = {
-    'facebook': 'https://facebook.com',
-    'فيسبوك': 'https://facebook.com',
-    'youtube': 'https://youtube.com',
-    'يوتيوب': 'https://youtube.com',
-    'instagram': 'https://instagram.com',
-    'انستجرام': 'https://instagram.com',
-    'twitter': 'https://x.com',
-    'تويتر': 'https://x.com',
-    'amazon': 'https://amazon.com',
-    'امازون': 'https://amazon.com',
-    'أمازون': 'https://amazon.com',
-    'github': 'https://github.com',
-    'جيت هاب': 'https://github.com',
-    'google': 'https://google.com',
-    'جوجل': 'https://google.com',
-    'openai': 'https://openai.com',
-    'chatgpt': 'https://chat.openai.com',
-  };
-  const label = s.toLowerCase().replace(/^(?:افتح\s+|open\s+|اذهب\s+الى\s+|visit\s+)/i, '').trim();
-  if (labels[label]) return labels[label];
-
-  if (/^\//.test(s)) {
-    try {
-      if (baseUrl) return fixKnownHosts(new URL(s, baseUrl).toString());
-    } catch { }
-    return s;
-  }
-  const candidate = s.replace(/^\/\//, '');
-  const isLocal =
-    /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-    /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-    /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-  const looksDomain =
-    /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
-  if (isLocal) return `http://${candidate}`;
-  if (looksDomain) return fixKnownHosts(`https://${candidate}`);
-  if (/^xelite/i.test(candidate) && /solution/i.test(candidate)) {
-    if (!/\./.test(candidate)) return 'https://xelitesolutions.co';
-    return fixKnownHosts(`https://${candidate}`);
-  }
-  return s;
-}
 
 function locatorForAction(page: Page, a: any): Locator | null {
   if (a?.selector) return page.locator(String(a.selector));

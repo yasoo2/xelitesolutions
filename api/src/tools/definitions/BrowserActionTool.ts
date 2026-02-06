@@ -2,6 +2,7 @@
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { getBrowserSession, touchSession } from '../../browser/manager';
+import { normalizeUrlForGoto } from '../../utils/url';
 
 export class BrowserActionTool extends BaseTool {
     name = 'browser_action';
@@ -41,15 +42,7 @@ export class BrowserActionTool extends BaseTool {
 
             if (action === 'goto') {
                 if (!input.url) throw new Error('url required for goto');
-                let url = String(input.url || '').trim();
-                while (url.length >= 2) {
-                    const first = url[0];
-                    const last = url[url.length - 1];
-                    const wrap = (c: string) => c === '`' || c === '"' || c === "'" || c === '“' || c === '”';
-                    if (wrap(first) && wrap(last)) url = url.slice(1, -1).trim();
-                    else break;
-                }
-                url = url.replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
+                const url = normalizeUrlForGoto(input.url, page.url());
                 await page.goto(url, { waitUntil: 'domcontentloaded' });
                 result = 'Navigated to ' + url;
             }

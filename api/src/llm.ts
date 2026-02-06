@@ -128,13 +128,16 @@ function selectToolDefsForProvider(
   const routingText = routingTextRaw.toLowerCase();
   const isArabic = /[\u0600-\u06FF]/.test(routingTextRaw);
 
+  // Smart URL/Label Detection: Relaxed to catch simple site names like 'github' or 'google'
   const hasUrl =
     /https?:\/\/\S+/i.test(routingTextRaw) ||
-    /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(routingTextRaw);
+    /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(routingTextRaw) ||
+    /\b(github|google|openai|facebook|youtube|instagram|twitter|amazon|chatgpt|linkedin|whatsapp|gmail|xelite|xelitesolutions)\b/i.test(routingTextRaw);
+
   const wantsBrowser =
     hasUrl ||
-    /\b(browser|browse|web|website|open)\b/i.test(routingTextRaw) ||
-    /(متصفح|موقع|رابط|داخل\s+المتصفح|افتح|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|اختبر|شيك|جرّب|تأكد)/i.test(
+    /\b(browser|browse|web|website|open|visit|goto|nav|navigate)\b/i.test(routingTextRaw) ||
+    /(متصفح|تصفح|موقع|رابط|داخل\s+المتصفح|افتح|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|اذهب\s+الى|اذهب\s+إلى|انتقل\s+إلى|انتقل\s+الى|افتحلي|افتح\s+لي|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|اختبر|شيك|جرّب|تأكد)/i.test(
       routingTextRaw,
     );
   const wantsSearch =
