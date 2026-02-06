@@ -130,27 +130,6 @@ router.get('/', authenticate as any, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/prove', async (req: Request, res: Response) => {
-  console.log('[GOD MODE] Direct Proof Protocol Initiated');
-  try {
-    const defaultInput = {
-      name: 'god-mode-project',
-      type: 'saas',
-      features: ['react', 'tailwind'],
-      baseDir: '.',
-      skipDev: true,
-      autoFix: true,
-      aestheticMode: 'glass'
-    };
-    const input = { ...defaultInput, ...req.body };
-    console.log('[GOD MODE] Building project:', input.name);
-
-    const result = await executeTool('website_full_pipeline', input);
-    return res.json(result);
-  } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e.message });
-  }
-});
 
 router.post('/stop', authenticate as any, async (req: Request, res: Response) => {
   try {
