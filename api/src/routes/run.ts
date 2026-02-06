@@ -18,8 +18,8 @@ import { MemoryItem } from '../models/memoryItem';
 import { rewriteInlineLoginCredentialsToSecrets } from '../browser/secrets';
 import { stopSession } from '../browser/manager';
 import { canAccessBrowserSession } from '../browser/wsHub';
-import { setSessionSecretEncrypted } from '../services/secrets';
 import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
+import { normalizeUrlForGoto } from '../utils/url';
 
 const router = Router();
 
@@ -2121,7 +2121,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
           const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
           const hasSiteKeyword =
-            /(github|جيتهاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(
+            /(github|جيتهاب|جيت\s+هاب|كتهاب|كيتهاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
               s,
             ) ||
             /(website|site|page|موقع|صفحة|صفحه)/i.test(s) ||
@@ -2135,44 +2135,42 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         })();
         if (isSimpleBrowserOpenRequest) {
           const s = initialUserTextForOpen;
-          const directUrl =
-            s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
-            (() => {
-              const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
-              const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
-              if (!candidate) return '';
-              const isLocal =
-                /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-                /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-                /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-              return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
-            })();
-          if (/(github|جيتهاب|كتهاب|كيتهاب)/i.test(s)) simpleBrowserOpenLabel = 'GitHub';
-          else if (/(yahoo|ياهو)/i.test(s)) simpleBrowserOpenLabel = 'Yahoo';
-          else if (/(youtube|يوتيوب)/i.test(s)) simpleBrowserOpenLabel = 'YouTube';
-          else if (/(google|جوجل)/i.test(s)) simpleBrowserOpenLabel = 'Google';
-          else if (/(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s)) simpleBrowserOpenLabel = 'OpenAI';
-          else {
-            const m = s.match(/https?:\/\/[^\s"'<>]+/i);
-            simpleBrowserOpenLabel = m?.[0] || 'الموقع';
-          }
-          const openTarget = extractOpenTargetText(s);
-          if (!directUrl.trim() && openTarget && simpleBrowserOpenLabel === 'الموقع') {
-            const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
-            pendingPlan = { name: 'web_search', input: { query: q } } as any;
-            pendingBrowserOpenFromSearch = { target: openTarget };
+          const normalized = normalizeUrlForGoto(s);
+          const hasDirectUrl =
+            /https?:\/\/[^\s"'<>]+/i.test(s) ||
+            /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
+
+          if (normalized && normalized !== s && /^https?:\/\//i.test(normalized)) {
+            // It resolved to a smart label or normalized URL
+            simpleBrowserOpenUrl = normalized;
+            const host = urlToHost(normalized);
+            simpleBrowserOpenLabel = host ? (host.includes('github') ? 'GitHub' : host.includes('google') ? 'Google' : host.includes('openai') ? 'OpenAI' : host.includes('yahoo') ? 'Yahoo' : 'الموقع') : 'الموقع';
           } else {
-            simpleBrowserOpenUrl =
-              directUrl.trim() ||
-              (simpleBrowserOpenLabel === 'GitHub'
-                ? 'https://github.com'
-                : simpleBrowserOpenLabel === 'Yahoo'
-                  ? 'https://www.yahoo.com'
-                  : simpleBrowserOpenLabel === 'YouTube'
-                    ? 'https://www.youtube.com'
-                    : simpleBrowserOpenLabel === 'OpenAI'
-                      ? 'https://platform.openai.com/'
-                      : 'https://www.google.com');
+            // Not a direct label, try extraction
+            const directUrl =
+              s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
+              (() => {
+                const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+                const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+                if (!candidate) return '';
+                const isLocal =
+                  /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+                  /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+                  /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+                return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+              })();
+
+            if (directUrl) {
+              simpleBrowserOpenUrl = directUrl;
+              simpleBrowserOpenLabel = 'الموقع';
+            } else {
+              const openTarget = extractOpenTargetText(s);
+              if (openTarget) {
+                const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
+                pendingPlan = { name: 'web_search', input: { query: q } } as any;
+                pendingBrowserOpenFromSearch = { target: openTarget };
+              }
+            }
           }
         }
 

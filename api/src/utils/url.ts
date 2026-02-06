@@ -51,19 +51,30 @@ export function normalizeUrlForGoto(raw: any, baseUrl?: string) {
         'أمازون': 'https://amazon.com',
         'github': 'https://github.com',
         'جيت هاب': 'https://github.com',
+        'جيتهاب': 'https://github.com',
+        'جيت-هاب': 'https://github.com',
         'google': 'https://google.com',
         'جوجل': 'https://google.com',
+        'قوقل': 'https://google.com',
         'openai': 'https://openai.com',
         'chatgpt': 'https://chat.openai.com',
         'linkedin': 'https://linkedin.com',
         'لينكد ان': 'https://linkedin.com',
+        'لينكدإن': 'https://linkedin.com',
         'whatsapp': 'https://web.whatsapp.com',
         'واتساب': 'https://web.whatsapp.com',
+        'واتس اب': 'https://web.whatsapp.com',
         'gmail': 'https://mail.google.com',
         'جيميل': 'https://mail.google.com',
+        'yahoo': 'https://yahoo.com',
+        'ياهو': 'https://yahoo.com',
     };
 
-    const label = s.toLowerCase().replace(/^(?:افتح\s+|open\s+|اذهب\s+الى\s+|visit\s+|انتقل\s+إلى\s+|انتقل\s+الى\s+)/i, '').trim();
+    const label = s.toLowerCase()
+        .replace(/^(?:افتح\s+|open\s+|اذهب\s+الى\s+|visit\s+|انتقل\s+إلى\s+|انتقل\s+الى\s+|شغل\s+|شغل\s+موقع\s+|ادخل\s+|اذهب\s+)/i, '')
+        .trim()
+        .replace(/\s*(?:على\s+المتصفح|بالـ?متصفح|في\s+المتصفح|المتصفح|صفحة|صفحه|موقع)\s*$/i, '')
+        .trim();
     if (labels[label]) return labels[label];
 
     // Handle relative paths
