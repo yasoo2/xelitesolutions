@@ -2095,28 +2095,47 @@ export default function CommandComposer({
       return `https://${candidate}`;
     };
 
+    const normalizeForIntent = (input: string) => {
+      let s = String(input || '');
+      try {
+        s = s.normalize('NFKC');
+      } catch { }
+      s = s
+        .toLowerCase()
+        .replace(/[\u064B-\u065F\u0670]/g, '')
+        .replace(/[\u0640]/g, '')
+        .replace(/[أإآٱ]/g, 'ا')
+        .replace(/ؤ/g, 'و')
+        .replace(/ئ/g, 'ي')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه');
+      s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ').replace(/\s+/g, ' ').trim();
+      return s;
+    };
+
     const needsBrowserForText = (raw: string) => {
       const s = String(raw || '').trim();
+      const sNorm = normalizeForIntent(s);
       if (!s) return false;
 
       const hasUrl = Boolean(extractLikelyUrl(s));
       if (hasUrl) return true;
 
-      const explicitBrowser = /(\b(browser|web|preview)\b|متصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
+      const explicitBrowser = /(\b(browser|web|preview)\b|متصفح|داخل المتصفح|معاينه|معاينة|المعاينه|المعاينة)/i.test(sNorm);
       if (explicitBrowser) return true;
 
-      const openKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
-      const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(s);
-      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+      const openKeyword = /(افتح|افتحي|افتحوا|افتحلي|افتح\s+لي|اذهب|زيارة|روح|زور|وديني|ودني|ودنا|وريني|اعرض|عرض|شوف|طلعني|طالع|open|go to|visit|browse|show)/i.test(sNorm);
+      const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|جت\s*هاب|غيت\s*هاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(sNorm);
+      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
 
       if (openKeyword && githubKeyword && analysisKeyword) return false;
 
-      const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
+      const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|امر|أمر|ترمينال)/i.test(sNorm);
       if (openKeyword && isFileOp) return false;
 
       if (openKeyword) return true;
 
-      const knownSites = /(youtube|يوتيوب|google|جوجل|facebook|فيسبوك|x\.com|twitter|تويتر|instagram|انستغرام)/i.test(s);
+      const knownSites = /(youtube|يوتيوب|google|جوجل|قوقل|facebook|فيسبوك|x\.com|twitter|تويتر|instagram|انستغرام|openai|اوبن\s*اي|yahoo|ياهو)/i.test(sNorm);
       if (knownSites) return true;
 
       return false;
@@ -2137,12 +2156,13 @@ export default function CommandComposer({
       let effectiveBrowserSessionId = browserSessionId;
       // Allow auto-open in chat mode too
       if ((sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
+        const inputNorm = normalizeForIntent(inputText);
         const urlMatch = inputText.match(/https?:\/\/[^\s"'<>]+/i);
         const directUrl = urlMatch?.[0];
         const extractedUrl = extractLikelyUrl(inputText);
-        const wantsYoutube = /youtube|يوتيوب/i.test(inputText);
-        const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(inputText);
-        const wantsPreview = /(preview|معاينة|المعاينة|عرض الموقع|show site)/i.test(inputText);
+        const wantsYoutube = /(youtube|يوتيوب)/i.test(inputNorm);
+        const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|جت\s*هاب|غيت\s*هاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(inputNorm);
+        const wantsPreview = /(preview|معاينه|معاينة|المعاينه|المعاينة|عرض\s+الموقع|show\s+site)/i.test(inputNorm);
         const normalizePreviewUrl = (u: string) => {
           try {
             const parsed = new URL(u);

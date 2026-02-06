@@ -127,34 +127,53 @@ function selectToolDefsForProvider(
     .join('\n');
   const routingText = routingTextRaw.toLowerCase();
   const isArabic = /[\u0600-\u06FF]/.test(routingTextRaw);
+  const normalizeRouting = (input: string) => {
+    let s = String(input || '');
+    try {
+      s = s.normalize('NFKC');
+    } catch { }
+    s = s
+      .toLowerCase()
+      .replace(/[\u064B-\u065F\u0670]/g, '')
+      .replace(/[\u0640]/g, '')
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/ؤ/g, 'و')
+      .replace(/ئ/g, 'ي')
+      .replace(/ى/g, 'ي')
+      .replace(/ة/g, 'ه');
+    s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ').replace(/\s+/g, ' ').trim();
+    return s;
+  };
+  const routingNorm = normalizeRouting(routingTextRaw);
 
   // Smart URL/Label Detection: Relaxed to catch simple site names like 'github' or 'google'
   const hasUrl =
     /https?:\/\/\S+/i.test(routingTextRaw) ||
     /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(routingTextRaw) ||
-    /\b(github|google|openai|facebook|youtube|instagram|twitter|amazon|chatgpt|linkedin|whatsapp|gmail|xelite|xelitesolutions)\b/i.test(routingTextRaw);
+    /\b(github|google|openai|facebook|youtube|instagram|twitter|amazon|chatgpt|linkedin|whatsapp|gmail|xelite|xelitesolutions)\b/i.test(routingTextRaw) ||
+    /(جيتهاب|جيت\s+هاب|جت\s+هاب|غيت\s+هاب|جوجل|قوقل|يوتيوب|فيسبوك|تويتر|لينكد\s*ان|لينكد\s*ان|واتساب|امازون|أمازون)/i.test(routingNorm);
 
   const wantsBrowser =
     hasUrl ||
     /\b(browser|browse|web|website|open|visit|goto|nav|navigate)\b/i.test(routingTextRaw) ||
     /(متصفح|تصفح|موقع|رابط|داخل\s+المتصفح|افتح|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|اذهب\s+الى|اذهب\s+إلى|انتقل\s+إلى|انتقل\s+الى|افتحلي|افتح\s+لي|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|اختبر|شيك|جرّب|تأكد)/i.test(
-      routingTextRaw,
+      routingNorm,
     );
   const wantsSearch =
     /\b(search|research|find|lookup|web_search|deep_research|knowledge)\b/i.test(routingTextRaw) ||
-    /ابحث|بحث|مصدر|مراجع|معلومات/i.test(routingTextRaw);
+    /ابحث|بحث|مصدر|مراجع|معلومات/i.test(routingNorm);
   const wantsFs =
     /\b(file|folder|directory|path|read|write|edit|tree|glob|grep)\b/i.test(routingTextRaw) ||
-    /ملف|مجلد|مسار|اقرأ|اكتب|عدل|عدّل|ابحث\s+في\s+الكود/i.test(routingTextRaw);
+    /ملف|مجلد|مسار|اقرا|اقرأ|اكتب|عدل|عدّل|ابحث\s+في\s+الكود/i.test(routingNorm);
   const wantsShell =
     /\b(terminal|command|shell|npm|pnpm|yarn|pip|python|node|run)\b/i.test(routingTextRaw) ||
-    /ترمينال|طرفية|أمر|تشغيل/i.test(routingTextRaw);
+    /ترمينال|طرفيه|طرفية|امر|أمر|تشغيل/i.test(routingNorm);
   const wantsQuality =
     /\b(lint|eslint|typecheck|tsc|test|jest|build|ci)\b/i.test(routingTextRaw) ||
-    /اختبار|اختبر|lint|بناء|typecheck|تحقق/i.test(routingTextRaw);
+    /اختبار|اختبر|lint|بناء|typecheck|تحقق/i.test(routingNorm);
   const wantsGit =
     /\b(git|github|commit|pr|pull request|diff|branch)\b/i.test(routingTextRaw) ||
-    /جيت|جيتهاب|فرع|كوميت|طلب\s+دمج/i.test(routingTextRaw);
+    /جيت|جيتهاب|جيت\s+هاب|جت\s+هاب|غيت\s+هاب|فرع|كوميت|طلب\s+دمج/i.test(routingNorm);
   const wantsImage = /\b(image|png|jpg|jpeg|generate image)\b/i.test(routingTextRaw) || /صورة|صور/i.test(routingTextRaw);
 
   let computedLimit = 72;

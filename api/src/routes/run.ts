@@ -766,6 +766,24 @@ function normalizeArabicQuery(input: string) {
     .trim();
 }
 
+function normalizeForIntent(input: string) {
+  let s = String(input || '');
+  try {
+    s = s.normalize('NFKC');
+  } catch { }
+  s = s
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/ـ/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه');
+  s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  return s;
+}
+
 function isProjectRelatedRequest(raw: string): boolean {
   const s = String(raw || '').trim();
   if (!s) return false;
@@ -2105,26 +2123,27 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         let pendingBrowserOpenFromSearch: { target: string } | null = null;
         const isSimpleBrowserOpenRequest = (() => {
           const s = initialUserTextForOpen;
+          const sNorm = normalizeForIntent(s);
           if (!s.trim()) return false;
           const hasUrl =
             /https?:\/\/[^\s"'<>]+/i.test(s) ||
             /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
           const openKeyword =
-            /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
-              s,
+            /(open|start|launch|browse|visit|go to|show|display|ادخل|افتح|افتحلي|افتح\s+لي|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|وريني|اعرض|عرض|شوف|طلعني|طالع|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+              sNorm,
             );
-          const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
+          const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(sNorm);
           const multiStepKeyword =
-            /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
-              s,
+            /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+              sNorm,
             );
-          const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
-          const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+          const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
+          const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
           const hasSiteKeyword =
-            /(github|git\s*hub|جيتهاب|جيت\s+هاب|جيت\s*هاب|كتهاب|كت\s*هاب|كيتهاب|كيت\s*هاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
-              s,
+            /(github|git\s*hub|جيتهاب|جيت\s+هاب|جت\s+هاب|غيت\s+هاب|كتهاب|كت\s*هاب|كيتهاب|كيت\s*هاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
+              sNorm,
             ) ||
-            /(website|site|page|موقع|صفحة|صفحه)/i.test(s) ||
+            /(website|site|page|موقع|صفحة|صفحه)/i.test(sNorm) ||
             /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
           if (!hasUrl && !hasSiteKeyword) return false;
           if (!(openKeyword || browserKeyword || hasUrl)) return false;
@@ -2398,6 +2417,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           if (!wantsLocationEarly) {
             const s = userTextForOverrides;
+            const sNorm = normalizeForIntent(s);
             const extractUrlCandidate = (text: string) => {
               const http = text.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
               if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
@@ -2414,14 +2434,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const hasUrl = Boolean(extractedUrl);
             const openKeyword =
               /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
-                s,
+                sNorm,
               );
-            const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
-            const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
-            const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(s);
-            const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+            const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(sNorm);
+            const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
+            const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|جت\s*هاب|غيت\s*هاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(sNorm);
+            const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
 
-            const testKeyword = /(اختبر|اختبار|شيك|شيّك|تشييك|جرّب|جرب|تاكد|تأكد|تفقد|تفقده|تحقق)/i.test(s);
+            const testKeyword = /(اختبر|اختبار|شيك|شيّك|تشييك|جرّب|جرب|تاكد|تأكد|تفقد|تفقده|تحقق)/i.test(sNorm);
             let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword || (testKeyword && hasUrl));
             if (openKeyword && githubKeyword && analysisKeyword) wantsBrowser = false;
             if (openKeyword && isFileOp) wantsBrowser = false;
@@ -2448,18 +2468,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             if (wantsBrowser && !/^browser_/.test(planName)) {
               const directUrl = extractedUrl;
-              const wantsYahoo = /(yahoo|ياهو)/i.test(s);
-              const wantsYoutube = /youtube|يوتيوب/i.test(s);
-              const wantsGoogle = /google|جوجل/i.test(s);
-              const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(s);
-              const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(s);
-              const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(s);
-              const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(s);
-              const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(s);
-              const wantsPricing = /(price|pricing|سعر|الاسعار|الأسعار|تكلفة|cost)/i.test(s);
+              const wantsYahoo = /(yahoo|ياهو)/i.test(sNorm);
+              const wantsYoutube = /(youtube|يوتيوب)/i.test(sNorm);
+              const wantsGoogle = /(google|جوجل|قوقل)/i.test(sNorm);
+              const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(sNorm);
+              const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(sNorm);
+              const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(sNorm);
+              const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك|فيسبوك)/i.test(sNorm);
+              const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدان|لينكدإن)/i.test(sNorm);
+              const wantsPricing = /(price|pricing|سعر|الاسعار|الأسعار|تكلفة|cost)/i.test(sNorm);
               const wantsBilling =
                 /(balance|billing|credit|credits|usage|payment|invoice|invoices|رصيد|الرصيد|فواتير|الفواتير|استخدام|المدفوعات)/i.test(
-                  s,
+                  sNorm,
                 );
               const openAiUrl = wantsBilling
                 ? 'https://platform.openai.com/account/billing/overview'
@@ -2513,6 +2533,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
 
             if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
+              if (planName === 'browser_open' || planName === 'browser_run') {
+                const sidDirect = String((plan as any)?.input?.sessionId || '').trim();
+                const sid = sidDirect || String(browserSessionId || '').trim();
+                if (sid) {
+                  plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
+                  planName = 'browser_get_state';
+                } else {
+                  const url = String((plan as any)?.input?.url || '').trim();
+                  const derived = url ? browserSessionIdFromUrl(url) : '';
+                  if (derived) {
+                    plan = { name: 'browser_get_state', input: { sessionId: derived } } as any;
+                    planName = 'browser_get_state';
+                  }
+                }
+              }
+              if (planName === 'browser_get_state') {
+                // no-op
+              } else {
               const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
               const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
               const needsKey = !hasAnyKey && !isFreeProvider;
@@ -2533,6 +2571,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 }
               } as any;
               planName = 'echo';
+              }
             } else {
               executedToolSigs.add(sig);
             }
