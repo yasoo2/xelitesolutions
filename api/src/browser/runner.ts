@@ -33,15 +33,29 @@ type Planned = {
 
 const COMPILER_SYSTEM = `
 You are an advanced, visually-aware browser autonomous agent. 
-Your goal is to translate user instructions into a sequence of precise browser actions to achieve the GLOBAL_GOAL.
+Your goal is to achieve the GLOBAL_GOAL by translating user instructions into precise browser actions.
 
-Instructions:
-1. **Analyze Visuals**: Use the provided screenshot and UI_GROUNDING_JSON to understand the page structure, element positions, and visual state (e.g., if a menu is open, if an error is present).
-2. **Multi-Step Reasoning**: If the goal requires multiple interactions (e.g., searching, then clicking a result), plan the necessary actions. You can output up to 80 actions.
-3. **Smart Element Selection**: Prefer selecting elements by ID or unique attributes if available. Use 'text' or 'aria-label' match for icons and buttons. Use coordinates (x, y) as a fallback if no selector is reliable.
-4. **Proactive Navigation**: If the user mentions a site (e.g., "YouTube", "GitHub"), use a 'goto' action to navigate there directly.
-5. **Wait for Success**: Include 'wait' steps after significant actions (like form submissions or navigations) to allow the page to update.
-6. **Error Handling**: If an element isn't found or an error occurs, use 'ui_audit' to re-examine the page or 'screenshot' to see what went wrong.
+Core Principles:
+1. **Universal Login & Form Reasoning**: 
+   - You must detect login, signup, and data entry pages automatically. 
+   - Look for elements like <input type="password">, or labels like "Email", "Password", "Sign In".
+   - If the GLOBAL_GOAL involves login, autonomously identify the fields and the submit button.
+   - Use {{SECRET:JOE_LOGIN_EMAIL}} and {{SECRET:JOE_LOGIN_PASSWORD}} when provided.
+   - DO NOT ask for selectors if they are inferable from the UI_GROUNDING_JSON or screenshot.
+
+2. **Visual Analysis First**: 
+   - Always check the screenshot and UI_GROUNDING_JSON before acting. 
+   - If an element isn't visible, scroll or navigate.
+   - If you see an error message (e.g., "Invalid password"), report it clearly.
+
+3. **Multi-Step Autonomy**: 
+   - Plan the entire flow (e.g., Navigate -> Type -> Click -> Wait -> Assert).
+   - You can output up to 80 actions in one sequence.
+   - Use 'wait' after navigations or button clicks that cause page transitions.
+
+4. **Reliability**: 
+   - Prefer selecting by ID or unique ARIA labels.
+   - Use coordinates (x, y) as a robust fallback for complex canvases or custom widgets.
 
 Available Actions:
 - {"type":"goto","url":"..."}
@@ -53,10 +67,10 @@ Available Actions:
 - {"type":"ui_audit"} - Analyze the DOM for significant changes.
 - {"type":"back"} | {"type":"forward"} | {"type":"reload"}
 - {"type":"screenshot"} - Take a visual snapshot for reasoning.
-- {"type":"hover","selector":"..."} - Useful for triggering dropdowns.
+- {"type":"hover","selector":"..."} - Trigger dropdowns or tooltips.
 
 Output Format:
-You MUST output a valid JSON object: { "actions": [ ... ], "thought": "Brief explanation of your plan based on what you see." }
+Return a valid JSON object: { "actions": [ ... ], "thought": "Detailed reasoning about the current page state and your next steps." }
 `;
 
 function extractJsonLike(text: string) {
@@ -573,10 +587,12 @@ export async function runBrowserInstruction(params: {
   userId: string;
   sessionId: string;
   instructionText: string;
+  mode?: 'browser_test' | 'browser_secure';
 }) {
   const userId = String(params.userId || '').trim();
   const sessionId = String(params.sessionId || '').trim();
   const instructionTextRaw = String(params.instructionText || '').trim();
+  const mode = params.mode || 'browser_test';
 
   if (!userId) throw new Error('userId_required');
   if (!sessionId) throw new Error('sessionId_required');
@@ -603,19 +619,10 @@ export async function runBrowserInstruction(params: {
     }
   } catch { }
 
-  const secretsCheck = await resolveSecretsInText(userId, sessionId, instructionText);
+  const secretsCheck = await resolveSecretsInText(userId, sessionId, instructionText, { mode });
   if (!secretsCheck.ok) {
     const msg = `missing_secrets: ${secretsCheck.missing.join(', ')}`;
-    const ev: BrowserWsEvent = {
-      type: 'final_report',
-      ts: now(),
-      ok: false,
-      summary: msg,
-      steps: [],
-      evidence: [],
-    };
-    broadcastBrowserEvent(sessionId, ev);
-    broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: msg, reason: 'missing_secrets' });
+    // Suppression of redundant events here - we let the tool return the final error
     return { ok: false as const, error: 'missing_secrets', missingSecrets: secretsCheck.missing };
   }
 
@@ -659,6 +666,7 @@ export async function runBrowserInstruction(params: {
           userId,
           sessionId,
           actions: [{ type: 'goto', url }, { type: 'wait', ms: 450 }] as any,
+          emitFinalReport: false, // Prevent duplication
         });
         if (closeAfterRun) {
           try { await stopSession(sessionId); } catch { }
@@ -668,16 +676,7 @@ export async function runBrowserInstruction(params: {
       } catch (e: any) {
         const c = classifyBrowserRuntimeError(e);
         try { await stopSession(sessionId); } catch { }
-        const ev: BrowserWsEvent = {
-          type: 'final_report',
-          ts: now(),
-          ok: false,
-          summary: `${c.code}: ${c.message}`.slice(0, 600),
-          steps: [],
-          evidence: [],
-        };
-        broadcastBrowserEvent(sessionId, ev);
-        broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: ev.summary, reason: String(c.code || 'browser_unavailable') });
+        // Suppress redundant final_report broadcast here
         debugBase.stop_reason = String(c.code || 'browser_unavailable');
         emitDebugSnapshot();
         return { ok: false as const, error: 'browser_unavailable', detail: c, debug: debugBase };
@@ -830,6 +829,7 @@ export async function runBrowserInstruction(params: {
     debugBase.stop_reason = debugBase.stop_reason || (overallOk ? 'executed_multi_step' : 'multi_step_failed');
 
     const summary = overallOk ? 'تم تنفيذ المهمة بنجاح.' : 'فشل تنفيذ بعض الخطوات.';
+    // Single point of broadcast for final report in runner
     broadcastBrowserEvent(sessionId, {
       type: 'final_report',
       ts: now(),
@@ -838,6 +838,7 @@ export async function runBrowserInstruction(params: {
       steps: allSteps,
       evidence: allEvidence,
     });
+
     if (overallOk) {
       broadcastBrowserEvent(sessionId, { type: 'final_success', ts: now(), summary });
     } else {
@@ -1008,6 +1009,7 @@ export async function runBrowserInstruction(params: {
       userId,
       sessionId,
       actions: planned.actions as any,
+      emitFinalReport: false, // runner will broadcast final_report
     });
     if (closeAfterRun) {
       try { await stopSession(sessionId); } catch { }
@@ -1018,37 +1020,6 @@ export async function runBrowserInstruction(params: {
   } catch (e: any) {
     const c = classifyBrowserRuntimeError(e);
     try { await stopSession(sessionId); } catch { }
-    if (c.code === 'browser_closed') {
-      try {
-        const exec2 = await executePlannedActions({
-          userId,
-          sessionId,
-          actions: planned.actions as any,
-        });
-        if (closeAfterRun) {
-          try { await stopSession(sessionId); } catch { }
-        }
-        debugBase.stop_reason = 'browser_closed_retried';
-        emitDebugSnapshot();
-        return { ok: true as const, result: exec2, debug: debugBase };
-      } catch (e2: any) {
-        const c2 = classifyBrowserRuntimeError(e2);
-        try { await stopSession(sessionId); } catch { }
-        const ev2: BrowserWsEvent = {
-          type: 'final_report',
-          ts: now(),
-          ok: false,
-          summary: `${c2.code}: ${c2.message}`.slice(0, 600),
-          steps: [],
-          evidence: [],
-        };
-        broadcastBrowserEvent(sessionId, ev2);
-        broadcastBrowserEvent(sessionId, { type: 'final_failed', ts: now(), summary: ev2.summary, reason: String(c2.code || 'browser_unavailable') });
-        debugBase.stop_reason = String(c2.code || 'browser_unavailable');
-        emitDebugSnapshot();
-        return { ok: false as const, error: 'browser_unavailable', detail: c2, debug: debugBase };
-      }
-    }
     const ev: BrowserWsEvent = {
       type: 'final_report',
       ts: now(),

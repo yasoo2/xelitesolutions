@@ -2,10 +2,27 @@ import { getSessionSecret, getUserSecret } from '../services/secrets';
 
 const SECRET_TOKEN_RE = /\{\{\s*SECRET\s*:\s*([A-Z0-9_]+)\s*\}\}/g;
 
-export async function resolveSecretsInText(userId: string, sessionId: string, text: string) {
+const PUBLIC_TEST_DOMAINS = [
+  'herokuapp.com',
+  'saucedemo.com',
+  'test.com',
+  'example.com',
+  'localhost',
+  '127.0.0.1'
+];
+
+export async function resolveSecretsInText(
+  userId: string,
+  sessionId: string,
+  text: string,
+  options?: { mode?: 'browser_test' | 'browser_secure'; url?: string }
+) {
   const uid = String(userId || '').trim();
   const sid = String(sessionId || '').trim();
   const raw = String(text || '');
+  const mode = options?.mode || 'browser_test';
+  const url = options?.url || '';
+
   if (!uid) return { ok: false as const, text: raw, missing: ['USER_ID_REQUIRED'] };
 
   const keys: string[] = [];
@@ -17,9 +34,21 @@ export async function resolveSecretsInText(userId: string, sessionId: string, te
 
   const unique = Array.from(new Set(keys));
   const stillMissing: string[] = [];
+
+  const isPublicTest = PUBLIC_TEST_DOMAINS.some(d => url.includes(d));
+
   for (const k of unique) {
     const sessionVal = sid ? getSessionSecret(sid, k) : null;
     if (typeof sessionVal === 'string' && sessionVal.trim()) continue;
+
+    // Classification Logic
+    const isUserProvided = k.startsWith('JOE_LOGIN_');
+    const isPublic = isPublicTest || k.startsWith('TEST_');
+
+    if (mode === 'browser_test') {
+      if (isUserProvided || isPublic) continue;
+    }
+
     const v = await getUserSecret(uid, 'internal', k);
     if (!(typeof v === 'string' && v.trim())) stillMissing.push(k);
   }

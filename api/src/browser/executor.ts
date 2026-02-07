@@ -986,6 +986,7 @@ export async function executePlannedActions(params: {
           });
         } catch { }
         setStreamMask(sessionId, []);
+        break; // fail_fast = true
       }
     }
 

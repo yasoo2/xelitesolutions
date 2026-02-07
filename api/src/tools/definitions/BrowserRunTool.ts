@@ -42,6 +42,7 @@ export class BrowserRunTool extends BaseTool {
                 },
             },
             userId: { type: 'string' },
+            mode: { type: 'string', enum: ['browser_test', 'browser_secure'], default: 'browser_test' },
         },
         required: ['sessionId'],
         // anyOf: [{ required: ['actions'] }, { required: ['instructionText'] }],
@@ -161,6 +162,7 @@ export class BrowserRunTool extends BaseTool {
 
         const instructionText = String(input?.instructionText || '').trim();
         const rawActs = Array.isArray(input?.actions) ? input.actions : [];
+        const mode = input?.mode || 'browser_test';
 
         // Normalize Goto
         const actions = rawActs.map((a: any) => {
@@ -191,7 +193,7 @@ export class BrowserRunTool extends BaseTool {
         if (instructionText && (!Array.isArray(actions) || actions.length === 0)) {
             // High-level planner run
             const { runBrowserInstruction } = await import('../../browser/runner');
-            const r = await runBrowserInstruction({ userId, sessionId: sid, instructionText });
+            const r = await runBrowserInstruction({ userId, sessionId: sid, instructionText, mode: mode as any });
             if (r && typeof r === 'object' && (r as any).ok) {
                 execOk = Boolean((r as any).result?.ok);
                 const inner = (r as any).result;
@@ -300,7 +302,15 @@ export class BrowserRunTool extends BaseTool {
 
         return {
             ok: execOk,
-            output: { sessionId: sid, pageUrl, title, dom, screenshotHref: href, summary: execSummary, missingSecrets },
+            output: {
+                sessionId: sid,
+                pageUrl,
+                title,
+                // dom: dom.slice(0, 1000), // Reduce payload if not needed in chat
+                screenshotHref: href,
+                summary: execOk ? 'Check browser window for results.' : execSummary, // Use minimal summary on success to avoid duplication
+                missingSecrets
+            },
             logs,
             artifacts,
             error: execOk ? undefined : missingSecrets && missingSecrets.length ? 'missing_secrets' : execError || 'browser_run_failed',
