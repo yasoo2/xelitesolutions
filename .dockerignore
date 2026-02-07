@@ -1,0 +1,25 @@
+# Deep junk
+**/node_modules
+**/dist
+**/.git
+**/.env
+**/*.log
+
+# Project specific artifacts
+api/api/
+api/crm-demo/
+api/xelite-crm/
+api/data/
+dashboard/node_modules/
+web/node_modules/
+services/joe-browser-worker/node_modules/
+
+# Docker irrelevant
+docker-compose*.yml
+Dockerfile
+.github/
+docs/
+tests/
+calculator-test/
+crm-demo/
+uploads/

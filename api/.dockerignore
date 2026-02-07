@@ -5,3 +5,8 @@ dist
 *.log
 docker-compose*.yml
 Dockerfile
+api/
+crm-demo/
+xelite-crm/
+data/
+uploads/

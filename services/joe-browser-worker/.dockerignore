@@ -3,3 +3,7 @@ dist
 .git
 *.log
 Dockerfile
+api/
+crm-demo/
+xelite-crm/
+data/
