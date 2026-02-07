@@ -11,6 +11,9 @@
 !scripts/**/
 !healthcheck.js
 !Dockerfile
+!eslint.config.js
+!jest.config.js
+!cortex.json
 
 # Specifically ignore node_modules and dist just in case
 node_modules/
