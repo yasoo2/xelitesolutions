@@ -85,17 +85,8 @@ export default function ChatPanel({
                 ) : (
                     messages.map((msg) => (
                         <div key={msg.id} className={`joe-message ${msg.role}`}>
-                            <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
-                                {msg.role === 'assistant' ? 'J' : (
-                                    <div style={{
-                                        width: '100%', height: '100%', borderRadius: 8,
-                                        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                                        color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: 12, fontWeight: 700
-                                    }}>
-                                        U
-                                    </div>
-                                )}
+                            <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : 'user'}`}>
+                                {msg.role === 'assistant' ? 'J' : 'U'}
                             </div>
                             <div className="joe-message-content">
                                 <div className="joe-message-bubble">
@@ -177,11 +168,47 @@ export default function ChatPanel({
           animation: typingPulse 1s infinite;
           color: var(--joe-gold-primary);
         }
-        @keyframes typingPulse {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 1; }
-        }
-      `}</style>
-        </aside>
-    );
+/* ========== Typing Animation - Premium Gold Glow ========== */
+.joe-message-bubble.typing {
+    padding: 10px 16px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.typing-dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--joe-gold-primary);
+    border-radius: 50%;
+    animation: premiumTyping 1.4s infinite ease-in-out;
+    box-shadow: 0 0 10px var(--joe-gold-glow);
+}
+
+@keyframes premiumTyping {
+    0%, 80%, 100% { 
+        transform: scale(0.6);
+        opacity: 0.4;
+    }
+    40% { 
+        transform: scale(1.1);
+        opacity: 1;
+        box-shadow: 0 0 15px var(--joe-gold-primary);
+    }
+}
+
+.joe-chat-panel {
+    background: radial-gradient(circle at 50% 0%, rgba(240, 193, 75, 0.03) 0%, transparent 70%), var(--joe-bg-panel);
+}
+
+.joe-chat-header {
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(240, 193, 75, 0.1);
+}
+
+.joe-chat-header .joe-chat-title span {
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 13px;
+    opacity: 0.9;
 }
