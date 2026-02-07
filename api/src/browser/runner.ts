@@ -141,7 +141,11 @@ async function collectUiGroundingSnapshot(sessionId: string) {
       };
 
       const tag = (el: Element) => String((el as any).tagName || '').toLowerCase();
-      const role = (el: Element) => pickAttr(el, 'role') || (el as any).getAttribute?.('type') === 'button' ? 'button' : '';
+      const role = (el: Element) => {
+        const r = pickAttr(el, 'role');
+        if (r) return r;
+        return (el as any).getAttribute?.('type') === 'button' ? 'button' : '';
+      };
 
       const kindOf = (el: Element) => {
         const t = tag(el);
@@ -157,9 +161,10 @@ async function collectUiGroundingSnapshot(sessionId: string) {
         if (t === 'textarea') return 'textarea';
         if (t === 'select') return 'select';
         if (t === 'img') return 'image';
-        if (r === 'button') return 'button';
-        if (r === 'link') return 'link';
-        if (r === 'textbox' || r === 'searchbox') return 'input';
+        const rKind = String(r || '').toLowerCase();
+        if (rKind === 'button') return 'button';
+        if (rKind === 'link') return 'link';
+        if (rKind === 'textbox' || rKind === 'searchbox') return 'input';
         if ((el as any).isContentEditable) return 'input';
         const txt = clampText((el as any).innerText || '');
         if (txt) return 'text';
@@ -509,7 +514,7 @@ function splitBrowserInstructionIntoSteps(text: string) {
   const protectedText = raw.replace(/https?:\/\/[^\s"'<>]+/gi, (m) => {
     const i = urls.length;
     const mm = String(m || '');
-    const suffixMatch = mm.match(/^(.*)([)\]}>.,،;؛!?؟]+)$/u);
+    const suffixMatch = mm.match(/^(.*)([)\]}>.,،;؛!?؟]+)$/);
     const url = suffixMatch?.[1] ? suffixMatch[1] : mm;
     const suffix = suffixMatch?.[2] ? suffixMatch[2] : '';
     urls.push(url);
@@ -521,7 +526,7 @@ function splitBrowserInstructionIntoSteps(text: string) {
   const splitByConjunctions = (s: string) =>
     s
       .split(
-        /(?:\s*(?:->|→|⇒)\s*|\s*(?:ثم|ثمّ|وبعدها|وبعد ذلك|بعد ذلك|وبعدين|بعدين|ومن ثم)\s*[,،;؛]?\s*|\s*(?:and\s+then|then|after\s+that|next)\s*[,،;؛]?\s*|\s*(?:et\s+puis|puis|ensuite|après\s+ça|apres\s+ça|après\s+cela|apres\s+cela)\s*[,،;؛]?\s*|\s*(?:und\s+dann|dann|danach|anschließend|anschliessend|als\s+nächstes|als\s+naechstes)\s*[,،;؛]?\s*|\s*(?:y\s+luego|y\s+después|y\s+despues|luego|después\s+de\s+eso|despues\s+de\s+eso|después|despues|a\s+continuación|a\s+continuacion)\s*[,،;؛]?\s*|\s*(?:и\s+потом|и\s+затем|затем|потом|далее|после\s+этого)\s*[,،;؛]?\s*)/giu,
+        /(?:\s*(?:->|→|⇒)\s*|\s*(?:ثم|ثمّ|وبعدها|وبعد ذلك|بعد ذلك|وبعدين|بعدين|ومن ثم)\s*[,،;؛]?\s*|\s*(?:and\s+then|then|after\s+that|next)\s*[,،;؛]?\s*|\s*(?:et\s+puis|puis|ensuite|après\s+ça|apres\s+ça|après\s+cela|apres\s+cela)\s*[,،;؛]?\s*|\s*(?:und\s+dann|dann|danach|anschließend|anschliessend|als\s+nächstes|als\s+naechstes)\s*[,،;؛]?\s*|\s*(?:y\s+luego|y\s+después|y\s+despues|luego|después\s+de\s+eso|despues\s+de\s+eso|después|despues|a\s+continuación|a\s+continuacion)\s*[,،;؛]?\s*|\s*(?:и\s+потом|и\s+затем|затем|потом|далее|после\s+этого)\s*[,،;؛]?\s*)/gi,
       )
       .map((p) => p.trim())
       .filter(Boolean);
