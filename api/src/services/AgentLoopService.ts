@@ -112,10 +112,12 @@ export class AgentLoopService {
             }
             const outStr = typeof r?.output?.output === 'string' ? r.output.output :
                 typeof r?.output?.text === 'string' ? r.output.text :
-                    JSON.stringify(r?.output || 'Done');
+                    Symbol.iterator in Object(r?.output) ? JSON.stringify(r.output) :
+                        'Done';
             return outStr;
         } else {
-            return `❌ Tool Failed: ${typeof r?.error === 'string' ? r.error : 'Unknown Error'}`;
+            const err = typeof r?.error === 'string' ? r.error : 'Execution failed';
+            return `❌ ${toolName}: ${err}`;
         }
     }
 
@@ -134,7 +136,20 @@ export class AgentLoopService {
         // Actually the original `continueAgent` function was called inside `executeTool` callback handling.
         // It creates a loop.
 
-        // We will implement a simplified robust loop.
+        let steps = 0;
+        const MAX_STEPS = 20;
+
+        // Circuit Breaker State
+        let lastErrorHash: string | null = null;
+        let consecutiveFailures = 0;
+
+        // Deduplication State (Session-scoped for this loop)
+        const sentResponseHashes = new Set<string>();
+
+        const calculateHash = (text: string) => {
+            const crypto = require('crypto');
+            return crypto.createHash('md5').update(text).digest('hex');
+        };
 
         while (steps < MAX_STEPS) {
             steps++;
@@ -200,12 +215,45 @@ export class AgentLoopService {
                 result = { ok: false, error: e.message };
             }
 
-            // 6. Handle Result
+            // 6. Circuit Breaker Logic
+            if (!result.ok) {
+                const currentError = typeof result.error === 'string' ? result.error : 'Unknown Error';
+                const errorHash = calculateHash(`${plan.name}:${currentError}`);
+
+                if (errorHash === lastErrorHash) {
+                    consecutiveFailures++;
+                } else {
+                    consecutiveFailures = 1;
+                    lastErrorHash = errorHash;
+                }
+
+                if (consecutiveFailures >= 2) {
+                    console.error(`[AgentLoop] Circuit Breaker Tripped: Consecutive failure for ${plan.name}`);
+                    const abortMsg = `⚠️ Tooling mismatch or repeated failure detected for \`${plan.name}\`. Aborting to prevent infinite loop.`;
+                    broadcast({ type: 'text', runId: newRunId, data: abortMsg });
+                    try {
+                        await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: newRunId });
+                    } catch { }
+                    break;
+                }
+            } else {
+                lastErrorHash = null;
+                consecutiveFailures = 0;
+            }
+
+            // 7. Handle Result & Deduplication
             const eventResult = sanitizeToolResultForBroadcast(plan.name, result);
             broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: newRunId, data: { name: `execute:${plan.name}`, result: eventResult } });
 
             const assistantText = AgentLoopService.formatToolOutputToText(plan.name, result, plan.input);
-            broadcast({ type: 'text', runId: newRunId, data: assistantText });
+            const responseHash = calculateHash(assistantText);
+
+            if (sentResponseHashes.has(responseHash)) {
+                console.log(`[AgentLoop] Skipping duplicate response: ${responseHash}`);
+            } else {
+                sentResponseHashes.add(responseHash);
+                broadcast({ type: 'text', runId: newRunId, data: assistantText });
+            }
 
             // Save
             try {

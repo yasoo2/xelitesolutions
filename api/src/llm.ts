@@ -101,31 +101,21 @@ function selectToolDefsForProvider(
   const selected: typeof tools = [];
   const seen = new Set<string>();
 
-  // ACTUALLY USE CONTEXT ANALYZER - with proper error handling
+  // Use context analyzer if available
   let contextInfo: any = null;
   try {
     contextInfo = analyzeContext(messages);
-    console.log('[Tool Selection] Context detected:', {
-      taskType: contextInfo?.taskType,
-      complexity: contextInfo?.complexity,
-      toolCount: contextInfo?.suggestedTools?.length || 0
-    });
-  } catch (e: any) {
-    console.error('[Tool Selection] Context analyzer FAILED:', e.message);
-    // Provide basic fallback context
-    contextInfo = {
-      taskType: 'mixed',
-      complexity: 'medium',
-      suggestedTools: [],
-      requiredCapabilities: []
-    };
-  }
+  } catch { }
 
   const routingTextRaw = messages
     .slice(-10)
     .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
     .join('\n');
   const routingText = routingTextRaw.toLowerCase();
+
+  // Detect Browser Task Category
+  const isBrowserTask = /https?:\/\//i.test(routingTextRaw) || /browser|browsing|website|login|url/i.test(routingTextRaw);
+
   const isArabic = /[\u0600-\u06FF]/.test(routingTextRaw);
   const normalizeRouting = (input: string) => {
     let s = String(input || '');
@@ -233,6 +223,12 @@ function selectToolDefsForProvider(
 
     // Task complexity boost
     const isComplexTask = routingTextRaw.length > 500 || /(comprehensive|detailed|full|complete|entire)/.test(routingTextRaw);
+
+    // Penalize filesystem tools during browser tasks
+    if (isBrowserTask && (tags.includes('fs') || name.startsWith('file_') || name.startsWith('ls') || name.startsWith('grep') || name.startsWith('read_file_tree'))) {
+      score -= 1000;
+    }
+
     if (isComplexTask && (tags.includes('analysis') || name.includes('analyze') || name.includes('scaffold'))) {
       score += 40;
     }
@@ -348,6 +344,9 @@ Before *every* action, perform a rapid internal cognitive cycle:
 ## TASK-AWARE INTELLIGENCE:
 - **Coding Tasks**: Prioritize file operations, shell commands, quality tools. Use structured approach (analyze -> plan -> implement -> verify).
 - **Research Tasks**: Prioritize web_search, deep_research, knowledge_search. Gather from multiple sources.
+- **Browsing Tasks**: Prioritize browser tools (\`browser_open\`, \`browser_run\`, \`browser_close\`). 
+    - **RULE**: NEVER use filesystem tools (\`ls\`, \`grep_search\`, \`file_read\`) to "analyze" a website. Websites exist in the DOM, not the codebase.
+    - Use the DOM structure and visual analysis tools exclusively for web navigation.
 - **Browser Tasks**: Use browser_run for automation, check for login requirements, handle secrets properly.
 - **Debugging Tasks**: Analyze error patterns, check logs, verify file states, run tests systematically.
 

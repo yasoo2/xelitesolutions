@@ -283,27 +283,91 @@ export class GrepSearchTool extends BaseTool {
         const workDir = resolveToolPath(searchPath);
 
         try {
-            const args: string[] = ['-rnI'];
-            if (include) args.push(`--include=${include}`);
-            if (exclude) args.push(`--exclude-dir=${exclude}`);
-            else args.push('--exclude-dir=node_modules', '--exclude-dir=.git', '--exclude-dir=dist', '--exclude-dir=build');
-            args.push('--', query, workDir);
-            logs.push(`grep.args=${args.join(' ')}`);
-
-            const r = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-                const child = spawn('grep', args, { shell: false, cwd: getWorkspaceRoot() });
-                let stdout = '';
-                let stderr = '';
-                child.stdout.on('data', (d: any) => { stdout += d.toString(); });
-                child.stderr.on('data', (d: any) => { stderr += d.toString(); });
-                child.on('close', (code: number) => resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr }));
-                child.on('error', (e: any) => resolve({ code: 1, stdout, stderr: String(e?.message || e || 'spawn_failed') }));
+            // Check for GNU-style grep (supports --exclude-dir)
+            const hasGnuGrep = await new Promise<boolean>((resolve) => {
+                const child = spawn('grep', ['--help'], { shell: false });
+                let helpText = '';
+                child.stdout.on('data', (d: any) => { helpText += d.toString(); });
+                child.on('close', () => resolve(helpText.includes('--exclude-dir')));
+                child.on('error', () => resolve(false));
             });
 
-            if (r.code === 1) return { ok: true, output: { matches: [], count: 0 }, logs };
-            if (r.code !== 0) return { ok: false, error: (r.stderr || 'grep_failed').trim(), logs };
+            logs.push(`grep.flavor=${hasGnuGrep ? 'gnu' : 'busybox/bsd'}`);
 
-            const lines = (r.stdout || '').split('\n').filter(Boolean).slice(0, 100);
+            let stdout = '';
+            let stderr = '';
+            let code = 0;
+
+            if (hasGnuGrep) {
+                const args: string[] = ['-rnI'];
+                if (include) args.push(`--include=${include}`);
+                if (exclude) args.push(`--exclude-dir=${exclude}`);
+                else args.push('--exclude-dir=node_modules', '--exclude-dir=.git', '--exclude-dir=dist', '--exclude-dir=build', '--exclude-dir=.gemini');
+                args.push('--', query, workDir);
+                logs.push(`grep.args=${args.join(' ')}`);
+
+                const r = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+                    const child = spawn('grep', args, { shell: false, cwd: getWorkspaceRoot() });
+                    let so = '';
+                    let se = '';
+                    child.stdout.on('data', (d: any) => { so += d.toString(); });
+                    child.stderr.on('data', (d: any) => { se += d.toString(); });
+                    child.on('close', (c: number) => resolve({ code: typeof c === 'number' ? c : 1, stdout: so, stderr: se }));
+                    child.on('error', (e: any) => resolve({ code: 1, stdout: so, stderr: String(e?.message || e || 'spawn_failed') }));
+                });
+                stdout = r.stdout;
+                stderr = r.stderr;
+                code = r.code;
+            } else {
+                // BusyBox/BSD Fallback: Use 'find' with '-exec grep' or manual pipe
+                // Strategy: find [path] -type f ! -path "*/node_modules/*" -exec grep -l [query] {} +
+                // But Joe wants line numbers and content, so:
+                // find [path] -type f ! -path "*/node_modules/*" | xargs grep -nI [query]
+
+                const excludePatterns = exclude ? [exclude] : ['node_modules', '.git', 'dist', 'build', '.gemini'];
+                const findArgs = [workDir, '-type', 'f'];
+                for (const pat of excludePatterns) {
+                    findArgs.push('!', '-path', `*/${pat}/*`);
+                }
+
+                if (include) {
+                    findArgs.push('-name', include);
+                }
+
+                logs.push(`grep.fallback_find=${findArgs.join(' ')}`);
+
+                const findResult = await new Promise<{ code: number; stdout: string }>((resolve) => {
+                    const child = spawn('find', findArgs, { shell: false, cwd: getWorkspaceRoot() });
+                    let so = '';
+                    child.stdout.on('data', (d: any) => { so += d.toString(); });
+                    child.on('close', (c: number) => resolve({ code: typeof c === 'number' ? c : 1, stdout: so }));
+                    child.on('error', () => resolve({ code: 1, stdout: '' }));
+                });
+
+                const files = findResult.stdout.split('\n').filter(Boolean);
+                if (files.length > 0) {
+                    const grepArgs = ['-nI', '--', query, ...files.slice(0, 500)]; // Limit file count to avoid E2BIG
+                    const r = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+                        const child = spawn('grep', grepArgs, { shell: false, cwd: getWorkspaceRoot() });
+                        let so = '';
+                        let se = '';
+                        child.stdout.on('data', (d: any) => { so += d.toString(); });
+                        child.stderr.on('data', (d: any) => { se += d.toString(); });
+                        child.on('close', (c: number) => resolve({ code: typeof c === 'number' ? c : 1, stdout: so, stderr: se }));
+                        child.on('error', (e: any) => resolve({ code: 1, stdout: so, stderr: String(e?.message || e || 'spawn_failed') }));
+                    });
+                    stdout = r.stdout;
+                    stderr = r.stderr;
+                    code = r.code;
+                } else {
+                    code = 1; // No files found
+                }
+            }
+
+            if (code === 1 && !stdout) return { ok: true, output: { matches: [], count: 0 }, logs };
+            if (code !== 0 && !stdout) return { ok: false, error: (stderr || 'grep_failed').trim(), logs };
+
+            const lines = (stdout || '').split('\n').filter(Boolean).slice(0, 100);
             return { ok: true, output: { matches: lines, count: lines.length, truncated: lines.length === 100 }, logs };
         } catch (err: any) {
             logs.push(`grep.error=${String(err?.message || err || 'grep_failed')}`);
