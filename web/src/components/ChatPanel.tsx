@@ -16,6 +16,7 @@ interface ChatPanelProps {
     inputValue: string;
     onInputChange: (value: string) => void;
     onSend: () => void;
+    isLoading?: boolean;
     placeholder?: string;
     children?: React.ReactNode; // For CommandComposer
     isCollapsed?: boolean;

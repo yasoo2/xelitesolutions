@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState } from 'react';
-import { Globe, Terminal as TerminalIcon, Eye, Code, Loader } from 'lucide-react';
+import { Globe, Terminal as TerminalIcon, Eye, Code, Loader, Maximize2 } from 'lucide-react';
 
 // Lazy load the heavy components
 const EmbeddedTerminal = lazy(() => import('./EmbeddedTerminal'));
