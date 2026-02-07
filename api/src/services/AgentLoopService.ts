@@ -30,6 +30,21 @@ interface ContinueResult {
     steps?: number;
 }
 
+const calculateHash = (text: string) => {
+    const crypto = require('crypto');
+    return crypto.createHash('md5').update(text).digest('hex');
+};
+
+async function isMessageDuplicate(sessionId: string, text: string): Promise<boolean> {
+    try {
+        const lastMsg = await Message.findOne({ sessionId }).sort({ createdAt: -1 }).lean();
+        if (!lastMsg) return false;
+        return calculateHash(String(lastMsg.content || '')) === calculateHash(text);
+    } catch {
+        return false;
+    }
+}
+
 export class AgentLoopService {
 
     static async handlePendingToolExecution(sessionId: string, userId: string | undefined) {
@@ -61,9 +76,10 @@ export class AgentLoopService {
 
         const assistantText = AgentLoopService.formatToolOutputToText(pending.name, result, pending.input);
 
-        // Don't broadcast text immediately if it's large, maybe? Original did usage of assistantTextEmitted check. 
-        // We will broadcast it for now.
-        broadcast({ type: 'text', runId: pending.runId, data: assistantText });
+        const isDup = await isMessageDuplicate(sessionId, assistantText);
+        if (!isDup) {
+            broadcast({ type: 'text', runId: pending.runId, data: assistantText });
+        }
 
         try {
             await ToolExecution.create({
@@ -76,9 +92,11 @@ export class AgentLoopService {
                 logs: result.logs,
             });
         } catch { }
-        try {
-            await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
-        } catch { }
+        if (!isDup) {
+            try {
+                await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
+            } catch { }
+        }
         try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
         broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: result.ok } });
@@ -128,28 +146,11 @@ export class AgentLoopService {
         let steps = 0;
         const MAX_STEPS = 20;
 
-        // Loop Context
-        let currentRunId = initialRunId; // Logic might require creating NEW runs for each step, or reusing?
-        // Original logic seemed to create ONE run for a user request, but if the agent continues autonomously,
-        // it might reuse the run ID or create new ones?
-        // Original continues using `pending.runId` in the recursive call.
-        // Actually the original `continueAgent` function was called inside `executeTool` callback handling.
-        // It creates a loop.
-
-        let steps = 0;
-        const MAX_STEPS = 20;
-
         // Circuit Breaker State
         let lastErrorHash: string | null = null;
         let consecutiveFailures = 0;
 
-        // Deduplication State (Session-scoped for this loop)
-        const sentResponseHashes = new Set<string>();
-
-        const calculateHash = (text: string) => {
-            const crypto = require('crypto');
-            return crypto.createHash('md5').update(text).digest('hex');
-        };
+        let currentRunId = initialRunId;
 
         while (steps < MAX_STEPS) {
             steps++;
@@ -246,12 +247,11 @@ export class AgentLoopService {
             broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: newRunId, data: { name: `execute:${plan.name}`, result: eventResult } });
 
             const assistantText = AgentLoopService.formatToolOutputToText(plan.name, result, plan.input);
-            const responseHash = calculateHash(assistantText);
+            const isDup = await isMessageDuplicate(sessionId, assistantText);
 
-            if (sentResponseHashes.has(responseHash)) {
-                console.log(`[AgentLoop] Skipping duplicate response: ${responseHash}`);
+            if (isDup) {
+                console.log(`[AgentLoop] Skipping duplicate response: ${calculateHash(assistantText)}`);
             } else {
-                sentResponseHashes.add(responseHash);
                 broadcast({ type: 'text', runId: newRunId, data: assistantText });
             }
 
@@ -267,9 +267,11 @@ export class AgentLoopService {
                     logs: result.logs,
                 });
             } catch { }
-            try {
-                await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: newRunId });
-            } catch { }
+            if (!isDup) {
+                try {
+                    await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: newRunId });
+                } catch { }
+            }
             try { await Run.findByIdAndUpdate(newRunId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
             // If tool failed, maybe break?
