@@ -17,6 +17,14 @@ dist/
 **/*.log
 .DS_Store
 **/.DS_Store
+api/node_modules
+api/node_modules/
+web/node_modules
+web/node_modules/
+dashboard/node_modules
+dashboard/node_modules/
+services/joe-browser-worker/node_modules
+services/joe-browser-worker/node_modules/
 
 # Project specific artifacts (Recursive blocking)
 api/api/
@@ -29,12 +37,6 @@ uploads/
 **/api/xelite-crm/
 **/api/data/
 **/uploads/
-
-# Build Context specific
-services/*/node_modules
-api/node_modules
-web/node_modules
-dashboard/node_modules
 
 # Docker irrelevant
 docker-compose*.yml
