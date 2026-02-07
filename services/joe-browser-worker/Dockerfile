@@ -4,9 +4,19 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Install prod deps and clean cache
-RUN npm install && \
-    npx playwright install --with-deps chromium chromium-headless-shell && \
+# Install system dependencies first (lightweight)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wget \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install npm dependencies
+RUN npm install
+
+# Install Playwright dependencies separately to avoid peak memory pressure
+RUN npx playwright install-deps chromium && \
+    npx playwright install chromium chromium-headless-shell && \
     npm cache clean --force && \
     rm -rf /var/lib/apt/lists/*
 
