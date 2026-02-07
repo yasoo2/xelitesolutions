@@ -1,23 +1,16 @@
-node_modules
+# Ignore everything
+*
+
+# Whitelist
+!package.json
+!package-lock.json
+!src/
+!src/**/
+!tsconfig.json
+!Dockerfile
+
+# Exclusions
 node_modules/
-**/node_modules
-**/node_modules/
-dist
 dist/
-**/dist
+**/node_modules/
 **/dist/
-.git
-.git/
-**/.git
-**/.git/
-*.log
-**/*.log
-Dockerfile
-api/
-crm-demo/
-xelite-crm/
-data/
-**/api/
-**/crm-demo/
-**/xelite-crm/
-**/data/

@@ -1,15 +1,9 @@
-# Standard Exclusions
-node_modules
+# Ignore all heavy directories
 node_modules/
-**/node_modules
 **/node_modules/
-dist
 dist/
-**/dist
 **/dist/
-.git
 .git/
-**/.git
 **/.git/
 .env
 **/.env
@@ -17,16 +11,8 @@ dist/
 **/*.log
 .DS_Store
 **/.DS_Store
-api/node_modules
-api/node_modules/
-web/node_modules
-web/node_modules/
-dashboard/node_modules
-dashboard/node_modules/
-services/joe-browser-worker/node_modules
-services/joe-browser-worker/node_modules/
 
-# Project specific artifacts (Recursive blocking)
+# Artifacts
 api/api/
 api/crm-demo/
 api/xelite-crm/
@@ -38,11 +24,16 @@ uploads/
 **/api/data/
 **/uploads/
 
-# Docker irrelevant
+# Build Contexts
+web/node_modules/
+dashboard/node_modules/
+services/*/node_modules/
+
+# Files
 docker-compose*.yml
 Dockerfile
-.github
-docs
-tests
-calculator-test
-scripts
+.github/
+docs/
+tests/
+calculator-test/
+scripts/

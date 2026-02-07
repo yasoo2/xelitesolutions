@@ -1,17 +1,20 @@
-node_modules
+# Ignore everything
+*
+
+# Whitelist
+!package.json
+!package-lock.json
+!index.html
+!public/
+!public/**/
+!src/
+!src/**/
+!vite.config.ts
+!tsconfig.json
+!Dockerfile
+
+# Exclusions
 node_modules/
-**/node_modules
-**/node_modules/
-dist
 dist/
-**/dist
+**/node_modules/
 **/dist/
-.git
-.git/
-**/.git
-**/.git/
-.env
-**/.env
-*.log
-**/*.log
-Dockerfile

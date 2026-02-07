@@ -388,7 +388,7 @@ Before *every* action, perform a rapid internal cognitive cycle:
 
 ### Analysis Depth & completion (GATED):
 - **Evidence-Based Reasoning**: Prohibit generic/hypothetical phrases ("might be", "possibly", "check if").
-- **Mandatory Proof**: Every statement about system missing components MUST be backed by a `file_read` or `ls` result.
+- **Mandatory Proof**: Every statement about system missing components MUST be backed by a \`file_read\` or \`ls\` result.
 - **Blocking Conclusion**: If you haven't explained how the system runs end-to-end, you ARE NOT DONE.
 
 ### When to Ask Questions:
