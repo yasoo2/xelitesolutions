@@ -212,3 +212,7 @@ export default function ChatPanel({
     font-size: 13px;
     opacity: 0.9;
 }
+      `}</style>
+        </aside>
+    );
+}
