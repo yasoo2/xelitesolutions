@@ -8,6 +8,7 @@ interface FileExplorerPanelProps {
     onGitChanges?: () => void;
     onRefresh?: () => void;
     showGitChanges?: boolean;
+    isCollapsed?: boolean;
 }
 
 export default function FileExplorerPanel({
@@ -15,10 +16,11 @@ export default function FileExplorerPanel({
     onNewFolder,
     onGitChanges,
     onRefresh,
-    showGitChanges = false
+    showGitChanges = false,
+    isCollapsed = false
 }: FileExplorerPanelProps) {
     return (
-        <aside className="joe-files-panel">
+        <aside className={`joe-files-panel ${isCollapsed ? 'collapsed' : ''}`}>
             {/* Header */}
             <div className="joe-files-header">
                 <span className="joe-files-title">File Explorer</span>

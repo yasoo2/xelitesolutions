@@ -123,6 +123,10 @@ export default function JoeIDELayout({
     // Internal state for workspace tab if not controlled
     const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
 
+    // Sidebar states
+    const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+    const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(false);
+
     const activeWorkspaceTab = workspaceTab ?? internalWorkspaceTab;
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {
         if (onWorkspaceTabChange) {
@@ -131,6 +135,17 @@ export default function JoeIDELayout({
             setInternalWorkspaceTab(tab);
         }
     }, [onWorkspaceTabChange]);
+
+    const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
+    const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
+
+    const handleMaximizeToggle = useCallback(() => {
+        const nextState = !(isChatCollapsed && isExplorerCollapsed);
+        setIsChatCollapsed(nextState);
+        setIsExplorerCollapsed(nextState);
+    }, [isChatCollapsed, isExplorerCollapsed]);
+
+    const isMaximized = isChatCollapsed && isExplorerCollapsed;
 
     return (
         <div className="joe-ide-layout" data-theme={theme}>
@@ -142,6 +157,10 @@ export default function JoeIDELayout({
                 onSettingsClick={onSettingsClick}
                 theme={theme}
                 onThemeToggle={onThemeToggle}
+                onToggleChat={toggleChat}
+                onToggleExplorer={toggleExplorer}
+                isChatCollapsed={isChatCollapsed}
+                isExplorerCollapsed={isExplorerCollapsed}
             />
 
             {/* Main Content Area */}
@@ -153,6 +172,7 @@ export default function JoeIDELayout({
                     onInputChange={onInputChange}
                     onSend={onSend}
                     isLoading={isLoading}
+                    isCollapsed={isChatCollapsed}
                 >
                     {chatChildren}
                 </ChatPanel>
@@ -164,6 +184,8 @@ export default function JoeIDELayout({
                     browserSessionId={browserSessionId}
                     terminalId={terminalId}
                     previewUrl={previewUrl}
+                    isMaximized={isMaximized}
+                    onMaximizeToggle={handleMaximizeToggle}
                 >
                     {workspaceChildren}
                 </WorkspacePanel>
@@ -173,6 +195,7 @@ export default function JoeIDELayout({
                     onNewFile={onNewFile}
                     onNewFolder={onNewFolder}
                     onGitChanges={onGitChanges}
+                    isCollapsed={isExplorerCollapsed}
                 />
             </div>
 

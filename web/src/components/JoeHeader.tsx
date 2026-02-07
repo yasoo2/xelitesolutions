@@ -8,6 +8,10 @@ interface JoeHeaderProps {
     onSettingsClick?: () => void;
     theme?: 'dark' | 'light';
     onThemeToggle?: () => void;
+    onToggleChat?: () => void;
+    onToggleExplorer?: () => void;
+    isChatCollapsed?: boolean;
+    isExplorerCollapsed?: boolean;
 }
 
 export default function JoeHeader({
@@ -16,12 +20,23 @@ export default function JoeHeader({
     userName,
     onSettingsClick,
     theme = 'dark',
-    onThemeToggle
+    onThemeToggle,
+    onToggleChat,
+    onToggleExplorer,
+    isChatCollapsed,
+    isExplorerCollapsed
 }: JoeHeaderProps) {
     return (
         <header className="joe-header">
             {/* Left: Logo & Brand */}
             <div className="joe-header-left">
+                <button
+                    className={`joe-header-btn sidebar-toggle ${isChatCollapsed ? 'inactive' : 'active'}`}
+                    onClick={onToggleChat}
+                    title="Toggle Chat"
+                >
+                    <MessageSquare size={18} />
+                </button>
                 <div className="joe-logo">J</div>
                 <div className="joe-brand">
                     <span className="joe-brand-name">Joe</span>
@@ -74,6 +89,13 @@ export default function JoeHeader({
                     )}
                     <button className="joe-header-btn" onClick={onSettingsClick} title="الإعدادات">
                         <Settings size={18} />
+                    </button>
+                    <button
+                        className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
+                        onClick={onToggleExplorer}
+                        title="Toggle Explorer"
+                    >
+                        <Bot size={18} />
                     </button>
                 </div>
             </div>

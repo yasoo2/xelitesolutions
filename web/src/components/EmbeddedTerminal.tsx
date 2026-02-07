@@ -250,20 +250,23 @@ export default function EmbeddedTerminal({
     }, []);
 
     return (
-        <div style={{
+        <div className="joe-terminal-container" style={{
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
-            background: 'var(--bg-dark)'
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: '0 0 var(--joe-border-radius) var(--joe-border-radius)',
+            overflow: 'hidden'
         }}>
             {/* Toolbar */}
-            <div style={{
+            <div className="joe-terminal-toolbar" style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '4px 8px',
-                borderBottom: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
+                padding: '10px 16px',
+                borderBottom: '1px solid var(--joe-border)',
+                background: 'var(--joe-bg-card)',
+                backdropFilter: 'blur(10px)',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
@@ -326,17 +329,32 @@ function TerminalButton({
             disabled={disabled}
             title={tooltip}
             style={{
-                width: 24,
-                height: 24,
-                borderRadius: 4,
-                border: 'none',
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                border: '1px solid transparent',
                 background: 'transparent',
-                color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                color: disabled ? 'var(--joe-text-muted)' : 'var(--joe-text-secondary)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: disabled ? 0.5 : 1,
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+            onMouseOver={(e) => {
+                if (!disabled) {
+                    e.currentTarget.style.background = 'var(--joe-bg-hover)';
+                    e.currentTarget.style.color = 'var(--joe-gold-primary)';
+                    e.currentTarget.style.borderColor = 'var(--joe-gold-border)';
+                }
+            }}
+            onMouseOut={(e) => {
+                if (!disabled) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--joe-text-secondary)';
+                    e.currentTarget.style.borderColor = 'transparent';
+                }
             }}
         >
             <Icon size={14} />

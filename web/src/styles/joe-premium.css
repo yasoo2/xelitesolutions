@@ -45,10 +45,28 @@
     /* Panel Sizes */
     --joe-chat-width: 340px;
     --joe-files-width: 280px;
+    --joe-chat-actual-width: var(--joe-chat-width);
+    --joe-files-actual-width: var(--joe-files-width);
     --joe-header-height: 56px;
     --joe-statusbar-height: 36px;
     --joe-border-radius: 16px;
     --joe-border-radius-sm: 12px;
+    --joe-transition-speed: 0.35s;
+}
+
+/* Collapsed States */
+.joe-chat-panel.collapsed {
+    --joe-chat-actual-width: 0px;
+    opacity: 0;
+    pointer-events: none;
+    margin-right: -12px;
+}
+
+.joe-files-panel.collapsed {
+    --joe-files-actual-width: 0px;
+    opacity: 0;
+    pointer-events: none;
+    margin-left: -12px;
 }
 
 /* ========== Reset & Base ========== */
@@ -324,6 +342,7 @@
     min-height: 0;
     position: relative;
     z-index: 1;
+    transition: all var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ========== Panel Base Styles (Premium Glassmorphism) ========== */
@@ -343,6 +362,10 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    transition: width var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+        flex var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+        opacity var(--joe-transition-speed) ease,
+        transform var(--joe-transition-speed) ease;
 }
 
 /* Golden corner accent glow */
@@ -362,7 +385,7 @@
 
 /* ========== Chat Panel (Left) ========== */
 .joe-chat-panel {
-    width: var(--joe-chat-width);
+    width: var(--joe-chat-actual-width);
     flex-shrink: 0;
     z-index: 10;
 }
@@ -842,7 +865,7 @@
 
 /* ========== File Explorer Panel (Right) ========== */
 .joe-files-panel {
-    width: var(--joe-files-width);
+    width: var(--joe-files-actual-width);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
@@ -1156,6 +1179,10 @@
         left: 50%;
         transform: translateX(-50%);
     }
+
+    .hide-tablet {
+        display: none !important;
+    }
 }
 
 /* ========== Responsive - Small Tablet ========== */
@@ -1209,6 +1236,10 @@
     .joe-mode-btn span:not(.icon) {
         display: none;
     }
+
+    .hide-mobile {
+        display: none !important;
+    }
 }
 
 /* ========== Responsive - Mobile Portrait ========== */
@@ -1241,8 +1272,25 @@
         gap: 10px;
     }
 
-    .joe-chat-input-area {
+    .joe-message-avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+    }
+
+    .joe-message-bubble {
+        font-size: 13px;
         padding: 10px;
+    }
+
+    .joe-chat-input-area {
+        padding: 8px;
+    }
+
+    .joe-browser-toolbar,
+    .joe-terminal-toolbar {
+        padding: 6px 10px;
+        gap: 8px;
     }
 
     .joe-statusbar {

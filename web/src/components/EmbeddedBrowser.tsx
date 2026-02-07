@@ -140,20 +140,21 @@ export default function EmbeddedBrowser({
     };
 
     return (
-        <div style={{
+        <div className="joe-browser-container" style={{
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
-            background: 'var(--bg-dark)'
+            background: 'rgba(0,0,0,0.2)'
         }}>
             {/* Toolbar */}
-            <div style={{
+            <div className="joe-browser-toolbar" style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                padding: '4px 8px',
-                borderBottom: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
+                gap: 12,
+                padding: '10px 16px',
+                borderBottom: '1px solid var(--joe-border)',
+                background: 'var(--joe-bg-card)',
+                backdropFilter: 'blur(10px)',
             }}>
                 {/* Navigation buttons */}
                 <div style={{ display: 'flex', gap: 2 }}>
@@ -170,6 +171,7 @@ export default function EmbeddedBrowser({
 
                 {/* URL Bar */}
                 <div
+                    className="joe-browser-url-bar"
                     onClick={() => {
                         setShowUrlInput(true);
                         setTimeout(() => inputRef.current?.focus(), 50);
@@ -178,13 +180,15 @@ export default function EmbeddedBrowser({
                         flex: 1,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
-                        padding: '6px 12px',
-                        background: 'var(--bg-card)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 6,
+                        gap: 10,
+                        padding: '8px 14px',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid var(--joe-border)',
+                        borderRadius: 10,
                         cursor: 'text',
                         minWidth: 0,
+                        transition: 'all 0.2s ease',
+                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)'
                     }}
                 >
                     {showUrlInput ? (
@@ -269,12 +273,12 @@ function BrowserButton({
             disabled={disabled}
             title={tooltip}
             style={{
-                width: 28,
-                height: 28,
-                borderRadius: 4,
-                border: 'none',
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: '1px solid transparent',
                 background: 'transparent',
-                color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                color: disabled ? 'var(--joe-text-muted)' : 'var(--joe-text-secondary)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -284,14 +288,16 @@ function BrowserButton({
             }}
             onMouseOver={(e) => {
                 if (!disabled) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
+                    e.currentTarget.style.background = 'var(--joe-bg-hover)';
+                    e.currentTarget.style.color = 'var(--joe-gold-primary)';
+                    e.currentTarget.style.borderColor = 'var(--joe-gold-border)';
                 }
             }}
             onMouseOut={(e) => {
                 if (!disabled) {
                     e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
+                    e.currentTarget.style.color = 'var(--joe-text-secondary)';
+                    e.currentTarget.style.borderColor = 'transparent';
                 }
             }}
         >

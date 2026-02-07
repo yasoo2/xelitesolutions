@@ -16,6 +16,8 @@ interface WorkspacePanelProps {
     terminalId?: string;
     previewUrl?: string;
     children?: React.ReactNode;
+    isMaximized?: boolean;
+    onMaximizeToggle?: () => void;
 }
 
 export default function WorkspacePanel({
@@ -24,7 +26,9 @@ export default function WorkspacePanel({
     browserSessionId,
     terminalId,
     previewUrl,
-    children
+    children,
+    isMaximized,
+    onMaximizeToggle
 }: WorkspacePanelProps) {
     const [internalTab, setInternalTab] = useState<WorkspaceTab>('browser');
 
@@ -61,16 +65,28 @@ export default function WorkspacePanel({
         <main className="joe-workspace">
             {/* Tabs */}
             <div className="joe-workspace-tabs">
-                {tabs.map((tab) => (
+                <div style={{ display: 'flex', gap: 6, flex: 1, overflowX: 'auto', minWidth: 0 }}>
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.id}
+                            className={`joe-workspace-tab ${activeTab === tab.id ? 'active' : ''}`}
+                            onClick={() => handleTabChange(tab.id)}
+                        >
+                            {tab.icon}
+                            <span className="hide-mobile">{tab.label}</span>
+                        </button>
+                    ))}
+                </div>
+                {onMaximizeToggle && (
                     <button
-                        key={tab.id}
-                        className={`joe-workspace-tab ${activeTab === tab.id ? 'active' : ''}`}
-                        onClick={() => handleTabChange(tab.id)}
+                        className="joe-header-btn"
+                        onClick={onMaximizeToggle}
+                        title={isMaximized ? "Restore" : "Maximize"}
+                        style={{ border: 'none', background: 'transparent' }}
                     >
-                        {tab.icon}
-                        {tab.label}
+                        <Maximize2 size={16} style={{ transform: isMaximized ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
                     </button>
-                ))}
+                )}
             </div>
 
             {/* Content */}

@@ -16,9 +16,9 @@ interface ChatPanelProps {
     inputValue: string;
     onInputChange: (value: string) => void;
     onSend: () => void;
-    isLoading?: boolean;
     placeholder?: string;
     children?: React.ReactNode; // For CommandComposer
+    isCollapsed?: boolean;
 }
 
 export default function ChatPanel({
@@ -28,7 +28,8 @@ export default function ChatPanel({
     onSend,
     isLoading = false,
     placeholder = 'Ask Joe or type a command...',
-    children
+    children,
+    isCollapsed = false
 }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -57,7 +58,7 @@ export default function ChatPanel({
     };
 
     return (
-        <aside className="joe-chat-panel">
+        <aside className={`joe-chat-panel ${isCollapsed ? 'collapsed' : ''}`}>
             {/* Header */}
             <div className="joe-chat-header">
                 <div className="joe-chat-title">
