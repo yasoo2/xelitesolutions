@@ -1,28 +1,19 @@
-FROM node:20-bookworm-slim
+FROM mcr.microsoft.com/playwright:v1.50.1-noble
 
 WORKDIR /app
 
 COPY package*.json ./
 
-# Install system dependencies first (lightweight)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    wget \
-    gnupg \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install npm dependencies
 RUN npm install
 
-# Install Playwright dependencies separately to avoid peak memory pressure
-RUN npx playwright install-deps chromium && \
-    npx playwright install chromium chromium-headless-shell && \
-    npm cache clean --force && \
-    rm -rf /var/lib/apt/lists/*
+# Playwright browsers (deps are already in the base image)
+RUN npx playwright install chromium chromium-headless-shell && \
+    npm cache clean --force
 
 COPY . .
 
-# Build and cleanup source maps/docs if applicable
+# Build
 RUN npm run build
 
 EXPOSE 7070
