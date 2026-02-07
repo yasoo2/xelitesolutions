@@ -1,24 +1,46 @@
-# Deep junk
+# Standard Exclusions
+node_modules
+node_modules/
+**/node_modules
 **/node_modules/
+dist
+dist/
+**/dist
 **/dist/
+.git
+.git/
+**/.git
 **/.git/
+.env
 **/.env
+*.log
 **/*.log
+.DS_Store
 **/.DS_Store
 
-# Project specific artifacts
+# Project specific artifacts (Recursive blocking)
+api/api/
+api/crm-demo/
+api/xelite-crm/
+api/data/
+uploads/
 **/api/api/
 **/api/crm-demo/
 **/api/xelite-crm/
 **/api/data/
 **/uploads/
 
+# Build Context specific
+services/*/node_modules
+api/node_modules
+web/node_modules
+dashboard/node_modules
+
 # Docker irrelevant
 docker-compose*.yml
 Dockerfile
-.github/
-docs/
-tests/
-calculator-test/
-crm-demo/
-scripts/
+.github
+docs
+tests
+calculator-test
+scripts

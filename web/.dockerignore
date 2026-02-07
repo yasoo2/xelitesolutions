@@ -1,6 +1,17 @@
 node_modules
+node_modules/
+**/node_modules
+**/node_modules/
 dist
+dist/
+**/dist
+**/dist/
 .git
+.git/
+**/.git
+**/.git/
 .env
+**/.env
 *.log
+**/*.log
 Dockerfile
