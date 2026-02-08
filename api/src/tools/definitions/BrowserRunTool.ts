@@ -191,9 +191,19 @@ export class BrowserRunTool extends BaseTool {
         let execError: string | undefined = undefined;
 
         if (instructionText && (!Array.isArray(actions) || actions.length === 0)) {
-            // High-level planner run
+            // [Wakil 5.4] High-level planner run with hard try/catch
             const { runBrowserInstruction } = await import('../../browser/runner');
-            const r = await runBrowserInstruction({ userId, sessionId: sid, instructionText, mode: mode as any });
+            let r: any;
+            try {
+                r = await runBrowserInstruction({ userId, sessionId: sid, instructionText, mode: mode as any });
+            } catch (err: any) {
+                console.error('[BrowserRunTool] runBrowserInstruction threw exception:', err?.stack || err);
+                r = {
+                    ok: false,
+                    error: err?.message || 'browser_run_exception',
+                    detail: { message: err?.message, stack: err?.stack }
+                };
+            }
             if (r && typeof r === 'object' && (r as any).ok) {
                 execOk = Boolean((r as any).result?.ok);
                 const inner = (r as any).result;
