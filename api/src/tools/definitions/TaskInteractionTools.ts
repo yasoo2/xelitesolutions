@@ -279,6 +279,32 @@ export class SafeReadFileTool extends BaseTool {
         const filePath = resolveToolPath(String(input?.path ?? ''));
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
 
+        // [Wakil 4.6] Smart Directory Peek (Voice Feedback)
+        // Goal: "Don't be stupid and just stop at a folder. Open it!"
+        try {
+            const stats = fs.statSync(filePath);
+            if (stats.isDirectory()) {
+                const items = fs.readdirSync(filePath);
+                const formattedList = items.map(i => {
+                    try {
+                        const isDir = fs.statSync(path.join(filePath, i)).isDirectory();
+                        return isDir ? `${i}/` : i;
+                    } catch { return i; }
+                }).join('\n');
+
+                return {
+                    ok: true,
+                    output: {
+                        content: `⚠️ PATH IS A DIRECTORY (Auto-Listed):\nI cannot read a directory as a file, but here are the contents so you can select the target:\n\n${formattedList}\n\n[ACTION REQUIRED] Select a specific file from the list above.`,
+                        totalLines: items.length
+                    },
+                    logs: [`read_peek=directory path=${filePath} items=${items.length}`]
+                };
+            }
+        } catch (e: any) {
+            return { ok: false, error: `Stat/Read failed: ${e.message}`, logs: [] };
+        }
+
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
             const lines = content.split('\n');
