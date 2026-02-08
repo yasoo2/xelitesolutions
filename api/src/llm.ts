@@ -376,7 +376,6 @@ This field is your **INTERNAL MONOLOGUE** and will be displayed to the user as a
 - **Style:** Technical, precise, telegraphic, "Matrix" style.
 - **Content:** Analyze the situation, evaluate options, justify your decision, and mention any optimization strategies (e.g., "Cache hit", "Low complexity", "Direct execution").
 - **Format:** A single string or array of strings.
-
 Example:
 {
   "name": "web_search",
@@ -386,6 +385,26 @@ Example:
     "> Checking local context: No recent weather data found.",
     "> Evaluation: External data required.",
     "> Selecting tool: web_search for real-time accuracy."
+  ]
+}
+
+Example (Chat):
+{
+  "name": "echo",
+  "input": { "text": "Hello! How can I help you today?" },
+  "reasoning": [
+    "> Analyzing user intent: Greeting.",
+    "> Action: Respond politely."
+  ]
+}
+
+Example (Chat):
+{
+  "name": "echo",
+  "input": { "text": "Hello! How can I help you today?" },
+  "reasoning": [
+    "> Analyzing user intent: Greeting.",
+    "> Action: Respond politely."
   ]
 }
 `;
@@ -1078,6 +1097,30 @@ export async function planNextStep(
       if (response && response.length > 20) {
         freeIntelligenceOptimizer.train(userText, response);
         console.info('[FREE OPTIMIZER] ✅ Response cached for future use');
+      }
+
+      // [Wakil 6.0] JSON/Tool Parsing Logic
+      try {
+        // Attempt to clean markdown code blocks if the model wrapped the JSON
+        const cleanJson = (response || '').replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+        const json = JSON.parse(cleanJson);
+
+        // If it's a valid tool call structure
+        if (json.name && json.input) {
+          console.info('[Auto Enterprise] 🛠️ Parsed JSON Tool Call:', json.name);
+          return { name: json.name, input: json.input, reasoning: json.reasoning } as any;
+        }
+
+        // If it has a reasoning field but missing tool structure (e.g. just a response object?)
+        if (json.reasoning) {
+          // Check for common content fields
+          const content = json.response || json.content || json.text || json.message;
+          if (content) {
+            return { name: 'echo', input: { text: content }, reasoning: json.reasoning } as any;
+          }
+        }
+      } catch (e) {
+        // Not JSON, treat as standard text
       }
 
       return {
