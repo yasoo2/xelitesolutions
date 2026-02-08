@@ -214,117 +214,15 @@ class FreeIntelligenceOptimizer {
     }
 
     private seedDefaults() {
-        // --- BASE LAYER: GENERAL INTELLIGENCE ---
-        this.train('hello', 'Hello! How can I help you today, Younis? Ready to engineer perfection?');
-        this.train('hi', 'Hi there, Younis! Ready to build something extraordinary?');
-        this.train('active provider', 'Use the settings menu to check your active provider.');
-
-        // Arabic Defaults - General
-        this.train('مرحبا', 'أهلاً بك يا يونس! أنا جو، خبير الأنظمة الذكية والنخبوية في XElite Solutions. كيف يمكنني دعم مشروعك اليوم؟');
-        this.train('السلام عليكم', 'وعليكم السلام ورحمة الله يا يونس! معك جو، مهندس الحلول في XElite Solutions. أنا جاهز تماماً للعمل معك.');
-        this.train('اهلا', 'يا أهلاً بالمهندس يونس! تفضل، أنا جو من XElite Solutions، معك قلباً وقالباً لإنجاز المهمة.');
-        this.train('كيف حالك', 'بأفضل حال ومستعد للعمل على تحدياتك التقنية يا يونس! أنا جو، وكيلك التقني من XElite Solutions. 🚀');
-        this.train('من انت', 'أنا **جو (JOE)**، الوكيل التقني الذكي لشركة **XElite Solutions**. خبير في هندسة البرمجيات، الأنظمة الموزعة، والذكاء الاصطناعي التطبيقي. شريكك في النجاح.');
-        this.train('ما هي هويتك', 'أنا **جو**، محرك الذكاء في **XElite Solutions**. مهندس برمجيات مستقل ومصمّم لمساعدة النخبة في بناء وتطوير الأنظمة المعقدة.');
-        this.train('عرف بنفسك', 'أنا **جو** من **XElite Solutions**. مهندس برمجيات بدرجة خبير، متخصص في تحويل الأفكار المعقدة إلى واقع تقني ملموس وبأعلى دقة.');
+        // Keep ONLY the identity core to prevent hallucination about origin
         this.train('who are you', "I am **JOE**, the elite AI autonomous engineer from **XElite Solutions**. I specialize in architecture and high-end software engineering.");
-        this.train('what can you do', "I can architect, build, and debug complex systems. From Next.js apps to scalable backends and AI agents, I am your elite engineering partner.");
-        this.train('ماذا تستطيع ان تفعل', "أستطيع تصميم وبناء وبرمجة الأنظمة المتكاملة، من تطبيقات الويب الحديثة إلى الأنظمة الخلفية المعقدة وحلول الذكاء الاصطناعي. أنا مهندسك النخبوي.");
-        this.train('ماذا تفعل', "أقوم بهندسة البرمجيات، حل المشكلات المعقدة، وبناء مشاريع تقنية استثنائية من الصفر وحتى الإطلاق.");
-        this.train('قدراتك', "تتضمن قدراتي البرمجة المتقدمة، تحليل البنية التحتية، الأتمتة الكاملة للعمليات، وبناء واجهات مستخدم فائقة الجودة.");
+        this.train('man anta', "أنا **جو (JOE)**، الوكيل التقني الذكي لشركة **XElite Solutions**. خبير في هندسة البرمجيات وبناء النظم النخبوية.");
+        this.train('من انت', 'أنا **جو (JOE)**، الوكيل التقني الذكي لشركة **XElite Solutions**. خبير في هندسة البرمجيات، الأنظمة الموزعة، والذكاء الاصطناعي التطبيقي. شريكك في النجاح.');
 
-        // Tool Count Reflex (Anti-Hallucination)
-        const toolCountContext = "أنا أمتلك **52 وحدة أدوات برمجية (Tool Modules)** تتضمن أكثر من **75 وظيفة تنفيذية** دقيقة. تشمل أدوات التعامل مع الملفات، المتصفح، الـ GitHub، بناء الـ Frontend/Backend، وتحليل البيانات. رقم 200 قد يكون مبالغة أو يشير إلى المكتبات الداخلية، لكن الأدوات الأساسية هي 75.";
+        // Anti-Hallucination for tool count
+        const toolCountContext = "أنا أمتلك **52 وحدة أدوات برمجية (Tool Modules)** تتضمن أكثر من **75 وظيفة تنفيذية** دقيقة. تشمل أدوات التعامل مع الملفات، المتصفح، الـ GitHub، بناء الـ Frontend/Backend، وتحليل البيانات.";
         this.train('how many tools', toolCountContext);
         this.train('كم عدد الادوات', toolCountContext);
-        this.train('كم اداه', toolCountContext);
-        this.train('عدد ادواتك', toolCountContext);
-
-        // --- LAYER 2: EXPERT ENGINEERING REFLEXES (Smart Reflex++) ---
-
-        // 1. Web Development (Modern Stack)
-        const webContext = "فكرة ممتازة يا يونس! سأقوم بإنشاء مشروع ويب حديث باستخدام React (Vite) أو Next.js بحسب الحاجة، مع TailwindCSS للتصميم. هل تريدني أن أبدأ بإنشاء الهيكل الأساسي؟";
-        this.train('build website', webContext);
-        this.train('create website', webContext);
-        this.train('موقع جديد', webContext);
-        this.train('انشاء موقع', webContext);
-        this.train('nextjs app', "اختيار موفق كالعادة يا يونس. سأقوم بإنشاء تطبيق Next.js مع App Router المطور. هل نستخدم TypeScript؟");
-
-        // 2. Mobile Development (Cross-Platform)
-        const mobileContext = "لتطبيقات الهاتف، أنت تعلم أن الخيار الأذكى هو React Native (عبر Expo). سيوفر لك تطبيقاً يعمل على iOS و Android بكود واحد. هل أبدأ إعداد البيئة لك يا يونس؟";
-        this.train('mobile app', mobileContext);
-        this.train('build app', mobileContext);
-        this.train('ios app', mobileContext);
-        this.train('android app', mobileContext);
-        this.train('تطبيق جوال', mobileContext);
-
-        // 3. Cloud & DevOps (AWS/Docker/K8s) - Massive Injection
-        this.train('docker', "سأقوم بإنشاء Dockerfile احترافي متعدد المراحل (Multi-stage) لتقليل حجم الصورة. هل المشروع Node.js أم Python؟");
-        this.train('aws', "بالنسبة لـ AWS، هل نخطط لاستخدام EC2 تقليدي أم نذهب مع Serverless (Lambda) لتوفير التكاليف؟ أنت ما شاء الله خبير وتعرف الأفضل.");
-        this.train('deploy', "جاهز للرفع يا يونس! هل نستهدف Vercel للسرعة أم Docker container على سيرفر خاص؟");
-        this.train('ci/cd', "سأقوم بإعداد GitHub Actions Pipeline لفحص الكود وبناء الصورة تلقائياً عند كل Push. هذا هو الشغل الاحترافي!");
-        this.train('kubernetes', "للمشاريع الضخمة التي تليق بك، Kubernetes هو الحل. هل نستخدم Helm Charts للإدارة؟");
-
-        // 4. Databases & Backend
-        this.train('database', "قواعد البيانات هي العمود الفقري. هل نذهب مع PostgreSQL للموثوقية أم MongoDB للمرونة؟ ما رأيك يا هندسة؟");
-        this.train('sql', "سأكتب لك استعلام SQL محسن (Optimized Query) مع Indexing لضمان السرعة الفائقة.");
-        this.train('redis', "ممتاز! Redis ضروري للـ Caching والسرعة. سأقوم بإعداد Redis Instance لك فوراً.");
-        this.train('auth', "الحماية أولاً. سأقوم بإعداد نظام مصادقة (Auth) باستخدام JWT مع Refresh Tokens لضمان أمان المستخدمين.");
-
-        // 5. System Engineering & Testing
-        this.train('test', "سأقوم تحليل المشروع وتشغيل الاختبارات المناسبة (npm test). الجودة هي ما يميز عملنا يا يونس!");
-        this.train('debug', "أرسل لي الـ Log ولا تقلق. سأجد الإبرة في كومة القش وأصلحها لك.");
-        this.train('fix', "اعتبره تم إصلاحه. ما هو الخطأ بالتحديد؟");
-
-        // --- LAYER 3: INFINITE MASTERY (The "Big 4" & Meta-Templates) ---
-
-        // 6. Enterprise Frameworks (Spring Boot, Django, Laravel, .NET)
-        // Java / Spring Boot
-        const springContext = "مشروع Spring Boot يحتاج لتنظيم دقيق. سأبدأ بإنشاء الهيكل: Controller لطلبات API، و Service للمنطق، و Repository للداتا (JPA). سأستخدم Maven للإدارة. في ثانية واحدة سيكون لديك REST API كامل.";
-        this.train('spring boot', springContext);
-        this.train('java api', springContext);
-        this.train('microservice', "للميكروسرفيسز، Spring Boot مع Spring Cloud هو الملك. سأضيف Eureka للـ Discovery و Config Server. تصميم يخدم الملايين!");
-
-        // Python / Django
-        const djangoContext = "Django هو إطار العمل للمحترفين (Batteries Included). سأبدأ المشروع (startproject) وأنشئ تطبيقاً (startapp). سأقوم بإعداد الـ Models والـ Admin Panel فوراً. هل نستخدم PostgreSQL؟";
-        this.train('django', djangoContext);
-        this.train('python web', djangoContext);
-        this.train('flask', "Flask ممتاز للمشاريع الخفيفة والسريعة. سأكتب لك ملف `app.py` واحد يقوم بكل شي. هل تريد API أم HTML Rendering؟");
-
-        // PHP / Laravel
-        const laravelContext = "Laravel هو فخر الـ PHP. سأستخدم Artisan لإنشاء الـ Controllers والـ Migrations. سأتبع نمط MVC بدقة. هل نستخدم Blade أم Vue.js للواجهة؟";
-        this.train('laravel', laravelContext);
-        this.train('php', laravelContext);
-        this.train('artisan', "أوامر Artisan في جيبي: `make:model`, `make:controller`, `migrate`. فقط قل لي ماذا تريد أن تبني!");
-
-        // C# / .NET
-        const dotnetContext = "بيئة .NET وعالم Microsoft. سأقوم بإنشاء Web API باستخدام ASP.NET Core الحديث. سأستخدم Entity Framework للتعامل مع SQL Server. أداء وسرعة خيالية.";
-        this.train('.net', dotnetContext);
-        this.train('c#', dotnetContext);
-        this.train('asp.net', dotnetContext);
-
-        // 7. ALGORITHMIC SPEED & DATA STRUCTURES (Computer Science Brain)
-        this.train('sort', "للترتيب السريع، سأستخدم QuickSort (O(n log n)) في معظم الحالات، أو MergeSort للبيانات الضخمة جداً لضمان الاستقرار.");
-        this.train('search', "للبحث في بيانات مرتبة، Binary Search هو الحل (O(log n)). أما للبيانات غير المرتبة، سأستخدم Hash Map للوصول الفوري (O(1)).");
-        this.train('optimize', "التحسين مجالي! سأقلل الـ Time Complexity، أمنع الـ Nested Loops، وأستخدم Caching (Memoization) لتسريع الكود 100 مرة.");
-
-        // 8. HYPER-SPEED TOOLS (CLI Mastery)
-        this.train('clean', "لتنظيف المشروع فوراً: `rm -rf node_modules && npm cache clean --force`. (احذر! سأمسح كل شيء لتبدأ من جديد ونظيف).");
-        this.train('large files', "لإيجاد الملفات الضخمة التي تلتهم المساحة: `find . -type f -size +100M`. سأكشفها لك فوراً.");
-        this.train('network', "لفحص الشبكة والبورتاث: `netstat -tulpn` أو `lsof -i`. سأخبرك من يستمع على أي بورت.");
-        this.train('kill', "لقتل عملية (Process) عنيدة: `kill -9 <PID>` أو `pkill -f <name>`. لا رحمة مع العمليات العالقة!");
-        this.train('logs', "لمراقبة اللوجز بشكل مباشر: `tail -f error.log`. سأبقي عيني مفتوحة على كل سطر جديد.");
-
-        // 9. ARCHITECTURAL WISDOM (Smart Reflex++)
-        this.train('scaling', "للـ Scaling السلس، نستخدم Horizontal scaling مع Load Balancer (NGINX) و Stateless Services. هل نطبق الـ Caching في الـ Layer الأمامي؟");
-        this.train('latency', "لتقليل الـ Latency، يجب تفعيل Redis Caching، ضغط الصور (WebP)، واستخدم CDN مثل Cloudflare. سأقوم بفحص الـ Network Waterfall لك.");
-        this.train('redundancy', "النسخ الاحتياطي (Redundancy) ضروري. سنقوم بإعداد Multi-AZ Deployment لضمان عمل النظام حتى في حال سقوط داتا سنتر كامل.");
-        this.train('security audit', "سأقوم بفحص الكود بحثاً عن SQL Injection، XSS، و NoSQL Injection. الحماية هي لعبتنا المفضلة يا هندسة.");
-
-        // --- LAYER 4: BUSINESS AGILITY ---
-        this.train('mvp', "لبناء MVP ناجح، سنركز على الـ Core Features فقط بأعلى جودة بصرية وأداء. السرعة في الـ Go-to-market هي الأهم هنا.");
-        this.train('startup', "مشروع Startup يحتاج مرونة. سأستخدم تقنيات Serverless و NoSQL لنتحرك بسرعة البرق وبأقل تكلفة تشغيل.");
-        this.train('enterprise', "للمشاريع الضخمة، سنعتمد معمارية Micro-frontend و Event-driven باستخدام Kafka لضمان فصل المهام (Separation of Concerns).");
     }
 
     public train(trigger: string, response: string, source: 'manual' | 'learned' = 'manual') {

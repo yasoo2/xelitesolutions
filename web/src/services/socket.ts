@@ -361,9 +361,12 @@ export const SocketService = {
     return quietMode;
   },
   send(data: any) {
-    // [Wakil 5.2] HARD Quiet Mode: Block ALL outgoing traffic
-    if (quietMode) {
-      console.log('[Socket] HARD Quiet Mode: Blocked ALL traffic');
+    // [Wakil 5.2] HARD Quiet Mode: Block ALL outgoing traffic EXCEPT critical signals
+    const criticalSignals = ['run', 'stop', 'join_session', 'heartbeat'];
+    const isCritical = data && criticalSignals.includes(data.type);
+
+    if (quietMode && !isCritical) {
+      console.log('[Socket] HARD Quiet Mode: Blocked non-critical traffic:', data.type);
       return; // NO SEND. NO QUEUE. ZERO TRAFFIC.
     }
 

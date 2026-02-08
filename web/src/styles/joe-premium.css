@@ -43,7 +43,7 @@
     --joe-shadow-gold: 0 0 25px rgba(240, 193, 75, 0.25);
 
     /* Panel Sizes */
-    --joe-chat-width: 340px;
+    --joe-chat-width: 440px;
     --joe-files-width: 280px;
     --joe-chat-actual-width: var(--joe-chat-width);
     --joe-files-actual-width: var(--joe-files-width);
@@ -764,10 +764,32 @@
     /* Dark icon on gold button */
 }
 
-.joe-send-btn:disabled {
+.joe-chat-input-area .send-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
     transform: none;
+}
+
+/* Button Thinking Pulse */
+.btn-thinking-pulse {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: rgba(240, 193, 75, 0.4);
+    animation: btnPulse 1.5s infinite ease-in-out;
+    z-index: 1;
+}
+
+@keyframes btnPulse {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
 }
 
 /* ========== Workspace Panel (Center) ========== */

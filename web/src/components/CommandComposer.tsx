@@ -3478,8 +3478,14 @@ export default function CommandComposer({
                 }}
                 disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
                 title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+                style={{ position: 'relative' }}
               >
-                {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={14} fill="currentColor" /> : <ArrowUp size={16} />}
+                {status !== 'idle' || !!approval || !!secretPrompt ? (
+                  <>
+                    <Square size={14} fill="currentColor" style={{ zIndex: 2 }} />
+                    <div className="btn-thinking-pulse" />
+                  </>
+                ) : <ArrowUp size={16} />}
               </button>
             </div>
           </div>
