@@ -37,9 +37,13 @@ const calculateHash = (text: string) => {
 
 async function isMessageDuplicate(sessionId: string, text: string): Promise<boolean> {
     try {
-        const lastMsg = await Message.findOne({ sessionId }).sort({ createdAt: -1 }).lean();
-        if (!lastMsg) return false;
-        return calculateHash(String(lastMsg.content || '')) === calculateHash(text);
+        const history = await Message.find({ sessionId, role: 'assistant' })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .lean();
+        if (!history.length) return false;
+        const newHash = calculateHash(text);
+        return history.some(m => calculateHash(String(m.content || '')) === newHash);
     } catch {
         return false;
     }
