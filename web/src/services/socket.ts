@@ -13,6 +13,11 @@ let lastAuthProbeAt = 0;
 let lastShimCheckAt = 0;
 let cachedIsShim: boolean | null = null;
 
+// [Wakil 4.7] Singleton Enforcement & Deduplication
+let isConnecting = false;
+const seenMessageIds = new Set<string>(); // Deduplication cache
+const MAX_SEEN_IDS = 1000;
+
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
     const base = httpUrl.replace(/\/api\/?$/, '');
@@ -82,10 +87,18 @@ async function connect() {
     console.error('[Socket Debug] WS_URL is missing or empty');
     return;
   }
+
+  // [Wakil 4.7] Strict Singleton Guard
+  if (isConnecting) {
+    console.log('[Socket Debug] Already connecting... skipping.');
+    return;
+  }
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     console.log('[Socket Debug] Socket already open/connecting', socket.readyState);
     return;
   }
+
+  isConnecting = true; // LOCK
 
   const token = localStorage.getItem('token');
   console.log('[Socket Debug] Token found:', token ? token.slice(0, 10) + '...' : 'null');
@@ -98,6 +111,7 @@ async function connect() {
   if (await isApiShimActive()) {
     console.log('[Socket Debug] API Shim Active, backing off');
     setStatus('error', 'api_shim');
+    isConnecting = false; // UNLOCK on bail
     connectTimer = window.setTimeout(() => void connect(), 15000);
     return;
   }
@@ -122,9 +136,14 @@ async function connect() {
   setStatus(connectAttempts > 0 ? 'reconnecting' : 'connecting', urlToUse);
 
   try {
+    if (socket) {
+      try { socket.close(); } catch { }
+      socket = null;
+    }
     socket = new WebSocket(urlToUse);
   } catch (err) {
     console.error('[Socket Debug] new WebSocket() threw:', err);
+    isConnecting = false; // UNLOCK
     return;
   }
 
@@ -132,11 +151,13 @@ async function connect() {
     console.log('[Socket Debug] onopen fired');
     const ws = event.target as WebSocket;
     opened = true;
+    isConnecting = false; // UNLOCK
     connectAttempts = 0;
     triedFallback = false;
     setStatus('connected', lastUrl);
 
     // Flush pending safely using the socket instance that just opened
+    console.log(`[Socket Debug] Flushing ${pendingQueue.length} queued messages.`);
     while (pendingQueue.length > 0) {
       if (ws.readyState !== WebSocket.OPEN) break;
       const msg = pendingQueue.shift();
@@ -145,14 +166,36 @@ async function connect() {
           ws.send(msg);
         } catch (err) {
           console.error('WebSocket send error in onopen:', err);
+          // Don't put it back, avoid loops
         }
       }
+    }
+    // [Wakil 4.7] Ensure queue is empty after flush attempt
+    if (ws.readyState === WebSocket.OPEN) {
+      pendingQueue = [];
     }
   };
 
   socket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
+
+      // [Wakil 4.7] Deduplication Logic
+      const id = data.id || data.seq || (data.ts && data.type ? `${data.type}:${data.ts}` : null);
+      if (id) {
+        const key = String(id);
+        if (seenMessageIds.has(key)) {
+          console.log('[Socket Debug] Ignored duplicate message:', key);
+          return;
+        }
+        seenMessageIds.add(key);
+        if (seenMessageIds.size > MAX_SEEN_IDS) {
+          // Simple prune
+          const it = seenMessageIds.values();
+          for (let i = 0; i < 200; i++) seenMessageIds.delete(it.next().value);
+        }
+      }
+
       listeners.forEach(l => l(data));
     } catch (e) {
     }
@@ -160,7 +203,11 @@ async function connect() {
 
   socket.onclose = (ev) => {
     console.log('[Socket Debug] onclose:', ev.code, ev.reason);
-    socket = null;
+    if (socket === ev.target) {
+      socket = null;
+    }
+    isConnecting = false; // UNLOCK just in case
+
     const reason = String((ev as any)?.reason || '');
     if (ev?.code === 1008 || reason.startsWith('unauthorized')) {
       try {
@@ -228,12 +275,27 @@ async function connect() {
 
   socket.onerror = (e) => {
     console.error('[Socket Debug] onerror:', e);
+    isConnecting = false; // UNLOCK
     setStatus('error', lastUrl);
   };
 }
 
 export const SocketService = {
   connect,
+  // [Wakil 4.7] Force Reset (for logout)
+  disconnect() {
+    if (socket) {
+      socket.close();
+      socket = null;
+    }
+    if (connectTimer) {
+      window.clearTimeout(connectTimer);
+      connectTimer = null;
+    }
+    isConnecting = false;
+    pendingQueue = [];
+    seenMessageIds.clear();
+  },
   send(data: any) {
     const msg = JSON.stringify(data);
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -242,17 +304,17 @@ export const SocketService = {
     } else {
       console.warn('[Socket] Not connected. Queuing message:', msg);
       pendingQueue.push(msg);
-      if (!socket) connect();
+      if (!socket && !isConnecting) connect();
     }
   },
   subscribe(cb: (data: any) => void) {
     listeners.add(cb);
-    if (!socket) connect();
+    if (!socket && !isConnecting) connect();
     return () => listeners.delete(cb);
   },
   subscribeStatus(cb: (status: { state: string; detail?: string }) => void) {
     statusListeners.add(cb);
-    if (!socket) connect();
+    if (!socket && !isConnecting) connect();
     return () => statusListeners.delete(cb);
   },
 };

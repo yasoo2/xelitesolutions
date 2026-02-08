@@ -661,8 +661,6 @@ export default function CommandComposer({
 
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number>();
   const endRef = useRef<HTMLDivElement>(null);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const eventsContentRef = useRef<HTMLDivElement>(null);
@@ -1170,367 +1168,289 @@ export default function CommandComposer({
     return totalDelay;
   };
 
+  // [Wakil 4.7] Refactored to use Singleton SocketService
+  // Removed local WebSocket connection logic to prevent duplication
   useEffect(() => {
-    void connectWS();
+    // Subscribe to incoming messages
+    const unsubscribeMessages = SocketService.subscribe((msg: any) => {
+      // [Wakil 4.7] Centralized Handling via SocketService
+      handleMessage({ data: JSON.stringify(msg) } as MessageEvent);
+    });
+
+    // Subscribe to status changes
+    const unsubscribeStatus = SocketService.subscribeStatus(({ state }) => {
+      setIsConnected(state === 'connected');
+      if (state === 'unauthorized') handleUnauthorized();
+    });
+
+    // Initial check
+    SocketService.connect();
+
     return () => {
-      if (wsRef.current) wsRef.current.close();
-      if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+      unsubscribeMessages();
+      unsubscribeStatus();
       clearToolTimers();
       clearDraftTimer();
     };
   }, []);
 
-  async function connectWS() {
+  // Legacy handler wrapper for compatibility with existing logic
+  const handleMessage = (evt: MessageEvent) => {
     try {
-      if (wsRef.current) {
-        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
-        try { wsRef.current.close(); } catch { }
+      const msg = JSON.parse(evt.data);
+      if (typeof msg?.seq === 'number' && Number.isFinite(msg.seq)) {
+        if (msg.seq > lastLiveSeqRef.current) lastLiveSeqRef.current = msg.seq;
+      }
+      if (typeof msg?.runId === 'string' && msg.runId.trim()) {
+        setActiveRunId(msg.runId.trim());
+      }
+      if (msg.type === 'user_input') {
+        clearToolTimers();
+        setStatus('thinking');
+        setIsThinking(true);
+        setActiveToolName(null);
+        setToolVisible(false);
+        return;
       }
 
-      try {
-        const healthRes = await fetch(`${API}/health`, { cache: 'no-store' });
-        const isShim = healthRes.headers.get('x-joe-api-shim') === '1';
-        if (isShim) {
-          setIsConnected(false);
-          if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = window.setTimeout(() => void connectWS(), 15000);
-          return;
-        }
-      } catch { }
+      if (msg.type === 'run_finished' || msg.type === 'run_completed') {
+        window.dispatchEvent(new CustomEvent('sessions:refresh'));
+      }
 
-      const token = (() => {
-        try {
-          return localStorage.getItem('token');
-        } catch {
-          return null;
-        }
-      })();
-      const withToken = (url: string) => {
-        if (!token) return url;
-        const hasQuery = url.includes('?');
-        const sep = hasQuery ? '&' : '?';
-        return `${url}${sep}token=${encodeURIComponent(token)}`;
-      };
-      const primaryUrl = withToken(WS);
-      const fallbackBase = API.replace(/\/api\/?$/, '').replace(/^http/, 'ws');
-      const fallbackUrl = withToken(`${fallbackBase}/ws`);
+      if (msg.type === 'artifact_created') {
+        const kind = msg.data?.kind;
+        const href = msg.data?.href;
+        if (typeof href === 'string' && /^https?:\/\//i.test(href)) {
+          const name = String(msg.data?.name || '').trim();
+          const lowerName = name.toLowerCase();
+          const lowerKind = String(kind || '').toLowerCase();
+          const looksLikeAsset = /\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|pdf|zip|tar|gz)(\?|#|$)/i.test(href);
 
-      const handleMessage = (evt: MessageEvent) => {
-        try {
-          const msg = JSON.parse(evt.data);
-          if (typeof msg?.seq === 'number' && Number.isFinite(msg.seq)) {
-            if (msg.seq > lastLiveSeqRef.current) lastLiveSeqRef.current = msg.seq;
-          }
-          if (typeof msg?.runId === 'string' && msg.runId.trim()) {
-            setActiveRunId(msg.runId.trim());
-          }
-          if (msg.type === 'user_input') {
-            clearToolTimers();
-            setStatus('thinking');
-            setIsThinking(true);
-            setActiveToolName(null);
-            setToolVisible(false);
-            return;
-          }
+          let shouldAutoOpen = false;
+          if (!looksLikeAsset) {
+            try {
+              const u = new URL(href);
+              const host = u.hostname.toLowerCase();
+              const looksLocal = host === 'localhost' || host === '127.0.0.1';
+              const looksPreviewHost =
+                host.endsWith('.vercel.app') ||
+                host.endsWith('.netlify.app') ||
+                host.endsWith('.pages.dev') ||
+                host.endsWith('.web.app');
+              if (looksLocal || looksPreviewHost) shouldAutoOpen = true;
+            } catch { }
 
-          if (msg.type === 'run_finished' || msg.type === 'run_completed') {
-            window.dispatchEvent(new CustomEvent('sessions:refresh'));
-          }
-
-          if (msg.type === 'artifact_created') {
-            const kind = msg.data?.kind;
-            const href = msg.data?.href;
-            if (typeof href === 'string' && /^https?:\/\//i.test(href)) {
-              const name = String(msg.data?.name || '').trim();
-              const lowerName = name.toLowerCase();
-              const lowerKind = String(kind || '').toLowerCase();
-              const looksLikeAsset = /\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|pdf|zip|tar|gz)(\?|#|$)/i.test(href);
-
-              let shouldAutoOpen = false;
-              if (!looksLikeAsset) {
-                try {
-                  const u = new URL(href);
-                  const host = u.hostname.toLowerCase();
-                  const looksLocal = host === 'localhost' || host === '127.0.0.1';
-                  const looksPreviewHost =
-                    host.endsWith('.vercel.app') ||
-                    host.endsWith('.netlify.app') ||
-                    host.endsWith('.pages.dev') ||
-                    host.endsWith('.web.app');
-                  if (looksLocal || looksPreviewHost) shouldAutoOpen = true;
-                } catch { }
-
-                if (!shouldAutoOpen) {
-                  if (lowerKind.includes('deploy') || lowerKind.includes('preview')) shouldAutoOpen = true;
-                  else if (/(preview|deploy|site|demo|app)/i.test(lowerName)) shouldAutoOpen = true;
-                }
-              }
-
-              if (shouldAutoOpen && lastAutoOpenedHrefRef.current !== href) {
-                lastAutoOpenedHrefRef.current = href;
-                try {
-                  window.open(href, '_blank', 'noopener,noreferrer');
-                } catch { }
-              }
+            if (!shouldAutoOpen) {
+              if (lowerKind.includes('deploy') || lowerKind.includes('preview')) shouldAutoOpen = true;
+              else if (/(preview|deploy|site|demo|app)/i.test(lowerName)) shouldAutoOpen = true;
             }
           }
 
-          if (msg.type === 'approval_required') {
-            const data = msg.data || {};
-            const { id, risk, action } = data;
-            const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
-            if (id) {
-              const sig = `${String(id)}:${String(runId || '')}`;
-              if (lastGateSigRef.current.approval === sig) return;
-              lastGateSigRef.current.approval = sig;
-              setApproval({ id, runId, risk, action });
-              const actionText = String(action || '').trim();
-              const riskText = String(risk || '').trim();
-              const lines = [
-                t('approvalGateTitle', 'Approval is required before continuing.'),
-                actionText ? `- ${t('action', 'Action')}: ${actionText}` : '',
-                riskText ? `- ${t('risk', 'Risk')}: ${riskText}` : '',
-                '',
-                t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
-              ].filter(Boolean);
-              setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
-            }
+          if (shouldAutoOpen && lastAutoOpenedHrefRef.current !== href) {
+            lastAutoOpenedHrefRef.current = href;
+            try {
+              window.open(href, '_blank', 'noopener,noreferrer');
+            } catch { }
           }
+        }
+      }
 
-          if (msg.type === 'secret_required') {
-            const data = msg.data || {};
-            const sid = String(data?.sessionId || sessionId || '').trim();
-            const key = String(data?.key || '').trim();
-            if (sid && key) {
-              const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
-              const sig = `${sid}:${key}:${runId}`;
-              if (lastGateSigRef.current.secret === sig) return;
-              lastGateSigRef.current.secret = sig;
-              setSecretPrompt({
-                sessionId: sid,
-                runId: typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : undefined,
-                provider: typeof data?.provider === 'string' ? data.provider : undefined,
-                key,
-                label: typeof data?.label === 'string' ? data.label : undefined,
-                reason: typeof data?.reason === 'string' ? data.reason : undefined,
+      if (msg.type === 'approval_required') {
+        const data = msg.data || {};
+        const { id, risk, action } = data;
+        const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
+        if (id) {
+          const sig = `${String(id)}:${String(runId || '')}`;
+          if (lastGateSigRef.current.approval === sig) return;
+          lastGateSigRef.current.approval = sig;
+          setApproval({ id, runId, risk, action });
+          const actionText = String(action || '').trim();
+          const riskText = String(risk || '').trim();
+          const lines = [
+            t('approvalGateTitle', 'Approval is required before continuing.'),
+            actionText ? `- ${t('action', 'Action')}: ${actionText}` : '',
+            riskText ? `- ${t('risk', 'Risk')}: ${riskText}` : '',
+            '',
+            t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
+          ].filter(Boolean);
+          setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
+        }
+      }
+
+      if (msg.type === 'secret_required') {
+        const data = msg.data || {};
+        const sid = String(data?.sessionId || sessionId || '').trim();
+        const key = String(data?.key || '').trim();
+        if (sid && key) {
+          const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
+          const sig = `${sid}:${key}:${runId}`;
+          if (lastGateSigRef.current.secret === sig) return;
+          lastGateSigRef.current.secret = sig;
+          setSecretPrompt({
+            sessionId: sid,
+            runId: typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : undefined,
+            provider: typeof data?.provider === 'string' ? data.provider : undefined,
+            key,
+            label: typeof data?.label === 'string' ? data.label : undefined,
+            reason: typeof data?.reason === 'string' ? data.reason : undefined,
+          });
+          const label = typeof data?.label === 'string' && data.label.trim() ? data.label.trim() : key;
+          const reason = typeof data?.reason === 'string' && data.reason.trim() ? data.reason.trim() : '';
+          const lines = [
+            t('secretGateTitle', 'A token/key is required to continue.'),
+            `- ${t('secretGateRequired', 'Required')}: ${label}`,
+            reason ? `- ${t('secretGateReason', 'Reason')}: ${reason}` : '',
+            '',
+            t('secretGateInstruction', 'Paste the token here and send it as a single message.'),
+            t('secretGatePrivacy', 'The token will not be shown after sending.'),
+          ].filter(Boolean);
+          setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
+        }
+      }
+
+      if (msg.type === 'step_started') {
+        const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
+        const name = String(msg?.data?.name || '');
+        if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
+        if (name === 'plan') {
+          showTool('plan');
+        } else if (name.startsWith('planning_step_')) {
+          showTool('plan');
+        } else if (name.startsWith('execute:')) {
+          showTool(name.slice('execute:'.length));
+        } else if (name) {
+          showTool(name);
+        }
+      }
+
+      if (msg.type === 'step_done') {
+        const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
+        const name = String(msg?.data?.name || '');
+
+        const start = stepStartTimes.current[`${rid}:${name}`];
+        if (start) {
+          msg.duration = Date.now() - start;
+          delete stepStartTimes.current[`${rid}:${name}`];
+        }
+
+        hideToolSoon();
+      }
+
+      if (msg.type === 'text') {
+        const id = typeof msg?.id === 'string' ? msg.id : '';
+        const isSystemPrompt = id.startsWith('system_prompt:');
+        if (isSystemPrompt) return;
+
+        const rid = typeof msg?.runId === 'string' ? msg.runId : '';
+        const rawSigPart =
+          typeof msg?.data === 'string'
+            ? msg.data
+            : msg?.data != null
+              ? (() => {
+                try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
+              })()
+              : '';
+
+        // Strict deduplication: Ignore runId, focus on content. 
+        // If the exact same text arrives within 10 seconds, ignore it.
+        const sig = rawSigPart.trim();
+        const now = Date.now();
+        if (lastTextDedupRef.current && lastTextDedupRef.current.sig === sig && now - lastTextDedupRef.current.ts < 10000) return;
+        lastTextDedupRef.current = { sig, ts: now };
+
+        const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
+        clearToolTimers();
+        clearDraftTimer();
+        if (hadTool) {
+          setToolVisible(false);
+          setActiveToolName(null);
+        }
+        setStatus('answering');
+        setIsThinking(true);
+
+        const delay = 0; // SPEED OPTIMIZATION: Instant UI update
+        window.setTimeout(() => {
+          try {
+            let content: any = msg.data;
+            try {
+              if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                const p = JSON.parse(content);
+                content = p.text || p.output || content;
+              }
+            } catch { }
+
+            const cleaned = cleanAssistantText(content);
+            const finalText = String(cleaned || content || '').trimEnd();
+
+            if (!finalText) {
+              setEvents((prev) => {
+                if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                // Double check against last message content
+                const last = prev[prev.length - 1];
+                if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
+                return [...prev, msg];
               });
-              const label = typeof data?.label === 'string' && data.label.trim() ? data.label.trim() : key;
-              const reason = typeof data?.reason === 'string' && data.reason.trim() ? data.reason.trim() : '';
-              const lines = [
-                t('secretGateTitle', 'A token/key is required to continue.'),
-                `- ${t('secretGateRequired', 'Required')}: ${label}`,
-                reason ? `- ${t('secretGateReason', 'Reason')}: ${reason}` : '',
-                '',
-                t('secretGateInstruction', 'Paste the token here and send it as a single message.'),
-                t('secretGatePrivacy', 'The token will not be shown after sending.'),
-              ].filter(Boolean);
-              setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
-            }
-          }
-
-          if (msg.type === 'step_started') {
-            const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
-            const name = String(msg?.data?.name || '');
-            if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
-            if (name === 'plan') {
-              showTool('plan');
-            } else if (name.startsWith('planning_step_')) {
-              showTool('plan');
-            } else if (name.startsWith('execute:')) {
-              showTool(name.slice('execute:'.length));
-            } else if (name) {
-              showTool(name);
-            }
-          }
-
-          if (msg.type === 'step_done') {
-            const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
-            const name = String(msg?.data?.name || '');
-
-            const start = stepStartTimes.current[`${rid}:${name}`];
-            if (start) {
-              msg.duration = Date.now() - start;
-              delete stepStartTimes.current[`${rid}:${name}`];
+              setIsThinking(false);
+              setStatus('idle');
+              stopDraft();
+              return;
             }
 
-            hideToolSoon();
-          }
+            stopDraft();
 
-          if (msg.type === 'text') {
-            const id = typeof msg?.id === 'string' ? msg.id : '';
-            const isSystemPrompt = id.startsWith('system_prompt:');
-            if (isSystemPrompt) return;
+            const normalizedMsg = {
+              ...msg,
+              data: msg?.data != null && typeof msg.data === 'object' ? { ...(msg.data as any), text: finalText } : { text: finalText },
+            };
 
-            const rid = typeof msg?.runId === 'string' ? msg.runId : '';
-            const rawSigPart =
-              typeof msg?.data === 'string'
-                ? msg.data
-                : msg?.data != null
-                  ? (() => {
-                    try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
-                  })()
-                  : '';
-
-            // Strict deduplication: Ignore runId, focus on content. 
-            // If the exact same text arrives within 10 seconds, ignore it.
-            const sig = rawSigPart.trim();
-            const now = Date.now();
-            if (lastTextDedupRef.current && lastTextDedupRef.current.sig === sig && now - lastTextDedupRef.current.ts < 10000) return;
-            lastTextDedupRef.current = { sig, ts: now };
-
-            const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
-            clearToolTimers();
-            clearDraftTimer();
-            if (hadTool) {
-              setToolVisible(false);
-              setActiveToolName(null);
-            }
-            setStatus('answering');
-            setIsThinking(true);
-
-            const delay = 0; // SPEED OPTIMIZATION: Instant UI update
-            window.setTimeout(() => {
-              try {
-                let content: any = msg.data;
-                try {
-                  if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                    const p = JSON.parse(content);
-                    content = p.text || p.output || content;
-                  }
-                } catch { }
-
-                const cleaned = cleanAssistantText(content);
-                const finalText = String(cleaned || content || '').trimEnd();
-
-                if (!finalText) {
-                  setEvents((prev) => {
-                    if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                    // Double check against last message content
-                    const last = prev[prev.length - 1];
-                    if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
-                    return [...prev, msg];
-                  });
-                  setIsThinking(false);
-                  setStatus('idle');
-                  stopDraft();
-                  return;
-                }
-
-                stopDraft();
-
-                const normalizedMsg = {
-                  ...msg,
-                  data: msg?.data != null && typeof msg.data === 'object' ? { ...(msg.data as any), text: finalText } : { text: finalText },
-                };
-
-                setEvents((prev) => {
-                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                  const last = prev[prev.length - 1];
-                  const lastText =
-                    last && last.type === 'text'
-                      ? typeof last.data === 'string'
-                        ? last.data
-                        : last?.data?.text
-                      : '';
-                  if (last && last.type === 'text' && String(lastText || '').trim() === finalText.trim()) return prev;
-                  return [...prev, normalizedMsg];
-                });
-
-                setIsThinking(false);
-                setStatus('idle');
-              } catch (e) {
-                console.error('Error in text streaming:', e);
-                setIsThinking(false);
-                setStatus('idle');
-                stopDraft();
-                setEvents((prev) => {
-                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                  // Double check against last message content
-                  const last = prev[prev.length - 1];
-                  if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
-                  return [...prev, msg];
-                });
-              }
-            }, delay);
-            return;
-          }
-
-          if (msg.type === 'run_finished') {
-            if (statusRef.current !== 'answering') hideToolSoon();
-          }
-
-          if (!showToolUi && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
-          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed'].includes(msg.type)) {
-            setEvents(prev => {
-              const id = typeof msg?.id === 'string' ? msg.id : '';
+            setEvents((prev) => {
               if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+              const last = prev[prev.length - 1];
+              const lastText =
+                last && last.type === 'text'
+                  ? typeof last.data === 'string'
+                    ? last.data
+                    : last?.data?.text
+                  : '';
+              if (last && last.type === 'text' && String(lastText || '').trim() === finalText.trim()) return prev;
+              return [...prev, normalizedMsg];
+            });
+
+            setIsThinking(false);
+            setStatus('idle');
+          } catch (e) {
+            console.error('Error in text streaming:', e);
+            setIsThinking(false);
+            setStatus('idle');
+            stopDraft();
+            setEvents((prev) => {
+              if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+              // Double check against last message content
+              const last = prev[prev.length - 1];
+              if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
               return [...prev, msg];
             });
           }
-        } catch (e) {
-          console.error('WS parse error:', e);
-        }
-      };
+        }, delay);
+        return;
+      }
 
-      const attach = (ws: WebSocket, allowFallback: boolean) => {
-        ws.onopen = () => {
-          if (wsRef.current !== ws) return;
-          setIsConnected(true);
-        };
+      if (msg.type === 'run_finished') {
+        if (statusRef.current !== 'answering') hideToolSoon();
+      }
 
-        ws.onmessage = handleMessage;
-
-        ws.onclose = () => {
-          if (wsRef.current !== ws) return;
-          setIsConnected(false);
-
-          // Reset thinking state on disconnect to avoid stuck UI
-          if (isThinkingRef.current || statusRef.current !== 'idle') {
-            setStatus('idle');
-            setIsThinking(false);
-            setActiveToolName(null);
-            setToolVisible(false);
-            clearToolTimers();
-            clearDraftTimer();
-          }
-
-          const triedFallback = (ws as any)?.__triedFallback === true;
-          if (allowFallback && !triedFallback && primaryUrl !== fallbackUrl) {
-            try {
-              const fws = new WebSocket(fallbackUrl);
-              (fws as any).__triedFallback = true;
-              wsRef.current = fws;
-              attach(fws, false);
-              return;
-            } catch { }
-          }
-
-          reconnectTimerRef.current = window.setTimeout(() => void connectWS(), 2000);
-        };
-
-        ws.onerror = () => {
-          if (wsRef.current !== ws) return;
-          setIsConnected(false);
-
-          if (isThinkingRef.current || statusRef.current !== 'idle') {
-            setStatus('idle');
-            setIsThinking(false);
-            setActiveToolName(null);
-            setToolVisible(false);
-            clearToolTimers();
-            clearDraftTimer();
-          }
-        };
-      };
-
-      const ws = new WebSocket(primaryUrl);
-      wsRef.current = ws;
-      attach(ws, true);
+      if (!showToolUi && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
+      if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed'].includes(msg.type)) {
+        setEvents(prev => {
+          const id = typeof msg?.id === 'string' ? msg.id : '';
+          if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+          return [...prev, msg];
+        });
+      }
     } catch (e) {
-      console.error('WS connect failed:', e);
-      setIsConnected(false);
+      console.error('WS parse error:', e);
     }
-  }
+  };
 
   useEffect(() => {
     const prev = prevSessionIdRef.current;
