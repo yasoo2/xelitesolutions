@@ -148,11 +148,12 @@ export class AgentLoopService {
         console.log(`[AgentLoop] Starting recursive loop for ${sessionId}`);
 
         let steps = 0;
-        const MAX_STEPS = 20;
+        const MAX_STEPS = 10; // Wakil 4.1: Reduced budget from 20 to 10
 
-        // Circuit Breaker State
+        // Circuit Breaker State (Wakil 4.1)
         let lastErrorHash: string | null = null;
         let consecutiveFailures = 0;
+        let lastToolSignature: string | null = null;
 
         let currentRunId = initialRunId;
 
@@ -207,7 +208,20 @@ export class AgentLoopService {
             newRunId = (r as any)._id.toString();
             currentRunId = newRunId; // Update tracking context
 
-            // 5. Execute Tool
+            // 5. State-Change Protection (Wakil 4.1)
+            const inputStr = JSON.stringify(plan.input || {});
+            const currentSignature = `${plan.name}:${inputStr}`;
+            if (currentSignature === lastToolSignature) {
+                const abortMsg = `⚠️ No State Change: Refusing to repeat \`${plan.name}\` with identical input. Aborting loop.`;
+                broadcast({ type: 'text', runId: currentRunId, data: abortMsg });
+                try {
+                    await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: currentRunId });
+                } catch { }
+                break;
+            }
+            lastToolSignature = currentSignature;
+
+            // 6. Execute Tool
             const persistedInput = redactToolInputForStorage(plan.name, plan.input);
             broadcast({ type: 'step_started', runId: newRunId, data: { name: `execute:${plan.name}`, input: persistedInput } });
 
@@ -232,9 +246,9 @@ export class AgentLoopService {
                     lastErrorHash = errorHash;
                 }
 
-                if (consecutiveFailures >= 2) {
+                if (consecutiveFailures >= 1) { // Wakil 4.1: Reduced from 2 to 1 (Max 1 retry)
                     console.error(`[AgentLoop] Circuit Breaker Tripped: Consecutive failure for ${plan.name}`);
-                    const abortMsg = `⚠️ Tooling mismatch or repeated failure detected for \`${plan.name}\`. Aborting to prevent infinite loop.`;
+                    const abortMsg = `⚠️ Max retries exceeded for \`${plan.name}\`. Aborting to prevent infinite loop.`;
                     broadcast({ type: 'text', runId: newRunId, data: abortMsg });
                     try {
                         await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: newRunId });
