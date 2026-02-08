@@ -6,6 +6,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
+import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GitHubConnectModal } from './GitHubConnectModal';
 

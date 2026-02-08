@@ -242,7 +242,7 @@ async function connect() {
       })();
       if (tokenNow && isValidToken(tokenNow)) {
         setStatus('checking_auth', lastUrl);
-        void probeAuth(tokenNow).then((r) => {
+        void probeAuth(String(tokenNow)).then((r) => {
           if (r === 'unauthorized') {
             try {
               localStorage.removeItem('token');
