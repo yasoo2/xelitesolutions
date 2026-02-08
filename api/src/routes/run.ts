@@ -729,14 +729,15 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
   try {
     // Try a simple planning step
     const result = await planNextStep(
-      [{ role: 'user', content: 'hello' }], // Assuming 'messages' should be `[{ role: 'user', content: 'hello' }]` for this context
+      [{ role: 'user', content: 'hello' }],
       {
         provider: providerKey,
-        apiKey: apiKey, // Assuming 'options?.apiKey' should be 'apiKey' for this context
-        baseUrl: baseUrl, // Assuming 'options?.baseUrl' should be 'baseUrl' for this context
-        model: model, // Assuming 'options?.model' should be 'model' for this context
+        apiKey: apiKey,
+        baseUrl: baseUrl,
+        model: model,
         throwOnError: true,
-        onProgress: (msg: string) => { /* ev is not defined here, so providing a no-op or placeholder */ console.log('Progress:', msg); }
+        onProgress: (msg: string) => { console.log('Plan Progress:', msg); },
+        onThought: (t: string) => { console.log('Plan Thought:', t); }
       }
     );
 
@@ -1798,6 +1799,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               apiKey: apiKey,
               baseUrl: baseUrl,
               model: model,
+              userId: userId,
+              sessionId: String(sessionId),
+              onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }),
+              onThought: (t) => ev({ type: 'thought', data: t }),
               throwOnError: true,
             });
           }
@@ -2302,7 +2307,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
                   // Race between planner and timeout
                   plan = await Promise.race([
-                    planNextStep(history, { provider, apiKey, baseUrl, model, throwOnError: true }),
+                    planNextStep(history, {
+                      provider,
+                      apiKey,
+                      baseUrl,
+                      model,
+                      userId,
+                      sessionId,
+                      onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }),
+                      onThought: (t) => ev({ type: 'thought', data: t }),
+                      throwOnError: true
+                    }),
                     timeoutPromise
                   ]) as any;
 
@@ -2346,7 +2361,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
                     // RETRY IMMEDIATELY with 'auto' provider
                     try {
-                      plan = await planNextStep(history, { provider: 'auto', throwOnError: false });
+                      plan = await planNextStep(history, {
+                        provider: 'auto',
+                        userId,
+                        sessionId,
+                        onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }),
+                        onThought: (t) => ev({ type: 'thought', data: t }),
+                        throwOnError: false
+                      });
                       if (plan) continue; // Loop continues with new plan
                     } catch (retryErr) {
                       console.error('[Resiliency] Fallback also failed:', retryErr);
