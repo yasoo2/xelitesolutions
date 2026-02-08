@@ -192,7 +192,10 @@ async function connect() {
         if (seenMessageIds.size > MAX_SEEN_IDS) {
           // Simple prune
           const it = seenMessageIds.values();
-          for (let i = 0; i < 200; i++) seenMessageIds.delete(it.next().value);
+          for (let i = 0; i < 200; i++) {
+            const val = it.next().value;
+            if (val) seenMessageIds.delete(val);
+          }
         }
       }
 
