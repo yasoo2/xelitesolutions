@@ -18,6 +18,10 @@ let isConnecting = false;
 const seenMessageIds = new Set<string>(); // Deduplication cache
 const MAX_SEEN_IDS = 1000;
 
+// [Wakil 5.1] Quiet Mode & Source Deduplication
+let quietMode = false;
+let lastSentPayload: string | null = null;
+
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
     const base = httpUrl.replace(/\/api\/?$/, '');
@@ -298,9 +302,34 @@ export const SocketService = {
     isConnecting = false;
     pendingQueue = [];
     seenMessageIds.clear();
+    lastSentPayload = null;
+  },
+  // [Wakil 5.1] Quiet Mode controls
+  setQuietMode(enabled: boolean) {
+    console.log('[Socket] Quiet Mode:', enabled ? 'ON' : 'OFF');
+    quietMode = enabled;
+  },
+  isQuietMode() {
+    return quietMode;
   },
   send(data: any) {
+    // [Wakil 5.1] Block non-critical messages during Quiet Mode
+    const msgType = String(data?.type || '');
+    const isTerminalEvent = msgType.startsWith('terminal_');
+    if (quietMode && isTerminalEvent) {
+      console.log('[Socket] Quiet Mode: Blocked terminal event:', msgType);
+      return;
+    }
+
     const msg = JSON.stringify(data);
+
+    // [Wakil 5.1] Source-level deduplication
+    if (msg === lastSentPayload) {
+      console.log('[Socket] Blocked duplicate payload');
+      return;
+    }
+    lastSentPayload = msg;
+
     if (socket && socket.readyState === WebSocket.OPEN) {
       console.log('[Socket] Sending:', msg);
       socket.send(msg);

@@ -140,28 +140,44 @@ export default function EmbeddedTerminal({
             });
         });
 
-        // Handle resize
-        const resizeObserver = new ResizeObserver(() => {
-            if (fitAddonRef.current && containerRef.current) {
-                try {
-                    // Check if container is visible and has dimensions
-                    const { clientWidth, clientHeight } = containerRef.current;
-                    if (clientWidth === 0 || clientHeight === 0) return;
+        // Handle resize with debounce [Wakil 5.1]
+        let lastCols = 0;
+        let lastRows = 0;
+        let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
 
-                    fitAddonRef.current.fit();
-                    const dims = fitAddonRef.current.proposeDimensions();
-                    if (dims?.cols && dims?.rows) {
-                        SocketService.send({
-                            type: 'terminal_resize',
-                            id: terminalId,
-                            cols: dims.cols,
-                            rows: dims.rows
-                        });
+        const resizeObserver = new ResizeObserver(() => {
+            if (resizeTimeout) clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (fitAddonRef.current && containerRef.current) {
+                    // [Wakil 5.1] Block resize during Quiet Mode
+                    if (SocketService.isQuietMode()) {
+                        console.log('[Terminal] Resize blocked (Quiet Mode)');
+                        return;
                     }
-                } catch (e) {
-                    // Ignore resize errors
+                    try {
+                        const { clientWidth, clientHeight } = containerRef.current;
+                        if (clientWidth === 0 || clientHeight === 0) return;
+
+                        fitAddonRef.current.fit();
+                        const dims = fitAddonRef.current.proposeDimensions();
+                        if (dims?.cols && dims?.rows) {
+                            // [Wakil 5.1] Only send if dimensions changed
+                            if (dims.cols === lastCols && dims.rows === lastRows) return;
+                            lastCols = dims.cols;
+                            lastRows = dims.rows;
+
+                            SocketService.send({
+                                type: 'terminal_resize',
+                                id: terminalId,
+                                cols: dims.cols,
+                                rows: dims.rows
+                            });
+                        }
+                    } catch (e) {
+                        // Ignore resize errors
+                    }
                 }
-            }
+            }, 200); // 200ms debounce
         });
 
         resizeObserver.observe(containerRef.current);
