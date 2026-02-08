@@ -206,8 +206,9 @@ async function connect() {
           // Simple prune
           const it = seenMessageIds.values();
           for (let i = 0; i < 200; i++) {
-            const val = it.next().value;
-            if (val) seenMessageIds.delete(val);
+            const res = it.next();
+            if (res.done) break;
+            seenMessageIds.delete(res.value);
           }
         }
       }
@@ -387,12 +388,12 @@ export const SocketService = {
   subscribe(cb: (data: any) => void) {
     listeners.add(cb);
     if (!socket && !isConnecting) connect();
-    return () => listeners.delete(cb);
+    return () => { listeners.delete(cb); };
   },
   subscribeStatus(cb: (status: { state: string; detail?: string }) => void) {
     statusListeners.add(cb);
     if (!socket && !isConnecting) connect();
-    return () => statusListeners.delete(cb);
+    return () => { statusListeners.delete(cb); };
   },
   // [Wakil 5.3] Thinking Phase State
   setThinkingPhase(phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle') {
@@ -407,13 +408,13 @@ export const SocketService = {
   },
   subscribeThinkingPhase(cb: (phase: string) => void) {
     thinkingPhaseListeners.add(cb);
-    return () => thinkingPhaseListeners.delete(cb);
+    return () => { thinkingPhaseListeners.delete(cb); };
   },
   // [Wakil 6.0] Deep Reasoning Subscription
   subscribeThinkingDetails(cb: (details: string[]) => void) {
     cb([...thinkingDetails]);
     thinkingDetailsListeners.add(cb);
-    return () => thinkingDetailsListeners.delete(cb);
+    return () => { thinkingDetailsListeners.delete(cb); };
   },
 
 };
