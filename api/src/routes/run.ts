@@ -81,7 +81,19 @@ async function executeToolWithRateLimitRetry(
   let retries = 0;
 
   while (true) {
-    const result: any = await executeTool(toolName, input, context as any);
+    // [Wakil 5.4] Hard try/catch: NEVER let tool exceptions hang the agent
+    let result: any;
+    try {
+      result = await executeTool(toolName, input, context as any);
+    } catch (err: any) {
+      console.error(`[Wakil 5.4] Tool "${toolName}" threw exception:`, err?.stack || err);
+      return {
+        ok: false,
+        error: err?.message || 'tool_exception',
+        logs: [`Tool threw exception: ${err?.message || 'unknown'}`],
+        recoverable: true
+      };
+    }
     if (String(result?.error || '') !== 'rate_limited') return result;
 
     const retryAfterMsRaw = Number(result?.output?.retryAfterMs ?? 0);
