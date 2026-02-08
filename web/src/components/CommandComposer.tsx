@@ -9,6 +9,7 @@ import { API_URL as API, WS_URL as WS } from '../config';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GitHubConnectModal } from './GitHubConnectModal';
+import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -659,6 +660,12 @@ export default function CommandComposer({
   const [toolVisible, setToolVisible] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftActive, setDraftActive] = useState(false);
+
+  // [Wakil 5.3] Neural Thinking Indicator
+  const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>(
+    SocketService.getThinkingPhase() as any || 'idle'
+  );
+  const isQuietMode = SocketService.isQuietMode();
 
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -2716,6 +2723,13 @@ export default function CommandComposer({
 
   return (
     <div className={`composer ${sessionKind === 'agent' ? 'composer-agent' : ''}`}>
+      {/* [Wakil 5.3] Neural Thinking Indicator */}
+      {SocketService.isQuietMode() && (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,215,0,0.2)' }}>
+          <NeuralThinkingIndicator phase={thinkingPhase} visible={true} />
+        </div>
+      )}
+
       {!hideHistory && (
         <div className="events" ref={eventsScrollRef}>
           <div className="events-content" ref={eventsContentRef}>

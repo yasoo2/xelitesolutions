@@ -22,6 +22,11 @@ const MAX_SEEN_IDS = 1000;
 let quietMode = false;
 let lastSentPayload: string | null = null;
 
+// [Wakil 5.3] Neural Thinking Indicator State
+let thinkingPhase: 'analyzing' | 'synthesizing' | 'executing' | 'idle' = 'idle';
+const thinkingPhaseListeners: Set<(phase: string) => void> = new Set();
+
+
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
     const base = httpUrl.replace(/\/api\/?$/, '');
@@ -346,5 +351,20 @@ export const SocketService = {
     statusListeners.add(cb);
     if (!socket && !isConnecting) connect();
     return () => statusListeners.delete(cb);
+  },
+  // [Wakil 5.3] Thinking Phase State
+  setThinkingPhase(phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle') {
+    console.log('[Socket] Thinking Phase:', phase);
+    thinkingPhase = phase;
+    thinkingPhaseListeners.forEach(cb => {
+      try { cb(phase); } catch { }
+    });
+  },
+  getThinkingPhase() {
+    return thinkingPhase;
+  },
+  subscribeThinkingPhase(cb: (phase: string) => void) {
+    thinkingPhaseListeners.add(cb);
+    return () => thinkingPhaseListeners.delete(cb);
   },
 };
