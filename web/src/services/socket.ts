@@ -26,6 +26,10 @@ let lastSentPayload: string | null = null;
 let thinkingPhase: 'analyzing' | 'synthesizing' | 'executing' | 'idle' = 'idle';
 const thinkingPhaseListeners: Set<(phase: string) => void> = new Set();
 
+// [Wakil 6.0] Deep Reasoning State
+let thinkingDetails: string[] = [];
+const thinkingDetailsListeners: Set<(details: string[]) => void> = new Set();
+
 
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
@@ -234,6 +238,16 @@ async function connect() {
           thinkingPhase = 'idle';
           thinkingPhaseListeners.forEach(cb => { try { cb('idle'); } catch { } });
         }
+      } else if (msgType === 'thought') {
+        // [Wakil 6.0] Matrix-style thought logs
+        const text = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
+        if (text) {
+          thinkingDetails.push(text);
+          thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+        }
+      } else if (msgType === 'run_started') {
+        thinkingDetails = [];
+        thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
       }
 
       listeners.forEach(l => l(data));
@@ -395,4 +409,11 @@ export const SocketService = {
     thinkingPhaseListeners.add(cb);
     return () => thinkingPhaseListeners.delete(cb);
   },
+  // [Wakil 6.0] Deep Reasoning Subscription
+  subscribeThinkingDetails(cb: (details: string[]) => void) {
+    cb([...thinkingDetails]);
+    thinkingDetailsListeners.add(cb);
+    return () => thinkingDetailsListeners.delete(cb);
+  },
+
 };

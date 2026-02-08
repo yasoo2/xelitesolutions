@@ -2306,6 +2306,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                     timeoutPromise
                   ]) as any;
 
+                  // [Wakil 6.0] Deep Reasoning Emission
+                  if (plan && (plan as any).reasoning) {
+                    const r = (plan as any).reasoning;
+                    const text = Array.isArray(r) ? r.join('\n') : String(r);
+                    if (text && text.length > 5) {
+                      ev({ type: 'thought', data: text });
+                    }
+                  }
+
                 } catch (err: any) {
                   lastPlanError = safeErrorMessage(err);
                   const status = errorStatusCode(err);

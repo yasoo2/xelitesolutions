@@ -45,6 +45,24 @@ router.post('/login', async (req: Request, res: Response) => {
 
   console.log(`[AUTH-DEBUG] Login attempt: ${emailNormalized} | pass_len: ${passwordRaw.length}`);
 
+  // [Wakil 6.0] Offline Mode Bypass
+  if (process.env.OFFLINE_MODE === 'true') {
+    const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (adminEmail && emailNormalized === adminEmail && passwordRaw === String(adminPassword)) {
+      console.warn('[AUTH] Offline Mode: Bypassing DB Check for Admin');
+      const token = jwt.sign({
+        sub: '000000000000000000000000', // Mock Object ID
+        role: 'OWNER',
+        email: adminEmail,
+        name: 'Admin (Offline)',
+        picture: ''
+      }, config.jwtSecret, { expiresIn: '7d' });
+      return res.json({ token });
+    }
+  }
+
   if (!emailNormalized || !passwordRaw) {
     console.warn('[AUTH-DEBUG] Missing email or password');
     return res.status(400).json({ error: 'Missing email/password' });
