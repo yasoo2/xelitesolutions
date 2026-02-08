@@ -10,24 +10,32 @@ import MatrixRain from './MatrixRain';
 interface NeuralThinkingIndicatorProps {
   phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
   visible: boolean;
+  variant?: 'inline' | 'bubble';
 }
 
 const phaseLabels: Record<string, { emoji: string; text: string; textAr: string; color: string }> = {
   analyzing: { emoji: '🧠', text: 'Analyzing', textAr: 'تحليل عميق', color: '#00d2ff' }, // Cyan
   synthesizing: { emoji: '⚙️', text: 'Synthesizing', textAr: 'تخطيط', color: '#b0fb5d' }, // Matrix Green
   executing: { emoji: '🚀', text: 'Executing', textAr: 'تنفيذ', color: '#ffd700' }, // Gold
-  idle: { emoji: '✨', text: 'Ready', textAr: 'جاهز', color: '#aab3c5' },
+  idle: { emoji: '', text: '', textAr: '', color: '#aab3c5' },
 };
 
-export default function NeuralThinkingIndicator({ phase = 'analyzing', visible }: NeuralThinkingIndicatorProps) {
+export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline' }: NeuralThinkingIndicatorProps) {
+  const [currentPhase, setCurrentPhase] = useState(phase);
   const [details, setDetails] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const unsub = SocketService.subscribeThinkingDetails((newDetails) => {
+    const unsubDetails = SocketService.subscribeThinkingDetails((newDetails) => {
       setDetails(newDetails);
     });
-    return unsub;
+    const unsubPhase = SocketService.subscribeThinkingPhase((p: any) => {
+      setCurrentPhase(p);
+    });
+    return () => {
+      unsubDetails();
+      unsubPhase();
+    };
   }, []);
 
   useEffect(() => {
@@ -36,17 +44,15 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible }
     }
   }, [details, visible]);
 
-  // Auto-clear when idle/invisible for a while? 
-  // For now, we rely on the backend sending run_started to clear.
-
   if (!visible && details.length === 0) return null;
+  if (phase === 'idle' && details.length === 0) return null; // [Wakil 6.1] Absolute clean when idle
 
-  const current = phaseLabels[phase] || phaseLabels.analyzing;
+  const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
   const isMatrixMode = details.length > 0;
 
   return (
-    <div className={`neural-container ${isMatrixMode ? 'expanded' : ''}`}>
-      <MatrixRain active={phase !== 'idle' || isMatrixMode} color={current.color} />
+    <div className={`neural-container ${isMatrixMode ? 'expanded' : ''} ${variant}`}>
+      <MatrixRain active={currentPhase !== 'idle' || isMatrixMode} color={current.color} />
       <style>{`
         .neural-container {
           display: flex;
@@ -62,6 +68,13 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible }
           margin-bottom: 12px;
           box-shadow: 0 4px 20px rgba(0,0,0,0.2);
           max-width: 100%;
+          z-index: 10;
+        }
+
+        .neural-container.bubble {
+          border-radius: 4px 16px 16px 16px;
+          margin-bottom: 0px;
+          border-left: 2px solid var(--joe-gold-primary);
         }
 
         .neural-container.expanded {
@@ -73,7 +86,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible }
           display: flex;
           align-items: center;
           gap: 12px;
-          padding: 12px 18px;
+          padding: 10px 16px;
           cursor: default;
         }
 
@@ -83,8 +96,8 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible }
         }
 
         .neural-dot {
-          width: 8px;
-          height: 8px;
+          width: 6px;
+          height: 6px;
           border-radius: 50%;
           background: ${current.color};
           animation: neural-pulse 1.4s ease-in-out infinite;
@@ -95,48 +108,47 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible }
         .neural-dot:nth-child(3) { animation-delay: 0.4s; }
 
         @keyframes neural-pulse {
-          0%, 100% { transform: scale(0.85); opacity: 0.4; }
-          50% { transform: scale(1.15); opacity: 1; }
+          0%, 100% { transform: scale(0.8); opacity: 0.3; }
+          50% { transform: scale(1.1); opacity: 1; }
         }
 
         .neural-label {
-          font-size: 13px;
-          font-weight: 600;
+          font-size: 11px;
+          font-weight: 700;
           color: ${current.color};
           display: flex;
           align-items: center;
-          gap: 8px;
-          letter-spacing: 0.5px;
-          text-shadow: 0 0 12px ${current.color}44;
+          gap: 6px;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          text-shadow: 0 0 10px ${current.color}44;
         }
 
         .neural-log-window {
-          padding: 0 18px 16px;
+          padding: 0 16px 14px;
           display: flex;
           flex-direction: column;
           gap: 4px;
-          max-height: 180px;
+          max-height: 150px;
           overflow-y: auto;
           scrollbar-width: thin;
           scrollbar-color: rgba(255,255,255,0.1) transparent;
           border-top: 1px solid rgba(255,255,255,0.05);
           margin-top: 4px;
-          padding-top: 12px;
+          padding-top: 10px;
         }
 
-        .neural-log-window::-webkit-scrollbar {
-          width: 4px;
-        }
+        .neural-log-window::-webkit-scrollbar { width: 3px; }
         .neural-log-window::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.15);
+          background: rgba(255,255,255,0.2);
           border-radius: 4px;
         }
 
         .log-line {
           font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-          font-size: 11px;
-          line-height: 1.5;
-          color: rgba(255, 255, 255, 0.7);
+          font-size: 10px;
+          line-height: 1.4;
+          color: rgba(255, 255, 255, 0.6);
           white-space: pre-wrap;
           word-break: break-word;
           opacity: 0;

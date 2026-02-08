@@ -2723,12 +2723,7 @@ export default function CommandComposer({
 
   return (
     <div className={`composer ${sessionKind === 'agent' ? 'composer-agent' : ''}`}>
-      {/* [Wakil 5.3] Neural Thinking Indicator */}
-      {SocketService.isQuietMode() && (
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,215,0,0.2)' }}>
-          <NeuralThinkingIndicator phase={thinkingPhase} visible={true} />
-        </div>
-      )}
+      {null}
 
       {!hideHistory && (
         <div className="events" ref={eventsScrollRef}>

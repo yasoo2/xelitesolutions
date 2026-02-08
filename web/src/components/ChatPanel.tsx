@@ -3,6 +3,7 @@ import { Sparkles, Send, Mic, User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 
 interface Message {
     id: string;
@@ -122,11 +123,7 @@ export default function ChatPanel({
                     <div className="joe-message assistant">
                         <div className="joe-message-avatar ai">J</div>
                         <div className="joe-message-content">
-                            <div className="joe-message-bubble" style={{ display: 'flex', gap: 4 }}>
-                                <span className="typing-dot" style={{ animationDelay: '0ms' }}>●</span>
-                                <span className="typing-dot" style={{ animationDelay: '150ms' }}>●</span>
-                                <span className="typing-dot" style={{ animationDelay: '300ms' }}>●</span>
-                            </div>
+                            <NeuralThinkingIndicator visible={true} variant="bubble" />
                         </div>
                     </div>
                 )}
