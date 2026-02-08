@@ -43,6 +43,26 @@ export class BrowserActionTool extends BaseTool {
             if (action === 'goto') {
                 if (!input.url) throw new Error('url required for goto');
                 const url = normalizeUrlForGoto(input.url, page.url());
+
+                // [Wakil 3.2] Port Validation Safeguard
+                const { isPortOpen, isLocalOrInternalUrl } = await import('../../utils/network');
+                if (isLocalOrInternalUrl(url)) {
+                    try {
+                        const u = new URL(url);
+                        const port = parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80);
+                        const open = await isPortOpen(u.hostname, port);
+                        if (!open) {
+                            return {
+                                ok: false,
+                                error: `Navigation failed because no running web server was detected at ${u.hostname}:${port}. No URL was provided or discovered.`,
+                                logs: [`port_check_failed=${u.hostname}:${port}`]
+                            };
+                        }
+                    } catch (e) {
+                        // If URL parsing fails, let page.goto handle it or fail gracefully
+                    }
+                }
+
                 await page.goto(url, { waitUntil: 'domcontentloaded' });
                 result = 'Navigated to ' + url;
             }

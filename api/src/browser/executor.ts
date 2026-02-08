@@ -283,6 +283,25 @@ export async function executePlannedActions(params: {
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
+          // [Wakil 3.2] Port Validation Safeguard
+          const { isPortOpen, isLocalOrInternalUrl } = await import('../utils/network');
+          if (isLocalOrInternalUrl(url)) {
+            try {
+              const u = new URL(url);
+              const port = parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80);
+              const open = await isPortOpen(u.hostname, port);
+              if (!open) {
+                const msg = `Navigation failed because no running web server was detected at ${u.hostname}:${port}. No URL was provided or discovered.`;
+                results.push({ stepId: sid, name, ok: false, reason: 'navigation_failed', message: msg });
+                broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'navigation_failed', message: msg });
+                try {
+                  broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'navigation_failed', error: msg });
+                } catch { }
+                continue;
+              }
+            } catch { }
+          }
+
           const navReason = (msg: string): FailureReason => {
             const m = String(msg || '').toLowerCase();
             if (/err_name_not_resolved|enotfound|dns|name not resolved/.test(m)) return 'dns_failed';
@@ -290,6 +309,7 @@ export async function executePlannedActions(params: {
             if (/timeout/i.test(m)) return 'timeout';
             return 'navigation_failed';
           };
+
           const gotoCandidates = (() => {
             const out: string[] = [];
             const push = (u: string) => {
