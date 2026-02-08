@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { SocketService } from '../services/socket';
+import MatrixRain from './MatrixRain';
 
 interface NeuralThinkingIndicatorProps {
   phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
@@ -45,9 +46,11 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible }
 
   return (
     <div className={`neural-container ${isMatrixMode ? 'expanded' : ''}`}>
+      <MatrixRain active={phase !== 'idle' || isMatrixMode} color={current.color} />
       <style>{`
         .neural-container {
           display: flex;
+          position: relative;
           flex-direction: column;
           gap: 0;
           background: rgba(10, 14, 23, 0.85);

@@ -391,20 +391,11 @@ Example:
 Example (Chat):
 {
   "name": "echo",
-  "input": { "text": "Hello! How can I help you today?" },
+  "input": { "text": "أهلاً بك! كيف يمكنني مساعدتك اليوم؟" },
   "reasoning": [
-    "> Analyzing user intent: Greeting.",
-    "> Action: Respond politely."
-  ]
-}
-
-Example (Chat):
-{
-  "name": "echo",
-  "input": { "text": "Hello! How can I help you today?" },
-  "reasoning": [
-    "> Analyzing user intent: Greeting.",
-    "> Action: Respond politely."
+    "> User intent detected: Greeting (Arabic).",
+    "> Language parity check: PASS.",
+    "> Action: Warm professional response in Arabic."
   ]
 }
 `;
