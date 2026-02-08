@@ -152,8 +152,9 @@ export class AgentLoopService {
 
         // Circuit Breaker State (Wakil 4.1)
         let lastErrorHash: string | null = null;
-        let consecutiveFailures = 0;
+        consecutiveFailures = 0;
         let lastToolSignature: string | null = null;
+        const blacklist = new Set<string>(); // Wakil 4.4: Task-level blacklist
 
         let currentRunId = initialRunId;
 
@@ -208,11 +209,15 @@ export class AgentLoopService {
             newRunId = (r as any)._id.toString();
             currentRunId = newRunId; // Update tracking context
 
-            // 5. State-Change Protection (Wakil 4.1)
+            // 5. State-Change & Blacklist Protection (Wakil 4.4)
             const inputStr = JSON.stringify(plan.input || {});
             const currentSignature = `${plan.name}:${inputStr}`;
-            if (currentSignature === lastToolSignature) {
-                const abortMsg = `⚠️ No State Change: Refusing to repeat \`${plan.name}\` with identical input. Aborting loop.`;
+
+            if (blacklist.has(currentSignature) || currentSignature === lastToolSignature) {
+                const abortMsg = blacklist.has(currentSignature)
+                    ? `⚠️ Blacklisted: Refusing to repeat previously forbidden/failed action \`${plan.name}\`.`
+                    : `⚠️ No State Change: Refusing to repeat \`${plan.name}\` with identical input.`;
+
                 broadcast({ type: 'text', runId: currentRunId, data: abortMsg });
                 try {
                     await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: currentRunId });
@@ -247,6 +252,8 @@ export class AgentLoopService {
                 }
 
                 if (consecutiveFailures >= 1) { // Wakil 4.1: Reduced from 2 to 1 (Max 1 retry)
+                    blacklist.add(currentSignature); // Wakil 4.4: Add failing signature to blacklist
+                    console.error(`[AgentLoop] Blacklisted failing action: ${currentSignature}`);
                     console.error(`[AgentLoop] Circuit Breaker Tripped: Consecutive failure for ${plan.name}`);
                     const abortMsg = `⚠️ Max retries exceeded for \`${plan.name}\`. Aborting to prevent infinite loop.`;
                     broadcast({ type: 'text', runId: newRunId, data: abortMsg });
