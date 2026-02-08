@@ -313,12 +313,10 @@ export const SocketService = {
     return quietMode;
   },
   send(data: any) {
-    // [Wakil 5.1] Block non-critical messages during Quiet Mode
-    const msgType = String(data?.type || '');
-    const isTerminalEvent = msgType.startsWith('terminal_');
-    if (quietMode && isTerminalEvent) {
-      console.log('[Socket] Quiet Mode: Blocked terminal event:', msgType);
-      return;
+    // [Wakil 5.2] HARD Quiet Mode: Block ALL outgoing traffic
+    if (quietMode) {
+      console.log('[Socket] HARD Quiet Mode: Blocked ALL traffic');
+      return; // NO SEND. NO QUEUE. ZERO TRAFFIC.
     }
 
     const msg = JSON.stringify(data);

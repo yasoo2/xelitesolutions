@@ -130,9 +130,14 @@ export default function EmbeddedTerminal({
 
         initTerminal();
 
-        // Handle input
+        // Handle input [Wakil 5.2: Block during Hard Quiet Mode]
         term.onData((data) => {
             if (!isReady) return;
+            // [Wakil 5.2] HARD FREEZE: No input during agent run
+            if (SocketService.isQuietMode()) {
+                console.log('[Terminal] Input BLOCKED (Hard Quiet Mode)');
+                return;
+            }
             SocketService.send({
                 type: 'terminal_input',
                 id: terminalId,

@@ -2284,8 +2284,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                     break;
                   }
 
-                  // [RESILIENCY] Add Timeout (2 minutes) to prevent infinite hanging
-                  const TIMEOUT_MS = 2 * 60 * 1000;
+                  // [Wakil 5.2] Agent Timeout Guard - 30s max
+                  const TIMEOUT_MS = 30 * 1000;
                   const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('LLM_TIMEOUT')), TIMEOUT_MS));
 
                   // Race between planner and timeout
