@@ -208,6 +208,34 @@ async function connect() {
         }
       }
 
+      // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
+      const msgType = String(data?.type || '');
+      if (msgType === 'step_started') {
+        if (!quietMode) {
+          console.log('[Socket] Auto-activating Quiet Mode (step_started)');
+          quietMode = true;
+          thinkingPhase = 'analyzing';
+          thinkingPhaseListeners.forEach(cb => { try { cb('analyzing'); } catch { } });
+        }
+      } else if (msgType === 'step_done' || msgType === 'step_failed') {
+        if (quietMode) {
+          thinkingPhase = 'synthesizing';
+          thinkingPhaseListeners.forEach(cb => { try { cb('synthesizing'); } catch { } });
+        }
+      } else if (msgType === 'tool_start') {
+        if (quietMode) {
+          thinkingPhase = 'executing';
+          thinkingPhaseListeners.forEach(cb => { try { cb('executing'); } catch { } });
+        }
+      } else if (msgType === 'run_finished' || msgType === 'text') {
+        if (quietMode) {
+          console.log('[Socket] Auto-deactivating Quiet Mode (run_finished/text)');
+          quietMode = false;
+          thinkingPhase = 'idle';
+          thinkingPhaseListeners.forEach(cb => { try { cb('idle'); } catch { } });
+        }
+      }
+
       listeners.forEach(l => l(data));
     } catch (e) {
     }
