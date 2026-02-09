@@ -1,7 +1,5 @@
 
 import { BaseTool } from '../base';
-import { BaseTool } from '../base';
-import { ToolPermission } from '../types';
 import { ToolPermission } from '../types';
 
 /**

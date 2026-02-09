@@ -152,7 +152,7 @@ export class AgentLoopService {
 
         // Circuit Breaker State (Wakil 4.1)
         let lastErrorHash: string | null = null;
-        consecutiveFailures = 0;
+        let consecutiveFailures = 0;
         let lastToolSignature: string | null = null;
         const blacklist = new Set<string>(); // Wakil 4.4: Task-level blacklist
 

@@ -1130,7 +1130,9 @@ export async function planNextStep(
         // Not JSON, treat as standard text
       }
 
-      const isArabic = /[\u0600-\u06FF]/.test(messages[messages.length - 1]?.content || '');
+      const lastMsgContent = messages[messages.length - 1]?.content;
+      const lastMsgText = typeof lastMsgContent === 'string' ? lastMsgContent : Array.isArray(lastMsgContent) ? (lastMsgContent as any[]).map(c => c.text).join(' ') : '';
+      const isArabic = /[\u0600-\u06FF]/.test(lastMsgText || '');
       return {
         name: 'echo',
         input: { text: response || (isArabic ? "أنا جاهز لمساعدتك. كيف يمكنني تفعيل قدراتي البرمجية لك الآن؟ (Engineering Atlas active)" : "Engineering Atlas active. Ready for your instructions.") }

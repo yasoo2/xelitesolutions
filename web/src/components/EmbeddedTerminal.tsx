@@ -90,15 +90,16 @@ export default function EmbeddedTerminal({
                 fitAddonRef.current = fitAddon;
 
                 // Initial fit
+                // Initial fit safely
                 setTimeout(() => {
-                    if (isMounted) {
+                    if (isMounted && term.element && containerRef.current) {
                         try {
                             fitAddon.fit();
                         } catch (e) {
-                            console.debug('[Terminal] Initial fit failed:', e);
+                            console.debug('[Terminal] Initial fit skipped:', e);
                         }
                     }
-                }, 100);
+                }, 200);
 
                 initTerminal();
             } catch (e) {
@@ -184,10 +185,16 @@ export default function EmbeddedTerminal({
                         const { clientWidth, clientHeight } = containerRef.current;
                         if (clientWidth === 0 || clientHeight === 0) return;
 
-                        // Check if terminal is actually opened
-                        if (!(termRef.current as any).element) return;
+                        // Check if terminal is actually opened and attached
+                        if (!termRef.current?.element?.clientWidth) return;
 
-                        fitAddonRef.current.fit();
+                        try {
+                            fitAddonRef.current.fit();
+                        } catch (e) {
+                            // Ignore fit errors if element not ready
+                            return;
+                        }
+
                         const dims = fitAddonRef.current.proposeDimensions();
                         if (dims && typeof dims === 'object' && 'cols' in dims && 'rows' in dims) {
                             if (dims.cols === lastCols && dims.rows === lastRows) return;

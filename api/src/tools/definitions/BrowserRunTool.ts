@@ -148,7 +148,7 @@ export class BrowserRunTool extends BaseTool {
         return { code: 'browser_failed', message: msg || 'browser_failed' };
     }
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const sid = String(input?.sessionId || '').trim();
         if (!sid) return { ok: false, error: 'sessionId_required', logs };
@@ -200,8 +200,8 @@ export class BrowserRunTool extends BaseTool {
                     sessionId: sid,
                     instructionText,
                     mode: mode as any,
-                    onThought: (context as any).onThought,
-                    onProgress: (context as any).onProgress
+                    onThought: context?.onThought,
+                    onProgress: context?.onProgress
                 });
             } catch (err: any) {
                 console.error('[BrowserRunTool] runBrowserInstruction threw exception:', err?.stack || err);

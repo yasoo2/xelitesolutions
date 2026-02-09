@@ -15,5 +15,5 @@ export abstract class BaseTool implements ToolDefinition {
     auditFields: string[] = [];
     mockSupported = false;
 
-    abstract execute(input: any): Promise<ToolExecutionResult>;
+    abstract execute(input: any, context?: any): Promise<ToolExecutionResult>;
 }
