@@ -538,7 +538,11 @@ export async function planNextStep(
   console.info(`[LLM] planNextStep entry - Provider: ${provider}, Resolved Key: ${providerKey}`);
 
   const onProgress = options?.onProgress;
+  const onThought = options?.onThought;
+
   onProgress?.('تحليل الطلب…');
+  onThought?.('> Initializing Neural Core...');
+  onThought?.('> Analyzing user instruction context...');
   onProgress?.('تجميع سياق سريع…');
 
   const optimization = await freeIntelligenceOptimizer.optimizeRequest(
@@ -547,6 +551,7 @@ export async function planNextStep(
   );
 
   onProgress?.('مطابقة الأنماط وتحديد المسار…');
+  onThought?.('> Pattern matching optimization logic...');
 
   const analysis = (optimization as any).analysis || ((optimization as any).skipPlanner ? { type: 'chat', complexity: 'simple', language: 'ar' } : await advancedAnalyzeTask(
     typeof messages.slice(-1)[0].content === 'string' ? messages.slice(-1)[0].content as string : JSON.stringify(messages.slice(-1)[0].content),

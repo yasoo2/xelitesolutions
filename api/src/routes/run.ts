@@ -1168,6 +1168,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
   try {
     const offlineMode = process.env.OFFLINE_MODE === 'true';
     let { text, sessionId, attachments, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
+    let runId: string = 'pending'; // [Wakil 6.2] Initialized early for broadcaster
     let fileIds = attachments || (req.body && (req.body as any).fileIds);
     if (!fileIds && Array.isArray(attachments)) {
       fileIds = attachments;
@@ -1189,6 +1190,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // [WAKIL ENFORCEMENT] Always Agent.
     const kind = 'agent';
     const normalizedFileIds = normalizeFileIds(fileIds);
+
+    // [Wakil 6.2] Setup event broadcaster
+    const ev = (e: any) => {
+      // Auto-wrap string data for text events (frontend expects { text: string })
+      if (e.type === 'text' && typeof e.data === 'string') {
+        e.data = { text: e.data };
+      }
+      return broadcast({ ...e, runId, sessionId: sessionId || 'pending' });
+    };
+
+    // Initial signals for UI
+    ev({ type: 'run_started', data: { sessionId } });
+    ev({ type: 'thought', data: '> Neural link established. Analyzing user instruction...' });
 
     // [DEBUG] Log incoming request for file debugging
     console.log('[Run/Start] Request received:', {
@@ -1487,8 +1501,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       );
     };
 
-    let runId: string;
-
     // [OFFLINE MODE GUARD] Skip DB persistence when running without MongoDB
     let run: any = null;
     if (offlineMode) {
@@ -1562,13 +1574,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     let systemPromptCreated = false;
     let systemPromptText: string | null = null;
 
-    const ev = (e: LiveEvent) => {
-      // Auto-wrap string data for text events (frontend expects { text: string })
-      if (e.type === 'text' && typeof e.data === 'string') {
-        e.data = { text: e.data };
-      }
-      return broadcast({ ...e, runId, sessionId });
-    };
+    // [Wakil 6.2] Initial broadacster was moved to the top of the handler.
+    // The previous definition of ev here is removed to avoid shadowing and unify behavior.
 
     try {
       // Inject God Mode into instructions for planning
@@ -1735,6 +1742,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (fast) {
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
           const answer = fast;
+
+          // [Wakil 6.2] Simulated thinking for UX consistency
+          ev({ type: 'thought', data: '> Rapid pattern match found in local knowledge base.' });
+          ev({ type: 'thought', data: '> Retrieving optimized response...' });
+
+          // Small delay to ensure thinking is visible
+          await new Promise(r => setTimeout(r, 600));
 
           ev({ type: 'text', data: { text: answer } });
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
