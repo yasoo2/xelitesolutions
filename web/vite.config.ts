@@ -43,7 +43,7 @@ const createApiShim = () => {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 300);
       try {
-        const r = await fetch('http://127.0.0.1:3000/api/health', { signal: controller.signal });
+        const r = await fetch('http://127.0.0.1:5001/api/health', { signal: controller.signal });
         cachedOk = r.ok;
       } catch {
         cachedOk = false;
@@ -79,7 +79,7 @@ const createApiShim = () => {
     if (path === '/api/servers') return createJson(res, 200, []);
     if (path === '/api/project/tree') return createJson(res, 200, { tree: [] });
     if (path === '/api/project/root') return createJson(res, 200, { path: '', name: 'Local Workspace' });
-    if (path === '/api/runs/start') return createJson(res, 503, { error: 'API unavailable (start the API on http://127.0.0.1:3000)' });
+    if (path === '/api/runs/start') return createJson(res, 503, { error: 'API unavailable (start the API on http://127.0.0.1:5001)' });
     if (path === '/api/runs/verify') return createJson(res, 503, { error: 'API unavailable' });
 
     return createJson(res, 503, { error: `API unavailable (${path})` });

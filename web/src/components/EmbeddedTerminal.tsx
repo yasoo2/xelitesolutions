@@ -153,7 +153,7 @@ export default function EmbeddedTerminal({
         const resizeObserver = new ResizeObserver(() => {
             if (resizeTimeout) clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
-                if (fitAddonRef.current && containerRef.current) {
+                if (fitAddonRef.current && containerRef.current && termRef.current) {
                     // [Wakil 5.1] Block resize during Quiet Mode
                     if (SocketService.isQuietMode()) {
                         console.log('[Terminal] Resize blocked (Quiet Mode)');
@@ -164,9 +164,10 @@ export default function EmbeddedTerminal({
                         if (clientWidth === 0 || clientHeight === 0) return;
 
                         fitAddonRef.current.fit();
+
+                        // Defensive check for xterm core readiness
                         const dims = fitAddonRef.current.proposeDimensions();
-                        if (dims?.cols && dims?.rows) {
-                            // [Wakil 5.1] Only send if dimensions changed
+                        if (dims && typeof dims === 'object' && 'cols' in dims && 'rows' in dims) {
                             if (dims.cols === lastCols && dims.rows === lastRows) return;
                             lastCols = dims.cols;
                             lastRows = dims.rows;
@@ -179,7 +180,7 @@ export default function EmbeddedTerminal({
                             });
                         }
                     } catch (e) {
-                        // Ignore resize errors
+                        console.debug('[Terminal] Resize/Fit failed (expected during init):', e);
                     }
                 }
             }, 200); // 200ms debounce
