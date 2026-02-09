@@ -517,12 +517,29 @@ async function detectWorkflowAdvanced(
   // Determine if request is complex enough to warrant LLM analysis
   const isComplexRequest = (text: string): boolean => {
     const wordCount = text.split(/\s+/).length;
-    const hasMultipleFeatures = (text.match(/\b(module|feature|system|component|page|api|database|auth)\b/gi) || []).length >= 3;
-    const hasDetailedRequirements = wordCount > 50 || hasMultipleFeatures;
-    const mentionsMultipleTech = (text.match(/\b(react|vue|angular|node|python|mongodb|postgres|api|frontend|backend)\b/gi) || []).length >= 2;
+    const hasMultipleFeatures = (text.match(/\b(module|feature|system|component|auth|database|integration|deployment|api|dashboard|v2|migration)\b/gi) || []).length >= 3;
+    const mentionsDeepTech = (text.match(/\b(backend|frontend|microservice|architecture|workflow|loop|automated|pipeline|scaffold)\b/gi) || []).length >= 2;
 
-    return hasDetailedRequirements || mentionsMultipleTech;
+    // Complex means it has detailed technical requirements OR many features
+    return (wordCount > 60 && hasMultipleFeatures) || mentionsDeepTech;
   };
+
+  const isSimpleCreativeRequest = (text: string): boolean => {
+    const t = normalizeArabicQuery(text).toLowerCase();
+    const hasCreativeKeywords = /\b(landing|page|website|css|html|design|portfolio|gallery|coming\s*soon)\b/i.test(text) ||
+      /(صفحه|صفحة|هبوط|موقع|تصميم|واجهه|واجهة|ابداعي|إبداعي|بسيط)/.test(t);
+    const wordCount = text.split(/\s+/).length;
+    const isShort = wordCount < 30;
+
+    // A creative request is simple if it's short and mentions creative elements without technical complexity
+    return hasCreativeKeywords && isShort && !isComplexRequest(text);
+  };
+
+  // [Task-Type Classifier] IF simple creative request AND NOT complex, skip workflow pipeline
+  if (isSimpleCreativeRequest(s)) {
+    console.log('[detectWorkflowAdvanced] Simple creative request detected - skipping pipeline');
+    return null;
+  }
 
   // Use RequestAnalyzer for complex requests
   if (options?.useAnalyzer !== false && isComplexRequest(s)) {
@@ -570,9 +587,13 @@ async function detectWorkflowAdvanced(
     /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(s) ||
     /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ)/.test(t) ||
     /^(?:اريد|أريد|ابي|ابغى|عايز|عاوز|احتاج|محتاج|ارغب)\b/.test(t);
-  const wantsWebsite = /(website|site|landing|webpage|page)/i.test(s) || /(موقع|صفحه|صفحة|واجهه|واجهة)/.test(t);
+
+  // Refined building intent: must mention structural web/api/app words
+  const wantsWebsite = /(website|site|webpage)/i.test(s) || /(موقع|واجهه|واجهة)/.test(t);
   const wantsApi = /(api|backend|server)/i.test(s) || /(باك|خلفي|خلفيه|خلفية|سيرفر|خادم|واجهه\s+برمجه|واجهة\s+برمجه)/.test(t);
   const wantsApp = /(app|application|system)/i.test(s) || /(تطبيق|نظام|منصه|منصة)/.test(t);
+
+  // If it's just "page" or "landing" without more intent, skip pipeline
   if (!wantsWebsite && !wantsApi && !wantsApp) return null;
   if (isQuestionLike && !hasBuildIntent) return null;
 
