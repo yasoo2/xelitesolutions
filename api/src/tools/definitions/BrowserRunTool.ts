@@ -195,7 +195,14 @@ export class BrowserRunTool extends BaseTool {
             const { runBrowserInstruction } = await import('../../browser/runner');
             let r: any;
             try {
-                r = await runBrowserInstruction({ userId, sessionId: sid, instructionText, mode: mode as any });
+                r = await runBrowserInstruction({
+                    userId,
+                    sessionId: sid,
+                    instructionText,
+                    mode: mode as any,
+                    onThought: (context as any).onThought,
+                    onProgress: (context as any).onProgress
+                });
             } catch (err: any) {
                 console.error('[BrowserRunTool] runBrowserInstruction threw exception:', err?.stack || err);
                 r = {
@@ -204,126 +211,127 @@ export class BrowserRunTool extends BaseTool {
                     detail: { message: err?.message, stack: err?.stack }
                 };
             }
-            if (r && typeof r === 'object' && (r as any).ok) {
-                execOk = Boolean((r as any).result?.ok);
-                const inner = (r as any).result;
-                execSummary = String(inner?.summary || '');
-                if (!execOk) {
-                    const derived = this.deriveExecFailure(inner);
-                    execError = derived.error;
-                    execSummary = derived.summary;
-                    const ms = (derived as any)?.missingSecrets;
-                    if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
-                }
-            } else {
-                execOk = false;
-                execError = String((r as any)?.error || '').trim() || 'browser_run_failed';
-                const detail = (r as any)?.detail;
-                if (execError === 'browser_unavailable' && detail && typeof detail === 'object') {
-                    const code = String(detail?.code || '').trim();
-                    const msg = String(detail?.message || '').trim();
-                    execSummary = `${code || 'browser_unavailable'}: ${msg || execError}`.slice(0, 600);
-                } else {
-                    execSummary = execError;
-                }
-                const ms = (r as any)?.missingSecrets;
+        }
+        if (r && typeof r === 'object' && (r as any).ok) {
+            execOk = Boolean((r as any).result?.ok);
+            const inner = (r as any).result;
+            execSummary = String(inner?.summary || '');
+            if (!execOk) {
+                const derived = this.deriveExecFailure(inner);
+                execError = derived.error;
+                execSummary = derived.summary;
+                const ms = (derived as any)?.missingSecrets;
                 if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
             }
         } else {
-            // Direct Action execution
-            let r: any = null;
-            try {
-                const { executePlannedActions } = await import('../../browser/executor');
-                r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
-            } catch (e: any) {
-                execOk = false;
-                const c = this.classifyBrowserRuntimeError(e);
-                execError = 'browser_unavailable';
-                execSummary = `${c.code}: ${c.message}`.slice(0, 600);
-                r = null;
-            }
-
-            if (r) {
-                execOk = Boolean(r?.ok);
-                execSummary = String(r?.summary || execSummary || '');
-                if (!execOk) {
-                    const derived = this.deriveExecFailure(r);
-                    execError = derived.error;
-                    execSummary = derived.summary;
-                    const ms = (derived as any)?.missingSecrets;
-                    if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
-                }
-            }
-        }
-
-        // Capture state
-        let pageUrl = '';
-        let title = '';
-        let dom = '';
-        try {
-            const s = await getBrowserSession(sid);
-            touchSession(sid);
-            pageUrl = s.page.url();
-            title = await s.page.title();
-            dom = await s.page.content();
-        } catch (e: any) {
-            const c = this.classifyBrowserRuntimeError(e);
             execOk = false;
-            execError = execError || 'browser_unavailable';
-            execSummary = execSummary || `${c.code}: ${c.message}`.slice(0, 600);
-            logs.push(`browser_run state_fetch_failed=${String(c.code || 'browser_failed')}`);
-        }
-
-        // Login logic
-        if (loginAttempt && pageUrl && dom) {
-            const a = this.analyzeLoginOutcome(pageUrl, dom);
-            if (a.state === 'logged_in') {
-                execOk = true;
-                execError = undefined;
-                execSummary = a.user ? `✅ تم تسجيل الدخول بنجاح. الحساب: ${a.user}` : '✅ تم تسجيل الدخول بنجاح.';
-            } else if (a.state === 'needs_2fa') {
-                execOk = false;
-                execError = 'login_2fa_required';
-                execSummary = '⚠️ تم الوصول لخطوة المصادقة الثنائية (2FA). أدخل كود التحقق ثم أعد إرسال الأمر.';
-            } else if (a.state === 'login_failed') {
-                execOk = false;
-                execError = 'login_failed';
-                execSummary = '❌ فشل تسجيل الدخول: اسم المستخدم/الإيميل أو كلمة المرور غير صحيحة.';
-            } else if (a.state === 'login_page') {
-                execOk = false;
-                execError = execError || 'login_not_completed';
-                execSummary = execSummary || '⚠️ ما زلت على صفحة تسجيل الدخول ولم يظهر نجاح الدخول بعد.';
+            execError = String((r as any)?.error || '').trim() || 'browser_run_failed';
+            const detail = (r as any)?.detail;
+            if (execError === 'browser_unavailable' && detail && typeof detail === 'object') {
+                const code = String(detail?.code || '').trim();
+                const msg = String(detail?.message || '').trim();
+                execSummary = `${code || 'browser_unavailable'}: ${msg || execError}`.slice(0, 600);
+            } else {
+                execSummary = execError;
             }
+            const ms = (r as any)?.missingSecrets;
+            if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
         }
+    } else {
+    // Direct Action execution
+    let r: any = null;
+    try {
+        const { executePlannedActions } = await import('../../browser/executor');
+        r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
+    } catch (e: any) {
+        execOk = false;
+        const c = this.classifyBrowserRuntimeError(e);
+        execError = 'browser_unavailable';
+        execSummary = `${c.code}: ${c.message}`.slice(0, 600);
+        r = null;
+    }
 
-        // Screenshot
-        let href = '';
-        let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
-        try {
-            const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 5000 });
-            const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
-            const full = path.join(ARTIFACT_DIR, fname);
-            try { fs.writeFileSync(full, buf); } catch { }
-            href = `/artifacts/${encodeURIComponent(fname)}`;
-            artifacts = [{ name: 'Screenshot', href }];
-        } catch (e: any) {
-            logs.push(`browser_run screenshot_failed=${String(e?.message || e || 'unknown')}`);
+    if (r) {
+        execOk = Boolean(r?.ok);
+        execSummary = String(r?.summary || execSummary || '');
+        if (!execOk) {
+            const derived = this.deriveExecFailure(r);
+            execError = derived.error;
+            execSummary = derived.summary;
+            const ms = (derived as any)?.missingSecrets;
+            if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
         }
+    }
+}
 
-        return {
-            ok: execOk,
-            output: {
-                sessionId: sid,
-                pageUrl,
-                title,
-                // dom: dom.slice(0, 1000), // Reduce payload if not needed in chat
-                screenshotHref: href,
-                summary: execOk ? 'Check browser window for results.' : execSummary, // Use minimal summary on success to avoid duplication
-                missingSecrets
-            },
-            logs,
-            artifacts,
-            error: execOk ? undefined : missingSecrets && missingSecrets.length ? 'missing_secrets' : execError || 'browser_run_failed',
-        };
+// Capture state
+let pageUrl = '';
+let title = '';
+let dom = '';
+try {
+    const s = await getBrowserSession(sid);
+    touchSession(sid);
+    pageUrl = s.page.url();
+    title = await s.page.title();
+    dom = await s.page.content();
+} catch (e: any) {
+    const c = this.classifyBrowserRuntimeError(e);
+    execOk = false;
+    execError = execError || 'browser_unavailable';
+    execSummary = execSummary || `${c.code}: ${c.message}`.slice(0, 600);
+    logs.push(`browser_run state_fetch_failed=${String(c.code || 'browser_failed')}`);
+}
+
+// Login logic
+if (loginAttempt && pageUrl && dom) {
+    const a = this.analyzeLoginOutcome(pageUrl, dom);
+    if (a.state === 'logged_in') {
+        execOk = true;
+        execError = undefined;
+        execSummary = a.user ? `✅ تم تسجيل الدخول بنجاح. الحساب: ${a.user}` : '✅ تم تسجيل الدخول بنجاح.';
+    } else if (a.state === 'needs_2fa') {
+        execOk = false;
+        execError = 'login_2fa_required';
+        execSummary = '⚠️ تم الوصول لخطوة المصادقة الثنائية (2FA). أدخل كود التحقق ثم أعد إرسال الأمر.';
+    } else if (a.state === 'login_failed') {
+        execOk = false;
+        execError = 'login_failed';
+        execSummary = '❌ فشل تسجيل الدخول: اسم المستخدم/الإيميل أو كلمة المرور غير صحيحة.';
+    } else if (a.state === 'login_page') {
+        execOk = false;
+        execError = execError || 'login_not_completed';
+        execSummary = execSummary || '⚠️ ما زلت على صفحة تسجيل الدخول ولم يظهر نجاح الدخول بعد.';
+    }
+}
+
+// Screenshot
+let href = '';
+let artifacts: Array<{ name: string; href: string }> | undefined = undefined;
+try {
+    const buf = await screenshotSessionJpeg(sid, { quality: 55, timeoutMs: 5000 });
+    const fname = `browser-${sid.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.jpg`;
+    const full = path.join(ARTIFACT_DIR, fname);
+    try { fs.writeFileSync(full, buf); } catch { }
+    href = `/artifacts/${encodeURIComponent(fname)}`;
+    artifacts = [{ name: 'Screenshot', href }];
+} catch (e: any) {
+    logs.push(`browser_run screenshot_failed=${String(e?.message || e || 'unknown')}`);
+}
+
+return {
+    ok: execOk,
+    output: {
+        sessionId: sid,
+        pageUrl,
+        title,
+        // dom: dom.slice(0, 1000), // Reduce payload if not needed in chat
+        screenshotHref: href,
+        summary: execOk ? 'Check browser window for results.' : execSummary, // Use minimal summary on success to avoid duplication
+        missingSecrets
+    },
+    logs,
+    artifacts,
+    error: execOk ? undefined : missingSecrets && missingSecrets.length ? 'missing_secrets' : execError || 'browser_run_failed',
+};
     }
 }

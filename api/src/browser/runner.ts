@@ -593,6 +593,8 @@ export async function runBrowserInstruction(params: {
   sessionId: string;
   instructionText: string;
   mode?: 'browser_test' | 'browser_secure';
+  onProgress?: (msg: string) => void;
+  onThought?: (msg: string) => void;
 }) {
   const userId = String(params.userId || '').trim();
   const sessionId = String(params.sessionId || '').trim();
@@ -754,6 +756,8 @@ export async function runBrowserInstruction(params: {
             baseUrl: runCfg?.baseUrl,
             model: runCfg?.model,
             userId,
+            onProgress: params.onProgress,
+            onThought: params.onThought,
           } as any,
         );
         compilerUsedStep = true;
@@ -914,6 +918,8 @@ export async function runBrowserInstruction(params: {
         baseUrl: runCfg?.baseUrl,
         model: runCfg?.model,
         userId,
+        onProgress: params.onProgress,
+        onThought: params.onThought,
       } as any,
     );
     compilerUsed = true;

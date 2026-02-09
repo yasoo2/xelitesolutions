@@ -20,6 +20,7 @@ import { stopSession } from '../browser/manager';
 import { canAccessBrowserSession } from '../browser/wsHub';
 import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
 import { normalizeUrlForGoto } from '../utils/url';
+import { setSessionSecretEncrypted } from '../services/secrets';
 
 const router = Router();
 
@@ -388,8 +389,8 @@ function isGreetingOnly(raw: string): boolean {
 }
 
 function greetingReply(raw: string): string {
-  if (isArabicText(raw)) return 'أهلًا! كيف أقدر أساعدك اليوم؟';
-  return 'Hi! How can I help you today?';
+  if (isArabicText(raw)) return "مرحباً بك. محرك التفكير العصبي (Wakil 6.2) جاهز لأهدافك الهندسية. كيف يمكنني دعمك؟";
+  return "Neural Reasoning Engine (Wakil 6.2) online. How can I assist with your engineering objectives?";
 }
 
 function extractRequestedRepoName(raw: string): string | null {
@@ -956,6 +957,9 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   const wantsLs = /(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userText) || /^ls$/i.test(userText.trim());
   if (wantsLs) return { name: 'ls', input: { path: '.' } } as any;
 
+  const hasUrl = Boolean(extractUrlCandidate(userText));
+  const openKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(userText);
+  const browserKeyword = /(?:browser|internet|متصفح|ويب|إنترنت|نت|معاينة|معاينه|preview)\b/i.test(userText);
   const wantsBrowser = Boolean(hasUrl || openKeyword || browserKeyword);
   if (wantsBrowser) {
     const directUrl = extractUrlCandidate(userText);
@@ -1164,10 +1168,20 @@ function extractWeatherCity(text: string) {
   return 'Istanbul';
 }
 
+function browserSessionIdFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/[^a-z0-9]/gi, '_');
+    return `browser:deterministic:${host}`;
+  } catch {
+    return `browser:anon:${Date.now()}`;
+  }
+}
+
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
   try {
     const offlineMode = process.env.OFFLINE_MODE === 'true';
-    let { text, sessionId, attachments, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext } = req.body || {};
+    let { text, sessionId, attachments, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext, isGodMode, userSystemInstructions } = req.body || {};
     let runId: string = 'pending'; // [Wakil 6.2] Initialized early for broadcaster
     let fileIds = attachments || (req.body && (req.body as any).fileIds);
     if (!fileIds && Array.isArray(attachments)) {
@@ -3229,7 +3243,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   type: 'step_started',
                   data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
                 });
-                const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId });
+                const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
                 const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
                 if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
                   const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
@@ -3257,7 +3271,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               const safe = !/(high|critical)/i.test(String(risk));
               if (autoAll || (auto && safe)) {
                 ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
-                const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId });
+                const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
                 const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
                 if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
                   const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');

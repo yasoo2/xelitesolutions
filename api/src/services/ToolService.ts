@@ -40,6 +40,8 @@ export interface ToolContext {
     workspaceId?: string; // New: Strict Isolation Context
     userId?: string;
     language?: string;
+    onProgress?: (msg: string) => void;
+    onThought?: (msg: string) => void;
 }
 
 function normalizeUserId(v: any) {

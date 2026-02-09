@@ -391,7 +391,7 @@ Example:
 Example (Chat):
 {
   "name": "echo",
-  "input": { "text": "أهلاً بك! كيف يمكنني مساعدتك اليوم؟" },
+  "input": { "text": "محرك التفكير العصبي جاهز. كيف يمكنني تفعيل قدراتي البرمجية لأهدافك الآن؟" },
   "reasoning": [
     "> User intent detected: Greeting (Arabic).",
     "> Language parity check: PASS.",
@@ -1119,9 +1119,10 @@ export async function planNextStep(
         // Not JSON, treat as standard text
       }
 
+      const isArabic = /[\u0600-\u06FF]/.test(messages[messages.length - 1]?.content || '');
       return {
         name: 'echo',
-        input: { text: response || 'مرحباً! كيف يمكنني مساعدتك؟' }
+        input: { text: response || (isArabic ? "أنا جاهز لمساعدتك. كيف يمكنني تفعيل قدراتي البرمجية لك الآن؟ (Engineering Atlas active)" : "Engineering Atlas active. Ready for your instructions.") }
       };
 
     } catch (err: any) {
