@@ -957,10 +957,8 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   const wantsLs = /(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userText) || /^ls$/i.test(userText.trim());
   if (wantsLs) return { name: 'ls', input: { path: '.' } } as any;
 
-  const hasUrl = Boolean(extractUrlCandidate(userText));
-  const openKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(userText);
-  const browserKeyword = /(?:browser|internet|متصفح|ويب|إنترنت|نت|معاينة|معاينه|preview)\b/i.test(userText);
-  const wantsBrowser = Boolean(hasUrl || openKeyword || browserKeyword);
+  const hasUrl_val = Boolean(extractUrlCandidate(userText));
+  const wantsBrowser = Boolean(hasUrl_val || openVerb || browserKeyword);
   if (wantsBrowser) {
     const directUrl = extractUrlCandidate(userText);
     const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userText);
