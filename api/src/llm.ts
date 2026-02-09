@@ -857,787 +857,790 @@ export async function planNextStep(
     // === Pattern Detection ===
 
     // Browser patterns
-    multiStep: /(then|ثم|بعد|بعدها|وبعدين|click|انقر|اضغط|دوس|type|اكتب|املأ|extract|استخرج|لخص|انسخ)/i,
+    const browserPatterns = {
+      open: /(open|افتح|ادخل|زور|اذهب|visit|go to|browse|شوف|طالع|ودني|وديني|خلني|بدي|ابغى|عايز)\s+(https?:\/\/|www\.|google|youtube|github|facebook|twitter|x\.com|instagram|tiktok|linkedin)/i,
+      hasUrl: /https?:\/\/[^\s]+/i,
+      multiStep: /(then|ثم|بعد|بعدها|وبعدين|click|انقر|اضغط|دوس|type|اكتب|املأ|extract|استخرج|لخص|انسخ)/i,
       analyze: /(analyze|تحليل|فحص|دراسة)\s+(https?:\/\/|www\.)/i
-  };
-
-  // Search patterns (expanded for weather, news, current events, and people in power)
-  const searchPatterns = /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي|ماهي|ما\s*هي|ما\s*هو|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|من\s*هو\s*رئيس|الحالي|كيف\s*هو|كيف\s*احوال|احوال|درجة\s*حرارة|سعر|now|current|weather|طقس|جو|اخبار|news|price|stock|who\s*is|president|ruler|king|minister|latest|capital\s*of)\s+(عن|على|for|about|في|بـ|هو|هي)?/i;
-
-  // File patterns (expanded)
-  const filePatterns = {
-    read: /(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)/i,
-    write: /(write|اكتب|create|انشئ|سوي|اعمل|كون)\s+(file|ملف)/i,
-    list: /(list|show|عرض|اعرض|شوف|طالع|ls)\s+(files|الملفات|ملفات)/i
-  };
-
-  // Code generation patterns (expanded)
-  const codePatterns = /(اكتب|كود|code|function|دالة|class|كلاس|component|كومبوننت|api|endpoint|script|سكريبت|program|برنامج|تطبيق|application|app|نظام|system|sوي|اعمل|ابني|انشئ|طور|build|create|develop|implement|نفذ)/i;
-
-
-  try {
-    // 1. Browser requests
-    if (browserPatterns.open.test(userText) || browserPatterns.hasUrl.test(userText)) {
-      const urlMatch = userText.match(/https?:\/\/[^\s]+/);
-      const url = urlMatch ? urlMatch[0] :
-        userText.match(/google/i) ? 'https://www.google.com' :
-          userText.match(/youtube/i) ? 'https://www.youtube.com' :
-            userText.match(/github/i) ? 'https://github.com' :
-              userText.match(/facebook/i) ? 'https://www.facebook.com' :
-                userText.match(/instagram/i) ? 'https://www.instagram.com' :
-                  userText.match(/twitter|x\.com/i) ? 'https://x.com' : '';
-
-      if (url) {
-        if (browserPatterns.analyze.test(userText)) {
-          console.info('[Auto Enterprise] → Browser Analysis Task');
-          return {
-            name: 'browser_run',
-            input: {
-              sessionId: `browser_${Date.now()}`,
-              instructionText: `Visit this repository and perform a deep architectural analysis: ${url}`
-            }
-          };
-        }
-        if (browserPatterns.multiStep.test(userText)) {
-          console.info('[Auto Enterprise] → Browser Multi-Step Task');
-          return {
-            name: 'browser_run',
-            input: {
-              sessionId: `browser_${Date.now()}`,
-              instructionText: userText
-            }
-          };
-        } else {
-          console.info('[Auto Enterprise] → Browser Open');
-          return {
-            name: 'browser_open',
-            input: {
-              url,
-              sessionId: `browser_${Date.now()}`
-            }
-          };
-        }
-      }
-    }
-
-    // 2. Web search requests
-    if (searchPatterns.test(userText)) {
-      console.info('[Auto Enterprise] → Web Search');
-      return {
-        name: 'web_search',
-        input: { query: userText }
-      };
-    }
-
-    // 3. File operations
-    if (filePatterns.read.test(userText)) {
-      const fileMatch = userText.match(/(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)\s+(.+)/i);
-      const filePath = fileMatch?.[3]?.trim() || '.';
-      console.info('[Auto Enterprise] → Read File');
-      return {
-        name: 'file_read',
-        input: { filePath }
-      };
-    }
-
-    if (filePatterns.list.test(userText) || /^ls$/i.test(userText.trim())) {
-      console.info('[Auto Enterprise] → List Files');
-      return {
-        name: 'ls',
-        input: { path: '.' }
-      };
-    }
-
-    // Simple build requests (any app/calculator/game/tool request)
-    const simpleBuildPatterns = /(build|create|make|ابني|انشئ|أنشئ|سوي|اعمل)\s+(.{0,20})?(calculator|game|todo|app|tool|حاسبة|لعبة|مهام|تطبيق|أداة)/i;
-
-    // Large-scale build patterns (enterprise systems)
-    const largeBuildPatterns = /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|backend|api|service|microservice|dashboard|portal|saas|نظام|منصة|خدمة|ميكروسيرفس)/i;
-    const explicitLargeScale = /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
-
-    const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
-    const parseWebsitePipelineInput = () => {
-      const text = String(userText || '');
-      const lower = text.toLowerCase();
-      const nameMatch =
-        text.match(/(?:named|called)\s+([a-z0-9_-]{2,})/i) ||
-        text.match(/(?:اسم|اسمه|سميه|سَمِّه|سمه)\s+([a-z0-9_-]{2,})/i);
-      const name = String(nameMatch?.[1] || '').trim() || 'mega-web';
-
-      const isEcom =
-        /(ecommerce|e-commerce|shop|store|checkout|cart|stripe|paypal|payments?|سلة|دفع|متجر|تجارة\s*الكترونية)/i.test(text);
-      const isBlog = /(blog|مدونة|مقال|مقالات|اخبار|أخبار)/i.test(text);
-      const type = isEcom ? 'ecommerce' : isBlog ? 'blog' : 'saas';
-
-      const features = Array.from(
-        new Set(
-          [
-            /(auth|login|signup|oauth|jwt|مصادقة|تسجيل\s*الدخول|حسابات)/i.test(text) ? 'auth' : null,
-            /(admin|dashboard|cms|لوحة|لوحه|تحكم|ادارة|إدارة)/i.test(text) ? 'admin' : null,
-            /(payment|checkout|stripe|paypal|دفع|بوابة\s*دفع)/i.test(text) ? 'payments' : null,
-            /(search|filter|فلاتر|بحث)/i.test(text) ? 'search' : null,
-            /(seo|سيو|meta|structured\s*data)/i.test(text) ? 'seo' : null,
-            /(i18n|multilingual|arabic|english|عربي|انجليزي|ثنائي)/i.test(text) ? 'i18n' : null,
-          ].filter(Boolean) as string[],
-        ),
-      );
-
-      const aestheticMode =
-        /(glass|زجاج)/i.test(text)
-          ? 'glass'
-          : /(neon|نيون)/i.test(text)
-            ? 'neon'
-            : /(minimal|مينيمال|بسيط)/i.test(text)
-              ? 'minimal'
-              : /(corporate|رسمي|شركات)/i.test(text)
-                ? 'corporate'
-                : undefined;
-
-      const language =
-        analysis?.language === 'ar'
-          ? 'ar'
-          : analysis?.language === 'mixed'
-            ? 'dual'
-            : 'en';
-
-      const qualityTasks = ['lint', 'typecheck', 'test', 'build'];
-      return { name, type, features, qualityTasks, securityChecks: true, autoFix: true, aestheticMode, language };
     };
 
-    // [FIX] Simple build requests → Use GenesisAgent for any app building
-    if (!isBuildingWebsite && simpleBuildPatterns.test(userText)) {
-      console.info('[Auto Enterprise] → Simple Build Detected: Genesis Build');
-      return {
-        name: 'genesis_build',
-        input: { goal: userText }
-      };
-    }
+    // Search patterns (expanded for weather, news, current events, and people in power)
+    const searchPatterns = /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي|ماهي|ما\s*هي|ما\s*هو|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|من\s*هو\s*رئيس|الحالي|كيف\s*هو|كيف\s*احوال|احوال|درجة\s*حرارة|سعر|now|current|weather|طقس|جو|اخبار|news|price|stock|who\s*is|president|ruler|king|minister|latest|capital\s*of)\s+(عن|على|for|about|في|بـ|هو|هي)?/i;
 
-    // Large-scale builds → Genesis Build
-    if (!isBuildingWebsite && (analysis.type === 'code_generation' || codePatterns.test(userText)) && (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText))) {
-      console.info('[Auto Enterprise] → Large Build Detected: Genesis Build');
-      return {
-        name: 'genesis_build',
-        input: { goal: userText }
-      };
-    }
+    // File patterns (expanded)
+    const filePatterns = {
+      read: /(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)/i,
+      write: /(write|اكتب|create|انشئ|سوي|اعمل|كون)\s+(file|ملف)/i,
+      list: /(list|show|عرض|اعرض|شوف|طالع|ls)\s+(files|الملفات|ملفات)/i
+    };
 
-    // 4. Code generation (let the intelligent model handle it via echo)
-    if (codePatterns.test(userText) && analysis.type === 'code_generation') {
-      if (isBuildingWebsite) {
-        if (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText)) {
-          console.info('[Auto Enterprise] → Large Website Build Detected: Genesis Build');
-          return {
-            name: 'genesis_build',
-            input: { goal: userText }
-          };
+    // Code generation patterns (expanded)
+    const codePatterns = /(اكتب|كود|code|function|دالة|class|كلاس|component|كومبوننت|api|endpoint|script|سكريبت|program|برنامج|تطبيق|application|app|نظام|system|sوي|اعمل|ابني|انشئ|طور|build|create|develop|implement|نفذ)/i;
+
+
+    try {
+      // 1. Browser requests
+      if (browserPatterns.open.test(userText) || browserPatterns.hasUrl.test(userText)) {
+        const urlMatch = userText.match(/https?:\/\/[^\s]+/);
+        const url = urlMatch ? urlMatch[0] :
+          userText.match(/google/i) ? 'https://www.google.com' :
+            userText.match(/youtube/i) ? 'https://www.youtube.com' :
+              userText.match(/github/i) ? 'https://github.com' :
+                userText.match(/facebook/i) ? 'https://www.facebook.com' :
+                  userText.match(/instagram/i) ? 'https://www.instagram.com' :
+                    userText.match(/twitter|x\.com/i) ? 'https://x.com' : '';
+
+        if (url) {
+          if (browserPatterns.analyze.test(userText)) {
+            console.info('[Auto Enterprise] → Browser Analysis Task');
+            return {
+              name: 'browser_run',
+              input: {
+                sessionId: `browser_${Date.now()}`,
+                instructionText: `Visit this repository and perform a deep architectural analysis: ${url}`
+              }
+            };
+          }
+          if (browserPatterns.multiStep.test(userText)) {
+            console.info('[Auto Enterprise] → Browser Multi-Step Task');
+            return {
+              name: 'browser_run',
+              input: {
+                sessionId: `browser_${Date.now()}`,
+                instructionText: userText
+              }
+            };
+          } else {
+            console.info('[Auto Enterprise] → Browser Open');
+            return {
+              name: 'browser_open',
+              input: {
+                url,
+                sessionId: `browser_${Date.now()}`
+              }
+            };
+          }
         }
-        console.info('[Auto Enterprise] → Detected Website Build Request - using Pipeline');
+      }
+
+      // 2. Web search requests
+      if (searchPatterns.test(userText)) {
+        console.info('[Auto Enterprise] → Web Search');
         return {
-          name: 'website_full_pipeline',
-          input: parseWebsitePipelineInput()
+          name: 'web_search',
+          input: { query: userText }
         };
       }
 
-      console.info('[Auto Enterprise] → Code Generation via Intelligent Model');
-      const msgs = [
-        { role: 'system', content: 'You are an expert software engineer. Generate clean, production-ready code with best practices.' },
-        ...messages
-      ];
-      const codeResponse = await routeToModel(msgs, analysis, undefined, options?.onThought);
-      return {
-        name: 'echo',
-        input: { text: codeResponse }
+      // 3. File operations
+      if (filePatterns.read.test(userText)) {
+        const fileMatch = userText.match(/(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)\s+(.+)/i);
+        const filePath = fileMatch?.[3]?.trim() || '.';
+        console.info('[Auto Enterprise] → Read File');
+        return {
+          name: 'file_read',
+          input: { filePath }
+        };
+      }
+
+      if (filePatterns.list.test(userText) || /^ls$/i.test(userText.trim())) {
+        console.info('[Auto Enterprise] → List Files');
+        return {
+          name: 'ls',
+          input: { path: '.' }
+        };
+      }
+
+      // Simple build requests (any app/calculator/game/tool request)
+      const simpleBuildPatterns = /(build|create|make|ابني|انشئ|أنشئ|سوي|اعمل)\s+(.{0,20})?(calculator|game|todo|app|tool|حاسبة|لعبة|مهام|تطبيق|أداة)/i;
+
+      // Large-scale build patterns (enterprise systems)
+      const largeBuildPatterns = /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|backend|api|service|microservice|dashboard|portal|saas|نظام|منصة|خدمة|ميكروسيرفس)/i;
+      const explicitLargeScale = /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
+
+      const isBuildingWebsite = /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
+      const parseWebsitePipelineInput = () => {
+        const text = String(userText || '');
+        const lower = text.toLowerCase();
+        const nameMatch =
+          text.match(/(?:named|called)\s+([a-z0-9_-]{2,})/i) ||
+          text.match(/(?:اسم|اسمه|سميه|سَمِّه|سمه)\s+([a-z0-9_-]{2,})/i);
+        const name = String(nameMatch?.[1] || '').trim() || 'mega-web';
+
+        const isEcom =
+          /(ecommerce|e-commerce|shop|store|checkout|cart|stripe|paypal|payments?|سلة|دفع|متجر|تجارة\s*الكترونية)/i.test(text);
+        const isBlog = /(blog|مدونة|مقال|مقالات|اخبار|أخبار)/i.test(text);
+        const type = isEcom ? 'ecommerce' : isBlog ? 'blog' : 'saas';
+
+        const features = Array.from(
+          new Set(
+            [
+              /(auth|login|signup|oauth|jwt|مصادقة|تسجيل\s*الدخول|حسابات)/i.test(text) ? 'auth' : null,
+              /(admin|dashboard|cms|لوحة|لوحه|تحكم|ادارة|إدارة)/i.test(text) ? 'admin' : null,
+              /(payment|checkout|stripe|paypal|دفع|بوابة\s*دفع)/i.test(text) ? 'payments' : null,
+              /(search|filter|فلاتر|بحث)/i.test(text) ? 'search' : null,
+              /(seo|سيو|meta|structured\s*data)/i.test(text) ? 'seo' : null,
+              /(i18n|multilingual|arabic|english|عربي|انجليزي|ثنائي)/i.test(text) ? 'i18n' : null,
+            ].filter(Boolean) as string[],
+          ),
+        );
+
+        const aestheticMode =
+          /(glass|زجاج)/i.test(text)
+            ? 'glass'
+            : /(neon|نيون)/i.test(text)
+              ? 'neon'
+              : /(minimal|مينيمال|بسيط)/i.test(text)
+                ? 'minimal'
+                : /(corporate|رسمي|شركات)/i.test(text)
+                  ? 'corporate'
+                  : undefined;
+
+        const language =
+          analysis?.language === 'ar'
+            ? 'ar'
+            : analysis?.language === 'mixed'
+              ? 'dual'
+              : 'en';
+
+        const qualityTasks = ['lint', 'typecheck', 'test', 'build'];
+        return { name, type, features, qualityTasks, securityChecks: true, autoFix: true, aestheticMode, language };
       };
-    }
 
-    // 5. General chat/questions - Use intelligent router with full persona
-    console.info(`[Auto Enterprise] → Intelligent Chat via ${selectedModel.name}`);
-    const msgs = [
-      { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) + ragContext },
-      ...messages
-    ];
+      // [FIX] Simple build requests → Use GenesisAgent for any app building
+      if (!isBuildingWebsite && simpleBuildPatterns.test(userText)) {
+        console.info('[Auto Enterprise] → Simple Build Detected: Genesis Build');
+        return {
+          name: 'genesis_build',
+          input: { goal: userText }
+        };
+      }
 
-    let response: string | null = null;
+      // Large-scale builds → Genesis Build
+      if (!isBuildingWebsite && (analysis.type === 'code_generation' || codePatterns.test(userText)) && (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText))) {
+        console.info('[Auto Enterprise] → Large Build Detected: Genesis Build');
+        return {
+          name: 'genesis_build',
+          input: { goal: userText }
+        };
+      }
 
-    // [TURBO] Groq Direct Path
-    if (selectedModel.name.includes('Groq') && GROQ_AVAILABLE) {
-      try {
-        const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
-        const cacheKeyPayload = JSON.stringify({
-          messages: msgs,
-          analysis,
-          selectedModel: selectedModel.model,
-          route: 'groq_direct'
-        });
-        const cacheText = msgs
-          .map(m => (typeof (m as any)?.content === 'string' ? (m as any).content : JSON.stringify((m as any)?.content || '')))
-          .join('\n');
-        const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
-
-        if (!cacheDisabled && !hasSensitive) {
-          const cached = await LLMCacheTool.checkCache(cacheKeyPayload, selectedModel.model);
-          if (cached) response = cached;
+      // 4. Code generation (let the intelligent model handle it via echo)
+      if (codePatterns.test(userText) && analysis.type === 'code_generation') {
+        if (isBuildingWebsite) {
+          if (analysis.complexity === 'extreme' || explicitLargeScale.test(userText) || largeBuildPatterns.test(userText)) {
+            console.info('[Auto Enterprise] → Large Website Build Detected: Genesis Build');
+            return {
+              name: 'genesis_build',
+              input: { goal: userText }
+            };
+          }
+          console.info('[Auto Enterprise] → Detected Website Build Request - using Pipeline');
+          return {
+            name: 'website_full_pipeline',
+            input: parseWebsitePipelineInput()
+          };
         }
 
-        if (!response) {
-          response = await groq.chatComplete(msgs, selectedModel.model);
-          if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
-            await LLMCacheTool.saveToCache(cacheKeyPayload, response, selectedModel.model);
+        console.info('[Auto Enterprise] → Code Generation via Intelligent Model');
+        const msgs = [
+          { role: 'system', content: 'You are an expert software engineer. Generate clean, production-ready code with best practices.' },
+          ...messages
+        ];
+        const codeResponse = await routeToModel(msgs, analysis, undefined, options?.onThought);
+        return {
+          name: 'echo',
+          input: { text: codeResponse }
+        };
+      }
+
+      // 5. General chat/questions - Use intelligent router with full persona
+      console.info(`[Auto Enterprise] → Intelligent Chat via ${selectedModel.name}`);
+      const msgs = [
+        { role: 'system', content: getSystemPrompt({ name: options?.userId || 'User' }) + ragContext },
+        ...messages
+      ];
+
+      let response: string | null = null;
+
+      // [TURBO] Groq Direct Path
+      if (selectedModel.name.includes('Groq') && GROQ_AVAILABLE) {
+        try {
+          const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+          const cacheKeyPayload = JSON.stringify({
+            messages: msgs,
+            analysis,
+            selectedModel: selectedModel.model,
+            route: 'groq_direct'
+          });
+          const cacheText = msgs
+            .map(m => (typeof (m as any)?.content === 'string' ? (m as any).content : JSON.stringify((m as any)?.content || '')))
+            .join('\n');
+          const hasSensitive = /(sk-[a-z0-9]{10,}|api[_-]?key|authorization:\s*bearer|-----begin\s+[a-z ]+-----)/i.test(cacheText);
+
+          if (!cacheDisabled && !hasSensitive) {
+            const cached = await LLMCacheTool.checkCache(cacheKeyPayload, selectedModel.model);
+            if (cached) response = cached;
+          }
+
+          if (!response) {
+            response = await groq.chatComplete(msgs, selectedModel.model);
+            if (!cacheDisabled && !hasSensitive && response && response.length > 20) {
+              await LLMCacheTool.saveToCache(cacheKeyPayload, response, selectedModel.model);
+            }
+          }
+        } catch (e) {
+          console.error('[Groq] Failed, falling back to router:', e);
+        }
+      }
+
+      if (!response) {
+        response = await routeToModel(msgs, analysis, undefined, options?.onThought);
+      }
+
+      console.info(`[Auto Enterprise] ✅ Got response from intelligent router (${response?.length || 0} chars)`);
+
+      // Cache good responses for future use
+      if (response && response.length > 20) {
+        freeIntelligenceOptimizer.train(userText, response);
+        console.info('[FREE OPTIMIZER] ✅ Response cached for future use');
+      }
+
+      // [Wakil 6.0] JSON/Tool Parsing Logic
+      try {
+        // Attempt to clean markdown code blocks if the model wrapped the JSON
+        const cleanJson = (response || '').replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+        const json = JSON.parse(cleanJson);
+
+        // If it's a valid tool call structure
+        if (json.name && json.input) {
+          console.info('[Auto Enterprise] 🛠️ Parsed JSON Tool Call:', json.name);
+          return { name: json.name, input: json.input, reasoning: json.reasoning } as any;
+        }
+
+        // If it has a reasoning field but missing tool structure (e.g. just a response object?)
+        if (json.reasoning) {
+          // Check for common content fields
+          const content = json.response || json.content || json.text || json.message;
+          if (content) {
+            return { name: 'echo', input: { text: content }, reasoning: json.reasoning } as any;
           }
         }
       } catch (e) {
-        console.error('[Groq] Failed, falling back to router:', e);
-      }
-    }
-
-    if (!response) {
-      response = await routeToModel(msgs, analysis, undefined, options?.onThought);
-    }
-
-    console.info(`[Auto Enterprise] ✅ Got response from intelligent router (${response?.length || 0} chars)`);
-
-    // Cache good responses for future use
-    if (response && response.length > 20) {
-      freeIntelligenceOptimizer.train(userText, response);
-      console.info('[FREE OPTIMIZER] ✅ Response cached for future use');
-    }
-
-    // [Wakil 6.0] JSON/Tool Parsing Logic
-    try {
-      // Attempt to clean markdown code blocks if the model wrapped the JSON
-      const cleanJson = (response || '').replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
-      const json = JSON.parse(cleanJson);
-
-      // If it's a valid tool call structure
-      if (json.name && json.input) {
-        console.info('[Auto Enterprise] 🛠️ Parsed JSON Tool Call:', json.name);
-        return { name: json.name, input: json.input, reasoning: json.reasoning } as any;
+        // Not JSON, treat as standard text
       }
 
-      // If it has a reasoning field but missing tool structure (e.g. just a response object?)
-      if (json.reasoning) {
-        // Check for common content fields
-        const content = json.response || json.content || json.text || json.message;
-        if (content) {
-          return { name: 'echo', input: { text: content }, reasoning: json.reasoning } as any;
-        }
-      }
-    } catch (e) {
-      // Not JSON, treat as standard text
-    }
+      const isArabic = /[\u0600-\u06FF]/.test(messages[messages.length - 1]?.content || '');
+      return {
+        name: 'echo',
+        input: { text: response || (isArabic ? "أنا جاهز لمساعدتك. كيف يمكنني تفعيل قدراتي البرمجية لك الآن؟ (Engineering Atlas active)" : "Engineering Atlas active. Ready for your instructions.") }
+      };
 
-    const isArabic = /[\u0600-\u06FF]/.test(messages[messages.length - 1]?.content || '');
-    return {
-      name: 'echo',
-      input: { text: response || (isArabic ? "أنا جاهز لمساعدتك. كيف يمكنني تفعيل قدراتي البرمجية لك الآن؟ (Engineering Atlas active)" : "Engineering Atlas active. Ready for your instructions.") }
+    } catch (err: any) {
+      console.error('[Auto Enterprise] Failed:', err);
+      // Fallback to simple chat
+      try {
+        const msgs = [{ role: 'system', content: getSystemPrompt({ name: 'Younis' }) }, ...messages];
+        const text = await pollinationsProvider.chatComplete(msgs, 'openai');
+        return { name: 'echo', input: { text: text || 'Response from Joe (Free)' } };
+      } catch {
+        throw new Error('AUTO_MODE_FAILED: ' + (err.message || String(err)));
+      }
+    }
+  }
+
+  if (!shouldMock) {
+    if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
+    if (!optKey) {
+      return await planNextStep(messages, { ...options, provider: 'auto' });
+    }
+  }
+
+  // Determine client to use
+  let client = openai;
+  if (!shouldMock) {
+    // Always create a fresh client if we have a specific key that might differ from default
+    // Or if checking logic...
+    // Simplest: If we have a resolved key, use it.
+    if (optKey) {
+      client = new OpenAI({
+        apiKey: optKey,
+        baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL,
+      });
+    }
+  }
+
+  if (shouldMock) {
+    console.info('[LLM] Using Mock Planner');
+    const lastMsg = messages[messages.length - 1];
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user') || lastMsg;
+    const rawText =
+      typeof lastUserMsg.content === 'string' ? lastUserMsg.content : JSON.stringify(lastUserMsg.content || '');
+    const content = rawText.toLowerCase();
+
+    // Check history for actions
+    const historyTextRaw = messages
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
+      .join('\n');
+    const historyStr = historyTextRaw.toLowerCase();
+    const extractLatestToolOutput = (toolName: string) => {
+      const marker = `tool call: ${toolName}`.toLowerCase();
+      const idx = historyStr.lastIndexOf(marker);
+      if (idx < 0) return null;
+      const tail = historyTextRaw.slice(idx);
+      const m = tail.match(/Output:\s*(.+)/i);
+      const raw = String(m?.[1] || '').trim();
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch { return raw; }
     };
 
-  } catch (err: any) {
-    console.error('[Auto Enterprise] Failed:', err);
-    // Fallback to simple chat
-    try {
-      const msgs = [{ role: 'system', content: getSystemPrompt({ name: 'Younis' }) }, ...messages];
-      const text = await pollinationsProvider.chatComplete(msgs, 'openai');
-      return { name: 'echo', input: { text: text || 'Response from Joe (Free)' } };
-    } catch {
-      throw new Error('AUTO_MODE_FAILED: ' + (err.message || String(err)));
+    const wantsWeather = /(?:\bweather\b|forecast|temperature|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حراره|الحرارة|الجو|الأجواء|الاجواء)/i.test(rawText);
+    const wantsNow = /(?:\bnow\b|\bcurrent\b|الآن|الان|حاليا|حالياً)/i.test(rawText);
+    const wantsToday = /(?:\btoday\b|اليوم)/i.test(rawText);
+    const isArabicInput = /[\u0600-\u06FF]/.test(rawText);
+    const hasWebSearch =
+      historyStr.includes('tool call: web_search') ||
+      historyStr.includes(`tool 'web_search' executed`) ||
+      historyStr.includes('"name":"web_search"');
+
+    if (wantsWeather) {
+      const city =
+        /(?:istanbul|إسطنبول|اسطنبول)/i.test(rawText)
+          ? 'Istanbul'
+          : (() => {
+            const m =
+              rawText.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
+              rawText.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس)/i);
+            return String(m?.[1] || 'Istanbul').trim();
+          })();
+
+      if (!hasWebSearch) {
+        const cityQuery =
+          /istanbul/i.test(city) ? (isArabicInput ? 'إسطنبول' : 'Istanbul') : city;
+        const q = isArabicInput
+          ? `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${cityQuery}`
+          : `${wantsNow ? 'current temperature' : 'current weather'} ${cityQuery} ${wantsNow ? 'now' : wantsToday ? 'today' : 'today'}`;
+        return { name: 'web_search', input: { query: q } };
+      }
+
+      const out: any = extractLatestToolOutput('web_search');
+      const results = Array.isArray(out?.results) ? out.results : [];
+      const top = results[0];
+      if (top?.description && top?.url) {
+        const desc = String(top.description).replace(/^\s*\*\*ANSWER\*\*:\s*/i, '').trim();
+        return {
+          name: 'echo',
+          input: {
+            text: `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${/istanbul/i.test(city) ? 'إسطنبول' : city} بحسب ${String(top.title || 'المصدر')}:\n${desc}\nالمصدر: ${String(top.url)}`
+          }
+        };
+      }
+      if (top?.url) {
+        return {
+          name: 'echo',
+          input: {
+            text: `لم أستطع استخراج تفاصيل دقيقة من النتائج، لكن هذه أفضل نتيجة متاحة الآن:\n${String(top.title || '')}\n${String(top.url)}`
+          }
+        };
+      }
+      return { name: 'echo', input: { text: 'تعذّر الحصول على نتائج طقس حالياً.' } };
     }
-  }
-}
+    const hasOpened =
+      historyStr.includes('tool call: browser_open') ||
+      historyStr.includes(`tool 'browser_open' executed`) ||
+      historyStr.includes('tool call: browser_run') ||
+      historyStr.includes(`tool 'browser_run' executed`) ||
+      historyStr.includes('"name":"browser_open"') ||
+      historyStr.includes('"name":"browser_run"');
+    const hasClicked =
+      (historyStr.includes('tool call: browser_run') || historyStr.includes(`tool 'browser_run' executed`) || historyStr.includes('"name":"browser_run"')) &&
+      historyStr.includes('click');
+    const hasAnalyzed =
+      historyStr.includes('tool call: browser_get_state') ||
+      historyStr.includes(`tool 'browser_get_state' executed`) ||
+      historyStr.includes('"name":"browser_get_state"');
+    const sessionIdMatch =
+      historyTextRaw.match(/"sessionId"\s*:\s*"([^"]+)"/) ||
+      historyTextRaw.match(/\bsessionId\b\s*[:=]\s*["']([^"']+)["']/i);
+    const sessionId = sessionIdMatch?.[1];
 
-if (!shouldMock) {
-  if (providerKey === 'llm') throw new Error('PROVIDER_LLM_DISABLED');
-  if (!optKey) {
-    return await planNextStep(messages, { ...options, provider: 'auto' });
-  }
-}
+    const extractUrlCandidate = (s: string) => {
+      const http = s.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
+      if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
+      const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+      const candidate = (m?.[1] || '').replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
+      if (!candidate) return undefined;
+      const isLocal =
+        /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+        /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+        /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+      return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+    };
+    let url = extractUrlCandidate(rawText);
 
-// Determine client to use
-let client = openai;
-if (!shouldMock) {
-  // Always create a fresh client if we have a specific key that might differ from default
-  // Or if checking logic...
-  // Simplest: If we have a resolved key, use it.
-  if (optKey) {
-    client = new OpenAI({
-      apiKey: optKey,
-      baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL,
+    const extractQuoted = (s: string) => {
+      const m = s.match(/["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/);
+      return m?.[1];
+    };
+
+    const writeEn =
+      rawText.match(/write\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i) ||
+      rawText.match(/create\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i);
+    const writeAr =
+      rawText.match(/(?:اكتب|انشئ|أنشئ|سوي|سوِّ|قم\s+بإنشاء)\s+(?:ملف|فايل)\s*(?:باسم|اسم)\s+([^\s"'`]+)(?:\s+(?:بمحتوى|محتوى)\s+(.+))?/i);
+    const write = writeEn || writeAr;
+    if (write) {
+      const filename = String(write[1] || 'verify.txt').trim();
+      const tail = String(write[2] || '').trim();
+      const quoted = tail ? extractQuoted(tail) : undefined;
+      const contentValue = String(quoted || tail || 'verified');
+      return { name: 'file_write', input: { filename, content: contentValue } };
+    }
+
+    const readEn = rawText.match(/read\s+(?:the\s+)?file\s+([^\s"'`]+)/i);
+    const readAr = rawText.match(/(?:اقرأ|اقراء|اعرض|افتح)\s+(?:ملف|فايل)\s+([^\s"'`]+)/i);
+    const read = readEn || readAr;
+    if (read) {
+      const filename = String(read[1] || '').trim();
+      if (filename) return { name: 'file_read', input: { filename } };
+    }
+
+    const saveAs =
+      rawText.match(/save\s+(?:it\s+)?as\s+["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i) ||
+      rawText.match(/(?:احفظ|حفظ|قم\s+بحفظ)(?:ه|ها|هذا)?\s*(?:باسم|اسم)\s*["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i);
+    if (saveAs) {
+      const filename = String(saveAs[1] || '').trim();
+      if (filename) {
+        const wantsHtml =
+          /\.html?$/i.test(filename) ||
+          /single-file\s+html|landing\s+page|<html/i.test(rawText);
+        const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+        const full = path.isAbsolute(filename) ? filename : path.join(artifactDir, filename);
+        if (wantsHtml) {
+          const html = [
+            '<!doctype html>',
+            '<html lang="en">',
+            '<head>',
+            '  <meta charset="utf-8" />',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            '  <title>Xelite Coffee</title>',
+            '  <style>',
+            '    :root {',
+            '      --bg: #0b0e14;',
+            '      --panel: #121827;',
+            '      --text: #e6e9ef;',
+            '      --muted: #aab3c5;',
+            '      --accent: #7c5cff;',
+            '      --accent2: #20c997;',
+            '      --border: rgba(255,255,255,0.10);',
+            '      --shadow: 0 20px 60px rgba(0,0,0,0.45);',
+            '    }',
+            '    * { box-sizing: border-box; }',
+            '    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, Noto Sans, sans-serif; background: radial-gradient(1000px 600px at 20% -10%, rgba(124,92,255,0.35), transparent 60%), radial-gradient(900px 600px at 100% 0%, rgba(32,201,151,0.18), transparent 55%), var(--bg); color: var(--text); }',
+            '    a { color: inherit; }',
+            '    .container { max-width: 1100px; margin: 0 auto; padding: 28px 18px 56px; }',
+            '    .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border: 1px solid var(--border); background: rgba(18,24,39,0.6); backdrop-filter: blur(10px); border-radius: 16px; }',
+            '    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; }',
+            '    .dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 0 6px rgba(124,92,255,0.12); }',
+            '    .nav a { text-decoration: none; padding: 10px 12px; border-radius: 12px; color: var(--muted); }',
+            '    .nav a:hover { background: rgba(255,255,255,0.06); color: var(--text); }',
+            '    .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; margin-top: 18px; }',
+            '    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }',
+            '    .card { border: 1px solid var(--border); background: rgba(18,24,39,0.62); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); }',
+            '    .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 13px; }',
+            '    h1 { margin: 14px 0 8px; font-size: clamp(34px, 4.3vw, 54px); line-height: 1.06; letter-spacing: -0.6px; }',
+            '    .subtitle { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 62ch; }',
+            '    .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }',
+            '    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); text-decoration: none; font-weight: 600; }',
+            '    .btn.primary { background: linear-gradient(135deg, rgba(124,92,255,0.95), rgba(32,201,151,0.75)); border-color: rgba(255,255,255,0.14); }',
+            '    .btn:hover { filter: brightness(1.05); }',
+            '    .panel { display: grid; gap: 12px; }',
+            '    .stat { border: 1px solid var(--border); background: rgba(11,14,20,0.35); border-radius: 18px; padding: 14px; }',
+            '    .stat b { display: block; font-size: 14px; }',
+            '    .stat span { color: var(--muted); font-size: 13px; }',
+            '    .features { margin-top: 18px; }',
+            '    .features h2 { margin: 0 0 10px; font-size: 20px; }',
+            '    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }',
+            '    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }',
+            '    .feature { border: 1px solid var(--border); background: rgba(11,14,20,0.32); border-radius: 18px; padding: 16px; }',
+            '    .feature h3 { margin: 0 0 6px; font-size: 15px; }',
+            '    .feature p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }',
+            '    footer { margin-top: 18px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }',
+            '    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace; }',
+            '  </style>',
+            '</head>',
+            '<body>',
+            '  <div class="container">',
+            '    <div class="nav">',
+            '      <div class="brand"><span class="dot"></span><span>Xelite Coffee</span></div>',
+            '      <div style="display:flex; gap:6px; flex-wrap:wrap;">',
+            '        <a href="#features">Features</a>',
+            '        <a href="#menu">Menu</a>',
+            '        <a href="#visit">Visit</a>',
+            '      </div>',
+            '    </div>',
+            '',
+            '    <section class="hero">',
+            '      <div class="card">',
+            '        <div class="kicker"><span class="mono">☕</span><span>Dark roast. Bright ideas.</span></div>',
+            '        <h1>Code &amp; Caffeine</h1>',
+            '        <p class="subtitle">A modern coffee experience designed for builders. Rich espresso, calm ambience, fast Wi‑Fi, and a space that respects focus.</p>',
+            '        <div class="cta">',
+            '          <a class="btn primary" href="#visit">Get your first cup</a>',
+            '          <a class="btn" href="#features">Explore features</a>',
+            '        </div>',
+            '      </div>',
+            '      <div class="card panel">',
+            '        <div class="stat"><b>Signature</b><span>Espresso + oat + cocoa, perfectly balanced.</span></div>',
+            '        <div class="stat"><b>Speed</b><span>Order ahead and pick up in under 2 minutes.</span></div>',
+            '        <div class="stat"><b>Vibe</b><span>Low-noise seating, warm lighting, and power at every table.</span></div>',
+            '      </div>',
+            '    </section>',
+            '',
+            '    <section id="features" class="features card">',
+            '      <h2>Features</h2>',
+            '      <div class="grid">',
+            '        <div class="feature"><h3>Developer-Friendly</h3><p>Comfortable seating, outlets everywhere, and a layout built for deep work.</p></div>',
+            '        <div class="feature"><h3>Quality Beans</h3><p>Small-batch roasts with consistent flavor—every cup is crafted, not rushed.</p></div>',
+            '        <div class="feature"><h3>Fast Service</h3><p>Clean, efficient workflows so you get coffee quickly and keep momentum.</p></div>',
+            '      </div>',
+            '    </section>',
+            '',
+            '    <footer class="card" id="visit">',
+            '      <div>© <span id="y"></span> Xelite Coffee. All rights reserved.</div>',
+            '      <div class="mono">Open daily • 7:00–22:00 • Downtown</div>',
+            '    </footer>',
+            '  </div>',
+            '  <script>document.getElementById(\"y\").textContent=String(new Date().getFullYear());</script>',
+            '</body>',
+            '</html>',
+            '',
+          ].join('\\n');
+          return { name: 'file_write', input: { filename: full, content: html } };
+        }
+      }
+    }
+
+    const wantsLs =
+      /(?:list|show)\s+files/i.test(rawText) ||
+      /(?:ls\b)/i.test(rawText) ||
+      /(?:اعرض|اظهر|أظهر)\s+(?:ال)?ملفات/i.test(rawText) ||
+      /قائمة\s+الملفات/i.test(rawText);
+    if (wantsLs) return { name: 'ls', input: { path: '.' } };
+    const wantsOpen =
+      /\bopen\b/i.test(rawText) ||
+      /افتح|افتحي|افتحوا|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|افتح المتصفح|افتح الموقع|واجهة الوكيل/i.test(
+        rawText,
+      );
+
+    const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes('youtube.com');
+    const wantsSearch =
+      /ابحث|بحث|search/i.test(rawText) ||
+      /ضيعة\s+ضايعة/i.test(rawText) ||
+      /شغل|شغّل|تشغيل|play/i.test(rawText);
+
+    if (wantsYouTube && wantsSearch) {
+      const qMatch =
+        rawText.match(/ابحث(?:\s+عن)?\s+(.+?)(?:\s+(?:وشغل|وشغّل|وشغل|شغل|تشغيل)|$)/i) ||
+        rawText.match(/search\s+for\s+(.+?)(?:\s+and\s+play|$)/i);
+      const query = String(qMatch?.[1] || 'ضيعة ضايعة').trim() || 'ضيعة ضايعة';
+      return { name: 'echo', input: { text: `ميزة التصفح القديمة أزيلت. سأحتاج تشغيل نظام المتصفح الجديد لتنفيذ: ${query}` } };
+    }
+
+    if (wantsOpen) {
+      const explicitBrowser = /(\b(browser|web)\b|متصفح)/i.test(rawText);
+      const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(rawText);
+      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(rawText);
+      if (githubKeyword && analysisKeyword && !explicitBrowser && !url) {
+        return {
+          name: 'echo',
+          input: { text: 'سأقوم بتحليل الكود محلياً دون فتح المتصفح.' },
+        };
+      }
+      if (!url) {
+        if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
+      }
+
+      return {
+        name: 'echo',
+        input: { text: 'ميزة التصفح القديمة أزيلت. استخدم واجهة المتصفح الجديدة لتنفيذ خطوات داخل موقع.' },
+      };
+    }
+
+    // Simple Heuristics for the GitHub Test
+    if (historyStr.includes('github.com') && historyStr.includes('open') && !historyStr.includes('package.json')) {
+      return {
+        name: 'echo',
+        input: { text: 'سأحلل ملفات المشروع محلياً بدون استخدام المتصفح.' }
+      };
+    }
+    if (historyStr.includes('package.json')) {
+      return {
+        name: 'echo',
+        input: { text: 'سأقرأ package.json من ملفات المشروع مباشرة.' }
+      };
+    }
+
+    // Yahoo flow (Mock)
+    if (content.includes('yahoo') || historyStr.includes('yahoo')) {
+      const hasYahooExtract =
+        (historyStr.includes('tool call: html_extract') || historyStr.includes(`tool 'html_extract' executed`) || historyStr.includes('"name":"html_extract"')) &&
+        historyStr.includes('yahoo.com');
+      if (!hasYahooExtract) {
+        return {
+          name: 'html_extract',
+          input: { url: 'https://www.yahoo.com' }
+        };
+      }
+      return {
+        name: 'echo',
+        input: { text: "Yahoo analyzed." }
+      };
+    }
+
+    // Default fallback
+    return {
+      name: 'echo',
+      input: { text: "I'm running in MOCK mode. I saw: " + content }
+    };
+  }
+
+  // 1. Prepare tools for OpenAI
+  const activeTools = tools.filter(t => !t.name.startsWith('noop_'));
+  const selectedToolDefs = selectToolDefsForProvider(activeTools, MAX_PROVIDER_TOOLS, messages);
+  const aiTools: OpenAI.Chat.Completions.ChatCompletionTool[] = selectedToolDefs.map(t => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description || `Tool: ${t.name}. Tags: ${(Array.isArray((t as any).tags) ? (t as any).tags : []).join(', ')}`,
+      parameters: (() => {
+        if (t.name === 'browser_run') {
+          console.log('DEBUG_SCHEMA: browser_run schema:', JSON.stringify(t.inputSchema, null, 2));
+        }
+        return t.inputSchema as any;
+      })(),
+    },
+  }));
+
+  // 2. Add a system prompt if not present
+  let msgs = [
+    {
+      role: 'system',
+      content: getSystemPrompt()
+    },
+    ...messages
+  ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+  // Token Optimization Logic:
+  // Estimate total characters to prevent 429 Rate Limit errors (approx 4 chars/token).
+  // If we exceed ~80,000 chars (approx 20k tokens), we must truncate older messages.
+  const CHAR_LIMIT = 80000;
+
+  // Strategy 0: Aggressively prune OLD tool outputs (keep only the last 2 tool outputs full)
+  // This is critical for "Chat" speed where old file reads are irrelevant.
+  const toolOutputIndices: number[] = [];
+  msgs.forEach((m, idx) => {
+    // In OpenAI format, tool output has role 'tool'
+    if (m.role === 'tool' || (m.role === 'function' as any)) {
+      toolOutputIndices.push(idx);
+    }
+  });
+
+  // Keep the last 3 tool outputs intact, truncate older ones
+  const KEEP_TOOL_OUTPUTS = 3;
+  if (toolOutputIndices.length > KEEP_TOOL_OUTPUTS) {
+    const indicesToTruncate = toolOutputIndices.slice(0, toolOutputIndices.length - KEEP_TOOL_OUTPUTS);
+    const truncateSet = new Set(indicesToTruncate);
+
+    msgs = msgs.map((m, idx) => {
+      if (truncateSet.has(idx)) {
+        return {
+          ...m,
+          content: '(Tool output suppressed to save context)'
+        };
+      }
+      return m;
     });
   }
-}
 
-if (shouldMock) {
-  console.info('[LLM] Using Mock Planner');
-  const lastMsg = messages[messages.length - 1];
-  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user') || lastMsg;
-  const rawText =
-    typeof lastUserMsg.content === 'string' ? lastUserMsg.content : JSON.stringify(lastUserMsg.content || '');
-  const content = rawText.toLowerCase();
+  let currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
 
-  // Check history for actions
-  const historyTextRaw = messages
-    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
-    .join('\n');
-  const historyStr = historyTextRaw.toLowerCase();
-  const extractLatestToolOutput = (toolName: string) => {
-    const marker = `tool call: ${toolName}`.toLowerCase();
-    const idx = historyStr.lastIndexOf(marker);
-    if (idx < 0) return null;
-    const tail = historyTextRaw.slice(idx);
-    const m = tail.match(/Output:\s*(.+)/i);
-    const raw = String(m?.[1] || '').trim();
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return raw; }
-  };
-
-  const wantsWeather = /(?:\bweather\b|forecast|temperature|الطقس|حالة\s+الطقس|درجة\s+الحرارة|حراره|الحرارة|الجو|الأجواء|الاجواء)/i.test(rawText);
-  const wantsNow = /(?:\bnow\b|\bcurrent\b|الآن|الان|حاليا|حالياً)/i.test(rawText);
-  const wantsToday = /(?:\btoday\b|اليوم)/i.test(rawText);
-  const isArabicInput = /[\u0600-\u06FF]/.test(rawText);
-  const hasWebSearch =
-    historyStr.includes('tool call: web_search') ||
-    historyStr.includes(`tool 'web_search' executed`) ||
-    historyStr.includes('"name":"web_search"');
-
-  if (wantsWeather) {
-    const city =
-      /(?:istanbul|إسطنبول|اسطنبول)/i.test(rawText)
-        ? 'Istanbul'
-        : (() => {
-          const m =
-            rawText.match(/(?:in|في)\s+([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})/i) ||
-            rawText.match(/([a-zA-Z\u0600-\u06FF][a-zA-Z\u0600-\u06FF\s-]{1,40})\s+(?:weather|الطقس|حالة\s+الطقس)/i);
-          return String(m?.[1] || 'Istanbul').trim();
-        })();
-
-    if (!hasWebSearch) {
-      const cityQuery =
-        /istanbul/i.test(city) ? (isArabicInput ? 'إسطنبول' : 'Istanbul') : city;
-      const q = isArabicInput
-        ? `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${cityQuery}`
-        : `${wantsNow ? 'current temperature' : 'current weather'} ${cityQuery} ${wantsNow ? 'now' : wantsToday ? 'today' : 'today'}`;
-      return { name: 'web_search', input: { query: q } };
-    }
-
-    const out: any = extractLatestToolOutput('web_search');
-    const results = Array.isArray(out?.results) ? out.results : [];
-    const top = results[0];
-    if (top?.description && top?.url) {
-      const desc = String(top.description).replace(/^\s*\*\*ANSWER\*\*:\s*/i, '').trim();
-      return {
-        name: 'echo',
-        input: {
-          text: `${wantsNow ? 'درجة الحرارة الآن' : 'حالة الطقس اليوم'} في ${/istanbul/i.test(city) ? 'إسطنبول' : city} بحسب ${String(top.title || 'المصدر')}:\n${desc}\nالمصدر: ${String(top.url)}`
-        }
-      };
-    }
-    if (top?.url) {
-      return {
-        name: 'echo',
-        input: {
-          text: `لم أستطع استخراج تفاصيل دقيقة من النتائج، لكن هذه أفضل نتيجة متاحة الآن:\n${String(top.title || '')}\n${String(top.url)}`
-        }
-      };
-    }
-    return { name: 'echo', input: { text: 'تعذّر الحصول على نتائج طقس حالياً.' } };
-  }
-  const hasOpened =
-    historyStr.includes('tool call: browser_open') ||
-    historyStr.includes(`tool 'browser_open' executed`) ||
-    historyStr.includes('tool call: browser_run') ||
-    historyStr.includes(`tool 'browser_run' executed`) ||
-    historyStr.includes('"name":"browser_open"') ||
-    historyStr.includes('"name":"browser_run"');
-  const hasClicked =
-    (historyStr.includes('tool call: browser_run') || historyStr.includes(`tool 'browser_run' executed`) || historyStr.includes('"name":"browser_run"')) &&
-    historyStr.includes('click');
-  const hasAnalyzed =
-    historyStr.includes('tool call: browser_get_state') ||
-    historyStr.includes(`tool 'browser_get_state' executed`) ||
-    historyStr.includes('"name":"browser_get_state"');
-  const sessionIdMatch =
-    historyTextRaw.match(/"sessionId"\s*:\s*"([^"]+)"/) ||
-    historyTextRaw.match(/\bsessionId\b\s*[:=]\s*["']([^"']+)["']/i);
-  const sessionId = sessionIdMatch?.[1];
-
-  const extractUrlCandidate = (s: string) => {
-    const http = s.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
-    if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
-    const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
-    const candidate = (m?.[1] || '').replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
-    if (!candidate) return undefined;
-    const isLocal =
-      /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-      /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-      /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-    return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
-  };
-  let url = extractUrlCandidate(rawText);
-
-  const extractQuoted = (s: string) => {
-    const m = s.match(/["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/);
-    return m?.[1];
-  };
-
-  const writeEn =
-    rawText.match(/write\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i) ||
-    rawText.match(/create\s+(?:a\s+)?file\s+(?:named|called)\s+([^\s"'`]+)(?:\s+with\s+content\s+(.+))?/i);
-  const writeAr =
-    rawText.match(/(?:اكتب|انشئ|أنشئ|سوي|سوِّ|قم\s+بإنشاء)\s+(?:ملف|فايل)\s*(?:باسم|اسم)\s+([^\s"'`]+)(?:\s+(?:بمحتوى|محتوى)\s+(.+))?/i);
-  const write = writeEn || writeAr;
-  if (write) {
-    const filename = String(write[1] || 'verify.txt').trim();
-    const tail = String(write[2] || '').trim();
-    const quoted = tail ? extractQuoted(tail) : undefined;
-    const contentValue = String(quoted || tail || 'verified');
-    return { name: 'file_write', input: { filename, content: contentValue } };
-  }
-
-  const readEn = rawText.match(/read\s+(?:the\s+)?file\s+([^\s"'`]+)/i);
-  const readAr = rawText.match(/(?:اقرأ|اقراء|اعرض|افتح)\s+(?:ملف|فايل)\s+([^\s"'`]+)/i);
-  const read = readEn || readAr;
-  if (read) {
-    const filename = String(read[1] || '').trim();
-    if (filename) return { name: 'file_read', input: { filename } };
-  }
-
-  const saveAs =
-    rawText.match(/save\s+(?:it\s+)?as\s+["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i) ||
-    rawText.match(/(?:احفظ|حفظ|قم\s+بحفظ)(?:ه|ها|هذا)?\s*(?:باسم|اسم)\s*["“”'`]\s*([^"“”'`]+?)\s*["“”'`]/i);
-  if (saveAs) {
-    const filename = String(saveAs[1] || '').trim();
-    if (filename) {
-      const wantsHtml =
-        /\.html?$/i.test(filename) ||
-        /single-file\s+html|landing\s+page|<html/i.test(rawText);
-      const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
-      const full = path.isAbsolute(filename) ? filename : path.join(artifactDir, filename);
-      if (wantsHtml) {
-        const html = [
-          '<!doctype html>',
-          '<html lang="en">',
-          '<head>',
-          '  <meta charset="utf-8" />',
-          '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-          '  <title>Xelite Coffee</title>',
-          '  <style>',
-          '    :root {',
-          '      --bg: #0b0e14;',
-          '      --panel: #121827;',
-          '      --text: #e6e9ef;',
-          '      --muted: #aab3c5;',
-          '      --accent: #7c5cff;',
-          '      --accent2: #20c997;',
-          '      --border: rgba(255,255,255,0.10);',
-          '      --shadow: 0 20px 60px rgba(0,0,0,0.45);',
-          '    }',
-          '    * { box-sizing: border-box; }',
-          '    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, Noto Sans, sans-serif; background: radial-gradient(1000px 600px at 20% -10%, rgba(124,92,255,0.35), transparent 60%), radial-gradient(900px 600px at 100% 0%, rgba(32,201,151,0.18), transparent 55%), var(--bg); color: var(--text); }',
-          '    a { color: inherit; }',
-          '    .container { max-width: 1100px; margin: 0 auto; padding: 28px 18px 56px; }',
-          '    .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border: 1px solid var(--border); background: rgba(18,24,39,0.6); backdrop-filter: blur(10px); border-radius: 16px; }',
-          '    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; }',
-          '    .dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 0 6px rgba(124,92,255,0.12); }',
-          '    .nav a { text-decoration: none; padding: 10px 12px; border-radius: 12px; color: var(--muted); }',
-          '    .nav a:hover { background: rgba(255,255,255,0.06); color: var(--text); }',
-          '    .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; margin-top: 18px; }',
-          '    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }',
-          '    .card { border: 1px solid var(--border); background: rgba(18,24,39,0.62); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); }',
-          '    .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); font-size: 13px; }',
-          '    h1 { margin: 14px 0 8px; font-size: clamp(34px, 4.3vw, 54px); line-height: 1.06; letter-spacing: -0.6px; }',
-          '    .subtitle { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 62ch; }',
-          '    .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }',
-          '    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); text-decoration: none; font-weight: 600; }',
-          '    .btn.primary { background: linear-gradient(135deg, rgba(124,92,255,0.95), rgba(32,201,151,0.75)); border-color: rgba(255,255,255,0.14); }',
-          '    .btn:hover { filter: brightness(1.05); }',
-          '    .panel { display: grid; gap: 12px; }',
-          '    .stat { border: 1px solid var(--border); background: rgba(11,14,20,0.35); border-radius: 18px; padding: 14px; }',
-          '    .stat b { display: block; font-size: 14px; }',
-          '    .stat span { color: var(--muted); font-size: 13px; }',
-          '    .features { margin-top: 18px; }',
-          '    .features h2 { margin: 0 0 10px; font-size: 20px; }',
-          '    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }',
-          '    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }',
-          '    .feature { border: 1px solid var(--border); background: rgba(11,14,20,0.32); border-radius: 18px; padding: 16px; }',
-          '    .feature h3 { margin: 0 0 6px; font-size: 15px; }',
-          '    .feature p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }',
-          '    footer { margin-top: 18px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }',
-          '    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace; }',
-          '  </style>',
-          '</head>',
-          '<body>',
-          '  <div class="container">',
-          '    <div class="nav">',
-          '      <div class="brand"><span class="dot"></span><span>Xelite Coffee</span></div>',
-          '      <div style="display:flex; gap:6px; flex-wrap:wrap;">',
-          '        <a href="#features">Features</a>',
-          '        <a href="#menu">Menu</a>',
-          '        <a href="#visit">Visit</a>',
-          '      </div>',
-          '    </div>',
-          '',
-          '    <section class="hero">',
-          '      <div class="card">',
-          '        <div class="kicker"><span class="mono">☕</span><span>Dark roast. Bright ideas.</span></div>',
-          '        <h1>Code &amp; Caffeine</h1>',
-          '        <p class="subtitle">A modern coffee experience designed for builders. Rich espresso, calm ambience, fast Wi‑Fi, and a space that respects focus.</p>',
-          '        <div class="cta">',
-          '          <a class="btn primary" href="#visit">Get your first cup</a>',
-          '          <a class="btn" href="#features">Explore features</a>',
-          '        </div>',
-          '      </div>',
-          '      <div class="card panel">',
-          '        <div class="stat"><b>Signature</b><span>Espresso + oat + cocoa, perfectly balanced.</span></div>',
-          '        <div class="stat"><b>Speed</b><span>Order ahead and pick up in under 2 minutes.</span></div>',
-          '        <div class="stat"><b>Vibe</b><span>Low-noise seating, warm lighting, and power at every table.</span></div>',
-          '      </div>',
-          '    </section>',
-          '',
-          '    <section id="features" class="features card">',
-          '      <h2>Features</h2>',
-          '      <div class="grid">',
-          '        <div class="feature"><h3>Developer-Friendly</h3><p>Comfortable seating, outlets everywhere, and a layout built for deep work.</p></div>',
-          '        <div class="feature"><h3>Quality Beans</h3><p>Small-batch roasts with consistent flavor—every cup is crafted, not rushed.</p></div>',
-          '        <div class="feature"><h3>Fast Service</h3><p>Clean, efficient workflows so you get coffee quickly and keep momentum.</p></div>',
-          '      </div>',
-          '    </section>',
-          '',
-          '    <footer class="card" id="visit">',
-          '      <div>© <span id="y"></span> Xelite Coffee. All rights reserved.</div>',
-          '      <div class="mono">Open daily • 7:00–22:00 • Downtown</div>',
-          '    </footer>',
-          '  </div>',
-          '  <script>document.getElementById(\"y\").textContent=String(new Date().getFullYear());</script>',
-          '</body>',
-          '</html>',
-          '',
-        ].join('\\n');
-        return { name: 'file_write', input: { filename: full, content: html } };
-      }
-    }
-  }
-
-  const wantsLs =
-    /(?:list|show)\s+files/i.test(rawText) ||
-    /(?:ls\b)/i.test(rawText) ||
-    /(?:اعرض|اظهر|أظهر)\s+(?:ال)?ملفات/i.test(rawText) ||
-    /قائمة\s+الملفات/i.test(rawText);
-  if (wantsLs) return { name: 'ls', input: { path: '.' } };
-  const wantsOpen =
-    /\bopen\b/i.test(rawText) ||
-    /افتح|افتحي|افتحوا|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|افتح المتصفح|افتح الموقع|واجهة الوكيل/i.test(
-      rawText,
-    );
-
-  const wantsYouTube = /youtube|يوتيوب/i.test(rawText) || historyStr.includes('youtube.com');
-  const wantsSearch =
-    /ابحث|بحث|search/i.test(rawText) ||
-    /ضيعة\s+ضايعة/i.test(rawText) ||
-    /شغل|شغّل|تشغيل|play/i.test(rawText);
-
-  if (wantsYouTube && wantsSearch) {
-    const qMatch =
-      rawText.match(/ابحث(?:\s+عن)?\s+(.+?)(?:\s+(?:وشغل|وشغّل|وشغل|شغل|تشغيل)|$)/i) ||
-      rawText.match(/search\s+for\s+(.+?)(?:\s+and\s+play|$)/i);
-    const query = String(qMatch?.[1] || 'ضيعة ضايعة').trim() || 'ضيعة ضايعة';
-    return { name: 'echo', input: { text: `ميزة التصفح القديمة أزيلت. سأحتاج تشغيل نظام المتصفح الجديد لتنفيذ: ${query}` } };
-  }
-
-  if (wantsOpen) {
-    const explicitBrowser = /(\b(browser|web)\b|متصفح)/i.test(rawText);
-    const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(rawText);
-    const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(rawText);
-    if (githubKeyword && analysisKeyword && !explicitBrowser && !url) {
-      return {
-        name: 'echo',
-        input: { text: 'سأقوم بتحليل الكود محلياً دون فتح المتصفح.' },
-      };
-    }
-    if (!url) {
-      if (/youtube|يوتيوب/i.test(rawText)) url = 'https://www.youtube.com';
-    }
-
-    return {
-      name: 'echo',
-      input: { text: 'ميزة التصفح القديمة أزيلت. استخدم واجهة المتصفح الجديدة لتنفيذ خطوات داخل موقع.' },
-    };
-  }
-
-  // Simple Heuristics for the GitHub Test
-  if (historyStr.includes('github.com') && historyStr.includes('open') && !historyStr.includes('package.json')) {
-    return {
-      name: 'echo',
-      input: { text: 'سأحلل ملفات المشروع محلياً بدون استخدام المتصفح.' }
-    };
-  }
-  if (historyStr.includes('package.json')) {
-    return {
-      name: 'echo',
-      input: { text: 'سأقرأ package.json من ملفات المشروع مباشرة.' }
-    };
-  }
-
-  // Yahoo flow (Mock)
-  if (content.includes('yahoo') || historyStr.includes('yahoo')) {
-    const hasYahooExtract =
-      (historyStr.includes('tool call: html_extract') || historyStr.includes(`tool 'html_extract' executed`) || historyStr.includes('"name":"html_extract"')) &&
-      historyStr.includes('yahoo.com');
-    if (!hasYahooExtract) {
-      return {
-        name: 'html_extract',
-        input: { url: 'https://www.yahoo.com' }
-      };
-    }
-    return {
-      name: 'echo',
-      input: { text: "Yahoo analyzed." }
-    };
-  }
-
-  // Default fallback
-  return {
-    name: 'echo',
-    input: { text: "I'm running in MOCK mode. I saw: " + content }
-  };
-}
-
-// 1. Prepare tools for OpenAI
-const activeTools = tools.filter(t => !t.name.startsWith('noop_'));
-const selectedToolDefs = selectToolDefsForProvider(activeTools, MAX_PROVIDER_TOOLS, messages);
-const aiTools: OpenAI.Chat.Completions.ChatCompletionTool[] = selectedToolDefs.map(t => ({
-  type: 'function',
-  function: {
-    name: t.name,
-    description: t.description || `Tool: ${t.name}. Tags: ${(Array.isArray((t as any).tags) ? (t as any).tags : []).join(', ')}`,
-    parameters: (() => {
-      if (t.name === 'browser_run') {
-        console.log('DEBUG_SCHEMA: browser_run schema:', JSON.stringify(t.inputSchema, null, 2));
-      }
-      return t.inputSchema as any;
-    })(),
-  },
-}));
-
-// 2. Add a system prompt if not present
-let msgs = [
-  {
-    role: 'system',
-    content: getSystemPrompt()
-  },
-  ...messages
-] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
-
-// Token Optimization Logic:
-// Estimate total characters to prevent 429 Rate Limit errors (approx 4 chars/token).
-// If we exceed ~80,000 chars (approx 20k tokens), we must truncate older messages.
-const CHAR_LIMIT = 80000;
-
-// Strategy 0: Aggressively prune OLD tool outputs (keep only the last 2 tool outputs full)
-// This is critical for "Chat" speed where old file reads are irrelevant.
-const toolOutputIndices: number[] = [];
-msgs.forEach((m, idx) => {
-  // In OpenAI format, tool output has role 'tool'
-  if (m.role === 'tool' || (m.role === 'function' as any)) {
-    toolOutputIndices.push(idx);
-  }
-});
-
-// Keep the last 3 tool outputs intact, truncate older ones
-const KEEP_TOOL_OUTPUTS = 3;
-if (toolOutputIndices.length > KEEP_TOOL_OUTPUTS) {
-  const indicesToTruncate = toolOutputIndices.slice(0, toolOutputIndices.length - KEEP_TOOL_OUTPUTS);
-  const truncateSet = new Set(indicesToTruncate);
-
-  msgs = msgs.map((m, idx) => {
-    if (truncateSet.has(idx)) {
-      return {
-        ...m,
-        content: '(Tool output suppressed to save context)'
-      };
-    }
-    return m;
-  });
-}
-
-let currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
-
-if (currentChars > CHAR_LIMIT) {
-  console.warn(`[LLM] Context too large (${currentChars} chars). Truncating history...`);
-
-  // Strategy 1: Truncate very long individual messages (likely tool outputs)
-  msgs = msgs.map(m => {
-    if (m.role === 'system') return m; // Keep system prompt intact
-
-    let content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-    const MAX_MSG_LEN = 60000;
-    if (content.length > MAX_MSG_LEN) {
-      // Keep start and end to preserve some context
-      content = content.slice(0, 25000) + `\n\n...[Content Truncated (${content.length - MAX_MSG_LEN} chars removed) to save tokens]...\n\n` + content.slice(-25000);
-    }
-    return { ...m, content };
-  });
-
-  // Recalculate
-  currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
-
-  // Strategy 2: If still too large, remove middle messages (sliding window)
   if (currentChars > CHAR_LIMIT) {
-    const keepCount = 6; // Keep first system + last 5 messages
-    if (msgs.length > keepCount) {
-      const removedCount = msgs.length - keepCount;
-      const system = msgs[0];
-      const recent = msgs.slice(-5);
-      msgs = [
-        system,
-        { role: 'system', content: `(System Note: ${removedCount} previous messages were removed from context to fit within token limits.)` },
-        ...recent
-      ];
+    console.warn(`[LLM] Context too large (${currentChars} chars). Truncating history...`);
+
+    // Strategy 1: Truncate very long individual messages (likely tool outputs)
+    msgs = msgs.map(m => {
+      if (m.role === 'system') return m; // Keep system prompt intact
+
+      let content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      const MAX_MSG_LEN = 60000;
+      if (content.length > MAX_MSG_LEN) {
+        // Keep start and end to preserve some context
+        content = content.slice(0, 25000) + `\n\n...[Content Truncated (${content.length - MAX_MSG_LEN} chars removed) to save tokens]...\n\n` + content.slice(-25000);
+      }
+      return { ...m, content };
+    });
+
+    // Recalculate
+    currentChars = msgs.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
+
+    // Strategy 2: If still too large, remove middle messages (sliding window)
+    if (currentChars > CHAR_LIMIT) {
+      const keepCount = 6; // Keep first system + last 5 messages
+      if (msgs.length > keepCount) {
+        const removedCount = msgs.length - keepCount;
+        const system = msgs[0];
+        const recent = msgs.slice(-5);
+        msgs = [
+          system,
+          { role: 'system', content: `(System Note: ${removedCount} previous messages were removed from context to fit within token limits.)` },
+          ...recent
+        ];
+      }
     }
   }
-}
 
-try {
-  const completion = await client.chat.completions.create({
-    model: options?.model || process.env.OPENAI_MODEL || 'gpt-4o',
-    messages: msgs,
-    tools: aiTools,
-    tool_choice: 'auto',
-  });
+  try {
+    const completion = await client.chat.completions.create({
+      model: options?.model || process.env.OPENAI_MODEL || 'gpt-4o',
+      messages: msgs,
+      tools: aiTools,
+      tool_choice: 'auto',
+    });
 
-  const choice = completion.choices[0];
-  const toolCall = choice.message.tool_calls?.[0];
+    const choice = completion.choices[0];
+    const toolCall = choice.message.tool_calls?.[0];
 
-  if (toolCall && toolCall.type === 'function') {
-    let parsedArgs: any = {};
-    try {
-      parsedArgs = JSON.parse(toolCall.function.arguments || '{}');
-    } catch (e: any) {
+    if (toolCall && toolCall.type === 'function') {
+      let parsedArgs: any = {};
+      try {
+        parsedArgs = JSON.parse(toolCall.function.arguments || '{}');
+      } catch (e: any) {
+        return {
+          name: 'echo',
+          input: { text: `Tool arguments parse failed for ${toolCall.function.name}.` },
+        };
+      }
       return {
-        name: 'echo',
-        input: { text: `Tool arguments parse failed for ${toolCall.function.name}.` },
+        name: toolCall.function.name,
+        input: parsedArgs,
       };
     }
+
+    // If no tool called, fallback to echo with the content
     return {
-      name: toolCall.function.name,
-      input: parsedArgs,
+      name: 'echo',
+      input: { text: choice.message.content || "I'm not sure what to do." },
     };
-  }
 
-  // If no tool called, fallback to echo with the content
-  return {
-    name: 'echo',
-    input: { text: choice.message.content || "I'm not sure what to do." },
-  };
-
-} catch (error) {
-  const msg = error instanceof Error ? error.message : String(error);
-  console.error('LLM Error:', msg);
-  if (options?.throwOnError) {
-    throw error;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('LLM Error:', msg);
+    if (options?.throwOnError) {
+      throw error;
+    }
+    return null;
   }
-  return null;
-}
 }
 
 export async function generateSessionTitle(messages: { role: string; content: string }[]) {
