@@ -28,39 +28,39 @@ export class GenesisAgent {
      * Try multiple providers with fallback
      */
     private async llmChatWithFallback(messages: any[], timeoutMs: number = 45000): Promise<string> {
-        // Primary: Pollinations
-        try {
-            console.log('[Genesis] Trying Pollinations...');
-            const result = await Promise.race([
-                pollinationsProvider.chatComplete(messages, 'openai'),
-                new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Pollinations timeout')), timeoutMs))
-            ]);
-            if (result && result.trim().length > 10) {
-                console.log('[Genesis] ✅ Pollinations succeeded');
-                return result;
-            }
-            console.warn('[Genesis] Pollinations returned empty, trying fallback...');
-        } catch (e: any) {
-            console.warn('[Genesis] Pollinations failed:', e.message);
-        }
-
-        // Fallback 1: Gemini (if available)
+        // Primary: Gemini (most reliable free option)
         try {
             const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
             if (geminiApiKey) {
-                console.log('[Genesis] Trying Gemini fallback...');
+                console.log('[Genesis] Trying Gemini (Primary)...');
                 const { GeminiProvider } = await import('../llm/providers/gemini');
                 const gemini = new GeminiProvider(geminiApiKey);
                 if (gemini.isAvailable()) {
                     const result = await gemini.chatComplete(messages);
                     if (result && result.trim().length > 10) {
-                        console.log('[Genesis] ✅ Gemini fallback succeeded');
+                        console.log('[Genesis] ✅ Gemini succeeded');
                         return result;
                     }
                 }
             }
         } catch (e: any) {
-            console.warn('[Genesis] Gemini fallback failed:', e.message);
+            console.warn('[Genesis] Gemini failed:', e.message);
+        }
+
+        // Fallback 1: Pollinations
+        try {
+            console.log('[Genesis] Trying Pollinations fallback...');
+            const result = await Promise.race([
+                pollinationsProvider.chatComplete(messages, 'openai'),
+                new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Pollinations timeout')), timeoutMs))
+            ]);
+            if (result && result.trim().length > 10) {
+                console.log('[Genesis] ✅ Pollinations fallback succeeded');
+                return result;
+            }
+            console.warn('[Genesis] Pollinations returned empty, trying next fallback...');
+        } catch (e: any) {
+            console.warn('[Genesis] Pollinations fallback failed:', e.message);
         }
 
         // Fallback 2: OpenRouter (if available)

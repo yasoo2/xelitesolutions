@@ -333,8 +333,9 @@ export function matchPatternWithContext(
         case 'multi_step':
             return {
                 matched: true,
-                action: 'multi_step_execution',
+                action: 'genesis_build',
                 params: {
+                    goal: userMessage,
                     steps: intent.entities.steps || [],
                     fullRequest: userMessage
                 },

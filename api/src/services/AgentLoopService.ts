@@ -13,9 +13,12 @@ import { planNextStep } from '../llm';
 import { summarizeBrowserOutputForChat, inferSiteLabel, extractTitleFromHtml, sanitizeToolResultForBroadcast } from '../utils/browserUtils';
 import mongoose from 'mongoose';
 
+
 function useMock(): boolean {
     return String(process.env.USE_MOCK || '').trim().toLowerCase() === 'true';
 }
+
+const offlineMode = process.env.OFFLINE_MODE === 'true';
 
 
 
@@ -36,6 +39,7 @@ const calculateHash = (text: string) => {
 };
 
 async function isMessageDuplicate(sessionId: string, text: string): Promise<boolean> {
+    if (offlineMode) return false;
     try {
         const history = await Message.find({ sessionId, role: 'assistant' })
             .sort({ createdAt: -1 })
@@ -56,7 +60,7 @@ export class AgentLoopService {
         if (!pending) return { ok: true, noOp: true };
 
         // Update Run Status
-        try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch { }
+        try { if (!offlineMode) await Run.findByIdAndUpdate(pending.runId, { $set: { status: 'running' } }); } catch { }
 
         const persistedInput = redactToolInputForStorage(pending.name, pending.input);
         broadcast({ type: 'step_started', runId: pending.runId, data: { name: `execute:${pending.name}`, input: persistedInput } });
@@ -86,22 +90,24 @@ export class AgentLoopService {
         }
 
         try {
-            await ToolExecution.create({
-                runId: pending.runId,
-                sessionId,
-                name: pending.name || 'unknown',
-                input: persistedInput,
-                output: result.output, // Use raw output for DB, not sanitized
-                ok: result.ok,
-                logs: result.logs,
-            });
+            if (!offlineMode) {
+                await ToolExecution.create({
+                    runId: pending.runId,
+                    sessionId,
+                    name: pending.name || 'unknown',
+                    input: persistedInput,
+                    output: result.output, // Use raw output for DB, not sanitized
+                    ok: result.ok,
+                    logs: result.logs,
+                });
+            }
         } catch { }
         if (!isDup) {
             try {
-                await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
+                if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: pending.runId });
             } catch { }
         }
-        try { await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
+        try { if (!offlineMode) await Run.findByIdAndUpdate(pending.runId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
         broadcast({ type: 'run_finished', runId: pending.runId, data: { runId: pending.runId, ok: result.ok } });
 
@@ -109,8 +115,10 @@ export class AgentLoopService {
         let kind = 'chat';
         if (runCfg?.kind) kind = runCfg.kind;
         try {
-            const s = await Session.findById(sessionId).select({ kind: 1 }).lean();
-            if (s?.kind === 'agent') kind = 'agent';
+            if (!offlineMode) {
+                const s = await Session.findById(sessionId).select({ kind: 1 }).lean();
+                if (s?.kind === 'agent') kind = 'agent';
+            }
         } catch { }
 
 
@@ -162,7 +170,9 @@ export class AgentLoopService {
             steps++;
             // 1. Fetch History
             let messages: any[] = [];
-            messages = await Message.find({ sessionId }).sort({ createdAt: 1 }).lean();
+            if (!offlineMode) {
+                messages = await Message.find({ sessionId }).sort({ createdAt: 1 }).lean();
+            }
 
             // 2. Plan Next Step (LLM)
             const msgsForLLM = messages.map(m => ({ role: m.role || 'user', content: String(m.content || '') }));
@@ -171,7 +181,7 @@ export class AgentLoopService {
             const runCfg = getSessionRunConfig(sessionId);
             let workspaceId =
                 typeof runCfg?.workspaceId === 'string' && runCfg.workspaceId.trim() ? runCfg.workspaceId.trim() : undefined;
-            if (!workspaceId && !useMock()) {
+            if (!workspaceId && !useMock() && !offlineMode) {
                 try {
                     const s = await Session.findById(sessionId).select({ workspaceId: 1 }).lean();
                     const wsObj: any = (s as any)?.workspaceId;
@@ -205,8 +215,12 @@ export class AgentLoopService {
 
             // Let's create a new run for the autonomous step
             let newRunId: string;
-            const r = await Run.create({ sessionId, status: 'running' });
-            newRunId = (r as any)._id.toString();
+            if (offlineMode) {
+                newRunId = `offline-run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            } else {
+                const r = await Run.create({ sessionId, status: 'running' });
+                newRunId = (r as any)._id.toString();
+            }
             currentRunId = newRunId; // Update tracking context
 
             // 5. State-Change & Blacklist Protection (Wakil 4.4)
@@ -220,7 +234,7 @@ export class AgentLoopService {
 
                 broadcast({ type: 'text', runId: currentRunId, data: abortMsg });
                 try {
-                    await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: currentRunId });
+                    if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: currentRunId });
                 } catch { }
                 break;
             }
@@ -258,7 +272,7 @@ export class AgentLoopService {
                     const abortMsg = `⚠️ Max retries exceeded for \`${plan.name}\`. Aborting to prevent infinite loop.`;
                     broadcast({ type: 'text', runId: newRunId, data: abortMsg });
                     try {
-                        await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: newRunId });
+                        if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: newRunId });
                     } catch { }
                     break;
                 }
@@ -282,22 +296,24 @@ export class AgentLoopService {
 
             // Save
             try {
-                await ToolExecution.create({
-                    runId: newRunId,
-                    sessionId,
-                    name: plan.name || 'unknown',
-                    input: persistedInput,
-                    output: result.output,
-                    ok: result.ok,
-                    logs: result.logs,
-                });
+                if (!offlineMode) {
+                    await ToolExecution.create({
+                        runId: newRunId,
+                        sessionId,
+                        name: plan.name || 'unknown',
+                        input: persistedInput,
+                        output: result.output,
+                        ok: result.ok,
+                        logs: result.logs,
+                    });
+                }
             } catch { }
             if (!isDup) {
                 try {
-                    await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: newRunId });
+                    if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: newRunId });
                 } catch { }
             }
-            try { await Run.findByIdAndUpdate(newRunId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
+            try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
             // If tool failed, maybe break?
             if (!result.ok) {

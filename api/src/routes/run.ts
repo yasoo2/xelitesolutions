@@ -1628,14 +1628,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     // Load Conversation History
     let previousMessages: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
-    if (sessionId) {
-
-      const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: 'system' } })
-        .sort({ createdAt: -1 }) // Get newest first
-        .limit(50); // Last 50 messages
-      // Reverse to chronological order (Old -> New)
-      previousMessages = docs.reverse().map(d => ({ role: d.role as any, content: d.content }));
-
+    if (!offlineMode && sessionId) {
+      try {
+        const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: 'system' } })
+          .sort({ createdAt: -1 }) // Get newest first
+          .limit(50); // Last 50 messages
+        // Reverse to chronological order (Old -> New)
+        previousMessages = docs.reverse().map(d => ({ role: d.role as any, content: d.content }));
+      } catch (err) {
+        console.warn('[Run] Failed to load history:', safeErrorMessage(err));
+      }
     }
 
     // Merge consecutive user messages to avoid context fragmentation
@@ -1974,7 +1976,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const result = await executeToolWithRateLimitRetry('http_fetch', { url: 'https://ipinfo.io/json', sessionId }, { sessionId, workspaceId }, { runId });
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:http_fetch', result } });
 
-        await ToolExecution.create({ runId, name: 'http_fetch', input: { url: 'https://ipinfo.io/json', sessionId }, output: result.output, ok: result.ok, logs: result.logs });
+        if (!offlineMode) {
+          await ToolExecution.create({ runId, name: 'http_fetch', input: { url: 'https://ipinfo.io/json', sessionId }, output: result.output, ok: result.ok, logs: result.logs });
+        }
 
         let lat: number | null = null, lon: number | null = null;
         const j = (result as any)?.output?.json || {};
@@ -3988,7 +3992,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   assistantTextEmitted = true;
                 }
 
-                await ToolExecution.create({ runId, name: 'http_fetch', input: { url: fbUrl }, output: fbRes.output, ok: fbRes.ok, logs: fbRes.logs });
+                if (!offlineMode) {
+                  await ToolExecution.create({ runId, name: 'http_fetch', input: { url: fbUrl }, output: fbRes.output, ok: fbRes.ok, logs: fbRes.logs });
+                }
 
               }
               if (u.hostname.includes('wttr.in')) {
@@ -4094,7 +4100,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
 
 
-          await ToolExecution.create({ runId, sessionId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
+          if (!offlineMode) {
+            await ToolExecution.create({ runId, sessionId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
+          }
 
 
           if (result.ok && plan?.name === 'central_answer') {

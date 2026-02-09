@@ -84,29 +84,33 @@ export default function EmbeddedTerminal({
                 return;
             }
 
-            try {
-                term.open(containerRef.current);
-                termRef.current = term;
-                fitAddonRef.current = fitAddon;
+            // Ensure DOM is fully painted
+            requestAnimationFrame(() => {
+                if (!containerRef.current || !isMounted) return;
 
-                // Initial fit
-                // Initial fit safely
-                setTimeout(() => {
-                    if (isMounted && term.element && containerRef.current) {
-                        try {
-                            fitAddon.fit();
-                        } catch (e) {
-                            console.debug('[Terminal] Initial fit skipped:', e);
+                try {
+                    term.open(containerRef.current);
+                    termRef.current = term;
+                    fitAddonRef.current = fitAddon;
+
+                    // Initial fit safely
+                    setTimeout(() => {
+                        if (isMounted && term.element && containerRef.current) {
+                            try {
+                                fitAddon.fit();
+                            } catch (e) {
+                                console.debug('[Terminal] Initial fit skipped:', e);
+                            }
                         }
-                    }
-                }, 200);
+                    }, 200);
 
-                initTerminal();
-            } catch (e) {
-                console.error('[Terminal] Open failed:', e);
-                setError(String(e));
-                setIsConnecting(false);
-            }
+                    initTerminal();
+                } catch (e) {
+                    console.error('[Terminal] Open failed:', e);
+                    setError(String(e));
+                    setIsConnecting(false);
+                }
+            });
         };
 
         // Create terminal session
