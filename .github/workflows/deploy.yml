@@ -34,7 +34,7 @@ jobs:
   deploy_ssh:
     if: ${{ !((github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -305,20 +305,20 @@ jobs:
 
           ssh_opts=(
             -p "$port"
-            -o ConnectTimeout=12
-            -o ConnectionAttempts=2
-            -o ServerAliveInterval=5
-            -o ServerAliveCountMax=3
+            -o ConnectTimeout=30
+            -o ConnectionAttempts=3
+            -o ServerAliveInterval=10
+            -o ServerAliveCountMax=6
             -o StrictHostKeyChecking="$strict_host_key_checking"
             -o BatchMode=yes
             -o IPQoS=throughput
             -o LogLevel=VERBOSE
           )
 
-          for attempt in 1 2; do
-            echo "SSH deploy attempt ${attempt}/2..."
+          for attempt in 1 2 3; do
+            echo "SSH deploy attempt ${attempt}/3..."
             code=0
-            timeout 900 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' || code=$?
+            timeout 1200 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' || code=$?
           set -euo pipefail
           
           # Clean up disk space before build - Aggressive
@@ -618,10 +618,11 @@ jobs:
               ssh -vv "${ssh_opts[@]}" "$user@$host" "exit" </dev/null || true
             fi
 
-            if [ "$attempt" -eq 2 ]; then
+            if [ "$attempt" -eq 3 ]; then
               exit "$code"
             fi
-            sleep 5
+            echo "Waiting 10s before retry..."
+            sleep 10
           done
 
       - name: Verify Deployment
