@@ -3354,8 +3354,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             if (nextSigCount > 2 || nextTotal > BROWSER_RUN_MAX_PER_SESSION) {
               const msg = isArabicText(userTextForOverrides)
-                ? `⚠️ تم إيقاف تكرار تنفيذ المتصفح لمنع حلقة لا نهائية.\nالسبب: تم تجاوز حد المحاولات (maxRetriesPerSession=${BROWSER_RUN_MAX_PER_SESSION}).\nأعد إرسال الأمر إذا كنت تريد المحاولة مرة أخرى.`
-                : `⚠️ Stopped repeating browser actions to prevent an infinite loop.\nReason: retry limit reached (maxRetriesPerSession=${BROWSER_RUN_MAX_PER_SESSION}).\nRe-run the command if you want to try again.`;
+                ? `⚠️ تم تعليق عمليات المتصفح المتكررة لضمان استقرار الجلسة.\nالسبب: الوصول إلى الحد الأقصى للمحاولات (${BROWSER_RUN_MAX_PER_SESSION}).\nيمكنك إعادة صياغة الطلب أو المحاولة لاحقاً.`
+                : `⚠️ Repeated browser operations suspended to ensure session stability.\nReason: Maximum retry limit reached (${BROWSER_RUN_MAX_PER_SESSION}).\nPlease refine your request or try again later.`;
               forcedText = msg;
               ev({ type: 'text', data: msg });
               assistantTextEmitted = true;
@@ -3366,8 +3366,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               const waitMs = Math.max(1, BROWSER_RUN_MIN_INTERVAL_MS - since0);
               const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
               const msg = isArabicText(userTextForOverrides)
-                ? `⚠️ تم منع إعادة استدعاء browser_run بسرعة.\nسأعيد المحاولة تلقائياً بعد حوالي ${waitSec}s.`
-                : `⚠️ Blocked a rapid re-call of browser_run.\nI’ll auto-retry after about ${waitSec}s.`;
+                ? `🔄 جاري تنسيق الوصول إلى المتصفح... سأباشر التنفيذ تلقائياً خلال ${waitSec} ثانية.`
+                : `🔄 Orchestrating browser access... Resuming execution automatically in ${waitSec}s.`;
               ev({ type: 'text', data: msg });
               await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
               if (isRunCancelled(runId)) {

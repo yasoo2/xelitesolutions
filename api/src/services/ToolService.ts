@@ -249,6 +249,15 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveInput.operation = 'push';
     }
 
+    // [ELITE FIX] Redirect analyze_codebase with URL to browser_run
+    if ((name === 'analyze_codebase' || name === 'analyze_project') && /^https?:\/\//i.test(String(effectiveInput.path || ''))) {
+        const url = String(effectiveInput.path).trim();
+        effectiveName = 'browser_run';
+        effectiveInput.instructionText = `Visit and perform a deep architectural and codebase analysis of this repository: ${url}`;
+        if (!effectiveInput.sessionId && contextSessionId) effectiveInput.sessionId = contextSessionId;
+        logs.push(`redirected=${name}_to_browser_run url=${url}`);
+    }
+
     // Universal Session Injection
     if ((effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') && !effectiveInput.sessionId && contextSessionId) {
         effectiveInput.sessionId = contextSessionId;

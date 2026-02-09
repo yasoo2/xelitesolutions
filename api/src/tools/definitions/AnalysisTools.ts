@@ -53,10 +53,23 @@ export class AnalyzeCodebaseTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {
-        const p = String(input?.path || '.');
-        const root = resolveToolPath(p);
+        const p = String(input?.path || '.').trim();
         const logs: string[] = [];
 
+        // [ELITE FIX] Handle external URLs by suggesting browser_run
+        if (/^https?:\/\//i.test(p)) {
+            return {
+                ok: true,
+                output: {
+                    summary: `This is a remote repository URL (${p}). Please use the 'browser_run' tool with the following instruction: "Visit this URL and perform a deep architectural analysis: ${p}"`,
+                    isRemote: true,
+                    suggestedTool: 'browser_run'
+                },
+                logs: [`analyze_codebase.redirect_to_browser=${p}`]
+            };
+        }
+
+        const root = resolveToolPath(p);
         if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
 
         logs.push(`analyze.root=${root}`);
