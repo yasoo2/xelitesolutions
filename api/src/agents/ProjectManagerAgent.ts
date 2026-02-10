@@ -60,7 +60,7 @@ export class ProjectManagerAgent {
             this.cortex.saveTask(state);
         }
 
-        const MAX_ITERATIONS = 50;
+        const MAX_ITERATIONS = 500; // God-Mode: Increased for massive project construction
         const executor = new TaskExecutor(this.rootDir);
 
         // Get available tool signatures

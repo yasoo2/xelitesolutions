@@ -222,8 +222,20 @@ export class DevServerTool extends BaseTool {
     async execute(input: any) {
         const logs: string[] = [];
         const cwd = resolveToolPath(String(input?.cwd || '').trim());
-        const command = String(input?.command || 'npm run dev').trim();
+        let command = String(input?.command || '').trim();
         const port = Number(input?.port) || 5173;
+
+        // Auto-detect command if not provided
+        if (!command) {
+            if (fs.existsSync(path.join(cwd, 'package.json'))) {
+                command = 'npm run dev';
+            } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
+                // Static folder - use npx serve
+                command = `npx -y serve -p ${port} .`;
+            } else {
+                command = 'npm run dev'; // Final fallback
+            }
+        }
 
         try {
             const parts = command.split(' ');

@@ -422,7 +422,7 @@ function extractTargetProjectRoot(raw: string): string {
   return 'ecommerce-store';
 }
 
-type WorkflowKind = 'ecommerce' | 'static_site' | 'node_api' | 'fullstack' | 'tool_shell';
+type WorkflowKind = 'ecommerce' | 'static_site' | 'node_api' | 'fullstack' | 'tool_shell' | 'simple_creative';
 
 
 
@@ -535,10 +535,10 @@ async function detectWorkflowAdvanced(
     return hasCreativeKeywords && isShort && !isComplexRequest(text);
   };
 
-  // [Task-Type Classifier] IF simple creative request AND NOT complex, skip workflow pipeline
+  // [Task-Type Classifier] IF simple creative request AND NOT complex, use simple_creative workflow
   if (isSimpleCreativeRequest(s)) {
-    console.log('[detectWorkflowAdvanced] Simple creative request detected - skipping pipeline');
-    return null;
+    console.log('[detectWorkflowAdvanced] Simple creative request detected - using simple_creative workflow');
+    return { kind: 'simple_creative', root: '.' };
   }
 
   // Use RequestAnalyzer for complex requests
@@ -2859,41 +2859,52 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               historyHasToolCall(history as any, 'analyze_codebase');
 
             if (steps === 0 && !historyHasMarker(history as any, marker) && !alreadyExecuted) {
-              const title =
-                wf.kind === 'tool_shell'
-                  ? `### خطة إنشاء أداة (Shell Tool)`
-                  : wf.kind === 'static_site'
-                    ? `### خطة بناء موقع (Static Website)`
-                    : wf.kind === 'node_api'
-                      ? `### خطة بناء API (Node/Express)`
-                      : `### خطة بناء تطبيق (Fullstack)`;
-              const stepList =
-                wf.kind === 'tool_shell'
-                  ? [
-                    `- 1) project_detect: فحص المشروع والمسارات`,
-                    `- 2) command_policy_check: فحص أمان الأمر`,
-                    `- 3) tool_create_shell: إنشاء الأداة داخل المصنع (Runtime)`,
-                    `- 4) quality_run: تشغيل lint للتأكد`,
-                    `- 5) echo: إنهاء`,
-                  ]
-                  : [
-                    `- 1) project_detect: فحص هيكل المشروع والمسارات`,
-                    `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
-                    `- 3) scaffold_project: إنشاء هيكل المشروع`,
-                    wf.kind === 'static_site' ? `- 4) echo: إنهاء` : `- 4) npm_install: تثبيت الاعتمادات`,
-                    wf.kind === 'static_site' ? `- 5) echo: إنهاء` : `- 5) quality_run: lint/test/build إن وجدت`,
-                  ];
+              if (wf.kind !== 'simple_creative') {
+                const title =
+                  wf.kind === 'tool_shell'
+                    ? `### خطة إنشاء أداة (Shell Tool)`
+                    : wf.kind === 'static_site'
+                      ? `### خطة بناء موقع (Static Website)`
+                      : wf.kind === 'node_api'
+                        ? `### خطة بناء API (Node/Express)`
+                        : `### خطة بناء تطبيق (Fullstack)`;
+                const stepList =
+                  wf.kind === 'tool_shell'
+                    ? [
+                      `- 1) project_detect: فحص المشروع والمسارات`,
+                      `- 2) command_policy_check: فحص أمان الأمر`,
+                      `- 3) tool_create_shell: إنشاء الأداة داخل المصنع (Runtime)`,
+                      `- 4) quality_run: تشغيل lint للتأكد`,
+                      `- 5) echo: إنهاء`,
+                    ]
+                    : [
+                      `- 1) project_detect: فحص هيكل المشروع والمسارات`,
+                      `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
+                      `- 3) scaffold_project: إنشاء هيكل المشروع`,
+                      wf.kind === 'static_site' ? `- 4) echo: إنهاء` : `- 4) npm_install: تثبيت الاعتمادات`,
+                      wf.kind === 'static_site' ? `- 5) echo: إنهاء` : `- 5) quality_run: lint/test/build إن وجدت`,
+                    ];
 
-              const contextLine =
-                wf.kind === 'tool_shell' && wf.tool
-                  ? `- الاسم: ${wf.tool.name}\n- الأمر: ${wf.tool.command}`
-                  : `- المجلد: ${wf.root}`;
+                const contextLine =
+                  wf.kind === 'tool_shell' && wf.tool
+                    ? `- الاسم: ${wf.tool.name}\n- الأمر: ${wf.tool.command}`
+                    : `- المجلد: ${wf.root}`;
 
-              const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
-              if (!containsBuilderPlanText(userTextForOverrides)) {
-                ev({ type: 'text', data: md });
+                const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
+                if (!containsBuilderPlanText(userTextForOverrides)) {
+                  ev({ type: 'text', data: md });
+                }
               }
+
               history.push({ role: 'assistant', content: marker } as any);
+
+              // Auto-Preview Directive for Simple Creative Requests
+              if (wf.kind === 'simple_creative') {
+                const directive = isArabicText(userTextForOverrides)
+                  ? `[DIRECTIVE]: أنت الآن في وضع "الإنتاج السريع". ابدأ فوراً بكتابة الملفات (مثلاً index.html). بمجرد الانتهاء من إنشاء ملفات الموقع، يجب عليك استدعاء أداة \`dev_server_start\` لتشغيل المعاينة للمستخدم تلقائياً.`
+                  : `[DIRECTIVE]: You are in "Rapid Production" mode. Start writing files (e.g., index.html) immediately. Once you finish creating the website files, you MUST call \`dev_server_start\` to trigger the live preview for the user automatically.`;
+                history.push({ role: 'system', content: directive } as any);
+              }
 
               // PHASE 2-3 INTEGRATION: Use ProjectPlanner for complex projects
               if (wf.analysis && wf.analysis.complexity && ['complex', 'very_complex'].includes(wf.analysis.complexity)) {

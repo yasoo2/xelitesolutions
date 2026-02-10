@@ -156,7 +156,9 @@ export class AgentLoopService {
         console.log(`[AgentLoop] Starting recursive loop for ${sessionId}`);
 
         let steps = 0;
-        const MAX_STEPS = 10; // Wakil 4.1: Reduced budget from 20 to 10
+        const runCfg = getSessionRunConfig(sessionId);
+        const isPerpetual = runCfg?.kind === 'agent' || runCfg?.perpetual === true;
+        const MAX_STEPS = isPerpetual ? 500 : 10; // God-Mode: Increase budget for serious engineering
 
         // Circuit Breaker State (Wakil 4.1)
         let lastErrorHash: string | null = null;
@@ -265,7 +267,7 @@ export class AgentLoopService {
                     lastErrorHash = errorHash;
                 }
 
-                if (consecutiveFailures >= 1) { // Wakil 4.1: Reduced from 2 to 1 (Max 1 retry)
+                if (consecutiveFailures >= (isPerpetual ? 5 : 1)) { // God-Mode: Be more patient in perpetual mode
                     blacklist.add(currentSignature); // Wakil 4.4: Add failing signature to blacklist
                     console.error(`[AgentLoop] Blacklisted failing action: ${currentSignature}`);
                     console.error(`[AgentLoop] Circuit Breaker Tripped: Consecutive failure for ${plan.name}`);
