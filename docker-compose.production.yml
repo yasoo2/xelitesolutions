@@ -34,11 +34,11 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:3000/health || exit 1" ]
-      interval: 15s
+      test: [ "CMD-SHELL", "curl -f http://127.0.0.1:3000/health || exit 1" ]
+      interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 120s
     volumes:
       - lance_data:/app/data
       - deep_memory:/app/.gemini
