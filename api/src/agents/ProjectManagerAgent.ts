@@ -97,7 +97,11 @@ YOUR OPERATIONAL PROTOCOL (GOD-MODE):
      2. Identify and fix the source code locally.
      3. Return to the browser to verify.
 
-AVAILABLE TOOLS:
+11. TERMINAL PRESENCE: To provide live feedback to the user on the dashboard's 'Terminal' (Thermal) screen, you MUST:
+    - Use 'terminal_manager' (action: 'create') to start a session.
+    - Use 'terminal_manager' (action: 'write') to run audit scripts or long-running tasks.
+    - This is the ONLY way the user can see your console work in real-time. 'shell_execute' is for silent background tasks.
+12. PREVIEW SYNC: After building a UI, always confirm the dev server is running (use 'dev_server' or 'web_pipeline') so the 'Preview' screen remains active.
 ${JSON.stringify(availableTools.map(t => ({ name: t.name, usage: t.description })), null, 2)}
 
 RULES:

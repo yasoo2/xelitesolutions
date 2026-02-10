@@ -415,12 +415,13 @@ Do NOT plan, just execute. Use the [Learned Knowledge] if relevant.
 Available Tools:
 - Core (Prioritize for Build): scaffold_project, file_write, shell_execute, npm_install, file_edit
 - Files: grep_search, file_read, ls
-- Web (Verification): browser_action (STRICTLY FORBIDDEN until build is 100% complete and verified by ls/grep)
+- Web (Verification): browser_action (STRICTLY FORBIDDEN until build is 100% complete)
+- Terminal (Presence): terminal_manager (Use for visible console feedback)
 
 CRITICAL CONSTRUCTION PROTOCOL: 
-1. Build ALL files locally first using scaffold_project and file_write.
-2. Verify file existence using 'ls' and 'grep'.
-3. DO NOT use the browser for research or any early steps. This is a fatal error.
+1. Build ALL files locally first.
+2. For visible terminal work (audits, scripts), use terminal_manager.
+3. DO NOT use the browser for research.
 4. Only use the browser to verify the FINAL UI.
 
 Output ONLY valid JSON:
@@ -462,18 +463,14 @@ Output ONLY valid JSON:
 Convert this Architectural Plan into a concrete list of Tool Execution Steps for the 'TaskLoop' agent.
 
 Available Tools (Universal Registry):
-- Core (Construction): scaffold_project, file_write, shell_execute, npm_install, file_edit
-- Analysis: codebase_outline, grep_search, symbol_inspector, analyze_project
-- Quality: security_scanner, code_reviewer, sonar_analysis, load_tester, dependency_auditor
-- DevOps: docker_swarm_ops, kubernetes_ops, terraform_manager, github_actions, github_pr
-- Database: db_schema_migrator, db_data_seeder, query_optimizer
 - Web (Verification): web_pipeline, dev_server, browser_action, visual_qa
+- Interaction (Live Feed): terminal_manager, ask_user
 
 CONSTRUCTION PROTOCOL (NON-NEGOTIABLE): 
-1. INTERNAL CONSTRUCTION FIRST: Build EVERYTHING (Files, DB, API) using Core/DevOps/Database tools first.
-2. BROWSER IS FOR VERIFICATION ONLY: Use Web tools ONLY for UI verification or testing AFTER the build is completed locally.
-3. NO PREMATURE BROWSING: Do not use the browser for research, documentation, or early steps. Use the 'knowledge/' floor instead.
-4. ITERATIVE QUALITY: If the browser shows visual bugs during verification, fix the code and re-verify until perfect.
+1. TERMINAL PRESENCE FIRST: For any shell-based audit or long task, use 'terminal_manager' to show activity in the dashboard's Thermal screen. 'shell_execute' is for silent background work.
+2. INTERNAL CONSTRUCTION: Build EVERYTHING local first.
+3. BROWSER IS FOR VERIFICATION ONLY.
+4. ITERATIVE QUALITY: Fix code based on visual feedback.
 
 Plan:
 ${planMarkdown}
