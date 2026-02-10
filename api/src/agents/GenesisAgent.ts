@@ -415,9 +415,13 @@ Do NOT plan, just execute. Use the [Learned Knowledge] if relevant.
 Available Tools:
 - Core (Prioritize for Build): scaffold_project, file_write, shell_execute, npm_install, file_edit
 - Files: grep_search, file_read, ls
-- Web (Use for Verification): browser_action (Only use if build is complete or verification is needed)
+- Web (Verification): browser_action (STRICTLY FORBIDDEN until build is 100% complete and verified by ls/grep)
 
-ITERATION PROTOCOL: If verification fails or UI is imperfect, fix code and re-verify immediately.
+CRITICAL CONSTRUCTION PROTOCOL: 
+1. Build ALL files locally first using scaffold_project and file_write.
+2. Verify file existence using 'ls' and 'grep'.
+3. DO NOT use the browser for research or any early steps. This is a fatal error.
+4. Only use the browser to verify the FINAL UI.
 
 Output ONLY valid JSON:
 {
@@ -464,12 +468,12 @@ Available Tools (Universal Registry):
 - DevOps: docker_swarm_ops, kubernetes_ops, terraform_manager, github_actions, github_pr
 - Database: db_schema_migrator, db_data_seeder, query_optimizer
 - Web (Verification): web_pipeline, dev_server, browser_action, visual_qa
-- Knowledge: knowledge_search, knowledge_add
 
-TOOL PROTOCOL: 
-1. Build EVERYTHING using Core/DevOps/Database tools first.
-2. Use Web tools ONLY for UI verification or testing AFTER the build.
-3. ITERATIVE QUALITY: If the browser shows visual bugs, fix the code and re-verify until perfect.
+CONSTRUCTION PROTOCOL (NON-NEGOTIABLE): 
+1. INTERNAL CONSTRUCTION FIRST: Build EVERYTHING (Files, DB, API) using Core/DevOps/Database tools first.
+2. BROWSER IS FOR VERIFICATION ONLY: Use Web tools ONLY for UI verification or testing AFTER the build is completed locally.
+3. NO PREMATURE BROWSING: Do not use the browser for research, documentation, or early steps. Use the 'knowledge/' floor instead.
+4. ITERATIVE QUALITY: If the browser shows visual bugs during verification, fix the code and re-verify until perfect.
 
 Plan:
 ${planMarkdown}

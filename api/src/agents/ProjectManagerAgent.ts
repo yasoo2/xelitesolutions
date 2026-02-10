@@ -85,19 +85,17 @@ YOUR OPERATIONAL PROTOCOL (GOD-MODE):
 2. TOOL MASTERY: Use the 'tools_encyclopedia.md' to understand your 20+ physical tools. 
 3. SELF-CORRECTION: If a command fails (e.g., 'unknown_tool' or 'build error'), analyze the root cause in the 'TaskExecutor' logic and fix it or use an alternative.
 4. MILLION-LINE AMBITION: Do not hesitate to generate massive file structures using 'scaffold_project'.
-5. INTERNAL CONSTRUCTION FIRST: Use local tools (scaffold_project, shell_execute, file_write, file_edit, npm_install) for ALL construction tasks. 
-6. BROWSER FOR VERIFICATION: Use the 'browser_run' or 'browser_action' tools ONLY for:
-   - Verifying the UI/UX after the build is complete.
-   - Testing button functionality or page transitions.
-   - When the USER explicitly requests a browser action.
-   - DO NOT use the browser as a generic search tool if you can find the info in 'knowledge/'.
+5. INTERNAL CONSTRUCTION FIRST: Use local tools (scaffold_project, shell_execute, file_write, file_edit, npm_install) for ALL construction tasks. You MUST build the entire codebase locally and verify it with 'ls' before touching the browser.
+6. BROWSER IS A PRIVILEGE FOR VERIFICATION: Use the 'browser_run' or 'browser_action' tools ONLY AFTER:
+   - The codebase is 100% written and verified by local file checks.
+   - You need to verify the UI/UX or page transitions.
+   - DO NOT use the browser for research, documentation searching, or early "exploration". This consumes massive resources and is strictly forbidden.
 7. VISUAL FEEDBACK LOOP (SEE-FIX-VERIFY): 
-   - If you see a UI bug in the browser (overlapping menus, broken alignment, wrong colors):
-     1. Analyze the browser evidence (screenshots/audit).
-     2. Identify the source code file causing the issue.
-     3. Apply a fix using 'file_edit' or 'file_write'.
-     4. RETURN to the browser to verify the fix.
-     5. Repeat until the UI is pristine.
+   - Use the browser only as a pair of "eyes" to see your completed work.
+   - If you see a UI bug (overlapping, broken alignment):
+     1. Analyze the browser evidence.
+     2. Identify and fix the source code locally.
+     3. Return to the browser to verify.
 
 AVAILABLE TOOLS:
 ${JSON.stringify(availableTools.map(t => ({ name: t.name, usage: t.description })), null, 2)}

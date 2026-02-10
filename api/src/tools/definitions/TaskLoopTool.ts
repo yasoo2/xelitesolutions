@@ -101,6 +101,12 @@ export class TaskLoopTool extends BaseTool {
                         lastError = result.error || 'Unknown error';
                         logs.push(`❌ Attempt ${retryCount + 1} failed: ${lastError}`);
 
+                        // Anti-Loop: Special limit for browser tools
+                        if (step.tool === 'browser_run' && retryCount >= 1) {
+                            logs.push(`🛑 Browser operation failed twice. Aborting retries to maintain session stability.`);
+                            break;
+                        }
+
                         // Attempt Wolverine self-healing
                         if (enableWolverine && lastError) {
                             logs.push(`🦸 Wolverine attempting to heal...`);
