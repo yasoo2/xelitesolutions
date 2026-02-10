@@ -34,11 +34,7 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: [ "CMD-SHELL", "exit 0" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      disable: true
     volumes:
       - lance_data:/app/data
       - deep_memory:/app/.gemini
@@ -61,8 +57,7 @@ services:
     networks:
       - joe-network
     depends_on:
-      api:
-        condition: service_healthy
+      - api
 
   browser-worker:
     build: ./services/joe-browser-worker
@@ -99,10 +94,8 @@ services:
     networks:
       - joe-network
     depends_on:
-      api:
-        condition: service_healthy
-      web:
-        condition: service_started
+      - api
+      - web
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
 
   certbot:
