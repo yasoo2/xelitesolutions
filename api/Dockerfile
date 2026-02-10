@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Install Python, Git, bash and build dependencies for native modules
-RUN apk add --no-cache python3 make g++ py3-pip git bash
+RUN apk add --no-cache python3 make g++ py3-pip git bash curl
 
 WORKDIR /app
 
