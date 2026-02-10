@@ -10,7 +10,6 @@ import toolsRoutes from './routes/tools';
 import runRoutes from './routes/run';
 import runDetailsRoutes from './routes/runs';
 import sessionsRoutes from './routes/sessions';
-import foldersRoutes from './routes/folders';
 import filesRoutes from './routes/files';
 import approvalsRoutes from './routes/approvals';
 import projectRoutes from './routes/project';
@@ -170,7 +169,6 @@ async function main() {
   apiRouter.use('/runs', runRoutes);
   apiRouter.use('/run', runDetailsRoutes);
   apiRouter.use('/sessions', sessionsRoutes);
-  apiRouter.use('/folders', foldersRoutes);
   apiRouter.use('/files', filesRoutes);
   apiRouter.use('/approvals', approvalsRoutes);
   apiRouter.use('/project', projectRoutes);
@@ -198,7 +196,7 @@ async function main() {
       error: 'Not Found',
       message: `API Route ${req.method} ${req.originalUrl} not found`,
       availableModules: [
-        'auth', 'tools', 'runs', 'sessions', 'folders', 'files', 'project', 'system'
+        'auth', 'tools', 'runs', 'sessions', 'files', 'project', 'system'
       ]
     });
   });
