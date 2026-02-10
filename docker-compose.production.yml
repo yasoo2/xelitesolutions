@@ -48,15 +48,6 @@ services:
       mongo:
         condition: service_healthy
 
-  dashboard:
-    build: ./dashboard
-    container_name: joe_dashboard
-    restart: always
-    env_file:
-      - .env
-    networks:
-      - joe-network
-
   web:
     build:
       context: ./web
