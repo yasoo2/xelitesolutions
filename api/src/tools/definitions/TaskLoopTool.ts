@@ -112,6 +112,10 @@ export class TaskLoopTool extends BaseTool {
 
                                 if (healResult.ok && healResult.output?.recovered) {
                                     logs.push(`✅ Wolverine healed the error, retrying...`);
+                                    if (healResult.output.suggestedArgs) {
+                                        logs.push(`💡 Wolverine suggested new arguments for retry.`);
+                                        step.args = { ...(step.args || {}), ...healResult.output.suggestedArgs };
+                                    }
                                 }
                             } catch (healErr: any) {
                                 logs.push(`⚠️ Wolverine heal failed: ${healErr.message}`);
@@ -132,6 +136,12 @@ export class TaskLoopTool extends BaseTool {
                     logs.push(`💥 Exception: ${e.message}`);
                     retryCount++;
                     totalIterations++;
+                }
+
+                // Detect Terminal Errors (God-Mode Upgrade)
+                if (lastError && /dns_failed|no_such_host|NXDOMAIN|access_denied|unauthorized|invalid_api_key/i.test(lastError)) {
+                    logs.push(`🛑 Terminal error detected: "${lastError}". Aborting retries for this step.`);
+                    break;
                 }
 
                 // In fixed_steps mode, only retry once

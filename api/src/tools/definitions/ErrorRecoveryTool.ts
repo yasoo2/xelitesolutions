@@ -59,6 +59,7 @@ export class ErrorRecoveryTool implements ToolDefinition {
             recovered: { type: 'boolean' as const },
             suggestion: { type: 'string' as const },
             fixApplied: { type: 'string' as const },
+            suggestedArgs: { type: 'object' as const },
             retryCount: { type: 'number' as const }
         }
     };
@@ -94,6 +95,11 @@ export class ErrorRecoveryTool implements ToolDefinition {
             pattern: /permission denied|EACCES/i,
             type: 'permission_error',
             fix: 'Check file permissions or run with sudo'
+        },
+        {
+            pattern: /dns_failed|no_such_host|NXDOMAIN/i,
+            type: 'connectivity_error',
+            fix: 'Check URL spelling or network connectivity'
         }
     ];
 
@@ -148,6 +154,28 @@ export class ErrorRecoveryTool implements ToolDefinition {
                         recovered = await this.createMissingFile(fileMatch[1], logs);
                         if (recovered) fixApplied = `Created file: ${fileMatch[1]}`;
                     }
+                } else if (analysis.type === 'connectivity_error') {
+                    // Smart URL Fixer for common mistakes
+                    const urlMatch = error.match(/https?:\/\/([^\s/]+)/i);
+                    if (urlMatch) {
+                        const badUrl = urlMatch[0];
+                        const host = urlMatch[1].toLowerCase();
+                        if (host === 'node.js') {
+                            const newUrl = badUrl.replace(/node\.js/i, 'nodejs.org');
+                            logs.push(`💡 Deep Thought: "node.js" is not a TLD. Suggesting "nodejs.org" instead.`);
+                            recovered = true;
+                            fixApplied = `Corrected URL to ${newUrl}`;
+                            suggestion = `Use ${newUrl} instead of ${badUrl}`;
+                            (input as any).suggestedArgs = { url: newUrl };
+                        } else if (host === 'react.js') {
+                            const newUrl = badUrl.replace(/react\.js/i, 'react.dev');
+                            logs.push(`💡 Deep Thought: Suggesting "react.dev" instead of "react.js".`);
+                            recovered = true;
+                            fixApplied = `Corrected URL to ${newUrl}`;
+                            suggestion = `Use ${newUrl} instead of ${badUrl}`;
+                            (input as any).suggestedArgs = { url: newUrl };
+                        }
+                    }
                 } else if (analysis.type === 'recalled_solution') {
                     // Apply recalled fix from knowledge base
                     logs.push('Applying recalled solution...');
@@ -186,6 +214,7 @@ export class ErrorRecoveryTool implements ToolDefinition {
                     recovered,
                     errorType: analysis.type,
                     suggestion,
+                    suggestedArgs: (input as any).suggestedArgs,
                     context: context || {}
                 },
                 logs
