@@ -12,6 +12,9 @@ type Action =
   | { type: 'click'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean; x?: number; y?: number }
   | { type: 'hover'; selector?: string; role?: string; name?: string; text?: string; optional?: boolean; x?: number; y?: number }
   | { type: 'type'; selector?: string; role?: string; name?: string; text: string; optional?: boolean; x?: number; y?: number }
+  | { type: 'fill'; selector?: string; role?: string; name?: string; text: string; optional?: boolean; x?: number; y?: number }
+  | { type: 'key'; key: string; optional?: boolean }
+  | { type: 'evaluate'; script: string; optional?: boolean }
   | { type: 'scroll'; direction: 'down' | 'up'; amount?: number; optional?: boolean }
   | { type: 'wait'; ms: number; optional?: boolean }
   | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
@@ -218,15 +221,15 @@ export async function executePlannedActions(params: {
       const name = String(a?.type || 'unknown');
       const sid = stepId(i + stepOffset);
       try {
-        const rawText = name === 'type' ? String(a?.text || '') : '';
-        const secretMatch = name === 'type' ? rawText.match(SECRET_TOKEN_RE) : null;
+        const rawText = (name === 'type' || name === 'fill') ? String(a?.text || '') : '';
+        const secretMatch = (name === 'type' || name === 'fill') ? rawText.match(SECRET_TOKEN_RE) : null;
         const summary =
           name === 'goto'
             ? `goto ${normalizeUrlForGoto(a?.url, (() => { try { return page.url(); } catch { return ''; } })()).trim()}`
-            : name === 'type'
+            : (name === 'type' || name === 'fill')
               ? secretMatch
-                ? `type (secret:${String(secretMatch[1] || '').trim() || 'KEY'})`
-                : `type (len=${rawText.length})`
+                ? `${name} (secret:${String(secretMatch[1] || '').trim() || 'KEY'})`
+                : `${name} (len=${rawText.length})`
               : name;
         broadcastBrowserEvent(sessionId, { type: 'action_sent', ts: now(), actionId: sid, actionType: name, summary });
       } catch { }
@@ -485,7 +488,32 @@ export async function executePlannedActions(params: {
           continue;
         }
 
-        if (name === 'click' || name === 'type') {
+        if (name === 'key') {
+          const key = String(a?.key || '');
+          if (key) {
+            await page.keyboard.press(key);
+            await page.waitForTimeout(100);
+            const after = await screenshotJpegBase64(page);
+            evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+            results.push({ stepId: sid, name, ok: true });
+            try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+            continue;
+          }
+        }
+
+        if (name === 'evaluate') {
+          const script = String(a?.script || '');
+          if (script) {
+            const res = await page.evaluate(script);
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { result: String(res) } });
+            results.push({ stepId: sid, name, ok: true });
+            try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+            continue;
+          }
+        }
+
+        if (name === 'click' || name === 'type' || name === 'fill') {
           if (name === 'click') {
             const xNum = Number(a?.x);
             const yNum = Number(a?.y);
@@ -520,8 +548,8 @@ export async function executePlannedActions(params: {
             }
           }
 
-          // Global type (interactive mode, no selector/coords)
-          if (name === 'type' && !a?.selector && !a?.role && !a?.name && !a?.textTarget && (!Number.isFinite(Number(a?.x)) || !Number.isFinite(Number(a?.y)))) {
+          // Global type/fill (interactive mode, no selector/coords)
+          if ((name === 'type' || name === 'fill') && !a?.selector && !a?.role && !a?.name && !a?.textTarget && (!Number.isFinite(Number(a?.x)) || !Number.isFinite(Number(a?.y)))) {
             const text = String(a?.text || '');
             setStreamMask(sessionId, []);
             const before = await screenshotJpegBase64(page);
@@ -543,7 +571,7 @@ export async function executePlannedActions(params: {
             continue;
           }
 
-          if (name === 'type') {
+          if (name === 'type' || name === 'fill') {
             const xNum = Number(a?.x);
             const yNum = Number(a?.y);
             if (Number.isFinite(xNum) && Number.isFinite(yNum) && !a?.selector && !a?.role && !a?.name && !a?.textTarget) {
@@ -978,8 +1006,8 @@ export async function executePlannedActions(params: {
           continue;
         }
 
-        results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'unsupported_action' });
-        broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: 'unsupported_action' });
+        results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `unsupported_action: ${name}` });
+        broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `unsupported_action: ${name}` });
         try {
           broadcastBrowserEvent(sessionId, {
             type: 'action_error',
@@ -987,7 +1015,7 @@ export async function executePlannedActions(params: {
             actionId: sid,
             actionType: name,
             reason: 'unknown',
-            error: 'unsupported_action',
+            error: `unsupported_action: ${name}`,
           });
         } catch { }
       } catch (e: any) {

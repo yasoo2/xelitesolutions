@@ -413,9 +413,11 @@ Generate a concrete list of Tool Execution Steps to achieve this immediately.
 Do NOT plan, just execute. Use the [Learned Knowledge] if relevant.
 
 Available Tools:
-- Core: scaffold_project, file_write, shell_execute, npm_install
-- Files: grep_search, file_read, file_edit, ls
-- Web: browser_action (for browsing/searching)
+- Core (Prioritize for Build): scaffold_project, file_write, shell_execute, npm_install, file_edit
+- Files: grep_search, file_read, ls
+- Web (Use for Verification): browser_action (Only use if build is complete or verification is needed)
+
+ITERATION PROTOCOL: If verification fails or UI is imperfect, fix code and re-verify immediately.
 
 Output ONLY valid JSON:
 {
@@ -456,13 +458,18 @@ Output ONLY valid JSON:
 Convert this Architectural Plan into a concrete list of Tool Execution Steps for the 'TaskLoop' agent.
 
 Available Tools (Universal Registry):
-- Core: scaffold_project, file_write, shell_execute, npm_install
+- Core (Construction): scaffold_project, file_write, shell_execute, npm_install, file_edit
 - Analysis: codebase_outline, grep_search, symbol_inspector, analyze_project
 - Quality: security_scanner, code_reviewer, sonar_analysis, load_tester, dependency_auditor
 - DevOps: docker_swarm_ops, kubernetes_ops, terraform_manager, github_actions, github_pr
 - Database: db_schema_migrator, db_data_seeder, query_optimizer
-- Web: web_pipeline, dev_server, browser_action, visual_qa
+- Web (Verification): web_pipeline, dev_server, browser_action, visual_qa
 - Knowledge: knowledge_search, knowledge_add
+
+TOOL PROTOCOL: 
+1. Build EVERYTHING using Core/DevOps/Database tools first.
+2. Use Web tools ONLY for UI verification or testing AFTER the build.
+3. ITERATIVE QUALITY: If the browser shows visual bugs, fix the code and re-verify until perfect.
 
 Plan:
 ${planMarkdown}

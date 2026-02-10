@@ -23,6 +23,7 @@ type Planned = {
     | { type: 'wait'; ms: number; optional?: boolean }
     | { type: 'assert'; selector?: string; text?: string; optional?: boolean }
     | { type: 'key'; key: string; optional?: boolean }
+    | { type: 'evaluate'; script: string; optional?: boolean }
     | { type: 'ui_audit'; optional?: boolean }
     | { type: 'back'; optional?: boolean }
     | { type: 'forward'; optional?: boolean }
@@ -61,9 +62,11 @@ Available Actions:
 - {"type":"goto","url":"..."}
 - {"type":"click","selector":"..."} OR {"type":"click","text":"..."} OR {"type":"click","x":123,"y":456}
 - {"type":"type","text":"...", "selector":"..."} OR {"type":"type","text":"...", "x":123, "y":456}
+- {"type":"fill","text":"...", "selector":"..."} 
 - {"type":"scroll","direction":"down"|"up","amount":500}
 - {"type":"wait","ms":2000}
 - {"type":"key","key":"Enter"|"Escape"|"ArrowDown"|...}
+- {"type":"evaluate","script":"..."}
 - {"type":"ui_audit"} - Analyze the DOM for significant changes.
 - {"type":"back"} | {"type":"forward"} | {"type":"reload"}
 - {"type":"screenshot"} - Take a visual snapshot for reasoning.
