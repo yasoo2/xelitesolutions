@@ -22,7 +22,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # Start application
 CMD ["npm", "run", "start"]
