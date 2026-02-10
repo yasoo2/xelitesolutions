@@ -194,30 +194,26 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     if (name === 'project_scaffold') {
         effectiveName = 'scaffold_project';
     }
-    if (name === 'create_file') {
+    if (name === 'file_write' || name === 'write_to_file' || name === 'create_file') {
         effectiveName = 'write_file';
-    }
-    if (name === 'file_write') {
-        effectiveName = 'write_file';
-        const fp = String((effectiveInput as any)?.filePath ?? '');
-        if (fp && (effectiveInput as any)?.filename == null) {
-            (effectiveInput as any).filename = fp;
+        const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
+        if (fp) {
+            (effectiveInput as any).filename = fp.replace(/^\/app\//, './');
             delete (effectiveInput as any).filePath;
+            delete (effectiveInput as any).path;
         }
     }
     if (name === 'edit_file' || name === 'modify_file') {
         effectiveName = 'file_edit';
     }
-    if (name === 'file_read') {
+    if (name === 'file_read' || name === 'read_file' || name === 'view_file' || name === 'get_file') {
         effectiveName = 'read_file';
-        const fp = String((effectiveInput as any)?.filePath ?? '');
+        const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
-            (effectiveInput as any).path = fp;
+            (effectiveInput as any).path = fp.replace(/^\/app\//, './');
             delete (effectiveInput as any).filePath;
+            delete (effectiveInput as any).filename;
         }
-    }
-    if (name === 'read_file' || name === 'view_file' || name === 'get_file') {
-        effectiveName = 'read_file';
     }
     if (name === 'read_file_tree') {
         effectiveName = 'inspect_directory';

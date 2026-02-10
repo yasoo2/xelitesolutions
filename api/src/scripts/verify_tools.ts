@@ -109,15 +109,15 @@ async function verifyAutoTooling() {
     }
 
     const planRead = await planNextStep([{ role: 'user', content: 'read file package.json' }], { provider: 'auto' });
-    if (!planRead || planRead.name !== 'file_read') {
-        console.error('❌ Auto planner did not select file_read:', planRead);
+    if (!planRead || planRead.name !== 'read_file') {
+        console.error('❌ Auto planner did not select read_file:', planRead);
         process.exit(1);
     }
 
     const readResult = await executeTool(planRead.name, planRead.input, { workspaceId });
     const content = String(readResult.output?.content || '');
     if (!readResult.ok || !content.includes('"name"') || !content.includes('"api"')) {
-        console.error('❌ file_read tool failed or returned unexpected content:', readResult);
+        console.error('❌ read_file tool failed or returned unexpected content:', readResult);
         process.exit(1);
     }
 
