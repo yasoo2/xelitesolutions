@@ -243,6 +243,7 @@ async function main() {
 
     for (let i = 0; i < maxRetries; i++) {
       try {
+        logger.info({ uri: config.mongoUri }, 'Attempting MongoDB connection...');
         await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
         logger.info('MongoDB connected');
         try {

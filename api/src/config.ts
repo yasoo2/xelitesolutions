@@ -18,7 +18,13 @@ const allowedOriginsDefault = [
 ];
 
 const defaultMongoUri = isProd ? 'mongodb://mongo:27017/joe' : 'mongodb://localhost:27017/joe';
-const mongoUri = (process.env.MONGO_URI && process.env.MONGO_URI.trim()) ? process.env.MONGO_URI.trim() : defaultMongoUri;
+const rawMongoUri = process.env.MONGO_URI || '';
+const mongoUri = (rawMongoUri && rawMongoUri.trim()) ? rawMongoUri.trim() : defaultMongoUri;
+
+console.info(`[Config] NODE_ENV: ${process.env.NODE_ENV}`);
+console.info(`[Config] MONGO_URI (Source): ${rawMongoUri ? 'ENV' : 'DEFAULT'}`);
+console.info(`[Config] Resolved MONGO_URI: ${mongoUri.replace(/:([^@/]+)@/, ':****@')}`); // Redact password if present
+
 if (/^mongodb\+srv:\/\//i.test(mongoUri)) {
   throw new Error('Mongo Atlas (mongodb+srv) is disabled for this deployment. Use MongoDB Docker (mongodb://...).');
 }

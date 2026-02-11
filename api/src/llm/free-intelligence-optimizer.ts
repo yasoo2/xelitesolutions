@@ -463,8 +463,11 @@ class FreeIntelligenceOptimizer {
 
         const exact = this.cache.get(cleanText);
         if (exact) {
+            // [Wakil] Stricter verification: Ensure exact match isn't a generic trigger
+            const isGenericTrigger = cleanText.length < 5 || /^(joe|جو|hey|hi|hello|مرحبا|سلام)$/i.test(cleanText);
             const cacheLang = this.detectLanguage(exact.response);
-            if (cacheLang === targetLang) {
+
+            if (cacheLang === targetLang && (!isGenericTrigger || exact.hits < 100)) {
                 exact.hits++;
                 exact.lastUsed = Date.now();
                 return {
@@ -476,22 +479,26 @@ class FreeIntelligenceOptimizer {
             }
         }
 
+        // Fuzzy/Sub-string match: ONLY for highly specific technical snippets
         for (const [trigger, res] of this.cache.entries()) {
             if (trigger === cleanText) continue;
-            if (trigger.length <= 5) continue;
+            if (trigger.length < 10) continue; // Must be a substantial trigger
             if (!cleanText.includes(trigger)) continue;
 
             const cacheLang = this.detectLanguage(res.response);
             if (cacheLang !== targetLang) continue;
 
-            res.hits++;
-            res.lastUsed = Date.now();
-            return {
-                shouldUseCache: true,
-                cachedResponse: this.injectPersona(res.response, userName),
-                suggestedModel: 'fast',
-                skipPlanner: true
-            };
+            // Only bypass for high-confidence learned patterns
+            if (res.source === 'manual' || res.hits > 5) {
+                res.hits++;
+                res.lastUsed = Date.now();
+                return {
+                    shouldUseCache: true,
+                    cachedResponse: this.injectPersona(res.response, userName),
+                    suggestedModel: 'fast',
+                    skipPlanner: true
+                };
+            }
         }
 
         // [Workspace] Check for Custom Provider Override
