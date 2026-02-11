@@ -162,14 +162,7 @@ createRoot(document.getElementById('root')!).render(
                   </RequireAuth>
                 }
               />
-              <Route
-                path="cyber"
-                element={
-                  <Suspense fallback={<div className="route-loading">Loading...</div>}>
-                    <CyberDashboard />
-                  </Suspense>
-                }
-              />
+
             </Route>
           </Routes>
         </BrowserRouter>
