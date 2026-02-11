@@ -29,6 +29,7 @@ const runConfigBySession = new Map<
     workspaceId?: string;
     autoApproveAll?: boolean;
     autoApproveSafe?: boolean;
+    perpetual?: boolean;
     expiresAt: number;
   }
 >();
@@ -217,6 +218,7 @@ export function setSessionRunConfig(
     workspaceId?: string;
     autoApproveAll?: boolean;
     autoApproveSafe?: boolean;
+    perpetual?: boolean;
     ttlSeconds?: number;
   }
 ) {
@@ -236,6 +238,7 @@ export function setSessionRunConfig(
     workspaceId: cfg.workspaceId,
     autoApproveAll: cfg.autoApproveAll,
     autoApproveSafe: cfg.autoApproveSafe,
+    perpetual: cfg.perpetual,
     expiresAt: nowMs() + ttlSeconds * 1000,
   });
 }

@@ -1772,7 +1772,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       }
 
       // [OPTIMIZER] Check cache before other heuristics
-      else if (!initialPlan && rawUserText && !hasAttachments && (providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack')) {
+      // GATE: Never use optimizer if there is clear build intent
+      const buildIntentForOptimizer =
+        /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(rawUserText) ||
+        /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ|اعمل|عمل|صمم)/.test(rawUserText);
+
+      if (!initialPlan && rawUserText && !hasAttachments && !buildIntentForOptimizer && (providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack')) {
         const fast = freeIntelligenceOptimizer.generateSmartResponse(rawUserText, []);
         if (fast) {
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
