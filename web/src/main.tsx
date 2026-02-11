@@ -11,7 +11,6 @@ const Login = lazy(() => import('./pages/Login'));
 const JoePremium = lazy(() => import('./pages/JoePremium'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
-const CyberDashboard = lazy(() => import('./components/CyberDashboard'));
 import './theme.css';
 import './global.css';
 import './i18n';
