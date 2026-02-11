@@ -2509,7 +2509,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           // [GOD MODE] FORCE BUILD OVERRIDE
           // If the user clearly wants to build/create, and we haven't started, don't let it stall in "echo"
-          const isExplicitBuild = /(build|create|generate|scaffold|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم)\s+(website|app|system|page|موقع|تطبيق|نظام|صفحة|صفحه)/i.test(userTextForOverrides);
+          // Fixed: Allow intervening words (e.g., "ابني لي نظام", "create me a system")
+          const isExplicitBuild = /(build|create|generate|scaffold|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم)\s+.*?(website|app|system|page|site|api|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة)/i.test(userTextForOverrides);
           if (isExplicitBuild && steps === 0 && (planName === 'echo' || !planName)) {
             console.info('[GOD MODE] ⚡ Build Intent Detected - Forcing Pipeline Execution');
             plan = { name: 'project_detect', input: { path: '.' } } as any;
@@ -2899,15 +2900,24 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               history.push({ role: 'assistant', content: marker } as any);
 
               // Auto-Preview Directive for Simple Creative Requests
+              // FIXED: Instead of just adding a directive text, FORCE the first tool to be write_file
               if (wf.kind === 'simple_creative') {
                 const directive = isArabicText(userTextForOverrides)
-                  ? `[DIRECTIVE]: أنت الآن في وضع "الإنتاج السريع". ابدأ فوراً بكتابة الملفات (مثلاً index.html). بمجرد الانتهاء من إنشاء ملفات الموقع، يجب عليك استدعاء أداة \`dev_server_start\` لتشغيل المعاينة للمستخدم تلقائياً.`
-                  : `[DIRECTIVE]: You are in "Rapid Production" mode. Start writing files (e.g., index.html) immediately. Once you finish creating the website files, you MUST call \`dev_server_start\` to trigger the live preview for the user automatically.`;
+                  ? `[DIRECTIVE]: أنت الآن في وضع "الإنتاج السريع". ابدأ فوراً بكتابة الملفات. بمجرد الانتهاء، استدعِ \`dev_server_start\`.`
+                  : `[DIRECTIVE]: You are in "Rapid Production" mode. Start writing files immediately. When done, call \`dev_server_start\`.`;
                 history.push({ role: 'system', content: directive } as any);
+
+                // FORCE BUILD: Override the plan to scaffold instead of echo
+                if (!planName || planName === 'echo') {
+                  console.info('[SIMPLE_CREATIVE] ⚡ Forcing scaffold_project as first tool');
+                  plan = { name: 'project_detect', input: { path: '.' } } as any;
+                  planName = 'project_detect';
+                }
               }
 
-              // PHASE 2-3 INTEGRATION: Use ProjectPlanner for complex projects
-              if (wf.analysis && wf.analysis.complexity && ['complex', 'very_complex'].includes(wf.analysis.complexity)) {
+              // PHASE 2-3 INTEGRATION: Use ProjectPlanner for ALL detected project workflows
+              // FIXED: Previously only triggered for complex/very_complex — now triggers for all workflows
+              if (wf.kind !== 'simple_creative' && wf.kind !== 'tool_shell') {
                 try {
                   // Create execution plan
                   const { executeTool } = await import('../services/ToolService');
