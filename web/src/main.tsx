@@ -11,6 +11,7 @@ const Login = lazy(() => import('./pages/Login'));
 const JoePremium = lazy(() => import('./pages/JoePremium'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const CyberDashboard = lazy(() => import('./components/CyberDashboard'));
 import './theme.css';
 import './global.css';
 import './i18n';
@@ -160,6 +161,14 @@ createRoot(document.getElementById('root')!).render(
                       <JoePremium />
                     </Suspense>
                   </RequireAuth>
+                }
+              />
+              <Route
+                path="cyber"
+                element={
+                  <Suspense fallback={<div className="route-loading">Loading...</div>}>
+                    <CyberDashboard />
+                  </Suspense>
                 }
               />
             </Route>
