@@ -89,8 +89,8 @@ const CyberDashboard: React.FC = () => {
                                         <button
                                             onClick={() => toggleDefense(key as any)}
                                             className={`px-4 py-1 rounded text-xs font-bold transition-all duration-300 ${active
-                                                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
-                                                    : 'bg-red-900/20 text-red-500 border border-red-900 grayscale'
+                                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
+                                                : 'bg-red-900/20 text-red-500 border border-red-900 grayscale'
                                                 }`}
                                         >
                                             {active ? 'ACTIVE' : 'OFFLINE'}
@@ -118,7 +118,7 @@ const CyberDashboard: React.FC = () => {
                 <div className="lg:col-span-3 relative group">
                     <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-fuchsia-500 rounded-lg blur opacity-20"></div>
                     <div className="relative h-64 bg-black/90 backdrop-blur-md border border-cyan-900/50 rounded-lg p-4 font-mono text-xs overflow-hidden">
-                        <h3 className="text-fuchsia-400 font-bold mb-2 sticky top-0 bg-black/90 p-1 border-b border-fuchsia-900/30">>> SYSTEM_LOG_STREAM</h3>
+                        <h3 className="text-fuchsia-400 font-bold mb-2 sticky top-0 bg-black/90 p-1 border-b border-fuchsia-900/30">&gt;&gt; SYSTEM_LOG_STREAM</h3>
                         <div className="h-full overflow-y-auto pb-8 space-y-1 scrollbar-thin scrollbar-thumb-cyan-900 scrollbar-track-black">
                             {logs.map((log, i) => (
                                 <div key={i} className="hover:bg-cyan-900/20 px-2 py-0.5 rounded transition-colors">
