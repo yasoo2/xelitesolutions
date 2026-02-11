@@ -144,6 +144,25 @@ router.get('/', authenticate as any, async (req: Request, res: Response) => {
 });
 
 
+router.get('/:id', authenticateOptional as any, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '').trim();
+  const userId = String((req as any).auth?.sub || '').trim();
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
+  const run = await Run.findById(id).lean();
+  if (!run) return res.status(404).json({ error: 'Run not found' });
+
+  const { Session } = await import('../models/session');
+  const allowed = await Session.findOne({ _id: run.sessionId, userId }).select('_id').lean();
+  if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+
+  const runId = (run as any)._id;
+  const execs = await ToolExecution.find({ runId }).lean();
+  const artifacts = await Artifact.find({ runId }).lean();
+  return res.json({ run, execs, artifacts });
+});
+
 router.post('/stop', authenticate as any, async (req: Request, res: Response) => {
   try {
     const runId = String(req.body?.runId || '').trim();
@@ -1198,9 +1217,11 @@ function browserSessionIdFromUrl(url: string): string {
 }
 
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
+  console.log(`[Run] POST /api/run called. Text length: ${String(req.body?.text || '').length}, Session: ${req.body?.sessionId}`);
   try {
     const offlineMode = process.env.OFFLINE_MODE === 'true';
     let { text, sessionId, attachments, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext, isGodMode, userSystemInstructions } = req.body || {};
+    console.log(`[Run] Incoming request: text=${String(text || '').substring(0, 50)}..., sessionId=${sessionId}, provider=${provider}`);
     let runId: string = 'pending'; // [Wakil 6.2] Initialized early for broadcaster
     let fileIds = attachments || (req.body && (req.body as any).fileIds);
     if (!fileIds && Array.isArray(attachments)) {
@@ -1694,6 +1715,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       { role: 'user', content: initialContent }
     ];
 
+    console.log('[Run] Emitting initial planning event...');
     ev({ type: 'step_started', data: { name: 'plan' } });
 
     let initialPlan = null;
@@ -1777,6 +1799,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(rawUserText) ||
         /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ|اعمل|عمل|صمم)/.test(rawUserText);
 
+      console.log(`[Run] Build intent detected: ${buildIntentForOptimizer}`);
+
       if (!initialPlan && rawUserText && !hasAttachments && !buildIntentForOptimizer && (providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack')) {
         const fast = freeIntelligenceOptimizer.generateSmartResponse(rawUserText, []);
         if (fast) {
@@ -1806,7 +1830,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           });
         }
 
-        const optimization = await freeIntelligenceOptimizer.optimizeRequest(rawUserText, []);
+        const optimization = (!buildIntentForOptimizer ? await freeIntelligenceOptimizer.optimizeRequest(rawUserText, []) : { shouldUseCache: false }) as any;
         if (optimization.shouldUseCache && optimization.cachedResponse) {
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
           const answer = optimization.cachedResponse;
@@ -1848,17 +1872,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               preferNonLLM: true,
             }) as any;
           } else {
+            console.log(`[Run] Calling planNextStep... Provider: ${providerKey}`);
             initialPlan = await planNextStep(history, {
               provider: providerKey,
               apiKey: apiKey,
               baseUrl: baseUrl,
               model: model,
-              userId: userId,
+              userId: String(userId),
               sessionId: String(sessionId),
-              onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }),
-              onThought: (t) => ev({ type: 'thought', data: t }),
+              onProgress: (m: string) => ev({ type: 'thought', data: m }),
+              onThought: (m: string) => ev({ type: 'thought', data: m }),
               throwOnError: true,
             });
+            console.log(`[Run] planNextStep result: ${initialPlan ? initialPlan.name : 'NULL'}`);
           }
         }
       }
@@ -2038,7 +2064,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
         return res.json({ runId, sessionId, status: 'done' });
       }
-    } catch (e) {
+    } catch (e: any) {
+      console.error('[Run] Pipeline error:', e);
+      ev({ type: 'text', data: `⚠️ Error: ${e.message || 'Unknown failure'}` });
       // fall through to agent loop on error
     }
 

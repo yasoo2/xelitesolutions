@@ -8,7 +8,6 @@ import { config } from './config';
 import authRoutes from './routes/auth';
 import toolsRoutes from './routes/tools';
 import runRoutes from './routes/run';
-import runDetailsRoutes from './routes/runs';
 import sessionsRoutes from './routes/sessions';
 import filesRoutes from './routes/files';
 import approvalsRoutes from './routes/approvals';
@@ -167,7 +166,7 @@ async function main() {
   apiRouter.use('/auth', authRoutes);
   apiRouter.use('/tools', toolsRoutes);
   apiRouter.use('/runs', runRoutes);
-  apiRouter.use('/run', runDetailsRoutes);
+  apiRouter.use('/run', runRoutes);
   apiRouter.use('/sessions', sessionsRoutes);
   apiRouter.use('/files', filesRoutes);
   apiRouter.use('/approvals', approvalsRoutes);
