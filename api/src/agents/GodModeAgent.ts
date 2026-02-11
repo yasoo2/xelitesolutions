@@ -2,6 +2,28 @@ import path from 'path';
 import { ProjectManagerAgent } from './ProjectManagerAgent';
 import { routeToModel } from '../llm/intelligent-router';
 import { AutonomousLoopEngine, LoopTask, LoopResult } from './AutonomousLoopEngine';
+import { executeTool } from '../services/ToolService';
+
+/**
+ * Helper: Validate a tool exists before adding it to the pipeline.
+ * If the tool doesn't exist, mark it as non-required so the engine skips it.
+ */
+async function safeTask(task: LoopTask): Promise<LoopTask> {
+    if (!task.tool) return task;
+    try {
+        // Dry-run with empty input to check if tool is registered
+        await executeTool(task.tool, {}, {});
+        return task;
+    } catch (e: any) {
+        const msg = String(e?.message || '');
+        if (msg.includes('not found') || msg.includes('not registered') || msg.includes('Unknown tool')) {
+            console.warn(`[GodMode] Tool "${task.tool}" not found. Marking as optional.`);
+            return { ...task, required: false };
+        }
+        // Tool exists but failed with input validation — that's fine
+        return task;
+    }
+}
 
 interface SubSystem {
     name: string;
@@ -161,8 +183,16 @@ export class GodModeAgent {
             }
         ];
 
-        console.log(`[GodMode] Starting autonomous loop with ${tasks.length} phases...`);
-        const result = await engine.executeLoop(tasks);
+        // Validate all tool-based tasks exist before starting the loop
+        console.log(`[GodMode] Validating ${tasks.length} pipeline tasks...`);
+        const validatedTasks = await Promise.all(tasks.map(t => safeTask(t)));
+        const skippedCount = validatedTasks.filter(t => !t.required && tasks.find(orig => orig.name === t.name)?.required).length;
+        if (skippedCount > 0) {
+            console.warn(`[GodMode] ${skippedCount} tools not found — downgraded to optional`);
+        }
+
+        console.log(`[GodMode] Starting autonomous loop with ${validatedTasks.length} phases...`);
+        const result = await engine.executeLoop(validatedTasks);
 
         if (result.success) {
             console.log(`\n🎉 GOD MODE COMPLETE: Project built successfully after ${result.totalIterations} iterations`);

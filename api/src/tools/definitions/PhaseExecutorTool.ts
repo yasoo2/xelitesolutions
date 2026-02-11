@@ -1,14 +1,17 @@
 import { ToolDefinition } from '../types';
+import { executeTool } from '../../services/ToolService';
 
 /**
  * PhaseExecutorTool - Executes a single phase from a project plan
- * Manages phase completion and progression
+ * 
+ * REAL EXECUTOR: Actually calls executeTool() for each task in the phase.
+ * This is the bridge between planning and doing.
  */
 export class PhaseExecutorTool implements ToolDefinition {
     name = 'phase_executor';
-    version = '1.0.0';
-    description = 'Execute a single phase of a project plan systematically';
-    tags = ['execution', 'project', 'phase'];
+    version = '2.0.0';
+    description = 'Execute a single phase of a project plan by running each task\'s tool';
+    tags = ['execution', 'project', 'phase', 'builder'];
 
     inputSchema = {
         type: 'object' as const,
@@ -33,7 +36,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                 description: 'Context about the overall project',
                 properties: {
                     projectName: { type: 'string' as const },
-                    totalPhases: { type: 'number' as const }
+                    totalPhases: { type: 'number' as const },
+                    sessionId: { type: 'string' as const },
+                    workspaceId: { type: 'string' as const }
                 }
             }
         },
@@ -47,6 +52,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             status: { type: 'string' as const },
             completedTasks: { type: 'number' as const },
             totalTasks: { type: 'number' as const },
+            results: { type: 'array' as const },
             nextPhase: { type: 'number' as const }
         }
     };
@@ -60,35 +66,88 @@ export class PhaseExecutorTool implements ToolDefinition {
     async execute(input: { phase: any; projectContext?: any }) {
         const { phase, projectContext } = input;
         const logs: string[] = [];
+        const results: Array<{ task: string; tool: string; ok: boolean; error?: string }> = [];
+        let completedCount = 0;
 
         try {
-            logs.push(`Executing Phase ${phase.phaseNumber}: ${phase.name}`);
-
             const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
             const totalTasks = tasks.length;
 
-            logs.push(`Total tasks in phase: ${totalTasks}`);
+            logs.push(`[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`);
 
-            // In a real implementation, this would execute each task
-            // For now, we'll return a summary to guide the main agent
+            for (let i = 0; i < tasks.length; i++) {
+                const task = tasks[i];
+                const toolName = String(task.tool || '').trim();
+                const taskDesc = String(task.task || task.description || `Task ${i + 1}`);
 
-            const taskSummary = tasks.map((task: any, idx: number) => {
-                return `${idx + 1}. ${task.task} (${task.tool || 'manual'}) - Priority: ${task.priority || 'medium'}`;
-            }).join('\n');
+                // Skip tasks without a tool specification
+                if (!toolName || toolName === 'manual') {
+                    logs.push(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — skipped (manual/no tool)`);
+                    results.push({ task: taskDesc, tool: 'manual', ok: true });
+                    completedCount++;
+                    continue;
+                }
 
-            logs.push(`Phase tasks:\n${taskSummary}`);
+                logs.push(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — executing tool: ${toolName}`);
+
+                try {
+                    // Build tool args from task definition + project context
+                    const toolArgs = {
+                        ...(task.args || {}),
+                        ...(task.input || {}),
+                    };
+
+                    // Inject workspace context if available
+                    if (projectContext?.sessionId) toolArgs.sessionId = projectContext.sessionId;
+                    if (projectContext?.workspaceId) toolArgs.workspaceId = projectContext.workspaceId;
+
+                    const toolResult = await executeTool(toolName, toolArgs, {
+                        sessionId: projectContext?.sessionId,
+                        workspaceId: projectContext?.workspaceId,
+                    });
+
+                    if (toolResult.ok) {
+                        logs.push(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
+                        results.push({ task: taskDesc, tool: toolName, ok: true });
+                        completedCount++;
+                    } else {
+                        const errMsg = String(toolResult.error || 'Unknown error');
+                        logs.push(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
+                        results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
+
+                        // If this is a required task (high priority), stop the phase
+                        if (task.priority === 'high' || task.required === true) {
+                            logs.push(`[PhaseExecutor] ⛔ High-priority task failed. Stopping phase.`);
+                            break;
+                        }
+                    }
+                } catch (toolError: any) {
+                    const errMsg = String(toolError?.message || toolError || 'Execution error');
+                    logs.push(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${errMsg}`);
+                    results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
+
+                    if (task.priority === 'high' || task.required === true) {
+                        logs.push(`[PhaseExecutor] ⛔ Critical task threw. Stopping phase.`);
+                        break;
+                    }
+                }
+            }
+
+            const allOk = results.every(r => r.ok);
+            const status = allOk ? 'completed' : (completedCount > 0 ? 'partial' : 'failed');
+
+            logs.push(`[PhaseExecutor] Phase ${phase.phaseNumber} ${status}: ${completedCount}/${totalTasks} tasks completed`);
 
             return {
-                ok: true,
+                ok: allOk || completedCount > 0,
                 output: {
                     phaseNumber: phase.phaseNumber,
                     phaseName: phase.name,
-                    status: 'ready_to_execute',
-                    completedTasks: 0,
+                    status,
+                    completedTasks: completedCount,
                     totalTasks,
-                    tasks: tasks,
+                    results,
                     nextPhase: phase.phaseNumber + 1,
-                    instructions: `Execute the following tasks in order:\n${taskSummary}`,
                     deliverables: phase.deliverables || [],
                     estimatedTime: phase.estimatedTime || 'unknown'
                 },
@@ -96,10 +155,18 @@ export class PhaseExecutorTool implements ToolDefinition {
             };
 
         } catch (error: any) {
-            logs.push(`Error: ${error.message}`);
+            logs.push(`[PhaseExecutor] Fatal error: ${error.message}`);
             return {
                 ok: false,
                 error: error.message,
+                output: {
+                    phaseNumber: phase.phaseNumber,
+                    status: 'fatal_error',
+                    completedTasks: completedCount,
+                    totalTasks: Array.isArray(phase.tasks) ? phase.tasks.length : 0,
+                    results,
+                    nextPhase: phase.phaseNumber
+                },
                 logs
             };
         }

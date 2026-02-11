@@ -2944,6 +2944,49 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                       `- المرحلة الأولى: ${plan.phases?.[0]?.name || 'غير محدد'}\n\n` +
                       `سأبدأ التنفيذ المرحلي الآن...`;
                     ev({ type: 'text', data: planSummary });
+
+                    // EXECUTION BRIDGE: Actually execute each phase
+                    const phases = Array.isArray(plan.phases) ? plan.phases : [];
+                    for (const phase of phases) {
+                      try {
+                        ev({ type: 'thought', data: `> Executing Phase ${phase.phaseNumber}: ${phase.name}...` });
+
+                        const phaseResult = await executeTool('phase_executor', {
+                          phase,
+                          projectContext: {
+                            projectName: plan.projectName,
+                            totalPhases: plan.totalPhases,
+                            sessionId,
+                            workspaceId,
+                          }
+                        }, { sessionId, workspaceId });
+
+                        if (phaseResult.ok && phaseResult.output) {
+                          const out = phaseResult.output;
+                          ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} ${out.status}: ${out.completedTasks}/${out.totalTasks} tasks` });
+
+                          // Update state manager
+                          await executeTool('project_state_manager', {
+                            action: 'update',
+                            projectId,
+                            state: {
+                              currentPhase: phase.phaseNumber,
+                              phaseStatus: out.status,
+                              completedTasks: out.results?.filter((r: any) => r.ok).map((r: any) => r.task) || [],
+                            }
+                          }, { sessionId, workspaceId });
+
+                          // If phase failed critically, stop
+                          if (out.status === 'failed' || out.status === 'fatal_error') {
+                            ev({ type: 'text', data: `⚠️ Phase ${phase.phaseNumber} failed. Stopping execution.` });
+                            break;
+                          }
+                        }
+                      } catch (phaseError: any) {
+                        console.warn(`[Integration] Phase ${phase.phaseNumber} execution failed:`, phaseError);
+                        ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} threw: ${phaseError?.message || phaseError}` });
+                      }
+                    }
                   }
                 } catch (planError) {
                   // Fallback to normal execution if planning fails
