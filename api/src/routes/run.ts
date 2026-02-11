@@ -1523,8 +1523,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } else if (workspaceId) {
       // [FIX] Persist workspaceId on existing sessions that may be missing it
       try {
-        const { Session } = await import('../models/session');
-        await Session.findByIdAndUpdate(sessionId, { $set: { workspaceId } }, { new: false });
+        if (!offlineMode) {
+          const { Session } = await import('../models/session');
+          await Session.findByIdAndUpdate(sessionId, { $set: { workspaceId } }, { new: false });
+        }
       } catch (e) {
         console.warn('[Run] Failed to update session workspaceId:', e);
       }
@@ -1536,7 +1538,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const or: any[] = [];
       if (objectIds.length > 0) or.push({ _id: { $in: objectIds } });
       if (filenames.length > 0) or.push({ filename: { $in: filenames } });
-      if (or.length > 0) {
+      if (or.length > 0 && !offlineMode) {
         await FileModel.updateMany({ $or: or }, { $set: { sessionId } });
       }
     }
@@ -1819,9 +1821,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ev({ type: 'run_finished', data: { runId, ok: true } });
 
           // Update DB/Mock state asynchronously to avoid blocking response
-
-          Run.findByIdAndUpdate(runId, { $set: { status: 'done' } }).catch(console.error);
-
+          if (!offlineMode) {
+            Run.findByIdAndUpdate(runId, { $set: { status: 'done' } }).catch(console.error);
+          }
 
           return res.json({
             ok: true,
@@ -1839,9 +1841,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
           ev({ type: 'run_finished', data: { runId, ok: true } });
 
-
-          Run.findByIdAndUpdate(runId, { $set: { status: 'done' } }).catch(console.error);
-
+          if (!offlineMode) {
+            Run.findByIdAndUpdate(runId, { $set: { status: 'done' } }).catch(console.error);
+          }
 
           return res.json({
             ok: true,
@@ -1895,7 +1897,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     ev({ type: 'step_done', data: { name: 'plan', plan: initialPlan } });
 
     try {
-      await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
+      if (!offlineMode) {
+        await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
+      }
     } catch { }
 
 
@@ -1961,15 +1965,21 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
           }
         }
-        await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        if (!offlineMode) {
+          await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        }
         ev({ type: 'run_finished', data: { runId, ok: result.ok } });
         return res.json({ ok: true, runId, result });
       }
-      const approvalPlanInput = redactToolInputForStorage(initialPlan.name, initialPlan.input);
 
-      const ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
+      // [FIX] Approval creation should be gated by offlineMode
+      let ap: any = { _id: `offline-approval-${Date.now()}` };
+      if (!offlineMode) {
+        ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
+        await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
+      }
+
       ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
-      await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       const { planContext } = await import('../approvals/context');
       planContext.set(ap._id.toString(), { runId, sessionId, workspaceId, name: initialPlan.name, input: initialPlan.input });
       if (autoAll || (auto && safe)) {
@@ -2009,7 +2019,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (result.artifacts) {
           // Persist artifacts in DB using Artifact model if needed
         }
-        await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        if (!offlineMode) {
+          await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        }
         ev({ type: 'run_finished', data: { runId, ok: result.ok } });
         planContext.delete(ap._id.toString());
         // Fix: Explicitly return result here like in mock branch
@@ -2059,8 +2071,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         ev({ type: 'run_completed', data: { runId, result } });
         ev({ type: 'run_finished', data: { runId, status: 'done' } });
 
-        await Message.create({ sessionId, role: 'assistant', content: finalText, runId });
-        await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
+        if (!offlineMode) {
+          await Message.create({ sessionId, role: 'assistant', content: finalText, runId });
+          await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
+        }
 
         return res.json({ runId, sessionId, status: 'done' });
       }
@@ -3110,9 +3124,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
               history.push({ role: 'assistant', content: 'ASKED_FOR_REPO_NAME' } as any);
               try {
-
-                await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
-
+                if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
               } catch { }
             }
           }
@@ -3373,16 +3385,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   }
                 }
                 ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
-                await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+                if (!offlineMode) {
+                  await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+                }
                 ev({ type: 'run_finished', data: { runId, ok: result.ok } });
                 return res.json({ ok: true, runId, result });
               }
 
-              const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
-              ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: actionText } });
-              await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
-              const { planContext } = await import('../approvals/context');
-              planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
+              if (!offlineMode) {
+                const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
+                ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: actionText } });
+                await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
+                const { planContext } = await import('../approvals/context');
+                planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
+              } else {
+                ev({ type: 'approval_required', data: { id: `offline-approval-${Date.now()}`, runId, risk, action: actionText } });
+              }
 
 
               const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
@@ -3698,7 +3716,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               if (suppressChatArtifacts) continue;
               ev({ type: 'artifact_created', data: art });
 
-              try { await Artifact.create({ runId, name: String(art.name || 'artifact'), href: String(art.href || '') }); } catch { }
+              try { if (!offlineMode) await Artifact.create({ runId, name: String(art.name || 'artifact'), href: String(art.href || '') }); } catch { }
 
             }
           }
@@ -3937,9 +3955,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             } else if (isEmptyProjectDetectOutput(out) && !historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
               history.push({ role: 'assistant', content: 'PROJECT_DETECT_EMPTY' } as any);
               try {
-
-                await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
-
+                if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
               } catch { }
 
               if (!pendingPlan) {
@@ -4261,7 +4277,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
-              try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
 
 
               return res.json({
@@ -4309,7 +4325,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
-              try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
 
 
               return res.json({
@@ -4345,7 +4361,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
-              try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
 
 
               return res.json({
@@ -4381,7 +4397,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
-              try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
 
 
               return res.json({
@@ -4416,7 +4432,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
-              try { await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
 
 
               return res.json({
@@ -4558,8 +4574,10 @@ If this is a browser_open failure, DO NOT automatically retry the same URL. Ask 
         ev({ type: 'run_finished', data: { runId, status: 'done' } });
 
 
-        await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
-        await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed', response: finalContent } });
+        if (!offlineMode) {
+          await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
+          await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed', response: finalContent } });
+        }
 
         cancelledRuns.delete(String(runId));
 
@@ -4574,7 +4592,7 @@ If this is a browser_open failure, DO NOT automatically retry the same URL. Ask 
         console.error('[FATAL /runs/start Background]', globalErr);
         // Log to run object
         try {
-          if (runId) {
+          if (runId && !offlineMode) {
             await Run.findByIdAndUpdate(runId, { $set: { status: 'failed', response: `Fatal Background Error: ${globalErr.message}` } });
           }
         } catch { }

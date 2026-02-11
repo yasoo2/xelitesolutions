@@ -236,6 +236,11 @@ async function main() {
   const connectWithRetry = async () => {
     const isProd = process.env.NODE_ENV === 'production';
     const maxRetries = isProd ? 30 : Number.POSITIVE_INFINITY;
+
+    // [WAKIL] Disable buffering to prevent hanging when DB is down
+    mongoose.set('bufferCommands', false);
+    mongoose.set('bufferTimeoutMS', 5000);
+
     for (let i = 0; i < maxRetries; i++) {
       try {
         await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
