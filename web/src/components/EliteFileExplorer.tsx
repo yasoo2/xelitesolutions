@@ -699,7 +699,6 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                                     <option value="current">📂 {activeWorkspace?.name || 'Current Project'}</option>
                                     <option value="system">🖥️ Local System</option>
                                     <option value="folder">📁 Open Folder...</option>
-                                    <option value="clone">🐙 Clone Repo...</option>
                                 </select>
                                 {activeWorkspace && (
                                     <div style={{ fontSize: '10px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeWorkspace.path}>

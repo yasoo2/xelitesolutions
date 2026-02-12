@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
+import { workspaceService } from '../../services/WorkspaceService';
 import { handleGitCommand } from '../handlers';
 
 const spawn = require('child_process').spawn;
@@ -101,7 +102,7 @@ export class GitOpsTool extends BaseTool {
             }
 
             const safeArgs = Array.isArray(args) ? args.map(a => String(a || '')).filter(a => a.length > 0) : [];
-            const cwd = process.cwd();
+            const cwd = workspaceService.getActiveRoot();
             const envResult = await runGitWithEnv(op, safeArgs, env, cwd);
             logs.push(`git.success=${op}`);
             return { ok: true, output: { output: envResult.stdout || envResult.stderr }, logs };

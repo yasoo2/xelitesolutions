@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GitHubConnectModal } from './GitHubConnectModal';
+
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 
 // Web Speech API types
@@ -58,8 +58,7 @@ import {
   Bot,
   User,
   Camera,
-  Monitor,
-  Github
+  Monitor
 } from 'lucide-react';
 
 const DEBUG_TOOL_UI = false;
@@ -695,7 +694,7 @@ export default function CommandComposer({
   /* Removed duplicate declaration */
 
   // GitHub Modal State
-  const [showGithubModal, setShowGithubModal] = useState(false);
+
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -3406,17 +3405,7 @@ export default function CommandComposer({
             {/* Actions Footer Refactored for Corner Positioning */}
             <div className="composer-actions">
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <GitHubConnectModal
-                  isOpen={showGithubModal}
-                  onClose={() => setShowGithubModal(false)}
-                  onConnected={(repo) => {
-                    setEvents(prev => [...prev, {
-                      type: 'system',
-                      data: { text: `✅ Successfully connected to **${repo}**. The workspace has been updated.` },
-                      duration: 0
-                    }]);
-                  }}
-                />
+
 
                 <input
                   type="file"
@@ -3448,13 +3437,7 @@ export default function CommandComposer({
                   ) : <Paperclip size={14} />}
                 </button>
 
-                <button
-                  className="action-btn"
-                  onClick={() => setShowGithubModal(true)}
-                  title="Connect to GitHub Repo"
-                >
-                  <Github size={14} />
-                </button>
+
 
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}

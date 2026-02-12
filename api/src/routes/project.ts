@@ -245,67 +245,7 @@ router.post('/reset', authenticate as any, (req: Request, res: Response) => {
 
 // Clone GitHub Repo
 router.post('/git/clone', authenticate as any, async (req: Request, res: Response) => {
-  try {
-    const { repoUrl, token } = req.body;
-    const repoUrlRaw = String(repoUrl || '').trim();
-    if (!repoUrlRaw) return res.status(400).json({ error: 'Repo URL required' });
-    if (/\s/.test(repoUrlRaw)) return res.status(400).json({ error: 'Invalid repo URL' });
-
-    // Extract repo name
-    const repoNameRaw = repoUrlRaw.split('/').pop()?.replace(/\.git$/i, '') || '';
-    const repoName = sanitizeRepoDirName(repoNameRaw);
-
-    // Clone into uploads/repos/<name>
-    const baseDir = path.join(process.cwd(), 'uploads', 'repos');
-    await fs.promises.mkdir(baseDir, { recursive: true });
-
-    const targetDir = path.join(baseDir, repoName);
-
-    // Check if already exists
-    if (fs.existsSync(targetDir)) {
-      // Just switch to it if it exists
-      const workspaceId =
-        (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
-          ? req.headers['x-workspace-id'].trim()
-          : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
-            ? String((req.body as any).workspaceId).trim()
-            : '';
-      await workspaceService.setActiveRoot(targetDir, workspaceId || undefined);
-      return res.json({ success: true, path: targetDir, message: 'Repository already exists, switched to it.' });
-    }
-
-    // Prepare Clone Command
-    let cloneUrl = repoUrlRaw;
-    const tokenRaw = typeof token === 'string' ? token.trim() : '';
-    if (tokenRaw) {
-      if (/\s/.test(tokenRaw)) return res.status(400).json({ error: 'Invalid token' });
-      if (!cloneUrl.startsWith('https://') && !cloneUrl.startsWith('http://')) {
-        return res.status(400).json({ error: 'Token auth requires http(s) URL' });
-      }
-      // Insert token into URL: https://TOKEN@github.com/user/repo.git
-      // Helper to handle existing protocols
-      const cleanUrl = cloneUrl.replace('https://', '').replace('http://', '');
-      cloneUrl = `https://${tokenRaw}@${cleanUrl}`;
-    }
-
-    const r = await spawnWithTimeout('git', ['clone', '--', cloneUrl, targetDir], process.cwd(), 2 * 60_000);
-    if (r.code !== 0) {
-      const err = (r.stderr || r.stdout || 'git clone failed').trim();
-      return res.status(500).json({ error: maskUrlCredentials(err) });
-    }
-
-    const workspaceId =
-      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
-        ? req.headers['x-workspace-id'].trim()
-        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
-          ? String((req.body as any).workspaceId).trim()
-          : '';
-    await workspaceService.setActiveRoot(targetDir, workspaceId || undefined);
-    res.json({ success: true, path: targetDir });
-  } catch (e: any) {
-    const msg = e?.message || String(e || 'clone_failed');
-    res.status(500).json({ error: maskUrlCredentials(msg) });
-  }
+  return res.status(400).json({ error: "DEPRECATED: Please ask Joe to clone the repository. Say 'Clone https://github.com/...' and he will handle it." });
 });
 
 // ------------------------------------------------------------------

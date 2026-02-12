@@ -156,34 +156,17 @@ router.post('/unstage', authenticate as any, async (req: Request, res: Response)
 
 // POST /git/commit
 router.post('/commit', authenticate as any, async (req: Request, res: Response) => {
-    const { message } = req.body;
-    if (!message) return res.status(400).json({ error: 'Message required' });
-
-    // Set user config if needed (done by agent usually, but here simple fallback)
-    await gitExec(['config', 'user.name', 'Joe AI']);
-    await gitExec(['config', 'user.email', 'joe@xelitesolutions.com']);
-
-    const msg = String(message || '').trim();
-    const result = await gitExec(['commit', '-m', msg]);
-    if (result.ok) res.json({ ok: true, output: result.stdout });
-    else res.status(500).json({ error: result.error });
+    return res.status(400).json({ error: "DEPRECATED: Please ask Joe to commit your changes. Verify your diffs and simply say 'commit these changes'." });
 });
 
 // POST /git/push
 router.post('/push', authenticate as any, async (req: Request, res: Response) => {
-    // For now, simpler push. Authentication might fail without agent ASKPASS hook.
-    // Ideally we should use the GitOpsTool logic which sets up ASKPASS.
-    // But for UI Parity MVP, we might try simple push if SSH is set up, or fail and tell user to use Agent.
-    const result = await gitExec(['push']);
-    if (result.ok) res.json({ ok: true, output: result.stdout });
-    else res.status(500).json({ error: "Authenticated push requires Agent intervention. Please ask Joe to push." });
+    return res.status(400).json({ error: "DEPRECATED: Please ask Joe to push your changes. He handles authentication securely." });
 });
 
 // POST /git/pull
 router.post('/pull', authenticate as any, async (req: Request, res: Response) => {
-    const result = await gitExec(['pull']);
-    if (result.ok) res.json({ ok: true, output: result.stdout });
-    else res.status(500).json({ error: result.error });
+    return res.status(400).json({ error: "DEPRECATED: Please ask Joe to pull changes." });
 });
 
 export default router;
