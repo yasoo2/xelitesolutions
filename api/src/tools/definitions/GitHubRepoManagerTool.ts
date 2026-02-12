@@ -113,20 +113,43 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             auto_init: true
         });
 
-        const result = await this.githubRequest('POST', '/user/repos', data, token);
+        try {
+            const result = await this.githubRequest('POST', '/user/repos', data, token);
+            logs.push(`Repository created: ${result.html_url}`);
 
-        logs.push(`Repository created: ${result.html_url}`);
-
-        return {
-            ok: true,
-            output: {
-                success: true,
-                repoUrl: result.html_url,
-                cloneUrl: result.clone_url,
-                message: `Repository ${name} created successfully`
-            },
-            logs
-        };
+            return {
+                ok: true,
+                output: {
+                    success: true,
+                    repoUrl: result.html_url,
+                    cloneUrl: result.clone_url,
+                    message: `Repository ${name} created successfully`
+                },
+                logs
+            };
+        } catch (error: any) {
+            // Smart Recovery: Repo already exists
+            if (error.message && error.message.includes('name already exists')) {
+                logs.push(`Smart Recovery: Repository '${name}' already exists. Fetching details...`);
+                try {
+                    const username = await this.getUsername(token);
+                    const existingRepo = await this.githubRequest('GET', `/repos/${username}/${name}`, null, token);
+                    return {
+                        ok: true,
+                        output: {
+                            success: true,
+                            repoUrl: existingRepo.html_url,
+                            cloneUrl: existingRepo.clone_url,
+                            message: `Repository ${name} already exists (recovered successfully)`
+                        },
+                        logs
+                    };
+                } catch (fetchError: any) {
+                    throw new Error(`Failed to recover existing repo: ${fetchError.message}`);
+                }
+            }
+            throw error;
+        }
     }
 
     private async listRepos(token: string, logs: string[]) {

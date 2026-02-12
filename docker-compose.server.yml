@@ -55,16 +55,16 @@ services:
       - "5050:5050"
       - "7070:7070"
 
-  dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    container_name: joe_dashboard
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    networks:
-      - joe_net
+  #   dashboard:
+  #     build:
+  #       context: ./dashboard
+  #       dockerfile: Dockerfile
+  #     container_name: joe_dashboard
+  #     restart: unless-stopped
+  #     ports:
+  #       - "3001:3000"
+  #     networks:
+  #       - joe_net
 
   web:
     build:

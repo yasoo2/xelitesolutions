@@ -108,6 +108,38 @@ export class GitOpsTool extends BaseTool {
             return { ok: true, output: { output: envResult.stdout || envResult.stderr }, logs };
 
         } catch (e: any) {
+            const errorMsg = e.message || e.stderr || '';
+
+            // Smart Recovery 1: Missing Upstream
+            if (op === 'push' && errorMsg.includes('no upstream branch')) {
+                logs.push('Smart Recovery: Setting upstream branch automatically...');
+                try {
+                    const currentBranch = (await handleGitCommand('rev-parse', ['--abbrev-ref', 'HEAD'], process.cwd())).stdout.trim();
+                    if (currentBranch) {
+                        const upstreamArgs = ['push', '--set-upstream', 'origin', currentBranch];
+                        const retryResult = await runGitWithEnv('push', ['--set-upstream', 'origin', currentBranch], { ...process.env, ...env }, workspaceService.getActiveRoot());
+                        logs.push('Smart Recovery: Success');
+                        return { ok: true, output: { output: retryResult.stdout || retryResult.stderr }, logs };
+                    }
+                } catch (retryError: any) {
+                    logs.push(`Smart Recovery Failed: ${retryError.message}`);
+                }
+            }
+
+            // Smart Recovery 2: Remote Already Exists
+            if (op === 'remote' && args[0] === 'add' && errorMsg.includes('remote origin already exists')) {
+                logs.push('Smart Recovery: Remote exists, updating URL...');
+                try {
+                    // Try set-url instead
+                    const setUrlArgs = ['remote', 'set-url', ...args.slice(1)];
+                    const retryResult = await runGitWithEnv('remote', setUrlArgs.slice(1), { ...process.env, ...env }, workspaceService.getActiveRoot());
+                    logs.push('Smart Recovery: Success');
+                    return { ok: true, output: { output: retryResult.stdout || retryResult.stderr }, logs };
+                } catch (retryError: any) {
+                    logs.push(`Smart Recovery Failed: ${retryError.message}`);
+                }
+            }
+
             logs.push(`git.error=${e.message}`);
             return { ok: false, error: e.message || e.stderr, logs };
         } finally {
