@@ -251,6 +251,10 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveInput.action = 'create';
         effectiveInput.repoName = input.name || input.repoName;
     }
+    if (name === 'github_repo_manager' && effectiveInput.action === 'push') {
+        effectiveName = 'git_ops';
+        effectiveInput.operation = 'push';
+    }
     if (name === 'image_generate') {
         effectiveName = 'generate_image';
     }
