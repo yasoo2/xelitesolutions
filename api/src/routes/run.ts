@@ -366,6 +366,7 @@ function isGitAuthError(raw: string) {
 function isGithubAuthError(raw: string) {
   const s = String(raw || '');
   return (
+    /GitHub token required/i.test(s) ||
     /Missing GitHub token/i.test(s) ||
     /Bad credentials/i.test(s) ||
     /Requires authentication/i.test(s) ||
