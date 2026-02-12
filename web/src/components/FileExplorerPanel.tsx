@@ -2,6 +2,8 @@ import React from 'react';
 import { FilePlus, FolderPlus, GitBranch, RefreshCw } from 'lucide-react';
 import EliteFileExplorer from './EliteFileExplorer';
 
+import { GitHubRepo, GitHubUser } from '../services/githubService';
+
 interface FileExplorerPanelProps {
     onNewFile?: () => void;
     onNewFolder?: () => void;
@@ -9,6 +11,8 @@ interface FileExplorerPanelProps {
     onRefresh?: () => void;
     showGitChanges?: boolean;
     isCollapsed?: boolean;
+    activeRepo?: GitHubRepo | null;
+    githubUser?: GitHubUser | null;
 }
 
 export default function FileExplorerPanel({
@@ -17,7 +21,9 @@ export default function FileExplorerPanel({
     onGitChanges,
     onRefresh,
     showGitChanges = false,
-    isCollapsed = false
+    isCollapsed = false,
+    activeRepo = null,
+    githubUser = null
 }: FileExplorerPanelProps) {
     return (
         <aside className={`joe-files-panel ${isCollapsed ? 'collapsed' : ''}`}>
@@ -51,7 +57,10 @@ export default function FileExplorerPanel({
 
             {/* File Tree */}
             <div className="joe-files-content">
-                <EliteFileExplorer />
+                <EliteFileExplorer
+                    activeRepo={activeRepo}
+                    githubUser={githubUser}
+                />
             </div>
 
             {/* Footer Actions */}

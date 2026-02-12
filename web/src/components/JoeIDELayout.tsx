@@ -228,6 +228,8 @@ export default function JoeIDELayout({
                         onNewFile={onNewFile}
                         onNewFolder={onNewFolder}
                         onGitChanges={handleGitChanges}
+                        activeRepo={activeRepo}
+                        githubUser={githubUser}
                         isCollapsed={isExplorerCollapsed}
                     />
                 ) : (

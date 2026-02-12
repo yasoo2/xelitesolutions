@@ -160,6 +160,18 @@ router.get('/repos/:owner/:repo/contents', authenticate as any, async (req: Requ
         const apiPath = `/repos/${owner}/${repo}/contents/${filePath}${ref ? `?ref=${ref}` : ''}`;
 
         const contents = await ghApi('GET', apiPath, clean);
+
+        // If it's a single file (object, not array), decode the content if it's base64
+        if (contents && typeof contents === 'object' && !Array.isArray(contents)) {
+            if ((contents as any).encoding === 'base64' && (contents as any).content) {
+                try {
+                    (contents as any).content = Buffer.from((contents as any).content, 'base64').toString('utf8');
+                } catch (e) {
+                    console.error('Failed to decode GitHub content', e);
+                }
+            }
+        }
+
         return res.json({ contents });
     } catch (e: any) {
         return res.status(500).json({ error: e.message });

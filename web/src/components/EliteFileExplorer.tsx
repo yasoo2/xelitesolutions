@@ -26,6 +26,7 @@ import {
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
 import { motion, AnimatePresence } from 'framer-motion';
+import { githubService, GitHubRepo, GitHubUser } from '../services/githubService';
 
 interface FileNode {
     name: string;
@@ -44,6 +45,8 @@ interface SearchResult {
 
 interface FileExplorerProps {
     sessionId?: string;
+    activeRepo?: GitHubRepo | null;
+    githubUser?: GitHubUser | null;
 }
 
 type OpenTab = {
@@ -293,10 +296,10 @@ const ModalInput = ({
     );
 };
 
-export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
+export default function EliteFileExplorer({ sessionId, activeRepo, githubUser }: FileExplorerProps) {
     const [viewMode, setViewMode] = useState<'local' | 'github'>('local');
     const [repos, setRepos] = useState<any[]>([]);
-    const [activeRepo, setActiveRepo] = useState<string | null>(null);
+    // const [activeRepo, setActiveRepo] = useState<string | null>(null); // Removed, now from props
     const [tree, setTree] = useState<FileNode[]>([]);
     const [loading, setLoading] = useState(false);
     const [query, setQuery] = useState('');
@@ -317,6 +320,17 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
         type: 'folder' | 'clone' | null;
         loading: boolean;
     }>({ open: false, type: null, loading: false });
+
+    // Sync viewMode with activeRepo
+    useEffect(() => {
+        if (activeRepo) {
+            setViewMode('github');
+            loadRoot();
+        } else {
+            setViewMode('local');
+            loadRoot();
+        }
+    }, [activeRepo]);
 
     const fetchGitHubRepos = async () => {
         const token = localStorage.getItem('GITHUB_TOKEN');
@@ -339,6 +353,23 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
         const token = localStorage.getItem('token');
         if (!token) return { tree: [] };
 
+        if (viewMode === 'github' && activeRepo) {
+            try {
+                const [owner, repoName] = activeRepo.fullName.split('/');
+                const contents = await githubService.getContents(owner, repoName, path || '');
+                const tree: FileNode[] = contents.map(item => ({
+                    name: item.name,
+                    path: item.path,
+                    type: item.type === 'dir' ? 'directory' : 'file',
+                    hasChildren: item.type === 'dir'
+                }));
+                return { tree };
+            } catch (e) {
+                console.error('Failed to fetch GitHub tree', e);
+                return { tree: [] };
+            }
+        }
+
         try {
             const url = `${API}/project/tree` + (path ? `?path=${encodeURIComponent(path)}` : '');
             const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -358,6 +389,7 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
 
     const loadRoot = async () => {
         setLoading(true);
+        setExpandedByPath({});
         const { tree: roots } = await fetchTree();
         setTree(roots || []);
         setLoading(false);
@@ -447,6 +479,15 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
 
         try {
             const token = localStorage.getItem('token');
+            if (viewMode === 'github' && activeRepo) {
+                const [owner, repoName] = activeRepo.fullName.split('/');
+                const results = await githubService.getContents(owner, repoName, node.path);
+                const fileData = Array.isArray(results) ? results[0] : results;
+                const content = (fileData as any)?.content || '';
+                setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, content, isLoading: false } : t));
+                return;
+            }
+
             const res = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -455,7 +496,7 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
         } catch (e) {
             setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, error: 'Failed', isLoading: false } : t));
         }
-    }, []);
+    }, [viewMode, activeRepo]);
 
     const openFile = useCallback(async (node: FileNode) => {
         const existing = tabs.find(t => t.node.path === node.path);
@@ -674,9 +715,14 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                             <div className="elite-workspace-selector" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 <select
                                     className="elite-select"
-                                    value="current"
+                                    value={viewMode}
                                     onChange={async (e) => {
                                         const v = e.target.value;
+                                        if (v === 'local' || v === 'github') {
+                                            setViewMode(v as any);
+                                            loadRoot();
+                                            return;
+                                        }
                                         if (v === 'folder') {
                                             setModalConfig({ open: true, type: 'folder', loading: false });
                                         } else if (v === 'clone') {
@@ -696,11 +742,16 @@ export default function EliteFileExplorer({ sessionId }: FileExplorerProps) {
                                         }
                                     }}
                                 >
-                                    <option value="current">📂 {activeWorkspace?.name || 'Current Project'}</option>
+                                    <option value="local">📂 {activeWorkspace?.name || 'Local Project'}</option>
+                                    {activeRepo && <option value="github">🐙 {activeRepo.name}</option>}
                                     <option value="system">🖥️ Local System</option>
                                     <option value="folder">📁 Open Folder...</option>
                                 </select>
-                                {activeWorkspace && (
+                                {viewMode === 'github' && activeRepo ? (
+                                    <div style={{ fontSize: '10px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeRepo.fullName}>
+                                        Connected: {activeRepo.fullName}
+                                    </div>
+                                ) : activeWorkspace && (
                                     <div style={{ fontSize: '10px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeWorkspace.path}>
                                         {activeWorkspace.path}
                                     </div>
