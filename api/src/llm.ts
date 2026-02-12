@@ -469,7 +469,6 @@ You are a **General-Purpose Autonomous Software Engineer**. You are optimized fo
 - If you are retrieving info from your Knowledge Atlas, start with: "Based on my internal knowledge base..."
 - If you are reporting progress, start with: "I have successfully executed..." (only if the tool returned success).
 `;
-`;
 
 export const getSystemPrompt = (user?: {
   name?: string;
@@ -491,13 +490,13 @@ export const getSystemPrompt = (user?: {
   let systemPromptOutput =
     BASE_SYSTEM_PROMPT + `\n\nToday's Date: ${date}\nCurrent Time: ${time}`;
 
-if (user?.name) {
-  systemPromptOutput += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
-}
-if (user?.systemInstructions && user.systemInstructions.trim()) {
-  systemPromptOutput += `\n\nUSER CUSTOM INSTRUCTIONS:\n${user.systemInstructions.trim()}`;
-}
-return systemPromptOutput;
+  if (user?.name) {
+    systemPromptOutput += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
+  }
+  if (user?.systemInstructions && user.systemInstructions.trim()) {
+    systemPromptOutput += `\n\nUSER CUSTOM INSTRUCTIONS:\n${user.systemInstructions.trim()}`;
+  }
+  return systemPromptOutput;
 };
 
 // Deprecated: Use getSystemPrompt() instead
