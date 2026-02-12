@@ -179,8 +179,35 @@ export async function addMessage(req: Request, res: Response) {
 
 export async function updateSecrets(req: Request, res: Response) {
     const id = req.params.id;
-    // Just a stub for now to prevent crash
-    return res.json({ ok: true, message: 'Secrets updated (stub)' });
+    const { key, value, provider } = req.body;
+    const authUserId = (req as any).auth?.sub || (req as any).auth?.userId;
+
+    if (!key || value === undefined) {
+        return res.status(400).json({ error: 'Missing key or value' });
+    }
+
+    try {
+        const { setSessionSecretEncrypted, setUserSecretEncrypted } = await import('../services/secrets');
+        const { AgentLoopService } = await import('../services/AgentLoopService');
+
+        // 1. Save locally for this session
+        setSessionSecretEncrypted(id, key, value);
+
+        // 2. Save globally for the user if authenticated
+        if (authUserId) {
+            await setUserSecretEncrypted(authUserId, provider || 'github', key, value);
+        }
+
+        // 3. Trigger Resumption (Async)
+        AgentLoopService.handlePendingToolExecution(id, authUserId).catch(err => {
+            console.error('[SessionController] Failed to resume pending tool:', err);
+        });
+
+        return res.json({ ok: true, message: 'Secrets saved and resumption triggered' });
+    } catch (e: any) {
+        console.error('[SessionController] updateSecrets Error:', e);
+        return res.status(500).json({ error: e.message || 'Failed to update secrets' });
+    }
 }
 
 // ... (existing imports)
