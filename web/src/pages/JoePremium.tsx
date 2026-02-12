@@ -418,6 +418,8 @@ export default function JoePremium() {
                     hideHistory={true}
                     workspaceId={workspaceId}
                     onMessagesUpdate={handleComposerMessages}
+                    githubConnected={ghConnected}
+                    onGitClick={() => setIsGitHubOpen(true)}
                 />
             }
         >

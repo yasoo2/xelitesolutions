@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, MessageSquare, Settings, Moon, Sun, Github } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun } from 'lucide-react';
 
 interface JoeHeaderProps {
 
@@ -10,7 +10,6 @@ interface JoeHeaderProps {
     onThemeToggle?: () => void;
     onToggleChat?: () => void;
     onToggleExplorer?: () => void;
-    onGitClick?: () => void;
     isChatCollapsed?: boolean;
     isExplorerCollapsed?: boolean;
 }
@@ -24,7 +23,6 @@ export default function JoeHeader({
     onThemeToggle,
     onToggleChat,
     onToggleExplorer,
-    onGitClick,
     isChatCollapsed,
     isExplorerCollapsed
 }: JoeHeaderProps) {
@@ -92,11 +90,6 @@ export default function JoeHeader({
                     <button className="joe-header-btn" onClick={onSettingsClick} title="الإعدادات">
                         <Settings size={18} />
                     </button>
-                    {onGitClick && (
-                        <button className="joe-header-btn" onClick={onGitClick} title="GitHub Integration">
-                            <Github size={18} />
-                        </button>
-                    )}
                     <button
                         className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
                         onClick={onToggleExplorer}

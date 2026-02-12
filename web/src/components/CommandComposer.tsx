@@ -58,7 +58,8 @@ import {
   Bot,
   User,
   Camera,
-  Monitor
+  Monitor,
+  Github
 } from 'lucide-react';
 
 const DEBUG_TOOL_UI = false;
@@ -570,7 +571,6 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-1.5-flash' },
   grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
-
 export default function CommandComposer({
   sessionId,
   sessionKind = 'chat',
@@ -581,7 +581,9 @@ export default function CommandComposer({
   onStepsUpdate,
   onMessagesUpdate,
   hideHistory = false,
-  workspaceId
+  workspaceId,
+  githubConnected = false,
+  onGitClick
 
 }: {
   sessionId?: string;
@@ -594,6 +596,8 @@ export default function CommandComposer({
   onMessagesUpdate?: (msgs: any[]) => void;
   hideHistory?: boolean;
   workspaceId?: string | null;
+  githubConnected?: boolean;
+  onGitClick?: () => void;
 
 }) {
   const { t } = useTranslation();
@@ -3435,6 +3439,14 @@ export default function CommandComposer({
                   {isUploading ? (
                     <Loader2 size={14} className="spin" />
                   ) : <Paperclip size={14} />}
+                </button>
+
+                <button
+                  className="action-btn"
+                  onClick={onGitClick}
+                  title="GitHub Integration"
+                >
+                  <Github size={14} color={githubConnected ? "#10b981" : "#ef4444"} />
                 </button>
 
 
