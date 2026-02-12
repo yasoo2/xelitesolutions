@@ -1200,18 +1200,113 @@
 
 /* ========== Light Theme Override ========== */
 [data-theme="light"] .joe-ide-layout {
-    --joe-bg-primary: #f5f7fa;
-    --joe-bg-secondary: rgba(255, 255, 255, 0.9);
-    --joe-bg-panel: rgba(255, 255, 255, 0.95);
-    --joe-bg-card: rgba(248, 249, 250, 0.9);
-    --joe-bg-hover: rgba(212, 175, 55, 0.1);
+    --joe-bg-primary: #ffffff;
+    --joe-bg-secondary: #f0f9ff;
+    --joe-bg-panel: #ffffff;
+    --joe-bg-card: #ffffff;
+    --joe-bg-hover: rgba(14, 165, 233, 0.08);
 
-    --joe-text-primary: #1a1f2c;
-    --joe-text-secondary: #4a5568;
-    --joe-text-muted: #718096;
+    /* Sky Blue Overrides for Gold */
+    --joe-gold-primary: #0ea5e9;
+    --joe-gold-secondary: #0284c7;
+    --joe-gold-dark: #0369a1;
+    --joe-gold-glow: rgba(14, 165, 233, 0.3);
+    --joe-gold-subtle: rgba(14, 165, 233, 0.1);
+    --joe-gold-border: rgba(14, 165, 233, 0.2);
 
-    --joe-border: rgba(212, 175, 55, 0.25);
-    --joe-gold-border: rgba(212, 175, 55, 0.4);
+    --joe-text-primary: #0f172a;
+    --joe-text-secondary: #0369a1;
+    --joe-text-muted: #0ea5e9;
+    --joe-text-gold: #0ea5e9;
+
+    --joe-border: rgba(14, 165, 233, 0.15);
+    --joe-border-strong: rgba(14, 165, 233, 0.3);
+    --joe-border-glow: 0 0 15px rgba(14, 165, 233, 0.1);
+
+    --joe-shadow-gold: 0 0 20px rgba(14, 165, 233, 0.1);
+}
+
+/* Visibility Fixes for Light Mode Chat Input */
+[data-theme="light"] .joe-chat-input-area {
+    background: #ffffff !important;
+    border-top: 1px solid var(--joe-border) !important;
+}
+
+[data-theme="light"] .joe-chat-input-area .main-input {
+    color: var(--joe-text-primary) !important;
+}
+
+[data-theme="light"] .joe-chat-input-area .main-input::placeholder {
+    color: var(--joe-text-muted) !important;
+    opacity: 0.6;
+}
+
+[data-theme="light"] .joe-chat-input-area .action-btn,
+[data-theme="light"] .joe-chat-input-area .provider-btn {
+    color: var(--joe-gold-primary) !important;
+}
+
+[data-theme="light"] .joe-chat-input-area .send-btn {
+    background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--joe-gold-primary) !important;
+    box-shadow: 0 2px 10px rgba(14, 165, 233, 0.2) !important;
+}
+
+[data-theme="light"] .joe-chat-input-area .send-btn svg {
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .joe-chat-input-area .action-btn:hover,
+[data-theme="light"] .joe-chat-input-area .provider-btn:hover {
+    background: var(--joe-bg-hover) !important;
+    color: var(--joe-gold-secondary) !important;
+}
+
+/* Header & Panel Button Fixes for Light Mode */
+[data-theme="light"] .joe-header-btn {
+    background: #f0f9ff !important;
+    border-color: var(--joe-border) !important;
+    color: var(--joe-text-secondary) !important;
+}
+
+[data-theme="light"] .joe-header-btn:hover {
+    background: var(--joe-bg-hover) !important;
+    border-color: var(--joe-gold-primary) !important;
+    color: var(--joe-gold-primary) !important;
+}
+
+/* Modal Fixes */
+[data-theme="light"] .providers-modal,
+[data-theme="light"] .settings-dialog {
+    background: #ffffff !important;
+    border-color: var(--joe-gold-primary) !important;
+    box-shadow: 0 20px 60px rgba(14, 165, 233, 0.1) !important;
+}
+
+[data-theme="light"] .providers-modal h3,
+[data-theme="light"] .settings-dialog h3 {
+    color: var(--joe-gold-primary) !important;
+    border-bottom-color: var(--joe-border) !important;
+}
+
+/* Tab & Toolbar Fixes */
+[data-theme="light"] .joe-terminal-toolbar,
+[data-theme="light"] .joe-browser-toolbar {
+    background: #f0f9ff !important;
+    border-bottom-color: var(--joe-border) !important;
+    color: var(--joe-text-secondary) !important;
+}
+
+[data-theme="light"] .joe-workspace-tab.active {
+    background: #ffffff !important;
+    color: var(--joe-gold-primary) !important;
+    border-bottom-color: var(--joe-gold-primary) !important;
+}
+
+/* AI Thinking Pulse */
+[data-theme="light"] .btn-thinking-pulse {
+    background: rgba(14, 165, 233, 0.3) !important;
 }
 
 /* ========== Responsive - Large Desktop ========== */
