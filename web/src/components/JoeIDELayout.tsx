@@ -191,6 +191,7 @@ export default function JoeIDELayout({
                 onThemeToggle={onThemeToggle}
                 onToggleChat={toggleChat}
                 onToggleExplorer={toggleExplorer}
+                onGitClick={handleGitChanges}
                 isChatCollapsed={isChatCollapsed}
                 isExplorerCollapsed={isExplorerCollapsed}
             />
