@@ -2799,9 +2799,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (wantsGithubRepo || (awaitingRepoName && requestedRepoName)) {
             if (requestedRepoName) {
               plan = {
-                name: 'github_create_repo',
+                name: 'github_repo_manager',
                 input: {
-                  name: requestedRepoName,
+                  action: 'create',
+                  repoName: requestedRepoName,
                   private: /(private|خاص)/i.test(userTextForOverrides),
                   sessionId: String(sessionId),
                 },
@@ -3109,7 +3110,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
           }
 
-          if (String(plan?.name || '') === 'github_create_repo') {
+          if (String(plan?.name || '') === 'github_repo_manager' || String(plan?.name || '') === 'github_create_repo') {
             const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
             if (wantsAccess) {
               plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
@@ -4368,7 +4369,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               });
             }
 
-            if (String(plan?.name || '') === 'github_create_repo' && isGithubAuthError(errorMsg)) {
+            if ((String(plan?.name || '') === 'github_repo_manager' || String(plan?.name || '') === 'github_create_repo') && isGithubAuthError(errorMsg)) {
               const msg = [
                 `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
                 `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,

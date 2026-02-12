@@ -245,13 +245,14 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveInput.operation = 'push';
     }
 
-    // [ELITE FIX] Redirect analyze_codebase with URL to browser_run
-    if ((name === 'analyze_codebase' || name === 'analyze_project') && /^https?:\/\//i.test(String(effectiveInput.path || ''))) {
-        const url = String(effectiveInput.path).trim();
-        effectiveName = 'browser_run';
-        effectiveInput.instructionText = `Visit and perform a deep architectural and codebase analysis of this repository: ${url}`;
-        if (!effectiveInput.sessionId && contextSessionId) effectiveInput.sessionId = contextSessionId;
-        logs.push(`redirected=${name}_to_browser_run url=${url}`);
+    // [GHOST TOOL FIX] Alias legacy/hallucinated names to real implementations
+    if (name === 'github_create_repo') {
+        effectiveName = 'github_repo_manager';
+        effectiveInput.action = 'create';
+        effectiveInput.repoName = input.name || input.repoName;
+    }
+    if (name === 'image_generate') {
+        effectiveName = 'generate_image';
     }
 
     // Universal Session Injection
