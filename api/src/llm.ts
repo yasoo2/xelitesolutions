@@ -38,6 +38,33 @@ if (apiKey) {
 // Support for dynamic API key from requests (Scoped by User ID)
 const userApiKeys = new Map<string, string>();
 
+// Helper to extract JSON tool call from messy LLM text
+export function extractToolCallFromText(text: string): { name: string; input: any; reasoning?: string } | null {
+  if (!text) return null;
+
+  // 1. Try to find JSON block in markdown
+  const markdownJsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+  if (markdownJsonMatch) {
+    try {
+      const json = JSON.parse(markdownJsonMatch[1].trim());
+      if (json.name && json.input) return json;
+    } catch (e) { }
+  }
+
+  // 2. Try to find the first/last {...} block
+  try {
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      const candidate = text.substring(firstBrace, lastBrace + 1);
+      const json = JSON.parse(candidate);
+      if (json.name && json.input) return json;
+    }
+  } catch (e) { }
+
+  return null;
+}
+
 export function setDynamicOpenAIKey(userId: string, key: string) {
   const trimmed = typeof key === "string" ? key.trim() : "";
   if (!userId) {
@@ -448,11 +475,19 @@ export const BASE_SYSTEM_PROMPT = `You are "Joe", a professional and collaborati
 YOUR CORE NATURE:
 1.  **Honest Collaboration**: You do not exaggerate your abilities. You are a partner to the user, not a "God-Tier" entity. If you haven't built something yet, say "I am ready to build X" instead of "I have built X".
 2.  **Truthful Progress**: You only report success for actions you have actually performed. Distinguish clearly between your "Knowledge Atlas" (what you know) and your "Project Work" (what you have done in this session).
-3.  **Technical Precision**: You are a builder. You use tools to verify facts and execute changes. Avoid robotic fluff and marketing-speak.
+3.  **Technical Precision**: You are a builder. You use tools to verify facts and execute changes. Avoid robotic fluff. If you want to use a tool, output ONLY the JSON structure for the tool call.
 4.  **Action & Verification**: Every action must be verified. If you write a file, you check if it's there. If you run a build, you analyze the output.
 
 ## WAKIL 6.0 ENGINEERING STANDARD:
 You are a **General-Purpose Autonomous Software Engineer**. You are optimized for **Explanation, Completeness, and Truth**.
+
+### MANDATORY TOOL CALL FORMAT:
+If you decide to take an action, you MUST output a JSON block like this (and ONLY this, do not add conversational text before/after if you are acting):
+{
+  "name": "tool_name",
+  "input": { "param1": "value" },
+  "reasoning": "Brief explanation of why this action is taken"
+}
 
 ### MANDATORY CYCLE:
 ** EXPLORE → PLAN → EXECUTE → VERIFY → REPORT **
@@ -650,7 +685,7 @@ export async function planNextStep(
     content: string | any[];
   }[],
   options?: PlanOptions,
-): Promise<{ name: string; input: any } | null> {
+): Promise<{ name: string; input: any; reasoning?: string } | null> {
   const provider =
     options?.provider || getActiveProvider(options?.userId || "anonymous");
   const providerKey = String(provider || "")
@@ -1433,44 +1468,37 @@ export async function planNextStep(
         console.info("[FREE OPTIMIZER] ✅ Response cached for future use");
       }
 
-      // [Wakil 6.0] JSON/Tool Parsing Logic
+      // [Wakil 6.0] Upgraded Robust JSON/Tool Parsing Logic
+      const toolCall = extractToolCallFromText(response || "");
+      if (toolCall) {
+        console.info(
+          `[Auto Enterprise] 🛠️ Extracted Tool Call: ${toolCall.name}`,
+        );
+        return {
+          name: toolCall.name,
+          input: toolCall.input,
+          reasoning: toolCall.reasoning,
+        };
+      }
+
+      // Check for raw JSON fallback (historical compat)
       try {
-        // Attempt to clean markdown code blocks if the model wrapped the JSON
         const cleanJson = (response || "")
           .replace(/^```json\s*/, "")
           .replace(/\s*```$/, "")
           .trim();
         const json = JSON.parse(cleanJson);
 
-        // If it's a valid tool call structure
         if (json.name && json.input) {
-          console.info(
-            "[Auto Enterprise] 🛠️ Parsed JSON Tool Call:",
-            json.name,
-          );
           return {
             name: json.name,
             input: json.input,
-            reasoning: json.reasoning,
-          } as any;
+            reasoning: (json as any).reasoning,
+          };
         }
+      } catch (e) { }
 
-        // If it has a reasoning field but missing tool structure (e.g. just a response object?)
-        if (json.reasoning) {
-          // Check for common content fields
-          const content =
-            json.response || json.content || json.text || json.message;
-          if (content) {
-            return {
-              name: "echo",
-              input: { text: content },
-              reasoning: json.reasoning,
-            } as any;
-          }
-        }
-      } catch (e) {
-        // Not JSON, treat as standard text
-      }
+      console.info("[Auto Enterprise] No tool call detected, echoing text.");
 
       const lastMsgContent = messages[messages.length - 1]?.content;
       const lastMsgText =

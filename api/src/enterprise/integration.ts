@@ -186,7 +186,7 @@ export async function enhanceAutoMode(
     userId: string,
     sessionId: string,
     history: any[]
-): Promise<{ name: string; input: any } | null> {
+): Promise<{ name: string; input: any; reasoning?: string } | null> {
 
     try {
         const request: EnhancedRequest = {
