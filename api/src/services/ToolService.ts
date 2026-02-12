@@ -375,7 +375,12 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         // But for now, we assume tDef has the handler.
 
         if (typeof (tDef as any).execute === 'function') {
-            const run = async () => await (tDef as any).execute(effectiveInput, effectiveContext);
+            const run = async () => {
+                if (effectiveContext.userId && typeof (effectiveInput as any).userId !== 'string') {
+                    (effectiveInput as any).userId = effectiveContext.userId;
+                }
+                return await (tDef as any).execute(effectiveInput, effectiveContext);
+            };
             const { workspaceService } = require('./WorkspaceService');
             const res = contextWorkspaceId ? await workspaceService.runWithWorkspace(contextWorkspaceId, run) : await run();
             const ok = !!res?.ok;
