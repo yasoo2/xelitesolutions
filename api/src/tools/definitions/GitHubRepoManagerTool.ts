@@ -61,14 +61,17 @@ export class GitHubRepoManagerTool implements ToolDefinition {
         try {
             logs.push(`GitHub action: ${action} for repo: ${repoName || 'N/A'}`);
 
-            let githubToken = token || process.env.GITHUB_TOKEN;
+            let githubToken = (token || process.env.GITHUB_TOKEN || '').trim();
 
             // Fallback to user secrets if token is still missing
             if (!githubToken && (input as any).userId) {
                 try {
                     const { getUserSecret } = require('../../services/secrets');
-                    githubToken = await getUserSecret((input as any).userId, 'github', 'GITHUB_TOKEN');
-                    if (githubToken) logs.push(`Using GitHub token from user secrets`);
+                    const secretFn = await getUserSecret((input as any).userId, 'github', 'GITHUB_TOKEN');
+                    if (secretFn) {
+                        githubToken = secretFn.trim();
+                        logs.push(`Using GitHub token from user secrets`);
+                    }
                 } catch (e) {
                     logs.push(`Failed to fetch user secret: ${(e as any).message}`);
                 }
