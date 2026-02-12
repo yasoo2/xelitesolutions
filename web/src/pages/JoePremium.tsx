@@ -12,6 +12,8 @@ import { useSessionActions } from '../hooks/useSessionActions';
 import { SocketService } from '../services/socket';
 import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
+import GitHubConnectDialog from '../components/GitHubConnectDialog';
+import { githubService, GitHubRepo, GitHubUser } from '../services/githubService';
 import { useTranslation } from 'react-i18next';
 
 interface Message {
@@ -46,6 +48,10 @@ export default function JoePremium() {
     const [isConnected, setIsConnected] = useState(true);
     const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isGitHubOpen, setIsGitHubOpen] = useState(false);
+    const [ghUser, setGhUser] = useState<GitHubUser | null>(null);
+    const [ghRepos, setGhRepos] = useState<GitHubRepo[]>([]);
+    const [ghConnected, setGhConnected] = useState(false);
 
     const { i18n } = useTranslation();
 
@@ -57,6 +63,21 @@ export default function JoePremium() {
             return;
         }
         loadAllSessions();
+
+        // Check GitHub connection status
+        githubService.getStatus().then((s) => {
+            if (s.connected) {
+                setGhConnected(true);
+                setGhUser({ username: s.username!, avatarUrl: s.avatarUrl!, name: s.name! });
+                githubService.listRepos().then(setGhRepos).catch(() => { });
+            }
+        }).catch(() => { });
+    }, []);
+
+    const handleGitHubConnected = useCallback((user: GitHubUser) => {
+        setGhConnected(true);
+        setGhUser(user);
+        githubService.listRepos().then(setGhRepos).catch(() => { });
     }, []);
 
     // Socket subscription for auto-switching tabs
@@ -334,6 +355,7 @@ export default function JoePremium() {
             // Connection
             isConnected={isConnected}
             branch="main"
+            onGitChanges={() => setIsGitHubOpen(true)}
 
             // Children - CommandComposer for chat input
             chatChildren={
@@ -353,6 +375,11 @@ export default function JoePremium() {
                 setTheme={setTheme}
                 lang={i18n.language}
                 setLang={handleLangChange}
+            />
+            <GitHubConnectDialog
+                isOpen={isGitHubOpen}
+                onClose={() => setIsGitHubOpen(false)}
+                onConnected={handleGitHubConnected}
             />
         </JoeIDELayout>
     );

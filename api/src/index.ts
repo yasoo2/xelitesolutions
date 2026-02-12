@@ -21,6 +21,7 @@ import systemRoutes from './routes/system';
 import providersRoutes from './routes/providers';
 import packagesRoutes from './routes/packages';
 import gitRoutes from './routes/git';
+import githubRoutes from './routes/github';
 
 import databaseRoutes from './routes/database';
 import actionsRoutes from './routes/actions';
@@ -180,6 +181,7 @@ async function main() {
   apiRouter.use('/providers', providersRoutes);
   apiRouter.use('/packages', packagesRoutes);
   apiRouter.use('/git', gitRoutes);
+  apiRouter.use('/github', githubRoutes);
 
   apiRouter.use('/database', databaseRoutes);
   apiRouter.use('/actions', actionsRoutes);
