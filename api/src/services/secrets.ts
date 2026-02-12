@@ -16,7 +16,7 @@ type SecretEntry = {
 };
 
 const sessionSecrets = new Map<string, Map<string, SecretEntry>>();
-const pendingToolBySession = new Map<string, PendingToolContext>();
+// [REMOVED] pendingToolBySession - moved to DB
 const runConfigBySession = new Map<
   string,
   {
@@ -192,18 +192,29 @@ export function setSessionSecretEncrypted(sessionId: string, key: string, value:
   return expiresAt ?? null;
 }
 
-export function setPendingTool(sessionId: string, ctx: PendingToolContext) {
+export async function setPendingTool(sessionId: string, ctx: PendingToolContext) {
   const sid = String(sessionId || '').trim();
   if (!sid) return;
-  pendingToolBySession.set(sid, ctx);
+  // Make robust against restarts by saving to DB
+  try {
+    const { Session } = require('../models/session');
+    await Session.findByIdAndUpdate(sid, { $set: { pendingTool: ctx } });
+  } catch (e) {
+    console.error('[Secrets] Failed to set pending tool in DB', e);
+  }
 }
 
-export function popPendingTool(sessionId: string): PendingToolContext | null {
+export async function popPendingTool(sessionId: string): Promise<PendingToolContext | null> {
   const sid = String(sessionId || '').trim();
   if (!sid) return null;
-  const ctx = pendingToolBySession.get(sid) || null;
-  pendingToolBySession.delete(sid);
-  return ctx;
+  try {
+    const { Session } = require('../models/session');
+    const doc = await Session.findByIdAndUpdate(sid, { $unset: { pendingTool: 1 } }).select({ pendingTool: 1 }).lean();
+    return (doc as any)?.pendingTool || null;
+  } catch (e) {
+    console.error('[Secrets] Failed to pop pending tool from DB', e);
+    return null;
+  }
 }
 
 export function setSessionRunConfig(

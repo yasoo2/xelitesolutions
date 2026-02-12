@@ -4355,7 +4355,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               });
 
               const { setPendingTool } = await import('../services/secrets');
-              setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+              await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
               try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
@@ -4391,7 +4391,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               });
 
               const { setPendingTool } = await import('../services/secrets');
-              setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+              await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
               try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
@@ -4426,7 +4426,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               });
 
               const { setPendingTool } = await import('../services/secrets');
-              setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+              await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
 
 
               try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }

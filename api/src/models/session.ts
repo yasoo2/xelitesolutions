@@ -15,6 +15,12 @@ export interface ISession extends Document {
   updatedAt: Date;
   folderId?: Types.ObjectId;
   terminalState?: string;
+  pendingTool?: {
+    runId: string;
+    name: string;
+    input: any;
+    workspaceId?: string;
+  };
 }
 
 const SessionSchema = new Schema<ISession>(
@@ -31,6 +37,12 @@ const SessionSchema = new Schema<ISession>(
     lastUpdatedAt: { type: Date, default: Date.now },
     folderId: { type: Schema.Types.ObjectId, ref: 'Folder' },
     terminalState: { type: String },
+    pendingTool: {
+      runId: { type: String },
+      name: { type: String },
+      input: { type: Schema.Types.Mixed },
+      workspaceId: { type: String }
+    },
   },
   { timestamps: true }
 );

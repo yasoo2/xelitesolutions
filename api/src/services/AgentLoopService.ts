@@ -56,7 +56,7 @@ async function isMessageDuplicate(sessionId: string, text: string): Promise<bool
 export class AgentLoopService {
 
     static async handlePendingToolExecution(sessionId: string, userId: string | undefined) {
-        const pending = popPendingTool(sessionId);
+        const pending = await popPendingTool(sessionId);
         if (!pending) return { ok: true, noOp: true };
 
         // Update Run Status
