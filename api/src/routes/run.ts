@@ -1638,8 +1638,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const plannerInstructions = isGodMode
         ? (text || '') + '\n[GOD MODE ACTIVE: Full Autonomy Enforced]'
         : text;
+      const userObj = (req as any).user || {};
+      const actualName = (userObj.name && !/^[0-9a-fA-F]{24}$/.test(userObj.name)) ? userObj.name : 'يونس';
+
       const currentSystemPrompt = getSystemPrompt({
-        name: (req as any).user?.name,
+        name: actualName,
         systemInstructions: userSystemInstructions || undefined,
       });
 
@@ -2277,7 +2280,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (!hasUrl && !hasSiteKeyword && !browserKeyword) return false;
           if (!(openKeyword || browserKeyword || hasUrl)) return false;
           if (multiStepKeyword) return false;
-          if (isFileOp && !hasUrl) return false;
+          // [FIX] Don't trigger if it looks like a local file/code operation
+          if (isFileOp) return false;
           if (analysisKeyword) return false;
           return true;
         })();

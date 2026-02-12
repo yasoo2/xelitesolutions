@@ -104,7 +104,7 @@ const PRIORITY_TOOL_NAMES: string[] = [
   "deep_research",
 ];
 
-function selectToolDefsForProvider(
+export function selectToolDefsForProvider(
   all: typeof tools,
   limit: number,
   messages: {
@@ -178,9 +178,10 @@ function selectToolDefsForProvider(
     /\b(browser|browse|web|website|open|visit|goto|nav|navigate)\b/i.test(
       routingTextRaw,
     ) ||
-    /(متصفح|تصفح|موقع|رابط|داخل\s+المتصفح|افتح|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|اذهب\s+الى|اذهب\s+إلى|انتقل\s+إلى|انتقل\s+الى|افتحلي|افتح\s+لي|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|اختبر|شيك|جرّب|تأكد)/i.test(
+    (/(متصفح|تصفح|موقع|رابط|داخل\s+المتصفح|ادخل|اذهب|روح|زور|وديني|ودني|ودنا|اذهب\s+الى|اذهب\s+إلى|انتقل\s+إلى|انتقل\s+الى|افتحلي|افتح\s+لي|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى|اختبر|شيك|جرّب|تأكد)/i.test(
       routingNorm,
-    );
+    ) &&
+      !/(ملف|كود|مجلد|مجلدات|برمجة)/i.test(routingNorm));
   const wantsSearch =
     /\b(search|research|find|lookup|web_search|deep_research|knowledge)\b/i.test(
       routingTextRaw,
@@ -230,7 +231,8 @@ function selectToolDefsForProvider(
     if (!t) continue;
     selected.push(t);
     seen.add(t.name);
-    if (selected.length >= effectiveLimit) return selected;
+    // Allow the loop to continue to fill with scored tools even if priority list is large
+    if (selected.length >= effectiveLimit) break;
   }
 
   const isGeneratedName = (name: string) =>

@@ -227,4 +227,18 @@ export const tools: ToolDefinition[] = [
   new AmbiguityResolverTool(),
   new MultiAgentDebateTool(),
   new SelfConfidenceTool(),
+  // --- Virtual Tools (Aliased in ToolService) ---
+  {
+    name: 'web_search',
+    description: 'Perform a web search using Google. Best for finding the latest news, documentation, or general information.',
+    version: '1.0.0',
+    tags: ['search', 'web', 'google'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query' }
+      },
+      required: ['query']
+    }
+  } as any,
 ];
