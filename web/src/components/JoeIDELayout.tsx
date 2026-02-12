@@ -3,10 +3,11 @@ import JoeHeader from './JoeHeader';
 import ChatPanel from './ChatPanel';
 import WorkspacePanel from './WorkspacePanel';
 import FileExplorerPanel from './FileExplorerPanel';
+import GitHubPanel from './GitHubPanel';
 import SessionsBar from './SessionsBar';
 import StatusBar from './StatusBar';
+import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import '../styles/joe-premium.css';
-
 interface Session {
     id: string;
     title: string;
@@ -57,6 +58,18 @@ interface JoeIDELayoutProps {
     onNewFile?: () => void;
     onNewFolder?: () => void;
     onGitChanges?: () => void;
+
+    // GitHub Integration
+    githubUser?: GitHubUser | null;
+    githubRepos?: GitHubRepo[];
+    activeRepo?: GitHubRepo | null;
+    githubCommits?: GitHubCommit[];
+    onSelectRepo?: (repo: GitHubRepo) => void;
+    onRefreshGithub?: () => void;
+    onConnectGithub?: () => void;
+    onDisconnectGithub?: () => void;
+    onCreateRepo?: () => void;
+    githubLoading?: boolean;
 
     // Theme
     theme?: 'dark' | 'light';
@@ -117,13 +130,23 @@ export default function JoeIDELayout({
     // Custom content
     chatChildren,
     workspaceChildren,
-    children
+    children,
+
+    // GitHub Integration Props
+    githubUser = null,
+    githubRepos = [],
+    activeRepo = null,
+    githubCommits = [],
+    onSelectRepo,
+    onRefreshGithub,
+    onConnectGithub,
+    onDisconnectGithub,
+    onCreateRepo,
+    githubLoading = false
 }: JoeIDELayoutProps) {
 
-    // Internal state for workspace tab if not controlled
-    const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
-
     // Sidebar states
+    const [sidebarView, setSidebarView] = useState<'explorer' | 'github'>('explorer');
     const [isChatCollapsed, setIsChatCollapsed] = useState(false);
     const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(false);
 
@@ -138,6 +161,12 @@ export default function JoeIDELayout({
 
     const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
+
+    const handleGitChanges = useCallback(() => {
+        setSidebarView('github');
+        setIsExplorerCollapsed(false);
+        if (onGitChanges) onGitChanges();
+    }, [onGitChanges]);
 
     const handleMaximizeToggle = useCallback(() => {
         const nextState = !(isChatCollapsed && isExplorerCollapsed);
@@ -190,13 +219,29 @@ export default function JoeIDELayout({
                     {workspaceChildren}
                 </WorkspacePanel>
 
-                {/* Right: File Explorer */}
-                <FileExplorerPanel
-                    onNewFile={onNewFile}
-                    onNewFolder={onNewFolder}
-                    onGitChanges={onGitChanges}
-                    isCollapsed={isExplorerCollapsed}
-                />
+                {/* Right: File Explorer / GitHub Panel */}
+                {sidebarView === 'explorer' ? (
+                    <FileExplorerPanel
+                        onNewFile={onNewFile}
+                        onNewFolder={onNewFolder}
+                        onGitChanges={handleGitChanges}
+                        isCollapsed={isExplorerCollapsed}
+                    />
+                ) : (
+                    <GitHubPanel
+                        user={githubUser}
+                        repos={githubRepos}
+                        activeRepo={activeRepo}
+                        commits={githubCommits}
+                        onSelectRepo={onSelectRepo || (() => { })}
+                        onRefresh={onRefreshGithub || (() => { })}
+                        onConnect={onConnectGithub || (() => { })}
+                        onDisconnect={onDisconnectGithub || (() => { })}
+                        onCreateRepo={onCreateRepo || (() => { })}
+                        onBackToFileExplorer={() => setSidebarView('explorer')}
+                        isLoading={githubLoading}
+                    />
+                )}
             </div>
 
             {/* Sessions Bar */}

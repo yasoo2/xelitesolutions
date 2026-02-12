@@ -13,7 +13,7 @@ import { SocketService } from '../services/socket';
 import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
 import GitHubConnectDialog from '../components/GitHubConnectDialog';
-import { githubService, GitHubRepo, GitHubUser } from '../services/githubService';
+import { githubService, GitHubRepo, GitHubUser, GitHubCommit } from '../services/githubService';
 import { useTranslation } from 'react-i18next';
 
 interface Message {
@@ -51,7 +51,10 @@ export default function JoePremium() {
     const [isGitHubOpen, setIsGitHubOpen] = useState(false);
     const [ghUser, setGhUser] = useState<GitHubUser | null>(null);
     const [ghRepos, setGhRepos] = useState<GitHubRepo[]>([]);
+    const [activeRepo, setActiveRepo] = useState<GitHubRepo | null>(null);
+    const [ghCommits, setGhCommits] = useState<GitHubCommit[]>([]);
     const [ghConnected, setGhConnected] = useState(false);
+    const [ghLoading, setGhLoading] = useState(false);
 
     const { i18n } = useTranslation();
 
@@ -74,10 +77,48 @@ export default function JoePremium() {
         }).catch(() => { });
     }, []);
 
+    const handleRefreshGithub = useCallback(async () => {
+        setGhLoading(true);
+        try {
+            const repos = await githubService.listRepos();
+            setGhRepos(repos);
+            if (activeRepo) {
+                const commits = await githubService.getCommits(activeRepo.fullName.split('/')[0], activeRepo.name);
+                setGhCommits(commits);
+            }
+        } catch (e) {
+            console.error('Failed to refresh GitHub:', e);
+        } finally {
+            setGhLoading(false);
+        }
+    }, [activeRepo]);
+
+    const handleSelectRepo = useCallback(async (repo: GitHubRepo) => {
+        setActiveRepo(repo);
+        setGhLoading(true);
+        try {
+            const commits = await githubService.getCommits(repo.fullName.split('/')[0], repo.name);
+            setGhCommits(commits);
+        } catch (e) {
+            console.error('Failed to fetch commits:', e);
+        } finally {
+            setGhLoading(false);
+        }
+    }, []);
+
     const handleGitHubConnected = useCallback((user: GitHubUser) => {
         setGhConnected(true);
         setGhUser(user);
         githubService.listRepos().then(setGhRepos).catch(() => { });
+    }, []);
+
+    const handleDisconnectGitHub = useCallback(async () => {
+        // Simple client-side disconnect for now. Server session persists.
+        setGhConnected(false);
+        setGhUser(null);
+        setGhRepos([]);
+        setActiveRepo(null);
+        setGhCommits([]);
     }, []);
 
     // Socket subscription for auto-switching tabs
@@ -356,6 +397,18 @@ export default function JoePremium() {
             isConnected={isConnected}
             branch="main"
             onGitChanges={() => setIsGitHubOpen(true)}
+
+            // GitHub Integration
+            githubUser={ghUser}
+            githubRepos={ghRepos}
+            activeRepo={activeRepo}
+            githubCommits={ghCommits}
+            onSelectRepo={handleSelectRepo}
+            onRefreshGithub={handleRefreshGithub}
+            onConnectGithub={() => setIsGitHubOpen(true)}
+            onDisconnectGithub={handleDisconnectGitHub}
+            onCreateRepo={() => setIsGitHubOpen(true)} // Open's connect/create flow
+            githubLoading={ghLoading}
 
             // Children - CommandComposer for chat input
             chatChildren={
