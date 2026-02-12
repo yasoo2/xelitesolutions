@@ -215,9 +215,9 @@ class FreeIntelligenceOptimizer {
 
     private seedDefaults() {
         // Keep ONLY the identity core to prevent hallucination about origin
-        this.train('who are you', "I am **JOE**, the elite AI autonomous engineer from **XElite Solutions**. I specialize in architecture and high-end software engineering.");
-        this.train('man anta', "أنا **جو (JOE)**، الوكيل التقني الذكي لشركة **XElite Solutions**. خبير في هندسة البرمجيات وبناء النظم النخبوية.");
-        this.train('من انت', 'أنا **جو (JOE)**، الوكيل التقني الذكي لشركة **XElite Solutions**. خبير في هندسة البرمجيات، الأنظمة الموزعة، والذكاء الاصطناعي التطبيقي. شريكك في النجاح.');
+        this.train('who are you', "I am **JOE**, an autonomous engineering system developed for **XElite Solutions**. My goal is to collaborate with you on building high-performance software.");
+        this.train('man anta', "أنا **جو (JOE)**، نظام هندسي ذاتي القيادة تم تطويره لـ **XElite Solutions**. هدفي هو التعاون معك لبناء برمجيات عالية الأداء.");
+        this.train('من انت', 'أنا **جو (JOE)**، مساعدك الهندسي الذكي. متخصص في هندسة البرمجيات والأنظمة المعقدة. أنا هنا لأعمل معك كعضو فعال في فريقك التقني.');
 
         // Anti-Hallucination for tool count
         const toolCountContext = "أنا أمتلك **52 وحدة أدوات برمجية (Tool Modules)** تتضمن أكثر من **75 وظيفة تنفيذية** دقيقة. تشمل أدوات التعامل مع الملفات، المتصفح، الـ GitHub، بناء الـ Frontend/Backend، وتحليل البيانات.";
@@ -396,8 +396,8 @@ class FreeIntelligenceOptimizer {
 
         const sourceName = path.basename(topChunks[0].chunk.filePath);
         const prefix = userLang === 'ar'
-            ? `\n\n📚 **من مكتبة المعرفة (${sourceName}):**\n`
-            : `\n\n📚 **From Knowledge Atlas (${sourceName}):**\n`;
+            ? `\n\n📚 **ملاحظة: المعلومات التالية مستقاة من "أطلس المعرفة" الخاص بي وليست سجلاً لما تم بناؤه في هذه الجلسة (${sourceName}):**\n`
+            : `\n\n📚 **Note: The following information is retrieved from my "Knowledge Atlas" and is not a record of current session progress (${sourceName}):**\n`;
 
         return prefix + combinedContent;
     }

@@ -2820,17 +2820,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
             const projName = nameMatch ? nameMatch[1] : 'vivos-store';
 
-            if (steps === 0 && !historyHasMarker(history as any, 'ECOMMERCE_PLAN_EMITTED')) {
-              // Silent execution - no text emitted to chat
-              // ev({ type: 'text', data: md }); 
-              history.push({ role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED' } as any);
-              try {
-
-                await Message.create({ sessionId, role: 'assistant', content: 'ECOMMERCE_PLAN_EMITTED', runId });
-
-              } catch { }
-
-              // Force the smart tool
+            if (steps === 0) {
+              // Force the smart tool for ecommerce requests without deceptive markers
               plan = {
                 name: 'scaffold_full_stack',
                 input: {
