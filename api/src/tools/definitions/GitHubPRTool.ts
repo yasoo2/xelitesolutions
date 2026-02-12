@@ -70,7 +70,20 @@ export class GitHubPRTool implements ToolDefinition {
         const logs: string[] = [];
 
         try {
-            const githubToken = token || process.env.GITHUB_TOKEN;
+            let githubToken = (token || process.env.GITHUB_TOKEN || '').trim();
+
+            if (!githubToken && (input as any).userId) {
+                try {
+                    const { getUserSecret } = require('../../services/secrets');
+                    const secretFn = await getUserSecret((input as any).userId, 'github', 'GITHUB_TOKEN');
+                    if (secretFn) {
+                        githubToken = secretFn.trim();
+                        logs.push(`Using GitHub token from user secrets`);
+                    }
+                } catch (e) {
+                    logs.push(`Failed to fetch user secret: ${(e as any).message}`);
+                }
+            }
             if (!githubToken) {
                 throw new Error('GitHub token required');
             }

@@ -80,8 +80,9 @@ export class GitOpsTool extends BaseTool {
             const wantsAuth = ['push', 'fetch', 'pull', 'clone'].includes(op);
             if (wantsAuth && (sessionId || userId)) {
                 try {
-                    const token = (userId ? (await getUserSecret(userId, 'github', 'GITHUB_TOKEN')) : null) ||
+                    const rawToken = (userId ? (await getUserSecret(userId, 'github', 'GITHUB_TOKEN')) : null) ||
                         getSessionSecret(sessionId, 'GITHUB_TOKEN') || '';
+                    const token = rawToken.trim();
 
                     if (token) {
                         askpassDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'joe-askpass-'));
