@@ -3420,11 +3420,11 @@ export default function CommandComposer({
                 />
 
                 <button
-                  className={`provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
+                  className={`provider-btn ${providers[activeProvider]?.isConnected ? 'is-connected' : 'is-disconnected'}`}
                   onClick={() => setShowProviders(true)}
                   title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
                 >
-                  <Cpu size={14} />
+                  <Cpu size={14} color={providers[activeProvider]?.isConnected ? "#10b981" : "#ef4444"} />
                   <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
                     {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
                   </span>
