@@ -150,6 +150,9 @@ export default function JoeIDELayout({
     const [isChatCollapsed, setIsChatCollapsed] = useState(false);
     const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(false);
 
+    // Internal state for workspace tab if not controlled
+    const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
+
     const activeWorkspaceTab = workspaceTab ?? internalWorkspaceTab;
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {
         if (onWorkspaceTabChange) {
