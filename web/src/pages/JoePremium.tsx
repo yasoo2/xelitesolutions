@@ -435,6 +435,7 @@ export default function JoePremium() {
                 isOpen={isGitHubOpen}
                 onClose={() => setIsGitHubOpen(false)}
                 onConnected={handleGitHubConnected}
+                onSelectRepo={handleSelectRepo}
             />
         </JoeIDELayout>
     );
