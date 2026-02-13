@@ -1,9 +1,10 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Sparkles, Send, Mic, User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
+import { SocketService } from '../services/socket';
 
 interface Message {
     id: string;
@@ -35,6 +36,16 @@ export default function ChatPanel({
 }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    
+    // [Wakil 6.0] Subscribe to thinking phase
+    const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>('idle');
+    
+    useEffect(() => {
+        const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
+            setThinkingPhase(phase);
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Auto scroll to bottom
     useEffect(() => {
@@ -123,7 +134,11 @@ export default function ChatPanel({
                     <div className="joe-message assistant">
                         <div className="joe-message-avatar ai">J</div>
                         <div className="joe-message-content">
-                            <NeuralThinkingIndicator visible={true} variant="bubble" />
+                            <NeuralThinkingIndicator 
+                                visible={isLoading} 
+                                phase={thinkingPhase}
+                                variant="bubble" 
+                            />
                         </div>
                     </div>
                 )}

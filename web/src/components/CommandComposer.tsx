@@ -1145,6 +1145,15 @@ export default function CommandComposer({
     activeToolNameRef.current = activeToolName;
   }, [activeToolName]);
 
+  // [Wakil 6.0] Subscribe to thinking phase updates
+  useEffect(() => {
+    const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
+      setThinkingPhase(phase);
+    });
+    return () => unsubscribe();
+  }, []);
+  }, [activeToolName]);
+
   const showTool = (name: string) => {
     const next = String(name || '').trim();
     if (!next) return;
@@ -3370,6 +3379,16 @@ export default function CommandComposer({
                 )}
               </div>
             )}
+            
+            {/* [Wakil 6.0] Neural Thinking Indicator */}
+            {status === 'thinking' && !isQuietMode && (
+              <NeuralThinkingIndicator 
+                visible={true} 
+                phase={thinkingPhase}
+                variant="inline"
+              />
+            )}
+            
             <textarea
               className="main-input"
               ref={(el) => {
