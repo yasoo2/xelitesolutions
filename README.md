@@ -232,9 +232,17 @@ docker-compose -f docker-compose.server.yml restart joe_api
 
 ## 📚 Documentation
 
+### User Guides
 - **[JOE_ENTERPRISE.md](docs/JOE_ENTERPRISE.md)** - Complete system overview
 - **[API.md](docs/API.md)** - Developer API guide
 - **[walkthrough.md](.gemini/antigravity/brain/.../walkthrough.md)** - Development journey
+
+### Infrastructure & DevOps
+- **[INFRASTRUCTURE_ANALYSIS.md](docs/INFRASTRUCTURE_ANALYSIS.md)** - Complete infrastructure analysis (Arabic)
+- **[EXECUTIVE_SUMMARY.md](docs/EXECUTIVE_SUMMARY.md)** - Infrastructure analysis summary (English)
+- **[MONITORING.md](docs/MONITORING.md)** - Monitoring and alerting integration guide
+- **[SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** - Quick setup guide for optional features
+- **[WORKFLOWS_README.md](.github/WORKFLOWS_README.md)** - GitHub Actions workflows documentation
 
 ---
 

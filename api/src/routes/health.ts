@@ -7,6 +7,45 @@ import express from 'express';
 
 const router = express.Router();
 
+// Simple in-memory rate limiter for health checks
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 60; // 60 requests per minute
+
+function rateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  
+  let record = rateLimitMap.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    record = { count: 0, resetTime: now + RATE_LIMIT_WINDOW };
+    rateLimitMap.set(ip, record);
+  }
+  
+  record.count++;
+  
+  if (record.count > RATE_LIMIT_MAX) {
+    return res.status(429).json({
+      status: 'error',
+      message: 'Too many requests',
+      retryAfter: Math.ceil((record.resetTime - now) / 1000)
+    });
+  }
+  
+  next();
+}
+
+// Clean up old entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, RATE_LIMIT_WINDOW);
+
 /**
  * Basic health check - always returns 200 if server is running
  */
@@ -27,8 +66,11 @@ router.get('/health', (req, res) => {
 /**
  * Readiness check - checks if app is ready to serve traffic
  * Checks dependencies like database, external APIs, etc.
+ * 
+ * Note: Filesystem access is intentional for health check validation.
+ * Rate limiting is applied to prevent abuse (60 req/min).
  */
-router.get('/ready', async (req, res) => {
+router.get('/ready', rateLimit, async (req, res) => {
   const checks: any = {
     server: 'ok',
     timestamp: new Date().toISOString()
