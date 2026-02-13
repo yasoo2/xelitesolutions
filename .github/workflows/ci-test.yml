@@ -101,6 +101,7 @@ jobs:
             api/dist
             web/dist
           retention-days: 7
+          if-no-files-found: warn
 
   coverage:
     name: Code Coverage
