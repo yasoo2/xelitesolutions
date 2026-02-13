@@ -24,7 +24,7 @@ echo "   analyze: $ANALYZE_COMMIT"
 echo ""
 
 # Check if they're different
-if [ "$MAIN_COMMIT" == "$ANALYZE_COMMIT" ]; then
+if [ "$MAIN_COMMIT" = "$ANALYZE_COMMIT" ]; then
     echo "✅ RESULT: Branches point to the same commit!"
     echo "✅ النتيجة: الفرعان يشيران إلى نفس الـ commit!"
     exit 0
