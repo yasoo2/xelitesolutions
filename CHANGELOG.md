@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Live system clock in status bar showing real-time updates every second
-- System version indicator (v1.0.1) in status bar
+- System version indicator in status bar, imported from centralized version file
 - Clock icon for better visual indication of live updates
+- Centralized version constant file (`web/src/version.ts`)
 
 ### Changed
 - Enhanced StatusBar component with dynamic time display
 - Updated system version from 1.0.0 to 1.0.1
+- Version now imported from constant file to avoid version mismatches
 
 ### Fixed
 - Addressed user concern about system appearing static by adding visible, continuously updating elements

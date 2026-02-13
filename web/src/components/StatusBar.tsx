@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GitBranch, Clock } from 'lucide-react';
+import { APP_VERSION } from '../version';
 
 interface StatusBarProps {
     isConnected?: boolean;
@@ -46,7 +47,7 @@ export default function StatusBar({
             {/* Right Side */}
             <div className="joe-statusbar-right">
                 <div className="joe-status-item">
-                    <span style={{ opacity: 0.7 }}>v1.0.1</span>
+                    <span style={{ opacity: 0.7 }}>v{APP_VERSION}</span>
                 </div>
                 {sessionId && (
                     <div className="joe-status-item">
