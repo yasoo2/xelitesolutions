@@ -2138,11 +2138,21 @@ export async function generateSessionTitle(
 ) {
   if (!messages || messages.length === 0) return "New Session";
 
+  // [Offline Mode] Deterministic title generation for verification
+  if (process.env.OFFLINE_MODE === 'true') {
+    const firstUserMsg = messages.find(m => m.role === 'user')?.content || '';
+    const isArabic = /[\u0600-\u06FF]/.test(firstUserMsg);
+    // Take first 3-5 words
+    const words = firstUserMsg.split(/\s+/).slice(0, 5).join(' ');
+    console.log('[LLM] Offline Mode: Generated title:', words);
+    return words || (isArabic ? "جلسة جديدة" : "New Session");
+  }
   const blob = messages.map((m) => String(m.content || "")).join(" ");
   const hasArabic = /[\u0600-\u06FF]/.test(blob);
+
   const systemContent = hasArabic
-    ? "أنت محرك ذكاء XElite. أنشئ عنوانًا قصيرًا وواضحًا وأنيقًا (بحد أقصى 6 كلمات) لهذه الجلسة باللغة العربية فقط."
-    : "You are the XElite Intelligence Engine. Generate a short, concise, and elite title (max 6 words) for this session in English only.";
+    ? "أنت محرك الذكاء XElite. مهمتك هي إنشاء عنوان 'نخبوي' واحترافي ومختصر جداً (3-5 كلمات) لهذه الجلسة بناءً على سياق الحوار. استخدم العربية الفصحى الأنيقة فقط. لا تذكر كلمة 'جلسة' أو 'دردشة'."
+    : "You are the XElite Intelligence Engine. Generate an elite, professional, and very concise title (3-5 words) for this session based on the context. Use English only. Avoid words like 'Session' or 'Chat'.";
 
   const msgs = [
     {
@@ -2150,7 +2160,8 @@ export async function generateSessionTitle(
       content: systemContent,
     },
     ...messages
-      .slice(0, 5)
+      .filter(m => m.role === 'user')
+      .slice(0, 3)
       .map((m) => ({ role: "user", content: String(m.content).slice(0, 500) })),
   ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
@@ -2158,14 +2169,20 @@ export async function generateSessionTitle(
     const completion = await getOpenAIClient().chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o",
       messages: msgs,
-      max_tokens: 20,
+      max_tokens: 30,
+      temperature: 0.5,
     });
-    return completion.choices[0]?.message?.content?.trim() || "New Session";
+
+    let title = completion.choices[0]?.message?.content?.trim() || "New Session";
+    // Cleanup quotes if LLM adds them
+    title = title.replace(/^["']|["']$/g, '');
+    return title;
   } catch (e) {
     console.error("Title generation failed", e);
     return "New Session";
   }
-} // Update OpenAI client when API key changes
+}
+// Update OpenAI client when API key changes
 // Update OpenAI client when API key changes
 function getOpenAIClient() {
   return new OpenAI({

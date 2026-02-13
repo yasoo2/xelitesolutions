@@ -15,18 +15,55 @@ export async function createSession(req: Request, res: Response) {
 
     try {
 
+        // Mock Store for Offline Mode
+        const mockMessages: any[] = (global as any).mockMessages || [];
+        (global as any).mockMessages = mockMessages;
 
-        const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
-        const tenantDoc = await Tenant.findOneAndUpdate(
-            { name: tenantName },
-            { $setOnInsert: { name: tenantName } },
-            { upsert: true, new: true }
-        );
+        const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true';
+        let tenantDoc: any = { _id: new mongoose.Types.ObjectId() };
+
+        if (!isOffline) {
+            const tenantName = process.env.DEFAULT_TENANT_NAME || 'XElite Solutions';
+            tenantDoc = await Tenant.findOneAndUpdate(
+                { name: tenantName },
+                { $setOnInsert: { name: tenantName } },
+                { upsert: true, new: true }
+            );
+        }
 
         // [Workspace] Ensure personal workspace exists
-        const workspace = await workspaceService.ensurePersonalWorkspace(userId);
+        let workspace: any = { _id: new mongoose.Types.ObjectId() };
+        if (!isOffline) {
+            workspace = await workspaceService.ensurePersonalWorkspace(userId);
+        }
 
         try {
+            if (isOffline) {
+                const mockSession = {
+                    _id: new mongoose.Types.ObjectId(),
+                    id: '', // initialized below
+                    title, mode, kind, userId,
+                    tenantId: tenantDoc._id,
+                    workspaceId: workspace._id,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+                mockSession.id = mockSession._id.toString();
+
+                // [OFFLINE] Persist to mock store
+                const mockSessions = (global as any).mockSessions || [];
+                if (mockSessions.length === 0) {
+                    // Ensure init if empty
+                    (global as any).mockSessions = mockSessions;
+                }
+
+                // Add to start of list
+                (global as any).mockSessions = [mockSession, ...mockSessions];
+
+                console.warn('[SessionController] DB offline - created and saved mock session', mockSession.id);
+                return res.json(mockSession);
+            }
+
             const session = await Session.create({
                 title, mode, kind, userId,
                 tenantId: tenantDoc._id,
@@ -34,7 +71,7 @@ export async function createSession(req: Request, res: Response) {
             });
             return res.json(session);
         } catch (err: any) {
-            if (err && err.code === 11000) {
+            if (!isOffline && err && err.code === 11000) {
                 const uniqueTitle = `${title} - ${new Date().toLocaleString()}`;
                 const session = await Session.create({
                     title: uniqueTitle, mode, kind, userId,
@@ -51,13 +88,35 @@ export async function createSession(req: Request, res: Response) {
     }
 }
 
+// [OFFLINE HELPER] Exported for run.ts to update titles
+export function updateMockSessionTitle(sessionId: string, newTitle: string) {
+    const mockSessions = (global as any).mockSessions || [];
+    const idx = mockSessions.findIndex((s: any) => s._id.toString() === sessionId || s.id === sessionId);
+    if (idx >= 0) {
+        mockSessions[idx].title = newTitle;
+        console.log(`[SessionController] Updated mock session title: ${sessionId} -> ${newTitle}`);
+    } else {
+        // If not found, maybe create it? Or just warn.
+        console.warn(`[SessionController] Could not find mock session to update title: ${sessionId}`);
+    }
+}
+
 export async function listSessions(req: Request, res: Response) {
     const userId = (req as any).auth?.sub;
     try {
-        // [OFFLINE MODE] Return empty if DB is down
-        if (mongoose.connection.readyState !== 1) {
-            console.warn('[SessionController] DB offline - returning empty session list');
-            return res.json([]);
+        // [OFFLINE MODE] Return mock sessions if DB is down
+        if (mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true') {
+            console.warn('[SessionController] DB offline - returning mock session list');
+
+            // Ensure global store exists
+            if (!(global as any).mockSessions) {
+                (global as any).mockSessions = [
+                    { _id: 'mock-session-1', id: 'mock-session-1', title: 'New Session', kind: 'agent', updatedAt: new Date() },
+                    { _id: 'mock-session-2', id: 'mock-session-2', title: 'Untitled Session', kind: 'agent', updatedAt: new Date() }
+                ];
+            }
+
+            return res.json((global as any).mockSessions);
         }
         const sessions = await Session.find({ userId }).sort({ updatedAt: -1 }).limit(100);
         return res.json(sessions);
@@ -124,23 +183,42 @@ export async function addMessage(req: Request, res: Response) {
         return res.status(400).json({ error: 'Content is required' });
     }
 
-    try {
-        const session = await Session.findById(sessionId);
-        if (!session) {
-            return res.status(404).json({ error: 'Session not found' });
-        }
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true';
 
-        if (session.userId !== userId) {
-            return res.status(403).json({ error: 'Unauthorized' });
+    try {
+        if (!isOffline) {
+            const session = await Session.findById(sessionId);
+            if (!session) {
+                return res.status(404).json({ error: 'Session not found' });
+            }
+
+            if (session.userId !== userId) {
+                return res.status(403).json({ error: 'Unauthorized' });
+            }
         }
 
         // Save User Message
-        const message = await Message.create({
-            sessionId,
-            role: 'user',
-            content,
-            createdAt: new Date()
-        });
+        let message: any;
+        if (isOffline) {
+            message = {
+                _id: new mongoose.Types.ObjectId(),
+                sessionId,
+                role: 'user',
+                content,
+                createdAt: new Date()
+            };
+            const mockMessages = (global as any).mockMessages || [];
+            (global as any).mockMessages = mockMessages;
+            mockMessages.push(message);
+            console.warn('[SessionController] DB offline - saved mock message to store', message);
+        } else {
+            message = await Message.create({
+                sessionId,
+                role: 'user',
+                content,
+                createdAt: new Date()
+            });
+        }
 
         // Trigger AI Logic (Using the run queue or agent directly)
         // For now, we'll try to use the /run/start or similar logic internally
@@ -238,12 +316,39 @@ export async function listSessionMessages(req: Request, res: Response) {
             console.error(`[SessionController] Invalid ObjectId: ${sessionId}`);
         }
 
+        const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true';
+
         // Fetch Messages, Tools, and Session in parallel
-        const [messages, tools, session] = await Promise.all([
-            Message.find({ sessionId: queryId }).sort({ createdAt: 1 }).lean(),
-            ToolExecution.find({ sessionId: queryId }).sort({ createdAt: 1 }).lean(),
-            Session.findById(queryId).lean()
-        ]);
+        let messages: any[] = [];
+        let tools: any[] = [];
+        let session: any = null;
+
+        if (isOffline) {
+            const mockMessages = (global as any).mockMessages || [];
+            const mockSessions = (global as any).mockSessions || [];
+
+            console.warn('[SessionController] DB offline - returning mock session detail from store. Count:', mockSessions.length);
+
+            // Try to find session in store
+            let foundSession = mockSessions.find((s: any) => s.id === sessionId || s._id.toString() === sessionId);
+            if (!foundSession) {
+                // Fallback if not found (e.g. init mocks)
+                if (sessionId === 'mock-session-1') foundSession = { _id: 'mock-session-1', id: 'mock-session-1', title: 'New Session', userId };
+                else foundSession = { _id: queryId, id: sessionId, title: 'New Session', userId };
+            }
+
+            session = foundSession;
+            messages = mockMessages.filter((m: any) => m.sessionId === sessionId);
+        } else {
+            const results = await Promise.all([
+                Message.find({ sessionId: queryId }).sort({ createdAt: 1 }).lean(),
+                ToolExecution.find({ sessionId: queryId }).sort({ createdAt: 1 }).lean(),
+                Session.findById(queryId).lean()
+            ]);
+            messages = results[0];
+            tools = results[1];
+            session = results[2];
+        }
 
         console.log(`[SessionController] Found ${messages.length} messages and ${tools.length} tools for session ${sessionId}`);
 
@@ -317,32 +422,37 @@ export async function listSessionMessages(req: Request, res: Response) {
             const t = String(title || '').trim();
             // Detect date patterns in titles (e.g., "Session 1/31/2026, 3:23:04 AM")
             const hasDatePattern = /\d{1,2}\/\d{1,2}\/\d{4}/.test(t);
+            const genericTerms = [
+                'New Session', 'Untitled Session', 'New Chat',
+                'محادثة جديدة', 'جلسة جديدة', 'دردشة جديدة',
+                'New Session -', 'جلسة جديدة -'
+            ];
+
             return (
-                t === 'New Session' ||
-                t === 'Untitled Session' ||
-                t === 'New Chat' ||
-                t === 'محادثة جديدة' ||
-                t === 'جلسة جديدة' ||
-                t === 'دردشة جديدة' ||
+                genericTerms.some(term => t === term || t.startsWith(term)) ||
                 t.startsWith('Session ') ||
                 t.startsWith('جلسة ') ||
-                t.startsWith('New Session -') ||
-                t.startsWith('جلسة جديدة -') ||
-                hasDatePattern  // Match any title with date pattern
+                hasDatePattern
             );
         };
 
         if (session && isAutoTitleCandidate(session.title)) {
             const userMsgs = messages.filter(m => m.role === 'user');
-            if (userMsgs.length > 0) {
+            // Trigger naming if we have at least 1 user message
+            if (userMsgs.length >= 1) {
                 (async () => {
                     try {
                         const newTitle = await generateSessionTitle(userMsgs.map(m => ({ role: 'user', content: m.content || '' })));
-                        if (newTitle && newTitle !== 'New Session') {
-                            await Session.findByIdAndUpdate(sessionId, { title: newTitle });
-                            broadcast({ type: 'sessions:refresh', data: { sessionId } });
+                        if (newTitle && newTitle !== 'New Session' && !isAutoTitleCandidate(newTitle)) {
+                            if (!isOffline) {
+                                await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+                            }
+                            broadcast({ type: 'sessions:refresh', data: { sessionId, newTitle } });
+                            console.log(`[SessionController] Auto-renamed session ${sessionId} to: ${newTitle} (Offline: ${isOffline})`);
                         }
-                    } catch (e) { console.error('Lazy auto-title failed', e) }
+                    } catch (e) {
+                        console.error('Lazy auto-title failed', e);
+                    }
                 })();
             }
         }

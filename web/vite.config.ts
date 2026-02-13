@@ -92,10 +92,10 @@ export default defineConfig({
     {
       name: 'webview-click-shim',
       configureServer(server) {
-        server.middlewares.use(createApiShim());
+        // server.middlewares.use(createApiShim());
       },
       configurePreviewServer(server) {
-        server.middlewares.use(createApiShim());
+        // server.middlewares.use(createApiShim());
       },
     },
   ],

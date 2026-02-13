@@ -171,6 +171,11 @@ export default function JoePremium() {
                     setIsLoading(false);
                 }
             }
+
+            // [Auto-Title] Handle new session titles and refreshes
+            if (msg.type === 'sessions:refresh') {
+                loadAllSessions();
+            }
         });
         return () => { unsub(); };
     }, [agentSelected]);

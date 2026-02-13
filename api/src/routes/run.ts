@@ -1568,22 +1568,40 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       runId = run._id.toString();
     }
 
-    // Auto-Title Logic (skip in offline mode)
-    if (!offlineMode) {
+    // Auto-Title Logic (modified for offline mode support)
+    if (true) {
       (async () => {
         try {
-          const session = await Session.findById(sessionId);
-          if (session && isAutoTitleCandidate(session.title)) {
-            const messageCount = await Message.countDocuments({ sessionId });
+          const session = !offlineMode ? await Session.findById(sessionId) : { title: 'New Session' };
+          const currentTitle = session?.title || 'New Session';
+
+          if (isAutoTitleCandidate(currentTitle)) {
+            // In offline mode, assume it's the first message if the title is generic
+            const messageCount = !offlineMode ? await Message.countDocuments({ sessionId }) : 1;
+
             // Only trigger if it's the first or second message
             if (messageCount <= 2) {
-              // Get the user message and potential context
               const seed = fullPromptText;
+              // For offline mode, we just use the current prompt as the "first message" context
+              // If we have history, we might want to include it, but for a simple "first message" check this is fine.
               const messages = [{ role: 'user', content: seed }];
+
+              // [Offline] Generate title
               const newTitle = await generateSessionTitle(messages);
-              if (newTitle && newTitle !== 'New Session') {
-                await Session.findByIdAndUpdate(sessionId, { title: newTitle });
-                broadcast({ type: 'sessions:refresh', data: { sessionId } });
+
+              if (newTitle && newTitle !== 'New Session' && newTitle !== 'Untitled Session') {
+                if (!offlineMode) {
+                  await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+                } else {
+                  // [OFFLINE MODE] Update mock store
+                  try {
+                    const { updateMockSessionTitle } = await import('../controllers/sessionController');
+                    updateMockSessionTitle(sessionId, newTitle);
+                  } catch (err) { /* ignore */ }
+                }
+                // Broadcast for UI update
+                broadcast({ type: 'sessions:refresh', data: { sessionId, newTitle } });
+                console.log(`[Run] Auto-titled session ${sessionId} to "${newTitle}" (Offline: ${offlineMode})`);
               }
             }
           }
