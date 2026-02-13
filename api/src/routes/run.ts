@@ -1281,6 +1281,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     if (typeof provider === 'string') provider = provider.trim();
     if (typeof apiKey === 'string') apiKey = apiKey.trim();
+    if (apiKey && !apiKey.startsWith('sk-') && !apiKey.startsWith('AIza')) {
+      console.warn('[Run] Discarding invalid-looking API key (likely password override):', apiKey.substring(0, 5) + '...');
+      apiKey = undefined;
+    }
     if (typeof baseUrl === 'string') baseUrl = baseUrl.trim();
     if (typeof model === 'string') model = model.trim();
     if (apiKey === '') apiKey = undefined;
