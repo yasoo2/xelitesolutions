@@ -1,0 +1,105 @@
+/**
+ * Health Check Routes
+ * Provides health, readiness, and liveness endpoints for monitoring
+ */
+
+import express from 'express';
+
+const router = express.Router();
+
+/**
+ * Basic health check - always returns 200 if server is running
+ */
+router.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+      rss: Math.round(process.memoryUsage().rss / 1024 / 1024)
+    },
+    cpu: process.cpuUsage()
+  });
+});
+
+/**
+ * Readiness check - checks if app is ready to serve traffic
+ * Checks dependencies like database, external APIs, etc.
+ */
+router.get('/ready', async (req, res) => {
+  const checks: any = {
+    server: 'ok',
+    timestamp: new Date().toISOString()
+  };
+
+  let isReady = true;
+
+  // Check database connection (if MongoDB is used)
+  try {
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState === 1) {
+      checks.database = 'connected';
+    } else {
+      checks.database = 'disconnected';
+      isReady = false;
+    }
+  } catch (error) {
+    checks.database = 'not configured';
+  }
+
+  // Check file system access
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const testPath = path.join(process.cwd(), '.health-check');
+    fs.writeFileSync(testPath, Date.now().toString());
+    fs.unlinkSync(testPath);
+    checks.filesystem = 'ok';
+  } catch (error: any) {
+    checks.filesystem = `error: ${error.message}`;
+    isReady = false;
+  }
+
+  if (isReady) {
+    res.status(200).json({ status: 'ready', checks });
+  } else {
+    res.status(503).json({ status: 'not ready', checks });
+  }
+});
+
+/**
+ * Liveness check - checks if app is alive (for Kubernetes probes)
+ */
+router.get('/live', (req, res) => {
+  res.status(200).json({
+    status: 'alive',
+    timestamp: new Date().toISOString()
+  });
+});
+
+/**
+ * Startup check - checks if app has completed initialization
+ */
+router.get('/startup', (req, res) => {
+  // Can add more sophisticated startup checks here
+  const startupTime = process.uptime();
+  const isStarted = startupTime > 5; // Consider started after 5 seconds
+
+  if (isStarted) {
+    res.status(200).json({
+      status: 'started',
+      uptime: startupTime,
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    res.status(503).json({
+      status: 'starting',
+      uptime: startupTime,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+export default router;

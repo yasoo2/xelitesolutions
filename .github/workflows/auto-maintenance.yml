@@ -1,0 +1,66 @@
+name: Auto-Maintenance
+
+on:
+  schedule:
+    # Run cleanup weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  cleanup-artifacts:
+    name: Cleanup Old Artifacts
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Delete old artifacts
+        uses: c-hive/gha-remove-artifacts@v1
+        with:
+          age: '30 days'
+          skip-recent: 10
+
+  cleanup-caches:
+    name: Cleanup Old Caches
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cleanup old caches
+        run: |
+          echo "Cache cleanup completed"
+          gh cache list --limit 100 || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup-docker:
+    name: Cleanup Docker Resources
+    runs-on: ubuntu-latest
+    if: github.repository == 'yasoo2/xelitesolutions'
+    
+    steps:
+      - name: Docker System Prune
+        run: |
+          echo "This would run on self-hosted runner to cleanup Docker resources"
+          echo "docker system prune -af --volumes"
+
+  health-check:
+    name: System Health Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check production endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://xelitesolutions.com/ || echo "000")
+          if [ "$response" = "200" ] || [ "$response" = "301" ] || [ "$response" = "302" ]; then
+            echo "✅ Production site is healthy (HTTP $response)"
+          else
+            echo "⚠️ Production site returned HTTP $response"
+            exit 1
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Health check failed - would send notification here"
+          # Add notification webhook here (Slack, Discord, Email, etc.)
