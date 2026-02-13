@@ -215,6 +215,23 @@ async function connect() {
 
       // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
       const msgType = String(data?.type || '');
+      
+      // [Wakil 6.0] Handle explicit thinking_phase messages
+      if (msgType === 'thinking_phase') {
+        const phase = data?.data?.phase;
+        if (phase && ['analyzing', 'synthesizing', 'executing', 'idle'].includes(phase)) {
+          thinkingPhase = phase;
+          thinkingPhaseListeners.forEach(cb => { try { cb(phase); } catch { } });
+        }
+      } else if (msgType === 'thinking_detail') {
+        const detail = data?.data?.detail;
+        if (detail && typeof detail === 'string') {
+          thinkingDetails.push(detail);
+          thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+        }
+      }
+      
+      // Auto phase management based on events
       if (msgType === 'step_started') {
         if (!quietMode) {
           console.log('[Socket] Auto-activating Quiet Mode (step_started)');

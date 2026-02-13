@@ -321,3 +321,22 @@ export function broadcast(
     }
   });
 }
+
+// [Wakil 6.0] Helper to broadcast thinking phase updates
+export function broadcastThinkingPhase(sessionId: string, phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', detail?: string) {
+  broadcast({
+    type: 'thinking_phase',
+    data: { phase, detail },
+    id: sessionId,
+    ts: Date.now()
+  });
+}
+
+export function broadcastThinkingDetail(sessionId: string, detail: string) {
+  broadcast({
+    type: 'thinking_detail',
+    data: { detail },
+    id: sessionId,
+    ts: Date.now()
+  });
+}
