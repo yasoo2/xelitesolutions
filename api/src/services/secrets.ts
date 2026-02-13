@@ -97,6 +97,13 @@ export async function setUserSecretEncrypted(
     doc.value = String(value ?? '');
     doc.enc = undefined;
   }
+
+  const mongoose = require('mongoose');
+  if (mongoose.connection.readyState !== 1) {
+    console.warn(`[Secrets] Database not connected, cannot save user secret ${p}:${k}`);
+    return;
+  }
+
   await UserSecret.findOneAndUpdate({ userId: uid, provider: p, key: k }, { $set: doc }, { upsert: true, new: true });
 }
 
@@ -109,6 +116,13 @@ export async function getUserSecret(
   const p = String(provider || '').trim();
   const k = String(key || '').trim();
   if (!uid || !p || !k) return null;
+
+  const mongoose = require('mongoose');
+  if (mongoose.connection.readyState !== 1) {
+    console.warn(`[Secrets] Database not connected, skipping getUserSecret for ${p}:${k}`);
+    return null;
+  }
+
   const { UserSecret } = require('../models/userSecret');
   const doc: any = await UserSecret.findOne({ userId: uid, provider: p, key: k })
     .select({ value: 1, enc: 1 })

@@ -21,7 +21,7 @@ type MockWorkspace = {
         storageGB: number;
     };
     integrations: {
-        github?: { installationId: string; repositories: string[] };
+        github?: { installationId: string; repositories: string[]; activeRepo?: string };
         llmProviders?: Record<string, any>;
     };
     settings: { allowPublicView: boolean; requireApproval: boolean };
@@ -308,7 +308,7 @@ export class WorkspaceService {
     /**
      * Update workspace details (Name, Provider Config)
      */
-    async updateWorkspace(adminUserId: string, workspaceId: string, updates: { name?: string, providerConfig?: any }) {
+    async updateWorkspace(adminUserId: string, workspaceId: string, updates: { name?: string, providerConfig?: any, activeRepo?: string }) {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(adminUserId);
             ensureMockPersonalWorkspace(uid);
@@ -322,11 +322,11 @@ export class WorkspaceService {
             if (!admin) throw new Error('Unauthorized: Only Admins can update workspace');
 
             if (updates.name) ws.name = updates.name;
-            if (updates.providerConfig) {
+            if (updates.activeRepo) {
                 ws.integrations = ws.integrations || {};
-                ws.integrations.llmProviders = {
-                    ...(ws.integrations.llmProviders || {}),
-                    ...updates.providerConfig
+                ws.integrations.github = {
+                    ...(ws.integrations.github || { installationId: '', repositories: [] }),
+                    activeRepo: updates.activeRepo
                 };
             }
             ws.updatedAt = new Date();
@@ -346,6 +346,11 @@ export class WorkspaceService {
         if (!workspace) throw new Error('Workspace not found');
 
         if (updates.name) workspace.name = updates.name;
+        if (updates.activeRepo) {
+            if (!workspace.integrations) workspace.integrations = { github: { repositories: [] } } as any;
+            if (!workspace.integrations.github) workspace.integrations.github = { repositories: [] };
+            workspace.integrations.github.activeRepo = updates.activeRepo;
+        }
         if (updates.providerConfig) {
             // Merge or overwrite provider config into integrations.llmProviders
             if (!workspace.integrations) workspace.integrations = { llmProviders: {} } as any;

@@ -85,11 +85,22 @@ router.get('/status', authenticate as any, async (req: Request, res: Response) =
         }
         const clean = token.replace(/[\s\n\r]/g, '');
         const user = await ghApi('GET', '/user', clean);
+
+        // Fetch active repo from workspace
+        let activeRepo = undefined;
+        const workspaceId = (req.headers['x-workspace-id'] as string) || (req.query.workspaceId as string);
+        if (workspaceId && userId) {
+            const { workspaceService } = await import('../services/WorkspaceService');
+            const ws = await workspaceService.getWorkspace(workspaceId, userId);
+            activeRepo = ws?.integrations?.github?.activeRepo;
+        }
+
         return res.json({
             connected: true,
             username: user.login,
             avatarUrl: user.avatar_url,
-            name: user.name || user.login
+            name: user.name || user.login,
+            activeRepo
         });
     } catch {
         return res.json({ connected: false });

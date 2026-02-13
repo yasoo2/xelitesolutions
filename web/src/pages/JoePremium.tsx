@@ -58,54 +58,6 @@ export default function JoePremium() {
 
     const { i18n } = useTranslation();
 
-    // Check auth
-    useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            nav('/login');
-            return;
-        }
-        loadAllSessions();
-
-        // Check GitHub connection status
-        githubService.getStatus().then((s) => {
-            if (s.connected) {
-                setGhConnected(true);
-                setGhUser({ username: s.username!, avatarUrl: s.avatarUrl!, name: s.name! });
-                githubService.listRepos().then(setGhRepos).catch(() => { });
-            }
-        }).catch(() => { });
-    }, []);
-
-    const handleRefreshGithub = useCallback(async () => {
-        setGhLoading(true);
-        try {
-            const repos = await githubService.listRepos();
-            setGhRepos(repos);
-            if (activeRepo) {
-                const commits = await githubService.getCommits(activeRepo.fullName.split('/')[0], activeRepo.name);
-                setGhCommits(commits);
-            }
-        } catch (e) {
-            console.error('Failed to refresh GitHub:', e);
-        } finally {
-            setGhLoading(false);
-        }
-    }, [activeRepo]);
-
-    const handleSelectRepo = useCallback(async (repo: GitHubRepo) => {
-        setActiveRepo(repo);
-        setGhLoading(true);
-        try {
-            const commits = await githubService.getCommits(repo.fullName.split('/')[0], repo.name);
-            setGhCommits(commits);
-        } catch (e) {
-            console.error('Failed to fetch commits:', e);
-        } finally {
-            setGhLoading(false);
-        }
-    }, []);
-
     const handleGitHubConnected = useCallback((user: GitHubUser) => {
         setGhConnected(true);
         setGhUser(user);
@@ -259,6 +211,89 @@ export default function JoePremium() {
     useEffect(() => {
         ensuresWorkspace();
     }, [ensuresWorkspace]);
+
+    // Check auth and GitHub Persistence
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            nav('/login');
+            return;
+        }
+        loadAllSessions();
+
+        const initGithub = async () => {
+            // Wait for workspaceId if needed
+            let wsId = workspaceId;
+            if (!wsId) {
+                wsId = await ensuresWorkspace();
+            }
+
+            try {
+                const s = await githubService.getStatus(wsId || undefined);
+                if (s.connected) {
+                    setGhConnected(true);
+                    setGhUser({ username: s.username!, avatarUrl: s.avatarUrl!, name: s.name! });
+                    const repos = await githubService.listRepos();
+                    setGhRepos(repos);
+
+                    if (s.activeRepo) {
+                        const found = repos.find(r => r.fullName === s.activeRepo);
+                        if (found) {
+                            setActiveRepo(found);
+                            setGhLoading(true);
+                            githubService.getCommits(found.fullName.split('/')[0], found.name)
+                                .then(setGhCommits)
+                                .catch(() => { })
+                                .finally(() => setGhLoading(false));
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to init GitHub:', e);
+            }
+        };
+
+        if (workspaceId) {
+            initGithub();
+        }
+    }, [workspaceId, ensuresWorkspace]);
+
+    const handleRefreshGithub = useCallback(async () => {
+        setGhLoading(true);
+        try {
+            const repos = await githubService.listRepos();
+            setGhRepos(repos);
+            if (activeRepo) {
+                const commits = await githubService.getCommits(activeRepo.fullName.split('/')[0], activeRepo.name);
+                setGhCommits(commits);
+            }
+        } catch (e) {
+            console.error('Failed to refresh GitHub:', e);
+        } finally {
+            setGhLoading(false);
+        }
+    }, [activeRepo]);
+
+    const handleSelectRepo = useCallback(async (repo: GitHubRepo) => {
+        setActiveRepo(repo);
+        setGhLoading(true);
+
+        // Persist selection
+        if (workspaceId) {
+            githubService.setActiveRepo(workspaceId, repo.fullName).catch(e => {
+                console.warn('Failed to persist active repo:', e);
+            });
+        }
+
+        try {
+            const commits = await githubService.getCommits(repo.fullName.split('/')[0], repo.name);
+            setGhCommits(commits);
+        } catch (e) {
+            console.error('Failed to fetch commits:', e);
+        } finally {
+            setGhLoading(false);
+        }
+    }, [workspaceId]);
 
     const handleSend = useCallback(async () => {
         if (!inputValue.trim() || isLoading) return;

@@ -50,8 +50,11 @@ class GitHubService {
         return api.post('/github/connect', { token });
     }
 
-    async getStatus(): Promise<{ connected: boolean } & Partial<GitHubUser>> {
-        return api.get('/github/status');
+    async getStatus(workspaceId?: string): Promise<{ connected: boolean; activeRepo?: string } & Partial<GitHubUser>> {
+        const query = workspaceId ? { 'x-workspace-id': workspaceId } : {};
+        // apiClient currently doesn't add headers from query but we can use query for now or just pass it as second arg if we had one
+        // Actually, let's just use query and update the backend to check query as well
+        return api.get('/github/status', workspaceId ? { workspaceId } : undefined);
     }
 
     async listRepos(): Promise<GitHubRepo[]> {
@@ -79,6 +82,10 @@ class GitHubService {
     async getBranches(owner: string, repo: string): Promise<GitHubBranch[]> {
         const data = await api.get(`/github/repos/${owner}/${repo}/branches`);
         return data.branches || [];
+    }
+
+    async setActiveRepo(workspaceId: string, fullName: string): Promise<void> {
+        return api.put(`/workspaces/${workspaceId}`, { activeRepo: fullName });
     }
 }
 

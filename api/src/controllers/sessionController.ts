@@ -248,10 +248,71 @@ export async function addMessage(req: Request, res: Response) {
         // Attempt to hit the run endpoint internally or use a service?
         // Let's just return the message for now.
 
+        // [AUTO-NAMING] Trigger naming if title is generic
+        const currentSession = isOffline ? message : await Session.findById(sessionId);
+        if (currentSession) {
+            const currentTitle = isOffline ? ((global as any).mockSessions?.find((s: any) => s.id === sessionId)?.title || 'New Session') : (currentSession as any).title;
+
+            if (isAutoTitleCandidate(currentTitle)) {
+                // Fetch context for naming
+                let contextMsgs: any[] = [];
+                if (isOffline) {
+                    contextMsgs = ((global as any).mockMessages || []).filter((m: any) => m.sessionId === sessionId);
+                } else {
+                    contextMsgs = await Message.find({ sessionId }).sort({ createdAt: 1 }).limit(5).lean();
+                }
+
+                if (contextMsgs.length >= 1) {
+                    // Trigger naming async
+                    handleAutoNaming(sessionId, contextMsgs, isOffline).catch(e => console.error('[SessionController] Auto-naming failed:', e));
+                }
+            }
+        }
+
         return res.json(message);
     } catch (e) {
         console.error('Add Message Error:', e);
         return res.status(500).json({ error: 'Failed to add message' });
+    }
+}
+
+// --- HELPER FUNCTIONS FOR AUTO-NAMING ---
+
+function isAutoTitleCandidate(title: string) {
+    const t = String(title || '').trim();
+    // Detect date patterns in titles (e.g., "Session 1/31/2026, 3:23:04 AM")
+    const hasDatePattern = /\d{1,2}\/\d{1,2}\/\d{4}/.test(t);
+    const genericTerms = [
+        'New Session', 'Untitled Session', 'New Chat',
+        'محادثة جديدة', 'جلسة جديدة', 'دردشة جديدة',
+        'New Session -', 'جلسة جديدة -'
+    ];
+
+    return (
+        genericTerms.some(term => t === term || t.startsWith(term)) ||
+        t.startsWith('Session ') ||
+        t.startsWith('جلسة ') ||
+        hasDatePattern
+    );
+}
+
+async function handleAutoNaming(sessionId: string, messages: any[], isOffline: boolean) {
+    try {
+        const userMsgs = messages.filter(m => m.role === 'user');
+        if (userMsgs.length < 1) return;
+
+        const newTitle = await generateSessionTitle(userMsgs.map(m => ({ role: 'user', content: m.content || '' })));
+        if (newTitle && newTitle !== 'New Session' && !isAutoTitleCandidate(newTitle)) {
+            if (!isOffline) {
+                await Session.findByIdAndUpdate(sessionId, { title: newTitle });
+            } else {
+                updateMockSessionTitle(sessionId, newTitle);
+            }
+            broadcast({ type: 'sessions:refresh', data: { sessionId, newTitle } });
+            console.log(`[SessionController] Auto-renamed session ${sessionId} to: ${newTitle} (Offline: ${isOffline})`);
+        }
+    } catch (e) {
+        console.error('[SessionController] handleAutoNaming failed', e);
     }
 }
 
@@ -418,42 +479,11 @@ export async function listSessionMessages(req: Request, res: Response) {
 
         events.sort((a, b) => (a.ts || 0) - (b.ts || 0));
 
-        const isAutoTitleCandidate = (title: string) => {
-            const t = String(title || '').trim();
-            // Detect date patterns in titles (e.g., "Session 1/31/2026, 3:23:04 AM")
-            const hasDatePattern = /\d{1,2}\/\d{1,2}\/\d{4}/.test(t);
-            const genericTerms = [
-                'New Session', 'Untitled Session', 'New Chat',
-                'محادثة جديدة', 'جلسة جديدة', 'دردشة جديدة',
-                'New Session -', 'جلسة جديدة -'
-            ];
-
-            return (
-                genericTerms.some(term => t === term || t.startsWith(term)) ||
-                t.startsWith('Session ') ||
-                t.startsWith('جلسة ') ||
-                hasDatePattern
-            );
-        };
-
         if (session && isAutoTitleCandidate(session.title)) {
             const userMsgs = messages.filter(m => m.role === 'user');
-            // Trigger naming if we have at least 1 user message
             if (userMsgs.length >= 1) {
-                (async () => {
-                    try {
-                        const newTitle = await generateSessionTitle(userMsgs.map(m => ({ role: 'user', content: m.content || '' })));
-                        if (newTitle && newTitle !== 'New Session' && !isAutoTitleCandidate(newTitle)) {
-                            if (!isOffline) {
-                                await Session.findByIdAndUpdate(sessionId, { title: newTitle });
-                            }
-                            broadcast({ type: 'sessions:refresh', data: { sessionId, newTitle } });
-                            console.log(`[SessionController] Auto-renamed session ${sessionId} to: ${newTitle} (Offline: ${isOffline})`);
-                        }
-                    } catch (e) {
-                        console.error('Lazy auto-title failed', e);
-                    }
-                })();
+                // Trigger naming async helper
+                handleAutoNaming(sessionId, messages, isOffline).catch(e => console.error('[SessionController] Lazy naming failed', e));
             }
         }
 

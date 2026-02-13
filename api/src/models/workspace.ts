@@ -18,6 +18,7 @@ export interface IWorkspace extends Document {
         github?: {
             installationId: string;
             repositories: string[]; // ['owner/repo']
+            activeRepo?: string; // Persistent active repo selection
         };
         llmProviders?: {
             openai?: { apiKey: string }; // Encrypted
@@ -51,7 +52,8 @@ const WorkspaceSchema = new Schema<IWorkspace>(
         integrations: {
             github: {
                 installationId: { type: String },
-                repositories: [{ type: String }]
+                repositories: [{ type: String }],
+                activeRepo: { type: String }
             },
             llmProviders: {
                 openai: { apiKey: { type: String } }, // In reality, use simple encryption helpers on save
