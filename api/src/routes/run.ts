@@ -2164,7 +2164,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
         // Track executed tools to prevent loops
         const executedTools = new Set<string>();
-        const executedToolSigs = new Set<string>();
+        const executedToolSigs = new Map<string, number>();
         let consecutiveThoughtSteps = 0;
         let thoughtLoopPauseEmitted = false;
         let postScaffoldScheduled = false;
@@ -2734,7 +2734,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
                   const sig = `web_search_open:${q}`;
                   if (!executedToolSigs.has(sig)) {
-                    executedToolSigs.add(sig);
+                    executedToolSigs.set(sig, 1);
                     plan = { name: 'web_search', input: { query: q } } as any;
                     planName = 'web_search';
                     pendingBrowserOpenFromSearch = { target: openTarget };
@@ -2748,48 +2748,61 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run', 'website_full_pipeline'].includes(planName)) {
             const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
 
-            if (executedToolSigs.has(sig) || lastExecutedToolSig === sig) {
-              if (planName === 'browser_open' || planName === 'browser_run') {
-                const sidDirect = String((plan as any)?.input?.sessionId || '').trim();
-                const sid = sidDirect || String(browserSessionId || '').trim();
-                if (sid) {
-                  plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
-                  planName = 'browser_get_state';
-                } else {
-                  const url = String((plan as any)?.input?.url || '').trim();
-                  const derived = url ? browserSessionIdFromUrl(url) : '';
-                  if (derived) {
-                    plan = { name: 'browser_get_state', input: { sessionId: derived } } as any;
+            const sigCount = executedToolSigs.get(sig) || 0;
+            const isRepeat = sigCount > 0 || lastExecutedToolSig === sig;
+
+            if (isRepeat) {
+              const discoveryTools = ['project_detect', 'ls', 'grep_search', 'read_file', 'analyze_codebase', 'fs_glob', 'read_file_tree', 'codebase_outline'];
+              const maxRepeats = discoveryTools.includes(planName) ? 3 : 1;
+              const totalSeen = sigCount + (lastExecutedToolSig === sig ? 1 : 0);
+
+              if (totalSeen >= maxRepeats) {
+                if (planName === 'browser_open' || planName === 'browser_run') {
+                  const sidDirect = String((plan as any)?.input?.sessionId || '').trim();
+                  const sid = sidDirect || String(browserSessionId || '').trim();
+                  if (sid) {
+                    plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
                     planName = 'browser_get_state';
+                  } else {
+                    const url = String((plan as any)?.input?.url || '').trim();
+                    const derived = url ? browserSessionIdFromUrl(url) : '';
+                    if (derived) {
+                      plan = { name: 'browser_get_state', input: { sessionId: derived } } as any;
+                      planName = 'browser_get_state';
+                    }
                   }
                 }
-              }
-              if (planName === 'browser_get_state') {
-                // no-op
+                if (planName === 'browser_get_state') {
+                  // no-op
+                } else {
+                  const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
+                  const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
+                  const needsKey = !hasAnyKey && !isFreeProvider;
+                  plan = {
+                    name: 'echo',
+                    input: {
+                      text: isArabicText(userTextForOverrides)
+                        ? (isGeneral
+                          ? (needsKey
+                            ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
+                            : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
+                          : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة. يرجى توضيح الخطوة المطلوب تنفيذها بدقة أو إعطاء أمر برمي مباشر لكسر حلقة التكرار.`)
+                        : (isGeneral
+                          ? (needsKey
+                            ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
+                            : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
+                          : `[Neural Sync Error] Excessive repetition of step (${planName}) detected without state change. Please provide a more specific instruction or a direct command to break the planning loop.`),
+                    }
+                  } as any;
+                  planName = 'echo';
+                }
               } else {
-                const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
-                const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
-                const needsKey = !hasAnyKey && !isFreeProvider;
-                plan = {
-                  name: 'echo',
-                  input: {
-                    text: isArabicText(userTextForOverrides)
-                      ? (isGeneral
-                        ? (needsKey
-                          ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
-                          : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
-                        : `تم تكرار نفس الخطوة بدون تقدم (${planName}).\nأعد صياغة الطلب أو حدّد الخطوة التالية بشكل أوضح.`)
-                      : (isGeneral
-                        ? (needsKey
-                          ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
-                          : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
-                        : `The same step repeated without progress (${planName}).\nPlease rephrase or tell me the next concrete action.`),
-                  }
-                } as any;
-                planName = 'echo';
+                // Allowed repeat for discovery tool
+                const current = executedToolSigs.get(sig) || 0;
+                executedToolSigs.set(sig, current + 1);
               }
             } else {
-              executedToolSigs.add(sig);
+              executedToolSigs.set(sig, 1);
             }
           }
 
@@ -4238,7 +4251,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                     const sig = `http_fetch:${nextUrl}`;
                     if (!executedToolSigs.has(sig)) {
                       pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
-                      executedToolSigs.add(sig);
+                      executedToolSigs.set(sig, 1);
                     }
                   };
                   const tryIpApi = () => {
@@ -4246,7 +4259,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                     const sig = `http_fetch:${nextUrl}`;
                     if (!executedToolSigs.has(sig)) {
                       pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
-                      executedToolSigs.add(sig);
+                      executedToolSigs.set(sig, 1);
                     }
                   };
                   if (host.includes('ipapi.co')) {
