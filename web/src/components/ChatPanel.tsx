@@ -36,10 +36,10 @@ export default function ChatPanel({
 }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    
+
     // [Wakil 6.0] Subscribe to thinking phase
     const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>('idle');
-    
+
     useEffect(() => {
         const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
             setThinkingPhase(phase);
@@ -130,14 +130,14 @@ export default function ChatPanel({
                         </div>
                     ))
                 )}
-                {isLoading && (
+                {(isLoading || thinkingPhase !== 'idle') && (
                     <div className="joe-message assistant">
                         <div className="joe-message-avatar ai">J</div>
                         <div className="joe-message-content">
-                            <NeuralThinkingIndicator 
-                                visible={isLoading} 
+                            <NeuralThinkingIndicator
+                                visible={isLoading || thinkingPhase !== 'idle'}
                                 phase={thinkingPhase}
-                                variant="bubble" 
+                                variant="bubble"
                             />
                         </div>
                     </div>

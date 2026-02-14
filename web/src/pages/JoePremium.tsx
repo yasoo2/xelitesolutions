@@ -100,6 +100,11 @@ export default function JoePremium() {
                 setWorkspaceTab('browser');
             }
 
+            // Handle message finishing
+            if (msg.type === 'run_finished' || msg.type === 'step_failed') {
+                setIsLoading(false);
+            }
+
             // Handle messages (Legacy & New Events)
             if ((msg.type === 'message' || msg.type === 'user_input' || msg.type === 'text') &&
                 (msg.sessionId === agentSelected || msg.data?.sessionId === agentSelected)) {
@@ -333,7 +338,7 @@ export default function JoePremium() {
             console.error('Failed to send message:', e);
             setIsLoading(false);
         }
-        setIsLoading(false);
+        // Removed aggressive setIsLoading(false) - now handled by socket events
     }, [inputValue, isLoading, agentSelected, createSession, workspaceId, ensuresWorkspace]);
 
     const handleCreateSession = useCallback(async () => {

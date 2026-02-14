@@ -326,8 +326,9 @@ export function broadcast(
 export function broadcastThinkingPhase(sessionId: string, phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', detail?: string) {
   broadcast({
     type: 'thinking_phase',
-    data: { phase, detail },
+    data: { phase, detail, sessionId }, // Include sessionId in data for resolveEventUserId
     id: sessionId,
+    sessionId: sessionId, // Also include at top level for LiveEvent interface
     ts: Date.now()
   });
 }
@@ -335,8 +336,9 @@ export function broadcastThinkingPhase(sessionId: string, phase: 'analyzing' | '
 export function broadcastThinkingDetail(sessionId: string, detail: string) {
   broadcast({
     type: 'thinking_detail',
-    data: { detail },
+    data: { detail, sessionId }, // Include sessionId in data for resolveEventUserId
     id: sessionId,
+    sessionId: sessionId, // Also include at top level for LiveEvent interface
     ts: Date.now()
   });
 }
