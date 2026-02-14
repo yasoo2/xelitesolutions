@@ -1152,7 +1152,6 @@ export default function CommandComposer({
     });
     return () => unsubscribe();
   }, []);
-  }, [activeToolName]);
 
   const showTool = (name: string) => {
     const next = String(name || '').trim();
