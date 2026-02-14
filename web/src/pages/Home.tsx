@@ -22,7 +22,7 @@ export default function Home() {
         </p>
 
         <div className="home-actions">
-          <button className="home-btn-primary" onClick={() => nav('/login')}>
+          <button className="home-btn-primary" onClick={() => nav('/joe')}>
             <span>{t('start_now', 'Start Now')}</span>
             <ArrowRight size={20} />
           </button>

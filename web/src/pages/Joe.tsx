@@ -1,6 +1,6 @@
 /**
- * Joe Premium - New IDE Layout
- * Uses the premium 3-column layout design
+ * Joe IDE - Unified Interface
+ * Comprehensive AI development environment
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -23,7 +23,7 @@ interface Message {
     timestamp?: Date;
 }
 
-export default function JoePremium() {
+export default function Joe() {
     const nav = useNavigate();
 
     // Session store

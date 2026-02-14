@@ -8,7 +8,7 @@ const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
 
 
-const JoePremium = lazy(() => import('./pages/JoePremium'));
+const Joe = lazy(() => import('./pages/Joe'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 import './theme.css';
@@ -134,7 +134,13 @@ createRoot(document.getElementById('root')!).render(
 
               <Route
                 path="joe"
-                element={<Navigate to="/joe-premium" replace />}
+                element={
+                  <RequireAuth>
+                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                      <Joe />
+                    </Suspense>
+                  </RequireAuth>
+                }
               />
               <Route
                 path="workspace/:workspaceId/settings"
@@ -148,13 +154,7 @@ createRoot(document.getElementById('root')!).render(
               />
               <Route
                 path="joe-premium"
-                element={
-                  <RequireAuth>
-                    <Suspense fallback={<div className="route-loading">Loading...</div>}>
-                      <JoePremium />
-                    </Suspense>
-                  </RequireAuth>
-                }
+                element={<Navigate to="/joe" replace />}
               />
 
             </Route>

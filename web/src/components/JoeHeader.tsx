@@ -39,8 +39,8 @@ export default function JoeHeader({
                 </button>
                 <div className="joe-logo">J</div>
                 <div className="joe-brand">
-                    <span className="joe-brand-name">Joe Premium</span>
-                    <span className="joe-brand-tagline">Advanced AI Assistant</span>
+                    <span className="joe-brand-name">JOE</span>
+                    <span className="joe-brand-tagline">Comprehensive AI System</span>
                 </div>
             </div>
 

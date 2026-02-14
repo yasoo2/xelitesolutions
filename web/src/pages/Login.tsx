@@ -156,12 +156,12 @@ export default function Login() {
                 const data2 = await res2.json().catch(() => ({}));
                 if (!res2.ok) throw new Error(String(data2?.error || '').trim() || t('login_error_auth'));
                 localStorage.setItem('token', String(data2?.token || ''));
-                nav('/joe-premium');
+                nav('/joe');
                 return;
             }
 
             localStorage.setItem('token', String(data?.token || ''));
-            nav('/joe-premium');
+            nav('/joe');
         } catch (err: any) {
             const msg = String(err?.message || '');
             if (/failed to fetch/i.test(msg) || /network/i.test(msg)) {
