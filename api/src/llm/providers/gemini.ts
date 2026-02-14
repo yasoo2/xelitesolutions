@@ -38,6 +38,40 @@ export class GeminiProvider {
         return !!this.apiKey && !!this.client;
     }
 
+    /**
+     * Sanitizes a JSON schema for Gemini compatibility.
+     * Strips properties that Google's OpenAI-compatible endpoint often rejects.
+     */
+    private sanitizeSchema(schema: any): any {
+        if (!schema || typeof schema !== 'object') return schema;
+
+        const sanitized = { ...schema };
+
+        // Remove keywords known to cause 400 on Google's OpenAI proxy
+        delete sanitized.additionalProperties;
+        delete sanitized.pattern;
+        delete sanitized.allOf;
+        delete sanitized.anyOf;
+        delete sanitized.oneOf;
+        delete sanitized.default;
+
+        // Recursively sanitize properties
+        if (sanitized.properties && typeof sanitized.properties === 'object') {
+            const sanitizedProps: any = {};
+            for (const [key, value] of Object.entries(sanitized.properties)) {
+                sanitizedProps[key] = this.sanitizeSchema(value);
+            }
+            sanitized.properties = sanitizedProps;
+        }
+
+        // Recursively sanitize items for arrays
+        if (sanitized.items && typeof sanitized.items === 'object') {
+            sanitized.items = this.sanitizeSchema(sanitized.items);
+        }
+
+        return sanitized;
+    }
+
     async chatComplete(
         messages: Array<{ role: string; content: string | any[] }>,
         model?: string,
@@ -61,6 +95,20 @@ export class GeminiProvider {
         })();
         let lastError: any;
 
+        // Sanitize tool schemas if provided
+        const sanitizedTools = tools && tools.length > 0 ? tools.map((t: any) => {
+            if (t.type === 'function' && t.function && t.function.parameters) {
+                return {
+                    ...t,
+                    function: {
+                        ...t.function,
+                        parameters: this.sanitizeSchema(t.function.parameters)
+                    }
+                };
+            }
+            return t;
+        }) : undefined;
+
         for (const currentModel of modelsToTry) {
             try {
                 console.info(`[Gemini] Attempting with model: ${currentModel}`);
@@ -69,22 +117,19 @@ export class GeminiProvider {
                     messages: messages as any,
                 };
 
-                // Add tools if provided (function calling support)
-                if (tools && tools.length > 0) {
-                    params.tools = tools;
-                    params.tool_choice = 'auto';
+                if (sanitizedTools) {
+                    params.tools = sanitizedTools;
+                    params.tool_choice = currentModel.includes('lite') ? undefined : 'auto';
                 }
 
                 const completion = await this.client.chat.completions.create(params);
 
-                // Safely access response - handle empty or malformed responses
                 if (!completion || !completion.choices || completion.choices.length === 0) {
                     console.warn(`[Gemini] Model ${currentModel} returned empty response, trying next model...`);
                     lastError = new Error('Empty response from Gemini');
                     continue;
                 }
 
-                // Check for tool calls
                 const message = completion.choices[0]?.message;
                 if (!message) {
                     console.warn(`[Gemini] Model ${currentModel} returned no message, trying next model...`);
@@ -103,54 +148,35 @@ export class GeminiProvider {
             } catch (error: any) {
                 const status = Number(error?.status ?? error?.response?.status ?? NaN);
                 const isQuota = error.status === 429 || error.message?.includes('429');
-                const isNotFound = error.status === 404 || error.message?.includes('404');
                 const isBadRequest = error.status === 400 || error.message?.includes('400');
-                const detail = (() => {
-                    try {
-                        const data = (error as any)?.response?.data ?? (error as any)?.data ?? (error as any)?.error;
-                        if (data == null) return '';
-                        if (typeof data === 'string') return data.slice(0, 500);
-                        return JSON.stringify(data).slice(0, 800);
-                    } catch {
-                        return '';
-                    }
-                })();
 
                 if (isQuota) {
                     console.error(`[Gemini] Model ${currentModel} QUOTA EXCEEDED.`);
-                    throw error; // Stop immediately on quota
+                    throw error;
                 }
 
-                if (isNotFound) {
-                    console.warn(`[Gemini] Model ${currentModel} NOT FOUND (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...`);
-                    if (isBadRequest) {
-                        const errorDetail = await (async () => {
-                            try {
-                                if (error.response?.data) return JSON.stringify(error.response.data);
-                                if (error.data) return JSON.stringify(error.data);
-                                return error.message || 'No detail';
-                            } catch { return 'Detail parse failed'; }
-                        })();
-                        console.warn(`[Gemini] Model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching... details=${errorDetail}`);
-                    } else {
-                        console.warn(`[Gemini] Model ${currentModel} failed (status=${Number.isFinite(status) ? status : 'n/a'}): ${error.message}${detail ? ` details=${detail}` : ''}`);
-                    }
+                const errorDetail = await (async () => {
+                    try {
+                        const data = (error as any)?.response?.data ?? (error as any)?.data ?? (error as any)?.error;
+                        if (data == null) return error.message || 'No detail';
+                        return typeof data === 'string' ? data : JSON.stringify(data);
+                    } catch { return 'Detail parse failed'; }
+                })();
 
-                    lastError = error;
-                    // Continue to next model
-                }
+                console.warn(`[Gemini] Model ${currentModel} failed (status=${status}): ${error.message} details=${errorDetail}`);
+                lastError = error;
             }
-
-            console.error('[Gemini] All models failed.');
-            throw lastError;
         }
 
+        throw lastError;
+    }
+
     async chatWithTools(
-            messages: Array<{ role: string; content: string | any[] }>,
-            tools: any[],
-            model ?: string
-        ): Promise < OpenAI.Chat.Completions.ChatCompletion > {
-            if(!this.client) {
+        messages: Array<{ role: string; content: string | any[] }>,
+        tools: any[],
+        model?: string
+    ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+        if (!this.client) {
             throw new Error('Gemini API key not configured');
         }
 
@@ -168,23 +194,35 @@ export class GeminiProvider {
         })();
         let lastError: any;
 
+        const sanitizedTools = tools.map((t: any) => {
+            if (t.type === 'function' && t.function && t.function.parameters) {
+                return {
+                    ...t,
+                    function: {
+                        ...t.function,
+                        parameters: this.sanitizeSchema(t.function.parameters)
+                    }
+                };
+            }
+            return t;
+        });
+
         for (const currentModel of modelsToTry) {
             try {
                 console.info(`[Gemini] Tool Chat attempting with model: ${currentModel}`);
                 const completion = await this.client.chat.completions.create({
                     model: currentModel,
                     messages: messages as any,
-                    tools: tools,
+                    tools: sanitizedTools,
+                    tool_choice: currentModel.includes('lite') ? undefined : 'auto',
                 });
 
-                // Safely access response - handle empty or malformed responses
                 if (!completion || !completion.choices || completion.choices.length === 0) {
                     console.warn(`[Gemini] Tool Chat model ${currentModel} returned empty response, trying next model...`);
                     lastError = new Error('Empty response from Gemini Tool Chat');
                     continue;
                 }
 
-                // Validate message exists
                 const message = completion.choices[0]?.message;
                 if (!message) {
                     console.warn(`[Gemini] Tool Chat model ${currentModel} returned no message, trying next model...`);
@@ -195,37 +233,20 @@ export class GeminiProvider {
                 return completion;
             } catch (error: any) {
                 const status = Number(error?.status ?? error?.response?.status ?? NaN);
-                const isQuota = error.status === 429 || error.message?.includes('429');
-                const isNotFound = error.status === 404 || error.message?.includes('404');
-                const isBadRequest = error.status === 400 || error.message?.includes('400');
-                const detail = (() => {
-                    try {
-                        const data = (error as any)?.response?.data ?? (error as any)?.data ?? (error as any)?.error;
-                        if (data == null) return '';
-                        if (typeof data === 'string') return data.slice(0, 500);
-                        return JSON.stringify(data).slice(0, 800);
-                    } catch {
-                        return '';
-                    }
-                })();
-                if (isQuota) {
+                if (status === 429) {
                     console.error(`[Gemini] Tool Chat model ${currentModel} QUOTA EXHAUSTED.`);
                     throw error;
                 }
-                if (isNotFound) {
-                    console.warn(`[Gemini] Tool Chat model ${currentModel} NOT FOUND (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...`);
-                } else if (isBadRequest) {
-                    const errorDetail = await (async () => {
-                        try {
-                            if (error.response?.data) return JSON.stringify(error.response.data);
-                            if (error.data) return JSON.stringify(error.data);
-                            return error.message || 'No detail';
-                        } catch { return 'Detail parse failed'; }
-                    })();
-                    console.warn(`[Gemini] Tool Chat model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching... details=${errorDetail}`);
-                } else {
-                    console.warn(`[Gemini] Tool Chat Model ${currentModel} failed (status=${Number.isFinite(status) ? status : 'n/a'}): ${error.message}${detail ? ` details=${detail}` : ''}`);
-                }
+
+                const errorDetail = await (async () => {
+                    try {
+                        const data = (error as any)?.response?.data ?? (error as any)?.data ?? (error as any)?.error;
+                        if (data == null) return error.message || 'No detail';
+                        return typeof data === 'string' ? data : JSON.stringify(data);
+                    } catch { return 'Detail parse failed'; }
+                })();
+
+                console.warn(`[Gemini] Tool Chat model ${currentModel} failed (status=${status}): ${error.message} details=${errorDetail}`);
                 lastError = error;
             }
         }
