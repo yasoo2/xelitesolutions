@@ -1062,19 +1062,9 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   if (history) {
     const hasProjectDetect = historyHasToolCall(history as any, 'project_detect');
     const hasAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
-    if (hasProjectDetect && !hasAnalyze) {
-      return { name: 'analyze_codebase', input: { path: '.' } } as any;
-    }
-    const wantsBuild = /\b(build|create|generate|scaffold|construct|make|implement|develop|ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ)\b/i.test(userText);
-    if (hasProjectDetect && hasAnalyze && !wantsBuild) {
-      return {
-        name: 'echo',
-        input: {
-          text: isArabicText(userText)
-            ? '⚠️ تم فحص المشروع وتحليله مسبقًا، ولا يمكن اتخاذ خطوة أدوات آمنة بدون تخطيط ذكي.\nاذكر الملف/المجلد المطلوب أو أعد المحاولة بعد دقائق.'
-            : '⚠️ Project scan/analysis already ran; no safe next tool step without smart planning.\nSpecify a file/folder or retry in a couple minutes.',
-        },
-      } as any;
+
+    if (hasProjectDetect && hasAnalyze) {
+      return null;
     }
   }
 
@@ -2619,9 +2609,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           // Fixed: Allow intervening words (e.g., "ابني لي نظام", "create me a system")
           const isExplicitBuild = /(build|create|generate|scaffold|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم)\s+.*?(website|app|system|page|site|api|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة)/i.test(userTextForOverrides);
           if (isExplicitBuild && steps === 0 && (planName === 'echo' || !planName)) {
-            console.info('[GOD MODE] ⚡ Build Intent Detected - Forcing Pipeline Execution');
-            plan = { name: 'project_detect', input: { path: '.' } } as any;
-            planName = 'project_detect';
+            const alreadyDetetced = historyHasToolCall(history as any, 'project_detect');
+            if (!alreadyDetetced) {
+              console.info('[GOD MODE] ⚡ Build Intent Detected - Forcing Pipeline Execution (Discovery)');
+              plan = { name: 'project_detect', input: { path: '.' } } as any;
+              planName = 'project_detect';
+            } else {
+              console.info('[GOD MODE] ⚡ Project already detected. Moving to Analysis.');
+              plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+              planName = 'analyze_codebase';
+            }
           }
 
           const wantsLocationEarly = isLocationLikeQuery(userTextForOverrides);
@@ -3193,8 +3190,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 planName = 'browser_open';
               } else if (wf && steps === 0) {
                 // Force first step of workflow if no other heuristic matched
-                plan = { name: 'project_detect', input: { path: '.' } } as any;
-                planName = 'project_detect';
+                const alreadyDetetced = historyHasToolCall(history as any, 'project_detect');
+                if (!alreadyDetetced) {
+                  plan = { name: 'project_detect', input: { path: '.' } } as any;
+                  planName = 'project_detect';
+                } else {
+                  plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+                  planName = 'analyze_codebase';
+                }
               }
             }
           }
