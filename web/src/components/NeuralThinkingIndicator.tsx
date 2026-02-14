@@ -59,8 +59,8 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           position: relative;
           flex-direction: column;
           gap: 0;
-          background: rgba(10, 14, 23, 0.85);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: var(--joe-thinking-bg);
+          border: 1px solid var(--joe-thinking-border);
           border-radius: 16px;
           backdrop-filter: blur(12px);
           overflow: hidden;
@@ -133,7 +133,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           overflow-y: auto;
           scrollbar-width: thin;
           scrollbar-color: rgba(255,255,255,0.1) transparent;
-          border-top: 1px solid rgba(255,255,255,0.05);
+          border-top: 1px solid var(--joe-thinking-border);
           margin-top: 4px;
           padding-top: 10px;
         }
@@ -148,7 +148,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
           font-size: 10px;
           line-height: 1.4;
-          color: rgba(255, 255, 255, 0.6);
+          color: var(--joe-thinking-text);
           white-space: pre-wrap;
           word-break: break-word;
           opacity: 0;

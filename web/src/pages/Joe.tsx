@@ -55,6 +55,7 @@ export default function Joe() {
     const [ghCommits, setGhCommits] = useState<GitHubCommit[]>([]);
     const [ghConnected, setGhConnected] = useState(false);
     const [ghLoading, setGhLoading] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
 
     const { i18n } = useTranslation();
 
@@ -107,13 +108,23 @@ export default function Joe() {
                 setWorkspaceTab('browser');
             }
 
-            // Auto switch to preview for dev server / pipeline
             if (msg.type === 'tool_start' && (
                 msg.tool === 'dev_server' ||
                 msg.tool === 'website_full_pipeline' ||
                 msg.tool === 'scaffold_project'
             )) {
                 setWorkspaceTab('preview');
+            }
+
+            // [AUTO-PREVIEW] Capture URL from tool results
+            if (msg.type === 'step_done' && msg.data?.result?.ok) {
+                const output = msg.data.result.output;
+                const url = output?.url || output?.previewUrl || output?.localhost;
+                if (url && typeof url === 'string') {
+                    setPreviewUrl(url);
+                    // Also switch to preview tab if we got a fresh URL
+                    setWorkspaceTab('preview');
+                }
             }
 
             // Handle message finishing
@@ -453,6 +464,7 @@ export default function Joe() {
             onWorkspaceTabChange={setWorkspaceTab}
             browserSessionId={browserSessionId || undefined}
             terminalId={agentSelected || undefined}
+            previewUrl={previewUrl}
 
             // Session
             sessionId={agentSelected || undefined}

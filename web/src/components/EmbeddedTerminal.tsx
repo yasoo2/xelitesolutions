@@ -244,6 +244,20 @@ export default function EmbeddedTerminal({
             if (msg.type === 'terminal_output' && msg.id === terminalId) {
                 termRef.current?.write(msg.data);
             }
+
+            // [SHELL-FEEDBACK] Write tool results to the terminal window if they are shell commands
+            if ((msg.type === 'step_done' || msg.type === 'step_failed') && msg.data?.name?.includes('shell_execute')) {
+                const result = msg.data.result;
+                const output = result?.output?.stdout || result?.output?.output || result?.output?.stderr || '';
+                const ok = msg.type === 'step_done';
+                const color = ok ? '\x1b[32m' : '\x1b[31m';
+
+                if (output) {
+                    termRef.current?.write(`\r\n${color}--- [Executed: ${msg.data.name}] ---\x1b[0m\r\n`);
+                    termRef.current?.write(output.replace(/\n/g, '\r\n'));
+                    termRef.current?.write(`\r\n${color}--- [End of Output] ---\x1b[0m\r\n`);
+                }
+            }
         });
         return () => { unsub(); };
     }, [terminalId]);

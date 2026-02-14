@@ -42,6 +42,17 @@
     --joe-shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.6);
     --joe-shadow-gold: 0 0 25px rgba(240, 193, 75, 0.25);
 
+    /* Message Bubbles */
+    --joe-msg-bg: rgba(20, 25, 32, 0.7);
+    --joe-msg-ai-bg: rgba(25, 30, 40, 0.95);
+    --joe-msg-user-bg: rgba(240, 193, 75, 0.15);
+    --joe-msg-text: var(--joe-text-primary);
+
+    /* Thinking Indicator */
+    --joe-thinking-bg: rgba(10, 14, 23, 0.85);
+    --joe-thinking-border: rgba(255, 255, 255, 0.08);
+    --joe-thinking-text: rgba(255, 255, 255, 0.6);
+
     /* Panel Sizes */
     --joe-chat-width: 440px;
     --joe-files-width: 280px;
@@ -1132,11 +1143,11 @@
 }
 
 .joe-message-bubble {
-    background: rgba(20, 25, 32, 0.7);
+    background: var(--joe-msg-bg);
     border: 1px solid rgba(240, 193, 75, 0.15);
     border-radius: 18px;
     padding: 12px 18px;
-    color: var(--joe-text-primary);
+    color: var(--joe-msg-text);
     font-size: 14.5px;
     line-height: 1.6;
     word-break: break-word;
@@ -1151,16 +1162,16 @@
 
 .joe-message.assistant .joe-message-bubble {
     border-bottom-left-radius: 4px;
-    background: rgba(25, 30, 40, 0.95);
+    background: var(--joe-msg-ai-bg);
     border: 1.5px solid rgba(240, 193, 75, 0.3);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 .joe-message.user .joe-message-bubble {
     border-bottom-right-radius: 4px;
-    background: rgba(240, 193, 75, 0.15);
+    background: var(--joe-msg-user-bg);
     border: 1.5px solid rgba(240, 193, 75, 0.5);
-    color: #fff;
+    color: var(--joe-msg-text);
     box-shadow:
         0 4px 25px rgba(0, 0, 0, 0.4),
         0 0 15px rgba(240, 193, 75, 0.1);
@@ -1225,6 +1236,16 @@
     --joe-border-glow: 0 0 15px rgba(14, 165, 233, 0.1);
 
     --joe-shadow-gold: 0 0 20px rgba(14, 165, 233, 0.1);
+
+    /* Light Mode Bubble Colors (Sky Blue Theme) */
+    --joe-msg-bg: rgba(240, 249, 255, 0.8);
+    --joe-msg-ai-bg: #ffffff;
+    --joe-msg-user-bg: rgba(14, 165, 233, 0.1);
+    --joe-msg-text: #0f172a;
+
+    --joe-thinking-bg: #ffffff;
+    --joe-thinking-border: rgba(14, 165, 233, 0.2);
+    --joe-thinking-text: #0369a1;
 }
 
 /* Visibility Fixes for Light Mode Chat Input */
