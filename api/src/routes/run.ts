@@ -604,14 +604,14 @@ async function detectWorkflowAdvanced(
     /^(?:من|ما|ماذا|متي|متى|اين|أين|كيف|هل|لماذا)\b/.test(t) ||
     /^(?:what|when|where|why|how|who|which)\b/i.test(s);
   const hasBuildIntent =
-    /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(s) ||
-    /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ)/.test(t) ||
+    /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop|analyze|inspect|audit|examine)\b/i.test(s) ||
+    /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ|حلل|تحليل|افحص|فحص|دقق|تدقيق|استعرض|استعراض)/.test(t) ||
     /^(?:اريد|أريد|ابي|ابغى|عايز|عاوز|احتاج|محتاج|ارغب)\b/.test(t);
 
-  // Refined building intent: must mention structural web/api/app words
+  // Refined building/action intent: must mention structural web/api/app/project words
   const wantsWebsite = /(website|site|webpage)/i.test(s) || /(موقع|واجهه|واجهة)/.test(t);
   const wantsApi = /(api|backend|server)/i.test(s) || /(باك|خلفي|خلفيه|خلفية|سيرفر|خادم|واجهه\s+برمجه|واجهة\s+برمجه)/.test(t);
-  const wantsApp = /(app|application|system)/i.test(s) || /(تطبيق|نظام|منصه|منصة)/.test(t);
+  const wantsApp = /(app|application|system|project)/i.test(s) || /(تطبيق|نظام|منصه|منصة|مشروع)/.test(t);
 
   // If it's just "page" or "landing" without more intent, skip pipeline
   if (!wantsWebsite && !wantsApi && !wantsApp) return null;
@@ -2805,13 +2805,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                         ? (isGeneral
                           ? (needsKey
                             ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
-                            : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأعد صياغة السؤال بجملة أبسط أو جرّب مرة أخرى.')
-                          : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة. يرجى توضيح الخطوة المطلوب تنفيذها بدقة أو إعطاء أمر برمي مباشر لكسر حلقة التكرار.`)
+                            : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأرسل طلباً أكثر تحديداً أو اطلب قراءة ملف معين.')
+                          : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة.\nلقد قمت بالفعل بفحص بنية المشروع؛ يرجى طلب تحليل ملفات محددة أو توضيح الخطوة التالية بدقة.`)
                         : (isGeneral
                           ? (needsKey
                             ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
-                            : '⚠️ Planning repeated without progress.\nPlease rephrase your question and try again.')
-                          : `[Neural Sync Error] Excessive repetition of step (${planName}) detected without state change. Please provide a more specific instruction or a direct command to break the planning loop.`),
+                            : '⚠️ Planning repeated without progress.\nPlease provide a more specific instruction or ask to read a file.')
+                          : `[Neural Sync Error] Excessive repetition of step (${planName}) detected.\nI have already scanned the project; please request an analysis of specific files or clarify the next step clearly.`),
                     }
                   } as any;
                   planName = 'echo';

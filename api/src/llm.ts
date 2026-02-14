@@ -1402,11 +1402,7 @@ export async function planNextStep(
       );
 
       // [TOOL AWARENESS] Build condensed tool catalog for LLM visibility
-      const toolCatalog = tools
-        .filter((t: any) => t.name && t.description)
-        .map((t: any) => `- ${t.name}: ${(t.description || '').substring(0, 100)}`)
-        .join('\n');
-      const toolAwarenessBlock = `\n\n## Available Tools (${tools.length}+)\nIf the user's request requires executing a tool, respond ONLY with JSON: {"name":"<tool_name>","input":{<params>}}\nOtherwise, respond normally with text.\n\n${toolCatalog}`;
+      const toolAwarenessBlock = `\n\n## Available Tools (${tools.length}+)\nIf the user's request requires executing a tool, respond ONLY with JSON: {"name":"<tool_name>","input":{<params>}}\n\n### Strategic Guidance for Agents:\n1. **Discovery Turn**: If you don't know the project structure, start with \`project_detect\`. \n2. **Analysis Turn**: If you already see the structure in history, DO NOT repeat \`project_detect\`. Instead, use \`analyze_codebase\` or \`file_read\` on key files (e.g., package.json, src/index.ts) to understand logic.\n3. **Avoid Loops**: Do not call the same tool with the same inputs multiple times without a clearly different purpose.\n\n${toolCatalog}`;
 
       const msgs = [
         {
