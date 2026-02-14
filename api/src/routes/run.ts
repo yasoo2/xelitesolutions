@@ -2803,12 +2803,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                           ? (needsKey
                             ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
                             : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأرسل طلباً أكثر تحديداً أو اطلب قراءة ملف معين.')
-                          : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة.\nلقد قمت بالفعل بفحص بنية المشروع؛ يرجى طلب تحليل ملفات محددة أو توضيح الخطوة التالية بدقة.`)
+                          : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة.\nلقد قمت بالفعل بفحص بنية المشروع؛ يرجى طلب تحليل ملفات محددة باستخدام "analyze_project" أو استخدام أوامر Terminal للتعمق.`)
                         : (isGeneral
                           ? (needsKey
                             ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
                             : '⚠️ Planning repeated without progress.\nPlease provide a more specific instruction or ask to read a file.')
-                          : `[Neural Sync Error] Excessive repetition of step (${planName}) detected.\nI have already scanned the project; please request an analysis of specific files or clarify the next step clearly.`),
+                          : `[Neural Sync Error] Excessive repetition of step (${planName}) detected.\nI have already scanned the project; please transition to specific file analysis using "analyze_project" or use Terminal commands to explore further.`),
                     }
                   } as any;
                   planName = 'echo';

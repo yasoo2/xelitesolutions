@@ -136,8 +136,8 @@ export class AnalyzeCodebaseTool extends BaseTool {
 
 export class ProjectDetectTool extends BaseTool {
     name = 'project_detect';
-    description = 'Detect common project roots (Node/Python/Go) under a given path.';
-    version = '1.0.0';
+    description = 'Detect common project roots (Node/Python/Go) under a given path. Use this for initial discovery. After identifying project roots, transition to deep analysis tools like "analyze_project" or "analyze_codebase" on specific paths.';
+    version = '1.0.1';
     tags = ['analysis', 'detect', 'project'];
     inputSchema = {
         type: 'object' as const,
@@ -153,7 +153,8 @@ export class ProjectDetectTool extends BaseTool {
             root: { type: 'string' },
             nodeProjects: { type: 'array', items: { type: 'string' } },
             pythonProjects: { type: 'array', items: { type: 'string' } },
-            goProjects: { type: 'array', items: { type: 'string' } }
+            goProjects: { type: 'array', items: { type: 'string' } },
+            hint: { type: 'string' }
         }
     };
     permissions: ToolPermission[] = ['read'];
@@ -198,8 +199,7 @@ export class ProjectDetectTool extends BaseTool {
 
             for (const e of entries) {
                 if (!e.isDirectory()) continue;
-                if (e.name.startsWith('.')) continue;
-                if (isIgnoredDir(e.name)) continue;
+                if (e.name.startsWith('.') || isIgnoredDir(e.name)) continue;
                 scan(path.join(dir, e.name), depth + 1);
             }
         };
@@ -212,7 +212,8 @@ export class ProjectDetectTool extends BaseTool {
             root: path.resolve(root),
             nodeProjects: toSorted(nodeProjects),
             pythonProjects: toSorted(pythonProjects),
-            goProjects: toSorted(goProjects)
+            goProjects: toSorted(goProjects),
+            hint: 'Next step: Select one of the detected roots for deep analysis using "analyze_project" or "analyze_codebase".'
         };
 
         logs.push(`project_detect.root=${output.root}`);
