@@ -2169,27 +2169,34 @@ export async function generateSessionTitle(
 
   const msgs = [
     {
-      role: "system",
+      role: "assistant", // Using assistant role for system context in some models if needed, but router handles it
       content: systemContent,
     },
     ...messages
       .filter(m => m.role === 'user')
       .slice(0, 3)
-      .map((m) => ({ role: "user", content: String(m.content).slice(0, 500) })),
-  ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+      .map((m) => ({ role: "user", content: String(m.content).slice(0, 1000) })), // More context for title
+  ];
 
   try {
-    const completion = await getOpenAIClient().chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o",
-      messages: msgs,
-      max_tokens: 30,
-      temperature: 0.5,
-    });
+    const title = await intelligentRouter.routeToModel(
+      msgs,
+      {
+        type: 'simple_chat',
+        complexity: 'low',
+        requiresTools: false,
+        estimatedTokens: 1000,
+        language: hasArabic ? 'ar' : 'en'
+      }
+    );
 
-    let title = completion.choices[0]?.message?.content?.trim() || "New Session";
+    let cleanTitle = (title || "New Session").trim();
     // Cleanup quotes if LLM adds them
-    title = title.replace(/^["']|["']$/g, '');
-    return title;
+    cleanTitle = cleanTitle.replace(/^["']|["']$/g, '');
+    // Ensure it's not too long
+    if (cleanTitle.length > 100) cleanTitle = cleanTitle.substring(0, 97) + '...';
+
+    return cleanTitle;
   } catch (e) {
     console.error("Title generation failed", e);
     return "New Session";
