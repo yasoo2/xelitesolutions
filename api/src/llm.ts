@@ -809,9 +809,9 @@ export async function planNextStep(
           tools,
           256,
           messages,
-        ).slice(0, 100);
+        ).slice(0, 10);
         console.info(
-          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 100) for this request`,
+          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 10) for this request`,
         );
         onProgress?.(`تجهيز ${selectedTools.length} أداة…`);
 

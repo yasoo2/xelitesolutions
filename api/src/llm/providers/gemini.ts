@@ -9,11 +9,11 @@ const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 // Robust Model List with Fallbacks
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 const FALLBACK_MODELS = [
-    'gemini-1.5-pro',
-    'gemini-2.0-flash',
     'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
     'gemini-flash-latest'
 ];
 
@@ -123,27 +123,34 @@ export class GeminiProvider {
 
                 if (isNotFound) {
                     console.warn(`[Gemini] Model ${currentModel} NOT FOUND (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...`);
-                } else if (isBadRequest) {
-                    console.warn(`[Gemini] Model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...${detail ? ` details=${detail}` : ''}`);
-                } else {
-                    console.warn(`[Gemini] Model ${currentModel} failed (status=${Number.isFinite(status) ? status : 'n/a'}): ${error.message}${detail ? ` details=${detail}` : ''}`);
-                }
+                    if (isBadRequest) {
+                        const errorDetail = await (async () => {
+                            try {
+                                if (error.response?.data) return JSON.stringify(error.response.data);
+                                if (error.data) return JSON.stringify(error.data);
+                                return error.message || 'No detail';
+                            } catch { return 'Detail parse failed'; }
+                        })();
+                        console.warn(`[Gemini] Model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching... details=${errorDetail}`);
+                    } else {
+                        console.warn(`[Gemini] Model ${currentModel} failed (status=${Number.isFinite(status) ? status : 'n/a'}): ${error.message}${detail ? ` details=${detail}` : ''}`);
+                    }
 
-                lastError = error;
-                // Continue to next model
+                    lastError = error;
+                    // Continue to next model
+                }
             }
+
+            console.error('[Gemini] All models failed.');
+            throw lastError;
         }
 
-        console.error('[Gemini] All models failed.');
-        throw lastError;
-    }
-
     async chatWithTools(
-        messages: Array<{ role: string; content: string | any[] }>,
-        tools: any[],
-        model?: string
-    ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
-        if (!this.client) {
+            messages: Array<{ role: string; content: string | any[] }>,
+            tools: any[],
+            model ?: string
+        ): Promise < OpenAI.Chat.Completions.ChatCompletion > {
+            if(!this.client) {
             throw new Error('Gemini API key not configured');
         }
 
@@ -208,7 +215,14 @@ export class GeminiProvider {
                 if (isNotFound) {
                     console.warn(`[Gemini] Tool Chat model ${currentModel} NOT FOUND (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...`);
                 } else if (isBadRequest) {
-                    console.warn(`[Gemini] Tool Chat model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching...${detail ? ` details=${detail}` : ''}`);
+                    const errorDetail = await (async () => {
+                        try {
+                            if (error.response?.data) return JSON.stringify(error.response.data);
+                            if (error.data) return JSON.stringify(error.data);
+                            return error.message || 'No detail';
+                        } catch { return 'Detail parse failed'; }
+                    })();
+                    console.warn(`[Gemini] Tool Chat model ${currentModel} BAD REQUEST (status=${Number.isFinite(status) ? status : 'n/a'}). Switching... details=${errorDetail}`);
                 } else {
                     console.warn(`[Gemini] Tool Chat Model ${currentModel} failed (status=${Number.isFinite(status) ? status : 'n/a'}): ${error.message}${detail ? ` details=${detail}` : ''}`);
                 }
