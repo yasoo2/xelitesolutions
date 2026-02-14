@@ -81,7 +81,14 @@ export default function Joe() {
             if (msg.type === 'disconnected') setIsConnected(false);
 
             // Auto switch to terminal for command execution
-            if (msg.type === 'tool_start' && msg.tool === 'run_command') {
+            if (msg.type === 'tool_start' && (
+                msg.tool === 'run_command' ||
+                msg.tool === 'shell_execute' ||
+                msg.tool === 'terminal_manager' ||
+                msg.tool === 'npm_manager' ||
+                msg.tool === 'npm_install' ||
+                msg.tool === 'npm_build'
+            )) {
                 setWorkspaceTab('terminal');
             }
             if (msg.type === 'terminal_output') {
@@ -98,6 +105,15 @@ export default function Joe() {
             }
             if (msg.type === 'browser_screenshot' || msg.type === 'browser_update') {
                 setWorkspaceTab('browser');
+            }
+
+            // Auto switch to preview for dev server / pipeline
+            if (msg.type === 'tool_start' && (
+                msg.tool === 'dev_server' ||
+                msg.tool === 'website_full_pipeline' ||
+                msg.tool === 'scaffold_project'
+            )) {
+                setWorkspaceTab('preview');
             }
 
             // Handle message finishing
@@ -136,6 +152,18 @@ export default function Joe() {
         });
         return () => { unsub(); };
     }, [agentSelected]);
+
+    // [AUTO-SWITCH] Listen for workspace tab switch from CommandComposer SSE events
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const tab = (e as CustomEvent)?.detail?.tab;
+            if (tab === 'browser' || tab === 'terminal' || tab === 'preview') {
+                setWorkspaceTab(tab);
+            }
+        };
+        window.addEventListener('joe:workspace-tab-switch', handler);
+        return () => window.removeEventListener('joe:workspace-tab-switch', handler);
+    }, []);
 
     // Browser session ID
     useEffect(() => {

@@ -1400,11 +1400,19 @@ export async function planNextStep(
       console.info(
         `[Auto Enterprise] → Intelligent Chat via ${selectedModel.name}`,
       );
+
+      // [TOOL AWARENESS] Build condensed tool catalog for LLM visibility
+      const toolCatalog = tools
+        .filter((t: any) => t.name && t.description)
+        .map((t: any) => `- ${t.name}: ${(t.description || '').substring(0, 100)}`)
+        .join('\n');
+      const toolAwarenessBlock = `\n\n## Available Tools (${tools.length}+)\nIf the user's request requires executing a tool, respond ONLY with JSON: {"name":"<tool_name>","input":{<params>}}\nOtherwise, respond normally with text.\n\n${toolCatalog}`;
+
       const msgs = [
         {
           role: "system",
           content:
-            getSystemPrompt({ name: options?.userId || "User" }) + ragContext,
+            getSystemPrompt({ name: options?.userId || "User" }) + ragContext + toolAwarenessBlock,
         },
         ...messages,
       ];

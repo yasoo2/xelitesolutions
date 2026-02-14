@@ -2744,8 +2744,28 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
           }
 
+          // [SHELL ROUTING] Detect terminal/shell intent and route to shell_execute
+          if (planName === 'echo' || !planName) {
+            const shellIntentPattern = /^(نفذ|شغل|execute|run|أمر|امر)\s+(.+)/i;
+            const directCmdPattern = /^(npm|node|python|pip|yarn|pnpm|apt|brew|curl|wget|git|ls|cat|mkdir|rm|cp|mv|chmod|chown|find|grep|sed|awk|make|go|cargo|docker|kubectl)\s/i;
+            const shellMatch = userTextForOverrides.match(shellIntentPattern);
+            const directMatch = directCmdPattern.test(userTextForOverrides.trim());
+            if (shellMatch) {
+              const cmd = shellMatch[2].trim();
+              if (cmd) {
+                console.info(`[SHELL ROUTING] ⚡ Shell intent detected: "${cmd}"`);
+                plan = { name: 'shell_execute', input: { command: cmd } } as any;
+                planName = 'shell_execute';
+              }
+            } else if (directMatch && steps === 0) {
+              console.info(`[SHELL ROUTING] ⚡ Direct command detected: "${userTextForOverrides.trim()}"`);
+              plan = { name: 'shell_execute', input: { command: userTextForOverrides.trim() } } as any;
+              planName = 'shell_execute';
+            }
+          }
+
           // Safety: Prevent immediate repeats of same tool execution
-          if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run', 'website_full_pipeline'].includes(planName)) {
+          if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run', 'website_full_pipeline', 'shell_execute', 'terminal_manager'].includes(planName)) {
             const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
 
             const sigCount = executedToolSigs.get(sig) || 0;

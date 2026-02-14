@@ -1340,6 +1340,19 @@ export default function CommandComposer({
         } else if (name) {
           showTool(name);
         }
+
+        // [AUTO-SWITCH] Dispatch workspace tab switch event based on tool type
+        const toolName = name.startsWith('execute:') ? name.slice('execute:'.length) : name;
+        const shellTools = ['shell_execute', 'terminal_manager', 'npm_manager', 'npm_install', 'npm_build'];
+        const browserTools = ['browser_open', 'browser_run', 'browser_vision', 'browser_action'];
+        const previewTools = ['dev_server', 'website_full_pipeline', 'scaffold_project'];
+        let targetTab: string | null = null;
+        if (shellTools.includes(toolName)) targetTab = 'terminal';
+        else if (browserTools.includes(toolName)) targetTab = 'browser';
+        else if (previewTools.includes(toolName)) targetTab = 'preview';
+        if (targetTab) {
+          window.dispatchEvent(new CustomEvent('joe:workspace-tab-switch', { detail: { tab: targetTab } }));
+        }
       }
 
       if (msg.type === 'step_done') {
@@ -3378,16 +3391,16 @@ export default function CommandComposer({
                 )}
               </div>
             )}
-            
+
             {/* [Wakil 6.0] Neural Thinking Indicator */}
             {status === 'thinking' && !isQuietMode && (
-              <NeuralThinkingIndicator 
-                visible={true} 
+              <NeuralThinkingIndicator
+                visible={true}
                 phase={thinkingPhase}
                 variant="inline"
               />
             )}
-            
+
             <textarea
               className="main-input"
               ref={(el) => {
