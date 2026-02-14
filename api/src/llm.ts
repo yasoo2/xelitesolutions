@@ -129,6 +129,19 @@ const PRIORITY_TOOL_NAMES: string[] = [
   "github_create_repo",
   "image_generate",
   "deep_research",
+  "dependency_graph",
+  "business_logic",
+  "chaos_testing",
+  "compliance_validator",
+  "cost_estimator",
+  "ambiguity_resolver",
+  "multi_agent_debate",
+  "self_confidence",
+  "terraform_ops",
+  "kubernetes_ops",
+  "db_schema_migrator",
+  "sonar_analysis",
+  "security_scan_repo",
 ];
 
 export function selectToolDefsForProvider(
@@ -796,9 +809,9 @@ export async function planNextStep(
           tools,
           256,
           messages,
-        ).slice(0, 10);
+        ).slice(0, 100);
         console.info(
-          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 10) for this request`,
+          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 100) for this request`,
         );
         onProgress?.(`تجهيز ${selectedTools.length} أداة…`);
 

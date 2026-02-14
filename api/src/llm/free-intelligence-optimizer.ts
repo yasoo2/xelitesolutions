@@ -220,8 +220,8 @@ class FreeIntelligenceOptimizer {
         this.train('من انت', 'أنا **جو (JOE)**، مساعدك الهندسي الذكي. متخصص في هندسة البرمجيات والأنظمة المعقدة. أنا هنا لأعمل معك كعضو فعال في فريقك التقني.');
 
         // Anti-Hallucination for tool count
-        const toolCountContext = "أنا أمتلك **52 وحدة أدوات برمجية (Tool Modules)** تتضمن أكثر من **75 وظيفة تنفيذية** دقيقة. تشمل أدوات التعامل مع الملفات، المتصفح، الـ GitHub، بناء الـ Frontend/Backend، وتحليل البيانات.";
-        this.train('how many tools', toolCountContext);
+        const toolCountContext = "أنا أمتلك **أكثر من 200 وحدة أدوات برمجية (Tool Modules)** متقدمة تشمل كافة تخصصات الهندسة البرمجية، من بناء المواقع والأنظمة وحتى إدارة البنية التحتية والذكاء الاصطناعي.";
+        this.train('how many tools', "I possess **over 200 advanced tool modules** covering all software engineering domains, from web building to infrastructure management and AI orchestration.");
         this.train('كم عدد الادوات', toolCountContext);
     }
 
