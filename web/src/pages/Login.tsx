@@ -82,7 +82,7 @@ export default function Login() {
                 localStorage.setItem('token', token);
             } catch { }
             window.location.hash = '';
-            nav('/joe', { replace: true });
+            nav('/joe-premium', { replace: true });
             return;
         }
 
@@ -156,12 +156,12 @@ export default function Login() {
                 const data2 = await res2.json().catch(() => ({}));
                 if (!res2.ok) throw new Error(String(data2?.error || '').trim() || t('login_error_auth'));
                 localStorage.setItem('token', String(data2?.token || ''));
-                nav('/joe');
+                nav('/joe-premium');
                 return;
             }
 
             localStorage.setItem('token', String(data?.token || ''));
-            nav('/joe');
+            nav('/joe-premium');
         } catch (err: any) {
             const msg = String(err?.message || '');
             if (/failed to fetch/i.test(msg) || /network/i.test(msg)) {

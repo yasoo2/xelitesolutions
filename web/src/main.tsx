@@ -134,13 +134,7 @@ createRoot(document.getElementById('root')!).render(
 
               <Route
                 path="joe"
-                element={
-                  <RequireAuth>
-                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
-                      <JoePremium />
-                    </Suspense>
-                  </RequireAuth>
-                }
+                element={<Navigate to="/joe-premium" replace />}
               />
               <Route
                 path="workspace/:workspaceId/settings"
