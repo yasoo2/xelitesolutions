@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
-import { broadcast, LiveEvent, registerRunOwner, registerSessionOwner } from '../ws';
+import { broadcast, LiveEvent, registerRunOwner, registerSessionOwner, broadcastThinkingPhase, broadcastThinkingDetail } from '../ws';
 import { executeTool } from '../services/ToolService';
 import { ToolExecution } from '../models/toolExecution';
 import { Artifact } from '../models/artifact';
@@ -1844,6 +1844,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           ev({ type: 'text', data: { text: answer } });
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
+          
+          // [Wakil 6.0] Broadcast IDLE phase for greeting responses
+          broadcastThinkingPhase(String(sessionId), 'idle');
+          
           ev({ type: 'run_finished', data: { runId, ok: true } });
 
           // Update DB/Mock state asynchronously to avoid blocking response
@@ -1865,6 +1869,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           ev({ type: 'text', data: { text: answer } });
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
+          
+          // [Wakil 6.0] Broadcast IDLE phase for cache hits
+          broadcastThinkingPhase(String(sessionId), 'idle');
+          
           ev({ type: 'run_finished', data: { runId, ok: true } });
 
           if (!offlineMode) {
@@ -1901,6 +1909,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }) as any;
           } else {
             console.log(`[Run] Calling planNextStep... Provider: ${providerKey}`);
+            // [Wakil 6.0] Broadcast ANALYZING phase
+            broadcastThinkingPhase(String(sessionId), 'analyzing', 'تحليل الطلب...');
+            broadcastThinkingDetail(String(sessionId), '> Analyzing user request...');
+            
             initialPlan = await planNextStep(history, {
               provider: providerKey,
               apiKey: apiKey,
@@ -1913,6 +1925,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               throwOnError: true,
             });
             console.log(`[Run] planNextStep result: ${initialPlan ? initialPlan.name : 'NULL'}`);
+            
+            // [Wakil 6.0] Broadcast SYNTHESIZING phase
+            broadcastThinkingPhase(String(sessionId), 'synthesizing', 'وضع خطة التنفيذ...');
+            broadcastThinkingDetail(String(sessionId), '> Planning execution strategy...');
           }
         }
       }
@@ -1963,6 +1979,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           type: 'step_started',
           data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) },
         });
+        
+        // [Wakil 6.0] Broadcast EXECUTING phase
+        broadcastThinkingPhase(String(sessionId), 'executing', 'تنفيذ المهمة...');
+        broadcastThinkingDetail(String(sessionId), `> Executing tool: ${initialPlan.name}...`);
+        
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }
@@ -1994,6 +2015,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (!offlineMode) {
           await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
         }
+        
+        // [Wakil 6.0] Broadcast IDLE phase when task completes
+        broadcastThinkingPhase(String(sessionId), 'idle');
+        
         ev({ type: 'run_finished', data: { runId, ok: result.ok } });
         return res.json({ ok: true, runId, result });
       }
@@ -2048,6 +2073,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (!offlineMode) {
           await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
         }
+        
+        // [Wakil 6.0] Broadcast IDLE phase when task completes
+        broadcastThinkingPhase(String(sessionId), 'idle');
+        
         ev({ type: 'run_finished', data: { runId, ok: result.ok } });
         planContext.delete(ap._id.toString());
         // Fix: Explicitly return result here like in mock branch
