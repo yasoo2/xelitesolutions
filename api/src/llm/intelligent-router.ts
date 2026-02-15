@@ -507,12 +507,30 @@ export async function routeToModel(
     // Flatten multimodal messages for text-only providers (and for analysis)
     const flatMessages = flattenMultimodalMessages(messages);
 
-    // Helper to clean output (Moved to top level scope)
+    // Helper to extract thinking tokens and forward them, then clean output
+    const extractAndForwardThoughts = (text: string): void => {
+        if (!onThought) return;
+        const patterns = [
+            /:::thought([\s\S]*?):::/g,
+            /<thought>([\s\S]*?)<\/thought>/g,
+            /<think>([\s\S]*?)<\/think>/g,
+        ];
+        for (const pattern of patterns) {
+            for (const match of text.matchAll(pattern)) {
+                const thought = match[1]?.trim();
+                if (thought && thought.length > 2) {
+                    onThought(thought);
+                }
+            }
+        }
+    };
+
     const cleanOutput = (text: string) => {
+        extractAndForwardThoughts(text);
         return text
-            .replace(/:::thought[\s\S]*?:::/g, '') // Strip :::thought::: blocks
-            .replace(/<thought>[\s\S]*?<\/thought>/g, '') // Strip <thought> tags
-            .replace(/<think>[\s\S]*?<\/think>/g, '') // Strip <think> tags (DeepSeek style)
+            .replace(/:::thought[\s\S]*?:::/g, '')
+            .replace(/<thought>[\s\S]*?<\/thought>/g, '')
+            .replace(/<think>[\s\S]*?<\/think>/g, '')
             .trim();
     };
 
@@ -661,7 +679,7 @@ export async function routeToModel(
     for (const p of meshProviders) {
         try {
             onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
-            onThought?.(`> Engaging fallback provider: ${p.name}...`);
+            onThought?.(`> Trying fallback provider: ${p.name}...`);
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
             // Dynamic Timeout: Optimized for speed
