@@ -3498,21 +3498,17 @@ export default function CommandComposer({
               <button
                 className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
                 onClick={() => {
-                  console.log('[ComponentDebug] Send Clicked!', { status, approval, secretPrompt, isUploading, textLen: text.length });
                   if (status !== 'idle' || !!approval || !!secretPrompt) {
-                    console.log('[ComponentDebug] Stopping current run...');
                     stopCurrentRun();
                     return;
                   }
                   if (isUploading) {
-                    console.log('[ComponentDebug] Uploading blocking send...');
                     return;
                   }
-                  console.log('[ComponentDebug] Calling run()...');
                   try {
                     run();
                   } catch (e) {
-                    console.error('[ComponentDebug] run() threw synchronously:', e);
+                    console.error('run() threw synchronously:', e);
                   }
                 }}
                 disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
