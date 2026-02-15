@@ -39,6 +39,7 @@ class AutoOpenManagerClass {
      * Trigger panel open
      */
     private triggerOpen(panel: PanelType, data?: any) {
+        console.log(`[AutoOpenManager] triggerOpen called for panel: ${panel}`, { enabled: this.config.enabled, panelEnabled: this.config.panels[panel] });
         if (!this.config.enabled || !this.config.panels[panel]) return;
         this.listeners.forEach(cb => cb(panel, data));
     }
@@ -99,6 +100,7 @@ class AutoOpenManagerClass {
 
         // When preview is ready
         if (event.type === 'preview_ready') {
+            console.log('[AutoOpenManager] Received preview_ready event', event.data);
             this.triggerOpen('preview', event.data);
         }
 

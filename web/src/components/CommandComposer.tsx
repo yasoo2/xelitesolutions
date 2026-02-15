@@ -736,16 +736,15 @@ export default function CommandComposer({
     } catch { }
 
     const pickFirstKeyedProvider = () => {
-      // PRIORITY: Use Auto by default
+      // PRIORITY: Force Auto by default if no other active provider is saved
+      console.log('[ProviderDebug] pickFirstKeyedProvider: Defaulting to auto');
       return 'auto';
-
-      // Use specific providers if keys exist
-      if (String(baseProviders.openai?.apiKey || '').trim()) return 'openai';
-      if (String(baseProviders.anthropic?.apiKey || '').trim()) return 'anthropic';
     };
 
     try {
       const savedActive = localStorage.getItem('active_provider');
+      console.log('[ProviderDebug] Loaded active_provider:', savedActive);
+
       if (savedActive && baseProviders[savedActive]) {
         return { providers: baseProviders, activeProvider: savedActive };
       }
@@ -2189,10 +2188,14 @@ export default function CommandComposer({
       const isAuto = providerToSend === 'auto';
       const isFreeOpenRouter = providerToSend === 'openrouter' && providers['openrouter']?.isFree;
 
+      console.log(`[ProviderDebug] run() start. active=${activeProvider}, toSend=${providerToSend}, isAuto=${isAuto}, isFreeOpenRouter=${isFreeOpenRouter}`);
+
       if (!isAuto && !isFreeOpenRouter && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
+        console.log('[ProviderDebug] Provider invalid, falling back...');
         const valid = pickFirstValidProvider();
         providerToSend = valid;
         providerCfgToSend = providers[valid];
+        console.log('[ProviderDebug] Fallback provider:', valid);
       }
 
       const payload: any = {
@@ -3495,12 +3498,22 @@ export default function CommandComposer({
               <button
                 className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
                 onClick={() => {
+                  console.log('[ComponentDebug] Send Clicked!', { status, approval, secretPrompt, isUploading, textLen: text.length });
                   if (status !== 'idle' || !!approval || !!secretPrompt) {
+                    console.log('[ComponentDebug] Stopping current run...');
                     stopCurrentRun();
                     return;
                   }
-                  if (isUploading) return;
-                  run();
+                  if (isUploading) {
+                    console.log('[ComponentDebug] Uploading blocking send...');
+                    return;
+                  }
+                  console.log('[ComponentDebug] Calling run()...');
+                  try {
+                    run();
+                  } catch (e) {
+                    console.error('[ComponentDebug] run() threw synchronously:', e);
+                  }
                 }}
                 disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
                 title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
