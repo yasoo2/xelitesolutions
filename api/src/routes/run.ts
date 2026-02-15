@@ -2977,7 +2977,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
 
           const wf = !wantsShop ? await detectWorkflowAdvanced(userTextForOverrides, { useAnalyzer: true, workspaceId }) : null;
-          if (wf && wf.kind !== 'ecommerce' && (!planName || planName === 'echo')) {
+          const isProjectStart = wf && ['simple_creative', 'node_api', 'static_site', 'fullstack'].includes(wf.kind);
+          if (wf && wf.kind !== 'ecommerce' && (isProjectStart || !planName || planName === 'echo')) {
             const marker =
               wf.kind === 'tool_shell' && wf.tool
                 ? `WF_START:${wf.kind}:${wf.tool.name}`
@@ -2988,7 +2989,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               historyHasToolCall(history as any, 'scaffold_project') ||
               historyHasToolCall(history as any, 'analyze_codebase');
 
-            if (steps === 0 && !historyHasMarker(history as any, marker) && !alreadyExecuted) {
+            if (steps === 0 && !historyHasMarker(history as any, 'PROJECT_PLAN:')) {
               if (wf.kind !== 'simple_creative') {
                 const title =
                   wf.kind === 'tool_shell'
@@ -3028,25 +3029,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
               history.push({ role: 'assistant', content: marker } as any);
 
-              // Auto-Preview Directive for Simple Creative Requests
-              // FIXED: Instead of just adding a directive text, FORCE the first tool to be write_file
-              if (wf.kind === 'simple_creative') {
-                const directive = isArabicText(userTextForOverrides)
-                  ? `[DIRECTIVE]: أنت الآن في وضع "الإنتاج السريع". ابدأ فوراً بكتابة الملفات. بمجرد الانتهاء، استدعِ \`dev_server_start\`.`
-                  : `[DIRECTIVE]: You are in "Rapid Production" mode. Start writing files immediately. When done, call \`dev_server_start\`.`;
-                history.push({ role: 'system', content: directive } as any);
+              // Phase 1: Marker handled below.
 
-                // FORCE BUILD: Override the plan to scaffold instead of echo
-                if (!planName || planName === 'echo') {
-                  console.info('[SIMPLE_CREATIVE] ⚡ Forcing scaffold_project as first tool');
-                  plan = { name: 'project_detect', input: { path: '.' } } as any;
-                  planName = 'project_detect';
-                }
-              }
-
-              // PHASE 2-3 INTEGRATION: Use ProjectPlanner for ALL detected project workflows
-              // FIXED: Previously only triggered for complex/very_complex — now triggers for all workflows
-              if (wf.kind !== 'simple_creative' && wf.kind !== 'tool_shell') {
+              // PHASE 2-3 INTEGRATION: Use ProjectPlanner for ALL project-generating workflows
+              if (wf.kind !== 'tool_shell') {
                 try {
                   // Create execution plan
                   const { executeTool } = await import('../services/ToolService');
@@ -3098,7 +3084,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                             sessionId,
                             workspaceId,
                           }
-                        }, { sessionId, workspaceId });
+                        }, {
+                          sessionId,
+                          workspaceId,
+                          onThought: (m) => ev({ type: 'thought', data: m }),
+                          onProgress: (m) => ev({ type: 'progress', data: m })
+                        });
 
                         if (phaseResult.ok && phaseResult.output) {
                           const out = phaseResult.output;
@@ -3126,6 +3117,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                         ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} threw: ${phaseError?.message || phaseError}` });
                       }
                     }
+
+                    const finalSuccessMsg = isArabicText(userTextForOverrides)
+                      ? `✨ اكتمل العمل على كافة المراحل بنجاح! يمكنك الآن مشاهدة المشروع في تبويبة المعاينة (Preview).`
+                      : `✨ All project phases completed successfully! You can now view the project in the Preview tab.`;
+                    ev({ type: 'text', data: finalSuccessMsg });
                   }
                 } catch (planError) {
                   // Fallback to normal execution if planning fails

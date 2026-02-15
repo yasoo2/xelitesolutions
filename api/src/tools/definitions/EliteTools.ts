@@ -262,3 +262,64 @@ export class SelfConfidenceTool implements ToolDefinition {
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }
+
+// 9. AI-Enhanced File Writer
+export class AIWriteFileTool implements ToolDefinition {
+    name = 'ai_write_file';
+    version = '1.0.0';
+    tags = ['write', 'generate', 'code', 'elite'];
+    description = 'Generate full file content using AI based on a description.';
+
+    inputSchema: any = {
+        type: 'object',
+        properties: {
+            path: { type: 'string', description: 'Target file path' },
+            description: { type: 'string', description: 'Detailed description of what the file should contain' },
+            context: { type: 'string', description: 'Optional project context or requirements' }
+        },
+        required: ['path', 'description']
+    };
+    outputSchema: any = { type: 'object', properties: { path: { type: 'string' }, size: { type: 'number' } } };
+
+    permissions: ToolPermission[] = ['write'];
+    sideEffects: ToolPermission[] = ['write'];
+    rateLimitPerMinute = 10;
+    auditFields = ['path'];
+
+    async execute(input: { path: string; description: string; context?: string }) {
+        const filePath = input.path;
+        const prompt = `Write the full content for the file at "${filePath}".
+        Goal: ${input.description}
+        Context: ${input.context || 'Create a production-ready, high-quality, and visually stunning implementation.'}
+        
+        Rules:
+        - Return ONLY the file content.
+        - No markdown wrapping (no \`\`\` code blocks).
+        - Substantial code, no placeholders.
+        - If it's a web file, use modern aesthetics (glassmorphism if appropriate).
+        - Ensure all imports work or are standard.`;
+
+        try {
+            const callLLM = getLLM();
+            const response = await callLLM(prompt, [{ role: 'system', content: 'You are an elite software architect. Output raw file content only. No markdown.' }]);
+
+            // Clean markdown blocks if LLM ignored instructions
+            let cleanContent = response.trim();
+            if (cleanContent.startsWith('```')) {
+                cleanContent = cleanContent.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
+            }
+
+            const fs = require('fs');
+            const { workspaceService } = require('../../services/WorkspaceService');
+            const root = workspaceService.getActiveRoot();
+            const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(root, filePath);
+
+            fs.mkdirSync(path.dirname(absPath), { recursive: true });
+            fs.writeFileSync(absPath, cleanContent);
+
+            return { ok: true, output: { path: filePath, size: cleanContent.length }, logs: [`AI generated file: ${filePath}`] };
+        } catch (e: any) {
+            return { ok: false, error: e.message, logs: [] };
+        }
+    }
+}

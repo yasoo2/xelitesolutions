@@ -63,7 +63,7 @@ export class PhaseExecutorTool implements ToolDefinition {
     auditFields = [];
     mockSupported = false;
 
-    async execute(input: { phase: any; projectContext?: any }) {
+    async execute(input: { phase: any; projectContext?: any }, context?: any) {
         const { phase, projectContext } = input;
         const logs: string[] = [];
         const results: Array<{ task: string; tool: string; ok: boolean; error?: string }> = [];
@@ -73,7 +73,9 @@ export class PhaseExecutorTool implements ToolDefinition {
             const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
             const totalTasks = tasks.length;
 
-            logs.push(`[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`);
+            const startMsg = `[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`;
+            logs.push(startMsg);
+            if (context?.onThought) context.onThought(startMsg);
 
             for (let i = 0; i < tasks.length; i++) {
                 const task = tasks[i];
@@ -88,7 +90,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                     continue;
                 }
 
-                logs.push(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — executing tool: ${toolName}`);
+                const execMsg = `[PhaseExecutor] Task ${i + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`;
+                logs.push(execMsg);
+                if (context?.onThought) context.onThought(execMsg);
 
                 try {
                     // Build tool args from task definition + project context
@@ -104,15 +108,21 @@ export class PhaseExecutorTool implements ToolDefinition {
                     const toolResult = await executeTool(toolName, toolArgs, {
                         sessionId: projectContext?.sessionId,
                         workspaceId: projectContext?.workspaceId,
+                        onThought: (m: string) => context?.onThought?.(`[${toolName}] ${m}`),
+                        onProgress: (m: string) => context?.onProgress?.(`[${toolName}] ${m}`),
                     });
 
                     if (toolResult.ok) {
-                        logs.push(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
+                        const successMsg = `[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`;
+                        logs.push(successMsg);
+                        if (context?.onThought) context.onThought(successMsg);
                         results.push({ task: taskDesc, tool: toolName, ok: true });
                         completedCount++;
                     } else {
                         const errMsg = String(toolResult.error || 'Unknown error');
-                        logs.push(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
+                        const failMsg = `[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`;
+                        logs.push(failMsg);
+                        if (context?.onThought) context.onThought(failMsg);
                         results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
 
                         // If this is a required task (high priority), stop the phase

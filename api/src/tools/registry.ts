@@ -73,6 +73,7 @@ import {
   MultiAgentDebateTool,
   SelfConfidenceTool
 } from './definitions/EliteTools';
+import { AIGeneratorTool } from './definitions/AIGeneratorTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -227,6 +228,7 @@ export const tools: ToolDefinition[] = [
   new AmbiguityResolverTool(),
   new MultiAgentDebateTool(),
   new SelfConfidenceTool(),
+  new AIGeneratorTool(),
   // --- Virtual Tools (Aliased in ToolService) ---
   {
     name: 'web_search',

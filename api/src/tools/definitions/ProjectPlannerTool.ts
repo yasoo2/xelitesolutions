@@ -77,6 +77,13 @@ ANALYSIS DATA:
 
 Create a hierarchical plan with 3-5 phases. Each phase should be completable independently.
 
+QUALITY INSTRUCTIONS:
+- For "Creative", "Landing Page", or "Website" requests, prioritize MODERN AESTHETICS (glassmorphism, vibrant gradients, rich typography).
+- CRITICAL: USE THE "ai_write_file" TOOL FOR ALL CODE GENERATION. This tool uses AI to write full, rich files.
+- Do NOT use "scaffold_project" or "write_file" for the main logic; use "ai_write_file" so the implementation is NOT a placeholder.
+- Ensure the project structure is clean and follows industry best practices (3-Tier architecture for fullstack, organized assets for static).
+- The FINAL phase MUST be "Launch & Preview" which includes the dev_server_start tool.
+
 Return ONLY valid JSON in this format:
 {
   "projectName": "Short project name",
@@ -89,9 +96,13 @@ Return ONLY valid JSON in this format:
       "description": "What this phase accomplishes",
       "tasks": [
         {
-          "task": "Specific task description",
-          "tool": "tool_name_to_use",
-          "priority": "high|medium|low"
+          "task": "Develop the main landing page structure with rich CSS",
+          "tool": "ai_write_file",
+          "args": {
+             "path": "web-app/index.html",
+             "description": "Full HTML5 landing page with glassmorphism, responsive sections, and Arabic support. Style with an external CSS file."
+          },
+          "priority": "high"
         }
       ],
       "deliverables": ["file1.js", "file2.ts"],
@@ -104,7 +115,7 @@ Return ONLY valid JSON in this format:
   }
 }
 
-IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
+IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_file" with "path" and "description" args for all files.`;
 
             // Call LLM for planning
             const llmContext = [
@@ -192,6 +203,16 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
                     ],
                     deliverables: ['tests/'],
                     estimatedTime: '20 minutes'
+                },
+                {
+                    phaseNumber: 4,
+                    name: 'Launch & Preview',
+                    description: 'Start the development server and preview the project',
+                    tasks: [
+                        { task: 'Start dev server', tool: 'dev_server_start', priority: 'high' }
+                    ],
+                    deliverables: ['Live Preview'],
+                    estimatedTime: '5 minutes'
                 }
             ],
             dependencies: {

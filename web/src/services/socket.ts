@@ -8,6 +8,7 @@ let connectTimer: number | null = null;
 let connectAttempts = 0;
 let triedFallback = false;
 let lastUrl = '';
+import { AutoOpenManager } from './AutoOpenManager';
 let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
 let lastAuthProbeAt = 0;
 let lastShimCheckAt = 0;
@@ -215,7 +216,7 @@ async function connect() {
 
       // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
       const msgType = String(data?.type || '');
-      
+
       // [Wakil 6.0] Handle explicit thinking_phase messages
       if (msgType === 'thinking_phase') {
         const phase = data?.data?.phase;
@@ -230,7 +231,7 @@ async function connect() {
           thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
         }
       }
-      
+
       // Auto phase management based on events
       if (msgType === 'step_started') {
         if (!quietMode) {
@@ -267,6 +268,10 @@ async function connect() {
         thinkingDetails = [];
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
       }
+
+      try {
+        AutoOpenManager.processStepEvent(data);
+      } catch { }
 
       listeners.forEach(l => l(data));
     } catch (e) {

@@ -219,7 +219,7 @@ export class DevServerTool extends BaseTool {
     rateLimitPerMinute = 5;
     auditFields = ['cwd'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const cwd = resolveToolPath(String(input?.cwd || '').trim());
         let command = String(input?.command || '').trim();
@@ -259,7 +259,8 @@ export class DevServerTool extends BaseTool {
                     url: previewUrl,
                     cwd,
                     timestamp: new Date().toISOString()
-                }
+                },
+                sessionId: context?.sessionId
             });
 
             return { ok: true, output: { previewUrl, userPreviewUrl }, logs };
