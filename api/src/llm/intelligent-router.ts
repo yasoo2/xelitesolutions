@@ -516,8 +516,7 @@ export async function routeToModel(
             /<think>([\s\S]*?)<\/think>/g,
         ];
         for (const pattern of patterns) {
-            let match;
-            while ((match = pattern.exec(text)) !== null) {
+            for (const match of text.matchAll(pattern)) {
                 const thought = match[1]?.trim();
                 if (thought && thought.length > 2) {
                     onThought(thought);
