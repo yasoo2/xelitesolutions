@@ -712,8 +712,6 @@ export async function planNextStep(
   const onThought = options?.onThought;
 
   onProgress?.("تحليل الطلب…");
-  onThought?.("> Initializing Neural Core...");
-  onThought?.("> Analyzing user instruction context...");
   onProgress?.("تجميع سياق سريع…");
 
   const optimization = await freeIntelligenceOptimizer.optimizeRequest(
@@ -724,7 +722,6 @@ export async function planNextStep(
   );
 
   onProgress?.("مطابقة الأنماط وتحديد المسار…");
-  onThought?.("> Pattern matching optimization logic...");
 
   const analysis =
     (optimization as any).analysis ||

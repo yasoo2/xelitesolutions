@@ -1247,7 +1247,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     // Initial signals for UI
     ev({ type: 'run_started', data: { sessionId } });
-    ev({ type: 'thought', data: '> Neural link established. Analyzing user instruction...' });
 
     // [DEBUG] Log incoming request for file debugging
     console.log('[Run/Start] Request received:', {
@@ -1829,12 +1828,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
           const answer = fast;
 
-          // [Wakil 6.2] Simulated thinking for UX consistency
-          ev({ type: 'thought', data: '> Rapid pattern match found in local knowledge base.' });
-          ev({ type: 'thought', data: '> Retrieving optimized response...' });
-
-          // Small delay to ensure thinking is visible
-          await new Promise(r => setTimeout(r, 600));
+          ev({ type: 'thought', data: '> Pattern match found — returning cached response.' });
 
           ev({ type: 'text', data: { text: answer } });
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
@@ -1903,9 +1897,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }) as any;
           } else {
             console.log(`[Run] Calling planNextStep... Provider: ${providerKey}`);
-            // [Wakil 6.0] Broadcast ANALYZING phase
-            broadcastThinkingPhase(String(sessionId), 'analyzing', 'تحليل الطلب...');
-            broadcastThinkingDetail(String(sessionId), '> Analyzing user request...');
+            broadcastThinkingPhase(String(sessionId), 'analyzing', 'إرسال الطلب إلى المزوّد...');
+            broadcastThinkingDetail(String(sessionId), `> Routing to LLM provider: ${providerKey}...`);
 
             initialPlan = await planNextStep(history, {
               provider: providerKey,
@@ -1914,15 +1907,20 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               model: model,
               userId: String(userId),
               sessionId: String(sessionId),
-              onProgress: (m: string) => ev({ type: 'thought', data: m }),
-              onThought: (m: string) => ev({ type: 'thought', data: m }),
+              onProgress: (m: string) => {
+                broadcastThinkingDetail(String(sessionId), `> ${m}`);
+                ev({ type: 'thought', data: m });
+              },
+              onThought: (m: string) => {
+                broadcastThinkingDetail(String(sessionId), m);
+                ev({ type: 'thought', data: m });
+              },
               throwOnError: true,
             });
             console.log(`[Run] planNextStep result: ${initialPlan ? initialPlan.name : 'NULL'}`);
 
-            // [Wakil 6.0] Broadcast SYNTHESIZING phase
-            broadcastThinkingPhase(String(sessionId), 'synthesizing', 'وضع خطة التنفيذ...');
-            broadcastThinkingDetail(String(sessionId), '> Planning execution strategy...');
+            broadcastThinkingPhase(String(sessionId), 'synthesizing', initialPlan ? `تم اختيار: ${initialPlan.name}` : 'لا توجد خطة...');
+            broadcastThinkingDetail(String(sessionId), initialPlan ? `> Plan resolved: ${initialPlan.name}` : '> No plan resolved');
           }
         }
       }
@@ -1974,8 +1972,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) },
         });
 
-        // [Wakil 6.0] Broadcast EXECUTING phase
-        broadcastThinkingPhase(String(sessionId), 'executing', 'تنفيذ المهمة...');
+        broadcastThinkingPhase(String(sessionId), 'executing', `تنفيذ: ${initialPlan.name}`);
         broadcastThinkingDetail(String(sessionId), `> Executing tool: ${initialPlan.name}...`);
 
         const callInput =
@@ -2462,8 +2459,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                       model,
                       userId,
                       sessionId,
-                      onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }),
-                      onThought: (t) => ev({ type: 'thought', data: t }),
+                      onProgress: (p) => {
+                        broadcastThinkingDetail(String(sessionId), `> ${p}`);
+                        ev({ type: 'thought', data: `> ${p}` });
+                      },
+                      onThought: (t) => {
+                        broadcastThinkingDetail(String(sessionId), t);
+                        ev({ type: 'thought', data: t });
+                      },
                       throwOnError: true
                     }),
                     timeoutPromise
