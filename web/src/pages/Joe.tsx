@@ -110,16 +110,26 @@ export default function Joe() {
 
             if (msg.type === 'tool_start' && (
                 msg.tool === 'dev_server' ||
+                msg.tool === 'dev_server_start' ||
                 msg.tool === 'website_full_pipeline' ||
                 msg.tool === 'scaffold_project'
             )) {
                 setWorkspaceTab('preview');
             }
 
+            // [AUTO-PREVIEW] Handle preview_ready event specifically
+            if (msg.type === 'preview_ready') {
+                const url = msg.data?.url || msg.data?.previewUrl;
+                if (url) {
+                    setPreviewUrl(url);
+                    setWorkspaceTab('preview');
+                }
+            }
+
             // [AUTO-PREVIEW] Capture URL from tool results
             if (msg.type === 'step_done' && msg.data?.result?.ok) {
                 const output = msg.data.result.output;
-                const url = output?.url || output?.previewUrl || output?.localhost;
+                const url = output?.url || output?.previewUrl || output?.localhost || output?.userPreviewUrl;
                 if (url && typeof url === 'string') {
                     setPreviewUrl(url);
                     // Also switch to preview tab if we got a fresh URL

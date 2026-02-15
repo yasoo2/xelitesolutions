@@ -256,7 +256,7 @@ export class DevServerTool extends BaseTool {
             broadcast({
                 type: 'preview_ready',
                 data: {
-                    url: previewUrl,
+                    url: userPreviewUrl,
                     cwd,
                     timestamp: new Date().toISOString()
                 },

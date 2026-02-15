@@ -8,6 +8,7 @@ import SessionsBar from './SessionsBar';
 import StatusBar from './StatusBar';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import '../styles/joe-premium.css';
+import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
 interface Session {
     id: string;
     title: string;
@@ -162,8 +163,25 @@ export default function JoeIDELayout({
         }
     }, [onWorkspaceTabChange]);
 
+
+
+    // ... inside component ...
+
     const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
+
+    // Auto-open handler for Neural Interconnection
+    const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
+        if (panel === 'preview') {
+            handleWorkspaceTabChange('preview');
+        } else if (panel === 'browser') {
+            handleWorkspaceTabChange('browser');
+        } else if (panel === 'terminal') {
+            handleWorkspaceTabChange('terminal');
+        }
+    }, [handleWorkspaceTabChange]);
+
+    useAutoOpen(handleAutoOpen);
 
     const handleGitChanges = useCallback(() => {
         setSidebarView('github');
