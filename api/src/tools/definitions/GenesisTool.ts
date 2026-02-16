@@ -28,7 +28,7 @@ export const GenesisToolDef = {
     },
     permissions: ['internet', 'execute', 'read', 'write'],
     sideEffects: ['execute', 'write'],
-    rateLimitPerMinute: 1, // God mode is heavy
+    rateLimitPerMinute: 5, // God mode is heavy but needs some leeway
     auditFields: ['goal'],
     mockSupported: true,
     // execute implementation will be injected in registry.ts due to dependency on 'executeTool'

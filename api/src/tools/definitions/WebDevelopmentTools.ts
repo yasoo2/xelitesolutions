@@ -59,7 +59,7 @@ export class WebPipelineTool extends BaseTool {
 
     permissions: ToolPermission[] = ['write', 'execute'];
     sideEffects: ToolPermission[] = ['write', 'execute'];
-    rateLimitPerMinute = 3;
+    rateLimitPerMinute = 10;
     auditFields = ['name'];
 
     async execute(input: any) {
@@ -134,11 +134,16 @@ export class WebPipelineTool extends BaseTool {
         if (rootHasWorkspaces) {
             const installRes = await runInstall(projectPath);
             steps.push({ step: 'npm_install', ok: installRes.ok, output: installRes.output });
+            if (!installRes.ok) {
+                return { ok: false, error: `npm install failed: ${installRes.error || 'Unknown error'}`, logs, output: { path: projectPath, steps } };
+            }
         } else {
             for (const proj of allNodeProjects) {
                 const installRes = await runInstall(proj);
                 steps.push({ step: 'npm_install', ok: installRes.ok, output: { project: proj, ...installRes.output } });
-                if (!installRes.ok) break;
+                if (!installRes.ok) {
+                    return { ok: false, error: `npm install failed for ${proj}: ${installRes.error || 'Unknown error'}`, logs, output: { path: projectPath, steps } };
+                }
             }
         }
 
@@ -216,7 +221,7 @@ export class DevServerTool extends BaseTool {
     outputSchema = { type: 'object' as const, properties: { previewUrl: { type: 'string' }, userPreviewUrl: { type: 'string' } } };
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = ['execute']; // it starts a process
-    rateLimitPerMinute = 5;
+    rateLimitPerMinute = 15;
     auditFields = ['cwd'];
 
     async execute(input: any, context?: any) {
@@ -292,7 +297,7 @@ export class ScaffoldTool extends BaseTool {
     outputSchema = { type: 'object' as const, properties: { path: { type: 'string' }, summary: { type: 'string' } } };
     permissions: ToolPermission[] = ['write'];
     sideEffects: ToolPermission[] = ['write'];
-    rateLimitPerMinute = 5;
+    rateLimitPerMinute = 30;
     auditFields = ['name', 'type'];
 
     async execute(input: any) {

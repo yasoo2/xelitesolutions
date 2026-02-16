@@ -389,7 +389,7 @@ export class NpmManagerTool extends BaseTool {
     outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
     permissions: ToolPermission[] = ['execute', 'write', 'internet'];
     sideEffects: ToolPermission[] = ['execute', 'write', 'internet'];
-    rateLimitPerMinute = 10;
+    rateLimitPerMinute = 30;
 
     async execute(input: any) {
         const logs: string[] = [];
@@ -487,7 +487,7 @@ export class ShellExecuteTool extends BaseTool {
     outputSchema = { type: 'object' as const, properties: { status: { type: 'string' }, stdout: { type: 'string' }, stderr: { type: 'string' }, exitCode: { type: 'number' } } };
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = ['execute'];
-    rateLimitPerMinute = 20;
+    rateLimitPerMinute = 60;
     auditFields = ['command', 'cwd'];
 
     async execute(input: any) {
