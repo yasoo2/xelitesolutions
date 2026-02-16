@@ -556,11 +556,12 @@ import {
   pollinationsProvider,
   openRouterProvider,
   huggingfaceProvider,
+  deepSeekProvider,
 } from "./llm/providers/registry";
 import { LLMCacheTool } from "./tools/definitions/LLMCacheTool";
 
 // Export for use in intelligent-router
-export { pollinationsProvider, openRouterProvider, huggingfaceProvider };
+export { pollinationsProvider, openRouterProvider, huggingfaceProvider, deepSeekProvider };
 
 // In-memory store for user provider preference
 const activeProviders = new Map<string, string>();
@@ -574,6 +575,8 @@ export function setActiveProvider(userId: string, provider: string) {
     activeProviders.set(userId, "huggingface");
   else if (["gemini", "google"].includes(p))
     activeProviders.set(userId, "gemini");
+  else if (["deepseek"].includes(p))
+    activeProviders.set(userId, "deepseek");
   else activeProviders.set(userId, "openai");
   console.log(
     `LLM: User ${userId.slice(0, 4)} switched to provider: ${activeProviders.get(userId)}`,
@@ -881,6 +884,39 @@ export async function planNextStep(
       }
 
       console.info("[LLM] Gemini failed, falling back to Auto mode...");
+      // [Dynamic Fallback] If Gemini fails, try DeepSeek before generic auto mode if available
+      if (deepSeekProvider.isAvailable()) {
+        console.info("[LLM] High-Performance fallback: Choosing DeepSeek V3");
+        return await planNextStep(messages, { ...options, provider: "deepseek" });
+      }
+      return await planNextStep(messages, { ...options, provider: "auto" });
+    }
+  }
+
+  // DeepSeek Provider - High performance tool calling support
+  if (providerKey.includes("deepseek")) {
+    console.info("[LLM] 🚀 Planning with DeepSeek V3 (High-Performance)");
+    onProgress?.("الاتصال بـ DeepSeek…");
+
+    try {
+      const toolDefs = selectToolDefsForProvider(tools, MAX_PROVIDER_TOOLS, messages);
+      const text = await deepSeekProvider.chatComplete(messages as any, undefined, toolDefs);
+
+      const toolCall = extractToolCallFromText(text);
+      if (toolCall) {
+        console.info(`[LLM] DeepSeek: Tool call detected - ${toolCall.name}`);
+        onProgress?.(`تنفيذ الأداة: ${toolCall.name}…`);
+        return { name: toolCall.name, input: toolCall.input, reasoning: toolCall.reasoning };
+      }
+
+      if (text) {
+        return { name: "echo", input: { text: text } };
+      }
+      return null;
+    } catch (err: any) {
+      console.error("[LLM] DeepSeek Provider Failed:", err.message);
+      if (options?.throwOnError) throw err;
+      onProgress?.("خطأ في DeepSeek، محاولة البديل الأقل…");
       return await planNextStep(messages, { ...options, provider: "auto" });
     }
   }
@@ -1534,6 +1570,31 @@ export async function planNextStep(
         },
       };
     } catch (err: any) {
+      if (deepSeekProvider.isAvailable()) {
+        try {
+          const toolCatalog = tools.map((t) => `- **${t.name}**: ${t.description}`).join("\n");
+          const toolAwarenessBlock = `\n\n## Available Tools (${tools.length}+)\nIf the user's request requires executing a tool, respond ONLY with JSON: {"name":"<tool_name>","input":{<params>}}\n\n### Strategic Guidance for Agents:\n1. **Discovery Turn**: If you don't know the project structure, start with \`project_detect\`. \n2. **Analysis Turn**: If you already see the structure in history, DO NOT repeat \`project_detect\`. Instead, use \`analyze_codebase\` or \`file_read\` on key files (e.g., package.json, src/index.ts) to understand logic.\n3. **Avoid Loops**: Do not call the same tool with the same inputs multiple times without a clearly different purpose.\n\n${toolCatalog}`;
+
+          const msgs = [
+            {
+              role: "system",
+              content: getSystemPrompt({ name: "Younis" }) + toolAwarenessBlock,
+            },
+            ...messages,
+          ];
+
+          const text = await (deepSeekProvider as any).chatComplete(msgs);
+          if (text) {
+            return {
+              name: "echo",
+              input: { text: text || "Response from Joe (DeepSeek Fallback)" },
+            };
+          }
+        } catch (dsErr) {
+          console.error("[LLM] DeepSeek fallback failed, falling back to simple chat:", dsErr);
+        }
+      }
+
       console.error("[Auto Enterprise] Failed:", err);
       // Fallback to simple chat
       try {

@@ -5,6 +5,7 @@ import { HuggingFaceProvider } from './huggingface';
 import { GroqProvider } from './groq';
 import { LocalProvider } from './local';
 import { GeminiProvider, geminiProvider } from './gemini';
+import { DeepSeekProvider, deepSeekProvider } from './deepseek';
 
 // Singleton instances
 export const pollinationsProvider = new PollinationsProvider();
@@ -12,7 +13,7 @@ export const openRouterProvider = new OpenRouterProvider();
 export const huggingfaceProvider = new HuggingFaceProvider();
 export const groqProvider = new GroqProvider();
 export const localProvider = new LocalProvider();
-export { geminiProvider, GeminiProvider };
+export { geminiProvider, GeminiProvider, deepSeekProvider };
 
 export default {
     pollinations: pollinationsProvider,
@@ -20,5 +21,6 @@ export default {
     huggingface: huggingfaceProvider,
     groq: groqProvider,
     local: localProvider,
-    gemini: geminiProvider
+    gemini: geminiProvider,
+    deepseek: deepSeekProvider
 };
