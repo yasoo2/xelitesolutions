@@ -355,7 +355,7 @@ export default function Joe() {
         const sessionId = agentSelected;
         if (!sessionId) {
             // Create new session
-            await createSession();
+            await createSession({ kind: 'agent' });
             return;
         }
 
@@ -391,7 +391,7 @@ export default function Joe() {
     }, [inputValue, isLoading, agentSelected, createSession, workspaceId, ensuresWorkspace]);
 
     const handleCreateSession = useCallback(async () => {
-        await createSession();
+        await createSession({ kind: 'agent' });
     }, [createSession]);
 
     // Listen for errors from CommandComposer (since history is hidden there)

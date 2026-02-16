@@ -1,4 +1,4 @@
-
+```
 import { useState } from 'react';
 import { api } from '../services/apiClient';
 import { useSessionStore } from '../store/sessionStore';
@@ -9,14 +9,20 @@ export function useSessionActions() {
     const { t } = useTranslation();
     const [isCreatingChatSession, setIsCreatingChatSession] = useState(false);
 
-    async function createSession(onSuccess?: () => void) {
+    async function createSession(options?: { kind?: 'chat' | 'agent', onSuccess?: () => void }) {
         setIsCreatingChatSession(true);
+        const { kind = 'chat', onSuccess } = options || {};
         try {
-            const data: any = await api.post('/sessions', {});
+            const data: any = await api.post('/sessions', { kind });
             const id = String(data?.id || data?._id || '').trim();
             if (!id) return;
 
-            setSelected(id);
+            if (kind === 'agent') {
+                useSessionStore.getState().setAgentSelected(id);
+            } else {
+                setSelected(id);
+            }
+
             await loadAllSessions();
             onSuccess?.();
 
