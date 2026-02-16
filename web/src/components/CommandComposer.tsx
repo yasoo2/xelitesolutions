@@ -565,6 +565,7 @@ const OPENROUTER_MODELS = [
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   auto: { name: 'Auto (مجاني)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
+  deepseek: { name: 'DeepSeek (Free)', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
   openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
@@ -718,6 +719,7 @@ export default function CommandComposer({
     // Reorder providers: Auto first, then OpenRouter, then paid providers, then Joe (Free)
     const baseProviders: { [key: string]: ProviderConfig } = {
       auto: { ...DEFAULT_PROVIDERS.auto },
+      deepseek: { ...DEFAULT_PROVIDERS.deepseek },
       openrouter: { ...DEFAULT_PROVIDERS.openrouter },
       openai: { ...DEFAULT_PROVIDERS.openai },
       anthropic: { ...DEFAULT_PROVIDERS.anthropic },
@@ -3453,16 +3455,45 @@ export default function CommandComposer({
                   style={{ display: 'none' }}
                 />
 
-                <button
-                  className={`provider-btn ${providers[activeProvider]?.isConnected ? 'is-connected' : 'is-disconnected'}`}
-                  onClick={() => setShowProviders(true)}
-                  title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
-                >
-                  <Cpu size={14} color={providers[activeProvider]?.isConnected ? "#10b981" : "#ef4444"} />
-                  <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
-                    {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
-                  </span>
-                </button>
+                {/* Dynamic Provider Logo Helper */}
+                {(() => {
+                  const getProviderLogo = (key: string) => {
+                    const isCon = providers[key]?.isConnected;
+                    const color = isCon ? "#10b981" : "#ef4444";
+
+                    if (key === 'openai') return (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color }}>
+                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Z" />
+                        <path d="M12 12.5a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1Z" />
+                        <path d="M9 12a3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3 3 3 0 0 1-3-3Z" />
+                      </svg>
+                    );
+                    if (key === 'deepseek') return (
+                      <svg viewBox="0 0 24 24" fill="currentColor" style={{ color }}>
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-1h2v1h-2zm0-3v-5h2v5h-2z" opacity=".3" />
+                        <path d="M12 3a9 9 0 0 0-9 9c0 4.97 4.03 9 9 9s9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm-1-3h2v-1h-2v1zm0-3h2V9h-2v4z" />
+                        <path d="M13.5 12c0 1.93-1.57 3.5-3.5 3.5S6.5 13.93 6.5 12 8.07 8.5 10 8.5s3.5 1.57 3.5 3.5z" opacity=".2" />
+                      </svg>
+                    );
+                    if (key === 'gemini') return <Sparkles size={18} color={color} />;
+                    if (key === 'anthropic') return <Zap size={18} color={color} />;
+                    if (key === 'auto') return <Bot size={18} color={color} />;
+                    return <Cpu size={18} color={color} />;
+                  };
+
+                  return (
+                    <button
+                      className={`provider-btn ${providers[activeProvider]?.isConnected ? 'is-connected' : 'is-disconnected'}`}
+                      onClick={() => setShowProviders(true)}
+                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+                    >
+                      {getProviderLogo(activeProvider)}
+                      <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
+                        {(activeProvider === 'openai' ? 'OpenAI' : activeProvider === 'deepseek' ? 'DeepSeek' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
+                      </span>
+                    </button>
+                  );
+                })()}
 
                 <button
                   className="action-btn"
