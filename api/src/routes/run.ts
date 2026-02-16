@@ -2498,7 +2498,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
                     // Notify user ONCE about the fallback
                     if (!assistantTextEmitted) {
-                      const reason = lastPlanError === 'LLM_TIMEOUT' ? 'تأخرت الاستجابة' : 'نفذ الرصيد أو خطأ في المفتاح';
+                      const reason = lastPlanError === 'LLM_TIMEOUT' ? 'تأخرت الاستجابة' : 'تجاوز حصة الاستخدام أو خطأ في المفتاح';
                       ev({
                         type: 'text',
                         data: `⚠️ **تنبيه:** ${reason} في المزود الأساسي.\n🔄 **تم التحويل تلقائياً إلى النظام المجاني (Auto Mode).**`
