@@ -2501,7 +2501,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                       const reason = lastPlanError === 'LLM_TIMEOUT' ? 'تأخرت الاستجابة' : 'تجاوز حصة الاستخدام أو خطأ في المفتاح';
                       ev({
                         type: 'text',
-                        data: `⚠️ **تنبيه:** ${reason} في المزود الأساسي.\n🔄 **تم التحويل تلقائياً إلى النظام المجاني (Auto Mode).**`
+                        data: `⚠️ **تنبيه:** ${reason} في المزود الأساسي.\n🔄 **تم التحويل تلقائياً إلى "النظام المجاني المفتوح" (Free Mode) لضمان استمرارية عملك مجاناً وبلا حدود.**`
                       });
                       assistantTextEmitted = true; // Prevent spamming
                     }

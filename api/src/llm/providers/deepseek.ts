@@ -1,4 +1,7 @@
+import { PollinationsProvider } from './pollinations';
 import OpenAI from 'openai';
+
+const pollinationsProvider = new PollinationsProvider();
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
@@ -19,14 +22,15 @@ export class DeepSeekProvider {
                 apiKey: this.apiKey,
                 baseURL: DEEPSEEK_BASE_URL,
             });
-            console.info('[DeepSeek] Provider initialized');
+            console.info('[DeepSeek] Provider initialized with API key');
         } else {
-            console.warn('[DeepSeek] No API key found. Set DEEPSEEK_API_KEY in environment.');
+            console.warn('[DeepSeek] No API key found. Operating in FREE MODE via Pollinations Proxy.');
         }
     }
 
     isAvailable(): boolean {
-        return !!this.apiKey && !!this.client;
+        // In this system, DeepSeek is ALWAYS available because we have a free proxy fallback
+        return true;
     }
 
     async chatComplete(
@@ -34,8 +38,15 @@ export class DeepSeekProvider {
         model: string = DEEPSEEK_MODELS.CHAT,
         tools?: any[]
     ): Promise<string> {
+        // if no client, use free pollinations proxy
         if (!this.client) {
-            throw new Error('DeepSeek API key not configured');
+            console.info('[DeepSeek] Using Free Anonymous Proxy (Pollinations)');
+            // Fix messages format for pollinations if needed (simple strings)
+            const pollinationsMsgs = messages.map(m => ({
+                role: m.role,
+                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+            }));
+            return await pollinationsProvider.chatComplete(pollinationsMsgs, 'openai');
         }
 
         try {
@@ -53,12 +64,12 @@ export class DeepSeekProvider {
             const completion = await this.client.chat.completions.create(params);
 
             if (!completion || !completion.choices || completion.choices.length === 0) {
-                throw new Error('Empty response from DeepSeek');
+                throw new Error('Empty response from DeepSeek Official');
             }
 
             const message = completion.choices[0]?.message;
             if (!message) {
-                throw new Error('No message in DeepSeek response');
+                throw new Error('No message in DeepSeek Official response');
             }
 
             if (message.tool_calls && message.tool_calls.length > 0) {
@@ -70,8 +81,8 @@ export class DeepSeekProvider {
 
             return message.content || '';
         } catch (error: any) {
-            console.error('[DeepSeek] API Error:', error.message);
-            throw error;
+            console.warn('[DeepSeek] Official API failed, falling back to Free Proxy:', error.message);
+            return await pollinationsProvider.chatComplete(messages as any, 'openai');
         }
     }
 }
