@@ -1,0 +1,27 @@
+# Ignore everything by default
+*
+
+# Allow only what's needed for the build
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+!src/**/
+!scripts/
+!scripts/**/
+!healthcheck.js
+!Dockerfile
+!eslint.config.js
+!jest.config.js
+!cortex.json
+
+# Specifically ignore node_modules and dist just in case
+node_modules/
+dist/
+api/
+crm-demo/
+xelite-crm/
+data/
+uploads/
+**/node_modules/
+**/dist/

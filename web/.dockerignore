@@ -1,0 +1,23 @@
+# Ignore everything
+*
+
+# Whitelist
+!package.json
+!package-lock.json
+!index.html
+!public/
+!public/**/
+!src/
+!src/**/
+!vite.config.ts
+!tsconfig.json
+!Dockerfile
+!entrypoint.sh
+!nginx.conf
+!eslint.config.js
+
+# Exclusions
+node_modules/
+dist/
+**/node_modules/
+**/dist/

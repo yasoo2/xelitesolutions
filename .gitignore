@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+
+# build output
+build/
+dist/
+dashboard-x/dist/
+api/dist/
+web/dist/
+services/**/dist/
+
+# env files
+.env
+api/.env
+web/.env
+web/.env.local
+**/.env.local
+**/tsconfig.tsbuildinfo
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# misc
+.DS_Store
+coverage/
+.cache/
+ms-playwright
+ms-playwright/
+**/ms-playwright/
+
+# Generated artifacts
+factory_books_api/
+vivos/
+.smart_reflex_cache.json
+
+# Generated God Mode Artifacts
+api/api/
+api/crm-demo/
+api/xelite-crm/

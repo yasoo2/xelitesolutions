@@ -1,0 +1,296 @@
+# Xelite Solutions Code Map
+Generated on: 2026-01-18T17:29:49.695Z
+
+## Directory Structure
+
+- **/.github**
+  - **/workflows**
+    - [deploy.yml]
+- **/api**
+  - **/data**
+    - **/lance_memory**
+      - **/joe_memory.lance**
+        - **/_transactions**
+        - **/_versions**
+        - **/data**
+  - **/src**
+    - **/agents**
+      - **/specialized**
+        - [DBAAgent.ts] (Exports: DBAAgent)
+        - [DevOpsAgent.ts] (Exports: DevOpsAgent)
+        - [SecurityAgent.ts] (Exports: SecurityAgent)
+      - [ArchitectAgent.ts] (Exports: ArchitectAgent)
+      - [GenesisAgent.ts] (Exports: GenesisAgent)
+      - [GodModeAgent.ts] (Exports: GodModeAgent)
+      - [ProjectManagerAgent.ts] (Exports: ProjectManagerAgent)
+      - [TaskExecutor.ts] (Exports: TaskStep, TaskExecutor)
+    - **/approvals**
+      - [context.ts] (Exports: planContext)
+    - **/browser**
+      - [config.ts] (Exports: DEFAULT_BROWSER_CONFIG)
+      - [executor.ts]
+      - [interactions.ts] (Exports: Interaction, NaturalMovement, AdvancedInteractionSystem...)
+      - [manager.ts] (Exports: getBrowserViewport, getChromiumLaunchOptions, touchSession...)
+      - [runner.ts]
+      - [secrets.ts] (Exports: rewriteInlineLoginCredentialsToSecrets, redactSecretsFromString)
+      - [types.ts]
+      - [wsHub.ts] (Exports: attachBrowserWss, broadcastBrowserEvent)
+    - **/memory**
+      - [VectorMemory.ts] (Exports: VectorMemory)
+    - **/middleware**
+      - [auth.ts] (Exports: AuthPayload, authenticate, authenticateOptional)
+    - **/mock**
+      - [db.ts] (Exports: mockDb)
+      - [store.ts] (Exports: MockRun, MockToolExec, MockArtifact...)
+    - **/models**
+      - [approval.ts] (Exports: IApproval, Approval)
+      - [artifact.ts] (Exports: IArtifact, Artifact)
+      - [file.ts] (Exports: IFile, FileModel)
+      - [folder.ts] (Exports: IFolder, Folder)
+      - [memoryItem.ts] (Exports: IMemoryItem, MemoryItem)
+      - [message.ts] (Exports: IMessage, Message)
+      - [project.ts] (Exports: IProject, Project)
+      - [run.ts] (Exports: IRun, Run)
+      - [session.ts] (Exports: ISession, Session)
+      - [summary.ts] (Exports: ISummary, Summary)
+      - [tenant.ts] (Exports: ITenant, Tenant)
+      - [toolExecution.ts] (Exports: IToolExecution, ToolExecution)
+      - [user.ts] (Exports: IUser, User)
+      - [userSecret.ts] (Exports: IUserSecret, UserSecret)
+    - **/routes**
+      - [approvals.ts]
+      - [assets.ts]
+      - [audio.ts]
+      - [auth.ts]
+      - [browser.ts]
+      - [files.ts]
+      - [folders.ts]
+      - [insta.ts]
+      - [knowledge.ts]
+      - [memory.ts]
+      - [project.ts]
+      - [providers.ts]
+      - [run.ts]
+      - [runs.ts]
+      - [sessions.ts]
+      - [system.ts]
+      - [tools.ts]
+    - **/scripts**
+      - [complete_browser_test.js]
+      - [comprehensive_deep_test.js]
+      - [comprehensive_final_test.js]
+      - [comprehensive_test.js]
+      - [create_admin_direct.js]
+      - [create_specific_user.js]
+      - [debug_chat.ts]
+      - [debug_youtube.ts]
+      - [final_stream_test.js]
+      - [final_validation.js]
+      - [generate_code_map.ts]
+      - [qa_suite.ts]
+      - [real_browser_test.js]
+      - [simple_browser_test.ts]
+      - [test_browser_comprehensive.ts]
+      - [test_browser_simple.ts]
+      - [test_full_integrated.ts]
+      - [test_integration_phase9.js]
+      - [test_kfc_agent.js]
+      - [test_kfc_agent.ts]
+      - [test_learning_loop.js]
+      - [test_phase1.js]
+      - [test_phase8.js]
+      - [test_phase9.js]
+      - [test_phases_1_3.js]
+      - [test_phases_6_7.js]
+      - [test_stability.js]
+      - [user_simulation_kfc.js]
+      - [user_simulation_kfc.ts]
+      - [verify_brain_execution.ts]
+      - [verify_browser_direct.ts]
+      - [verify_fixes.ts]
+      - [verify_internal_browser.ts]
+      - [verify_smart_agent.ts]
+      - [verify_socket.js]
+      - [verify_stream.ts]
+    - **/services**
+      - [knowledge.ts] (Exports: Document, KnowledgeService)
+      - [memory.ts] (Exports: MemoryService)
+      - [secrets.ts] (Exports: setSessionSecret, getSessionSecret, clearSessionSecrets...)
+    - **/system**
+      - [Analyst.ts] (Exports: Analyst)
+      - [Builder.ts] (Exports: Builder)
+    - **/tools**
+      - **/definitions**
+        - [AlertManagerTool.ts] (Exports: AlertManagerTool)
+        - [AnalysisTools.ts] (Exports: AnalyzeProjectTool, AnalyzeCodebaseTool)
+        - [ArchitectTool.ts] (Exports: ArchitectTool)
+        - [AutoTesterTool.ts] (Exports: AutoTesterTool)
+        - [BrowserRunTool.ts] (Exports: BrowserRunTool)
+        - [BulkFileGeneratorTool.ts] (Exports: BulkFileGeneratorTool)
+        - [CacheManagerTool.ts] (Exports: CacheManagerTool)
+        - [CentralAnswerTool.ts] (Exports: CentralAnswerTool)
+        - [CodebaseNavigatorTool.ts] (Exports: CodebaseNavigatorTool)
+        - [CodeReviewerTool.ts] (Exports: CodeReviewerTool)
+        - [ContentTools.ts] (Exports: HttpFetchTool, HtmlExtractTool, RssFetchTool...)
+        - [DatabaseEnterpriseTools.ts] (Exports: DbSchemaMigratorTool, QueryOptimizerTool, LargeDataSeederTool)
+        - [ErrorRecoveryTool.ts] (Exports: ErrorRecoveryTool)
+        - [FallbackTool.ts] (Exports: FallbackTool)
+        - [GenesisTool.ts] (Exports: GenesisToolDef)
+        - [GitHubActionsTool.ts] (Exports: GitHubActionsTool)
+        - [GitHubPRTool.ts] (Exports: GitHubPRTool)
+        - [GitHubRepoManagerTool.ts] (Exports: GitHubRepoManagerTool)
+        - [GitTools.ts] (Exports: GitOpsTool)
+        - [GoBuilderTool.ts] (Exports: GoBuilderTool)
+        - [ImageGenerationTool.ts] (Exports: ImageGenerationTool)
+        - [InfrastructureTools.ts] (Exports: TerraformManagerTool, KubernetesOpsTool, DockerSwarmOpsTool)
+        - [JavaBuilderTool.ts] (Exports: JavaBuilderTool)
+        - [KnowledgeTools.ts] (Exports: KnowledgeSearchTool, KnowledgeAddTool)
+        - [LLMCacheTool.ts] (Exports: LLMCacheTool)
+        - [LoggerTool.ts] (Exports: LoggerTool)
+        - [MemoryTool.ts] (Exports: MemoryTool)
+        - [MonitoringTool.ts] (Exports: MonitoringTool)
+        - [PerformanceAnalyzerTool.ts] (Exports: PerformanceAnalyzerTool)
+        - [PhaseExecutorTool.ts] (Exports: PhaseExecutorTool)
+        - [ProjectPlannerTool.ts] (Exports: ProjectPlannerTool)
+        - [ProjectStateManagerTool.ts] (Exports: ProjectStateManagerTool)
+        - [PythonBuilderTool.ts] (Exports: PythonBuilderTool)
+        - [QualityTools.ts] (Exports: SonarAnalysisTool, DependencyAuditorTool, LoadTesterTool)
+        - [RequestAnalyzerTool.ts] (Exports: RequestAnalyzerTool)
+        - [RetryManagerTool.ts] (Exports: RetryManagerTool)
+        - [SecurityScannerTool.ts] (Exports: SecurityScannerTool)
+        - [SystemTools.ts] (Exports: EchoTool, FileEditTool, GrepSearchTool...)
+        - [TaskLoopTool.ts] (Exports: TaskLoopTool)
+        - [TemplateManagerTool.ts] (Exports: TemplateManagerTool)
+        - [VisualQATool.ts] (Exports: VisualQATool)
+        - [WebDevelopmentTools.ts] (Exports: WebPipelineTool, DevServerTool, ScaffoldTool)
+      - [base.ts]
+      - [handlers.ts] (Exports: HandlerResult)
+      - [registry.ts] (Exports: rateLimitBucketKey, checkToolRateLimit, tools)
+      - [types.ts] (Exports: ToolDefinition, ToolExecutionInput, ToolExecutionResult)
+    - **/types**
+      - [express.d.ts]
+    - [config.ts] (Exports: config)
+    - [index.ts]
+    - [llm.ts] (Exports: setDynamicOpenAIKey, getDynamicOpenAIKey, PlanOptions...)
+    - [ws.ts] (Exports: LiveEvent, attachWebSocket, broadcast)
+  - **/test_build_output**
+  - **/test_factory_output**
+  - [Dockerfile]
+  - [eslint.config.js]
+  - [healthcheck.js]
+  - [jest.config.js]
+  - [package-lock.json]
+  - [package.json]
+  - [tsconfig.json]
+- **/dashboard**
+  - **/public**
+  - **/src**
+    - **/app**
+      - **/knowledge**
+        - [page.tsx]
+      - **/logs**
+        - [page.tsx]
+      - **/monitoring**
+        - [page.tsx]
+      - [globals.css]
+      - [layout.tsx] (Exports: metadata)
+      - [page.tsx]
+    - **/components**
+      - **/layout**
+        - [Header.tsx] (Exports: Header)
+        - [Sidebar.tsx] (Exports: Sidebar)
+    - **/lib**
+      - [api.ts] (Exports: api, getSystemStats, getTools...)
+  - [Dockerfile]
+  - [next-env.d.ts]
+  - [next.config.ts]
+  - [package-lock.json]
+  - [package.json]
+  - [README.md]
+  - [tsconfig.json]
+- **/data**
+  - [knowledge.json]
+- **/data_test**
+  - [knowledge.json]
+- **/mission-control**
+  - **/public**
+  - **/src**
+    - **/assets**
+    - **/components**
+      - [CreativeStudio.tsx] (Exports: CreativeStudio)
+      - [SystemMonitor.tsx] (Exports: SystemMonitor)
+    - **/hooks**
+      - [useAgent.ts] (Exports: useAgent)
+    - [App.css]
+    - [App.tsx]
+    - [index.css]
+    - [main.tsx]
+  - [Dockerfile]
+  - [eslint.config.js]
+  - [package-lock.json]
+  - [package.json]
+  - [postcss.config.js]
+  - [README.md]
+  - [tailwind.config.js]
+  - [tsconfig.app.json]
+  - [tsconfig.json]
+  - [tsconfig.node.json]
+  - [vite.config.ts]
+- **/nginx**
+  - **/conf.d**
+- **/scripts**
+- **/services**
+  - **/joe-browser-worker**
+    - **/src**
+      - [index.ts]
+    - [Dockerfile]
+    - [package-lock.json]
+    - [package.json]
+    - [tsconfig.json]
+- **/web**
+  - **/public**
+    - [config.js]
+  - **/src**
+    - **/components**
+      - [AgentActivity.tsx] (Exports: AgentStep, AgentActivityProps, AgentActivity)
+      - [BrowserChrome.tsx]
+      - [BrowserControlPanel.tsx]
+      - [CodeEditor.tsx]
+      - [CommandComposer.tsx]
+      - [ConfirmDialog.tsx]
+      - [FileExplorer.tsx]
+      - [LiveBackground.tsx] (Exports: LiveBackground)
+      - [MemoryPanel.tsx]
+      - [ModernBrowserStream.tsx]
+      - [SessionItem.tsx]
+      - [TopBar.tsx]
+    - **/pages**
+      - [Home.tsx]
+      - [Joe.tsx]
+      - [Login.tsx]
+    - **/services**
+      - [providerService.ts] (Exports: SetKeyResponse, StatusResponse, TestResponse...)
+      - [socket.ts] (Exports: SocketService)
+    - **/store**
+      - [sessionStore.ts] (Exports: Session, Folder, useSessionStore)
+    - **/styles**
+      - [improved-ui.css]
+    - [App.tsx]
+    - [config.ts]
+    - [global.css]
+    - [i18n.ts]
+    - [main.tsx]
+    - [rtl-overrides.css]
+    - [theme.css]
+    - [vite-env.d.ts]
+  - [Dockerfile]
+  - [eslint.config.js]
+  - [package-lock.json]
+  - [package.json]
+  - [tsconfig.json]
+  - [vite.config.ts]
+- [docker-compose.production.yml]
+- [docker-compose.server.yml]
+- [package-lock.json]
+- [package.json]
+- [README.md]

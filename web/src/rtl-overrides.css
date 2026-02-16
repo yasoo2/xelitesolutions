@@ -1,0 +1,60 @@
+[dir="rtl"] {
+  text-align: right;
+}
+
+[dir="rtl"] .joe-main {
+  flex-direction: row;
+  /* Flex row flips automatically, but we ensure it here */
+}
+
+/* Flip columns if they are not flipping automatically */
+[dir="rtl"] .joe-chat-panel {
+  order: 3;
+  /* Move chat to the rightmost */
+}
+
+[dir="rtl"] .joe-workspace {
+  order: 2;
+  /* Workspace stays in middle */
+}
+
+[dir="rtl"] .joe-files-panel {
+  order: 1;
+  /* Move files to the leftmost */
+}
+
+[dir="rtl"] .joe-header-left {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .joe-brand {
+  text-align: right;
+}
+
+[dir="rtl"] .joe-chat-header,
+[dir="rtl"] .joe-files-header {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .joe-workspace-tabs {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .joe-chat-title {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .input-icon-start {
+  left: auto !important;
+  right: 16px !important;
+}
+
+[dir="rtl"] .input-icon-end {
+  right: auto !important;
+  left: 16px !important;
+}
+
+/* Adjust margins and paddings for RTL */
+[dir="rtl"] .joe-chat-messages {
+  direction: rtl;
+}

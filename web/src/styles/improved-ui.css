@@ -1,0 +1,498 @@
+/**
+ * Improved UI Styles for JOE
+ * ===========================
+ * 
+ * تنسيقات محسنة مع انيميشنات وتأثيرات بصرية
+ */
+
+/* ============================================
+   1. Global Animations
+   ============================================ */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(var(--accent-primary-rgb), 0.5);
+  }
+
+  50% {
+    box-shadow: 0 0 40px rgba(var(--accent-primary-rgb), 0.8);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ============================================
+   2. Gradient Backgrounds
+   ============================================ */
+
+.gradient-primary {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+}
+
+.gradient-success {
+  background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+}
+
+.gradient-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #ec4899 100%);
+}
+
+.gradient-dark {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+/* ============================================
+   3. Glass Morphism Effects
+   ============================================ */
+
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   4. Shadow Effects
+   ============================================ */
+
+.shadow-glow {
+  box-shadow: 0 0 30px rgba(var(--accent-primary-rgb), 0.3);
+}
+
+.shadow-glow-lg {
+  box-shadow: 0 0 50px rgba(var(--accent-primary-rgb), 0.5);
+}
+
+.shadow-glow-danger {
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
+}
+
+.shadow-glow-success {
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+}
+
+/* ============================================
+   5. Button Styles
+   ============================================ */
+
+.btn-primary {
+  @apply px-6 py-3 rounded-lg font-semibold text-white;
+  background: var(--brand-gradient);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(var(--accent-primary-rgb), 0.25);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(var(--accent-primary-rgb), 0.45);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  @apply px-6 py-3 rounded-lg font-semibold text-white bg-slate-700;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  @apply bg-slate-600;
+  transform: translateY(-2px);
+}
+
+/* ============================================
+   6. Card Styles
+   ============================================ */
+
+.card {
+  @apply rounded-xl border border-slate-700 bg-slate-800/50 backdrop-blur-sm;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  @apply border-slate-600 shadow-lg;
+  transform: translateY(-4px);
+}
+
+.card-header {
+  @apply px-6 py-4 border-b border-slate-700;
+  background: linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.10) 0%, rgba(var(--accent-secondary-rgb), 0.10) 100%);
+}
+
+.card-body {
+  @apply p-6;
+}
+
+.card-footer {
+  @apply px-6 py-4 border-t border-slate-700 bg-slate-800/30;
+}
+
+/* ============================================
+   7. Input Styles
+   ============================================ */
+
+.input-field {
+  @apply w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-slate-400;
+  transition: all 0.3s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: rgba(var(--accent-primary-rgb), 0.75);
+  box-shadow: 0 0 0 2px rgba(var(--accent-primary-rgb), 0.25), 0 0 20px rgba(var(--accent-primary-rgb), 0.2);
+}
+
+.input-field::placeholder {
+  @apply text-slate-500;
+}
+
+/* ============================================
+   8. Badge Styles
+   ============================================ */
+
+.badge {
+  @apply inline-block px-3 py-1 rounded-full text-sm font-medium;
+}
+
+.badge-primary {
+  background: rgba(var(--accent-primary-rgb), 0.18);
+  color: var(--text-primary);
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.45);
+}
+
+.badge-success {
+  background: rgba(34, 197, 94, 0.18);
+  color: var(--text-primary);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.18);
+  color: var(--text-primary);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.badge-warning {
+  background: rgba(var(--accent-secondary-rgb), 0.18);
+  color: var(--text-primary);
+  border: 1px solid rgba(var(--accent-secondary-rgb), 0.45);
+}
+
+/* ============================================
+   9. Loading States
+   ============================================ */
+
+.loading {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(90deg,
+      #1e293b 0%,
+      #334155 50%,
+      #1e293b 100%);
+  background-size: 1000px 100%;
+}
+
+.spinner {
+  @apply w-8 h-8 rounded-full;
+  border: 3px solid rgba(148, 163, 184, 0.45);
+  border-top-color: var(--accent-primary);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   10. Tooltip Styles
+   ============================================ */
+
+.tooltip {
+  @apply absolute px-3 py-2 bg-slate-900 text-slate-300 text-sm rounded-lg whitespace-nowrap z-50;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================
+   11. Message Styles
+   ============================================ */
+
+.message-user {
+  @apply max-w-md lg:max-w-2xl rounded-2xl p-4;
+  background: var(--brand-gradient);
+  animation: fadeInUp 0.3s ease;
+}
+
+.message-agent {
+  @apply max-w-md lg:max-w-2xl rounded-2xl p-4;
+  background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+  animation: fadeInUp 0.3s ease;
+}
+
+.message-system {
+  @apply max-w-md lg:max-w-2xl rounded-2xl p-4 bg-slate-700 border border-slate-600;
+  animation: fadeInUp 0.3s ease;
+}
+
+/* ============================================
+   12. Sidebar Styles
+   ============================================ */
+
+.sidebar {
+  @apply w-72 bg-gradient-to-b from-slate-800 to-slate-900 border-r border-slate-700;
+  animation: slideInLeft 0.3s ease;
+}
+
+.sidebar-item {
+  @apply p-3 rounded-lg transition-all duration-200 cursor-pointer;
+}
+
+.sidebar-item:hover {
+  @apply bg-slate-700;
+  transform: translateX(4px);
+}
+
+.sidebar-item.active {
+  background: var(--brand-gradient);
+}
+
+/* ============================================
+   13. Progress Bar Styles
+   ============================================ */
+
+.progress-bar {
+  @apply w-full h-2 bg-slate-700 rounded-full overflow-hidden;
+}
+
+.progress-fill {
+  @apply h-full rounded-full;
+  background: var(--brand-gradient);
+  animation: slideInLeft 0.5s ease;
+}
+
+/* ============================================
+   14. Modal Styles
+   ============================================ */
+
+.modal-overlay {
+  @apply fixed inset-0 bg-black/50 backdrop-blur-sm z-40;
+  animation: fadeInUp 0.3s ease;
+}
+
+.modal-content {
+  @apply bg-slate-800 rounded-xl border border-slate-700 shadow-2xl;
+  animation: bounce-in 0.4s ease;
+}
+
+/* ============================================
+   15. Utility Classes
+   ============================================ */
+
+.fade-in {
+  animation: fadeInUp 0.5s ease;
+}
+
+.fade-in-down {
+  animation: fadeInDown 0.5s ease;
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.5s ease;
+}
+
+.slide-in-right {
+  animation: slideInRight 0.5s ease;
+}
+
+.float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.text-gradient {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-success {
+  background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================
+   16. Scrollbar Styles
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
+}
+
+/* ============================================
+   17. Responsive Design
+   ============================================ */
+
+@media (max-width: 768px) {
+  .sidebar {
+    @apply w-full;
+  }
+
+  .message-user,
+  .message-agent,
+  .message-system {
+    @apply max-w-xs;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    @apply px-4 py-2 text-sm;
+  }
+}
+
+/* ============================================
+   18. Dark Mode Support
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  body {
+    @apply bg-slate-900 text-white;
+  }
+
+  .card {
+    @apply bg-slate-800/50;
+  }
+
+  .input-field {
+    @apply bg-slate-700 border-slate-600;
+  }
+}
+
+/* ============================================
+   19. Print Styles
+   ============================================ */
+
+@media print {
+
+  .sidebar,
+  .modal-overlay,
+  .tooltip {
+    display: none;
+  }
+
+  .card {
+    page-break-inside: avoid;
+  }
+}

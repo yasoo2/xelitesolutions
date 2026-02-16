@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.env
+data/
+*.log
+.DS_Store
+# Ignore compiled js in src (ts project)
+src/**/*.js
+src/**/*.js.map
+# File uploads and cache
+uploads/
+!uploads/.gitkeep
+.file-cache.json

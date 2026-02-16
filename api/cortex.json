@@ -1,0 +1,359 @@
+{
+  "tasks": {
+    "6459e85f46910b4ac686f876a592d7d6": {
+      "id": "6459e85f46910b4ac686f876a592d7d6",
+      "goal": "Node.js API with Express and LanceDB",
+      "status": "running",
+      "step": 1,
+      "history": [
+        {
+          "step": 1,
+          "thought": "Plan the overall architecture for a Node.js Express API that connects to LanceDB. The plan will include modules for database, routing, middleware, security, error handling, logging, and testing.",
+          "tool": "architect_plan",
+          "args": {
+            "goal": "Create a scalable Express API with LanceDB integration, including authentication, CRUD routes, logging, and unit testing."
+          },
+          "success": true,
+          "output": "{\n  \"planMarkdown\": \"Failed to generate plan.\"\n}"
+        }
+      ],
+      "rootDir": "/tmp/godmode-test/test-1769954402337/backend",
+      "createdAt": 1769954406627,
+      "updatedAt": 1769954486550
+    },
+    "eda26b9888f4d2192338dd2b444ca2bf": {
+      "id": "eda26b9888f4d2192338dd2b444ca2bf",
+      "goal": "React Dashboard",
+      "status": "failed",
+      "step": 0,
+      "history": [],
+      "rootDir": "/tmp/godmode-test/test-1769954402337/frontend",
+      "createdAt": 1769954406634,
+      "updatedAt": 1769954557618
+    }
+  },
+  "financials": {
+    "balance": 97.35000000000015,
+    "totalUsage": 2.6499999999999986,
+    "transactions": [
+      {
+        "timestamp": 1769954406632,
+        "amount": -0.05,
+        "description": "Agent Step 0",
+        "taskId": "6459e85f46910b4ac686f876a592d7d6"
+      },
+      {
+        "timestamp": 1769954406634,
+        "amount": -0.05,
+        "description": "Agent Step 0",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954447125,
+        "amount": -0.05,
+        "description": "Agent Step 1",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954486550,
+        "amount": -0.05,
+        "description": "Agent Step 1",
+        "taskId": "6459e85f46910b4ac686f876a592d7d6"
+      },
+      {
+        "timestamp": 1769954492477,
+        "amount": -0.05,
+        "description": "Agent Step 2",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954524932,
+        "amount": -0.05,
+        "description": "Agent Step 3",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954525784,
+        "amount": -0.05,
+        "description": "Agent Step 4",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954526449,
+        "amount": -0.05,
+        "description": "Agent Step 5",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954527157,
+        "amount": -0.05,
+        "description": "Agent Step 6",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954527828,
+        "amount": -0.05,
+        "description": "Agent Step 7",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954528547,
+        "amount": -0.05,
+        "description": "Agent Step 8",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954529282,
+        "amount": -0.05,
+        "description": "Agent Step 9",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954529938,
+        "amount": -0.05,
+        "description": "Agent Step 10",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954530663,
+        "amount": -0.05,
+        "description": "Agent Step 11",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954531409,
+        "amount": -0.05,
+        "description": "Agent Step 12",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954532058,
+        "amount": -0.05,
+        "description": "Agent Step 13",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954532714,
+        "amount": -0.05,
+        "description": "Agent Step 14",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954533370,
+        "amount": -0.05,
+        "description": "Agent Step 15",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954534159,
+        "amount": -0.05,
+        "description": "Agent Step 16",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954534824,
+        "amount": -0.05,
+        "description": "Agent Step 17",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954535526,
+        "amount": -0.05,
+        "description": "Agent Step 18",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954536167,
+        "amount": -0.05,
+        "description": "Agent Step 19",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954536798,
+        "amount": -0.05,
+        "description": "Agent Step 20",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954537447,
+        "amount": -0.05,
+        "description": "Agent Step 21",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954538095,
+        "amount": -0.05,
+        "description": "Agent Step 22",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954538817,
+        "amount": -0.05,
+        "description": "Agent Step 23",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954539587,
+        "amount": -0.05,
+        "description": "Agent Step 24",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954540226,
+        "amount": -0.05,
+        "description": "Agent Step 25",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954541000,
+        "amount": -0.05,
+        "description": "Agent Step 26",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954541649,
+        "amount": -0.05,
+        "description": "Agent Step 27",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954542389,
+        "amount": -0.05,
+        "description": "Agent Step 28",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954543080,
+        "amount": -0.05,
+        "description": "Agent Step 29",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954543723,
+        "amount": -0.05,
+        "description": "Agent Step 30",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954544483,
+        "amount": -0.05,
+        "description": "Agent Step 31",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954545262,
+        "amount": -0.05,
+        "description": "Agent Step 32",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954545893,
+        "amount": -0.05,
+        "description": "Agent Step 33",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954546547,
+        "amount": -0.05,
+        "description": "Agent Step 34",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954547306,
+        "amount": -0.05,
+        "description": "Agent Step 35",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954548179,
+        "amount": -0.05,
+        "description": "Agent Step 36",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954548860,
+        "amount": -0.05,
+        "description": "Agent Step 37",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954549511,
+        "amount": -0.05,
+        "description": "Agent Step 38",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954550170,
+        "amount": -0.05,
+        "description": "Agent Step 39",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954550807,
+        "amount": -0.05,
+        "description": "Agent Step 40",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954551452,
+        "amount": -0.05,
+        "description": "Agent Step 41",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954552108,
+        "amount": -0.05,
+        "description": "Agent Step 42",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954552810,
+        "amount": -0.05,
+        "description": "Agent Step 43",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954553458,
+        "amount": -0.05,
+        "description": "Agent Step 44",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954554097,
+        "amount": -0.05,
+        "description": "Agent Step 45",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954554851,
+        "amount": -0.05,
+        "description": "Agent Step 46",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954555565,
+        "amount": -0.05,
+        "description": "Agent Step 47",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954556206,
+        "amount": -0.05,
+        "description": "Agent Step 48",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      },
+      {
+        "timestamp": 1769954556565,
+        "amount": -0.05,
+        "description": "Agent Step 2",
+        "taskId": "6459e85f46910b4ac686f876a592d7d6"
+      },
+      {
+        "timestamp": 1769954556876,
+        "amount": -0.05,
+        "description": "Agent Step 49",
+        "taskId": "eda26b9888f4d2192338dd2b444ca2bf"
+      }
+    ]
+  }
+}

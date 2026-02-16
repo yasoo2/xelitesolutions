@@ -1,0 +1,39 @@
+# Ignore all heavy directories
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.git/
+**/.git/
+.env
+**/.env
+*.log
+**/*.log
+.DS_Store
+**/.DS_Store
+
+# Artifacts
+api/api/
+api/crm-demo/
+api/xelite-crm/
+api/data/
+uploads/
+**/api/api/
+**/api/crm-demo/
+**/api/xelite-crm/
+**/api/data/
+**/uploads/
+
+# Build Contexts
+web/node_modules/
+dashboard/node_modules/
+services/*/node_modules/
+
+# Files
+docker-compose*.yml
+Dockerfile
+.github/
+docs/
+tests/
+calculator-test/
+scripts/

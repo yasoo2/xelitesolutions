@@ -1,0 +1,633 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        type: choice
+        description: Deployment mode
+        required: true
+        default: ssh
+        options:
+          - ssh
+          - self-hosted
+
+jobs:
+  deploy_self_hosted:
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted') }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy on runner host
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/deploy.sh
+          ./scripts/deploy.sh
+
+  deploy_ssh:
+    if: ${{ !((github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select SSH port
+        id: select_ssh_port
+        shell: bash
+        env:
+          HOST_SECRET: ${{ secrets.HOST }}
+          SSH_HOST_SECRET: ${{ secrets.SSH_HOST }}
+          PORT_SECRET: ${{ secrets.PORT }}
+          SSH_PORT_SECRET: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          host_raw="${SSH_HOST_SECRET:-${HOST_SECRET:-}}"
+          port_raw="${SSH_PORT_SECRET:-${PORT_SECRET:-}}"
+          host="$(printf '%s' "${host_raw:-}" | tr -d '\r' | xargs)"
+          if [ -z "${host:-}" ]; then
+            echo "HOST secret is empty."
+            echo "SSH_HOST/HOST secret is empty."
+          fi
+
+
+          resolve_candidate_hosts() {
+            local h="$1"
+            if printf '%s' "$h" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+              printf '%s\n' "$h"
+              return 0
+            fi
+            if command -v getent >/dev/null 2>&1; then
+              getent ahostsv4 "$h" 2>/dev/null | awk '{print $1}' | head -n 20 | awk '!seen[$0]++'
+              return 0
+            fi
+            printf '%s\n' "$h"
+          }
+
+          tcp_ok() {
+            local h="$1"
+            local p="$2"
+            timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${h}/${p}" 2>/dev/null
+          }
+
+          ssh_probe_ok() {
+            local h="$1"
+            local p="$2"
+            local tries="${3:-4}"
+            local attempt=1
+            while [ "$attempt" -le "$tries" ]; do
+              if command -v ssh-keyscan >/dev/null 2>&1; then
+                keys="$(ssh-keyscan -4 -T 10 -p "$p" -t rsa,ecdsa,ed25519 "$h" 2>/dev/null || true)"
+                if [ -z "${keys:-}" ]; then
+                  keys="$(ssh-keyscan -6 -T 10 -p "$p" -t rsa,ecdsa,ed25519 "$h" 2>/dev/null || true)"
+                fi
+                if [ -n "${keys:-}" ]; then
+                  return 0
+                fi
+              fi
+
+              banner="$(timeout 12 bash -lc "exec 3<>/dev/tcp/${h}/${p}; head -c 64 <&3" 2>/dev/null || true)"
+              if printf '%s' "$banner" | grep -q 'SSH-'; then
+                return 0
+              fi
+              attempt=$((attempt + 1))
+              sleep 2
+            done
+            return 1
+          }
+
+          ports=()
+          if [ -n "${port_raw:-}" ]; then
+            p="$(printf '%s' "$port_raw" | tr -dc '0-9')"
+            if [ -n "$p" ]; then ports+=("$p"); fi
+          fi
+          if [ ${#ports[@]} -eq 0 ]; then
+            ports+=(22 2222 443)
+          else
+            if [ "${ports[0]}" = "22" ]; then ports+=(443); fi
+          fi
+          selected_port=""
+          selected_host=""
+          candidates="$(resolve_candidate_hosts "$host" | tr -d '\r' | xargs -n 1 || true)"
+          if [ -z "${candidates:-}" ]; then
+            candidates="$host"
+          fi
+
+          echo "Host candidates:"
+          printf '%s\n' $candidates | head -n 20
+
+          for h in $candidates; do
+            for p in "${ports[@]}"; do
+              echo "Testing TCP connectivity to ${h}:${p} ..."
+              ok=0
+              for i in $(seq 1 6); do
+                if tcp_ok "$h" "$p"; then
+                  ok=1
+                  break
+                fi
+                sleep 2
+              done
+              if [ "$ok" -ne 1 ]; then
+                continue
+              fi
+
+              echo "Checking SSH on ${h}:${p} ..."
+              if ssh_probe_ok "$h" "$p" 4; then
+                selected_host="$h"
+                selected_port="$p"
+                break 2
+              fi
+              echo "Port ${p} reachable but no SSH banner detected on ${h}:${p}."
+            done
+          done
+
+          if [ -z "$selected_port" ] || [ -z "$selected_host" ]; then
+            echo "Warning: no SSH banner detected. Proceeding with fallback host/port."
+            selected_host="$(printf '%s\n' $candidates | head -n 1 | tr -d '\r' | xargs || true)"
+            if [ -z "${selected_host:-}" ]; then
+              selected_host="$host"
+            fi
+            selected_port="${ports[0]:-22}"
+          fi
+
+          echo "Selected SSH host: $selected_host"
+          echo "Selected SSH port: $selected_port"
+          echo "host=$selected_host" >> "$GITHUB_OUTPUT"
+          echo "port=$selected_port" >> "$GITHUB_OUTPUT"
+
+      - name: Check SSH port reachable
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="${{ steps.select_ssh_port.outputs.host }}"
+          port="${{ steps.select_ssh_port.outputs.port }}"
+          if [ -z "${host:-}" ]; then
+            echo "HOST secret is empty."
+            exit 1
+          fi
+          echo "Testing TCP connectivity to ${host}:${port} ..."
+          ok=0
+          for i in $(seq 1 10); do
+            if timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${host}/${port}" 2>/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "TCP FAILED"
+            exit 0
+          fi
+          echo "TCP OK"
+          echo "Checking SSH on ${host}:${port} ..."
+          ok_banner=0
+          for i in $(seq 1 6); do
+            keys=""
+            if command -v ssh-keyscan >/dev/null 2>&1; then
+              keys="$(ssh-keyscan -4 -T 10 -p "$port" -t rsa,ecdsa,ed25519 "$host" 2>/dev/null || true)"
+              if [ -z "${keys:-}" ]; then
+                keys="$(ssh-keyscan -6 -T 10 -p "$port" -t rsa,ecdsa,ed25519 "$host" 2>/dev/null || true)"
+              fi
+            fi
+            banner="$(timeout 12 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 64 <&3" 2>/dev/null || true)"
+            if [ -n "${keys:-}" ] || printf '%s' "$banner" | grep -q 'SSH-'; then
+              ok_banner=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ok_banner" -ne 1 ]; then
+            echo "SSH not detected on ${host}:${port} (banner_prefix='${banner}')."
+            exit 0
+          fi
+          echo "SSH banner OK"
+
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add SSH known_hosts
+        shell: bash
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          host="${{ steps.select_ssh_port.outputs.host }}"
+          port="${{ steps.select_ssh_port.outputs.port }}"
+          known_hosts_fallback="$SSH_KNOWN_HOSTS"
+          host="$(printf '%s' "${host:-}" | tr -d '\r' | xargs)"
+          if [ -z "${host:-}" ]; then
+            echo "HOST secret is empty."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          tmp_keys="$(mktemp)"
+          tmp_err="$(mktemp)"
+          for attempt in 1 2 3 4 5; do
+            : >"$tmp_err"
+            out="$(ssh-keyscan -4 -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>"$tmp_err" || true)"
+            if [ -z "${out:-}" ]; then
+              out="$(ssh-keyscan -6 -T 15 -p "$port" -t rsa,ecdsa,ed25519 -H "$host" 2>"$tmp_err" || true)"
+            fi
+            if [ -n "${out:-}" ]; then
+              printf '%s\n' "$out" >>"$tmp_keys"
+              break
+            fi
+            sleep 2
+          done
+          if [ ! -s "$tmp_keys" ] && [ -n "${known_hosts_fallback:-}" ]; then
+            printf '%s\n' "$known_hosts_fallback" >>"$tmp_keys"
+          fi
+          if [ ! -s "$tmp_keys" ]; then
+            echo "ssh-keyscan produced no keys for ${host}:${port}."
+            if command -v getent >/dev/null 2>&1; then
+              echo "DNS:"
+              getent ahosts "$host" | head -n 20 || true
+            fi
+            echo "TCP banner (first 120 bytes, printable):"
+            timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 120 <&3 | tr -cd '[:print:]\n' || true" 2>/dev/null || true
+            if [ -s "$tmp_err" ]; then
+              echo "ssh-keyscan stderr (last 50 lines):"
+              tail -n 50 "$tmp_err" || true
+            fi
+            echo "Warning: known_hosts not populated; deploy step will decide."
+          fi
+          cat "$tmp_keys" >> ~/.ssh/known_hosts
+          rm -f "$tmp_keys" "$tmp_err"
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy to Server
+        shell: bash
+        env:
+          HOST: ${{ steps.select_ssh_port.outputs.host }}
+          USERNAME: ${{ secrets.USERNAME }}
+          PORT: ${{ steps.select_ssh_port.outputs.port }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          host="$(printf '%s' "${HOST:-}" | tr -d '\r' | xargs)"
+          user="$USERNAME"
+          port="$(printf '%s' "${PORT:-}" | tr -dc '0-9')"
+
+          strict_host_key_checking="yes"
+          if command -v ssh-keygen >/dev/null 2>&1; then
+            if ! ssh-keygen -F "[$host]:$port" -f ~/.ssh/known_hosts >/dev/null 2>&1 && ! ssh-keygen -F "$host" -f ~/.ssh/known_hosts >/dev/null 2>&1; then
+              if ssh -o StrictHostKeyChecking=accept-new -G "$user@$host" >/dev/null 2>&1; then
+                strict_host_key_checking="accept-new"
+              else
+                strict_host_key_checking="no"
+              fi
+            fi
+          else
+            strict_host_key_checking="accept-new"
+          fi
+
+          if command -v getent >/dev/null 2>&1; then
+            echo "DNS:"
+            getent ahosts "$host" | head -n 20 || true
+          fi
+          echo "TCP banner (first 120 bytes, printable):"
+          timeout 6 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 120 <&3 | tr -cd '[:print:]\n' || true" 2>/dev/null || true
+
+          ssh_opts=(
+            -p "$port"
+            -o ConnectTimeout=30
+            -o ConnectionAttempts=3
+            -o ServerAliveInterval=10
+            -o ServerAliveCountMax=6
+            -o StrictHostKeyChecking="$strict_host_key_checking"
+            -o BatchMode=yes
+            -o IPQoS=throughput
+            -o LogLevel=VERBOSE
+          )
+
+          for attempt in 1 2 3; do
+            echo "SSH deploy attempt ${attempt}/3..."
+            code=0
+            timeout 1200 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' || code=$?
+          set -euo pipefail
+          
+          # Clean up disk space before build - Aggressive
+          docker system prune -a --volumes -f || true
+          docker builder prune -a -f || true
+
+          REPO_URL="https://github.com/yasoo2/xelitesolutions.git"
+          REPO_HINT="yasoo2/xelitesolutions"
+          BRANCH="main"
+
+          bootstrap_repo_dir() {
+            target_dir="$1"
+            if [ ! -d "$target_dir" ]; then
+              return 1
+            fi
+            cd "$target_dir" || return 1
+            if [ -d ".git" ]; then
+              return 0
+            fi
+            if [ -f "docker-compose.production.yml" ] || [ -f "docker-compose.server.yml" ] || [ -d "api" ] || [ -d "web" ]; then
+              git init >/dev/null 2>&1 || return 1
+              if git remote get-url origin >/dev/null 2>&1; then
+                git remote set-url origin "$REPO_URL" >/dev/null 2>&1 || true
+              else
+                git remote add origin "$REPO_URL" >/dev/null 2>&1 || true
+              fi
+              git fetch --depth 1 origin "$BRANCH" || return 1
+              git reset --hard "origin/$BRANCH" || return 1
+              return 0
+            fi
+            return 1
+          }
+
+          DEPLOY_DIR="${DEPLOY_PATH:-}"
+
+          if [ -n "${DEPLOY_DIR:-}" ] && [ -d "$DEPLOY_DIR" ]; then
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              if ! bootstrap_repo_dir "$DEPLOY_DIR"; then
+                DEPLOY_DIR=""
+              fi
+            fi
+          else
+            DEPLOY_DIR=""
+          fi
+
+          if [ -z "${DEPLOY_DIR:-}" ]; then
+            for d in /opt/joe /opt/xelitesolutions /var/www/joe /var/www/xelitesolutions /root/joe /root/xelitesolutions; do
+              if [ -d "$d/.git" ]; then
+                DEPLOY_DIR="$d"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "${DEPLOY_DIR:-}" ]; then
+            for gitdir in $(find /opt /var/www /root -maxdepth 4 -type d -name .git 2>/dev/null); do
+              parent_dir="$(dirname "$gitdir")"
+              origin_url="$(git -C "$parent_dir" remote get-url origin 2>/dev/null || true)"
+              if echo "$origin_url" | grep -q "$REPO_HINT"; then
+                DEPLOY_DIR="$parent_dir"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "${DEPLOY_DIR:-}" ]; then
+            BASE_DIR="/opt/joe"
+            mkdir -p "$BASE_DIR"
+            CLONE_DIR="$BASE_DIR"
+            if [ -n "$(ls -A "$BASE_DIR" 2>/dev/null || true)" ] && [ ! -d "$BASE_DIR/.git" ]; then
+              CLONE_DIR="$BASE_DIR/xelitesolutions"
+              mkdir -p "$CLONE_DIR"
+            fi
+
+            if [ -d "$CLONE_DIR/.git" ]; then
+              DEPLOY_DIR="$CLONE_DIR"
+            elif bootstrap_repo_dir "$CLONE_DIR"; then
+              DEPLOY_DIR="$CLONE_DIR"
+            elif [ -z "$(ls -A "$CLONE_DIR" 2>/dev/null || true)" ]; then
+              echo "Repo not found on server. Cloning into $CLONE_DIR ..."
+              git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR" || {
+                echo "Clone failed. Set secrets.DEPLOY_PATH to an existing repo path on the server." && exit 1
+              }
+              DEPLOY_DIR="$CLONE_DIR"
+            else
+              echo "Repo not found and target dir is not empty: $CLONE_DIR" && ls -la "$CLONE_DIR" && exit 1
+            fi
+          fi
+
+          cd "$DEPLOY_DIR"
+          if [ ! -d ".git" ]; then
+            echo "Repo directory not found at: $DEPLOY_DIR. Set secrets.DEPLOY_PATH to the correct path." && exit 1
+          fi
+
+          echo "Working directory: $(pwd)"
+          echo "Git syncing..."
+          
+          # Remove stale git lock files if they exist (prevents crash failures)
+          rm -f .git/index.lock .git/HEAD.lock .git/refs/heads/*.lock 2>/dev/null || true
+          
+          git fetch origin "$BRANCH"
+          git reset --hard "origin/$BRANCH"
+          echo "Deployed commit: $(git rev-parse --short HEAD)"
+
+          OPT_API_ENV="/opt/joe/env/api.env"
+          OPT_WEB_ENV="/opt/joe/env/web.env"
+          if [ ! -f .env ] && [ -f "$OPT_API_ENV" ]; then
+            cp "$OPT_API_ENV" .env
+          fi
+
+          read_env_val() {
+            local file="$1"
+            local key="$2"
+            if [ ! -f "$file" ]; then
+              echo ""
+              return 0
+            fi
+            local line
+            line="$(grep -E "^${key}=" "$file" | head -n 1 || true)"
+            if [ -z "${line:-}" ]; then
+              echo ""
+              return 0
+            fi
+            echo "${line#${key}=}" | tr -d '\r'
+          }
+
+          ensure_env_key() {
+            local key="$1"
+            local value="$2"
+            if [ -z "${value:-}" ] || [ ! -f .env ]; then
+              return 0
+            fi
+            awk -v k="$key" -v v="$value" 'BEGIN{found=0} $0 ~ "^"k"=" {print k"="v; found=1; next} {print} END{if(!found) print k"="v}' .env > .env.tmp && mv .env.tmp .env
+          }
+
+          if [ -f .env ]; then
+            google_id="$(read_env_val ".env" "GOOGLE_CLIENT_ID")"
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_API_ENV" "GOOGLE_CLIENT_ID")"
+            fi
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_WEB_ENV" "GOOGLE_CLIENT_ID")"
+            fi
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_API_ENV" "VITE_GOOGLE_CLIENT_ID")"
+            fi
+            if [ -z "${google_id:-}" ]; then
+              google_id="$(read_env_val "$OPT_WEB_ENV" "VITE_GOOGLE_CLIENT_ID")"
+            fi
+            # Fallback to GitHub Secrets injected by workflow
+            if [ -z "${google_id:-}" ] && [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
+              google_id="$GOOGLE_CLIENT_ID"
+            fi
+            ensure_env_key "GOOGLE_CLIENT_ID" "$google_id"
+
+            google_secret="$(read_env_val ".env" "GOOGLE_CLIENT_SECRET")"
+            if [ -z "${google_secret:-}" ]; then
+              google_secret="$(read_env_val "$OPT_API_ENV" "GOOGLE_CLIENT_SECRET")"
+            fi
+            if [ -z "${google_secret:-}" ]; then
+              google_secret="$(read_env_val "$OPT_API_ENV" "GOOGLE_OAUTH_CLIENT_SECRET")"
+            fi
+            # Fallback to GitHub Secrets injected by workflow
+            if [ -z "${google_secret:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ]; then
+              google_secret="$GOOGLE_CLIENT_SECRET"
+            fi
+            ensure_env_key "GOOGLE_CLIENT_SECRET" "$google_secret"
+
+            # Inject GOOGLE_API_KEY (Gemini)
+            google_key="$(read_env_val ".env" "GOOGLE_API_KEY")"
+            # Fallback to GitHub Secrets injected by workflow
+            if [ -z "${google_key:-}" ] && [ -n "${GOOGLE_API_KEY:-}" ]; then
+              google_key="$GOOGLE_API_KEY"
+            fi
+            ensure_env_key "GOOGLE_API_KEY" "$google_key"
+
+            google_id="$(read_env_val ".env" "GOOGLE_CLIENT_ID")"
+            google_secret="$(read_env_val ".env" "GOOGLE_CLIENT_SECRET")"
+            if [ -z "${google_id:-}" ] || [ -z "${google_secret:-}" ]; then
+              echo "Warning: Google OAuth غير مضبوط (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)."
+            fi
+          else
+            echo "Warning: .env not found; containers may start without secrets."
+          fi
+
+          if docker compose version >/dev/null 2>&1; then
+            COMPOSE="docker compose"
+          elif command -v docker-compose >/dev/null 2>&1; then
+            COMPOSE="docker-compose"
+          else
+            echo "Neither 'docker compose' nor 'docker-compose' is available." && exit 1
+          fi
+
+          echo "Docker version:"
+          docker version || true
+          echo "Compose version:"
+          $COMPOSE version || true
+
+          if [ -f docker-compose.production.yml ]; then
+            COMPOSE_FILE="docker-compose.production.yml"
+          else
+            echo "No docker-compose.production.yml found in $(pwd)" && exit 1
+          fi
+
+          PROJECT_NAME="joe"
+          echo "Using compose: $COMPOSE -p $PROJECT_NAME -f $COMPOSE_FILE"
+
+          mkdir -p /opt/joe/certbot/conf /opt/joe/certbot/www
+          if [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/fullchain.pem ] || [ ! -f /opt/joe/certbot/conf/live/xelitesolutions.com/privkey.pem ]; then
+            echo "TLS certificate not found. Bootstrapping Let's Encrypt..."
+            COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" timeout 20m bash ./scripts/init-letsencrypt.sh
+          fi
+
+          echo "Docker building..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
+
+          echo "Tearing down old containers..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans || true
+          
+          # Aggressive cleanup to prevent conflicts
+          echo "Force removing any remaining Joe containers..."
+          docker ps -a | grep -E '(joe_|joe-)' | awk '{print $1}' | xargs -r docker rm -f 2>/dev/null || true
+          
+          # Also try explicit container names
+          for n in joe_dashboard joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
+            docker rm -f $n 2>/dev/null || true
+          done
+          
+          # Clean up dangling networks
+          docker network prune -f || true
+
+          echo "Docker restarting..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --remove-orphans
+
+          NGINX_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q nginx 2>/dev/null || true)"
+          if [ -n "$NGINX_CID" ]; then
+            echo "Nginx container: $NGINX_CID"
+            docker inspect -f 'Image={{.Image}} Created={{.Created}}' "$NGINX_CID" || true
+            docker exec "$NGINX_CID" sh -lc 'nginx -t' || true
+            docker exec "$NGINX_CID" sh -lc 'wget -qO- http://web:80/ 2>/dev/null | head -n 5' || true
+          else
+            echo "Warning: nginx container not found after deploy."
+          fi
+
+          WEB_CID="$($COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q web 2>/dev/null || true)"
+          if [ -n "$WEB_CID" ]; then
+            echo "Web container: $WEB_CID"
+            docker inspect -f 'Image={{.Image}} Created={{.Created}}' "$WEB_CID" || true
+            docker exec "$WEB_CID" sh -lc 'ls -l /usr/share/nginx/html/index.html && sha256sum /usr/share/nginx/html/index.html | head -n 1' || true
+          else
+            echo "Warning: web container not found after deploy."
+          fi
+
+          if [ -n "$NGINX_CID" ] && [ -n "$WEB_CID" ]; then
+            echo "Nginx last logs:"
+            docker logs --tail 200 "$NGINX_CID" || true
+            echo "Web last logs:"
+            docker logs --tail 200 "$WEB_CID" || true
+          fi
+
+          echo "Waiting for ports 80/443 to become available..."
+          ok80=0
+          ok443=0
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null --max-time 2 http://127.0.0.1/ 2>/dev/null; then ok80=1; fi
+            if curl -fkfsS -o /dev/null --max-time 2 https://127.0.0.1/ 2>/dev/null; then ok443=1; fi
+            if [ "$ok80" -eq 1 ] && [ "$ok443" -eq 1 ]; then
+              echo "Ports are ready."
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ok443" -ne 1 ]; then
+            echo "HTTPS port 443 still not reachable on localhost."
+            if [ -n "${NGINX_CID:-}" ]; then
+              docker logs --tail 200 "$NGINX_CID" || true
+            fi
+            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps || true
+            exit 1
+          fi
+
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
+          echo "Deployment finished!"
+          REMOTE
+            if [ "$code" -eq 0 ]; then
+              echo "SSH deploy succeeded."
+              break
+            fi
+
+            if [ "$code" -eq 124 ]; then
+              echo "SSH command timed out (120s). This usually indicates firewall/IDS blocking SSH banner exchange."
+            fi
+            if [ "$code" -eq 255 ]; then
+              echo "SSH failed before authentication (network/banner/firewall/proxy)."
+              echo "SSH debug (short):"
+              ssh -vv "${ssh_opts[@]}" "$user@$host" "exit" </dev/null || true
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              exit "$code"
+            fi
+            echo "Waiting 10s before retry..."
+            sleep 10
+          done
+
+      - name: Verify Deployment
+        uses: jtalk/url-health-check-action@v4
+        with:
+          url: https://xelitesolutions.com/
+          max-attempts: 12
+          retry-delay: 10s
