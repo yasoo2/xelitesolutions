@@ -214,12 +214,12 @@ export class WebPipelineTool extends BaseTool {
             const devRes = await executeTool('dev_server_start', { cwd: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
             if (devRes.ok) {
-                const previewUrl = String((devRes.output as any)?.previewUrl || \`http://localhost:\${port}/\`).trim();
+                const previewUrl = String((devRes.output as any)?.previewUrl || `http://localhost:${port}/`).trim();
                 steps.push({ step: 'dev_server_preview_ready', ok: true, output: { previewUrl } });
             }
         }
 
-        logs.push(`pipeline.complete path = ${ projectPath }`);
+        logs.push(`pipeline.complete path = ${projectPath}`);
         const allOk = steps.every(s => s.ok);
         return { ok: allOk, output: { path: projectPath, steps }, logs };
     }
@@ -253,7 +253,7 @@ export class DevServerTool extends BaseTool {
                 command = 'npm run dev';
             } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
                 // Static folder - use npx serve
-                command = `npx - y serve - p ${ port }.`;
+                command = `npx - y serve - p ${port}.`;
             } else {
                 command = 'npm run dev'; // Final fallback
             }
@@ -271,28 +271,28 @@ export class DevServerTool extends BaseTool {
 
             const previewUrl = `http://api:${port}/`;
             const userPreviewUrl = `http://localhost:${port}/`;
-                logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
+            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
 
-                // Broadcast preview_ready event for JoeStudio LivePreview
-                const { broadcast } = require('../../ws');
-                broadcast({
-                    type: 'preview_ready',
-                    data: {
-                        url: userPreviewUrl,
-                        cwd,
-                        timestamp: new Date().toISOString()
-                    },
-                    sessionId: context?.sessionId
-                });
+            // Broadcast preview_ready event for JoeStudio LivePreview
+            const { broadcast } = require('../../ws');
+            broadcast({
+                type: 'preview_ready',
+                data: {
+                    url: userPreviewUrl,
+                    cwd,
+                    timestamp: new Date().toISOString()
+                },
+                sessionId: context?.sessionId
+            });
 
-                return { ok: true, output: { previewUrl, userPreviewUrl }, logs };
-            } catch (e: any) {
-                const msg = e?.message || String(e);
-                logs.push(`dev_error=${msg}`);
-                return { ok: false, error: msg, logs };
-            }
+            return { ok: true, output: { previewUrl, userPreviewUrl }, logs };
+        } catch (e: any) {
+            const msg = e?.message || String(e);
+            logs.push(`dev_error=${msg}`);
+            return { ok: false, error: msg, logs };
         }
     }
+}
 
 export class ScaffoldTool extends BaseTool {
     name = 'scaffold_full_stack';
