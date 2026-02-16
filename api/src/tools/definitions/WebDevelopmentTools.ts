@@ -201,7 +201,7 @@ export class WebPipelineTool extends BaseTool {
             const devRes = await executeTool('dev_server_start', { cwd: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
             if (devRes.ok) {
-                const previewUrl = String((devRes.output as any)?.previewUrl || 'http://localhost:5173/').trim();
+                const previewUrl = String((devRes.output as any)?.previewUrl || 'http://localhost:5180/').trim();
                 steps.push({ step: 'dev_server_preview_ready', ok: true, output: { previewUrl } });
             }
         }
@@ -228,7 +228,7 @@ export class DevServerTool extends BaseTool {
         const logs: string[] = [];
         const cwd = resolveToolPath(String(input?.cwd || '').trim());
         let command = String(input?.command || '').trim();
-        const port = Number(input?.port) || 5173;
+        const port = Number(input?.port) || 5180;
 
         // Auto-detect command if not provided
         if (!command) {
