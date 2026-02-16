@@ -26,6 +26,17 @@ function resolveToolPath(p: string) {
     return absReal;
 }
 
+async function findAvailablePort(start: number, host: string = '0.0.0.0'): Promise<number> {
+    const { isPortOpen } = require('../../utils/network');
+    let port = start;
+    while (port < start + 100) {
+        const open = await isPortOpen(host, port);
+        if (!open) return port;
+        port++;
+    }
+    return start;
+}
+
 export class WebPipelineTool extends BaseTool {
     name = 'website_full_pipeline';
     description = 'Scaffold, build, test, and preview a full-stack website project.';
@@ -86,10 +97,12 @@ export class WebPipelineTool extends BaseTool {
         logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
 
         // 1. Scaffold
+        const port = await findAvailablePort(5180);
         const scRes = await executeTool('scaffold_full_stack', {
             name, type, features, baseDir,
             aestheticMode: input?.aestheticMode,
-            language: input?.language
+            language: input?.language,
+            port
         }, { sessionId, workspaceId });
         if (!scRes?.ok) {
             steps.push({ step: 'scaffold_full_stack', ok: false, error: scRes?.error });
@@ -201,12 +214,12 @@ export class WebPipelineTool extends BaseTool {
             const devRes = await executeTool('dev_server_start', { cwd: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
             if (devRes.ok) {
-                const previewUrl = String((devRes.output as any)?.previewUrl || 'http://localhost:5180/').trim();
+                const previewUrl = String((devRes.output as any)?.previewUrl || \`http://localhost:\${port}/\`).trim();
                 steps.push({ step: 'dev_server_preview_ready', ok: true, output: { previewUrl } });
             }
         }
 
-        logs.push(`pipeline.complete path=${projectPath}`);
+        logs.push(`pipeline.complete path = ${ projectPath }`);
         const allOk = steps.every(s => s.ok);
         return { ok: allOk, output: { path: projectPath, steps }, logs };
     }
@@ -228,7 +241,11 @@ export class DevServerTool extends BaseTool {
         const logs: string[] = [];
         const cwd = resolveToolPath(String(input?.cwd || '').trim());
         let command = String(input?.command || '').trim();
-        const port = Number(input?.port) || 5180;
+        let port = Number(input?.port);
+
+        if (!port) {
+            port = await findAvailablePort(5180);
+        }
 
         // Auto-detect command if not provided
         if (!command) {
@@ -236,7 +253,7 @@ export class DevServerTool extends BaseTool {
                 command = 'npm run dev';
             } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
                 // Static folder - use npx serve
-                command = `npx -y serve -p ${port} .`;
+                command = `npx - y serve - p ${ port }.`;
             } else {
                 command = 'npm run dev'; // Final fallback
             }
@@ -254,28 +271,28 @@ export class DevServerTool extends BaseTool {
 
             const previewUrl = `http://api:${port}/`;
             const userPreviewUrl = `http://localhost:${port}/`;
-            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
+                logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
 
-            // Broadcast preview_ready event for JoeStudio LivePreview
-            const { broadcast } = require('../../ws');
-            broadcast({
-                type: 'preview_ready',
-                data: {
-                    url: userPreviewUrl,
-                    cwd,
-                    timestamp: new Date().toISOString()
-                },
-                sessionId: context?.sessionId
-            });
+                // Broadcast preview_ready event for JoeStudio LivePreview
+                const { broadcast } = require('../../ws');
+                broadcast({
+                    type: 'preview_ready',
+                    data: {
+                        url: userPreviewUrl,
+                        cwd,
+                        timestamp: new Date().toISOString()
+                    },
+                    sessionId: context?.sessionId
+                });
 
-            return { ok: true, output: { previewUrl, userPreviewUrl }, logs };
-        } catch (e: any) {
-            const msg = e?.message || String(e);
-            logs.push(`dev_error=${msg}`);
-            return { ok: false, error: msg, logs };
+                return { ok: true, output: { previewUrl, userPreviewUrl }, logs };
+            } catch (e: any) {
+                const msg = e?.message || String(e);
+                logs.push(`dev_error=${msg}`);
+                return { ok: false, error: msg, logs };
+            }
         }
     }
-}
 
 export class ScaffoldTool extends BaseTool {
     name = 'scaffold_full_stack';
@@ -290,7 +307,8 @@ export class ScaffoldTool extends BaseTool {
             features: { type: 'array', items: { type: 'string' } },
             baseDir: { type: 'string' },
             aestheticMode: { type: 'string', enum: ['glass', 'neon', 'minimal', 'corporate'] },
-            language: { type: 'string', enum: ['ar', 'en', 'dual'] }
+            language: { type: 'string', enum: ['ar', 'en', 'dual'] },
+            port: { type: 'number' }
         },
         required: ['name']
     };
@@ -321,7 +339,8 @@ export class ScaffoldTool extends BaseTool {
             // Call the shared Builder logic
             const result = Builder.scaffold(projectName, type, features, baseDir, {
                 aestheticMode: input?.aestheticMode,
-                language: input?.language
+                language: input?.language,
+                port: input?.port
             });
             return { ok: true, output: result, logs: [`scaffold.success=${projectName}`] };
         } catch (e: any) {
