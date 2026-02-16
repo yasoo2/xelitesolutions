@@ -52,6 +52,7 @@ interface JoeIDELayoutProps {
     sessions?: Session[];
     onSelectSession?: (id: string) => void;
     onDeleteSession?: (id: string) => void;
+    onDeleteAllSessions?: () => void;
     onNewSession?: () => void;
 
     // Callbacks
@@ -112,6 +113,7 @@ export default function JoeIDELayout({
     sessions = [],
     onSelectSession,
     onDeleteSession,
+    onDeleteAllSessions,
     onNewSession,
 
     // Callbacks
@@ -272,6 +274,7 @@ export default function JoeIDELayout({
                 sessions={sessions}
                 onSelect={onSelectSession || (() => { })}
                 onDelete={onDeleteSession || (() => { })}
+                onDeleteAll={onDeleteAllSessions}
                 onNew={onNewSession || (() => { })}
                 showInAgentMode={true}
             />

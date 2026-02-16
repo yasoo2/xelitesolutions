@@ -58,6 +58,7 @@ interface SessionState {
   deleteSession: (id: string) => Promise<void>;
   setSelected: (id: string | null) => void;
   setAgentSelected: (id: string | null) => void;
+  deleteAllSessions: () => Promise<void>;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({

@@ -33,6 +33,7 @@ export default function Joe() {
         loadAllSessions,
         setAgentSelected,
         deleteSession,
+        deleteAllSessions,
     } = useSessionStore();
 
     const { createSession } = useSessionActions();
@@ -481,6 +482,7 @@ export default function Joe() {
             sessions={sessionsList}
             onSelectSession={setAgentSelected}
             onDeleteSession={deleteSession}
+            onDeleteAllSessions={deleteAllSessions}
             onNewSession={handleCreateSession}
 
             // Theme

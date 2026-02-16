@@ -27,6 +27,7 @@ interface SessionsBarProps {
     sessions: Session[];
     onSelect: (id: string) => void;
     onDelete: (id: string) => void;
+    onDeleteAll?: () => void;
     onNew: () => void;
     showInAgentMode?: boolean; // If false, hide in agent mode
 }
@@ -35,11 +36,18 @@ export default function SessionsBar({
     sessions,
     onSelect,
     onDelete,
+    onDeleteAll,
     onNew,
     showInAgentMode = false
 }: SessionsBarProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+    const handleDeleteAll = () => {
+        if (window.confirm('هل أنت متأكد من رغبتك في حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) {
+            onDeleteAll?.();
+        }
+    };
 
     const scroll = useCallback((direction: 'left' | 'right') => {
         if (!scrollRef.current) return;
@@ -143,27 +151,58 @@ export default function SessionsBar({
                 <ChevronLeft size={16} />
             </button>
 
-            {/* New Session Button */}
-            <button
-                onClick={onNew}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 12px',
-                    background: 'var(--accent-primary)',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                }}
-            >
-                <Plus size={14} />
-                <span className="hide-mobile">جديد</span>
-            </button>
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {sessions.length > 0 && onDeleteAll && (
+                    <button
+                        onClick={handleDeleteAll}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 32,
+                            height: 32,
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                        }}
+                        title="حذف جميع الجلسات"
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                        }}
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                )}
+
+                {/* New Session Button */}
+                <button
+                    onClick={onNew}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '6px 12px',
+                        background: 'var(--accent-primary)',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    <Plus size={14} />
+                    <span className="hide-mobile">جديد</span>
+                </button>
+            </div>
         </div>
     );
 }
