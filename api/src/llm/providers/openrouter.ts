@@ -54,7 +54,12 @@ export class OpenRouterProvider {
 
             return completion.choices[0]?.message?.content || '';
         } catch (error: any) {
-            console.error("OpenRouter Chat Failed:", error);
+            const isClerkError = error.status === 502 || error.message?.includes('Clerk');
+            if (isClerkError) {
+                console.warn("[OpenRouter] Clerk Auth Failed (502). This normally means the free tier token expired.");
+            }
+            console.error("OpenRouter Chat Failed:", error.message);
+            // Throw so the intelligent router catches it and tries the next one
             throw new Error(`OpenRouter API Failed: ${error.message}`);
         }
     }

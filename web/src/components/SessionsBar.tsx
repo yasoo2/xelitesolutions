@@ -5,6 +5,7 @@
 
 import React, { useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import {
     MessageSquare,
     Plus,
@@ -40,11 +41,12 @@ export default function SessionsBar({
     onNew,
     showInAgentMode = false
 }: SessionsBarProps) {
+    const { t } = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
     const [hoveredId, setHoveredId] = useState<string | null>(null);
 
     const handleDeleteAll = () => {
-        if (window.confirm('هل أنت متأكد من رغبتك في حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) {
+        if (window.confirm(t('sidebar.deleteAllConfirm'))) {
             onDeleteAll?.();
         }
     };
@@ -79,7 +81,7 @@ export default function SessionsBar({
                 paddingLeft: 4
             }}>
                 <MessageSquare size={14} />
-                <span className="hide-mobile">الجلسات</span>
+                <span className="hide-mobile">{t('sidebar.sessions')}</span>
             </div>
 
             {/* Scroll Left */}
@@ -130,7 +132,7 @@ export default function SessionsBar({
                         display: 'flex',
                         alignItems: 'center'
                     }}>
-                        لا توجد جلسات
+                        {t('sidebar.noResults')}
                     </div>
                 )}
             </div>
@@ -169,7 +171,7 @@ export default function SessionsBar({
                             cursor: 'pointer',
                             transition: 'all 0.2s',
                         }}
-                        title="حذف جميع الجلسات"
+                        title={t('sidebar.deleteAll')}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
                         }}
@@ -200,7 +202,7 @@ export default function SessionsBar({
                     }}
                 >
                     <Plus size={14} />
-                    <span className="hide-mobile">جديد</span>
+                    <span className="hide-mobile">{t('sidebar.newChat')}</span>
                 </button>
             </div>
         </div>
@@ -220,6 +222,7 @@ function SessionChip({
     isHovered: boolean;
     onHover: (hovered: boolean) => void;
 }) {
+    const { t } = useTranslation();
     return (
         <motion.div
             layout
@@ -253,7 +256,7 @@ function SessionChip({
                     textOverflow: 'ellipsis',
                 }}
             >
-                {session.title || 'جلسة جديدة'}
+                {session.title || t('sidebar.newChat')}
             </span>
 
             <AnimatePresence>
@@ -285,15 +288,15 @@ function SessionChip({
 }
 
 // Time formatting helper
-function formatTime(date: Date): string {
+function formatTime(date: Date, t: any): string {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return 'الآن';
-    if (minutes < 60) return `منذ ${minutes} دقيقة`;
-    if (hours < 24) return `منذ ${hours} ساعة`;
-    return `منذ ${days} يوم`;
+    if (minutes < 1) return t('time.now', 'Just now');
+    if (minutes < 60) return t('time.minutes_ago', { count: minutes, defaultValue: '{{count}}m ago' });
+    if (hours < 24) return t('time.hours_ago', { count: hours, defaultValue: '{{count}}h ago' });
+    return t('time.days_ago', { count: days, defaultValue: '{{count}}d ago' });
 }

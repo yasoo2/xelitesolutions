@@ -2227,19 +2227,18 @@ export async function generateSessionTitle(
   const hasArabic = /[\u0600-\u06FF]/.test(blob);
 
   const systemContent = hasArabic
-    ? "أنت محرك الذكاء XElite. مهمتك هي إنشاء عنوان 'نخبوي' واحترافي ومختصر جداً (3-5 كلمات) لهذه الجلسة بناءً على سياق الحوار. استخدم العربية الفصحى الأنيقة فقط. لا تذكر كلمة 'جلسة' أو 'دردشة'."
-    : "You are the XElite Intelligence Engine. Generate an elite, professional, and very concise title (3-5 words) for this session based on the context. Use English only. Avoid words like 'Session' or 'Chat'.";
+    ? "أنت محرك الذكاء XElite. مهمتك هي إنشاء عنوان 'نخبوي' واحترافي ومختصر جداً (3-5 كلمات) لهذه الجلسة بناءً على سياق الحوار. استخدم العربية الفصحى الأنيقة. يجب أن يكون العنوان وصفياً بدقة لموضوع النقاش. تجنب تماماً كلمات مثل 'جلسة'، 'دردشة'، 'سؤال'، 'مساعدة'. ركز على الجوهر التقني أو الموضوعي."
+    : "You are the XElite Intelligence Engine. Generate an elite, professional, and extremely concise title (3-5 words) for this session based on the context. Use English only. The title must strictly describe the technical or thematic core of the discussion. ABSOLUTELY AVOID words like 'Session', 'Chat', 'Question', 'Help'. Focus on the subject matter.";
 
   const msgs = [
     {
-      role: "assistant", // Using assistant role for system context in some models if needed, but router handles it
+      role: "assistant",
       content: systemContent,
     },
     ...messages
       .filter(m => m.role === 'user')
-      .slice(0, 3)
-      .map((m) => ({ role: "user", content: String(m.content).slice(0, 1000) })), // More context for title
-  ];
+      .slice(0, 5) // Increased context to 5 messages
+      .map((m) => ({ role: "user", content: String(m.content).slice(0, 1500) })),
 
   try {
     const title = await intelligentRouter.routeToModel(

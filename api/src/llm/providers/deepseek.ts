@@ -38,10 +38,9 @@ export class DeepSeekProvider {
         model: string = DEEPSEEK_MODELS.CHAT,
         tools?: any[]
     ): Promise<string> {
-        // if no client, use free pollinations proxy
+        // if no client or key, use free pollinations proxy
         if (!this.client) {
             console.info('[DeepSeek] Using Free Anonymous Proxy (Pollinations)');
-            // Fix messages format for pollinations if needed (simple strings)
             const pollinationsMsgs = messages.map(m => ({
                 role: m.role,
                 content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
@@ -81,7 +80,12 @@ export class DeepSeekProvider {
 
             return message.content || '';
         } catch (error: any) {
-            console.warn('[DeepSeek] Official API failed, falling back to Free Proxy:', error.message);
+            const isQuota = error.status === 429 || error.message?.includes('429');
+            if (isQuota) {
+                console.warn('[DeepSeek] Official API Quota Exceeded, falling back to Free Proxy');
+            } else {
+                console.warn('[DeepSeek] Official API failed, falling back to Free Proxy:', error.message);
+            }
             return await pollinationsProvider.chatComplete(messages as any, 'openai');
         }
     }

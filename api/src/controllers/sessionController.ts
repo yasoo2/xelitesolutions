@@ -126,7 +126,7 @@ export async function listSessions(req: Request, res: Response) {
 }
 
 export async function deleteSession(req: Request, res: Response) {
-    const id = req.params.id;
+    const id = req.params.id as string;
     try {
 
         await Session.findByIdAndDelete(id);
@@ -148,7 +148,7 @@ export async function deleteAllSessions(req: Request, res: Response) {
 }
 
 export async function togglePin(req: Request, res: Response) {
-    const id = req.params.id;
+    const id = req.params.id as string;
     try {
         const s = await Session.findById(id);
         if (s) {
@@ -164,7 +164,7 @@ export async function togglePin(req: Request, res: Response) {
 
 
 export async function moveSession(req: Request, res: Response) {
-    const id = req.params.id;
+    const id = req.params.id as string;
     const folderId = req.body.folderId;
     try {
         const s = await Session.findByIdAndUpdate(id, { folderId }, { new: true });
@@ -175,7 +175,7 @@ export async function moveSession(req: Request, res: Response) {
 }
 
 export async function addMessage(req: Request, res: Response) {
-    const sessionId = req.params.id;
+    const sessionId = req.params.id as string;
     const { content } = req.body;
     const userId = (req as any).auth?.sub;
 
@@ -278,20 +278,24 @@ export async function addMessage(req: Request, res: Response) {
 
 // --- HELPER FUNCTIONS FOR AUTO-NAMING ---
 
-function isAutoTitleCandidate(title: string) {
+export function isAutoTitleCandidate(title: string) {
     const t = String(title || '').trim();
     // Detect date patterns in titles (e.g., "Session 1/31/2026, 3:23:04 AM")
     const hasDatePattern = /\d{1,2}\/\d{1,2}\/\d{4}/.test(t);
     const genericTerms = [
         'New Session', 'Untitled Session', 'New Chat',
         'محادثة جديدة', 'جلسة جديدة', 'دردشة جديدة',
-        'New Session -', 'جلسة جديدة -'
+        'New Session -', 'جلسة جديدة -',
+        'Conversation', 'Chat', 'Undefined', 'Untitled',
+        'محادثة', 'دردشة', 'بدون عنوان'
     ];
 
     return (
         genericTerms.some(term => t === term || t.startsWith(term)) ||
         t.startsWith('Session ') ||
         t.startsWith('جلسة ') ||
+        t.startsWith('Chat ') ||
+        t.startsWith('Conversation ') ||
         hasDatePattern
     );
 }
@@ -317,7 +321,7 @@ async function handleAutoNaming(sessionId: string, messages: any[], isOffline: b
 }
 
 export async function updateSecrets(req: Request, res: Response) {
-    const id = req.params.id;
+    const id = req.params.id as string;
     const { key, value, provider } = req.body;
     const authUserId = (req as any).auth?.sub || (req as any).auth?.userId;
 
@@ -356,7 +360,7 @@ import { generateSessionTitle } from '../llm';
 import { broadcast } from '../ws';
 
 export async function listSessionMessages(req: Request, res: Response) {
-    const sessionId = req.params.id;
+    const sessionId = req.params.id as string;
     const userId = (req as any).auth?.sub;
 
     try {

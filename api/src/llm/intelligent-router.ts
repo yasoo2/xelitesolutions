@@ -126,6 +126,15 @@ export const MODELS: Record<string, ModelConfig> = {
         temperature: 0.7,
         cost: 'high',
         strengths: ['multimodal', 'tools', 'function_calling', 'creative']
+    },
+    'deepseek-v3': {
+        name: 'DeepSeek V3',
+        provider: 'hack',
+        model: 'deepseek-chat',
+        maxTokens: 8000,
+        temperature: 0.7,
+        cost: 'free',
+        strengths: ['code', 'reasoning', 'low_latency', 'fallback']
     }
 };
 
@@ -399,18 +408,14 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
 
         case 'simple_chat':
         default:
-            // SPEED OPTIMIZATION: Use 8B Instant for simple Arabic queries
-            const isFactual = /(who\s*is|what\s*is|man\s*huwa|president|ruler|king|minister|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|الحالي|عاصمة|ماهي|ماهو)/i.test(analysis.shortSummary || '');
+            // Arabic reasoning gets a strong model
+            if (analysis.language === 'ar') return MODELS['llama-3.1-70b'];
 
-            if (analysis.language === 'ar') {
-                if (!isFactual && (analysis.complexity === 'low' || analysis.estimatedTokens < 500)) {
-                    return MODELS['llama-3.1-8b']; // FAST LANE ⚡
-                }
-                return MODELS['llama-3.1-70b'];
+            // Prefer DeepSeek V3 for complex free tasks if Groq is slow
+            if (analysis.complexity === 'high' || analysis.complexity === 'medium') {
+                return MODELS['deepseek-v3'];
             }
 
-            if (isFactual) return MODELS['llama-3.1-70b'];
-            if (analysis.estimatedTokens > 16000) return MODELS['mixtral-8x7b'];
             return MODELS['llama-3.1-70b'];
     }
 }
@@ -644,6 +649,15 @@ export async function routeToModel(
             }
         });
     }
+
+    // Add DeepSeek via Pollinations as a high-quality free fallback
+    meshProviders.push({
+        name: 'DeepSeek (Pollinations)',
+        run: async () => {
+            return await deepSeekProvider.chatComplete(flatMessages);
+        }
+    });
+
     if (!localStrict) {
         meshProviders.push({
             name: 'Pollinations (Backup)',

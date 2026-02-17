@@ -108,7 +108,9 @@ const resources = {
         otherSessions: 'Other Sessions',
         emptyFolder: 'Empty folder',
         noResults: 'No results',
-        deleteAll: 'Delete all sessions'
+        deleteAll: 'Delete all sessions',
+        deleteAllConfirm: 'Are you sure you want to delete all sessions? This action cannot be undone.',
+        sessions: 'Sessions'
       },
       agentActivity: 'Agent Activity',
       initializing: 'Initializing...',
@@ -282,7 +284,9 @@ const resources = {
         otherSessions: 'جلسات أخرى',
         emptyFolder: 'مجلد فارغ',
         noResults: 'لا توجد نتائج',
-        deleteAll: 'حذف جميع الجلسات'
+        deleteAll: 'حذف جميع الجلسات',
+        deleteAllConfirm: 'هل أنت متأكد من رغبتك في حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.',
+        sessions: 'الجلسات'
       },
       agentActivity: 'نشاط الوكيل',
       initializing: 'جارٍ التحضير...',

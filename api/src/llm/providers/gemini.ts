@@ -14,7 +14,8 @@ const FALLBACK_MODELS = [
     'gemini-2.0-flash-lite',
     'gemini-1.5-flash',
     'gemini-1.5-pro',
-    'gemini-flash-latest'
+    'gemini-flash-latest',
+    'gemini-pro'
 ];
 
 export class GeminiProvider {

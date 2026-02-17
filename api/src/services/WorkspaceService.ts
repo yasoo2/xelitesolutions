@@ -348,8 +348,10 @@ export class WorkspaceService {
         if (updates.name) workspace.name = updates.name;
         if (updates.activeRepo) {
             if (!workspace.integrations) workspace.integrations = { github: { repositories: [] } } as any;
-            if (!workspace.integrations.github) workspace.integrations.github = { repositories: [] };
-            workspace.integrations.github.activeRepo = updates.activeRepo;
+            if (!workspace.integrations.github) workspace.integrations.github = { installationId: '', repositories: [] };
+            if (workspace.integrations.github) {
+                workspace.integrations.github.activeRepo = updates.activeRepo;
+            }
         }
         if (updates.providerConfig) {
             // Merge or overwrite provider config into integrations.llmProviders
