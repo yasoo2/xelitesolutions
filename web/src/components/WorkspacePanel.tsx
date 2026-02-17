@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState } from 'react';
-import { Globe, Terminal as TerminalIcon, Eye, Code, Loader, Maximize2 } from 'lucide-react';
+import { Globe, Terminal as TerminalIcon, Eye, Code, Loader, Maximize2, ChevronDown, ChevronUp } from 'lucide-react';
 
 // Lazy load the heavy components
 const EmbeddedTerminal = lazy(() => import('./EmbeddedTerminal'));
@@ -31,6 +31,7 @@ export default function WorkspacePanel({
     onMaximizeToggle
 }: WorkspacePanelProps) {
     const [internalTab, setInternalTab] = useState<WorkspaceTab>('browser');
+    const [isMobileCollapsed, setIsMobileCollapsed] = useState(false);
 
     const activeTab = controlledTab ?? internalTab;
     const handleTabChange = (tab: WorkspaceTab) => {
@@ -62,7 +63,7 @@ export default function WorkspacePanel({
     );
 
     return (
-        <main className="joe-workspace">
+        <main className={`joe-workspace ${isMobileCollapsed ? 'collapsed-mobile' : ''}`}>
             {/* Tabs */}
             <div className="joe-workspace-tabs">
                 <div style={{ display: 'flex', gap: 6, flex: 1, overflowX: 'auto', minWidth: 0 }}>
@@ -77,9 +78,20 @@ export default function WorkspacePanel({
                         </button>
                     ))}
                 </div>
+
+                {/* Mobile Collapse Toggle */}
+                <button
+                    className="joe-header-btn show-mobile-only"
+                    onClick={() => setIsMobileCollapsed(!isMobileCollapsed)}
+                    title={isMobileCollapsed ? "Expand" : "Collapse"}
+                    style={{ border: 'none', background: 'transparent', marginLeft: 4 }}
+                >
+                    {isMobileCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+
                 {onMaximizeToggle && (
                     <button
-                        className="joe-header-btn"
+                        className="joe-header-btn hide-mobile"
                         onClick={onMaximizeToggle}
                         title={isMaximized ? "Restore" : "Maximize"}
                         style={{ border: 'none', background: 'transparent' }}

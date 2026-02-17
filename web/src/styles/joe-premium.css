@@ -1722,3 +1722,44 @@
     color: #a78bfa !important;
     filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.5));
 }
+/* ========== Mobile Collapsible Panel Overrides ========== */
+@media (min-width: 769px) {
+    .show-mobile-only {
+        display: none !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .show-mobile-only {
+        display: flex !important;
+    }
+    
+    .joe-workspace.collapsed-mobile {
+        height: 48px !important;
+        flex: 0 0 auto !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+    }
+
+    .joe-workspace.collapsed-mobile .joe-workspace-content {
+        display: none !important;
+    }
+
+    /* When workspace is collapsed, chat panel should take remaining space */
+    .joe-main:has(.joe-workspace.collapsed-mobile) .joe-chat-panel {
+        height: auto !important;
+        flex: 1 1 auto !important;
+    }
+    
+    /* Ensure the toggle button is positioned correctly */
+    .joe-workspace-tabs .show-mobile-only {
+        margin-left: auto;
+        padding: 4px;
+        color: var(--joe-text-muted);
+    }
+    
+    .joe-workspace-tabs .show-mobile-only:hover {
+        color: var(--joe-gold-primary);
+        background: var(--joe-bg-hover);
+    }
+}
