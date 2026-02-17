@@ -2780,7 +2780,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const isRepeat = sigCount > 0 || lastExecutedToolSig === sig;
 
             if (isRepeat) {
-              const discoveryTools = ['project_detect', 'ls', 'grep_search', 'read_file', 'analyze_codebase', 'fs_glob', 'read_file_tree', 'codebase_outline'];
+              const discoveryTools = ['project_detect', 'ls', 'grep_search', 'read_file', 'analyze_codebase', 'fs_glob', 'read_file_tree', 'codebase_outline', 'browser_run', 'browser_open', 'web_search'];
               const maxRepeats = discoveryTools.includes(planName) ? 3 : 1;
               const totalSeen = sigCount + (lastExecutedToolSig === sig ? 1 : 0);
 

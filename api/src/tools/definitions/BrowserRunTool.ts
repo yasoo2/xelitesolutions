@@ -139,12 +139,12 @@ export class BrowserRunTool extends BaseTool {
     private classifyBrowserRuntimeError(e: any) {
         const msg = String(e?.message || e || '').trim();
         const lower = msg.toLowerCase();
-        if (/executable doesn't exist|playwright install/i.test(msg)) return { code: 'chromium_missing', message: msg };
-        if (/no such file or directory/i.test(msg) && /chrome|chromium/i.test(lower)) return { code: 'chromium_missing', message: msg };
+        if (/executable doesn't exist|playwright install/i.test(msg)) return { code: 'chromium_missing', message: msg + '\nHint: Run "npx playwright install" in the api directory.' };
+        if (/no such file or directory/i.test(msg) && /chrome|chromium/i.test(lower)) return { code: 'chromium_missing', message: msg + '\nHint: Run "npx playwright install" in the api directory.' };
         if (/target page, context or browser has been closed/i.test(msg)) return { code: 'browser_closed', message: msg };
-        if (/xvfb|display|cannot open display|missing x server/i.test(lower)) return { code: 'display_missing', message: msg };
+        if (/xvfb|display|cannot open display|missing x server/i.test(lower)) return { code: 'display_missing', message: msg + '\nHint: Ensure a display server (Xvfb) is running if on a headless server.' };
         if (/sandbox|setuid/i.test(lower)) return { code: 'sandbox_blocked', message: msg };
-        if (/glibc|gtk|nss|gbm|fontconfig/i.test(lower)) return { code: 'deps_missing', message: msg };
+        if (/glibc|gtk|nss|gbm|fontconfig/i.test(lower)) return { code: 'deps_missing', message: msg + '\nHint: Install missing system dependencies for Playwright.' };
         return { code: 'browser_failed', message: msg || 'browser_failed' };
     }
 
@@ -229,9 +229,9 @@ export class BrowserRunTool extends BaseTool {
                 if (execError === 'browser_unavailable' && detail && typeof detail === 'object') {
                     const code = String(detail?.code || '').trim();
                     const msg = String(detail?.message || '').trim();
-                    execSummary = `${code || 'browser_unavailable'}: ${msg || execError}`.slice(0, 600);
+                    execSummary = `${code || 'browser_unavailable'}: ${msg || execError}`.slice(0, 1000);
                 } else {
-                    execSummary = execError;
+                    execSummary = execError + (execError === 'browser_unavailable' ? '\nHint: Check if Playwright is installed and the browser is accessible.' : '');
                 }
                 const ms = (r as any)?.missingSecrets;
                 if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
