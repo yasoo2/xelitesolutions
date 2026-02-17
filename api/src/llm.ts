@@ -2239,6 +2239,7 @@ export async function generateSessionTitle(
       .filter(m => m.role === 'user')
       .slice(0, 5) // Increased context to 5 messages
       .map((m) => ({ role: "user", content: String(m.content).slice(0, 1500) })),
+  ];
 
   try {
     const title = await intelligentRouter.routeToModel(
