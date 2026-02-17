@@ -9,6 +9,7 @@ import { API_URL as API, WS_URL as WS } from '../config';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 
 
 // Web Speech API types
@@ -3390,8 +3391,13 @@ export default function CommandComposer({
               </div>
             )}
 
-            {/* [Wakil 6.0] Neural Thinking Indicator */}
-            {/* NeuralThinkingIndicator removed */}
+            {status === 'thinking' && !isQuietMode && (
+              <NeuralThinkingIndicator
+                visible={true}
+                phase={thinkingPhase}
+                variant="inline"
+              />
+            )}
 
 
             <textarea
