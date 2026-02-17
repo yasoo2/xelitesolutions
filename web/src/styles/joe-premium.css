@@ -720,23 +720,18 @@
 
 .providers-modal {
     position: relative !important;
-    bottom: auto !important;
-    left: auto !important;
-    right: auto !important;
-    top: auto !important;
-    transform: none !important;
-    width: 600px !important;
-    max-width: 90vw !important;
+    width: 520px !important;
+    max-width: 95vw !important;
     height: auto !important;
-    max-height: 80vh !important;
+    max-height: 85vh !important;
     background: var(--joe-bg-card) !important;
     border: 1px solid var(--joe-gold-primary) !important;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5) !important;
-    border-radius: 16px !important;
+    box-shadow: 0 20px 80px rgba(0, 0, 0, 0.6) !important;
+    border-radius: 20px !important;
     display: flex !important;
-    flex-direction: column !important;
-    padding: 16px !important;
-    animation: modalScaleIn 0.2s ease-out !important;
+    flex-direction: row !important;
+    overflow: hidden !important;
+    animation: modalScaleIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
 }
 
 @keyframes modalScaleIn {
@@ -753,14 +748,131 @@
 
 /* Fix modal contents layout */
 .providers-modal .providers-left {
-    width: 200px !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
-    background: transparent !important;
+    width: 180px !important;
+    min-width: 180px !important;
+    border-right: 1px solid var(--joe-border) !important;
+    background: rgba(var(--joe-bg-card-rgb), 0.5) !important;
+    padding: 20px 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
 }
 
 .providers-modal .providers-right {
     flex: 1 !important;
+    padding: 24px !important;
+    background: var(--joe-bg-card) !important;
+    overflow-y: auto !important;
+    position: relative !important;
+}
+
+.providers-modal .section-header {
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.2px !important;
+    padding: 0 12px !important;
+    margin-bottom: 8px !important;
+    opacity: 0.8 !important;
+}
+
+.providers-modal .section-header.free {
+    color: var(--accent-success) !important;
+}
+
+.providers-modal .section-header.paid {
+    color: #f59e0b !important;
+}
+
+.providers-modal .provider-item {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 10px 14px !important;
+    border-radius: 10px !important;
+    border: none !important;
     background: transparent !important;
+    color: var(--joe-text-secondary) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    font-size: 14px !important;
+    width: 100% !important;
+}
+
+.providers-modal .provider-item:hover {
+    background: var(--joe-bg-hover) !important;
+    color: var(--joe-text-primary) !important;
+}
+
+.providers-modal .provider-item.active {
+    background: var(--joe-gold-primary) !important;
+    color: #000 !important;
+    font-weight: 600 !important;
+}
+
+.providers-modal .provider-status-dot {
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 50% !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.providers-modal .provider-status-dot.connected {
+    background: var(--accent-success) !important;
+    box-shadow: 0 0 8px var(--accent-success) !important;
+}
+
+.providers-modal .provider-status-dot.disconnected {
+    background: #71717a !important;
+}
+
+.providers-modal .model-select {
+    width: 100% !important;
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--joe-border) !important;
+    background: var(--joe-bg-hover) !important;
+    color: var(--joe-text-primary) !important;
+    outline: none !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+    appearance: none !important;
+}
+
+.providers-modal .api-key-input {
+    width: 100% !important;
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--joe-border) !important;
+    background: var(--joe-bg-hover) !important;
+    color: var(--joe-text-primary) !important;
+    outline: none !important;
+    font-size: 14px !important;
+    transition: border-color 0.2s !important;
+}
+
+.providers-modal .api-key-input:focus {
+    border-color: var(--joe-gold-primary) !important;
+}
+
+.providers-modal .info-box {
+    margin-top: 16px !important;
+    padding: 14px !important;
+    border-radius: 14px !important;
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+}
+
+.providers-modal .info-box.free {
+    background: rgba(34, 197, 94, 0.08) !important;
+    border: 1px solid rgba(34, 197, 94, 0.2) !important;
+    color: var(--accent-success) !important;
+}
+
+.providers-modal .info-box.paid {
+    background: rgba(59, 130, 246, 0.08) !important;
+    border: 1px solid rgba(59, 130, 246, 0.2) !important;
+    color: #3b82f6 !important;
 }
 
 /* Close button positioning if needed (handled by grid usually) */
