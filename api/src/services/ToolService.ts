@@ -215,6 +215,18 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             delete (effectiveInput as any).filename;
         }
     }
+    if (name === 'audit' || name === 'dependency_scan' || name === 'security_audit') {
+        effectiveName = 'dependency_audit';
+    }
+    if (name === 'run_quality' || name === 'lint_project') {
+        effectiveName = 'quality_run';
+    }
+    if (name === 'detect_project' || name === 'scan_project') {
+        effectiveName = 'project_detect';
+    }
+    if (name === 'web_pipeline' || name === 'scaffold_website') {
+        effectiveName = 'website_full_pipeline';
+    }
     if (name === 'read_file_tree') {
         effectiveName = 'inspect_directory';
         if ((effectiveInput as any)?.path == null && (effectiveInput as any)?.dir != null) {

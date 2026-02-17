@@ -69,11 +69,11 @@ export class SonarAnalysisTool extends BaseTool {
     }
 }
 
-export class DependencyAuditorTool extends BaseTool {
-    name = 'dependency_auditor';
+export class DependencyAuditTool extends BaseTool {
+    name = 'dependency_audit';
     description = 'Check project dependencies for known security vulnerabilities.';
-    version = '1.0.0';
-    tags = ['security', 'dependencies'];
+    version = '1.1.0';
+    tags = ['security', 'dependencies', 'audit'];
     inputSchema = {
         type: 'object' as const,
         properties: {
@@ -87,10 +87,10 @@ export class DependencyAuditorTool extends BaseTool {
 
     async execute(input: any) {
         const logs: string[] = [];
-        const p = typeof input?.path === 'string' && input.path.trim() ? resolveToolPath(input.path) : process.cwd();
+        const p = typeof input?.path === 'string' && input.path.trim() ? resolveToolPath(input.path) : getWorkspaceRoot();
         const pm = input.packageManager || (fs.existsSync(path.join(p, 'pnpm-lock.yaml')) ? 'pnpm' : fs.existsSync(path.join(p, 'yarn.lock')) ? 'yarn' : 'npm');
         const cmd = pm === 'yarn' ? 'yarn' : pm === 'pnpm' ? 'pnpm' : 'npm';
-        const args = pm === 'yarn' ? ['audit', '--json'] : pm === 'pnpm' ? ['audit', '--json'] : ['audit', '--json'];
+        const args = ['audit', '--json'];
 
         const r = await handleShellCommand(cmd, args, p, 5 * 60_000, false);
         if (r.ok) {
@@ -99,29 +99,6 @@ export class DependencyAuditorTool extends BaseTool {
         }
         const err = String(r.error || '').trim();
         return { ok: false, output: { report: err || String(r.output || '') }, logs: ['audit found issues', ...logs] };
-    }
-}
-
-export class DependencyAuditTool extends BaseTool {
-    name = 'dependency_audit';
-    description = 'Run dependency vulnerability audit for a project directory.';
-    version = '1.0.0';
-    tags = ['security', 'dependencies', 'audit'];
-    inputSchema = {
-        type: 'object' as const,
-        properties: {
-            path: { type: 'string' },
-            packageManager: { type: 'string', enum: ['npm', 'yarn', 'pnpm'] }
-        },
-        required: ['path']
-    };
-    outputSchema = { type: 'object' as const, properties: { report: { type: 'string' } } };
-    permissions: ToolPermission[] = ['execute', 'internet'];
-    sideEffects: ToolPermission[] = ['execute'];
-
-    async execute(input: any) {
-        const auditor = new DependencyAuditorTool();
-        return auditor.execute({ path: input?.path, packageManager: input?.packageManager });
     }
 }
 

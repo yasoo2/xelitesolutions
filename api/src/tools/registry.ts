@@ -48,7 +48,7 @@ import { GitOpsTool } from './definitions/GitTools';
 // --- Phase 11 Enterprise Tools ---
 import { TerraformManagerTool, KubernetesOpsTool, DockerSwarmOpsTool } from './definitions/InfrastructureTools';
 import { DbSchemaMigratorTool, QueryOptimizerTool, LargeDataSeederTool } from './definitions/DatabaseEnterpriseTools';
-import { SonarAnalysisTool, DependencyAuditorTool, DependencyAuditTool, QualityRunTool, SecretsScanRepoTool, CiGeneratePipelineTool, LoadTesterTool } from './definitions/QualityTools';
+import { SonarAnalysisTool, DependencyAuditTool, QualityRunTool, SecretsScanRepoTool, CiGeneratePipelineTool, LoadTesterTool } from './definitions/QualityTools';
 import { CodebaseOutlineTool } from './definitions/CodebaseOutlineTool';
 import { SearchApiTool } from './definitions/SearchApiTool';
 import { TaskLifecycleTool } from './definitions/TaskLifecycleTool';
@@ -185,7 +185,6 @@ export const tools: ToolDefinition[] = [
 
   // --- Phase 11: Enterprise Quality ---
   new SonarAnalysisTool(),
-  new DependencyAuditorTool(),
   new DependencyAuditTool(),
   new QualityRunTool(),
   new SecretsScanRepoTool(),
