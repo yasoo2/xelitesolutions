@@ -1,4 +1,4 @@
-import React, { useState, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react';
 import JoeHeader from './JoeHeader';
 import ChatPanel from './ChatPanel';
 import WorkspacePanel from './WorkspacePanel';
@@ -24,7 +24,7 @@ interface Message {
     timestamp?: Date;
 }
 
-type WorkspaceTab = 'browser' | 'terminal' | 'preview';
+type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems';
 
 interface JoeIDELayoutProps {
 
@@ -169,6 +169,47 @@ export default function JoeIDELayout({
 
     // ... inside component ...
 
+    // Logs and Problems State
+    const [logs, setLogs] = useState<string[]>([]);
+    const [problems, setProblems] = useState<any[]>([]);
+
+    useEffect(() => {
+        // Subscribe to socket events for logs
+        const unsubscribe = import('../services/socket').then(({ SocketService }) => {
+            return SocketService.subscribe((event: any) => {
+                if (!event) return;
+
+                // Logs
+                if (event.type === 'step_started') {
+                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Step Started: ${event.data?.name || 'Unknown'}`]);
+                } else if (event.type === 'step_done') {
+                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Step Done`]);
+                } else if (event.type === 'run_finished') {
+                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Run Finished`]);
+                } else if (event.type === 'text') {
+                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${event.data}`]);
+                } else if (event.type === 'terminal_output') {
+                    // Optional: Add terminal output to logs? Maybe too noisy.
+                }
+
+                // Problems
+                if (event.type === 'step_failed') {
+                    const errorMsg = event.data?.error || 'Unknown error';
+                    setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
+                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${errorMsg}`]);
+                } else if (event.type === 'error') {
+                    const errorMsg = event.data?.message || 'System error';
+                    setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
+                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SYSTEM ERROR: ${errorMsg}`]);
+                }
+            });
+        });
+
+        return () => {
+            unsubscribe.then(unsub => unsub && unsub());
+        };
+    }, []);
+
     const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
 
@@ -238,6 +279,8 @@ export default function JoeIDELayout({
                     previewUrl={previewUrl}
                     isMaximized={isMaximized}
                     onMaximizeToggle={handleMaximizeToggle}
+                    logs={logs}
+                    problems={problems}
                 >
                     {workspaceChildren}
                 </WorkspacePanel>

@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useState } from 'react';
-import { Globe, Terminal as TerminalIcon, Eye, Code, Loader, Maximize2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Globe, Terminal as TerminalIcon, Eye, Code, Loader, Maximize2, ChevronDown, ChevronUp, FileOutput, AlertTriangle } from 'lucide-react';
+import { OutputPanel, ProblemsPanel } from './BottomPanel';
 
 // Lazy load the heavy components
 const EmbeddedTerminal = lazy(() => import('./EmbeddedTerminal'));
@@ -7,7 +8,7 @@ const EmbeddedBrowser = lazy(() => import('./EmbeddedBrowser'));
 const PreviewPanel = lazy(() => import('./PreviewPanel'));
 const ModernBrowserStream = lazy(() => import('./ModernBrowserStream'));
 
-type WorkspaceTab = 'browser' | 'terminal' | 'preview';
+type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems';
 
 interface WorkspacePanelProps {
     activeTab?: WorkspaceTab;
@@ -18,6 +19,8 @@ interface WorkspacePanelProps {
     children?: React.ReactNode;
     isMaximized?: boolean;
     onMaximizeToggle?: () => void;
+    logs?: string[];
+    problems?: any[];
 }
 
 export default function WorkspacePanel({
@@ -28,7 +31,9 @@ export default function WorkspacePanel({
     previewUrl,
     children,
     isMaximized,
-    onMaximizeToggle
+    onMaximizeToggle,
+    logs = [],
+    problems = []
 }: WorkspacePanelProps) {
     const [internalTab, setInternalTab] = useState<WorkspaceTab>('browser');
     const [isMobileCollapsed, setIsMobileCollapsed] = useState(false);
@@ -46,6 +51,8 @@ export default function WorkspacePanel({
         { id: 'browser', label: 'Browser', icon: <Globe size={16} /> },
         { id: 'terminal', label: 'Terminal', icon: <TerminalIcon size={16} /> },
         { id: 'preview', label: 'Preview', icon: <Eye size={16} /> },
+        { id: 'logs', label: 'Logs', icon: <FileOutput size={16} /> },
+        { id: 'problems', label: 'Problems', icon: <AlertTriangle size={16} /> },
     ];
 
     const LoadingFallback = () => (
@@ -122,6 +129,20 @@ export default function WorkspacePanel({
                     <Suspense fallback={<LoadingFallback />}>
                         <PreviewPanel url={previewUrl} />
                     </Suspense>
+                )}
+
+                {/* Logs Tab */}
+                {activeTab === 'logs' && (
+                    <div style={{ height: '100%', overflow: 'hidden', padding: 8 }}>
+                        <OutputPanel logs={logs} />
+                    </div>
+                )}
+
+                {/* Problems Tab */}
+                {activeTab === 'problems' && (
+                    <div style={{ height: '100%', overflow: 'auto', padding: 8 }}>
+                        <ProblemsPanel problems={problems} />
+                    </div>
                 )}
 
                 {/* Custom children */}

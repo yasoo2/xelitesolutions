@@ -44,7 +44,7 @@ export default function Joe() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview'>('terminal');
+    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('terminal');
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [isConnected, setIsConnected] = useState(true);
     const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
