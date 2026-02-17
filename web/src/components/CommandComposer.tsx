@@ -3461,35 +3461,105 @@ export default function CommandComposer({
                     const isCon = providers[key]?.isConnected;
                     const color = isCon ? "#10b981" : "#ef4444";
 
+                    // Brand Gradients Definition
+                    const Gradients = () => (
+                      <svg width="0" height="0" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
+                        <defs>
+                          <linearGradient id="gemini-grade" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#4E75F5" />
+                            <stop offset="100%" stopColor="#9D46F5" />
+                          </linearGradient>
+                          <linearGradient id="deepseek-grade" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#4d6bfe" />
+                            <stop offset="100%" stopColor="#2c3e50" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                    );
+
+                    if (key === 'auto') return (
+                      <div style={{ position: 'relative', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Bot size={22} color="#8b5cf6" style={{ filter: 'drop-shadow(0 0 6px rgba(139, 92, 246, 0.5))' }} />
+                        {isCon && <div style={{
+                          position: 'absolute', bottom: -1, right: -1, width: 8, height: 8,
+                          background: '#10b981', borderRadius: '50%', border: '2px solid var(--bg-primary)',
+                          boxShadow: '0 0 4px #10b981'
+                        }} />}
+                      </div>
+                    );
+
                     if (key === 'openai') return (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color }}>
-                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Z" />
-                        <path d="M12 12.5a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1Z" />
-                        <path d="M9 12a3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3 3 3 0 0 1-3-3Z" />
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill={isCon ? "#10a37f" : "var(--text-muted)"} style={{ transition: 'fill 0.3s' }}>
+                        <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.0462 6.0462 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 3.5687-2.0594.2152-.1246a.4709.4709 0 0 0 .2347-.411v-4.6616l2.9698 1.7135v4.2952a4.4983 4.4983 0 0 1-4.254 2.3687zm9.4239-2.2238a4.4708 4.4708 0 0 1-3.0853 1.9796v-4.5126l-1.6366-.9482.0047.0028-2.9745-1.7159v-1.693l4.2399 2.4496.2104.1205a.4733.4733 0 0 0 .5062.0047l.2104-.1204 2.6517-1.5306a4.4708 4.4708 0 0 1-.1224 5.9635zM17.653 3.829c.477.2754.9125.6178 1.2936 1.0124a4.4755 4.4755 0 0 1 .4967 5.8675l-2.6517-1.5306-.2104-.1204a.4732.4732 0 0 0-.5062.0049l-.2104.1204-4.2399 2.4496v-1.6883l2.97-1.7206 1.6366-.9435v-4.509a4.4708 4.4708 0 0 1 1.4217 1.0667zm-9.8329-1.928a4.4708 4.4708 0 0 1 3.09-1.9796v4.5126l1.6318.9482-.0047-.0028 2.9793 1.7159v1.693l-4.2399-2.4354-.2104-.1205a.4733.4733 0 0 0-.5062 0l-.2104.1157-2.6517 1.54a4.4708 4.4708 0 0 1 .1177-5.9682zm-4.6616 3.6672a4.4708 4.4708 0 0 1-1.2936-1.0218 4.4755 4.4755 0 0 1-.492-5.858l2.647 1.5258.2104.1204a.4732.4732 0 0 0 .5062-.0049l.2152-.1251 4.2351-2.4354v1.6836l-2.9698 1.7253-1.6366.9388v4.5126a4.4565 4.4565 0 0 1-1.4218-1.0701zm-.724 10.5986a4.4708 4.4708 0 0 1 2.8764 1.0408l-.1419.0804-3.5687 2.0594-.2152.1246a.4756.4756 0 0 0-.2347.411v4.6616l-2.9698-1.7135v-4.2952a4.4983 4.4983 0 0 1 4.254-2.3692z" />
                       </svg>
                     );
+
+                    if (key === 'anthropic') return (
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill={isCon ? "#d97757" : "var(--text-muted)"} style={{ transition: 'fill 0.3s' }}>
+                        <path d="M17.29 20h2.52l-6.7-16h-2.22L4.19 20h2.52l1.45-3.69h7.68L17.29 20ZM12 8.56l2.84 7.21H9.16L12 8.56Z" />
+                      </svg>
+                    );
+
+                    if (key === 'gemini') return (
+                      <>
+                        <Gradients />
+                        <svg viewBox="0 0 24 24" width="22" height="22" className="gemini-icon">
+                          <path
+                            d="M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z"
+                            fill={isCon ? "url(#gemini-grade)" : "var(--text-muted)"}
+                            stroke="none"
+                          />
+                          {isCon && <path
+                            d="M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z"
+                            fill="url(#gemini-grade)"
+                            filter="drop-shadow(0 0 4px rgba(157, 70, 245, 0.5))"
+                          />}
+                        </svg>
+                      </>
+                    );
+
                     if (key === 'deepseek') return (
-                      <svg viewBox="0 0 24 24" fill="currentColor" style={{ color }}>
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-1h2v1h-2zm0-3v-5h2v5h-2z" opacity=".3" />
-                        <path d="M12 3a9 9 0 0 0-9 9c0 4.97 4.03 9 9 9s9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm-1-3h2v-1h-2v1zm0-3h2V9h-2v4z" />
-                        <path d="M13.5 12c0 1.93-1.57 3.5-3.5 3.5S6.5 13.93 6.5 12 8.07 8.5 10 8.5s3.5 1.57 3.5 3.5z" opacity=".2" />
+                      // Official DeepSeek "Blue Whale" Logo
+                      <>
+                        <Gradients />
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                          <path d="M21.5 12c0 5.25-4.25 9.5-9.5 9.5S2.5 17.25 2.5 12 6.75 2.5 12 2.5s9.5 4.25 9.5 9.5Z"
+                            fill={isCon ? "url(#deepseek-grade)" : "var(--text-muted)"} opacity={isCon ? 1 : 0.5} />
+                          {/* Whale Tail / Fin Detail */}
+                          <path d="M16 9c-1-1-3-1-3-1s-1 2-2 3c0 0-2 1-3-1s-2-2-1-3"
+                            stroke="white" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.9" />
+                        </svg>
+                      </>
+                    );
+
+                    if (key === 'openrouter') return (
+                      // Official OpenRouter Logo
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={isCon ? "#6366f1" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2l9 4.5v9l-9 4.5-9-4.5v-9L12 2z" fill={isCon ? "rgba(99, 102, 241, 0.2)" : "transparent"} />
+                        <circle cx="12" cy="12" r="3" fill={isCon ? "#6366f1" : "transparent"} />
                       </svg>
                     );
-                    if (key === 'gemini') return <Sparkles size={18} color={color} />;
-                    if (key === 'anthropic') return <Zap size={18} color={color} />;
-                    if (key === 'auto') return <Bot size={18} color={color} />;
-                    return <Cpu size={18} color={color} />;
+
+                    if (key === 'grok') return (
+                      // Official Grok / xAI Logo (Slash/Monogram) 
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke={isCon ? "#ffffff" : "var(--text-muted)"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 5L7 19" />
+                        <path d="M6 6l12 12" />
+                      </svg>
+                    );
+
+                    return <Cpu size={18} color={isCon ? color : 'var(--text-muted)'} />;
                   };
 
                   return (
                     <button
-                      className={`provider-btn ${providers[activeProvider]?.isConnected ? 'is-connected' : 'is-disconnected'}`}
+                      className={`provider-btn provider-${activeProvider} ${providers[activeProvider]?.isConnected ? 'is-connected' : 'is-disconnected'}`}
                       onClick={() => setShowProviders(true)}
                       title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
                     >
                       {getProviderLogo(activeProvider)}
                       <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
-                        {(activeProvider === 'openai' ? 'OpenAI' : activeProvider === 'deepseek' ? 'DeepSeek' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
+                        {(activeProvider === 'openai' ? 'OpenAI' : activeProvider === 'deepseek' ? 'DeepSeek' : activeProvider === 'openrouter' ? 'Router' : activeProvider === 'anthropic' ? 'Claude' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 10)}
                       </span>
                     </button>
                   );
