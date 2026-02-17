@@ -761,6 +761,14 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
   if (providerKey === 'auto' || providerKey.includes('auto')) {
     return res.json({ status: 'ok', message: 'Connected successfully' });
   }
+
+  // Free providers auto-connect — no verification needed
+  const FREE_PROVIDERS = ['deepseek', 'gemini', 'google'];
+  const isFreeProvider = FREE_PROVIDERS.includes(providerKey);
+  const isFreeOpenRouter = providerKey === 'openrouter' && String(model || '').includes(':free');
+  if (isFreeProvider || isFreeOpenRouter) {
+    return res.json({ status: 'ok', message: 'Free provider connected successfully' });
+  }
   const hasBaseUrl = typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   if (providerKey && providerKey !== 'openai' && !providerKey.includes('auto') && !providerKey.includes('hack') && !providerKey.includes('pollinations') && !providerKey.includes('gemini') && !providerKey.includes('google') && !hasBaseUrl) {
     return res.status(400).json({

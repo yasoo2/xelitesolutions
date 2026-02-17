@@ -565,11 +565,11 @@ const OPENROUTER_MODELS = [
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   auto: { name: 'Auto (مجاني)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
-  deepseek: { name: 'DeepSeek (Free)', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
-  openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
+  deepseek: { name: 'DeepSeek (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
+  openrouter: { name: 'OpenRouter (مجاني)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
+  gemini: { name: 'Google Gemini (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'gemini-1.5-flash', isFree: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
-  gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-1.5-flash' },
   grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
 export default function CommandComposer({
@@ -2186,13 +2186,12 @@ export default function CommandComposer({
       let providerToSend = activeProvider;
       let providerCfgToSend = providers[providerToSend];
 
-      // [FIX] Allow 'auto' mode to proceed without API key check
-      const isAuto = providerToSend === 'auto';
-      const isFreeOpenRouter = providerToSend === 'openrouter' && providers['openrouter']?.isFree;
+      // [FIX] Allow all free providers to proceed without API key check
+      const isFreeProvider = !!providerCfgToSend?.isFree;
 
-      console.log(`[ProviderDebug] run() start. active=${activeProvider}, toSend=${providerToSend}, isAuto=${isAuto}, isFreeOpenRouter=${isFreeOpenRouter}`);
+      console.log(`[ProviderDebug] run() start. active=${activeProvider}, toSend=${providerToSend}, isFree=${isFreeProvider}`);
 
-      if (!isAuto && !isFreeOpenRouter && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
+      if (!isFreeProvider && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
         console.log('[ProviderDebug] Provider invalid, falling back...');
         const valid = pickFirstValidProvider();
         providerToSend = valid;
@@ -2405,6 +2404,17 @@ export default function CommandComposer({
 
   const checkConnection = async (key: string) => {
     const p = providers[key];
+
+    // Free providers auto-connect instantly — no verification needed
+    if (p?.isFree) {
+      setProviders(prev => ({
+        ...prev,
+        [key]: { ...prev[key], isConnected: true, lastError: undefined, apiKey: prev[key].apiKey || 'free-mode' }
+      }));
+      setActiveProvider(key);
+      return;
+    }
+
     setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, lastError: undefined } }));
 
     const token = localStorage.getItem('token');
@@ -2927,28 +2937,59 @@ export default function CommandComposer({
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Cpu size={18} /> Providers
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {Object.entries(providers).map(([key, p]) => (
-                  <button key={key} onClick={() => setActiveProvider(key)} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 12px', borderRadius: 8, border: 'none',
-                    background: activeProvider === key ? 'var(--bg-primary, var(--bg-card))' : 'transparent',
-                    color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
-                    cursor: 'pointer', textAlign: 'left',
-                    fontWeight: activeProvider === key ? 600 : 400,
-                    transition: 'all 0.2s'
-                  }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: p.isConnected ? 'var(--accent-success)' : (p.apiKey ? 'var(--accent-secondary)' : '#71717a'),
-                        boxShadow: p.isConnected ? '0 0 8px rgba(34, 197, 94, 0.6)' : p.apiKey ? '0 0 8px rgba(var(--accent-secondary-rgb), 0.45)' : 'none'
-                      }} />
-                      {p.name.split(' ')[0]}
-                    </span>
-                    {activeProvider === key && <ChevronRight size={14} />}
-                  </button>
-                ))}
+              {/* Free Providers Section */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: 1, padding: '4px 12px', marginBottom: 4 }}>🆓 مجاني — Free</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Object.entries(providers).filter(([, p]) => p.isFree).map(([key, p]) => (
+                    <button key={key} onClick={() => { setActiveProvider(key); if (p.isFree && !p.isConnected) checkConnection(key); }} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 12px', borderRadius: 8, border: 'none',
+                      background: activeProvider === key ? 'var(--bg-primary, var(--bg-card))' : 'transparent',
+                      color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
+                      cursor: 'pointer', textAlign: 'left',
+                      fontWeight: activeProvider === key ? 600 : 400,
+                      transition: 'all 0.2s'
+                    }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: p.isConnected ? '#22c55e' : '#71717a',
+                          boxShadow: p.isConnected ? '0 0 8px rgba(34, 197, 94, 0.6)' : 'none'
+                        }} />
+                        {p.name.split(' ')[0]}
+                      </span>
+                      {activeProvider === key && <ChevronRight size={14} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Paid Providers Section */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 1, padding: '4px 12px', marginBottom: 4 }}>💳 مدفوع — Paid</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Object.entries(providers).filter(([, p]) => !p.isFree).map(([key, p]) => (
+                    <button key={key} onClick={() => setActiveProvider(key)} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 12px', borderRadius: 8, border: 'none',
+                      background: activeProvider === key ? 'var(--bg-primary, var(--bg-card))' : 'transparent',
+                      color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
+                      cursor: 'pointer', textAlign: 'left',
+                      fontWeight: activeProvider === key ? 600 : 400,
+                      transition: 'all 0.2s'
+                    }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: p.isConnected ? 'var(--accent-success)' : (p.apiKey ? 'var(--accent-secondary)' : '#71717a'),
+                          boxShadow: p.isConnected ? '0 0 8px rgba(34, 197, 94, 0.6)' : p.apiKey ? '0 0 8px rgba(var(--accent-secondary-rgb), 0.45)' : 'none'
+                        }} />
+                        {p.name.split(' ')[0]}
+                      </span>
+                      {activeProvider === key && <ChevronRight size={14} />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -3035,8 +3076,26 @@ export default function CommandComposer({
                       </div>
                     )}
 
-                    {/* API Key - Hide for Auto, and for OpenRouter with free model */}
-                    {activeProvider !== 'auto' && !(activeProvider === 'openrouter' && OPENROUTER_MODELS.find(m => m.id === providers[activeProvider].model)?.free) && (
+                    {/* Free Provider Info Box */}
+                    {providers[activeProvider]?.isFree && activeProvider !== 'auto' && activeProvider !== 'openrouter' && (
+                      <div style={{
+                        marginBottom: 20, padding: '16px', borderRadius: 12,
+                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(59, 130, 246, 0.1))',
+                        border: '1px solid rgba(34, 197, 94, 0.2)'
+                      }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#22c55e' }}>
+                          ✅ مزود مجاني — متصل تلقائياً
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                          هذا المزود مجاني ولا يحتاج أي مفتاح API.
+                          <br />
+                          يمكنك البدء بالمحادثة مباشرة.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* API Key - Hide for all free providers */}
+                    {!providers[activeProvider]?.isFree && (
                       <div style={{ marginBottom: 20 }}>
                         <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
                         <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
