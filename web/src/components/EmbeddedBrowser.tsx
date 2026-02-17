@@ -16,7 +16,7 @@ import {
     Search,
     X
 } from 'lucide-react';
-import ModernBrowserStream from './ModernBrowserStream';
+
 import { API_URL } from '../config';
 
 interface EmbeddedBrowserProps {
@@ -248,7 +248,10 @@ export default function EmbeddedBrowser({
 
             {/* Browser View */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-                <ModernBrowserStream sessionId={sessionId} showBoxes={true} />
+                <div className="browser-placeholder" style={{ padding: 20, color: 'var(--joe-text-secondary)' }}>
+                    Browser Streaming is currently disabled for optimization.
+                </div>
+
             </div>
         </div>
     );
