@@ -1798,3 +1798,16 @@
         background: var(--joe-bg-hover);
     }
 }
+
+/* ========== Enhanced Logs & Problems Panel Styles ========== */
+.log-entry:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.log-entry:hover .log-copy-btn {
+    opacity: 1 !important;
+}
+
+.log-entry .log-copy-btn:hover {
+    color: var(--joe-gold-primary, #d4af37) !important;
+}
