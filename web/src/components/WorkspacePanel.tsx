@@ -8,6 +8,7 @@ import {
 // Lazy load the heavy components
 const EmbeddedTerminal = lazy(() => import('./EmbeddedTerminal'));
 const EmbeddedBrowser = lazy(() => import('./EmbeddedBrowser'));
+const PreviewPanel = lazy(() => import('./PreviewPanel'));
 
 
 type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems';
@@ -441,9 +442,7 @@ export default function WorkspacePanel({
                 {/* Preview Tab */}
                 {activeTab === 'preview' && (
                     <Suspense fallback={<LoadingFallback />}>
-                        <div className="preview-placeholder" style={{ padding: 20, color: 'var(--joe-text-secondary)' }}>
-                            Preview Panel has been removed for optimization.
-                        </div>
+                        <PreviewPanel url={previewUrl} />
 
                     </Suspense>
                 )}

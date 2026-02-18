@@ -10,6 +10,7 @@ import IDESidebar from './IDESidebar';
 import SessionsBar from './SessionsBar';
 import EmbeddedTerminal from './EmbeddedTerminal';
 import EmbeddedBrowser from './EmbeddedBrowser';
+import PreviewPanel from './PreviewPanel';
 
 import { useAutoOpen, AutoOpenManager, PanelType } from '../services/AutoOpenManager';
 import { ChevronLeft, ChevronRight, PanelLeftClose, PanelLeft } from 'lucide-react';
@@ -204,9 +205,7 @@ export default function IDELayout({
                         {/* Preview Tab */}
                         <PanelContent show={activeTab === 'preview'}>
                             <div style={{ height: '100%' }}>
-                                <div className="preview-placeholder" style={{ padding: 20, color: 'var(--joe-text-secondary)' }}>
-                                    Preview Panel has been removed for optimization.
-                                </div>
+                                <PreviewPanel />
 
                             </div>
                         </PanelContent>
