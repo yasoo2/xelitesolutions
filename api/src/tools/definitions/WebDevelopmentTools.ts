@@ -6,25 +6,42 @@ import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { Builder } from '../../system/Builder';
+import { broadcastThinkingDetail } from '../../ws';
 
 // Helper to resolve paths (reused logic)
 function resolveToolPath(p: string) {
     const val = String(p ?? '').trim();
+    if (path.isAbsolute(val)) return val;
+
     const { workspaceService } = require('../../services/WorkspaceService');
-    const root = workspaceService.getActiveRoot();
+    const root = workspaceService.getActiveRoot() || process.cwd();
+
+    // Preference for ARTIFACT_DIR if set
+    const artifactDir = process.env.ARTIFACT_DIR;
+    if (artifactDir && !val.includes('..')) {
+        return path.resolve(artifactDir, val);
+    }
+
     if (!val || val === '.') return root;
     const rootReal = (() => {
         try { return fs.realpathSync(root); } catch { return root; }
     })();
-    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const abs = path.resolve(rootReal, val);
     const absReal = (() => {
         try { return fs.realpathSync(abs); } catch { return abs; }
     })();
     const rel = path.relative(rootReal, absReal);
     const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-    if (!inside) throw new Error('path_outside_workspace');
+    if (!inside) {
+        // Allow escaping workspace ONLY if explicitly using absolute path (handled above)
+        // or if it's within the process.cwd() parent
+        const processRoot = fs.realpathSync(path.join(process.cwd(), '..'));
+        if (absReal.startsWith(processRoot)) return absReal;
+        throw new Error('path_outside_workspace: ' + absReal);
+    }
     return absReal;
 }
+
 
 async function findAvailablePort(start: number, host: string = '0.0.0.0'): Promise<number> {
     const { isPortOpen } = require('../../utils/network');
@@ -96,7 +113,10 @@ export class WebPipelineTool extends BaseTool {
 
         logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
 
+        if (sessionId) broadcastThinkingDetail(sessionId, `🚀 Starting Pipeline for "${name}" (${type})`);
+
         // 1. Scaffold
+        if (sessionId) broadcastThinkingDetail(sessionId, `🏗️ Scaffolding project structure...`);
         const port = await findAvailablePort(5180);
         const scRes = await executeTool('scaffold_full_stack', {
             name, type, features, baseDir,
@@ -110,8 +130,10 @@ export class WebPipelineTool extends BaseTool {
         }
         const projectPath = String(scRes.output?.path || '').trim();
         steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });
+        if (sessionId) broadcastThinkingDetail(sessionId, `✅ Scaffold complete at ${projectPath}`);
 
         // 2. Detect & Install
+        if (sessionId) broadcastThinkingDetail(sessionId, `🔍 Detecting project types and dependencies...`);
         const detectRes = await executeTool('project_detect', { path: projectPath }, { sessionId, workspaceId });
         steps.push({ step: 'project_detect', ok: detectRes.ok, output: detectRes.output });
         const detectedNodeProjects: string[] = Array.isArray(detectRes.output?.nodeProjects) ? detectRes.output.nodeProjects : [];
@@ -145,20 +167,25 @@ export class WebPipelineTool extends BaseTool {
         };
 
         if (rootHasWorkspaces) {
+            if (sessionId) broadcastThinkingDetail(sessionId, `📦 Installing dependencies (Monorepo)...`);
             const installRes = await runInstall(projectPath);
             steps.push({ step: 'npm_install', ok: installRes.ok, output: installRes.output });
             if (!installRes.ok) {
+                if (sessionId) broadcastThinkingDetail(sessionId, `❌ npm install failed`);
                 return { ok: false, error: `npm install failed: ${installRes.error || 'Unknown error'}`, logs, output: { path: projectPath, steps } };
             }
         } else {
             for (const proj of allNodeProjects) {
+                if (sessionId) broadcastThinkingDetail(sessionId, `📦 Installing dependencies for ${path.basename(proj)}...`);
                 const installRes = await runInstall(proj);
                 steps.push({ step: 'npm_install', ok: installRes.ok, output: { project: proj, ...installRes.output } });
                 if (!installRes.ok) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, `❌ npm install failed for ${proj}`);
                     return { ok: false, error: `npm install failed for ${proj}: ${installRes.error || 'Unknown error'}`, logs, output: { path: projectPath, steps } };
                 }
             }
         }
+        if (sessionId) broadcastThinkingDetail(sessionId, `✅ Dependencies installed successfully`);
 
         // 3. Quality & Fix
         const readScripts = (proj: string) => {
@@ -168,6 +195,7 @@ export class WebPipelineTool extends BaseTool {
         };
 
         for (const proj of allNodeProjects) {
+            if (sessionId) broadcastThinkingDetail(sessionId, `🛡️ Running quality checks for ${path.basename(proj)}...`);
             const qualityRes = await executeTool('quality_run', { path: proj, tasks: qualityTasks }, { sessionId, workspaceId });
             steps.push({ step: 'quality_run', ok: qualityRes.ok, output: { project: proj, ...qualityRes.output } });
 
@@ -176,6 +204,7 @@ export class WebPipelineTool extends BaseTool {
                 const lintFailed = results.some((r: any) => r && r.task === 'lint' && r.ok === false && !r.skipped);
                 const scripts = readScripts(proj);
                 if (lintFailed && typeof (scripts as any)?.lint === 'string') {
+                    if (sessionId) broadcastThinkingDetail(sessionId, `🔧 Auto-fixing lint issues...`);
                     const fixRes = await executeTool('shell_execute', { command: `npm run lint -- --fix`, cwd: proj, timeout: 10 * 60 * 1000 }, { sessionId, workspaceId });
                     steps.push({ step: 'lint_fix', ok: fixRes.ok, output: { project: proj, ...fixRes.output } });
                     // Retry
@@ -187,6 +216,7 @@ export class WebPipelineTool extends BaseTool {
 
         // 4. Security
         if (securityChecks) {
+            if (sessionId) broadcastThinkingDetail(sessionId, `🔐 Running security audit...`);
             const secretsRes = await executeTool('secrets_scan_repo', { path: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'secrets_scan_repo', ok: secretsRes.ok, output: secretsRes.output });
             const depRes = await executeTool('dependency_audit', { path: projectPath }, { sessionId, workspaceId });
@@ -211,11 +241,13 @@ export class WebPipelineTool extends BaseTool {
 
         // 6. Preview
         if (!skipDev) {
+            if (sessionId) broadcastThinkingDetail(sessionId, `🌐 Starting dev server...`);
             const devRes = await executeTool('dev_server_start', { cwd: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
             if (devRes.ok) {
                 const previewUrl = String((devRes.output as any)?.previewUrl || `http://localhost:${port}/`).trim();
                 steps.push({ step: 'dev_server_preview_ready', ok: true, output: { previewUrl } });
+                if (sessionId) broadcastThinkingDetail(sessionId, `✨ Project is ready at ${previewUrl}`);
             }
         }
 
@@ -330,9 +362,15 @@ export class ScaffoldTool extends BaseTool {
         if (preferredBase) {
             baseDir = resolveToolPath(preferredBase);
         } else {
-            // Heuristic: if project name mentioned alongside 'vivos' repository, create inside that folder
-            const vivosDir = path.join(baseDir, 'vivos');
-            try { if (fs.existsSync(vivosDir) && fs.lstatSync(vivosDir).isDirectory()) baseDir = vivosDir; } catch { }
+            // Default to data/builds inside the project root (not inside api/ or web/)
+            const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
+            const buildsDir = path.join(projectRoot, 'data/builds');
+            try {
+                if (!fs.existsSync(buildsDir)) fs.mkdirSync(buildsDir, { recursive: true });
+                baseDir = buildsDir;
+            } catch {
+                baseDir = resolveToolPath('.');
+            }
         }
 
         try {

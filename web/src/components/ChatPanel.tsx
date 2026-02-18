@@ -134,10 +134,11 @@ export default function ChatPanel({
                 {(isLoading || thinkingPhase !== 'idle') && (
                     <div className="joe-message assistant">
                         <div className="joe-message-avatar ai">J</div>
-                        <div className="joe-message-content">
-                            {/* NeuralThinkingIndicator removed */}
-
-                        </div>
+                        <NeuralThinkingIndicator
+                            visible={isLoading || thinkingPhase !== 'idle'}
+                            phase={thinkingPhase}
+                            variant="bubble"
+                        />
                     </div>
                 )}
                 <div ref={messagesEndRef} />
