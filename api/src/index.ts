@@ -215,7 +215,7 @@ async function main() {
     logger.info({ path: webDistPath }, 'Serving static frontend files from web/dist');
     app.use(express.static(webDistPath));
     // SPA Fallback: serve index.html for all non-API/non-artifact routes
-    app.get('*', (req, res, next) => {
+    app.get(/(.*)/, (req: any, res: any, next: any) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/artifacts')) return next();
       res.sendFile(path.join(webDistPath, 'index.html'));
     });
