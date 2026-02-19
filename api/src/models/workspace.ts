@@ -31,6 +31,9 @@ export interface IWorkspace extends Document {
         requireApproval: boolean;
     };
 
+    kind: 'local' | 'github';
+    projectInitialized: boolean;
+
     createdAt: Date;
     updatedAt: Date;
 }
@@ -42,6 +45,8 @@ const WorkspaceSchema = new Schema<IWorkspace>(
         ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
         status: { type: String, enum: ['active', 'suspended', 'archived'], default: 'active' },
         plan: { type: String, enum: ['free', 'pro', 'enterprise'], default: 'free' },
+        kind: { type: String, enum: ['local', 'github'], default: 'local' },
+        projectInitialized: { type: Boolean, default: false },
         limits: {
             maxAgents: { type: Number, default: 2 },
             maxTokensPerDay: { type: Number, default: 100000 },

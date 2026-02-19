@@ -25,6 +25,8 @@ type MockWorkspace = {
         llmProviders?: Record<string, any>;
     };
     settings: { allowPublicView: boolean; requireApproval: boolean };
+    kind: 'local' | 'github';
+    projectInitialized: boolean;
     createdAt: Date;
     updatedAt: Date;
 };
@@ -77,6 +79,8 @@ function ensureMockPersonalWorkspace(userId: string) {
         limits: { maxAgents: 2, maxTokensPerDay: 100000, maxConcurrentJobs: 1, storageGB: 1 },
         integrations: { llmProviders: {} },
         settings: { allowPublicView: false, requireApproval: true },
+        kind: 'local',
+        projectInitialized: false,
         createdAt: now,
         updatedAt: now
     };
@@ -155,6 +159,8 @@ export class WorkspaceService {
                 limits: { maxAgents: 2, maxTokensPerDay: 100000, maxConcurrentJobs: 1, storageGB: 1 },
                 integrations: { llmProviders: {} },
                 settings: { allowPublicView: false, requireApproval: true },
+                kind: 'local',
+                projectInitialized: false,
                 createdAt: now,
                 updatedAt: now
             };
@@ -308,7 +314,7 @@ export class WorkspaceService {
     /**
      * Update workspace details (Name, Provider Config)
      */
-    async updateWorkspace(adminUserId: string, workspaceId: string, updates: { name?: string, providerConfig?: any, activeRepo?: string }) {
+    async updateWorkspace(adminUserId: string, workspaceId: string, updates: { name?: string, providerConfig?: any, activeRepo?: string, kind?: 'local' | 'github', projectInitialized?: boolean }) {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(adminUserId);
             ensureMockPersonalWorkspace(uid);
@@ -329,6 +335,8 @@ export class WorkspaceService {
                     activeRepo: updates.activeRepo
                 };
             }
+            if (updates.kind) ws.kind = updates.kind;
+            if (updates.projectInitialized !== undefined) ws.projectInitialized = updates.projectInitialized;
             ws.updatedAt = new Date();
             return ws as unknown as IWorkspace;
         }
@@ -367,6 +375,8 @@ export class WorkspaceService {
                 ...updates.providerConfig
             };
         }
+        if (updates.kind) workspace.kind = updates.kind;
+        if (updates.projectInitialized !== undefined) workspace.projectInitialized = updates.projectInitialized;
 
         await workspace.save();
         return workspace;

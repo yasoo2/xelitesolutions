@@ -1923,3 +1923,135 @@
 .log-entry .log-copy-btn:hover {
     color: var(--joe-gold-primary, #d4af37) !important;
 }
+
+/* ========== Dialog & Modal Base ========== */
+.dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.dialog-box {
+    background: var(--joe-bg-panel);
+    border: 1px solid var(--joe-border);
+    border-radius: 20px;
+    box-shadow: var(--joe-shadow-lg), var(--joe-border-glow);
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.onboarding-modal {
+    width: 520px;
+    border: 1px solid rgba(240, 193, 75, 0.25);
+    background: #0f1117;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    /* Sharper, more technical corners */
+}
+
+.onboarding-header {
+    padding: 40px 32px 24px;
+    text-align: center;
+}
+
+.onboarding-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(240, 193, 75, 0.08);
+    border: 1px solid rgba(240, 193, 75, 0.2);
+    border-radius: 4px;
+    color: var(--joe-gold-primary);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 20px;
+}
+
+.onboarding-option-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.onboarding-option-card:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(240, 193, 75, 0.3);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+.onboarding-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.onboarding-card-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--joe-text-primary);
+    margin-bottom: 2px;
+}
+
+.onboarding-card-desc {
+    margin: 0;
+    font-size: 12px;
+    color: var(--joe-text-secondary);
+    line-height: 1.4;
+    opacity: 0.8;
+}
+
+.onboarding-card-tag {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(255, 255, 255, 0.05);
+    margin-left: auto;
+}
+
+.onboarding-footer {
+    padding: 24px 32px 40px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    opacity: 0.5;
+}
+
+.onboarding-feature-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--joe-text-muted);
+}

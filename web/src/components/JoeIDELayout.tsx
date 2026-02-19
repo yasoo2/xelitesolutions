@@ -57,6 +57,7 @@ interface JoeIDELayoutProps {
 
     // Callbacks
     onSettingsClick?: () => void;
+    onNewProject?: () => void;
     onNewFile?: () => void;
     onNewFolder?: () => void;
     onGitChanges?: () => void;
@@ -118,6 +119,7 @@ export default function JoeIDELayout({
 
     // Callbacks
     onSettingsClick,
+    onNewProject,
     onNewFile,
     onNewFolder,
     onGitChanges,
@@ -254,6 +256,7 @@ export default function JoeIDELayout({
                 onToggleExplorer={toggleExplorer}
                 isChatCollapsed={isChatCollapsed}
                 isExplorerCollapsed={isExplorerCollapsed}
+                onNewProject={onNewProject}
             />
 
             {/* Main Content Area */}

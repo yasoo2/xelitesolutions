@@ -13,6 +13,7 @@ import { SocketService } from '../services/socket';
 import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
 import GitHubConnectDialog from '../components/GitHubConnectDialog';
+import ProjectOnboardingModal from '../components/ProjectOnboardingModal';
 import { githubService, GitHubRepo, GitHubUser, GitHubCommit } from '../services/githubService';
 import { useTranslation } from 'react-i18next';
 
@@ -57,6 +58,8 @@ export default function Joe() {
     const [ghConnected, setGhConnected] = useState(false);
     const [ghLoading, setGhLoading] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
+    const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+    const [workspace, setWorkspace] = useState<any>(null);
 
     const { i18n } = useTranslation();
 
@@ -246,22 +249,86 @@ export default function Joe() {
             // 1. Try to get existing workspaces
             const workspaces: any = await api.get('/workspaces');
             if (Array.isArray(workspaces) && workspaces.length > 0) {
-                setWorkspaceId(workspaces[0]._id || workspaces[0].id);
-                return workspaces[0]._id || workspaces[0].id;
+                const ws = workspaces[0];
+                const wsId = ws._id || ws.id;
+                setWorkspaceId(wsId);
+                setWorkspace(ws);
+
+                // Auto-open onboarding if PROJECT NOT INITIALIZED
+                if (!ws.projectInitialized) {
+                    setIsOnboardingOpen(true);
+                }
+
+                return wsId;
             }
 
             // 2. If none, create one
             console.log('No workspace found, creating default...');
             const newWs: any = await api.post('/workspaces', { name: 'My Workspace' });
             if (newWs && (newWs._id || newWs.id)) {
-                setWorkspaceId(newWs._id || newWs.id);
-                return newWs._id || newWs.id;
+                const wsId = newWs._id || newWs.id;
+                setWorkspaceId(wsId);
+                setWorkspace(newWs);
+                setIsOnboardingOpen(true);
+                return wsId;
             }
         } catch (e) {
             console.error('Failed to ensure workspace:', e);
         }
         return null;
     }, []);
+
+    const handleSelectLocal = useCallback(async () => {
+        if (!workspaceId) return;
+        try {
+            await api.put(`/workspaces/${workspaceId}`, {
+                kind: 'local',
+                projectInitialized: true
+            });
+            setIsOnboardingOpen(false);
+
+            // Reload workspace
+            const updated: any = await api.get(`/workspaces/${workspaceId}`);
+            setWorkspace(updated);
+
+            // Immediate AI Welcome Message for Local
+            setMessages(prev => [...prev, {
+                id: `sys-${Date.now()}`,
+                role: 'assistant',
+                content: '✨ **مشروع محلي جديد جاهز!**\n\nلقد قمت بإعداد بيئة العمل المحلية بنجاح. يمكنك الآن البدء في بناء تطبيقك، إنشاء ملفات، أو طلب مساعدتي في أي مهمة برمجية.'
+            }]);
+        } catch (e) {
+            console.error('Failed to initialize local project:', e);
+        }
+    }, [workspaceId]);
+
+    const handleSelectGitHub = useCallback(() => {
+        // We keep the modal open but swap it for the GitHub dialog 
+        // OR close and open GitHub. Let's close and open to avoid overlay stack.
+        setIsOnboardingOpen(false);
+        setTimeout(() => setIsGitHubOpen(true), 300); // Smooth transition
+    }, []);
+
+
+    // Also update projectInitialized when GitHub is connected and repo is selected
+    useEffect(() => {
+        if (ghConnected && activeRepo && workspaceId && workspace && !workspace.projectInitialized) {
+            api.put(`/workspaces/${workspaceId}`, {
+                projectInitialized: true,
+                kind: 'github'
+            }).then(() => {
+                // Refresh workspace
+                api.get(`/workspaces/${workspaceId}`).then(setWorkspace);
+
+                setMessages(prev => [...prev, {
+                    id: `sys-${Date.now()}`,
+                    role: 'assistant',
+                    content: `🔗 **تم ربط مستودع GitHub بنجاح!**\n\nلقد قمت بربط المشروع بـ **${activeRepo.fullName}**. سأقوم الآن بمزامنة الملفات ومساعدتك في التطوير الاحترافي.`
+                }]);
+            });
+        }
+    }, [ghConnected, activeRepo, workspaceId, workspace]);
+
 
     useEffect(() => {
         ensuresWorkspace();
@@ -489,6 +556,7 @@ export default function Joe() {
             theme={theme}
             onThemeToggle={toggleTheme}
             onSettingsClick={() => setIsSettingsOpen(true)}
+            onNewProject={() => setIsOnboardingOpen(true)}
 
             // Connection
             isConnected={isConnected}
@@ -533,6 +601,12 @@ export default function Joe() {
                 onClose={() => setIsGitHubOpen(false)}
                 onConnected={handleGitHubConnected}
                 onSelectRepo={handleSelectRepo}
+            />
+            <ProjectOnboardingModal
+                isOpen={isOnboardingOpen}
+                onClose={() => setIsOnboardingOpen(false)}
+                onSelectLocal={handleSelectLocal}
+                onSelectGitHub={handleSelectGitHub}
             />
         </JoeIDELayout>
     );

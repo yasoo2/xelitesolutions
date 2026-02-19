@@ -1,11 +1,12 @@
 import React from 'react';
-import { Bot, MessageSquare, Settings, Moon, Sun } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, Plus } from 'lucide-react';
 
 interface JoeHeaderProps {
 
     userAvatar?: string;
     userName?: string;
     onSettingsClick?: () => void;
+    onNewProject?: () => void;
     theme?: 'dark' | 'light';
     onThemeToggle?: () => void;
     onToggleChat?: () => void;
@@ -19,6 +20,7 @@ export default function JoeHeader({
     userAvatar,
     userName,
     onSettingsClick,
+    onNewProject,
     theme = 'dark',
     onThemeToggle,
     onToggleChat,
@@ -90,6 +92,11 @@ export default function JoeHeader({
                     <button className="joe-header-btn" onClick={onSettingsClick} title="الإعدادات">
                         <Settings size={18} />
                     </button>
+                    {onNewProject && (
+                        <button className="joe-header-btn" onClick={onNewProject} title="مشروع جديد" style={{ color: 'var(--joe-gold-primary)' }}>
+                            <Plus size={18} />
+                        </button>
+                    )}
                     <button
                         className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
                         onClick={onToggleExplorer}
