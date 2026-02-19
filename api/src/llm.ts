@@ -479,6 +479,7 @@ export interface PlanOptions {
   mock?: boolean;
   userId?: string;
   sessionId?: string; // For enterprise context and memory
+  workspaceId?: string; // Target workspace ID
   onThought?: (chunk: string) => void;
   onProgress?: (msg: string) => void;
 }
@@ -542,6 +543,9 @@ export const getSystemPrompt = (user?: {
 
   if (user?.name) {
     systemPromptOutput += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
+  }
+  if ((user as any)?.workspaceRoot) {
+    systemPromptOutput += `\n\nWORKSPACE CONTEXT:\nPath: ${(user as any).workspaceRoot}\nName: ${(user as any).workspaceName || 'Default'}`;
   }
   if (user?.systemInstructions && user.systemInstructions.trim()) {
     systemPromptOutput += `\n\nUSER CUSTOM INSTRUCTIONS:\n${user.systemInstructions.trim()}`;
@@ -711,6 +715,15 @@ export async function planNextStep(
     `[LLM] planNextStep entry - Provider: ${provider}, Resolved Key: ${providerKey}`,
   );
 
+  const { workspaceService } = require("./services/WorkspaceService");
+  const workspaceRoot = options?.workspaceId ? workspaceService.getActiveRoot(options.workspaceId) : process.cwd();
+  const workspaceName = path.basename(workspaceRoot);
+  const promptCtx = {
+    name: options?.userId ? "Younis" : "User",
+    workspaceRoot,
+    workspaceName
+  };
+
   const onProgress = options?.onProgress;
   const onThought = options?.onThought;
 
@@ -799,7 +812,7 @@ export async function planNextStep(
         const msgs = [
           {
             role: "system",
-            content: getSystemPrompt({ name: options?.userId || "User" }),
+            content: getSystemPrompt(promptCtx as any),
           },
           ...messages,
         ];

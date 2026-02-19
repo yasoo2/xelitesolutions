@@ -4,7 +4,7 @@ import { routeToModel } from '../llm/intelligent-router';
 
 // In-memory message buffer per user (for summarization)
 const userMessageBuffers: Map<string, { messages: string[], sessionId?: string }> = new Map();
-const SUMMARY_THRESHOLD = 10; // Summarize every 10 messages
+const SUMMARY_THRESHOLD = 20; // Summarize every 20 messages (increased from 10)
 
 export class MemoryService {
   /**
@@ -75,7 +75,7 @@ export class MemoryService {
    * Get persistent context for a user
    * Returns last 3 summaries - completely isolated per user
    */
-  static async getPersistentContext(userId: string, limit = 3): Promise<string> {
+  static async getPersistentContext(userId: string, limit = 10): Promise<string> {
     if (!userId) return '';
 
     try {

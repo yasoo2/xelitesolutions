@@ -1452,7 +1452,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const [relevant, recentItems, persistentContext] = await Promise.all([
           MemoryService.searchMemories(userId, String(text || '')),
           MemoryItem.find({ userId, scope: 'user' }).sort({ updatedAt: -1 }).limit(20).lean(),
-          MemoryService.getPersistentContext(userId, 3), // NEW: Get last 3 conversation summaries
+          MemoryService.getPersistentContext(userId, 10), // NEW: Get last 10 conversation summaries
         ]);
 
         const recent = (recentItems || []).map((item: any) => {

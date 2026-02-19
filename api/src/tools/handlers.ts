@@ -53,11 +53,20 @@ export async function handleShellCommand(
         child.stdout.on('data', (d) => { stdout += d.toString(); });
         child.stderr.on('data', (d) => { stderr += d.toString(); });
 
-        child.on('error', (err) => {
+        child.on('error', (err: any) => {
             if (!completed) {
                 completed = true;
                 clearTimeout(timer);
-                resolve({ ok: false, error: err.message, logs });
+
+                // Add architecture hint if it looks like a binary mismatch
+                let errorMessage = err.message;
+                if (err.code === 'EBADARCH' || errorMessage.includes('bad CPU type')) {
+                    const { BinaryService } = require('../services/BinaryService');
+                    const check = BinaryService.checkBinary(command);
+                    errorMessage += `. ${BinaryService.getHint(command, check)}`;
+                }
+
+                resolve({ ok: false, error: errorMessage, logs });
             }
         });
 
@@ -100,12 +109,14 @@ export async function handleFsCommand(
         return { ok: false, error: 'invalid_path: potential security risk', logs: [] };
     }
 
-    // Ensure path is within allowed directories (workspace or temp)
+    // Ensure path is within allowed directories (workspace, temp, or builds)
     const cwd = process.cwd();
+    const projectRoot = path.join(cwd, path.basename(cwd) === 'api' ? '..' : '.');
+    const buildsDir = path.resolve(projectRoot, 'data/builds');
     const tmpDir = '/tmp';
     const p = path.resolve(normalizedPath);
 
-    if (!p.startsWith(cwd) && !p.startsWith(tmpDir)) {
+    if (!p.startsWith(cwd) && !p.startsWith(tmpDir) && !p.startsWith(buildsDir)) {
         return { ok: false, error: 'path_outside_workspace', logs: [`Blocked access to ${p}`] };
     }
 

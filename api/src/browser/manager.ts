@@ -173,6 +173,8 @@ export async function createSession(sessionId: string) {
   const viewport = getBrowserViewport();
 
   let browser: Browser | null = null;
+  const { BinaryService } = require('../services/BinaryService');
+
   /* MODIFIED: Logging and Fallback */
   let wsEndpoint = process.env.BROWSER_WS_ENDPOINT || '';
 
@@ -218,7 +220,14 @@ export async function createSession(sessionId: string) {
       }
     }
   } else {
-    browser = await chromium.launch(getChromiumLaunchOptions());
+    try {
+      browser = await chromium.launch(getChromiumLaunchOptions());
+    } catch (e: any) {
+      const check = BinaryService.checkBinary('chromium'); // Playwright might not have a standalone 'chromium' binary in path
+      // Actually playwright has its own internal path.
+      // But we can check for common issues.
+      throw new Error(`browser_launch_failed: ${e.message}. ${BinaryService.getHint('chromium', { exists: false, compatible: false })}`);
+    }
   }
 
   if (!browser) throw new Error('browser_connection_failed_after_retries');

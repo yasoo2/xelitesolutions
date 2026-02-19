@@ -199,14 +199,30 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
-            const root = workspaceService.getActiveRoot();
-            (effectiveInput as any).filename = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
-            delete (effectiveInput as any).filePath;
-            delete (effectiveInput as any).path;
+            const root = workspaceService.getActiveRoot() || process.cwd();
+            const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
+            const buildsDir = path.resolve(projectRoot, 'data/builds');
+            const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
+
+            if (abs.startsWith(root) || abs.startsWith(buildsDir)) {
+                (effectiveInput as any).filename = abs;
+                delete (effectiveInput as any).filePath;
+                delete (effectiveInput as any).path;
+            } else {
+                return { ok: false, error: 'path_outside_workspace: ' + abs, logs };
+            }
         }
     }
-    if (name === 'edit_file' || name === 'modify_file') {
+    if (name === 'edit_file' || name === 'modify_file' || name === 'file_edit') {
         effectiveName = 'file_edit';
+        const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
+        if (fp) {
+            const { workspaceService } = require('./WorkspaceService');
+            const root = workspaceService.getActiveRoot();
+            (effectiveInput as any).path = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
+            delete (effectiveInput as any).filePath;
+            delete (effectiveInput as any).filename;
+        }
     }
     if (name === 'file_read' || name === 'read_file' || name === 'view_file' || name === 'get_file') {
         effectiveName = 'read_file';
@@ -317,6 +333,22 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             return { ok: true, output: `Successfully indexed ${count} files into Deep Memory.`, logs };
         } catch (e: any) {
             return { ok: false, output: `Memorization Failed: ${e.message}`, logs };
+        }
+    }
+
+    if (effectiveName === 'grep_search') {
+        const { BinaryService } = require('./BinaryService');
+        const check = BinaryService.checkBinary('grep');
+        if (!check.exists || !check.compatible) {
+            return { ok: false, error: `binary_issue: ${check.error || 'grep not found'}. ${BinaryService.getHint('grep', check)}`, logs };
+        }
+    }
+    if (effectiveName === 'inspect_directory' || effectiveName === 'search_files') {
+        const { BinaryService } = require('./BinaryService');
+        const check = BinaryService.checkBinary('find');
+        if (!check.exists || !check.compatible) {
+            // These might use glob (JS) so we don't block UNLESS we know they use find
+            // For now, let's be conservative. Grep definitely uses spawn('grep').
         }
     }
 

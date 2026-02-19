@@ -135,14 +135,27 @@ export class AgentLoopService {
             if (toolName === 'github_create_repo') {
                 return `✅ Repo created: ${r?.output?.fullName || ''}\n${r?.output?.htmlUrl || ''}`;
             }
-            if (toolName === 'shell_execute') {
-                const out = typeof r?.output?.stdout === 'string' ? r.output.stdout.trim() : '';
-                const head = out ? out.slice(0, 500) + (out.length > 500 ? '...' : '') : '(no output)';
+            if (toolName === 'shell_execute' || toolName === 'run_command') {
+                const out = typeof r?.output?.stdout === 'string' ? r.output.stdout.trim() :
+                    typeof r?.output === 'string' ? r.output : '';
+                const head = out ? out.slice(0, 1000) + (out.length > 1000 ? '... [Truncated]' : '') : '(no output)';
                 return `✅ Command Executed.\nOutput:\n${head}`;
             }
+            if (toolName === 'grep_search' || toolName === 'search_files') {
+                const count = r?.output?.count || 0;
+                const matches = Array.isArray(r?.output?.matches) ? r.output.matches.join('\n') : '';
+                if (count === 0) return `🔍 No matches found for your search.`;
+                return `🔍 Found ${count} match(es):\n${matches.slice(0, 1000)}${matches.length > 1000 ? '\n... [Remaining results hidden]' : ''}`;
+            }
+            if (toolName === 'ls' || toolName === 'inspect_directory') {
+                const items = Array.isArray(r?.output?.items) ? r.output.items.join(', ') :
+                    typeof r?.output === 'string' ? r.output : '';
+                return `📂 Directory Listing:\n${items.slice(0, 500)}${items.length > 500 ? '... [Truncated]' : ''}`;
+            }
+
             const outStr = typeof r?.output?.output === 'string' ? r.output.output :
                 typeof r?.output?.text === 'string' ? r.output.text :
-                    Symbol.iterator in Object(r?.output) ? JSON.stringify(r.output) :
+                    r?.output && typeof r.output === 'object' ? JSON.stringify(r.output, null, 2).slice(0, 1000) :
                         'Done';
             return outStr;
         } else {
@@ -194,8 +207,13 @@ export class AgentLoopService {
 
             let plan;
             try {
-                // We need to pass the runConfig to planNextStep if needed (e.g. model selection)
-                plan = await planNextStep(msgsForLLM, { model: runCfg?.model });
+                // Pass full context to planNextStep
+                plan = await planNextStep(msgsForLLM, {
+                    model: runCfg?.model,
+                    userId,
+                    sessionId,
+                    workspaceId
+                });
             } catch (e: any) {
                 console.error('LLM Plan Error', e);
                 broadcast({ type: 'text', runId: currentRunId, data: `Error planning next step: ${e.message}` });
@@ -255,6 +273,12 @@ export class AgentLoopService {
                 result = { ok: false, error: e.message };
             }
 
+            // [Wakil] Construct final context-aware text (Include Reasoning)
+            let assistantText = AgentLoopService.formatToolOutputToText(plan.name, result, plan.input);
+            if (plan.reasoning) {
+                assistantText = `> Thought: ${plan.reasoning}\n\n${assistantText}`;
+            }
+
             // 6. Circuit Breaker Logic
             if (!result.ok) {
                 const currentError = typeof result.error === 'string' ? result.error : 'Unknown Error';
@@ -287,7 +311,6 @@ export class AgentLoopService {
             const eventResult = sanitizeToolResultForBroadcast(plan.name, result);
             broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: newRunId, data: { name: `execute:${plan.name}`, result: eventResult } });
 
-            const assistantText = AgentLoopService.formatToolOutputToText(plan.name, result, plan.input);
             const isDup = await isMessageDuplicate(sessionId, assistantText);
 
             if (isDup) {

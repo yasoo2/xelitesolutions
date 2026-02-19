@@ -16,30 +16,18 @@ function resolveToolPath(p: string) {
     const { workspaceService } = require('../../services/WorkspaceService');
     const root = workspaceService.getActiveRoot() || process.cwd();
 
-    // Preference for ARTIFACT_DIR if set
-    const artifactDir = process.env.ARTIFACT_DIR;
-    if (artifactDir && !val.includes('..')) {
-        return path.resolve(artifactDir, val);
+    // Default to resolving relative to workspace root
+    const abs = path.resolve(root, val);
+
+    // Safety check: ensure we are either in the workspace OR in the builds directory
+    const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
+    const buildsDir = path.resolve(projectRoot, 'data/builds');
+
+    if (abs.startsWith(root) || abs.startsWith(buildsDir)) {
+        return abs;
     }
 
-    if (!val || val === '.') return root;
-    const rootReal = (() => {
-        try { return fs.realpathSync(root); } catch { return root; }
-    })();
-    const abs = path.resolve(rootReal, val);
-    const absReal = (() => {
-        try { return fs.realpathSync(abs); } catch { return abs; }
-    })();
-    const rel = path.relative(rootReal, absReal);
-    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-    if (!inside) {
-        // Allow escaping workspace ONLY if explicitly using absolute path (handled above)
-        // or if it's within the process.cwd() parent
-        const processRoot = fs.realpathSync(path.join(process.cwd(), '..'));
-        if (absReal.startsWith(processRoot)) return absReal;
-        throw new Error('path_outside_workspace: ' + absReal);
-    }
-    return absReal;
+    throw new Error('path_outside_workspace: ' + abs);
 }
 
 
@@ -115,6 +103,24 @@ export class WebPipelineTool extends BaseTool {
 
         if (sessionId) broadcastThinkingDetail(sessionId, `🚀 Starting Pipeline for "${name}" (${type})`);
 
+        // 0. System Check
+        if (sessionId) broadcastThinkingDetail(sessionId, `🔍 Performing environment architecture check...`);
+        const { BinaryService } = require('../../services/BinaryService');
+        const crucialBinaries = ['node', 'npm', 'npx'];
+        for (const b of crucialBinaries) {
+            const check = BinaryService.checkBinary(b);
+            if (!check.exists || check.error === 'warning_rosetta_required') {
+                const hint = BinaryService.getHint(b, check);
+                if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ Environment Issue: ${hint}`);
+                // If it's just a Rosetta warning, we proceed but log it. 
+                // If it's missing entirely, we fail.
+                if (!check.exists) {
+                    return { ok: false, error: `Crucial binary '${b}' missing. ${hint}`, logs, output: { path: '', steps } };
+                }
+            }
+        }
+        if (sessionId) broadcastThinkingDetail(sessionId, `✅ Environment check passed`);
+
         // 1. Scaffold
         if (sessionId) broadcastThinkingDetail(sessionId, `🏗️ Scaffolding project structure...`);
         const port = await findAvailablePort(5180);
@@ -126,7 +132,7 @@ export class WebPipelineTool extends BaseTool {
         }, { sessionId, workspaceId });
         if (!scRes?.ok) {
             steps.push({ step: 'scaffold_full_stack', ok: false, error: scRes?.error });
-            return { ok: false, output: { path: '', steps }, logs };
+            return { ok: false, error: `Scaffolding failed: ${scRes?.error}`, output: { path: '', steps }, logs };
         }
         const projectPath = String(scRes.output?.path || '').trim();
         steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });

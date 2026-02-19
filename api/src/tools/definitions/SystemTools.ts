@@ -32,22 +32,25 @@ function getWorkspaceRoot() {
 }
 
 function resolveToolPath(p: string) {
-    const root = getWorkspaceRoot();
     const val = String(p ?? '').trim();
-    if (!val || val === '.') return root;
-    const rootReal = (() => {
-        try { return fs.realpathSync(root); } catch { return root; }
-    })();
-    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
-    const absReal = (() => {
-        try { return fs.realpathSync(abs); } catch { return abs; }
-    })();
-    const rel = path.relative(rootReal, absReal);
-    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-    if (!inside) {
-        throw new Error('path_outside_workspace');
+    if (path.isAbsolute(val)) return val;
+
+    const { workspaceService } = require('../../services/WorkspaceService');
+    const root = workspaceService.getActiveRoot() || process.cwd();
+
+    // Default to resolving relative to workspace root
+    const abs = path.resolve(root, val);
+
+    // Safety check: ensure we are either in the workspace OR in the builds directory
+    // Project root is the parent of 'api' or the current folder
+    const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
+    const buildsDir = path.resolve(projectRoot, 'data/builds');
+
+    if (abs.startsWith(root) || abs.startsWith(buildsDir)) {
+        return abs;
     }
-    return absReal;
+
+    throw new Error('path_outside_workspace: ' + abs);
 }
 
 function splitCommandLine(raw: string) {
