@@ -263,7 +263,7 @@ async function main() {
         return true; // Success
       } catch (e) {
         const label = Number.isFinite(maxRetries) ? `${i + 1}/${maxRetries}` : `${i + 1}`;
-        logger.warn(`MongoDB connection failed (Attempt ${label}), retrying in 2s...`);
+        logger.warn({ err: e }, `MongoDB connection failed (Attempt ${label}), retrying in 2s...`);
 
         // [OFFLINE MODE] Check if we should fallback
         if (!isProd && i >= 4) {

@@ -34,7 +34,12 @@ const thinkingDetailsListeners: Set<(details: string[]) => void> = new Set();
 
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
-    const base = httpUrl.replace(/\/api\/?$/, '');
+    let base = httpUrl;
+    if (!base.startsWith('http')) {
+      // Resolve against current origin if relative
+      base = new URL(base, window.location.origin).href;
+    }
+    base = base.replace(/\/api\/?$/, '');
     return `${base.replace(/^http/i, 'ws')}/api/ws`;
   };
   const candidates = [
