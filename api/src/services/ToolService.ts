@@ -199,12 +199,21 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
-            const root = workspaceService.getActiveRoot() || process.cwd();
+            const activeRoot = workspaceService.getActiveRoot();
             const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
             const buildsDir = path.resolve(projectRoot, 'data/builds');
+
+            // CRITICAL: If no active workspace, redirect to data/builds/ to prevent
+            // overwriting system files (e.g. api/package.json)
+            const root = activeRoot || path.resolve(buildsDir, 'workspace-default');
             const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
 
-            if (abs.startsWith(root) || abs.startsWith(buildsDir)) {
+            // Ensure the target directory exists
+            if (!activeRoot && !path.isAbsolute(fp)) {
+                try { require('fs').mkdirSync(path.dirname(abs), { recursive: true }); } catch { }
+            }
+
+            if (abs.startsWith(root) || abs.startsWith(buildsDir) || (activeRoot && abs.startsWith(activeRoot))) {
                 (effectiveInput as any).filename = abs;
                 delete (effectiveInput as any).filePath;
                 delete (effectiveInput as any).path;
@@ -213,6 +222,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             }
         }
     }
+
     if (name === 'edit_file' || name === 'modify_file' || name === 'file_edit') {
         effectiveName = 'file_edit';
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
