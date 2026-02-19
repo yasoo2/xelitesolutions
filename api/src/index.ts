@@ -107,12 +107,7 @@ async function main() {
     'http://127.0.0.1:3001',
   ]);
   app.use(cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.has(origin)) return cb(null, true);
-      if (/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?$/i.test(origin)) return cb(null, true);
-      return cb(null, false);
-    },
+    origin: true,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Worker-Key', 'x-worker-key'],
@@ -213,6 +208,18 @@ async function main() {
     try { fs.mkdirSync(ARTIFACT_DIR, { recursive: true }); } catch { }
   }
   app.use('/artifacts', express.static(ARTIFACT_DIR));
+
+  // Serve Frontend Static Files (Production)
+  const webDistPath = path.join(__dirname, '../../web/dist');
+  if (fs.existsSync(webDistPath)) {
+    logger.info({ path: webDistPath }, 'Serving static frontend files from web/dist');
+    app.use(express.static(webDistPath));
+    // SPA Fallback: serve index.html for all non-API/non-artifact routes
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/artifacts')) return next();
+      res.sendFile(path.join(webDistPath, 'index.html'));
+    });
+  }
 
   const server = http.createServer(app);
   attachWebSocket(server);

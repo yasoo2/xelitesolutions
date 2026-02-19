@@ -198,7 +198,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = 'write_file';
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
-            (effectiveInput as any).filename = fp.replace(/^\/app\//, './');
+            const { workspaceService } = require('./WorkspaceService');
+            const root = workspaceService.getActiveRoot();
+            (effectiveInput as any).filename = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
             delete (effectiveInput as any).filePath;
             delete (effectiveInput as any).path;
         }
@@ -210,7 +212,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = 'read_file';
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
-            (effectiveInput as any).path = fp.replace(/^\/app\//, './');
+            const { workspaceService } = require('./WorkspaceService');
+            const root = workspaceService.getActiveRoot();
+            (effectiveInput as any).path = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
             delete (effectiveInput as any).filePath;
             delete (effectiveInput as any).filename;
         }

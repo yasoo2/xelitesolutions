@@ -38,7 +38,7 @@ const browserRunGuard = new Map<
   }
 >();
 
-const BROWSER_RUN_MAX_PER_SESSION = 6;
+const BROWSER_RUN_MAX_PER_SESSION = 25;
 const BROWSER_RUN_MIN_INTERVAL_MS = 7000;
 
 const CANCELLED_RUN_TTL_MS = 24 * 60 * 60 * 1000;
