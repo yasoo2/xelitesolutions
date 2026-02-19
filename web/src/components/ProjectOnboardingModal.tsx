@@ -3,7 +3,7 @@
  * Redesigned for a stunning, high-end "WOW" factor.
  */
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
     Monitor,
@@ -29,7 +29,7 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
     if (!isOpen) return null;
 
     // Simplified precise variants
-    const itemVariants = {
+    const itemVariants: Variants = {
         hidden: { opacity: 0, y: 10 },
         visible: {
             opacity: 1,
