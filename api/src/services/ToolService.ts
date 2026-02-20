@@ -11,6 +11,20 @@ import { normalizeUrlForGoto } from '../utils/url';
 // Rate Limiting Logic (Ported)
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
 
+export function formatToolError(err: any): string {
+    if (!err) return 'Unknown error (no message provided)';
+    if (typeof err === 'string') return err;
+    if (err instanceof Error) return err.stack || err.message || String(err);
+    try {
+        return JSON.stringify(err, (key, value) => {
+            if (value instanceof Error) return { message: value.message, stack: value.stack };
+            return value;
+        }, 2);
+    } catch {
+        return String(err);
+    }
+}
+
 function rateLimitBucketKey(name: string, input: any) {
     if (name === 'browser_run' || name === 'browser_open' || name === 'visual_qa') {
         return `${name}:${input?.sessionId || 'global'} `;
@@ -190,6 +204,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     }
     if (name === 'command_execute' || name === 'run_command' || name === 'exec' || name === 'terminal') {
         effectiveName = 'shell_execute';
+    }
+    if (name === 'manual_test' || name === 'verify_build') {
+        effectiveName = 'project_detect'; // Safe fallback that returns project info
     }
     if (name === 'project_scaffold') {
         effectiveName = 'scaffold_project';
@@ -450,14 +467,23 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
             const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
             logs.push(...toolLogs);
-            return { ok, output, logs, artifacts, error: res?.error };
+
+            let error = res?.error;
+            if (!ok && !error) {
+                error = 'Tool reported failure without an error message';
+            } else if (error) {
+                error = formatToolError(error);
+            }
+
+            return { ok, output, logs, artifacts, error };
         }
 
         return { ok: false, error: 'tool_implementation_missing', logs };
 
     } catch (e: any) {
         const duration = Date.now() - t0;
-        logs.push(`exception=${e.message} duration=${duration}ms`);
-        return { ok: false, error: `exception: ${e.message}`, logs };
+        const errStr = formatToolError(e);
+        logs.push(`exception=${errStr} duration=${duration}ms`);
+        return { ok: false, error: `internal_exception: ${errStr}`, logs };
     }
 }

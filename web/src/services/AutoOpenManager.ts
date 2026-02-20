@@ -98,9 +98,9 @@ class AutoOpenManagerClass {
             this.processToolUsage(event.data.tool.name, event.data.tool.input);
         }
 
-        // When preview is ready
-        if (event.type === 'preview_ready') {
-            console.log('[AutoOpenManager] Received preview_ready event', event.data);
+        // When preview is ready (matches both event types)
+        if (event.type === 'preview_ready' || event.type === 'preview_url') {
+            console.log('[AutoOpenManager] Preview event received, switching tab', event.type, event.data);
             this.triggerOpen('preview', event.data);
         }
 

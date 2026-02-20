@@ -7,10 +7,17 @@ export class Builder {
     type: 'ecommerce' | 'saas' | 'blog',
     features: string[] = [],
     baseDir?: string,
-    options: { aestheticMode?: string; language?: string; port?: number } = {}
+    options: { aestheticMode?: string; language?: string; port?: number; overwrite?: boolean } = {}
   ) {
     const root = path.resolve(baseDir || process.cwd(), name);
-    if (fs.existsSync(root)) throw new Error(`Project ${name} already exists`);
+    if (fs.existsSync(root)) {
+      if (options.overwrite) {
+        console.log(`[Builder] Overwriting existing project at ${root}`);
+        fs.rmSync(root, { recursive: true, force: true });
+      } else {
+        throw new Error(`Project ${name} already exists`);
+      }
+    }
 
     fs.mkdirSync(root, { recursive: true });
 

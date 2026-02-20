@@ -9,6 +9,7 @@ import StatusBar from './StatusBar';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import '../styles/joe-premium.css';
 import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
+import { ErrorBoundary } from './ErrorBoundary';
 interface Session {
     id: string;
     title: string;
@@ -262,57 +263,63 @@ export default function JoeIDELayout({
             {/* Main Content Area */}
             <div className="joe-main">
                 {/* Left: Chat Panel */}
-                <ChatPanel
-                    messages={messages}
-                    inputValue={inputValue}
-                    onInputChange={onInputChange}
-                    onSend={onSend}
-                    isLoading={isLoading}
-                    isCollapsed={isChatCollapsed}
-                >
-                    {chatChildren}
-                </ChatPanel>
+                <ErrorBoundary fallbackTitle="تعذّر تحميل المحادثة">
+                    <ChatPanel
+                        messages={messages}
+                        inputValue={inputValue}
+                        onInputChange={onInputChange}
+                        onSend={onSend}
+                        isLoading={isLoading}
+                        isCollapsed={isChatCollapsed}
+                    >
+                        {chatChildren}
+                    </ChatPanel>
+                </ErrorBoundary>
 
                 {/* Center: Workspace */}
-                <WorkspacePanel
-                    activeTab={activeWorkspaceTab}
-                    onTabChange={handleWorkspaceTabChange}
-                    browserSessionId={browserSessionId}
-                    terminalId={terminalId}
-                    previewUrl={previewUrl}
-                    isMaximized={isMaximized}
-                    onMaximizeToggle={handleMaximizeToggle}
-                    logs={logs}
-                    problems={problems}
-                >
-                    {workspaceChildren}
-                </WorkspacePanel>
+                <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
+                    <WorkspacePanel
+                        activeTab={activeWorkspaceTab}
+                        onTabChange={handleWorkspaceTabChange}
+                        browserSessionId={browserSessionId}
+                        terminalId={terminalId}
+                        previewUrl={previewUrl}
+                        isMaximized={isMaximized}
+                        onMaximizeToggle={handleMaximizeToggle}
+                        logs={logs}
+                        problems={problems}
+                    >
+                        {workspaceChildren}
+                    </WorkspacePanel>
+                </ErrorBoundary>
 
                 {/* Right: File Explorer / GitHub Panel */}
-                {sidebarView === 'explorer' ? (
-                    <FileExplorerPanel
-                        onNewFile={onNewFile}
-                        onNewFolder={onNewFolder}
-                        onGitChanges={handleGitChanges}
-                        activeRepo={activeRepo}
-                        githubUser={githubUser}
-                        isCollapsed={isExplorerCollapsed}
-                    />
-                ) : (
-                    <GitHubPanel
-                        user={githubUser}
-                        repos={githubRepos}
-                        activeRepo={activeRepo}
-                        commits={githubCommits}
-                        onSelectRepo={onSelectRepo || (() => { })}
-                        onRefresh={onRefreshGithub || (() => { })}
-                        onConnect={onConnectGithub || (() => { })}
-                        onDisconnect={onDisconnectGithub || (() => { })}
-                        onCreateRepo={onCreateRepo || (() => { })}
-                        onBackToFileExplorer={() => setSidebarView('explorer')}
-                        isLoading={githubLoading}
-                    />
-                )}
+                <ErrorBoundary fallbackTitle="تعذّر تحميل الشريط الجانبي">
+                    {sidebarView === 'explorer' ? (
+                        <FileExplorerPanel
+                            onNewFile={onNewFile}
+                            onNewFolder={onNewFolder}
+                            onGitChanges={handleGitChanges}
+                            activeRepo={activeRepo}
+                            githubUser={githubUser}
+                            isCollapsed={isExplorerCollapsed}
+                        />
+                    ) : (
+                        <GitHubPanel
+                            user={githubUser}
+                            repos={githubRepos}
+                            activeRepo={activeRepo}
+                            commits={githubCommits}
+                            onSelectRepo={onSelectRepo || (() => { })}
+                            onRefresh={onRefreshGithub || (() => { })}
+                            onConnect={onConnectGithub || (() => { })}
+                            onDisconnect={onDisconnectGithub || (() => { })}
+                            onCreateRepo={onCreateRepo || (() => { })}
+                            onBackToFileExplorer={() => setSidebarView('explorer')}
+                            isLoading={githubLoading}
+                        />
+                    )}
+                </ErrorBoundary>
             </div>
 
             {/* Sessions Bar */}

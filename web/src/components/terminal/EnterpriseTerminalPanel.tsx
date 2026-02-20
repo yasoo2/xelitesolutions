@@ -137,30 +137,39 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
         }
 
         // Resize Handling
+        let isTabMounted = true;
         const resizeObserver = new ResizeObserver(() => {
             requestAnimationFrame(() => {
-                if (!termsRef.current[tabId] || !fitAddonsRef.current[tabId]) return;
+                if (!isTabMounted) return;
+                const term = termsRef.current[tabId];
+                const fitAddon = fitAddonsRef.current[tabId];
+                if (!term || !fitAddon || !term.element || !term.element.clientWidth) return;
+
                 try {
                     fitAddon.fit();
                     const dims = fitAddon.proposeDimensions();
-                    if (dims && dims.cols && dims.rows) {
+                    if (dims && typeof dims === 'object' && dims.cols && dims.rows) {
                         SocketService.send({
                             type: 'terminal_resize',
                             id: tabId,
                             serverId,
-                            cols: dims.cols,
-                            rows: dims.rows
+                            cols: Number(dims.cols),
+                            rows: Number(dims.rows)
                         });
                     }
-                } catch { }
+                } catch (e) {
+                    console.debug('[EnterpriseTerminal] Fit error inhibited');
+                }
             });
         });
         resizeObserver.observe(container);
 
         const cleanup = () => {
+            isTabMounted = false;
             resizeObserver.disconnect();
             try {
-                term.dispose();
+                const term = termsRef.current[tabId];
+                if (term) term.dispose();
             } catch { }
             delete termsRef.current[tabId];
             delete fitAddonsRef.current[tabId];

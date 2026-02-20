@@ -18,6 +18,7 @@ let cachedIsShim: boolean | null = null;
 let isConnecting = false;
 const seenMessageIds = new Set<string>(); // Deduplication cache
 const MAX_SEEN_IDS = 1000;
+let _lastPreviewUrl = '';
 
 // [Wakil 5.1] Quiet Mode & Source Deduplication
 let quietMode = false;
@@ -272,6 +273,21 @@ async function connect() {
       } else if (msgType === 'run_started') {
         thinkingDetails = [];
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
+      } else if (msgType === 'preview_ready' || msgType === 'preview_url') {
+        // [Preview Pipeline] When the API sends a preview URL, dispatch it to PreviewPanel
+        const url = data?.data?.url || data?.url;
+        if (url) {
+          console.log(`[Socket] Preview URL received (${msgType}):`, url);
+          _lastPreviewUrl = url;
+          window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url } }));
+        } else if (msgType === 'preview_url' && data?.data?.type === 'refresh') {
+          // If a refresh is requested but no new URL is provided, simply re-dispatch the last known URL
+          // so the Preview Panel triggers an auto-switch at the end of long builds
+          if (_lastPreviewUrl) {
+            console.log(`[Socket] Preview refresh requested, re-triggering auto-switch`);
+            window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: _lastPreviewUrl } }));
+          }
+        }
       }
 
       try {
@@ -445,6 +461,10 @@ export const SocketService = {
     cb([...thinkingDetails]);
     thinkingDetailsListeners.add(cb);
     return () => { thinkingDetailsListeners.delete(cb); };
+  },
+  // [Wakil 6.1] Get last preview URL (for mount-time read)
+  getLastPreviewUrl() {
+    return _lastPreviewUrl;
   },
 
 };

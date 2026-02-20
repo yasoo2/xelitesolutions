@@ -80,21 +80,25 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
 
         // Handle Resize with Debounce and Observer (Flattened)
         if (containerRef.current && termRef.current && fitAddonRef.current) {
+            let isMounted = true;
             const performFit = () => {
-                if (!fitAddonRef.current) return;
+                if (!isMounted || !fitAddonRef.current || !termRef.current) return;
                 try {
+                    const term = termRef.current;
+                    if (!term.element || !term.element.clientWidth) return;
+
                     fitAddonRef.current.fit();
                     const dims = fitAddonRef.current.proposeDimensions();
-                    if (dims && dims.cols && dims.rows) {
+                    if (dims && typeof dims === 'object' && dims.cols && dims.rows) {
                         SocketService.send({
                             type: 'terminal_resize',
                             id: terminalId,
-                            cols: dims.cols,
-                            rows: dims.rows
+                            cols: Number(dims.cols),
+                            rows: Number(dims.rows)
                         });
                     }
                 } catch (e) {
-                    console.error('Terminal fit error:', e);
+                    console.debug('Terminal fit error inhibited:', e);
                 }
             };
 
@@ -107,16 +111,13 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
             // Also fit after transition ends
             const transitionTimeout = setTimeout(performFit, 350);
 
-            // Add cleanup to the main effect's return
-            const originalCleanup = () => {
-                term.dispose();
-            };
-
-            // Override return to include observer cleanup
             return () => {
+                isMounted = false;
                 resizeObserver.disconnect();
                 clearTimeout(transitionTimeout);
-                originalCleanup();
+                try {
+                    term.dispose();
+                } catch { }
             };
         }
 

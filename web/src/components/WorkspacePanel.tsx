@@ -4,6 +4,7 @@ import {
     ChevronDown, ChevronUp, FileOutput, AlertTriangle,
     Copy, CopyCheck, Trash2, Search, ArrowDownToLine
 } from 'lucide-react';
+import { ErrorBoundary } from './ErrorBoundary';
 
 // Lazy load the heavy components
 const EmbeddedTerminal = lazy(() => import('./EmbeddedTerminal'));
@@ -427,24 +428,29 @@ export default function WorkspacePanel({
             <div className="joe-workspace-content">
                 {/* Browser Tab */}
                 {activeTab === 'browser' && (
-                    <Suspense fallback={<LoadingFallback />}>
-                        <EmbeddedBrowser sessionId={browserSessionId || 'panel-browser'} />
-                    </Suspense>
+                    <ErrorBoundary fallbackTitle="تعذّر تحميل المتصفح">
+                        <Suspense fallback={<LoadingFallback />}>
+                            <EmbeddedBrowser sessionId={browserSessionId || 'panel-browser'} />
+                        </Suspense>
+                    </ErrorBoundary>
                 )}
 
                 {/* Terminal Tab */}
                 {activeTab === 'terminal' && (
-                    <Suspense fallback={<LoadingFallback />}>
-                        <EmbeddedTerminal terminalId={terminalId} />
-                    </Suspense>
+                    <ErrorBoundary fallbackTitle="تعذّر تحميل الطرفية (Terminal)">
+                        <Suspense fallback={<LoadingFallback />}>
+                            <EmbeddedTerminal terminalId={terminalId} />
+                        </Suspense>
+                    </ErrorBoundary>
                 )}
 
                 {/* Preview Tab */}
                 {activeTab === 'preview' && (
-                    <Suspense fallback={<LoadingFallback />}>
-                        <PreviewPanel url={previewUrl} />
-
-                    </Suspense>
+                    <ErrorBoundary fallbackTitle="تعذّر تحميل المعاينة">
+                        <Suspense fallback={<LoadingFallback />}>
+                            <PreviewPanel url={previewUrl} />
+                        </Suspense>
+                    </ErrorBoundary>
                 )}
 
                 {/* Logs Tab */}

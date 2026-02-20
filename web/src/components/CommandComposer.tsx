@@ -739,9 +739,9 @@ export default function CommandComposer({
     } catch { }
 
     const pickFirstKeyedProvider = () => {
-      // PRIORITY: Force Auto by default if no other active provider is saved
-      console.log('[ProviderDebug] pickFirstKeyedProvider: Defaulting to auto');
-      return 'auto';
+      // PRIORITY: Force Gemini by default to prevent "Empty Query" free-tier instant exits
+      console.log('[ProviderDebug] pickFirstKeyedProvider: Defaulting to gemini');
+      return 'gemini';
     };
 
     try {

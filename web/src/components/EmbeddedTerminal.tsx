@@ -174,11 +174,15 @@ export default function EmbeddedTerminal({
         // Handle resize with debounce [Wakil 5.1]
         let lastCols = 0;
         let lastRows = 0;
-        let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+        let resizeTimeout: any = null;
 
         const resizeObserver = new ResizeObserver(() => {
             if (resizeTimeout) clearTimeout(resizeTimeout);
+            if (!isMounted) return;
+
             resizeTimeout = setTimeout(() => {
+                if (!isMounted) return;
+
                 if (fitAddonRef.current && containerRef.current && termRef.current) {
                     // [Wakil 5.1] Block resize during Quiet Mode
                     if (SocketService.isQuietMode()) {
@@ -190,26 +194,40 @@ export default function EmbeddedTerminal({
                         if (clientWidth === 0 || clientHeight === 0) return;
 
                         // Check if terminal is actually opened and attached
-                        if (!termRef.current?.element?.clientWidth) return;
+                        const term = termRef.current;
+                        if (!term || !term.element || !term.element.clientWidth) return;
+
+                        if (!fitAddonRef.current) return;
 
                         try {
-                            fitAddonRef.current.fit();
+                            // Defensive fit
+                            if (term.element && term.element.parentElement) {
+                                fitAddonRef.current.fit();
+                            }
                         } catch (e) {
                             // Ignore fit errors if element not ready
                             return;
                         }
 
+                        // Robust proposal check
                         const dims = fitAddonRef.current.proposeDimensions();
-                        if (dims && typeof dims === 'object' && 'cols' in dims && 'rows' in dims) {
-                            if (dims.cols === lastCols && dims.rows === lastRows) return;
-                            lastCols = dims.cols;
-                            lastRows = dims.rows;
+                        if (dims && typeof dims === 'object' && typeof dims.cols === 'number' && typeof dims.rows === 'number') {
+                            const cols = dims.cols;
+                            const rows = dims.rows;
+
+                            if (isNaN(cols) || isNaN(rows) || (cols === lastCols && rows === lastRows)) return;
+
+                            // Ensure valid dimensions
+                            if (cols <= 0 || rows <= 0) return;
+
+                            lastCols = cols;
+                            lastRows = rows;
 
                             SocketService.send({
                                 type: 'terminal_resize',
                                 id: terminalId,
-                                cols: dims.cols,
-                                rows: dims.rows
+                                cols,
+                                rows
                             });
                         }
                     } catch (e) {
@@ -232,9 +250,16 @@ export default function EmbeddedTerminal({
 
         return () => {
             isMounted = false;
+            if (resizeTimeout) clearTimeout(resizeTimeout);
             resizeObserver.disconnect();
             themeObserver.disconnect();
-            term.dispose();
+            try {
+                term.dispose();
+            } catch (e) {
+                console.debug('[Terminal] Dispose error:', e);
+            }
+            termRef.current = null;
+            fitAddonRef.current = null;
         };
     }, [terminalId, getTerminalTheme, onReady]);
 

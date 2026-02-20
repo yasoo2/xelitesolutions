@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Sparkles, Send, Mic, User, Bot } from 'lucide-react';
+import { Sparkles, Send, Mic, User, Bot, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -40,6 +40,13 @@ export default function ChatPanel({
 
     // [Wakil 6.0] Subscribe to thinking phase
     const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>('idle');
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    const handleCopy = (id: string, text: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     useEffect(() => {
         const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
@@ -127,6 +134,24 @@ export default function ChatPanel({
                                         {msg.content}
                                     </ReactMarkdown>
                                 </div>
+                                {msg.role === 'assistant' && (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px', opacity: 0.6 }}>
+                                        <button
+                                            onClick={() => handleCopy(msg.id, msg.content)}
+                                            title="انسخ الرد"
+                                            style={{
+                                                background: 'transparent', border: 'none', color: 'var(--joe-text-muted)',
+                                                cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', display: 'flex',
+                                                alignItems: 'center', gap: '6px', fontSize: '12px', transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--joe-text)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--joe-text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+                                        >
+                                            {copiedId === msg.id ? <Check size={14} color="var(--joe-success, #4CAF50)" /> : <Copy size={14} />}
+                                            {copiedId === msg.id ? 'تم النسخ' : 'نسخ النص'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))

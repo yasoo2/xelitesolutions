@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import JoeIDELayout from '../components/JoeIDELayout';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import CommandComposer from '../components/CommandComposer';
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
@@ -525,89 +526,78 @@ export default function Joe() {
     }));
 
     return (
-        <JoeIDELayout
-            // User
-            userAvatar={userInfo.avatar}
-            userName={userInfo.name}
-
-            // Chat
-            messages={messages}
-            inputValue={inputValue}
-            onInputChange={setInputValue}
-            onSend={handleSend}
-            isLoading={isLoading}
-
-            // Workspace
-            workspaceTab={workspaceTab}
-            onWorkspaceTabChange={setWorkspaceTab}
-            browserSessionId={browserSessionId || undefined}
-            terminalId={agentSelected || undefined}
-            previewUrl={previewUrl}
-
-            // Session
-            sessionId={agentSelected || undefined}
-            sessions={sessionsList}
-            onSelectSession={setAgentSelected}
-            onDeleteSession={deleteSession}
-            onDeleteAllSessions={deleteAllSessions}
-            onNewSession={handleCreateSession}
-
-            // Theme
-            theme={theme}
-            onThemeToggle={toggleTheme}
-            onSettingsClick={() => setIsSettingsOpen(true)}
-            onNewProject={() => setIsOnboardingOpen(true)}
-
-            // Connection
-            isConnected={isConnected}
-            branch="main"
-            onGitChanges={() => setIsGitHubOpen(true)}
-
-            // GitHub Integration
-            githubUser={ghUser}
-            githubRepos={ghRepos}
-            activeRepo={activeRepo}
-            githubCommits={ghCommits}
-            onSelectRepo={handleSelectRepo}
-            onRefreshGithub={handleRefreshGithub}
-            onConnectGithub={() => setIsGitHubOpen(true)}
-            onDisconnectGithub={handleDisconnectGitHub}
-            onCreateRepo={() => setIsGitHubOpen(true)} // Open's connect/create flow
-            githubLoading={ghLoading}
-
-            // Children - CommandComposer for chat input
-            chatChildren={
-                <CommandComposer
-                    sessionId={agentSelected || undefined}
-                    sessionKind="agent"
-                    hideHistory={true}
-                    workspaceId={workspaceId}
-                    onMessagesUpdate={handleComposerMessages}
-                    githubConnected={ghConnected}
-                    onGitClick={() => setIsGitHubOpen(true)}
-                />
-            }
-        >
-            <SettingsDialog
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
+        <ErrorBoundary fallbackTitle="تعذر تحميل Joe IDE بالكامل">
+            <JoeIDELayout
+                // ... props ...
+                userAvatar={userInfo.avatar}
+                userName={userInfo.name}
+                // ...rest of props...
+                messages={messages}
+                inputValue={inputValue}
+                onInputChange={setInputValue}
+                onSend={handleSend}
+                isLoading={isLoading}
+                workspaceTab={workspaceTab}
+                onWorkspaceTabChange={setWorkspaceTab}
+                browserSessionId={browserSessionId || undefined}
+                terminalId={agentSelected || undefined}
+                previewUrl={previewUrl}
+                sessionId={agentSelected || undefined}
+                sessions={sessionsList}
+                onSelectSession={setAgentSelected}
+                onDeleteSession={deleteSession}
+                onDeleteAllSessions={deleteAllSessions}
+                onNewSession={handleCreateSession}
                 theme={theme}
-                setTheme={setTheme}
-                lang={i18n.language}
-                setLang={handleLangChange}
-            />
-            <GitHubConnectDialog
-                isOpen={isGitHubOpen}
-                onClose={() => setIsGitHubOpen(false)}
-                onConnected={handleGitHubConnected}
+                onThemeToggle={toggleTheme}
+                onSettingsClick={() => setIsSettingsOpen(true)}
+                onNewProject={() => setIsOnboardingOpen(true)}
+                isConnected={isConnected}
+                branch="main"
+                onGitChanges={() => setIsGitHubOpen(true)}
+                githubUser={ghUser}
+                githubRepos={ghRepos}
+                activeRepo={activeRepo}
+                githubCommits={ghCommits}
                 onSelectRepo={handleSelectRepo}
-            />
-            <ProjectOnboardingModal
-                isOpen={isOnboardingOpen}
-                onClose={() => setIsOnboardingOpen(false)}
-                onSelectLocal={handleSelectLocal}
-                onSelectGitHub={handleSelectGitHub}
-            />
-        </JoeIDELayout>
+                onRefreshGithub={handleRefreshGithub}
+                onConnectGithub={() => setIsGitHubOpen(true)}
+                onDisconnectGithub={handleDisconnectGitHub}
+                onCreateRepo={() => setIsGitHubOpen(true)}
+                githubLoading={ghLoading}
+                chatChildren={
+                    <CommandComposer
+                        sessionId={agentSelected || undefined}
+                        sessionKind="agent"
+                        hideHistory={true}
+                        workspaceId={workspaceId}
+                        onMessagesUpdate={handleComposerMessages}
+                        githubConnected={ghConnected}
+                        onGitClick={() => setIsGitHubOpen(true)}
+                    />
+                }
+            >
+                <SettingsDialog
+                    isOpen={isSettingsOpen}
+                    onClose={() => setIsSettingsOpen(false)}
+                    theme={theme}
+                    setTheme={setTheme}
+                    lang={i18n.language}
+                    setLang={handleLangChange}
+                />
+                <GitHubConnectDialog
+                    isOpen={isGitHubOpen}
+                    onClose={() => setIsGitHubOpen(false)}
+                    onConnected={handleGitHubConnected}
+                    onSelectRepo={handleSelectRepo}
+                />
+                <ProjectOnboardingModal
+                    isOpen={isOnboardingOpen}
+                    onClose={() => setIsOnboardingOpen(false)}
+                    onSelectLocal={handleSelectLocal}
+                    onSelectGitHub={handleSelectGitHub}
+                />
+            </JoeIDELayout>
+        </ErrorBoundary>
     );
 }

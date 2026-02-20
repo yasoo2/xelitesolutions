@@ -5,30 +5,10 @@ import { handleShellCommand } from '../handlers';
 import fs from 'fs';
 import path from 'path';
 
-function getWorkspaceRoot() {
-    try {
-        const { workspaceService } = require('../../services/WorkspaceService');
-        return workspaceService.getActiveRoot();
-    } catch {
-        return process.cwd();
-    }
-}
+import { resolveToolPath } from '../utils';
 
-function resolveToolPath(p: string) {
-    const root = getWorkspaceRoot();
-    const val = String(p ?? '').trim();
-    if (!val || val === '.') return root;
-    const rootReal = (() => {
-        try { return fs.realpathSync(root); } catch { return root; }
-    })();
-    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
-    const absReal = (() => {
-        try { return fs.realpathSync(abs); } catch { return abs; }
-    })();
-    const rel = path.relative(rootReal, absReal);
-    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-    if (!inside) throw new Error('path_outside_workspace');
-    return absReal;
+function getWorkspaceRoot() {
+    return resolveToolPath('.');
 }
 
 export class SonarAnalysisTool extends BaseTool {
@@ -98,7 +78,7 @@ export class DependencyAuditTool extends BaseTool {
             return { ok: true, output: { report: out || 'No vulnerabilities found!' }, logs: ['audit passed', ...logs] };
         }
         const err = String(r.error || '').trim();
-        return { ok: false, output: { report: err || String(r.output || '') }, logs: ['audit found issues', ...logs] };
+        return { ok: false, error: `Audit found security vulnerabilities.`, output: { report: err || String(r.output || '') }, logs: ['audit found issues', ...logs] };
     }
 }
 
@@ -307,7 +287,13 @@ export class SecretsScanRepoTool extends BaseTool {
         };
 
         walk(root);
-        return { ok: findings.length === 0, output: { findings, scannedFiles }, logs: [`secrets_scan_repo path=${root} findings=${findings.length}`] };
+        const ok = findings.length === 0;
+        return {
+            ok,
+            error: ok ? undefined : `Found ${findings.length} potential secrets in codebase.`,
+            output: { findings, scannedFiles },
+            logs: [`secrets_scan_repo path=${root} findings=${findings.length}`]
+        };
     }
 }
 

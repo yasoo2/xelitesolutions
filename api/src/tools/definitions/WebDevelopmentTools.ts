@@ -8,27 +8,7 @@ import { spawn } from 'child_process';
 import { Builder } from '../../system/Builder';
 import { broadcastThinkingDetail } from '../../ws';
 
-// Helper to resolve paths (reused logic)
-function resolveToolPath(p: string) {
-    const val = String(p ?? '').trim();
-    if (path.isAbsolute(val)) return val;
-
-    const { workspaceService } = require('../../services/WorkspaceService');
-    const root = workspaceService.getActiveRoot() || process.cwd();
-
-    // Default to resolving relative to workspace root
-    const abs = path.resolve(root, val);
-
-    // Safety check: ensure we are either in the workspace OR in the builds directory
-    const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
-    const buildsDir = path.resolve(projectRoot, 'data/builds');
-
-    if (abs.startsWith(root) || abs.startsWith(buildsDir)) {
-        return abs;
-    }
-
-    throw new Error('path_outside_workspace: ' + abs);
-}
+import { resolveToolPath } from '../utils';
 
 
 async function findAvailablePort(start: number, host: string = '0.0.0.0'): Promise<number> {
@@ -128,11 +108,13 @@ export class WebPipelineTool extends BaseTool {
             name, type, features, baseDir,
             aestheticMode: input?.aestheticMode,
             language: input?.language,
-            port
+            port,
+            overwrite: input?.overwrite === true
         }, { sessionId, workspaceId });
         if (!scRes?.ok) {
-            steps.push({ step: 'scaffold_full_stack', ok: false, error: scRes?.error });
-            return { ok: false, error: `Scaffolding failed: ${scRes?.error}`, output: { path: '', steps }, logs };
+            const err = scRes?.error || 'No error message from scaffold tool';
+            steps.push({ step: 'scaffold_full_stack', ok: false, error: err });
+            return { ok: false, error: `Scaffolding failed: ${err}`, output: { path: '', steps }, logs };
         }
         const projectPath = String(scRes.output?.path || '').trim();
         steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });
@@ -187,7 +169,8 @@ export class WebPipelineTool extends BaseTool {
                 steps.push({ step: 'npm_install', ok: installRes.ok, output: { project: proj, ...installRes.output } });
                 if (!installRes.ok) {
                     if (sessionId) broadcastThinkingDetail(sessionId, `❌ npm install failed for ${proj}`);
-                    return { ok: false, error: `npm install failed for ${proj}: ${installRes.error || 'Unknown error'}`, logs, output: { path: projectPath, steps } };
+                    const err = installRes.error || 'npm install returned failure without error';
+                    return { ok: false, error: `npm install failed for ${proj}: ${err}`, logs, output: { path: projectPath, steps } };
                 }
             }
         }
@@ -258,8 +241,16 @@ export class WebPipelineTool extends BaseTool {
         }
 
         logs.push(`pipeline.complete path = ${projectPath}`);
-        const allOk = steps.every(s => s.ok);
-        return { ok: allOk, output: { path: projectPath, steps }, logs };
+        const failedStep = steps.find(s => !s.ok);
+        if (failedStep) {
+            return {
+                ok: false,
+                error: `Pipeline failed at step '${failedStep.step}': ${failedStep.error || 'No error message provided'}`,
+                output: { path: projectPath, steps },
+                logs
+            };
+        }
+        return { ok: true, output: { path: projectPath, steps }, logs };
     }
 }
 
@@ -277,7 +268,7 @@ export class DevServerTool extends BaseTool {
 
     async execute(input: any, context?: any) {
         const logs: string[] = [];
-        const cwd = resolveToolPath(String(input?.cwd || '').trim());
+        const cwd = resolveToolPath(String(input?.cwd || '').trim(), { sandbox: true });
         let command = String(input?.command || '').trim();
         let port = Number(input?.port);
 
@@ -291,25 +282,26 @@ export class DevServerTool extends BaseTool {
                 command = 'npm run dev';
             } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
                 // Static folder - use npx serve
-                command = `npx - y serve - p ${port}.`;
+                command = `npx -y serve -p ${port} . >> dev-server.log 2>&1`;
             } else {
                 command = 'npm run dev'; // Final fallback
             }
         }
 
         try {
-            const parts = command.split(' ');
-            const child = spawn(parts[0], parts.slice(1), {
+            // Using shell:true to support redirects and better path handling
+            const child = spawn(command, [], {
                 cwd,
                 env: { ...process.env, PORT: String(port), HOST: '0.0.0.0', BROWSER: 'none' },
                 stdio: 'ignore',
                 detached: true,
+                shell: true
             });
             child.unref(); // Fire and forget (keep running)
 
             const previewUrl = `http://api:${port}/`;
             const userPreviewUrl = `http://localhost:${port}/`;
-            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port}`);
+            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port} pid=${child.pid || 'unknown'}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview
             const { broadcast } = require('../../ws');
@@ -344,9 +336,12 @@ export class ScaffoldTool extends BaseTool {
             type: { type: 'string', enum: ['ecommerce', 'saas', 'blog'] },
             features: { type: 'array', items: { type: 'string' } },
             baseDir: { type: 'string' },
-            aestheticMode: { type: 'string', enum: ['glass', 'neon', 'minimal', 'corporate'] },
-            language: { type: 'string', enum: ['ar', 'en', 'dual'] },
-            port: { type: 'number' }
+            aestheticMode: { type: 'string' },
+            language: { type: 'string' },
+            port: { type: 'number' },
+            skipDev: { type: 'boolean' },
+            autoFix: { type: 'boolean' },
+            overwrite: { type: 'boolean', description: 'Overwrite existing project if it exists' }
         },
         required: ['name']
     };
@@ -363,32 +358,26 @@ export class ScaffoldTool extends BaseTool {
         const preferredBase = String(input?.baseDir || '').trim();
 
         // Resolve base directory
-        let baseDir = resolveToolPath('.');
-
-        if (preferredBase) {
-            baseDir = resolveToolPath(preferredBase);
-        } else {
-            // Default to data/builds inside the project root (not inside api/ or web/)
-            const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
-            const buildsDir = path.join(projectRoot, 'data/builds');
-            try {
-                if (!fs.existsSync(buildsDir)) fs.mkdirSync(buildsDir, { recursive: true });
-                baseDir = buildsDir;
-            } catch {
-                baseDir = resolveToolPath('.');
-            }
-        }
+        const baseDir = resolveToolPath(preferredBase || '.', { sandbox: true });
 
         try {
-            // Call the shared Builder logic
-            const result = Builder.scaffold(projectName, type, features, baseDir, {
-                aestheticMode: input?.aestheticMode,
-                language: input?.language,
-                port: input?.port
-            });
-            return { ok: true, output: result, logs: [`scaffold.success=${projectName}`] };
+            // Call the shared Builder
+            const res = Builder.scaffold(
+                projectName,
+                type,
+                features,
+                baseDir,
+                {
+                    aestheticMode: String(input?.aestheticMode || 'corporate'),
+                    language: String(input?.language || 'en'),
+                    port: Number(input?.port || 5180),
+                    overwrite: input?.overwrite === true
+                }
+            );
+            return { ok: true, output: res, logs: [`scaffold.success=${projectName}`] };
         } catch (e: any) {
-            return { ok: false, error: e.message, logs: [`scaffold.error=${e.message}`] };
+            const errStr = e instanceof Error ? e.message : String(e);
+            return { ok: false, error: errStr, logs: [`scaffold.error=${errStr}`] };
         }
     }
 }
