@@ -4,35 +4,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Joe System Diagnostic Dashboard</title>
+    <title>Joe API | Diagnostic Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
 </head>
 
-<body>
-    <div class="glass-panel">
-        <h1>Joe API System Health</h1>
-        <p>Real-time status of the central intelligence core.</p>
+<body class="dark-mode">
+    <div class="glass-container">
+        <header>
+            <div class="logo">
+                <span class="icon">🚀</span>
+                <h1>Joe Diagnostic Suite</h1>
+            </div>
+            <div id="status-badge" class="badge">Checking...</div>
+        </header>
 
-        <div class="status-grid">
-            <div class="status-card">
-                <div>Database</div>
-                <div id="db-status" class="status-value">Loading...</div>
-            </div>
-            <div class="status-card">
-                <div>Uptime</div>
-                <div id="uptime" class="status-value">Loading...</div>
-            </div>
-            <div class="status-card">
-                <div>Environment</div>
-                <div id="env" class="status-value">Loading...</div>
-            </div>
-        </div>
+        <main>
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <span class="label">Database</span>
+                    <span id="db-status" class="value">...</span>
+                </div>
+                <div class="stat-card">
+                    <span class="label">Uptime</span>
+                    <span id="uptime" class="value">...</span>
+                </div>
+                <div class="stat-card">
+                    <span class="label">Environment</span>
+                    <span id="env" class="value">...</span>
+                </div>
+                <div class="stat-card">
+                    <span class="label">Version</span>
+                    <span class="value">1.1.0-prod</span>
+                </div>
+            </section>
 
-        <div style="margin-top: 2rem;">
-            <h3>Quick Actions</h3>
-            <button onclick="window.location.href='test.html'">Open API Playground</button>
-            <button onclick="window.location.reload()">Refresh Data</button>
-        </div>
+            <section class="actions">
+                <a href="test.html" class="btn primary">Open Playground</a>
+                <button onclick="fetchHealth()" class="btn secondary">Refresh Stats</button>
+            </section>
+
+            <section class="manifest">
+                <h3>System Manifest</h3>
+                <pre id="manifest-content">Loading structure.txt...</pre>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 xElite Solutions | Secure Agentic Infrastructure</p>
+        </footer>
     </div>
     <script src="script.js"></script>
 </body>

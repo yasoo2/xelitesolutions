@@ -1,19 +1,24 @@
-Joe Intelligence System Architecture
-===================================
+[Core API Structure]
+- /src/index.ts: Application Entry & Middleware
+- /src/routes/: API Endpoints
+  - auth.ts
+  - tools.ts
+  - runs.ts
+  - sessions.ts
+- /src/services/: Core Logic
+  - memory.ts
+  - tool-service.ts
+  - websocket-service.ts
+- /src/tools/: Agent Capability Modules
+  - definitions/
+  - registry.ts
+- /data/: Persistent Storage (LanceDB, Context)
 
-Root System:
-- api/ (Express Backend)
-- web/ (React Frontend)
-- data/ (Knowledge & Builds)
+[Ports]
+- Production: 3000
+- Development: 5001 (Default)
 
-Core Modules (api/src/):
-- services/ : Business logic & tool orchestration
-- tools/    : Atomic capabilities (fs, shell, git)
-- system/   : Builder engine and project scaffolding
-- models/   : MongoDB schemas (LanceDB for Vector)
-- routes/   : REST API endpoints
-
-API Entry Points:
-- GET /health
-- POST /api/run (Agent Execution)
-- POST /api/tools (Direct Tool Access)
+[Security]
+- JWT Authentication
+- Workspace Sandboxing
+- Rosetta-aware spawning
