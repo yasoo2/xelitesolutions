@@ -603,7 +603,7 @@ jobs:
 
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
           echo "Deployment finished!"
-          REMOTE
+REMOTE
             if [ "$code" -eq 0 ]; then
               echo "SSH deploy succeeded."
               break
