@@ -90,9 +90,14 @@ async function ensureOwnerFromEnv() {
 console.log('DEBUG: Modules imported. Calling main...');
 
 async function main() {
-  console.log('DEBUG: main() started');
+  console.log('🚀 API GLOBAL STARTUP INITIATED...');
+  console.log('DEBUG: Node Version:', process.version);
+  console.log('DEBUG: Current Directory:', process.cwd());
+  console.log('DEBUG: NODE_ENV:', process.env.NODE_ENV);
+  console.log('DEBUG: PORT:', process.env.PORT);
+
   const app = express();
-  console.log('DEBUG: express app created');
+  console.log('DEBUG: express app instantiating...');
 
   // [EMERGENCY] Early Health Check (Before anything else)
   app.get('/health', (_req: any, res: any) => res.json({ status: 'OK', uptime: process.uptime(), source: 'root' }));
