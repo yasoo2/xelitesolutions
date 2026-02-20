@@ -9,7 +9,7 @@
     "build:api": "npm --prefix api run build",
     "build:web": "npm --prefix web run build",
     "build": "npm run build:api && npm run build:web && node -e \"const fs=require('fs'); if(fs.existsSync('web/dist')) { fs.cpSync('web/dist', 'dist', {recursive: true}); }\"",
-    "postinstall": "npm --prefix api install --no-audit --no-fund --include=dev && npm --prefix web install --no-audit --no-fund --include=dev",
+    "postinstall": "npm --prefix api install --no-audit --no-fund --include=dev --legacy-peer-deps && npm --prefix web install --no-audit --no-fund --include=dev --legacy-peer-deps",
     "prestart": "npm --prefix api run build",
     "start": "npm --prefix api run start"
   },
