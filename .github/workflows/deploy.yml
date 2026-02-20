@@ -536,19 +536,23 @@ jobs:
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
 
           echo "Tearing down old containers..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans || true
+          set +euo pipefail
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null
           
-          # Aggressive cleanup to prevent conflicts
-          echo "Force removing any remaining Joe containers..."
-          docker ps -a | grep -E '(joe_|joe-)' | awk '{print $1}' | xargs -r docker rm -f 2>/dev/null || true
+          echo "Force removing any remaining Joe containers by name..."
+          docker rm -f joe_dashboard joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot 2>/dev/null
           
-          # Also try explicit container names
-          for n in joe_dashboard joe_browser_worker joe_mongo joe_web joe_api joe_nginx joe_certbot; do
-            docker rm -f $n 2>/dev/null || true
+          echo "Force removing any Joe containers by wildcard..."
+          for cid in $(docker ps -aq); do
+            cname=$(docker inspect --format '{{.Name}}' $cid | sed 's/^\///')
+            if [[ "$cname" == joe_* ]] || [[ "$cname" == joe-* ]]; then
+              echo "Removing stale container $cname ($cid)..."
+              docker rm -f $cid 2>/dev/null
+            fi
           done
           
-          # Clean up dangling networks
-          docker network prune -f || true
+          docker network prune -f 2>/dev/null
+          set -euo pipefail
 
           echo "Docker restarting..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --remove-orphans
