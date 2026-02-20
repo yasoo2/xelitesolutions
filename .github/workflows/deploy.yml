@@ -579,25 +579,30 @@ jobs:
             docker logs --tail 200 "$WEB_CID" || true
           fi
 
-          echo "Waiting for ports 80/443 to become available..."
-          ok80=0
-          ok443=0
+          echo "Waiting for frontend (ports 80/443) and API (/api/health) to become available..."
+          ok_web=0
+          ok_api=0
           for i in $(seq 1 30); do
-            if curl -fsS -o /dev/null --max-time 2 http://127.0.0.1/ 2>/dev/null; then ok80=1; fi
-            if curl -fkfsS -o /dev/null --max-time 2 https://127.0.0.1/ 2>/dev/null; then ok443=1; fi
-            if [ "$ok80" -eq 1 ] && [ "$ok443" -eq 1 ]; then
-              echo "Ports are ready."
+            if curl -fkfsS -o /dev/null --max-time 2 https://127.0.0.1/ 2>/dev/null; then ok_web=1; fi
+            if curl -fkfsS -o /dev/null --max-time 2 https://127.0.0.1/api/health 2>/dev/null; then ok_api=1; fi
+            if [ "$ok_web" -eq 1 ] && [ "$ok_api" -eq 1 ]; then
+              echo "✅ Frontend and API are both ready."
               break
             fi
-            sleep 2
+            sleep 3
           done
 
-          if [ "$ok443" -ne 1 ]; then
-            echo "HTTPS port 443 still not reachable on localhost."
-            if [ -n "${NGINX_CID:-}" ]; then
-              docker logs --tail 200 "$NGINX_CID" || true
-            fi
-            $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps || true
+          if [ "$ok_api" -ne 1 ]; then
+            echo "❌ API failed to become ready! Fetching API logs for debugging..."
+            docker logs --tail 400 joe_api || true
+            echo "❌ Nginx logs:"
+            docker logs --tail 100 joe_nginx || true
+            exit 1
+          fi
+
+          if [ "$ok_web" -ne 1 ]; then
+            echo "❌ Frontend failed to become ready!"
+            docker logs --tail 100 joe_web || true
             exit 1
           fi
 
