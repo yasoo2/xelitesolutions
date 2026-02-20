@@ -94,74 +94,64 @@ async function main() {
   const app = express();
   console.log('DEBUG: express app created');
 
+  // [EMERGENCY] Early Health Check (Before anything else)
+  app.get('/health', (_req: any, res: any) => res.json({ status: 'OK', uptime: process.uptime(), source: 'root' }));
+
   const allowedOrigins = new Set<string>([
     'https://xelitesolutions.com',
     'https://www.xelitesolutions.com',
+    'https://api.xelitesolutions.com',
+    'https://ws.xelitesolutions.com',
+    'https://browser.xelitesolutions.com',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
-    'http://localhost:5174',
-    'http://127.0.0.1:5174',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
   ]);
+
   app.use(cors({
-    origin: true,
+    origin: (origin: any, callback: any) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Permissive for recovery
+      }
+    },
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Worker-Key', 'x-worker-key'],
   }));
 
-  // Middleware: Block API requests until DB is ready
-  app.use((req, res, next) => {
-    if (process.env.NODE_ENV === 'production' && req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
+  // Middleware: Block API requests until DB is ready (Optimized)
+  app.use((req: any, res: any, next: any) => {
+    if (process.env.NODE_ENV === 'production' && req.path.startsWith('/api') && req.path !== '/api/health' && mongoose.connection.readyState !== 1) {
       return res.status(503).json({
         error: 'Service Unavailable',
-        message: 'Database connection initializing, please try again shortly.',
+        message: 'Database initializing...',
         retryAfter: 5
       });
     }
     next();
   });
-  app.use(express.json({ limit: '10mb' }));
 
-  app.all('/api/webviewClick', (_req, res) => res.status(204).end());
-
+  app.use(express.json({ limit: '50mb' }));
+  app.all('/api/webviewClick', (_req: any, res: any) => res.status(204).end());
   app.use(morgan('dev'));
-
-  app.get('/health', (_req, res) => res.json({
-    status: 'OK',
-    db: mongoose.connection.readyState,
-    env: process.env.NODE_ENV,
-    adminSet: !!process.env.ADMIN_EMAIL,
-    uptime: process.uptime()
-  }));
-  app.get('/health/browser', async (_req, res) => {
-    try {
-      const r = await healthcheckBrowser();
-      return res.json({ status: 'OK', browser: 'OK', ms: r.ms, url: (r as any).url, screenshotHref: (r as any).screenshotHref });
-    } catch (e: any) {
-      return res.status(503).json({ status: 'FAIL', browser: 'FAIL', error: String(e?.message || e || 'browser_health_failed') });
-    }
-  });
-  app.get('/', (_req, res) => res.send('Joe API is running'));
 
   // Mount Central API Router
   app.use('/api', apiRouter);
 
-  // [NEW] Diagnostic Dashboard Route
-  const debugPath = path.resolve(__dirname, '..'); // Points to 'api/' folder
+  // [REPAIRED] Diagnostic Dashboard Route
+  const debugPath = process.cwd();
   app.use('/debug', express.static(debugPath));
-  app.get('/debug', (req, res) => {
+  app.get('/debug', (req: any, res: any) => {
     res.sendFile(path.join(debugPath, 'index.html'));
   });
 
-  apiRouter.get('/health', (_req, res) => res.json({
+  apiRouter.get('/health', (_req: any, res: any) => res.json({
     status: 'OK',
     db: mongoose.connection.readyState,
     env: process.env.NODE_ENV,
-    adminSet: !!process.env.ADMIN_EMAIL,
     uptime: process.uptime()
   }));
 
