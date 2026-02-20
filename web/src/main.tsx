@@ -119,12 +119,7 @@ createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {(() => {
       const appTree = (
-        <BrowserRouter
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
+        <BrowserRouter>
           <Routes>
             <Route path="/" element={<App />}>
               <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />

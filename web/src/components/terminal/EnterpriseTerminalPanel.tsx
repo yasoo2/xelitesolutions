@@ -382,7 +382,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
                             {tabs.map(tab => (
                                 <div
                                     key={tab.id}
-                                    ref={el => (containersRef.current[tab.id] = el)}
+                                    ref={el => { containersRef.current[tab.id] = el; }}
                                     className={`absolute inset-0 p-3 pt-4 ${activeTabId === tab.id ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}
                                 />
                             ))}
