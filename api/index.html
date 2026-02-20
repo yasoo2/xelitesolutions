@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joe System Diagnostic Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="glass-panel">
+        <h1>Joe API System Health</h1>
+        <p>Real-time status of the central intelligence core.</p>
+
+        <div class="status-grid">
+            <div class="status-card">
+                <div>Database</div>
+                <div id="db-status" class="status-value">Loading...</div>
+            </div>
+            <div class="status-card">
+                <div>Uptime</div>
+                <div id="uptime" class="status-value">Loading...</div>
+            </div>
+            <div class="status-card">
+                <div>Environment</div>
+                <div id="env" class="status-value">Loading...</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem;">
+            <h3>Quick Actions</h3>
+            <button onclick="window.location.href='test.html'">Open API Playground</button>
+            <button onclick="window.location.reload()">Refresh Data</button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,19 @@
+Joe Intelligence System Architecture
+===================================
+
+Root System:
+- api/ (Express Backend)
+- web/ (React Frontend)
+- data/ (Knowledge & Builds)
+
+Core Modules (api/src/):
+- services/ : Business logic & tool orchestration
+- tools/    : Atomic capabilities (fs, shell, git)
+- system/   : Builder engine and project scaffolding
+- models/   : MongoDB schemas (LanceDB for Vector)
+- routes/   : REST API endpoints
+
+API Entry Points:
+- GET /health
+- POST /api/run (Agent Execution)
+- POST /api/tools (Direct Tool Access)

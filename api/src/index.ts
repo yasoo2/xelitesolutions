@@ -150,6 +150,13 @@ async function main() {
   // Mount Central API Router
   app.use('/api', apiRouter);
 
+  // [NEW] Diagnostic Dashboard Route
+  const debugPath = path.resolve(__dirname, '..'); // Points to 'api/' folder
+  app.use('/debug', express.static(debugPath));
+  app.get('/debug', (req, res) => {
+    res.sendFile(path.join(debugPath, 'index.html'));
+  });
+
   apiRouter.get('/health', (_req, res) => res.json({
     status: 'OK',
     db: mongoose.connection.readyState,

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Playground</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="glass-panel">
+        <h1>API Playground</h1>
+        <p>Test system endpoints directly.</p>
+
+        <label>Endpoint</label>
+        <input type="text" id="endpoint" value="/health" placeholder="/api/tools/list">
+
+        <label>Request Body (JSON - Optional)</label>
+        <textarea id="body" rows="5" placeholder='{"sessionId": "..."}'></textarea>
+
+        <button onclick="runTest()">Execute Request</button>
+
+        <div style="margin-top: 2rem;">
+            <h3>Result</h3>
+            <pre id="result">Ready.</pre>
+        </div>
+
+        <button onclick="window.location.href='index.html'"
+            style="background: transparent; border: 1px solid var(--primary-color); color: var(--primary-color); margin-top: 1rem;">Back
+            to Dashboard</button>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
