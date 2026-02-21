@@ -907,9 +907,15 @@ export async function planNextStep(
           return { name: toolName, input: toolInput };
         }
 
-        // No tool call, return as echo
+        // No native tool call, check if the LLM output the JSON in the text content
         const textContent = message?.content || "";
         if (textContent) {
+          const extracted = extractToolCallFromText(textContent);
+          if (extracted) {
+            console.info(`[LLM] Gemini: Extracted tool call from text - ${extracted.name}`);
+            onProgress?.(`تنفيذ الأداة من النص: ${extracted.name}…`);
+            return { name: extracted.name, input: extracted.input, reasoning: extracted.reasoning };
+          }
           return { name: "echo", input: { text: textContent } };
         }
 
