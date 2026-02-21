@@ -5,7 +5,7 @@
     "main": "dist/index.js",
     "scripts": {
         "dev": "ts-node --transpile-only src/index.ts",
-        "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js --packages=external --external:mongoose --external:mongodb",
+        "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js --packages=external",
         "start": "node dist/index.js",
         "lint": "eslint .",
         "test:system": "ts-node src/tests/manual/verify_system.ts",
