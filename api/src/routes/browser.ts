@@ -49,6 +49,8 @@ router.post('/run', authenticate as any, async (req: Request, res: Response) => 
     activeBrowserRuns.delete(sid);
     if (!r.ok) {
       const err = String((r as any)?.error || '').trim();
+      if (err === 'quota_exceeded') return res.status(429).json({ error: 'quota_exceeded', detail: 'LLM Provider Quota Exhausted or Rate Limited' });
+      if (err === 'unauthorized') return res.status(401).json({ error: 'unauthorized', detail: 'LLM Provider API Key Invalid' });
       if (err === 'browser_unavailable') return res.status(503).json(r);
       return res.status(400).json(r);
     }

@@ -765,7 +765,13 @@ export async function runBrowserInstruction(params: {
         );
         compilerUsedStep = true;
         plannedStep = plannedFromUnknown(r);
-      } catch {
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        if (/quota|429|exceeded|rate limit/i.test(msg)) {
+          throw new Error('quota_exceeded');
+        } else if (/auth|401|403|unauthorized/i.test(msg)) {
+          throw new Error('unauthorized');
+        }
         plannedStep = null;
       }
 
@@ -927,7 +933,13 @@ export async function runBrowserInstruction(params: {
     );
     compilerUsed = true;
     planned = plannedFromUnknown(r);
-  } catch {
+  } catch (e: any) {
+    const msg = String(e?.message || '');
+    if (/quota|429|exceeded|rate limit/i.test(msg)) {
+      throw new Error('quota_exceeded');
+    } else if (/auth|401|403|unauthorized/i.test(msg)) {
+      throw new Error('unauthorized');
+    }
     planned = null;
   }
 
@@ -1032,6 +1044,11 @@ export async function runBrowserInstruction(params: {
     emitDebugSnapshot();
     return { ok: true as const, result: exec, debug: debugBase };
   } catch (e: any) {
+    const msg = String(e?.message || '');
+    if (msg === 'quota_exceeded' || msg === 'unauthorized') {
+      try { await stopSession(sessionId); } catch { }
+      return { ok: false as const, error: msg as any, debug: debugBase };
+    }
     const c = classifyBrowserRuntimeError(e);
     try { await stopSession(sessionId); } catch { }
     const ev: BrowserWsEvent = {
