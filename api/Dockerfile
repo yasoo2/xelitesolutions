@@ -8,15 +8,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies (including devDependencies for build tools)
+# Install dependencies
 RUN npm ci --include=dev && npm cache clean --force
 
 # Copy source code
 COPY . .
 
-# Build TypeScript using esbuild with the clean build tsconfig (no wildcard paths)
-RUN npx esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js \
-    --packages=external --tsconfig=tsconfig.build.json
+# Build TypeScript
+RUN npm run build
 
 # Expose port
 EXPOSE 3000

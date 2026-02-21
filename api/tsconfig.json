@@ -15,13 +15,7 @@
         "resolveJsonModule": true,
         "declaration": true,
         "sourceMap": true,
-        "baseUrl": ".",
-        "paths": {
-            "*": [
-                "node_modules/*",
-                "src/*"
-            ]
-        }
+        "baseUrl": "."
     },
     "include": [
         "src/**/*"
