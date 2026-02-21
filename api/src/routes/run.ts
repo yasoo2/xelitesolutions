@@ -1080,7 +1080,7 @@ function fallbackPlanWhenPlannerUnavailable(params: {
     const key = sessionId;
     const now = Date.now();
     const last = projectDetectThrottle.get(key) || 0;
-    if (last && now - last < 120000) {
+    if (last && now - last < 10000) { // Reduced from 120000 to 10000 for better dev UX
       return {
         name: 'echo',
         input: {
