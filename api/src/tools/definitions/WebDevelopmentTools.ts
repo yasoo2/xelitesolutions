@@ -252,8 +252,18 @@ export class WebPipelineTool extends BaseTool {
             if (devRes.ok) {
                 const previewUrl = String((devRes.output as any)?.userPreviewUrl || (devRes.output as any)?.previewUrl || `http://localhost:${port}/`).trim();
                 steps.push({ step: 'dev_server_preview_ready', ok: true, output: { previewUrl } });
+                
+                // Final confirmation broadcast
                 broadcastBuildProgress(sessionId, 'complete', `✨ Project ready at ${previewUrl}`, 100);
                 if (sessionId) broadcastThinkingDetail(sessionId, `✨ Project is ready at ${previewUrl}`);
+                
+                // Crucial: emit preview_ready again to ensure frontend catches it if it was flaking
+                const { broadcast } = require('../../ws');
+                broadcast({
+                    type: 'preview_ready',
+                    data: { url: previewUrl, cwd: projectPath, timestamp: new Date().toISOString() },
+                    sessionId
+                });
             }
         }
 
@@ -320,10 +330,15 @@ export class DevServerTool extends BaseTool {
             let userPreviewUrl = `http://localhost:${port}/`;
 
             // If in production environment (Docker), use the Nginx reverse proxy URL
-            if (process.env.NODE_ENV === 'production' || fs.existsSync('/etc/letsencrypt/live/xelitesolutions.com/fullchain.pem')) {
+            const isProd = process.env.NODE_ENV === 'production' || 
+                          process.env.JWT_SECRET?.includes('persistent') ||
+                          fs.existsSync('/etc/letsencrypt') ||
+                          fs.existsSync('/.dockerenv');
+            
+            if (isProd) {
                 userPreviewUrl = `https://www.xelitesolutions.com/preview/${port}/`;
             }
-            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port} pid=${child.pid || 'unknown'}`);
+            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port} isProd=${isProd} env=${process.env.NODE_ENV}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview
             const { broadcast } = require('../../ws');
