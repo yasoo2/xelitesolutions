@@ -12,7 +12,7 @@ const activeBrowserRuns = new Map<string, number>();
 
 async function ensureBrowserSessionAccess(req: Request, res: Response, sessionId: string) {
   const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
-  if (authBypass) return { ok: true as const };
+  if (authBypass) return { ok: true as const, userId: 'bypass-user' };
   const userId = String((req as any).auth?.sub || '').trim();
   if (!userId) return { ok: false as const, status: 401, body: { error: 'unauthorized' } };
   const ok = await canAccessBrowserSession(userId, sessionId);
