@@ -273,6 +273,11 @@ async function connect() {
       } else if (msgType === 'run_started') {
         thinkingDetails = [];
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
+      } else if (msgType === 'build_progress') {
+        // [Flow Agent] Live build progress events for PreviewPanel overlay
+        const progressData = data?.data || {};
+        console.log(`[Socket] Build progress: ${progressData.phase} (${progressData.progress}%)`);
+        window.dispatchEvent(new CustomEvent('preview:build_progress', { detail: progressData }));
       } else if (msgType === 'preview_ready' || msgType === 'preview_url') {
         // [Preview Pipeline] When the API sends a preview URL, dispatch it to PreviewPanel
         const url = data?.data?.url || data?.url;

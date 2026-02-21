@@ -99,8 +99,9 @@ class AutoOpenManagerClass {
         }
 
         // When preview is ready (matches both event types)
-        if (event.type === 'preview_ready' || event.type === 'preview_url') {
-            console.log('[AutoOpenManager] Preview event received, switching tab', event.type, event.data);
+        if (event.type === 'preview_ready' || event.type === 'preview_url' || event.type === 'build_progress') {
+            const isBuild = event.type === 'build_progress';
+            console.log(`[AutoOpenManager] ${isBuild ? 'Build progress' : 'Preview'} event received, switching tab`, event.type);
             this.triggerOpen('preview', event.data);
         }
 

@@ -6,9 +6,19 @@ import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { Builder } from '../../system/Builder';
-import { broadcastThinkingDetail } from '../../ws';
+import { broadcastThinkingDetail, broadcast } from '../../ws';
 
 import { resolveToolPath } from '../utils';
+
+// Flow Agent: Broadcast structured build progress events
+function broadcastBuildProgress(sessionId: string | undefined, phase: string, message: string, progress: number) {
+    if (!sessionId) return;
+    broadcast({
+        type: 'build_progress',
+        data: { phase, message, progress, timestamp: new Date().toISOString() },
+        sessionId
+    });
+}
 
 
 async function findAvailablePort(start: number, host: string = '0.0.0.0'): Promise<number> {
@@ -82,6 +92,7 @@ export class WebPipelineTool extends BaseTool {
         logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
 
         if (sessionId) broadcastThinkingDetail(sessionId, `🚀 Starting Pipeline for "${name}" (${type})`);
+        broadcastBuildProgress(sessionId, 'initializing', `Starting pipeline for "${name}"`, 0);
 
         // 0. System Check
         if (sessionId) broadcastThinkingDetail(sessionId, `🔍 Performing environment architecture check...`);
@@ -102,6 +113,7 @@ export class WebPipelineTool extends BaseTool {
         if (sessionId) broadcastThinkingDetail(sessionId, `✅ Environment check passed`);
 
         // 1. Scaffold
+        broadcastBuildProgress(sessionId, 'scaffolding', '🏗️ Scaffolding project structure...', 10);
         if (sessionId) broadcastThinkingDetail(sessionId, `🏗️ Scaffolding project structure...`);
         const port = await findAvailablePort(5180);
         const scRes = await executeTool('scaffold_full_stack', {
@@ -121,6 +133,7 @@ export class WebPipelineTool extends BaseTool {
         if (sessionId) broadcastThinkingDetail(sessionId, `✅ Scaffold complete at ${projectPath}`);
 
         // 2. Detect & Install
+        broadcastBuildProgress(sessionId, 'dependencies', '📦 Installing dependencies...', 30);
         if (sessionId) broadcastThinkingDetail(sessionId, `🔍 Detecting project types and dependencies...`);
         const detectRes = await executeTool('project_detect', { path: projectPath }, { sessionId, workspaceId });
         steps.push({ step: 'project_detect', ok: detectRes.ok, output: detectRes.output });
@@ -176,6 +189,7 @@ export class WebPipelineTool extends BaseTool {
         }
         if (sessionId) broadcastThinkingDetail(sessionId, `✅ Dependencies installed successfully`);
 
+        broadcastBuildProgress(sessionId, 'building', '🛡️ Running quality checks and building...', 55);
         // 3. Quality & Fix
         const readScripts = (proj: string) => {
             const pkgPath = path.join(proj, 'package.json');
@@ -205,6 +219,7 @@ export class WebPipelineTool extends BaseTool {
 
         // 4. Security
         if (securityChecks) {
+            broadcastBuildProgress(sessionId, 'security', '🔐 Running security audit...', 70);
             if (sessionId) broadcastThinkingDetail(sessionId, `🔐 Running security audit...`);
             const secretsRes = await executeTool('secrets_scan_repo', { path: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'secrets_scan_repo', ok: secretsRes.ok, output: secretsRes.output });
@@ -230,12 +245,14 @@ export class WebPipelineTool extends BaseTool {
 
         // 6. Preview
         if (!skipDev) {
+            broadcastBuildProgress(sessionId, 'preview', '🌐 Starting dev server...', 90);
             if (sessionId) broadcastThinkingDetail(sessionId, `🌐 Starting dev server...`);
             const devRes = await executeTool('dev_server_start', { cwd: projectPath }, { sessionId, workspaceId });
             steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
             if (devRes.ok) {
-                const previewUrl = String((devRes.output as any)?.previewUrl || `http://localhost:${port}/`).trim();
+                const previewUrl = String((devRes.output as any)?.userPreviewUrl || (devRes.output as any)?.previewUrl || `http://localhost:${port}/`).trim();
                 steps.push({ step: 'dev_server_preview_ready', ok: true, output: { previewUrl } });
+                broadcastBuildProgress(sessionId, 'complete', `✨ Project ready at ${previewUrl}`, 100);
                 if (sessionId) broadcastThinkingDetail(sessionId, `✨ Project is ready at ${previewUrl}`);
             }
         }
@@ -300,7 +317,12 @@ export class DevServerTool extends BaseTool {
             child.unref(); // Fire and forget (keep running)
 
             const previewUrl = `http://api:${port}/`;
-            const userPreviewUrl = `http://localhost:${port}/`;
+            let userPreviewUrl = `http://localhost:${port}/`;
+
+            // If in production environment (Docker), use the Nginx reverse proxy URL
+            if (process.env.NODE_ENV === 'production' || fs.existsSync('/etc/letsencrypt/live/xelitesolutions.com/fullchain.pem')) {
+                userPreviewUrl = `https://www.xelitesolutions.com/preview/${port}/`;
+            }
             logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port} pid=${child.pid || 'unknown'}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview

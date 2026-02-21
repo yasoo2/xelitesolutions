@@ -46,9 +46,14 @@ export default function PreviewPanel({
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [key, setKey] = useState(0); // For forcing iframe reload
+    const [buildProgress, setBuildProgress] = useState<{
+        phase: string;
+        message: string;
+        progress: number;
+    } | null>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
-    // Listen for preview_ready events
+    // Listen for preview events
     useEffect(() => {
         const handlePreviewReady = (e: CustomEvent) => {
             const detail = e.detail as { url?: string };
@@ -56,12 +61,21 @@ export default function PreviewPanel({
                 setPreviewUrl(detail.url);
                 setInputUrl(detail.url);
                 setError(null);
+                setBuildProgress(null); // Clear build progress when ready
                 onReady?.();
             }
         };
 
+        const handleBuildProgress = (e: CustomEvent) => {
+            setBuildProgress(e.detail);
+        };
+
         window.addEventListener('preview:ready', handlePreviewReady as any);
-        return () => window.removeEventListener('preview:ready', handlePreviewReady as any);
+        window.addEventListener('preview:build_progress', handleBuildProgress as any);
+        return () => {
+            window.removeEventListener('preview:ready', handlePreviewReady as any);
+            window.removeEventListener('preview:build_progress', handleBuildProgress as any);
+        };
     }, [onReady]);
 
     // Update when initial URL changes
@@ -170,7 +184,21 @@ export default function PreviewPanel({
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: 2 }}>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    {buildProgress && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '4px 8px',
+                            background: 'rgba(56, 189, 248, 0.1)',
+                            borderRadius: 4,
+                            marginRight: 8,
+                        }}>
+                            <RefreshCw size={10} style={{ color: '#38bdf8', animation: 'spin 2s linear infinite' }} />
+                            <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>جاري البناء...</span>
+                        </div>
+                    )}
                     <PreviewButton
                         icon={RefreshCw}
                         tooltip="تحديث"
@@ -195,7 +223,97 @@ export default function PreviewPanel({
                 alignItems: 'flex-start',
                 padding: device === 'desktop' ? 0 : 16,
                 background: device === 'desktop' ? 'transparent' : 'var(--bg-card)',
+                position: 'relative', // Need this for absolute overlay
             }}>
+                {/* Build Progress Overlay */}
+                {buildProgress && (
+                    <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 100,
+                        background: 'rgba(10, 10, 15, 0.85)',
+                        backdropFilter: 'blur(12px)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 40,
+                        textAlign: 'center',
+                    }}>
+                        <div style={{
+                            width: '100%',
+                            maxWidth: 400,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 20,
+                        }}>
+                            {/* Animated Construction Icon */}
+                            <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto' }}>
+                                <div style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    border: '4px solid rgba(56, 189, 248, 0.2)',
+                                    borderRadius: '50%',
+                                    borderTopColor: '#38bdf8',
+                                    animation: 'spin 3s linear infinite',
+                                }} />
+                                <div style={{
+                                    position: 'absolute',
+                                    inset: 10,
+                                    border: '4px solid rgba(139, 92, 246, 0.2)',
+                                    borderRadius: '50%',
+                                    borderBottomColor: '#8b5cf6',
+                                    animation: 'spin 2s linear reverse infinite',
+                                }} />
+                                <div style={{
+                                    height: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <Eye size={32} style={{ color: '#38bdf8' }} />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 18, fontWeight: 700 }}>
+                                    {buildProgress.phase === 'scaffolding' ? '🏗️ جارٍ تجهيز الهيكل...' :
+                                        buildProgress.phase === 'dependencies' ? '📦 تركيب المكتبات...' :
+                                            buildProgress.phase === 'building' ? '🛡️ جودة الكود والبناء...' :
+                                                buildProgress.phase === 'preview' ? '🌐 تشغيل المعاينة...' :
+                                                    '✨ جاري الانتهاء...'}
+                                </h3>
+                                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 14 }}>
+                                    {buildProgress.message}
+                                </p>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <div style={{
+                                    width: '100%',
+                                    height: 6,
+                                    background: 'rgba(255,255,255,0.05)',
+                                    borderRadius: 10,
+                                    overflow: 'hidden'
+                                }}>
+                                    <div style={{
+                                        width: `${buildProgress.progress}%`,
+                                        height: '100%',
+                                        background: 'linear-gradient(90deg, #38bdf8, #8b5cf6)',
+                                        transition: 'width 0.5s ease-out',
+                                        boxShadow: '0 0 10px rgba(56, 189, 248, 0.5)',
+                                    }} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
+                                    <span>{Math.round(buildProgress.progress)}%</span>
+                                    <span>التقدم الإجمالي</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {previewUrl ? (
                     <div style={{
                         width: currentDevice.width,
@@ -228,25 +346,27 @@ export default function PreviewPanel({
                         />
                     </div>
                 ) : (
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '100%',
-                        width: '100%',
-                        color: 'var(--text-muted)',
-                        gap: 12,
-                    }}>
-                        <Eye size={48} style={{ opacity: 0.3 }} />
-                        <div style={{ fontSize: 14, textAlign: 'center' }}>
-                            لا توجد معاينة
-                            <br />
-                            <span style={{ fontSize: 12, opacity: 0.7 }}>
-                                ادخل رابط أو انتظر حتى يتم إنشاء ملف
-                            </span>
+                    !buildProgress && (
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '100%',
+                            width: '100%',
+                            color: 'var(--text-muted)',
+                            gap: 12,
+                        }}>
+                            <Eye size={48} style={{ opacity: 0.3 }} />
+                            <div style={{ fontSize: 14, textAlign: 'center' }}>
+                                لا توجد معاينة
+                                <br />
+                                <span style={{ fontSize: 12, opacity: 0.7 }}>
+                                    ادخل رابط أو انتظر حتى يتم إنشاء ملف
+                                </span>
+                            </div>
                         </div>
-                    </div>
+                    )
                 )}
             </div>
 

@@ -536,8 +536,8 @@ jobs:
             COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" timeout 20m bash ./scripts/init-letsencrypt.sh
           fi
 
-          echo "Docker building (no cache)..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --no-cache
+          echo "Docker building..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
 
           echo "Tearing down old containers..."
           set +euo pipefail
