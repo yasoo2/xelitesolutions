@@ -15,6 +15,10 @@ on:
           - ssh
           - self-hosted
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
 jobs:
   deploy_self_hosted:
     if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted') }}
