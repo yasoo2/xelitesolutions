@@ -40,7 +40,7 @@ const userApiKeys = new Map<string, string>();
 
 // Helper to extract JSON tool call from messy LLM text
 export function extractToolCallFromText(text: string): { name: string; input: any; reasoning?: string } | null {
-  if (!text) return null;
+  if (!text || text.length < 5) return null;
 
   // 1. Try to find JSON block in markdown
   const markdownJsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
@@ -51,7 +51,50 @@ export function extractToolCallFromText(text: string): { name: string; input: an
     } catch (e) { }
   }
 
-  // 2. Try to find the first/last {...} block
+  // 2. Try to find reasoning/thought block to preserve it
+  let reasoning: string | undefined = undefined;
+  const thoughtMatch = text.match(/<thought>([\s\S]*?)<\/thought>/i) ||
+    text.match(/:::thought([\s\S]*?):::/i) ||
+    text.match(/<think>([\s\S]*?)<\/think>/i);
+  if (thoughtMatch) {
+    reasoning = thoughtMatch[1].trim();
+  }
+
+  // 3. Try to find the largest valid JSON structure containing "name" and "input"
+  try {
+    const bracePairs: { start: number; end: number }[] = [];
+    let stack = 0;
+    let start = -1;
+
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') {
+        if (stack === 0) start = i;
+        stack++;
+      } else if (text[i] === '}') {
+        stack--;
+        if (stack === 0 && start !== -1) {
+          bracePairs.push({ start, end: i });
+        }
+      }
+    }
+
+    // Try blocks from largest to smallest
+    const candidates = bracePairs
+      .sort((a, b) => (b.end - b.start) - (a.end - a.start))
+      .map(p => text.substring(p.start, p.end + 1));
+
+    for (const cand of candidates) {
+      try {
+        const json = JSON.parse(cand);
+        if (json.name && json.input) {
+          if (reasoning && !json.reasoning) json.reasoning = reasoning;
+          return json;
+        }
+      } catch { }
+    }
+  } catch (e) { }
+
+  // 4. Final fallback: simple regex for when LLM misses a brace
   try {
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');

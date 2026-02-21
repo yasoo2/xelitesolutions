@@ -83,14 +83,23 @@ export class GeminiProvider {
         }
 
         const modelsToTry = (() => {
-            const ordered = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
+            const raw = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
             const seen = new Set<string>();
             const out: string[] = [];
-            for (const m of ordered) {
+            for (const m of raw) {
                 if (!m.trim()) continue;
                 if (seen.has(m)) continue;
                 seen.add(m);
                 out.push(m);
+
+                // Add models/ prefix fallback if not present
+                if (!m.startsWith('models/')) {
+                    const prefixed = `models/${m}`;
+                    if (!seen.has(prefixed)) {
+                        seen.add(prefixed);
+                        out.push(prefixed);
+                    }
+                }
             }
             return out;
         })();
@@ -182,14 +191,21 @@ export class GeminiProvider {
         }
 
         const modelsToTry = (() => {
-            const ordered = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
+            const raw = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
             const seen = new Set<string>();
             const out: string[] = [];
-            for (const m of ordered) {
+            for (const m of raw) {
                 if (!m.trim()) continue;
                 if (seen.has(m)) continue;
                 seen.add(m);
                 out.push(m);
+                if (!m.startsWith('models/')) {
+                    const prefixed = `models/${m}`;
+                    if (!seen.has(prefixed)) {
+                        seen.add(prefixed);
+                        out.push(prefixed);
+                    }
+                }
             }
             return out;
         })();

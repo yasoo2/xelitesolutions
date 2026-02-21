@@ -2524,8 +2524,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                         provider: 'auto',
                         userId,
                         sessionId,
-                        onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }),
-                        onThought: (t) => ev({ type: 'thought', data: t }),
+                        onProgress: (p) => {
+                          broadcastThinkingDetail(String(sessionId), `> ${p}`);
+                          ev({ type: 'thought', data: `> ${p}` });
+                        },
+                        onThought: (t) => {
+                          broadcastThinkingDetail(String(sessionId), t);
+                          ev({ type: 'thought', data: t });
+                        },
                         throwOnError: false
                       });
                       if (plan) continue; // Loop continues with new plan

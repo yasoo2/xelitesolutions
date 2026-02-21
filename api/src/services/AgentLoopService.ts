@@ -4,7 +4,7 @@ import { Run } from '../models/run';
 import { Message } from '../models/message';
 import { ToolExecution } from '../models/toolExecution';
 import { Session } from '../models/session';
-import { broadcast } from '../ws';
+import { broadcast, broadcastThinkingDetail } from '../ws';
 import { executeTool } from '../services/ToolService';
 
 import { getSessionRunConfig, popPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted, setPendingTool } from '../services/secrets';
@@ -212,7 +212,13 @@ export class AgentLoopService {
                     model: runCfg?.model,
                     userId,
                     sessionId,
-                    workspaceId
+                    workspaceId,
+                    onProgress: (p) => {
+                        broadcastThinkingDetail(sessionId, `> ${p}`);
+                    },
+                    onThought: (t) => {
+                        broadcastThinkingDetail(sessionId, t);
+                    }
                 });
             } catch (e: any) {
                 console.error('LLM Plan Error', e);
