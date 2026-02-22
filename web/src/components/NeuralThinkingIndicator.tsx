@@ -59,34 +59,29 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           position: relative;
           flex-direction: column;
           gap: 0;
-          background: var(--joe-thinking-bg);
-          border: 1px solid var(--joe-thinking-border);
-          border-radius: 16px;
-          backdrop-filter: blur(12px);
+          background: transparent;
+          border: none;
+          backdrop-filter: none;
           overflow: hidden;
           transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-          margin-bottom: 12px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+          margin-bottom: 8px;
           max-width: 100%;
           z-index: 10;
         }
 
         .neural-container.bubble {
-          border-radius: 4px 16px 16px 16px;
           margin-bottom: 0px;
-          border-left: 2px solid var(--joe-gold-primary);
         }
 
         .neural-container.expanded {
-          border-color: rgba(0, 210, 255, 0.3);
-          box-shadow: 0 8px 32px rgba(0, 210, 255, 0.15);
+          box-shadow: none;
         }
 
         .neural-header {
           display: flex;
           align-items: center;
           gap: 12px;
-          padding: 10px 16px;
+          padding: 4px 0px;
           cursor: default;
         }
 
@@ -121,11 +116,10 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           gap: 6px;
           letter-spacing: 1px;
           text-transform: uppercase;
-          text-shadow: 0 0 10px ${current.color}44;
         }
 
         .neural-log-window {
-          padding: 0 16px 14px;
+          padding: 8px 0;
           display: flex;
           flex-direction: column;
           gap: 4px;
@@ -133,14 +127,13 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           overflow-y: auto;
           scrollbar-width: thin;
           scrollbar-color: rgba(255,255,255,0.1) transparent;
-          border-top: 1px solid var(--joe-thinking-border);
+          border-top: 1px solid rgba(255,255,255,0.05);
           margin-top: 4px;
-          padding-top: 10px;
         }
 
         .neural-log-window::-webkit-scrollbar { width: 3px; }
         .neural-log-window::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.2);
+          background: rgba(255,255,255,0.1);
           border-radius: 4px;
         }
 
@@ -153,7 +146,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           word-break: break-word;
           opacity: 0;
           animation: fade-in-up 0.3s ease-out forwards;
-          border-left: 2px solid transparent;
+          border-left: 1px solid transparent;
           padding-left: 8px;
         }
 
