@@ -38,8 +38,8 @@ export default function JoeHeader({
         return `hsl(${h}, 70%, 45%)`;
     };
 
-    const displayAvatar = userAvatar || (userEmail ? `https://www.gravatar.com/avatar/${userEmail}?d=identicon` : null);
     const displayName = userName || (userEmail ? userEmail.split('@')[0] : 'User');
+    const displayAvatar = userAvatar || (userEmail ? `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=f0c14b&color=0a0c10&bold=true` : null);
 
     return (
         <header className="joe-header">
