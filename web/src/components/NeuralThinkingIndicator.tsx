@@ -5,55 +5,55 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { SocketService } from '../services/socket';
-import MatrixRain from './MatrixRain';
+
 
 interface NeuralThinkingIndicatorProps {
-    phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
-    visible: boolean;
-    variant?: 'inline' | 'bubble';
+  phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
+  visible: boolean;
+  variant?: 'inline' | 'bubble';
 }
 
 const phaseLabels: Record<string, { emoji: string; text: string; textAr: string; color: string }> = {
-    analyzing: { emoji: '🧠', text: 'Analyzing', textAr: 'تحليل عميق', color: '#00d2ff' }, // Cyan
-    synthesizing: { emoji: '⚙️', text: 'Synthesizing', textAr: 'تخطيط', color: '#b0fb5d' }, // Matrix Green
-    executing: { emoji: '🚀', text: 'Executing', textAr: 'تنفيذ', color: '#ffd700' }, // Gold
-    idle: { emoji: '', text: '', textAr: '', color: '#aab3c5' },
+  analyzing: { emoji: '🧠', text: 'Analyzing', textAr: 'تحليل عميق', color: '#00d2ff' }, // Cyan
+  synthesizing: { emoji: '⚙️', text: 'Synthesizing', textAr: 'تخطيط', color: '#b0fb5d' }, // Matrix Green
+  executing: { emoji: '🚀', text: 'Executing', textAr: 'تنفيذ', color: '#ffd700' }, // Gold
+  idle: { emoji: '', text: '', textAr: '', color: '#aab3c5' },
 };
 
 export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline' }: NeuralThinkingIndicatorProps) {
-    const [currentPhase, setCurrentPhase] = useState(phase);
-    const [details, setDetails] = useState<string[]>([]);
-    const bottomRef = useRef<HTMLDivElement>(null);
+  const [currentPhase, setCurrentPhase] = useState(phase);
+  const [details, setDetails] = useState<string[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        const unsubDetails = SocketService.subscribeThinkingDetails((newDetails) => {
-            setDetails(newDetails);
-        });
-        const unsubPhase = SocketService.subscribeThinkingPhase((p: any) => {
-            setCurrentPhase(p);
-        });
-        return () => {
-            unsubDetails();
-            unsubPhase();
-        };
-    }, []);
+  useEffect(() => {
+    const unsubDetails = SocketService.subscribeThinkingDetails((newDetails) => {
+      setDetails(newDetails);
+    });
+    const unsubPhase = SocketService.subscribeThinkingPhase((p: any) => {
+      setCurrentPhase(p);
+    });
+    return () => {
+      unsubDetails();
+      unsubPhase();
+    };
+  }, []);
 
-    useEffect(() => {
-        if (visible && details.length > 0) {
-            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, [details, visible]);
+  useEffect(() => {
+    if (visible && details.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [details, visible]);
 
-    if (!visible && details.length === 0) return null;
-    if (phase === 'idle' && details.length === 0) return null; // [Wakil 6.1] Absolute clean when idle
+  if (!visible && details.length === 0) return null;
+  if (phase === 'idle' && details.length === 0) return null; // [Wakil 6.1] Absolute clean when idle
 
-    const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
-    const isMatrixMode = details.length > 0;
+  const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
+  const isMatrixMode = details.length > 0;
 
-    return (
-        <div className={`neural-container ${isMatrixMode ? 'expanded' : ''} ${variant}`}>
-            <MatrixRain active={currentPhase !== 'idle' || isMatrixMode} color={current.color} />
-            <style>{`
+  return (
+    <div className={`neural-container ${isMatrixMode ? 'expanded' : ''} ${variant}`}>
+
+      <style>{`
         .neural-container {
           display: flex;
           position: relative;
@@ -169,28 +169,28 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         }
       `}</style>
 
-            <div className="neural-header">
-                <div className="neural-dots">
-                    <div className="neural-dot" />
-                    <div className="neural-dot" />
-                    <div className="neural-dot" />
-                </div>
-                <div className="neural-label">
-                    <span>{current.emoji}</span>
-                    <span>{current.textAr}</span>
-                </div>
-            </div>
-
-            {isMatrixMode && (
-                <div className="neural-log-window">
-                    {details.map((line, i) => (
-                        <div key={i} className="log-line">
-                            {line}
-                        </div>
-                    ))}
-                    <div ref={bottomRef} />
-                </div>
-            )}
+      <div className="neural-header">
+        <div className="neural-dots">
+          <div className="neural-dot" />
+          <div className="neural-dot" />
+          <div className="neural-dot" />
         </div>
-    );
+        <div className="neural-label">
+          <span>{current.emoji}</span>
+          <span>{current.textAr}</span>
+        </div>
+      </div>
+
+      {isMatrixMode && (
+        <div className="neural-log-window">
+          {details.map((line, i) => (
+            <div key={i} className="log-line">
+              {line}
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      )}
+    </div>
+  );
 }
