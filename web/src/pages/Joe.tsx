@@ -30,13 +30,21 @@ export default function Joe() {
 
     // Session store
     const {
+        sessions,
         agentSessions,
+        selected,
         agentSelected,
         loadAllSessions,
+        setSelected,
         setAgentSelected,
+        loadFolders,
         deleteSession,
-        deleteAllSessions,
+        deleteAllSessions
     } = useSessionStore();
+
+    // Determine active session
+    const activeSessionId = agentSelected || selected || undefined;
+    const activeSessionKind = agentSelected ? 'agent' : (selected ? 'chat' : 'agent');
 
     const { createSession } = useSessionActions();
 
@@ -149,7 +157,7 @@ export default function Joe() {
 
             // Handle messages (Legacy & New Events)
             if ((msg.type === 'message' || msg.type === 'user_input' || msg.type === 'text') &&
-                (msg.sessionId === agentSelected || msg.data?.sessionId === agentSelected)) {
+                (msg.sessionId === activeSessionId || msg.data?.sessionId === activeSessionId)) {
 
                 const role = msg.type === 'user_input' ? 'user' : (msg.role || 'assistant');
                 const content = msg.type === 'user_input' ? (typeof msg.data === 'string' ? msg.data : msg.data?.text || msg.data) : (msg.data?.text || msg.content);
@@ -177,7 +185,7 @@ export default function Joe() {
             }
         });
         return () => { unsub(); };
-    }, [agentSelected]);
+    }, [activeSessionId]);
 
     // [AUTO-SWITCH] Listen for workspace tab switch from CommandComposer SSE events
     useEffect(() => {
@@ -193,15 +201,15 @@ export default function Joe() {
 
     // Browser session ID
     useEffect(() => {
-        const sessionId = agentSelected;
+        const sessionId = activeSessionId;
         if (sessionId) {
             setBrowserSessionId(`browser:${sessionId}`);
         }
-    }, [agentSelected]);
+    }, [activeSessionId]);
 
     // Load messages when session changes
     useEffect(() => {
-        const sessionId = agentSelected;
+        const sessionId = activeSessionId;
         if (!sessionId) {
             setMessages([]);
             return;
@@ -240,7 +248,7 @@ export default function Joe() {
         };
 
         loadMessages();
-    }, [agentSelected]);
+    }, [activeSessionId]);
 
     // Workspace Management
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -421,17 +429,31 @@ export default function Joe() {
     const handleSend = useCallback(async () => {
         if (!inputValue.trim() || isLoading) return;
 
-        const sessionId = agentSelected;
-        if (!sessionId) {
-            // Create new session
-            await createSession({ kind: 'agent' });
-            return;
+        let targetSessionId = activeSessionId;
+        let kind: 'chat' | 'agent' = activeSessionKind;
+
+        if (!targetSessionId) {
+            try {
+                const data: any = await api.post('/sessions', { kind: 'agent' });
+                targetSessionId = data?.id || data?._id;
+                kind = 'agent';
+                if (targetSessionId) {
+                    setAgentSelected(targetSessionId);
+                    await loadAllSessions();
+                }
+            } catch (e) {
+                console.error('Failed to create session on the fly', e);
+                return;
+            }
         }
 
+        if (!targetSessionId) return;
+
+        const messageText = inputValue;
         const userMessage: Message = {
             id: `user-${Date.now()}`,
             role: 'user',
-            content: inputValue,
+            content: messageText,
             timestamp: new Date()
         };
 
@@ -440,24 +462,27 @@ export default function Joe() {
         setIsLoading(true);
 
         try {
-            // Ensure we have a workspace ID before sending
             let currentWorkspaceId = workspaceId;
             if (!currentWorkspaceId) {
                 currentWorkspaceId = await ensuresWorkspace();
             }
 
-            // ELITE FIX: Use /run/start to trigger AI processing
-            await api.post('/run/start', {
-                text: inputValue,
-                sessionId,
-                workspaceId: currentWorkspaceId // Pass workspace context
-            });
+            if (kind === 'agent') {
+                await api.post('/run/start', {
+                    text: messageText,
+                    sessionId: targetSessionId,
+                    workspaceId: currentWorkspaceId
+                });
+            } else {
+                await SocketService.sendMessage(targetSessionId, messageText);
+            }
         } catch (e) {
             console.error('Failed to send message:', e);
+            setInputValue(messageText);
+        } finally {
             setIsLoading(false);
         }
-        // Removed aggressive setIsLoading(false) - now handled by socket events
-    }, [inputValue, isLoading, agentSelected, createSession, workspaceId, ensuresWorkspace]);
+    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, ensuresWorkspace, loadAllSessions, setAgentSelected]);
 
     const handleCreateSession = useCallback(async () => {
         await createSession({ kind: 'agent' });
@@ -518,12 +543,12 @@ export default function Joe() {
         setTheme(prev => prev === 'dark' ? 'light' : 'dark');
     }, []);
 
-    // Transform sessions for SessionsBar
-    const sessionsList = agentSessions.map(s => ({
+    // Transform sessions for SessionsBar (Unified)
+    const sessionsList = [...agentSessions, ...sessions].map(s => ({
         id: s.id,
         title: s.title,
-        timestamp: new Date(), // We don't have this on session object yet
-        isActive: s.id === agentSelected
+        timestamp: new Date(),
+        isActive: s.id === activeSessionId
     }));
 
     return (
@@ -542,11 +567,21 @@ export default function Joe() {
                 workspaceTab={workspaceTab}
                 onWorkspaceTabChange={setWorkspaceTab}
                 browserSessionId={browserSessionId || undefined}
-                terminalId={agentSelected || undefined}
+                terminalId={activeSessionId}
                 previewUrl={previewUrl}
-                sessionId={agentSelected || undefined}
+                sessionId={activeSessionId}
+                sessionKind={activeSessionKind}
                 sessions={sessionsList}
-                onSelectSession={setAgentSelected}
+                onSelectSession={(id) => {
+                    const isAgent = agentSessions.some(s => s.id === id);
+                    if (isAgent) {
+                        setAgentSelected(id);
+                        setSelected(null);
+                    } else {
+                        setSelected(id);
+                        setAgentSelected(null);
+                    }
+                }}
                 onDeleteSession={deleteSession}
                 onDeleteAllSessions={deleteAllSessions}
                 onNewSession={handleCreateSession}
@@ -569,8 +604,8 @@ export default function Joe() {
                 githubLoading={ghLoading}
                 chatChildren={
                     <CommandComposer
-                        sessionId={agentSelected || undefined}
-                        sessionKind="agent"
+                        sessionId={activeSessionId}
+                        sessionKind={activeSessionKind}
                         hideHistory={true}
                         workspaceId={workspaceId}
                         onMessagesUpdate={handleComposerMessages}

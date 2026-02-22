@@ -55,6 +55,7 @@ interface JoeIDELayoutProps {
     onDeleteSession?: (id: string) => void;
     onDeleteAllSessions?: () => void;
     onNewSession?: () => void;
+    sessionKind?: 'chat' | 'agent';
 
     // Callbacks
     onSettingsClick?: () => void;
@@ -118,6 +119,7 @@ export default function JoeIDELayout({
     onDeleteSession,
     onDeleteAllSessions,
     onNewSession,
+    sessionKind = 'agent', // Default to agent
 
     // Callbacks
     onSettingsClick,
@@ -243,6 +245,10 @@ export default function JoeIDELayout({
     }, [isChatCollapsed, isExplorerCollapsed]);
 
     const isMaximized = isChatCollapsed && isExplorerCollapsed;
+
+    // For CommandComposer, we need an active session ID and browser session ID
+    const activeSessionId = sessionId; // Assuming sessionId is the active one
+    const activeBrowserSessionId = browserSessionId; // Assuming browserSessionId is the active one
 
     return (
         <div className="joe-ide-layout" data-theme={theme}>

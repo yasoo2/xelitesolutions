@@ -436,6 +436,14 @@ export const SocketService = {
       if (!socket && !isConnecting) connect();
     }
   },
+  sendMessage(sessionId: string, text: string) {
+    this.send({
+      type: 'text',
+      sessionId,
+      text,
+      ts: Date.now()
+    });
+  },
   subscribe(cb: (data: any) => void) {
     listeners.add(cb);
     if (!socket && !isConnecting) connect();
