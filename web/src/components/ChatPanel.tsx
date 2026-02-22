@@ -234,12 +234,12 @@ export default function ChatPanel({
 }
 
 .joe-chat-panel {
-    background: radial-gradient(circle at 50% 0%, rgba(240, 193, 75, 0.03) 0%, transparent 70%), var(--joe-bg-panel);
+    background: var(--joe-bg-panel);
 }
 
 .joe-chat-header {
-    background: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid rgba(240, 193, 75, 0.1);
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .joe-chat-header .joe-chat-title span {
