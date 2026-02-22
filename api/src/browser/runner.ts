@@ -599,7 +599,8 @@ export async function runBrowserInstruction(params: {
   onProgress?: (msg: string) => void;
   onThought?: (msg: string) => void;
 }) {
-  const userId = String(params.userId || '').trim();
+  const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+  const userId = String(params.userId || (authBypass ? 'bypass-user' : '')).trim();
   const sessionId = String(params.sessionId || '').trim();
   const instructionTextRaw = String(params.instructionText || '').trim();
   const mode = params.mode || 'browser_test';
@@ -607,8 +608,6 @@ export async function runBrowserInstruction(params: {
   if (!userId) throw new Error('userId_required');
   if (!sessionId) throw new Error('sessionId_required');
   if (!instructionTextRaw) throw new Error('instructionText_required');
-
-  const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
   if (!authBypass) {
     const ok = await canAccessBrowserSession(userId, sessionId);
     if (!ok) {
