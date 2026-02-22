@@ -1965,6 +1965,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
 
     const risk = detectRisk(String(text || ''));
+    console.log(`[DEBUG-ARABIC] Pre-risk check: initialPlan=${initialPlan ? initialPlan.name : 'NULL'}, risk=${risk}`);
     if (risk && initialPlan) {
       const authRole = (req as any)?.auth?.role;
       const { getSessionRunConfig } = await import('../services/secrets');
@@ -2425,6 +2426,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             pendingPlan = null;
           } else if (steps === 0 && initialPlan) {
             plan = initialPlan;
+            console.log(`[DEBUG-ARABIC] Step 0: plan assigned from initialPlan = ${plan.name}`);
             initialPlan = null; // Prevent reuse
           } else {
             const userTextForCooldown = String(text || '');
@@ -2625,7 +2627,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           // If the user clearly wants to build/create, and we haven't started, don't let it stall in "echo"
           // Fixed: Allow intervening words (e.g., "ابني لي نظام", "create me a system")
           const isExplicitBuild = /(build|create|generate|scaffold|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم)\s+.*?(website|app|system|page|site|api|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة)/i.test(userTextForOverrides);
-          if (isExplicitBuild && steps === 0 && (planName === 'echo' || !planName)) {
+
+          // [FIX] DO NOT OVERRIDE IF THE PLAN IS ALREADY A BUILDER PIPELINE
+          const isAlreadyValidPipeline = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+
+          if (isExplicitBuild && steps === 0 && !isAlreadyValidPipeline && (planName === 'echo' || !planName)) {
             const alreadyDetetced = historyHasToolCall(history as any, 'project_detect');
             if (!alreadyDetetced) {
               console.info('[GOD MODE] ⚡ Build Intent Detected - Forcing Pipeline Execution (Discovery)');
@@ -2928,7 +2934,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
             const projName = nameMatch ? nameMatch[1] : 'vivos-store';
 
-            if (steps === 0) {
+            const shopPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+
+            if (steps === 0 && !shopPipelineProtected) {
               // Force the smart tool for ecommerce requests without deceptive markers
               plan = {
                 name: 'scaffold_full_stack',
@@ -2995,7 +3003,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           const wf = !wantsShop ? await detectWorkflowAdvanced(userTextForOverrides, { useAnalyzer: true, workspaceId }) : null;
           const isProjectStart = wf && ['simple_creative', 'node_api', 'static_site', 'fullstack'].includes(wf.kind);
-          if (wf && wf.kind !== 'ecommerce' && (isProjectStart || !planName || planName === 'echo')) {
+
+          // [FIX] DO NOT HIJACK IF THE LLM ALREADY PLANNED THE BUILD PIPELINE
+          const wfPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+
+          if (wf && wf.kind !== 'ecommerce' && !wfPipelineProtected && (isProjectStart || !planName || planName === 'echo')) {
             const marker =
               wf.kind === 'tool_shell' && wf.tool
                 ? `WF_START:${wf.kind}:${wf.tool.name}`
@@ -3627,6 +3639,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             break;
           }
 
+          console.log(`[DEBUG-ARABIC] Executing tool: ${plan?.name}`);
           const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
           ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
           // [ELITE FIX] Emit specific tool_start event for frontend auto-switching (Browser/Terminal)

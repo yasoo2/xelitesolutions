@@ -1337,7 +1337,7 @@ export async function planNextStep(
 
       // Simple build requests (any app/calculator/game/tool request)
       const simpleBuildPatterns =
-        /(build|create|make|ابني|انشئ|أنشئ|سوي|اعمل)\s+(.{0,20})?(calculator|game|todo|app|tool|حاسبة|لعبة|مهام|تطبيق|أداة)/i;
+        /(build|create|make|ابني|انشئ|أنشئ|سوي|اعمل)\s+(.{0,20})?(calculator|game|todo|app|tool|store|shop|حاسبة|لعبة|مهام|تطبيق|أداة|متجر|دكان)/i;
 
       // Large-scale build patterns (enterprise systems)
       const largeBuildPatterns =
@@ -1346,7 +1346,7 @@ export async function planNextStep(
         /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
 
       const isBuildingWebsite =
-        /(صفحة|موقع|هبوط|landing|page|website|builder)/i.test(userText);
+        /(صفحة|موقع|هبوط|landing|page|website|builder|متجر|دكان|store|shop)/i.test(userText);
       const parseWebsitePipelineInput = () => {
         const text = String(userText || "");
         const lower = text.toLowerCase();
@@ -1417,18 +1417,18 @@ export async function planNextStep(
         };
       };
 
-      // [FIX] Simple build requests → Use GenesisAgent for any app building
+      // [FIX] Simple build requests → Use standard Orchestrator
       if (!isBuildingWebsite && simpleBuildPatterns.test(userText)) {
         console.info(
-          "[Auto Enterprise] → Simple Build Detected: Genesis Build",
+          "[Auto Enterprise] → Simple Build Detected: Routing to Agent Orchestrator",
         );
         return {
-          name: "genesis_build",
-          input: { goal: userText },
+          name: "website_full_pipeline",
+          input: { name: "mega-web", type: "saas", features: [], qualityTasks: ["lint", "typecheck", "test", "build"], securityChecks: true, autoFix: true, language: analysis?.language === "ar" ? "ar" : "en" },
         };
       }
 
-      // Large-scale builds → Genesis Build
+      // Large-scale builds → Agent Orchestrator
       if (
         !isBuildingWebsite &&
         (analysis.type === "code_generation" || codePatterns.test(userText)) &&
@@ -1436,10 +1436,10 @@ export async function planNextStep(
           explicitLargeScale.test(userText) ||
           largeBuildPatterns.test(userText))
       ) {
-        console.info("[Auto Enterprise] → Large Build Detected: Genesis Build");
+        console.info("[Auto Enterprise] → Large Build Detected: Routing to Agent Orchestrator");
         return {
-          name: "genesis_build",
-          input: { goal: userText },
+          name: "website_full_pipeline",
+          input: { name: "mega-web", type: "saas", features: ["auth", "admin", "payments"], qualityTasks: ["lint", "typecheck", "test", "build"], securityChecks: true, autoFix: true, language: analysis?.language === "ar" ? "ar" : "en" },
         };
       }
 
@@ -1452,11 +1452,11 @@ export async function planNextStep(
             largeBuildPatterns.test(userText)
           ) {
             console.info(
-              "[Auto Enterprise] → Large Website Build Detected: Genesis Build",
+              "[Auto Enterprise] → Large Website Build Detected: Routing to Agent Orchestrator",
             );
             return {
-              name: "genesis_build",
-              input: { goal: userText },
+              name: "website_full_pipeline",
+              input: parseWebsitePipelineInput(),
             };
           }
           console.info(
