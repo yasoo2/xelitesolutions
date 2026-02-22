@@ -1,0 +1,178 @@
+/* Extra small devices (phones, less than 576px) */
+@media (max-width: 575.98px) {
+  body {
+    font-size: 14px;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  h2 {
+    font-size: 20px;
+  }
+
+  .container {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .grid-container {
+    grid-template-columns: 1fr; /* Stack items vertically */
+  }
+
+  .nav {
+    padding: 10px;
+  }
+
+  .nav-links {
+    display: none; /* Hide nav links on small screens - consider a hamburger menu */
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .nav-links.active {
+    display: flex; /* Show nav links when menu is active */
+  }
+
+  .nav-toggle {
+    display: block; /* Show hamburger menu */
+  }
+}
+
+/* Small devices (landscape phones, 576px and up) */
+@media (min-width: 576px) and (max-width: 767.98px) {
+  body {
+    font-size: 15px;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
+  h2 {
+    font-size: 22px;
+  }
+
+  .container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .grid-container {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  .nav-links {
+    /* Adjusted nav links for small screens */
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    display: none; /* Initially hidden */
+  }
+
+  .nav-links.active {
+      display: flex;
+  }
+  .nav-toggle {
+    display: block;
+  }
+}
+
+/* Medium devices (tablets, 768px and up) */
+@media (min-width: 768px) and (max-width: 991.98px) {
+  body {
+    font-size: 16px;
+  }
+
+  h1 {
+    font-size: 32px;
+  }
+
+  h2 {
+    font-size: 24px;
+  }
+
+  .container {
+    padding-left: 30px;
+    padding-right: 30px;
+  }
+
+  .grid-container {
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  }
+
+  .nav-links {
+    display: flex !important; /* Ensure they are visible */
+    flex-direction: row;
+    align-items: center;
+  }
+  .nav-toggle {
+    display: none; /* Hide hamburger menu */
+  }
+}
+
+/* Large devices (desktops, 992px and up) */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  body {
+    font-size: 16px;
+  }
+
+  h1 {
+    font-size: 36px;
+  }
+
+  h2 {
+    font-size: 26px;
+  }
+
+  .container {
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  .grid-container {
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  }
+    .nav-links {
+    display: flex !important; /* Ensure they are visible */
+    flex-direction: row;
+    align-items: center;
+  }
+    .nav-toggle {
+    display: none; /* Hide hamburger menu */
+  }
+}
+
+/* Extra large devices (large desktops, 1200px and up) */
+@media (min-width: 1200px) {
+  body {
+    font-size: 17px;
+  }
+
+  h1 {
+    font-size: 40px;
+  }
+
+  h2 {
+    font-size: 28px;
+  }
+
+  .container {
+    padding-left: 50px;
+    padding-right: 50px;
+  }
+
+  .grid-container {
+    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  }
+  .nav-links {
+    display: flex !important; /* Ensure they are visible */
+    flex-direction: row;
+    align-items: center;
+  }
+    .nav-toggle {
+    display: none; /* Hide hamburger menu */
+  }
+}
