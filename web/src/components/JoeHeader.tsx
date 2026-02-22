@@ -2,9 +2,9 @@ import React from 'react';
 import { Bot, MessageSquare, Settings, Moon, Sun, Plus } from 'lucide-react';
 
 interface JoeHeaderProps {
-
     userAvatar?: string;
     userName?: string;
+    userEmail?: string;
     onSettingsClick?: () => void;
     onNewProject?: () => void;
     theme?: 'dark' | 'light';
@@ -16,9 +16,9 @@ interface JoeHeaderProps {
 }
 
 export default function JoeHeader({
-
     userAvatar,
     userName,
+    userEmail,
     onSettingsClick,
     onNewProject,
     theme = 'dark',
@@ -28,6 +28,19 @@ export default function JoeHeader({
     isChatCollapsed,
     isExplorerCollapsed
 }: JoeHeaderProps) {
+    // Generate avatar color from name/email
+    const getAvatarColor = (str: string) => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const h = Math.abs(hash % 360);
+        return `hsl(${h}, 70%, 45%)`;
+    };
+
+    const displayAvatar = userAvatar || (userEmail ? `https://www.gravatar.com/avatar/${userEmail}?d=identicon` : null);
+    const displayName = userName || (userEmail ? userEmail.split('@')[0] : 'User');
+
     return (
         <header className="joe-header">
             {/* Left: Logo & Brand */}
@@ -50,24 +63,8 @@ export default function JoeHeader({
             <div className="joe-header-center">
             </div>
 
-            {/* Right: Settings & Profile */}
+            {/* Right: Settings & Profile - Reordered to have Profile in Corner */}
             <div className="joe-header-right">
-                <div className="joe-user-profile">
-                    <div className="joe-user-info hide-mobile">
-                        <span className="joe-welcome-text">أهلاً بك،</span>
-                        <span className="joe-user-name">{userName || (theme === 'dark' ? 'مستخدم' : 'User')}</span>
-                    </div>
-                    {userAvatar ? (
-                        <img src={userAvatar} alt={userName || 'User'} className="joe-avatar" />
-                    ) : (
-                        <div className="joe-avatar-placeholder">
-                            {userName?.charAt(0)?.toUpperCase() || 'U'}
-                        </div>
-                    )}
-                </div>
-
-                <div className="joe-header-divider"></div>
-
                 <div className="joe-header-actions">
                     {onThemeToggle && (
                         <button className="joe-header-btn" onClick={onThemeToggle} title="تبديل المظهر">
@@ -89,6 +86,22 @@ export default function JoeHeader({
                     >
                         <Bot size={18} />
                     </button>
+                </div>
+
+                <div className="joe-header-divider"></div>
+
+                <div className="joe-user-profile">
+                    <div className="joe-user-info hide-mobile">
+                        <span className="joe-welcome-text">أهلاً بك،</span>
+                        <span className="joe-user-name">{displayName}</span>
+                    </div>
+                    {displayAvatar ? (
+                        <img src={displayAvatar} alt={displayName} className="joe-avatar" />
+                    ) : (
+                        <div className="joe-avatar-placeholder" style={{ background: getAvatarColor(displayName) }}>
+                            {displayName.charAt(0).toUpperCase()}
+                        </div>
+                    )}
                 </div>
             </div>
         </header>

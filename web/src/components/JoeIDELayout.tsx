@@ -32,6 +32,7 @@ interface JoeIDELayoutProps {
     // User
     userAvatar?: string;
     userName?: string;
+    userEmail?: string;
 
     // Chat
     messages: Message[];
@@ -94,6 +95,7 @@ export default function JoeIDELayout({
     // User
     userAvatar,
     userName,
+    userEmail,
 
     // Chat
     messages,
@@ -249,6 +251,7 @@ export default function JoeIDELayout({
 
                 userAvatar={userAvatar}
                 userName={userName}
+                userEmail={userEmail}
                 onSettingsClick={onSettingsClick}
                 theme={theme}
                 onThemeToggle={onThemeToggle}

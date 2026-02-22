@@ -505,11 +505,12 @@ export default function Joe() {
                 const firstName = fullName.split(' ')[0];
                 return {
                     name: firstName,
-                    avatar: u.picture || u.avatar || ''
+                    avatar: u.picture || u.avatar || '',
+                    email: u.email || ''
                 };
             }
         } catch { }
-        return { name: 'User', avatar: '' };
+        return { name: 'User', avatar: '', email: '' };
     })();
 
     // Theme toggle (triggers sync effect)
@@ -531,6 +532,7 @@ export default function Joe() {
                 // ... props ...
                 userAvatar={userInfo.avatar}
                 userName={userInfo.name}
+                userEmail={userInfo.email}
                 // ...rest of props...
                 messages={messages}
                 inputValue={inputValue}
