@@ -523,6 +523,8 @@ export interface PlanOptions {
   userId?: string;
   sessionId?: string; // For enterprise context and memory
   workspaceId?: string; // Target workspace ID
+  userText?: string; // Clean user text (no context)
+  fullPromptText?: string; // Prompt with context/instructions
   onThought?: (chunk: string) => void;
   onProgress?: (msg: string) => void;
 }
@@ -1092,17 +1094,24 @@ export async function planNextStep(
       }
     }
 
+    // Use options.userText (clean) if available, otherwise get it from messages history
     const userMsg = [...messages].reverse().find((m) => m.role === "user");
-    let userText = "";
-    if (typeof userMsg?.content === "string") {
-      userText = userMsg.content;
-    } else if (Array.isArray(userMsg?.content)) {
-      userText = userMsg.content
-        .filter((c: any) => c.type === "text")
-        .map((c: any) => c.text)
-        .join("\n");
+    let userText = options?.userText || "";
+    if (!userText) {
+      if (typeof userMsg?.content === "string") {
+        userText = userMsg.content;
+      } else if (Array.isArray(userMsg?.content)) {
+        userText = userMsg.content
+          .filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join("\n");
+      }
     }
 
+    // Fallback for prompt instructions (bloated context)
+    const fullPromptText = options?.fullPromptText || (typeof userMsg?.content === "string" ? userMsg.content : userText);
+
+    // === ENTERPRISE SYSTEMS ACTIVATION ===
     // === ENTERPRISE SYSTEMS ACTIVATION ===
 
     // 1. Enterprise systems are now imported at top-level for global scope
@@ -1141,7 +1150,7 @@ export async function planNextStep(
 
     // === FREE INTELLIGENCE OPTIMIZER ===
     console.info(
-      `[Auto Enterprise] 💬 User query: "${userText.substring(0, 100)}${userText.length > 100 ? "..." : ""}"`,
+      `[Auto Enterprise] 💬 User query (clean): "${userText.substring(0, 100)}${userText.length > 100 ? "..." : ""}"`,
     );
 
     // 1. Check for instant smart response (no API call needed!)
@@ -1347,6 +1356,8 @@ export async function planNextStep(
 
       const isBuildingWebsite =
         /(صفحة|موقع|هبوط|landing|page|website|builder|متجر|دكان|store|shop)/i.test(userText);
+
+
       const parseWebsitePipelineInput = () => {
         const text = String(userText || "");
         const lower = text.toLowerCase();

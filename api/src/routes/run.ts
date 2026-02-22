@@ -922,11 +922,10 @@ function fallbackPlanWhenPlannerUnavailable(params: {
       routingTextRaw
     );
 
-  const openVerb =
-    /\b(?:open|goto|visit|show|preview|start|run|launch|افتح|ادخل|اذهب|زيارة|شغل|ابدأ|روح|زور|اعرض|وريني|ورني)\b/i.test(
-      routingTextRaw
-    );
 
+
+  const openVerbMatch = routingTextRaw.match(/\b(?:open|goto|visit|show|preview|start|run|launch|افتح|ادخل|اذهب|زيارة|شغل|ابدأ|روح|زور|اعرض|وريني|ورني)\b/i);
+  const openVerb = !!openVerbMatch;
   const isSimpleBrowserOpenRequest = openVerb && (hasSiteKeyword || browserKeyword);
   const multiStepKeyword =
     /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
@@ -1007,6 +1006,7 @@ function fallbackPlanWhenPlannerUnavailable(params: {
   if (wantsLs) return { name: 'ls', input: { path: '.' } } as any;
 
   const hasUrl_val = Boolean(extractUrlCandidate(userText));
+  const multiStepMatch = userText.match(/(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i);
   const wantsBrowser = Boolean(hasUrl_val || openVerb || browserKeyword);
   if (wantsBrowser) {
     const directUrl = extractUrlCandidate(userText);
@@ -1748,7 +1748,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     ev({ type: 'step_started', data: { name: 'plan' } });
 
     let initialPlan = null;
-    const rawUserText = fullPromptText;
+    const rawUserText = String(text || '').trim();
+    const rawUserTextForHijackCheck = fullPromptText;
     try {
 
       // Force hasAttachments if fileIds are present, even if content extraction failed
@@ -1915,6 +1916,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               model: model,
               userId: String(userId),
               sessionId: String(sessionId),
+              userText: rawUserText, // Pass the clean user text here
+              fullPromptText: fullPromptText, // Pass the bloated prompt for LLM context
               onProgress: (m: string) => {
                 broadcastThinkingDetail(String(sessionId), `> ${m}`);
                 ev({ type: 'thought', data: m });
@@ -1965,7 +1968,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
 
     const risk = detectRisk(String(text || ''));
-    console.log(`[DEBUG-ARABIC] Pre-risk check: initialPlan=${initialPlan ? initialPlan.name : 'NULL'}, risk=${risk}`);
     if (risk && initialPlan) {
       const authRole = (req as any)?.auth?.role;
       const { getSessionRunConfig } = await import('../services/secrets');
@@ -2426,7 +2428,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             pendingPlan = null;
           } else if (steps === 0 && initialPlan) {
             plan = initialPlan;
-            console.log(`[DEBUG-ARABIC] Step 0: plan assigned from initialPlan = ${plan.name}`);
             initialPlan = null; // Prevent reuse
           } else {
             const userTextForCooldown = String(text || '');
@@ -3639,7 +3640,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             break;
           }
 
-          console.log(`[DEBUG-ARABIC] Executing tool: ${plan?.name}`);
           const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
           ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
           // [ELITE FIX] Emit specific tool_start event for frontend auto-switching (Browser/Terminal)
