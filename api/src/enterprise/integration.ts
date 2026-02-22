@@ -96,8 +96,12 @@ export async function processEnterpriseRequest(request: EnhancedRequest): Promis
     const intent = analyzeContextualIntent(finalMessage, context);
     console.info(`[Enterprise] Intent: ${intent.primary} (${intent.confidence})`);
 
-    // Step 6: Check for project building request
-    if (/\b(build|create|make)\s+(a\s+)?(website|app|api|application|project|system)\b/i.test(finalMessage)) {
+    // Step 6: Check for project building request (Including Arabic)
+    const buildRegex = /\b(build|create|make|ابني|انشئ|أنشئ|اعمل|سوي|صمم|برمج)\s*(a|لي)?\s*(website|app|api|application|project|system|موقع|تطبيق|مشروع|سكربت|نظام|متجر)\b/i;
+    // Also catch short generic Arabic commands like "ابني متجر"
+    const isBuildRequest = buildRegex.test(finalMessage) || /^(ابني|انشئ|أنشئ|صمم|برمج)\s+(متجر|موقع|تطبيق|مشروع)/i.test(finalMessage.trim());
+
+    if (isBuildRequest) {
         console.info('[Enterprise] Project building request detected');
 
         // Use orchestrator to build complete application
@@ -112,8 +116,11 @@ export async function processEnterpriseRequest(request: EnhancedRequest): Promis
         };
     }
 
-    // Step 7: Check for code generation
-    if (/\b(generate|create|write)\s+(code|component|function|class|api)\b/i.test(finalMessage)) {
+    // Step 7: Check for code generation (Including Arabic)
+    const codeGenRegex = /\b(generate|create|write|اكتب|برمج|سوي|انشئ)\s+(code|component|function|class|api|كود|دالة|كلاس|دالة|ملف|مكون)\b/i;
+    const isCodeGenRequest = codeGenRegex.test(finalMessage);
+
+    if (isCodeGenRequest) {
         console.info('[Enterprise] Code generation request');
 
         // Determine project config from context
