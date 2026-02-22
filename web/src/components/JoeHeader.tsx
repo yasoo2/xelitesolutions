@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, MessageSquare, Settings, Moon, Sun, Plus } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight } from 'lucide-react';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -45,13 +45,6 @@ export default function JoeHeader({
         <header className="joe-header">
             {/* Left: Logo & Brand */}
             <div className="joe-header-left">
-                <button
-                    className={`joe-header-btn sidebar-toggle ${isChatCollapsed ? 'inactive' : 'active'}`}
-                    onClick={onToggleChat}
-                    title="Toggle Chat"
-                >
-                    <MessageSquare size={18} />
-                </button>
                 <div className="joe-logo">J</div>
                 <div className="joe-brand">
                     <span className="joe-brand-name">JOE</span>
@@ -66,6 +59,21 @@ export default function JoeHeader({
             {/* Right: Settings & Profile - Reordered to have Profile in Corner */}
             <div className="joe-header-right">
                 <div className="joe-header-actions">
+                    <button
+                        className={`joe-header-btn sidebar-toggle ${isChatCollapsed ? 'inactive' : 'active'}`}
+                        onClick={onToggleChat}
+                        title="Toggle Chat"
+                    >
+                        <PanelLeft size={18} />
+                    </button>
+                    <button
+                        className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
+                        onClick={onToggleExplorer}
+                        title="Toggle Explorer"
+                    >
+                        <PanelRight size={18} />
+                    </button>
+                    <div className="joe-action-spacer" style={{ width: '8px' }}></div>
                     {onThemeToggle && (
                         <button className="joe-header-btn" onClick={onThemeToggle} title="تبديل المظهر">
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -79,13 +87,6 @@ export default function JoeHeader({
                             <Plus size={18} />
                         </button>
                     )}
-                    <button
-                        className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
-                        onClick={onToggleExplorer}
-                        title="Toggle Explorer"
-                    >
-                        <Bot size={18} />
-                    </button>
                 </div>
 
                 <div className="joe-header-divider"></div>
