@@ -5,7 +5,7 @@ import WorkspacePanel from './WorkspacePanel';
 import FileExplorerPanel from './FileExplorerPanel';
 import GitHubPanel from './GitHubPanel';
 import SessionsBar from './SessionsBar';
-import StatusBar from './StatusBar';
+import SessionsBar from './SessionsBar';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import '../styles/joe-premium.css';
 import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
@@ -332,13 +332,7 @@ export default function JoeIDELayout({
                 showInAgentMode={true}
             />
 
-            {/* Status Bar */}
-            <StatusBar
-                isConnected={isConnected}
-                branch={branch}
-                sessionId={sessionId}
-                language="TypeScript"
-            />
+
 
             {children}
         </div>

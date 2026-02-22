@@ -59,7 +59,7 @@
     --joe-chat-actual-width: var(--joe-chat-width);
     --joe-files-actual-width: var(--joe-files-width);
     --joe-header-height: 56px;
-    --joe-statusbar-height: 36px;
+    --joe-statusbar-height: 0px;
     --joe-border-radius: 16px;
     --joe-border-radius-sm: 12px;
     --joe-transition-speed: 0.35s;
@@ -1480,7 +1480,7 @@
 @media (max-width: 768px) {
     :root {
         --joe-header-height: 48px;
-        --joe-statusbar-height: 28px;
+        --joe-statusbar-height: 0px;
         --joe-border-radius: 12px;
         --joe-border-radius-sm: 8px;
     }
@@ -1534,7 +1534,7 @@
 @media (max-width: 480px) {
     :root {
         --joe-header-height: 44px;
-        --joe-statusbar-height: 24px;
+        --joe-statusbar-height: 0px;
     }
 
     .joe-header {
