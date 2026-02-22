@@ -5,7 +5,6 @@ import WorkspacePanel from './WorkspacePanel';
 import FileExplorerPanel from './FileExplorerPanel';
 import GitHubPanel from './GitHubPanel';
 import SessionsBar from './SessionsBar';
-import SessionsBar from './SessionsBar';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import '../styles/joe-premium.css';
 import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
