@@ -217,13 +217,14 @@ export default function PreviewPanel({
             {/* Preview Container */}
             <div style={{
                 flex: 1,
-                overflow: 'auto',
+                overflow: 'hidden',
                 display: 'flex',
                 justifyContent: 'center',
-                alignItems: 'flex-start',
+                alignItems: device === 'desktop' ? 'stretch' : 'flex-start',
                 padding: device === 'desktop' ? 0 : 16,
                 background: device === 'desktop' ? 'transparent' : 'var(--bg-card)',
-                position: 'relative', // Need this for absolute overlay
+                position: 'relative',
+                minHeight: 0,
             }}>
                 {/* Build Progress Overlay */}
                 {buildProgress && (
@@ -324,6 +325,7 @@ export default function PreviewPanel({
                         borderRadius: device === 'desktop' ? 0 : 8,
                         boxShadow: device === 'desktop' ? 'none' : '0 4px 24px rgba(0,0,0,0.2)',
                         overflow: 'hidden',
+                        flex: device === 'desktop' ? 1 : undefined,
                     }}>
                         <iframe
                             ref={iframeRef}
@@ -341,6 +343,7 @@ export default function PreviewPanel({
                                 width: '100%',
                                 height: '100%',
                                 border: 'none',
+                                display: 'block',
                             }}
                             sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
                         />
