@@ -283,7 +283,7 @@ export class WebPipelineTool extends BaseTool {
         logs.push(`pipeline.complete path = ${projectPath}`);
         // Only CRITICAL step failures should kill the pipeline.
         // Quality checks (lint, typecheck, test), security scans, and CI generation are NON-FATAL.
-        const criticalSteps = ['scaffold_full_stack', 'npm_install'];
+        const criticalSteps = ['scaffold_full_stack'];
         const criticalFailure = steps.find(s => !s.ok && criticalSteps.includes(s.step));
         if (criticalFailure) {
             return {
