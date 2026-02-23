@@ -151,29 +151,42 @@ export class WebPipelineTool extends BaseTool {
         }
 
         const runInstall = async (p: string) => {
+            // Tier 1: npm install (standard)
             let r = await executeTool('shell_execute', {
-                command: `npm install --include=dev --legacy-peer-deps --no-audit --no-fund --quiet`,
+                command: `npm install --include=dev --legacy-peer-deps --no-audit --no-fund`,
                 cwd: p,
                 timeout: 10 * 60 * 1000
             }, { sessionId, workspaceId });
-            if (!r.ok) {
-                // Formatting fix in fallback command
-                r = await executeTool('shell_execute', {
-                    command: `npm ci --legacy-peer-deps --no-audit --no-fund --quiet`,
-                    cwd: p,
-                    timeout: 10 * 60 * 1000
-                }, { sessionId, workspaceId });
-            }
+            if (r.ok) return r;
+
+            // Tier 2: npm install --force
+            if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ npm install failed, retrying with --force...`);
+            r = await executeTool('shell_execute', {
+                command: `npm install --force --legacy-peer-deps --no-audit --no-fund`,
+                cwd: p,
+                timeout: 10 * 60 * 1000
+            }, { sessionId, workspaceId });
+            if (r.ok) return r;
+
+            // Tier 3: yarn install (fallback)
+            if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ npm failed, trying yarn...`);
+            r = await executeTool('shell_execute', {
+                command: `yarn install --no-lockfile`,
+                cwd: p,
+                timeout: 10 * 60 * 1000
+            }, { sessionId, workspaceId });
             return r;
         };
 
+        let installOk = true;
         if (rootHasWorkspaces) {
             if (sessionId) broadcastThinkingDetail(sessionId, `📦 Installing dependencies (Monorepo)...`);
             const installRes = await runInstall(projectPath);
             steps.push({ step: 'npm_install', ok: installRes.ok, output: installRes.output });
             if (!installRes.ok) {
-                if (sessionId) broadcastThinkingDetail(sessionId, `❌ npm install failed`);
-                return { ok: false, error: `npm install failed: ${installRes.error || 'Unknown error'}`, logs, output: { path: projectPath, steps } };
+                if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ Dependencies install had issues — continuing anyway...`);
+                installOk = false;
+                // Do NOT return — continue to dev_server_start so preview loads
             }
         } else {
             for (const proj of allNodeProjects) {
@@ -181,13 +194,13 @@ export class WebPipelineTool extends BaseTool {
                 const installRes = await runInstall(proj);
                 steps.push({ step: 'npm_install', ok: installRes.ok, output: { project: proj, ...installRes.output } });
                 if (!installRes.ok) {
-                    if (sessionId) broadcastThinkingDetail(sessionId, `❌ npm install failed for ${proj}`);
-                    const err = installRes.error || 'npm install returned failure without error';
-                    return { ok: false, error: `npm install failed for ${proj}: ${err}`, logs, output: { path: projectPath, steps } };
+                    if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ Install issue for ${proj} — continuing...`);
+                    installOk = false;
+                    // Do NOT return — continue to next project and dev_server
                 }
             }
         }
-        if (sessionId) broadcastThinkingDetail(sessionId, `✅ Dependencies installed successfully`);
+        if (installOk && sessionId) broadcastThinkingDetail(sessionId, `✅ Dependencies installed successfully`);
 
         broadcastBuildProgress(sessionId, 'building', '🛡️ Running quality checks and building...', 55);
         // 3. Quality & Fix
