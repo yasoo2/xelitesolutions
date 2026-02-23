@@ -327,30 +327,78 @@ export class DevServerTool extends BaseTool {
         // Auto-detect command if not provided
         if (!command) {
             if (fs.existsSync(path.join(cwd, 'package.json'))) {
-                command = 'npm run dev';
+                // ALWAYS force --host 0.0.0.0 so the server is accessible from Nginx/other containers
+                command = `npx --yes vite --host 0.0.0.0 --port ${port}`;
             } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
-                // Static folder - use npx serve
-                command = `npx -y serve -p ${port} . >> dev-server.log 2>&1`;
+                command = `npx -y serve -l ${port} -s . --no-clipboard`;
             } else {
-                command = 'npm run dev'; // Final fallback
+                command = `npx --yes vite --host 0.0.0.0 --port ${port}`;
             }
         }
 
+        // Check if vite.config exists and has the web app
+        const webAppDir = path.join(cwd, 'apps', 'web');
+        if (fs.existsSync(webAppDir) && fs.existsSync(path.join(webAppDir, 'package.json'))) {
+            // Monorepo: start the web app directly
+            command = `npx --yes vite --host 0.0.0.0 --port ${port}`;
+            logs.push(`monorepo_detected: starting web app from ${webAppDir}`);
+        }
+
+        const actualCwd = fs.existsSync(webAppDir) ? webAppDir : cwd;
+
         try {
-            // Using shell:true to support redirects and better path handling
             const child = spawn(command, [], {
-                cwd,
+                cwd: actualCwd,
                 env: { ...process.env, PORT: String(port), HOST: '0.0.0.0', BROWSER: 'none' },
-                stdio: 'ignore',
+                stdio: ['ignore', 'pipe', 'pipe'],
                 detached: true,
                 shell: true
             });
-            child.unref(); // Fire and forget (keep running)
+
+            let startupOutput = '';
+            child.stdout?.on('data', (d: Buffer) => { startupOutput += d.toString(); });
+            child.stderr?.on('data', (d: Buffer) => { startupOutput += d.toString(); });
+            child.unref();
+
+            // Wait for server to actually start (up to 15 seconds)
+            const maxWait = 15000;
+            const interval = 500;
+            let elapsed = 0;
+            let serverReady = false;
+
+            while (elapsed < maxWait) {
+                await new Promise(r => setTimeout(r, interval));
+                elapsed += interval;
+
+                // Check if process crashed
+                if (child.exitCode !== null) {
+                    logs.push(`dev_server_crashed exitCode=${child.exitCode} output=${startupOutput.slice(0, 500)}`);
+                    return { ok: false, error: `Dev server exited with code ${child.exitCode}: ${startupOutput.slice(0, 300)}`, logs };
+                }
+
+                // Check if server responds
+                try {
+                    const http = require('http');
+                    await new Promise<void>((resolve, reject) => {
+                        const req = http.get(`http://127.0.0.1:${port}/`, (res: any) => {
+                            res.resume();
+                            resolve();
+                        });
+                        req.on('error', reject);
+                        req.setTimeout(1000, () => { req.destroy(); reject(new Error('timeout')); });
+                    });
+                    serverReady = true;
+                    break;
+                } catch {
+                    // Not ready yet, keep waiting
+                }
+            }
+
+            logs.push(`dev_server_wait elapsed=${elapsed}ms ready=${serverReady} output=${startupOutput.slice(0, 200)}`);
 
             const previewUrl = `http://api:${port}/`;
             let userPreviewUrl = `http://localhost:${port}/`;
 
-            // If in production environment (Docker), use the Nginx reverse proxy URL
             const isProd = process.env.NODE_ENV === 'production' ||
                 process.env.JWT_SECRET?.includes('persistent') ||
                 fs.existsSync('/etc/letsencrypt') ||
@@ -359,7 +407,7 @@ export class DevServerTool extends BaseTool {
             if (isProd) {
                 userPreviewUrl = `https://www.xelitesolutions.com/preview/${port}/`;
             }
-            logs.push(`dev_started cwd=${cwd} cmd=${command} port=${port} isProd=${isProd} env=${process.env.NODE_ENV}`);
+            logs.push(`dev_started cwd=${actualCwd} cmd=${command} port=${port} isProd=${isProd} ready=${serverReady}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview
             const { broadcast } = require('../../ws');
@@ -367,13 +415,13 @@ export class DevServerTool extends BaseTool {
                 type: 'preview_ready',
                 data: {
                     url: userPreviewUrl,
-                    cwd,
+                    cwd: actualCwd,
                     timestamp: new Date().toISOString()
                 },
                 sessionId: context?.sessionId
             });
 
-            return { ok: true, output: { previewUrl, userPreviewUrl }, logs };
+            return { ok: true, output: { previewUrl, userPreviewUrl, serverReady, startupTime: elapsed }, logs };
         } catch (e: any) {
             const msg = e?.message || String(e);
             logs.push(`dev_error=${msg}`);
