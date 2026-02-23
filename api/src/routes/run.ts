@@ -2684,7 +2684,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           // [FIX] DO NOT OVERRIDE IF THE PLAN IS ALREADY A BUILDER PIPELINE
           const isAlreadyValidPipeline = ['website_full_pipeline', 'project_planner', 'genesis_build', 'scaffold_full_stack'].includes(planName);
 
-          if (isExplicitBuild && !isAlreadyValidPipeline && (planName === 'echo' || planName === 'project_detect' || !planName)) {
+          if (isExplicitBuild && !isAlreadyValidPipeline) {
             const alreadyDetected = historyHasToolCall(history as any, 'project_detect');
             const alreadyAnalyzed = historyHasToolCall(history as any, 'analyze_codebase');
 
