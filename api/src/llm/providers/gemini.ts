@@ -270,6 +270,145 @@ export class GeminiProvider {
         throw lastError;
     }
 
+    /**
+     * Streaming version of chatWithTools.
+     * Emits each text delta to `onChunk` in real-time, enabling live Neural Interaction.
+     * Returns the final assembled ChatCompletion object.
+     */
+    async chatWithToolsStreaming(
+        messages: Array<{ role: string; content: string | any[] }>,
+        tools: any[],
+        onChunk: (text: string) => void,
+        model?: string
+    ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+        if (!this.client) {
+            throw new Error('Gemini API key not configured');
+        }
+
+        const modelsToTry = (() => {
+            const raw = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
+            const seen = new Set<string>();
+            const out: string[] = [];
+            for (const m of raw) {
+                if (!m.trim()) continue;
+                if (seen.has(m)) continue;
+                seen.add(m);
+                out.push(m);
+                if (!m.startsWith('models/')) {
+                    const prefixed = `models/${m}`;
+                    if (!seen.has(prefixed)) {
+                        seen.add(prefixed);
+                        out.push(prefixed);
+                    }
+                }
+            }
+            return out;
+        })();
+        let lastError: any;
+
+        const sanitizedTools = tools.map((t: any) => {
+            if (t.type === 'function' && t.function && t.function.parameters) {
+                return {
+                    ...t,
+                    function: {
+                        ...t.function,
+                        parameters: this.sanitizeSchema(t.function.parameters)
+                    }
+                };
+            }
+            return t;
+        });
+
+        for (const currentModel of modelsToTry) {
+            try {
+                console.info(`[Gemini] Streaming Tool Chat attempting with model: ${currentModel}`);
+
+                const stream = await this.client.chat.completions.create({
+                    model: currentModel,
+                    messages: messages as any,
+                    tools: sanitizedTools,
+                    tool_choice: currentModel.includes('lite') ? undefined : 'auto',
+                    stream: true,
+                });
+
+                // Accumulate the full response while streaming chunks
+                let fullContent = '';
+                let toolCalls: any[] = [];
+                let finishReason: string | null = null;
+                let chunkCount = 0;
+
+                for await (const chunk of stream) {
+                    const delta = chunk.choices?.[0]?.delta;
+                    if (!delta) continue;
+
+                    // Stream text content in real-time
+                    if (delta.content) {
+                        fullContent += delta.content;
+                        chunkCount++;
+                        // Emit every chunk to the Neural Indicator
+                        try { onChunk(delta.content); } catch { }
+                    }
+
+                    // Accumulate tool calls
+                    if (delta.tool_calls) {
+                        for (const tc of delta.tool_calls) {
+                            const idx = tc.index ?? 0;
+                            if (!toolCalls[idx]) {
+                                toolCalls[idx] = {
+                                    id: tc.id || `call_${idx}`,
+                                    type: 'function',
+                                    function: { name: '', arguments: '' }
+                                };
+                            }
+                            if (tc.function?.name) {
+                                toolCalls[idx].function.name += tc.function.name;
+                            }
+                            if (tc.function?.arguments) {
+                                toolCalls[idx].function.arguments += tc.function.arguments;
+                            }
+                        }
+                    }
+
+                    if (chunk.choices?.[0]?.finish_reason) {
+                        finishReason = chunk.choices[0].finish_reason;
+                    }
+                }
+
+                console.info(`[Gemini] Streaming complete: ${chunkCount} chunks, ${toolCalls.length} tool calls`);
+
+                // Reconstruct a ChatCompletion-like object
+                const assembled: OpenAI.Chat.Completions.ChatCompletion = {
+                    id: `gemini-stream-${Date.now()}`,
+                    object: 'chat.completion',
+                    created: Math.floor(Date.now() / 1000),
+                    model: currentModel,
+                    choices: [{
+                        index: 0,
+                        message: {
+                            role: 'assistant',
+                            content: fullContent || null,
+                            refusal: null,
+                            ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+                        },
+                        finish_reason: (finishReason as any) || 'stop',
+                        logprobs: null,
+                    }],
+                };
+
+                return assembled;
+            } catch (error: any) {
+                const status = Number(error?.status ?? error?.response?.status ?? NaN);
+                if (status === 429) {
+                    console.error(`[Gemini] Streaming Tool Chat model ${currentModel} QUOTA EXHAUSTED.`);
+                    throw error;
+                }
+                console.warn(`[Gemini] Streaming Tool Chat model ${currentModel} failed (status=${status}): ${error.message}`);
+                lastError = error;
+            }
+        }
+        throw lastError;
+    }
+
     getClient(): OpenAI | null {
         return this.client;
     }

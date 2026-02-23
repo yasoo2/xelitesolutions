@@ -883,12 +883,27 @@ export async function planNextStep(
           },
         }));
 
-        // Call Gemini with tool support
-        const completion = await activeGemini.chatWithTools(
-          msgs,
-          toolDefs,
-          options?.model,
-        );
+        // Call Gemini with tool support (streaming if onThought is available)
+        let completion: any;
+        if (onThought) {
+          // Use streaming to power the real-time Neural Interaction
+          completion = await activeGemini.chatWithToolsStreaming(
+            msgs,
+            toolDefs,
+            (chunk: string) => {
+              // Emit each LLM text delta to the Neural Indicator in real-time
+              onThought(chunk);
+            },
+            options?.model,
+          );
+        } else {
+          // Fallback to non-streaming for callers that don't need live updates
+          completion = await activeGemini.chatWithTools(
+            msgs,
+            toolDefs,
+            options?.model,
+          );
+        }
         const message = completion.choices[0]?.message;
 
         // Check for tool calls
