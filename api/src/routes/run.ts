@@ -3914,6 +3914,33 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               : result;
           ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result: eventResult } });
 
+          // 🔥 [AGENT MODE] Auto-terminate after build pipeline — don't let LLM generate chatbot text
+          const pipelineTools = ['website_full_pipeline', 'scaffold_full_stack', 'genesis_build'];
+          if (pipelineTools.includes(String(plan?.name || ''))) {
+            const previewUrl = result.ok
+              ? String((result as any)?.output?.steps?.find((s: any) => s.step === 'dev_server_preview_ready')?.output?.previewUrl || '')
+              : '';
+            const projectPath = String((result as any)?.output?.path || '');
+            const warnings = (result as any)?.output?.warnings || [];
+
+            let msg = '';
+            if (result.ok && previewUrl) {
+              msg = `✅ تم بناء المشروع بنجاح!\n📂 المسار: ${projectPath}\n🌐 المعاينة: ${previewUrl}`;
+            } else if (result.ok) {
+              msg = `✅ تم بناء المشروع بنجاح!\n📂 المسار: ${projectPath}`;
+            } else {
+              msg = `⚠️ اكتمل البناء مع بعض المشاكل.\n📂 المسار: ${projectPath}`;
+            }
+            if (warnings.length > 0) {
+              msg += `\n⚠️ تحذيرات: ${warnings.join(', ')}`;
+            }
+
+            ev({ type: 'text', data: msg });
+            assistantTextEmitted = true;
+            console.info(`[AGENT MODE] 🏁 Pipeline ${plan?.name} completed — auto-terminating agent loop.`);
+            break; // EXIT the agent loop — no more LLM calls needed
+          }
+
           if (String(plan?.name || '') === 'browser_run') {
             lastBrowserRunSummary = String((result as any)?.output?.summary || '').trim();
             lastBrowserRunPageUrl = String((result as any)?.output?.pageUrl || '').trim();
