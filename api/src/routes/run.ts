@@ -1072,6 +1072,23 @@ function fallbackPlanWhenPlannerUnavailable(params: {
     const hasAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
 
     if (hasProjectDetect && hasAnalyze) {
+      // [CRITICAL FIX] Discovery done → Force build pipeline for build-intent requests
+      const isBuildIntent = /(build|create|generate|scaffold|make|design|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)/i.test(userText) &&
+        /(website|app|system|page|landing|site|store|shop|موقع|تطبيق|نظام|صفحة|هبوط|متجر|واجهة|مشروع|دكان|بورتفوليو|portfolio)/i.test(userText);
+
+      if (isBuildIntent) {
+        const buildName = userText.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
+        console.info(`[Fallback] Discovery complete + build intent → Forcing website_full_pipeline (${buildName})`);
+        return {
+          name: 'website_full_pipeline',
+          input: {
+            name: buildName,
+            type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userText) ? 'ecommerce' : 'saas',
+            features: ['auth', 'products'],
+            language: /[\u0600-\u06FF]/.test(userText) ? 'ar' : 'en'
+          }
+        } as any;
+      }
       return null;
     }
   }
@@ -1826,8 +1843,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       // [OPTIMIZER] Check cache before other heuristics
       // GATE: Never use optimizer if there is clear build intent
       const buildIntentForOptimizer =
-        /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop)\b/i.test(rawUserText) ||
-        /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ|اعمل|عمل|صمم)/.test(rawUserText);
+        /\b(?:build|create|make|generate|scaffold|bootstrap|setup|set\s*up|implement|develop|design)\b/i.test(rawUserText) ||
+        /(?:ابني|بناء|انشئ|أنشئ|انشاء|إنشاء|طور|تطوير|جهز|اصنع|برمج|برمجة|سوي|سوِّ|اعمل|عمل|صمم)/.test(rawUserText) ||
+        /(صفحة\s+هبوط|landing\s+page|متجر\s+الكتروني|متجر\s+ساعات|صفحة\s+فاخرة|موقع\s+الكتروني|e-?commerce)/i.test(rawUserText);
 
       console.log(`[Run] Build intent detected: ${buildIntentForOptimizer}`);
 
@@ -2626,22 +2644,41 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           // [GOD MODE] FORCE BUILD OVERRIDE
           // If the user clearly wants to build/create, and we haven't started, don't let it stall in "echo"
-          // Fixed: Allow intervening words (e.g., "ابني لي نظام", "create me a system")
-          const isExplicitBuild = /(build|create|generate|scaffold|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم)\s+.*?(website|app|system|page|site|api|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة)/i.test(userTextForOverrides);
+          // [FIX] Broadened regex: catches "ابني لي صفحة هبوط", "ابني متجر ساعات", "create landing page", etc.
+          const isExplicitBuild = (
+            /(build|create|generate|scaffold|make|design|develop|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)\s+.{0,40}?(website|app|system|page|landing|site|api|store|shop|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة|متجر|واجهة|هبوط|دكان|بورتفوليو|portfolio)/i.test(userTextForOverrides) ||
+            /(صفحة\s+هبوط|landing\s+page|صفحة\s+فاخرة|موقع\s+الكتروني|متجر\s+الكتروني|متجر\s+ساعات|e-?commerce)/i.test(userTextForOverrides)
+          );
 
           // [FIX] DO NOT OVERRIDE IF THE PLAN IS ALREADY A BUILDER PIPELINE
-          const isAlreadyValidPipeline = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+          const isAlreadyValidPipeline = ['website_full_pipeline', 'project_planner', 'genesis_build', 'scaffold_full_stack'].includes(planName);
 
-          if (isExplicitBuild && steps === 0 && !isAlreadyValidPipeline && (planName === 'echo' || !planName)) {
-            const alreadyDetetced = historyHasToolCall(history as any, 'project_detect');
-            if (!alreadyDetetced) {
-              console.info('[GOD MODE] ⚡ Build Intent Detected - Forcing Pipeline Execution (Discovery)');
+          if (isExplicitBuild && !isAlreadyValidPipeline && (planName === 'echo' || planName === 'project_detect' || !planName)) {
+            const alreadyDetected = historyHasToolCall(history as any, 'project_detect');
+            const alreadyAnalyzed = historyHasToolCall(history as any, 'analyze_codebase');
+
+            if (!alreadyDetected) {
+              console.info('[GOD MODE] ⚡ Build Intent Detected - Phase 1: Discovery');
               plan = { name: 'project_detect', input: { path: '.' } } as any;
               planName = 'project_detect';
-            } else {
-              console.info('[GOD MODE] ⚡ Project already detected. Moving to Analysis.');
+            } else if (!alreadyAnalyzed) {
+              console.info('[GOD MODE] ⚡ Build Intent Detected - Phase 2: Analysis');
               plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
               planName = 'analyze_codebase';
+            } else {
+              // [CRITICAL FIX] Phase 3: Force the build pipeline instead of relying on LLM
+              console.info('[GOD MODE] ⚡ Discovery complete → Forcing website_full_pipeline execution!');
+              const buildName = userTextForOverrides.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
+              plan = {
+                name: 'website_full_pipeline',
+                input: {
+                  name: buildName,
+                  type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userTextForOverrides) ? 'ecommerce' : 'saas',
+                  features: ['auth', 'products'],
+                  language: /[\u0600-\u06FF]/.test(userTextForOverrides) ? 'ar' : 'en'
+                }
+              } as any;
+              planName = 'website_full_pipeline';
             }
           }
 
