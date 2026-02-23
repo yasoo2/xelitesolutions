@@ -57,6 +57,7 @@ import { DirectoryInspectionTool, FileSearchTool, SymbolInspectorTool, AdvancedF
 import { SafeReadFileTool, AskUserTool, TerminalManagerTool } from './definitions/TaskInteractionTools';
 import { BrowserVisionTool } from './definitions/BrowserVisionTool';
 import { BrowserActionTool } from './definitions/BrowserActionTool';
+import { TodoWriteTool } from './definitions/TodoWriteTool';
 import { PaymentsTool } from './definitions/PaymentsTool';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
 import { AuthBuilderTool } from './definitions/AuthBuilderTool';

@@ -1967,3 +1967,162 @@
     font-size: 11px;
     color: var(--joe-text-muted);
 }
+/* ========== Agent Todos Panel (Phase 18) ========== */
+.joe-todos-panel {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 320px;
+    max-height: calc(100% - 32px);
+    background: var(--joe-bg-card);
+    border: 1px solid var(--joe-border);
+    border-radius: var(--joe-border-radius-sm);
+    box-shadow: var(--joe-shadow-lg), 0 0 20px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+    transition: all var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+.joe-todos-panel.collapsed {
+    height: 48px; /* Just the header */
+    width: 240px;
+}
+
+.joe-todos-panel.all-done {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+}
+
+.joe-todos-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid transparent;
+    transition: background 0.2s;
+    user-select: none;
+}
+
+.joe-todos-panel:not(.collapsed) .joe-todos-header {
+    border-bottom-color: var(--joe-border);
+}
+
+.joe-todos-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.joe-todos-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--joe-text-primary);
+}
+
+.joe-todos-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.joe-todos-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--joe-text-secondary);
+    font-weight: 500;
+}
+
+.joe-todos-badge.active {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    animation: neonPulseBlue 2s infinite ease-in-out;
+}
+
+@keyframes neonPulseBlue {
+    0% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.2); }
+    50% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.4); }
+    100% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.2); }
+}
+
+.joe-todos-count {
+    font-size: 12px;
+    color: var(--joe-text-muted);
+    font-weight: 500;
+}
+
+.joe-todos-list {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 8px;
+    gap: 4px;
+    max-height: 400px;
+}
+
+/* Custom Scrollbar for list */
+.joe-todos-list::-webkit-scrollbar {
+    width: 4px;
+}
+.joe-todos-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.joe-todo-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: transparent;
+    transition: background 0.2s ease;
+}
+
+.joe-todo-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.joe-todo-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.joe-todo-content {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--joe-text-primary);
+    word-break: break-word;
+}
+
+.joe-todo-item.status-completed .joe-todo-content {
+    color: var(--joe-text-muted);
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.joe-todo-item.status-cancelled .joe-todo-content {
+    color: var(--joe-text-muted);
+    opacity: 0.5;
+}
+
+.joe-todos-footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--joe-text-muted);
+    border-top: 1px dashed rgba(255, 255, 255, 0.05);
+}

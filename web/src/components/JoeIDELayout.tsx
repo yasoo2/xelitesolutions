@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react';
 import JoeHeader from './JoeHeader';
+import TodosPanel from './TodosPanel';
 import ChatPanel from './ChatPanel';
 import WorkspacePanel from './WorkspacePanel';
 import FileExplorerPanel from './FileExplorerPanel';
@@ -286,19 +287,24 @@ export default function JoeIDELayout({
 
                 {/* Center: Workspace */}
                 <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
-                    <WorkspacePanel
-                        activeTab={activeWorkspaceTab}
-                        onTabChange={handleWorkspaceTabChange}
-                        browserSessionId={browserSessionId}
-                        terminalId={terminalId}
-                        previewUrl={previewUrl}
-                        isMaximized={isMaximized}
-                        onMaximizeToggle={handleMaximizeToggle}
-                        logs={logs}
-                        problems={problems}
-                    >
-                        {workspaceChildren}
-                    </WorkspacePanel>
+                    <div className="joe-workspace-container relative w-full h-full">
+                        <WorkspacePanel
+                            activeTab={activeWorkspaceTab}
+                            onTabChange={handleWorkspaceTabChange}
+                            browserSessionId={browserSessionId}
+                            terminalId={terminalId}
+                            previewUrl={previewUrl}
+                            isMaximized={isMaximized}
+                            onMaximizeToggle={handleMaximizeToggle}
+                            logs={logs}
+                            problems={problems}
+                        >
+                            {workspaceChildren}
+                        </WorkspacePanel>
+
+                        {/* Overlay Agent Tasks */}
+                        <TodosPanel sessionId={sessionId} />
+                    </div>
                 </ErrorBoundary>
 
                 {/* Right: File Explorer / GitHub Panel */}
@@ -339,8 +345,6 @@ export default function JoeIDELayout({
                 onNew={onNewSession || (() => { })}
                 showInAgentMode={true}
             />
-
-
 
             {children}
         </div>

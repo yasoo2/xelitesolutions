@@ -114,17 +114,74 @@ export default function ChatPanel({
                                         components={{
                                             code({ className, children, ...props }: any) {
                                                 const match = /language-(\w+)/.exec(className || '');
+
+                                                // Detection for custom Code Citation format: language-ts:10:20:src/index.ts
+                                                // Actually, marked might just pass the whole string after the backticks as the class name.
+                                                // e.g. ```typescript:10:20:src/index.ts -> className: "language-typescript:10:20:src/index.ts"
+                                                const citationMatch = className?.match(/language-([a-zA-Z0-9]+):(\d+):(\d+):(.+)/);
+
+                                                if (citationMatch) {
+                                                    const [_, lang, startLine, endLine, filepath] = citationMatch;
+                                                    return (
+                                                        <div className="joe-code-citation group" style={{
+                                                            background: 'rgba(20,25,32,0.8)',
+                                                            border: '1px solid rgba(240, 193, 75, 0.3)',
+                                                            borderRadius: '12px',
+                                                            overflow: 'hidden',
+                                                            marginTop: '8px',
+                                                            marginBottom: '8px',
+                                                            transition: 'all 0.2s ease',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                            onClick={() => {
+                                                                // TODO: Trigger AutoOpenManager or Workspace Service to open the file.
+                                                                // For now, it's just a visual UI improvement. 
+                                                                console.log(`Open file: ${filepath} at lines ${startLine}-${endLine}`);
+                                                            }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--joe-gold-primary)'; e.currentTarget.style.boxShadow = '0 0 15px rgba(240,193,75,0.15)'; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(240, 193, 75, 0.3)'; e.currentTarget.style.boxShadow = 'none'; }}
+                                                        >
+                                                            <div className="joe-citation-header" style={{
+                                                                background: 'rgba(0,0,0,0.4)',
+                                                                padding: '6px 12px',
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                alignItems: 'center',
+                                                                fontSize: '12px',
+                                                                borderBottom: '1px solid rgba(255,255,255,0.05)'
+                                                            }}>
+                                                                <span style={{ color: 'var(--joe-gold-primary)', fontWeight: 600 }}>{filepath}</span>
+                                                                <span style={{ color: 'var(--joe-text-muted)' }}>Lines {startLine}-{endLine}</span>
+                                                            </div>
+                                                            <div className="joe-citation-body" style={{ opacity: 0.9 }}>
+                                                                <SyntaxHighlighter
+                                                                    style={vscDarkPlus as any}
+                                                                    language={lang}
+                                                                    PreTag="div"
+                                                                    customStyle={{ margin: 0, padding: '12px', background: 'transparent' }}
+                                                                    {...props}
+                                                                >
+                                                                    {String(children).replace(/\n$/, '')}
+                                                                </SyntaxHighlighter>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+
                                                 return match ? (
-                                                    <SyntaxHighlighter
-                                                        style={vscDarkPlus as any}
-                                                        language={match[1]}
-                                                        PreTag="div"
-                                                        {...props}
-                                                    >
-                                                        {String(children).replace(/\n$/, '')}
-                                                    </SyntaxHighlighter>
+                                                    <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                                        <SyntaxHighlighter
+                                                            style={vscDarkPlus as any}
+                                                            language={match[1]}
+                                                            PreTag="div"
+                                                            customStyle={{ margin: 0 }}
+                                                            {...props}
+                                                        >
+                                                            {String(children).replace(/\n$/, '')}
+                                                        </SyntaxHighlighter>
+                                                    </div>
                                                 ) : (
-                                                    <code className={className} {...props}>
+                                                    <code className={className} {...props} style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--joe-gold-primary)' }}>
                                                         {children}
                                                     </code>
                                                 );
