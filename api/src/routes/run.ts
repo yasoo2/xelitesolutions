@@ -1984,7 +1984,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 name: buildName,
                 type: buildType,
                 features: ['auth', 'products'],
-                language: /[\u0600-\u06FF]/.test(rawUserText) ? 'ar' : 'en'
+                language: /[\u0600-\u06FF]/.test(rawUserText) ? 'ar' : 'en',
+                description: rawUserText
               }
             } as any;
           } else {
@@ -2755,7 +2756,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                     name: buildName,
                     type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userTextForOverrides) ? 'ecommerce' : 'saas',
                     features: ['auth', 'products'],
-                    language: /[\u0600-\u06FF]/.test(userTextForOverrides) ? 'ar' : 'en'
+                    language: /[\u0600-\u06FF]/.test(userTextForOverrides) ? 'ar' : 'en',
+                    description: userTextForOverrides
                   }
                 } as any;
                 planName = 'website_full_pipeline';

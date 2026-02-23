@@ -312,7 +312,20 @@ export default defineConfig({
     const isAr = options.language === 'ar' || options.language === 'dual';
     const lang = isAr ? 'ar' : 'en';
     const dir = isAr ? 'rtl' : 'ltr';
-    const title = name;
+
+    // Extract proper display title from description or name
+    const desc = String(options.description || '').trim();
+    let displayTitle = name;
+    if (desc && isAr) {
+      const titleMatch = desc.match(/(?:متجر|دكان|محل|موقع|صفحة|تطبيق)\s+(?:ل|لل|لبيع|ال)?([\u0600-\u06FF\s]+)/i);
+      if (titleMatch?.[1]) {
+        displayTitle = 'متجر ' + titleMatch[1].trim();
+      } else {
+        const afterBuild = desc.match(/(?:ابني|انشئ|أنشئ|سوي|اعمل|صمم)\s+(?:لي?\s+)?([\u0600-\u06FF\s]+)/i);
+        if (afterBuild?.[1]) displayTitle = afterBuild[1].trim();
+      }
+    }
+    const title = displayTitle;
 
     const aesthetic = options.aestheticMode || 'corporate';
     const themes: any = {
@@ -363,17 +376,17 @@ export default defineConfig({
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title}</title>
-    ${isAr ? '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">' : ''}
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    ${isAr ? '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&display=swap" rel="stylesheet">' : ''}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
       :root {
         ${activeTheme}
       }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
         font-family: ${isAr ? "'Cairo', " : ''}'Inter', sans-serif;
         background: var(--bg);
         color: var(--text);
-        margin: 0;
       }
     </style>
   </head>
@@ -388,31 +401,116 @@ import './index.css';
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 `);
 
-    const welcomeMsg = isAr ? 'أهلاً بك في ' + name : 'Welcome to ' + name;
-    const subMsg = isAr ? 'تم البناء بواسطة Joe AI — جاهز للانطلاق.' : 'Built by Joe AI — Ready to run.';
-    const glassStyle = aesthetic === 'glass' ? 'backdrop-blur-md bg-white/5 border border-white/10 p-12 rounded-3xl shadow-2xl' : 'p-8';
+    const heroTitle = isAr ? displayTitle : `Welcome to ${name}`;
+    const heroSub = isAr ? 'اكتشف أفضل المنتجات بأسعار مذهلة' : 'Discover the best products at amazing prices';
+    const shopNow = isAr ? 'تسوق الآن' : 'Shop Now';
+    const aboutUs = isAr ? 'من نحن' : 'About Us';
+    const productsTitle = isAr ? 'منتجاتنا المميزة' : 'Featured Products';
+    const addToCart = isAr ? 'أضف للسلة' : 'Add to Cart';
+    const contactTitle = isAr ? 'تواصل معنا' : 'Contact Us';
+    const footerText = isAr ? `© 2025 ${displayTitle}. جميع الحقوق محفوظة.` : `© 2025 ${name}. All rights reserved.`;
+    const currency = isAr ? 'ر.س' : '$';
 
     fs.writeFileSync(path.join(webRoot, 'src/App.jsx'), `
-import React from 'react';
+import React, { useState } from 'react';
+
+const products = [
+  { id: 1, name: '${isAr ? 'منتج مميز ١' : 'Premium Product 1'}', price: 99, image: '🛍️' },
+  { id: 2, name: '${isAr ? 'منتج مميز ٢' : 'Premium Product 2'}', price: 149, image: '✨' },
+  { id: 3, name: '${isAr ? 'منتج مميز ٣' : 'Premium Product 3'}', price: 199, image: '🎁' },
+  { id: 4, name: '${isAr ? 'منتج مميز ٤' : 'Premium Product 4'}', price: 79, image: '💎' },
+  { id: 5, name: '${isAr ? 'منتج مميز ٥' : 'Premium Product 5'}', price: 129, image: '🌟' },
+  { id: 6, name: '${isAr ? 'منتج مميز ٦' : 'Premium Product 6'}', price: 249, image: '🎀' },
+];
+
 export default function App() {
+  const [cart, setCart] = useState([]);
+
+  const addToCart = (product) => {
+    setCart(prev => {
+      const existing = prev.find(i => i.id === product.id);
+      if (existing) return prev.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i);
+      return [...prev, { ...product, qty: 1 }];
+    });
+  };
+
+  const totalItems = cart.reduce((s, i) => s + i.qty, 0);
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="${glassStyle} max-w-2xl text-center">
-        <h1 className="text-5xl font-extrabold mb-6 bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-          ${welcomeMsg}
-        </h1>
-        <p className="text-xl opacity-70 mb-8">
-          ${subMsg}
-        </p>
-        <div className="flex gap-4 justify-center">
-          <button className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
-            ${isAr ? 'ابدأ الاستكشاف' : 'Start Exploring'}
-          </button>
-          <button className="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-xl transition-all">
-            ${isAr ? 'لوحة التحكم' : 'Dashboard'}
-          </button>
+    <div style={{ minHeight: '100vh' }}>
+      {/* Navbar */}
+      <nav style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '16px 32px', background: 'var(--panel)', borderBottom: '1px solid var(--border)',
+        position: 'sticky', top: 0, zIndex: 50, backdropFilter: 'blur(12px)'
+      }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>${displayTitle}</h2>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          <a href="#products" style={{ color: 'var(--text)', textDecoration: 'none', opacity: 0.8 }}>${productsTitle}</a>
+          <a href="#contact" style={{ color: 'var(--text)', textDecoration: 'none', opacity: 0.8 }}>${contactTitle}</a>
+          <div style={{
+            padding: '8px 16px', background: 'var(--accent)', color: '#fff', borderRadius: 8,
+            fontSize: 14, fontWeight: 600, cursor: 'pointer'
+          }}>🛒 {totalItems}</div>
         </div>
-      </div>
+      </nav>
+
+      {/* Hero */}
+      <section style={{
+        padding: '80px 32px', textAlign: 'center',
+        background: 'linear-gradient(135deg, var(--panel), var(--bg))',
+        borderBottom: '1px solid var(--border)'
+      }}>
+        <h1 style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', fontWeight: 900, marginBottom: 16,
+          background: 'linear-gradient(135deg, var(--accent), #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+        }}>${heroTitle}</h1>
+        <p style={{ fontSize: 18, opacity: 0.7, marginBottom: 32, maxWidth: 600, margin: '0 auto 32px' }}>${heroSub}</p>
+        <a href="#products" style={{
+          display: 'inline-block', padding: '14px 40px', background: 'var(--accent)', color: '#fff',
+          borderRadius: 12, textDecoration: 'none', fontWeight: 700, fontSize: 16,
+          boxShadow: '0 4px 20px var(--accent-glow)', transition: 'transform 0.2s'
+        }}>${shopNow}</a>
+      </section>
+
+      {/* Products */}
+      <section id="products" style={{ padding: '60px 32px', maxWidth: 1200, margin: '0 auto' }}>
+        <h2 style={{ fontSize: 28, fontWeight: 800, marginBottom: 32, textAlign: 'center' }}>${productsTitle}</h2>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24
+        }}>
+          {products.map(p => (
+            <div key={p.id} style={{
+              background: 'var(--panel)', borderRadius: 16, overflow: 'hidden',
+              border: '1px solid var(--border)', transition: 'transform 0.2s, box-shadow 0.2s',
+              cursor: 'pointer'
+            }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 30px var(--accent-glow)'; }}
+               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}>
+              <div style={{
+                height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 64, background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(56,189,248,0.1))'
+              }}>{p.image}</div>
+              <div style={{ padding: 20 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{p.name}</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>{p.price} ${currency}</span>
+                  <button onClick={() => addToCart(p)} style={{
+                    padding: '8px 20px', background: 'var(--accent)', color: '#fff', border: 'none',
+                    borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 14
+                  }}>${addToCart}</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer id="contact" style={{
+        padding: '40px 32px', background: 'var(--panel)', borderTop: '1px solid var(--border)',
+        textAlign: 'center', marginTop: 40
+      }}>
+        <p style={{ opacity: 0.6, fontSize: 14 }}>${footerText}</p>
+      </footer>
     </div>
   );
 }
