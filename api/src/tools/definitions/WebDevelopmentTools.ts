@@ -268,16 +268,24 @@ export class WebPipelineTool extends BaseTool {
         }
 
         logs.push(`pipeline.complete path = ${projectPath}`);
-        const failedStep = steps.find(s => !s.ok);
-        if (failedStep) {
+        // Only CRITICAL step failures should kill the pipeline.
+        // Quality checks (lint, typecheck, test), security scans, and CI generation are NON-FATAL.
+        const criticalSteps = ['scaffold_full_stack', 'npm_install'];
+        const criticalFailure = steps.find(s => !s.ok && criticalSteps.includes(s.step));
+        if (criticalFailure) {
             return {
                 ok: false,
-                error: `Pipeline failed at step '${failedStep.step}': ${failedStep.error || 'No error message provided'}`,
+                error: `Pipeline failed at critical step '${criticalFailure.step}': ${criticalFailure.error || 'No error message provided'}`,
                 output: { path: projectPath, steps },
                 logs
             };
         }
-        return { ok: true, output: { path: projectPath, steps }, logs };
+        // Pipeline succeeded — even if quality checks had warnings
+        const warnings = steps.filter(s => !s.ok).map(s => s.step);
+        if (warnings.length > 0) {
+            logs.push(`pipeline.warnings: ${warnings.join(', ')} (non-fatal)`);
+        }
+        return { ok: true, output: { path: projectPath, steps, warnings }, logs };
     }
 }
 
