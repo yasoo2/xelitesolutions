@@ -1609,7 +1609,7 @@
 }
 
 .joe-workspace-content {
-    overflow: auto !important;
+    overflow: hidden !important;
 }
 
 .joe-files-content {
@@ -1967,6 +1967,7 @@
     font-size: 11px;
     color: var(--joe-text-muted);
 }
+
 /* ========== Agent Todos Panel (Phase 18) ========== */
 .joe-todos-panel {
     position: absolute;
@@ -1988,7 +1989,8 @@
 }
 
 .joe-todos-panel.collapsed {
-    height: 48px; /* Just the header */
+    height: 48px;
+    /* Just the header */
     width: 240px;
 }
 
@@ -2047,9 +2049,17 @@
 }
 
 @keyframes neonPulseBlue {
-    0% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.2); }
-    50% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.4); }
-    100% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.2); }
+    0% {
+        box-shadow: 0 0 5px rgba(59, 130, 246, 0.2);
+    }
+
+    50% {
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(59, 130, 246, 0.2);
+    }
 }
 
 .joe-todos-count {
@@ -2071,6 +2081,7 @@
 .joe-todos-list::-webkit-scrollbar {
     width: 4px;
 }
+
 .joe-todos-list::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 4px;

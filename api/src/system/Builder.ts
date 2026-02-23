@@ -317,10 +317,19 @@ export default defineConfig({
     const desc = String(options.description || '').trim();
     let displayTitle = name;
     if (desc && isAr) {
-      const titleMatch = desc.match(/(?:متجر|دكان|محل|موقع|صفحة|تطبيق)\s+(?:ل|لل|لبيع|ال)?([\u0600-\u06FF\s]+)/i);
+      // Match: متجر + anything after it in Arabic
+      const titleMatch = desc.match(/(?:متجر|دكان|محل|موقع|صفحة|تطبيق)\s+([\u0600-\u06FF\s]+)/i);
       if (titleMatch?.[1]) {
-        displayTitle = 'متجر ' + titleMatch[1].trim();
+        // Clean up prepositions: "للاكياس النايلون" → "اكياس النايلون"
+        let cleaned = titleMatch[1].trim()
+          .replace(/^لل/, '')      // لل → remove
+          .replace(/^لبيع\s*/, '') // لبيع → remove
+          .replace(/^ل/, '')       // ل → remove
+          .replace(/^ال/, '')      // ال → remove
+          .trim();
+        displayTitle = 'متجر ' + cleaned;
       } else {
+        // Try: "ابني لي متجر حلويات" → capture everything after build verb
         const afterBuild = desc.match(/(?:ابني|انشئ|أنشئ|سوي|اعمل|صمم)\s+(?:لي?\s+)?([\u0600-\u06FF\s]+)/i);
         if (afterBuild?.[1]) displayTitle = afterBuild[1].trim();
       }
