@@ -1073,10 +1073,13 @@ function fallbackPlanWhenPlannerUnavailable(params: {
 
     if (hasProjectDetect && hasAnalyze) {
       // [CRITICAL FIX] Discovery done → Force build pipeline for build-intent requests
+      // BUT only if the pipeline hasn't already been executed!
+      const hasPipeline = historyHasToolCall(history as any, 'website_full_pipeline') ||
+        historyHasToolCall(history as any, 'scaffold_full_stack');
       const isBuildIntent = /(build|create|generate|scaffold|make|design|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)/i.test(userText) &&
         /(website|app|system|page|landing|site|store|shop|موقع|تطبيق|نظام|صفحة|هبوط|متجر|واجهة|مشروع|دكان|بورتفوليو|portfolio)/i.test(userText);
 
-      if (isBuildIntent) {
+      if (isBuildIntent && !hasPipeline) {
         const buildName = userText.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
         console.info(`[Fallback] Discovery complete + build intent → Forcing website_full_pipeline (${buildName})`);
         return {
@@ -2667,18 +2670,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               planName = 'analyze_codebase';
             } else {
               // [CRITICAL FIX] Phase 3: Force the build pipeline instead of relying on LLM
-              console.info('[GOD MODE] ⚡ Discovery complete → Forcing website_full_pipeline execution!');
-              const buildName = userTextForOverrides.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
-              plan = {
-                name: 'website_full_pipeline',
-                input: {
-                  name: buildName,
-                  type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userTextForOverrides) ? 'ecommerce' : 'saas',
-                  features: ['auth', 'products'],
-                  language: /[\u0600-\u06FF]/.test(userTextForOverrides) ? 'ar' : 'en'
-                }
-              } as any;
-              planName = 'website_full_pipeline';
+              // BUT only if the pipeline hasn't already been executed!
+              const alreadyBuilt = historyHasToolCall(history as any, 'website_full_pipeline') ||
+                historyHasToolCall(history as any, 'scaffold_full_stack');
+              if (!alreadyBuilt) {
+                console.info('[GOD MODE] ⚡ Discovery complete → Forcing website_full_pipeline execution!');
+                const buildName = userTextForOverrides.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
+                plan = {
+                  name: 'website_full_pipeline',
+                  input: {
+                    name: buildName,
+                    type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userTextForOverrides) ? 'ecommerce' : 'saas',
+                    features: ['auth', 'products'],
+                    language: /[\u0600-\u06FF]/.test(userTextForOverrides) ? 'ar' : 'en'
+                  }
+                } as any;
+                planName = 'website_full_pipeline';
+              }
             }
           }
 
