@@ -1983,503 +1983,514 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
           }
         }
-      } catch (err) {
-        console.warn('LLM planning error:', safeErrorMessage(err));
       }
+    } catch (err) {
+      console.warn('LLM planning error:', safeErrorMessage(err));
+    }
 
-      ev({ type: 'step_done', data: { name: 'plan', plan: initialPlan } });
+    ev({ type: 'step_done', data: { name: 'plan', plan: initialPlan } });
 
-      try {
-        if (!offlineMode) {
-          await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
-        }
-      } catch { }
-
-
-      const rawTextForDb = String(text || '');
-      let persistedUserText = redactSecretsFromString(rawTextForDb);
-      try {
-        const r = rewriteInlineLoginCredentialsToSecrets(rawTextForDb);
-        if (r.ok) persistedUserText = redactSecretsFromString(String(r.sanitizedText || persistedUserText));
-      } catch { }
-      try {
-        const pw = String(xeliteMacro?.password || '').trim();
-        if (pw) persistedUserText = persistedUserText.split(pw).join('[REDACTED]');
-      } catch { }
-
-      // [OFFLINE MODE GUARD] Skip user message persistence
+    try {
       if (!offlineMode) {
-        await Message.create({ sessionId, role: 'user', content: persistedUserText, runId });
-      } else {
-        console.log('[Run/Start] OFFLINE MODE: Skipping user message persistence');
+        await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
       }
+    } catch { }
 
 
-      const risk = detectRisk(String(text || ''));
-      if (risk && initialPlan) {
-        const authRole = (req as any)?.auth?.role;
-        const { getSessionRunConfig } = await import('../services/secrets');
-        const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
-        const autoAll =
-          authRole === 'OWNER' || cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
-        const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
-        const auto = autoAll || cfg.autoApproveSafe === true ? true : envAutoSafe ? envAutoSafe === '1' : true;
-        const safe = !/(high|critical)/i.test(String(risk));
-        if (autoAll || (auto && safe)) {
-          ev({
-            type: 'step_started',
-            data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) },
-          });
+    const rawTextForDb = String(text || '');
+    let persistedUserText = redactSecretsFromString(rawTextForDb);
+    try {
+      const r = rewriteInlineLoginCredentialsToSecrets(rawTextForDb);
+      if (r.ok) persistedUserText = redactSecretsFromString(String(r.sanitizedText || persistedUserText));
+    } catch { }
+    try {
+      const pw = String(xeliteMacro?.password || '').trim();
+      if (pw) persistedUserText = persistedUserText.split(pw).join('[REDACTED]');
+    } catch { }
 
-          broadcastThinkingPhase(String(sessionId), 'executing', `تنفيذ: ${initialPlan.name}`);
-          broadcastThinkingDetail(String(sessionId), `> Executing tool: ${initialPlan.name}...`);
+    // [OFFLINE MODE GUARD] Skip user message persistence
+    if (!offlineMode) {
+      await Message.create({ sessionId, role: 'user', content: persistedUserText, runId });
+    } else {
+      console.log('[Run/Start] OFFLINE MODE: Skipping user message persistence');
+    }
 
-          const callInput =
-            userId && initialPlan.input && typeof initialPlan.input === 'object'
-              ? { ...(initialPlan.input as any), userId: String(userId) }
-              : initialPlan.input;
-          let result = await executeToolWithRateLimitRetry(initialPlan.name, callInput, { sessionId, workspaceId }, { runId });
 
-          // [INTELLIGENCE UPGRADE] Self-Correction Logic
-          if (!result.ok && providerKey === 'auto') {
-            console.info(`[AutoCorrection] Tool ${initialPlan.name} failed. Attempting autonomous fix...`);
-            const { suggestCorrection } = await import('../llm/intelligent-router');
-            const errorMessage = (result as any).error || (result as any).message || 'Unknown error';
-            const correction = await suggestCorrection(errorMessage, initialPlan.name, rawUserText);
+    const risk = detectRisk(String(text || ''));
+    if (risk && initialPlan) {
+      const authRole = (req as any)?.auth?.role;
+      const { getSessionRunConfig } = await import('../services/secrets');
+      const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
+      const autoAll =
+        authRole === 'OWNER' || cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
+      const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
+      const auto = autoAll || cfg.autoApproveSafe === true ? true : envAutoSafe ? envAutoSafe === '1' : true;
+      const safe = !/(high|critical)/i.test(String(risk));
+      if (autoAll || (auto && safe)) {
+        ev({
+          type: 'step_started',
+          data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) },
+        });
 
-            if (correction) {
-              console.info(`[AutoCorrection] Retrying with: ${correction.action}`);
-              const retryInput = userId && correction.input && typeof correction.input === 'object'
-                ? { ...(correction.input as any), userId: String(userId) }
-                : correction.input;
-              result = await executeToolWithRateLimitRetry(correction.action, retryInput, { sessionId, workspaceId }, { runId });
-            }
+        broadcastThinkingPhase(String(sessionId), 'executing', `تنفيذ: ${initialPlan.name}`);
+        broadcastThinkingDetail(String(sessionId), `> Executing tool: ${initialPlan.name}...`);
+
+        const callInput =
+          userId && initialPlan.input && typeof initialPlan.input === 'object'
+            ? { ...(initialPlan.input as any), userId: String(userId) }
+            : initialPlan.input;
+        let result = await executeToolWithRateLimitRetry(initialPlan.name, callInput, { sessionId, workspaceId }, { runId });
+
+        // [INTELLIGENCE UPGRADE] Self-Correction Logic
+        if (!result.ok && providerKey === 'auto') {
+          console.info(`[AutoCorrection] Tool ${initialPlan.name} failed. Attempting autonomous fix...`);
+          const { suggestCorrection } = await import('../llm/intelligent-router');
+          const errorMessage = (result as any).error || (result as any).message || 'Unknown error';
+          const correction = await suggestCorrection(errorMessage, initialPlan.name, rawUserText);
+
+          if (correction) {
+            console.info(`[AutoCorrection] Retrying with: ${correction.action}`);
+            const retryInput = userId && correction.input && typeof correction.input === 'object'
+              ? { ...(correction.input as any), userId: String(userId) }
+              : correction.input;
+            result = await executeToolWithRateLimitRetry(correction.action, retryInput, { sessionId, workspaceId }, { runId });
           }
-
-          ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
-          if (result.artifacts) {
-            for (const a of result.artifacts) {
-              ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
-            }
-          }
-          if (!offlineMode) {
-            await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-          }
-
-          // [Wakil 6.0] Broadcast IDLE phase when task completes
-          broadcastThinkingPhase(String(sessionId), 'idle');
-
-          ev({ type: 'run_finished', data: { runId, ok: result.ok } });
-          return res.json({ ok: true, runId, result });
         }
 
-        // [FIX] Approval creation should be gated by offlineMode
-        let ap: any = { _id: `offline-approval-${Date.now()}` };
+        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result } });
+        if (result.artifacts) {
+          for (const a of result.artifacts) {
+            ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
+          }
+        }
         if (!offlineMode) {
-          ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
-          await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
+          await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
         }
 
-        ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
-        const { planContext } = await import('../approvals/context');
-        planContext.set(ap._id.toString(), { runId, sessionId, workspaceId, name: initialPlan.name, input: initialPlan.input });
-        if (autoAll || (auto && safe)) {
-          ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
-          const callInput =
-            userId && initialPlan.input && typeof initialPlan.input === 'object'
-              ? { ...(initialPlan.input as any), userId: String(userId) }
-              : initialPlan.input;
-          let result;
-          try {
-            result = await executeToolWithRateLimitRetry(initialPlan.name, callInput, { sessionId, workspaceId }, { runId });
-          } catch (e) {
-            result = { ok: false, output: String(e) };
-          }
-          const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
-          if (!ignoredTools.includes(String(initialPlan.name)) && result.ok && result.output) {
-            let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || '');
-            if (answerText) {
-              // Check for thought markers
-              const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
-              if (thoughtMatch) {
-                // Strip thought from answer
-                answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
-              }
-              if (answerText) {
-                ev({ type: 'text', data: { text: answerText } });
-                assistantTextEmitted = true;
-              }
-            }
-          }
-          let stepResult = result;
-          if (initialPlan.name === 'central_answer' && result.ok) {
-            // Hide raw JSON from UI, rely on 'text' event
-            stepResult = { ...result, output: { note: 'Answer emitted as text' } as any };
-          }
-          ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result: stepResult } });
-          if (result.artifacts) {
-            // Persist artifacts in DB using Artifact model if needed
-          }
-          if (!offlineMode) {
-            await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-          }
+        // [Wakil 6.0] Broadcast IDLE phase when task completes
+        broadcastThinkingPhase(String(sessionId), 'idle');
 
-          // [Wakil 6.0] Broadcast IDLE phase when task completes
-          broadcastThinkingPhase(String(sessionId), 'idle');
-
-          ev({ type: 'run_finished', data: { runId, ok: result.ok } });
-          planContext.delete(ap._id.toString());
-          // Fix: Explicitly return result here like in mock branch
-          return res.json({ ok: true, runId, result });
-        } else {
-        }
-        return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString() });
-
+        ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+        return res.json({ ok: true, runId, result });
       }
 
-      // Fast path: handle location queries without LLM planning
-      try {
-        const rawUserText = String(text || '');
-        if (isLocationLikeQuery(rawUserText)) {
-          ev({ type: 'step_started', data: { name: 'execute:http_fetch', input: { url: 'https://ipinfo.io/json', sessionId } } });
-          const result = await executeToolWithRateLimitRetry('http_fetch', { url: 'https://ipinfo.io/json', sessionId }, { sessionId, workspaceId }, { runId });
-          ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:http_fetch', result } });
-
-          if (!offlineMode) {
-            await ToolExecution.create({ runId, name: 'http_fetch', input: { url: 'https://ipinfo.io/json', sessionId }, output: result.output, ok: result.ok, logs: result.logs });
-          }
-
-          let lat: number | null = null, lon: number | null = null;
-          const j = (result as any)?.output?.json || {};
-          if (typeof j?.loc === 'string' && j.loc.includes(',')) {
-            const parts = j.loc.split(',').map((x: string) => Number(x.trim()));
-            if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
-              lat = parts[0]; lon = parts[1];
-            }
-          } else if (typeof j?.latitude === 'number' && typeof j?.longitude === 'number') {
-            lat = j.latitude; lon = j.longitude;
-          } else if (typeof j?.lat === 'number' && typeof j?.lon === 'number') {
-            lat = j.lat; lon = j.lon;
-          }
-          let finalText = '';
-          if (lat !== null && lon !== null) {
-            finalText = [
-              `### الإحداثيات التقريبية`,
-              `- خط العرض (Latitude): ${lat.toFixed(6)}`,
-              `- خط الطول (Longitude): ${lon.toFixed(6)}`,
-              `- المصدر: مزود تحديد الموقع عبر عنوان IP (تقريبي)`
-            ].join('\n');
-          } else {
-            finalText = 'تعذّر استخراج الإحداثيات من مزود الموقع. حاول مرة أخرى بعد قليل.';
-          }
-          ev({ type: 'text', data: { text: finalText } });
-          ev({ type: 'run_completed', data: { runId, result } });
-          ev({ type: 'run_finished', data: { runId, status: 'done' } });
-
-          if (!offlineMode) {
-            await Message.create({ sessionId, role: 'assistant', content: finalText, runId });
-            await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
-          }
-
-          return res.json({ runId, sessionId, status: 'done' });
-        }
-      } catch (e: any) {
-        console.error('[Run] Pipeline error:', e);
-        ev({ type: 'text', data: `⚠️ Error: ${e.message || 'Unknown failure'}` });
-        // fall through to agent loop on error
+      // [FIX] Approval creation should be gated by offlineMode
+      let ap: any = { _id: `offline-approval-${Date.now()}` };
+      if (!offlineMode) {
+        ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
+        await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       }
 
-      // [ELITE FIX] Return early for agent runs to prevent HTTP timeouts
-      if (!res.headersSent) {
-        res.json({ ok: true, runId, sessionId, status: 'running' });
-      }
-
-      // --- Agent Loop (Background) ---
-      (async () => {
+      ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: text } });
+      const { planContext } = await import('../approvals/context');
+      planContext.set(ap._id.toString(), { runId, sessionId, workspaceId, name: initialPlan.name, input: initialPlan.input });
+      if (autoAll || (auto && safe)) {
+        ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
+        const callInput =
+          userId && initialPlan.input && typeof initialPlan.input === 'object'
+            ? { ...(initialPlan.input as any), userId: String(userId) }
+            : initialPlan.input;
+        let result;
         try {
-          let steps = 0;
-          const MAX_STEPS = 50;
+          result = await executeToolWithRateLimitRetry(initialPlan.name, callInput, { sessionId, workspaceId }, { runId });
+        } catch (e) {
+          result = { ok: false, output: String(e) };
+        }
+        const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
+        if (!ignoredTools.includes(String(initialPlan.name)) && result.ok && result.output) {
+          let answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || '');
+          if (answerText) {
+            // Check for thought markers
+            const thoughtMatch = answerText.match(/:{2,3}thought([\s\S]*?):{2,3}/);
+            if (thoughtMatch) {
+              // Strip thought from answer
+              answerText = answerText.replace(/:{2,3}thought([\s\S]*?):{2,3}/, '').trim();
+            }
+            if (answerText) {
+              ev({ type: 'text', data: { text: answerText } });
+              assistantTextEmitted = true;
+            }
+          }
+        }
+        let stepResult = result;
+        if (initialPlan.name === 'central_answer' && result.ok) {
+          // Hide raw JSON from UI, rely on 'text' event
+          stepResult = { ...result, output: { note: 'Answer emitted as text' } as any };
+        }
+        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${initialPlan.name}`, result: stepResult } });
+        if (result.artifacts) {
+          // Persist artifacts in DB using Artifact model if needed
+        }
+        if (!offlineMode) {
+          await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+        }
 
-          // Extract values from req/res needing to persist in closure
-          const reqProtocol = req.protocol;
-          const reqHost = req.get('host');
-          // @ts-ignore
-          const authRole = req.auth?.role;
+        // [Wakil 6.0] Broadcast IDLE phase when task completes
+        broadcastThinkingPhase(String(sessionId), 'idle');
 
-          // History already loaded above
+        ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+        planContext.delete(ap._id.toString());
+        // Fix: Explicitly return result here like in mock branch
+        return res.json({ ok: true, runId, result });
+      } else {
+      }
+      return res.json({ runId, sessionId, blocked: true, approvalId: ap._id.toString() });
 
-          // Track executed tools to prevent loops
-          const executedTools = new Set<string>();
-          const executedToolSigs = new Map<string, number>();
-          let consecutiveThoughtSteps = 0;
-          let thoughtLoopPauseEmitted = false;
-          let postScaffoldScheduled = false;
-          let postInstallScheduled = false;
-          let postDevScheduled = false;
-          let postPreviewScheduled = false;
-          let lastExecutedToolSig: string | null = null;
-          let lastExecutedToolName: string | null = null;
+    }
 
-          let lastResult: any = null;
-          let forcedText: string | null = null;
-          let plan: { name: string, input: any } | null = null;
-          let pendingPlan: { name: string, input: any } | null = null;
-          let lastPlanError: string | null = null;
-          let endAfterBrowserState = false;
-          let simpleBrowserOpenLabel = '';
-          let simpleBrowserOpenUrl = '';
-          let lastBrowserRunSummary = '';
-          let lastBrowserRunPageUrl = '';
-          let plannerUnavailableMode = false;
+    // Fast path: handle location queries without LLM planning
+    try {
+      const rawUserText = String(text || '');
+      if (isLocationLikeQuery(rawUserText)) {
+        ev({ type: 'step_started', data: { name: 'execute:http_fetch', input: { url: 'https://ipinfo.io/json', sessionId } } });
+        const result = await executeToolWithRateLimitRetry('http_fetch', { url: 'https://ipinfo.io/json', sessionId }, { sessionId, workspaceId }, { runId });
+        ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:http_fetch', result } });
 
-          const normalizeUrlForGoto = (raw: any) => {
-            let s = String(raw ?? '').trim();
-            s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
-            if (!s) return s;
-            const fixXelite = (url: string) => {
-              const input = String(url || '').trim();
-              if (!input) return input;
-              try {
-                const u = new URL(input);
-                const host = String(u.hostname || '').trim().toLowerCase();
-                const hadWww = /^www\./i.test(host);
-                const hostNoWww = host.replace(/^www\./i, '');
-                const isXeliteLike =
-                  (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
-                  /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
-                if (!isXeliteLike) return input;
-                const tld = /\.com$/i.test(hostNoWww) ? 'com' : 'co';
-                u.hostname = `${hadWww ? 'www.' : ''}xelitesolutions.${tld}`;
-                return u.toString();
-              } catch {
-                return input;
-              }
-            };
-            if (/^https?:\/\//i.test(s)) return fixXelite(s);
-            if (/^\/\//.test(s)) return `https:${s}`;
-            if (/^\//.test(s)) return s;
-            const candidate = s.replace(/^\/\//, '');
-            const isLocal =
-              /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-              /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-              /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-            const looksDomain =
-              /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
-            if (isLocal) return `http://${candidate}`;
-            if (looksDomain) return fixXelite(`https://${candidate}`);
-            if (/^xelite/i.test(candidate) && /solution/i.test(candidate) && !/\./.test(candidate)) return 'https://xelitesolutions.co';
-            return s;
-          };
-          const hostKeyFromHost = (host: string) => {
-            const h = String(host || '').toLowerCase().trim();
-            if (!h) return '';
-            return h.startsWith('www.') ? h.slice(4) : h;
-          };
-          const isSameSiteHost = (targetHost: string, lockHost: string) => {
-            const t = hostKeyFromHost(targetHost);
-            const l = hostKeyFromHost(lockHost);
-            if (!t || !l) return false;
-            if (t === l) return true;
-            return t.endsWith(`.${l}`);
-          };
-          const urlToHost = (u: string) => {
+        if (!offlineMode) {
+          await ToolExecution.create({ runId, name: 'http_fetch', input: { url: 'https://ipinfo.io/json', sessionId }, output: result.output, ok: result.ok, logs: result.logs });
+        }
+
+        let lat: number | null = null, lon: number | null = null;
+        const j = (result as any)?.output?.json || {};
+        if (typeof j?.loc === 'string' && j.loc.includes(',')) {
+          const parts = j.loc.split(',').map((x: string) => Number(x.trim()));
+          if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+            lat = parts[0]; lon = parts[1];
+          }
+        } else if (typeof j?.latitude === 'number' && typeof j?.longitude === 'number') {
+          lat = j.latitude; lon = j.longitude;
+        } else if (typeof j?.lat === 'number' && typeof j?.lon === 'number') {
+          lat = j.lat; lon = j.lon;
+        }
+        let finalText = '';
+        if (lat !== null && lon !== null) {
+          finalText = [
+            `### الإحداثيات التقريبية`,
+            `- خط العرض (Latitude): ${lat.toFixed(6)}`,
+            `- خط الطول (Longitude): ${lon.toFixed(6)}`,
+            `- المصدر: مزود تحديد الموقع عبر عنوان IP (تقريبي)`
+          ].join('\n');
+        } else {
+          finalText = 'تعذّر استخراج الإحداثيات من مزود الموقع. حاول مرة أخرى بعد قليل.';
+        }
+        ev({ type: 'text', data: { text: finalText } });
+        ev({ type: 'run_completed', data: { runId, result } });
+        ev({ type: 'run_finished', data: { runId, status: 'done' } });
+
+        if (!offlineMode) {
+          await Message.create({ sessionId, role: 'assistant', content: finalText, runId });
+          await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
+        }
+
+        return res.json({ runId, sessionId, status: 'done' });
+      }
+    } catch (e: any) {
+      console.error('[Run] Pipeline error:', e);
+      ev({ type: 'text', data: `⚠️ Error: ${e.message || 'Unknown failure'}` });
+      // fall through to agent loop on error
+    }
+
+    // [ELITE FIX] Return early for agent runs to prevent HTTP timeouts
+    if (!res.headersSent) {
+      res.json({ ok: true, runId, sessionId, status: 'running' });
+    }
+
+    // --- Agent Loop (Background) ---
+    (async () => {
+      try {
+        let steps = 0;
+        const MAX_STEPS = 50;
+
+        // Extract values from req/res needing to persist in closure
+        const reqProtocol = req.protocol;
+        const reqHost = req.get('host');
+        // @ts-ignore
+        const authRole = req.auth?.role;
+
+        // History already loaded above
+
+        // Track executed tools to prevent loops
+        const executedTools = new Set<string>();
+        const executedToolSigs = new Map<string, number>();
+        let consecutiveThoughtSteps = 0;
+        let thoughtLoopPauseEmitted = false;
+        let postScaffoldScheduled = false;
+        let postInstallScheduled = false;
+        let postDevScheduled = false;
+        let postPreviewScheduled = false;
+        let lastExecutedToolSig: string | null = null;
+        let lastExecutedToolName: string | null = null;
+
+        let lastResult: any = null;
+        let forcedText: string | null = null;
+        let plan: { name: string, input: any } | null = null;
+        let pendingPlan: { name: string, input: any } | null = null;
+        let lastPlanError: string | null = null;
+        let endAfterBrowserState = false;
+        let simpleBrowserOpenLabel = '';
+        let simpleBrowserOpenUrl = '';
+        let lastBrowserRunSummary = '';
+        let lastBrowserRunPageUrl = '';
+        let plannerUnavailableMode = false;
+
+        const normalizeUrlForGoto = (raw: any) => {
+          let s = String(raw ?? '').trim();
+          s = s.replace(/^[`"'“”‘’]+/, '').replace(/[`"'“”‘’]+$/, '').trim();
+          if (!s) return s;
+          const fixXelite = (url: string) => {
+            const input = String(url || '').trim();
+            if (!input) return input;
             try {
-              const parsed = new URL(u);
-              return parsed.hostname || '';
+              const u = new URL(input);
+              const host = String(u.hostname || '').trim().toLowerCase();
+              const hadWww = /^www\./i.test(host);
+              const hostNoWww = host.replace(/^www\./i, '');
+              const isXeliteLike =
+                (/xelite/i.test(hostNoWww) && /solution/i.test(hostNoWww)) ||
+                /^xelitesolutions(?:\.(?:co|com))?$/i.test(hostNoWww);
+              if (!isXeliteLike) return input;
+              const tld = /\.com$/i.test(hostNoWww) ? 'com' : 'co';
+              u.hostname = `${hadWww ? 'www.' : ''}xelitesolutions.${tld}`;
+              return u.toString();
             } catch {
-              return '';
+              return input;
             }
           };
-          const urlToOrigin = (u: string) => {
-            try {
-              const parsed = new URL(u);
-              return parsed.origin || '';
-            } catch {
-              return '';
-            }
-          };
-          const isCrossSiteBlockedError = (err: any) => {
-            const s = String(err || '');
-            if (!s) return false;
-            if (/cross_site_blocked/i.test(s)) return true;
-            if (/browser navigation blocked/i.test(s)) return true;
-            return false;
-          };
-          const extractOpenTargetText = (raw: string) => {
-            let s = String(raw || '').trim();
-            if (!s) return '';
-            s = s
-              .replace(/https?:\/\/[^\s"'<>]+/gi, ' ')
-              .replace(/\b(?:open|start|launch|browse|visit|go\s+to)\b/gi, ' ')
-              .replace(/\b(?:website|site|page)\b/gi, ' ')
-              .replace(/(?:ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور)\b/gi, ' ')
-              .replace(/(?:الى|إلى|لـ|ل)\b/gi, ' ')
-              .replace(/(?:موقع|صفحة|صفحه)\b/gi, ' ')
-              .replace(/(?:على\s+المتصفح|بالـ?متصفح|في\s+المتصفح|المتصفح)\b/gi, ' ')
-              .replace(/[“”"']/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim();
-            s = s.replace(/^(?:موقع|صفحة|صفحه)\s+/i, '').trim();
-            s = s.replace(/\s+(?:الآن|الان|حالًا|حالا)\s*$/i, '').trim();
-            return s;
-          };
-          const pickTopUrlFromSearch = (out: any) => {
-            const results = Array.isArray(out?.results) ? out.results : [];
-            const top = results[0];
-            const url = typeof top?.url === 'string' ? String(top.url).trim() : '';
-            return url;
-          };
-          let browserHostLock = '';
-          let browserOriginLock = '';
-          const updateBrowserLockFromOutput = (out: any) => {
-            const urlRaw = typeof out?.url === 'string' ? out.url : typeof out?.pageUrl === 'string' ? out.pageUrl : '';
-            const url = normalizeUrlForGoto(urlRaw);
-            const host = url ? urlToHost(url) : '';
-            if (host) browserHostLock = hostKeyFromHost(host);
-            const origin = url ? urlToOrigin(url) : '';
-            if (origin) browserOriginLock = origin;
-          };
-          const isStrictSameSiteUiTask = (() => {
-            const s = String(text || '');
-            if (/strict_same_site_ui/i.test(s)) return true;
-            const strictByDefault = ['1', 'true', 'yes', 'y', 'on'].includes(
-              String(process.env.STRICT_SAME_SITE_UI || '').trim().toLowerCase(),
+          if (/^https?:\/\//i.test(s)) return fixXelite(s);
+          if (/^\/\//.test(s)) return `https:${s}`;
+          if (/^\//.test(s)) return s;
+          const candidate = s.replace(/^\/\//, '');
+          const isLocal =
+            /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+            /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+            /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+          const looksDomain =
+            /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(candidate);
+          if (isLocal) return `http://${candidate}`;
+          if (looksDomain) return fixXelite(`https://${candidate}`);
+          if (/^xelite/i.test(candidate) && /solution/i.test(candidate) && !/\./.test(candidate)) return 'https://xelitesolutions.co';
+          return s;
+        };
+        const hostKeyFromHost = (host: string) => {
+          const h = String(host || '').toLowerCase().trim();
+          if (!h) return '';
+          return h.startsWith('www.') ? h.slice(4) : h;
+        };
+        const isSameSiteHost = (targetHost: string, lockHost: string) => {
+          const t = hostKeyFromHost(targetHost);
+          const l = hostKeyFromHost(lockHost);
+          if (!t || !l) return false;
+          if (t === l) return true;
+          return t.endsWith(`.${l}`);
+        };
+        const urlToHost = (u: string) => {
+          try {
+            const parsed = new URL(u);
+            return parsed.hostname || '';
+          } catch {
+            return '';
+          }
+        };
+        const urlToOrigin = (u: string) => {
+          try {
+            const parsed = new URL(u);
+            return parsed.origin || '';
+          } catch {
+            return '';
+          }
+        };
+        const isCrossSiteBlockedError = (err: any) => {
+          const s = String(err || '');
+          if (!s) return false;
+          if (/cross_site_blocked/i.test(s)) return true;
+          if (/browser navigation blocked/i.test(s)) return true;
+          return false;
+        };
+        const extractOpenTargetText = (raw: string) => {
+          let s = String(raw || '').trim();
+          if (!s) return '';
+          s = s
+            .replace(/https?:\/\/[^\s"'<>]+/gi, ' ')
+            .replace(/\b(?:open|start|launch|browse|visit|go\s+to)\b/gi, ' ')
+            .replace(/\b(?:website|site|page)\b/gi, ' ')
+            .replace(/(?:ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور)\b/gi, ' ')
+            .replace(/(?:الى|إلى|لـ|ل)\b/gi, ' ')
+            .replace(/(?:موقع|صفحة|صفحه)\b/gi, ' ')
+            .replace(/(?:على\s+المتصفح|بالـ?متصفح|في\s+المتصفح|المتصفح)\b/gi, ' ')
+            .replace(/[“”"']/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          s = s.replace(/^(?:موقع|صفحة|صفحه)\s+/i, '').trim();
+          s = s.replace(/\s+(?:الآن|الان|حالًا|حالا)\s*$/i, '').trim();
+          return s;
+        };
+        const pickTopUrlFromSearch = (out: any) => {
+          const results = Array.isArray(out?.results) ? out.results : [];
+          const top = results[0];
+          const url = typeof top?.url === 'string' ? String(top.url).trim() : '';
+          return url;
+        };
+        let browserHostLock = '';
+        let browserOriginLock = '';
+        const updateBrowserLockFromOutput = (out: any) => {
+          const urlRaw = typeof out?.url === 'string' ? out.url : typeof out?.pageUrl === 'string' ? out.pageUrl : '';
+          const url = normalizeUrlForGoto(urlRaw);
+          const host = url ? urlToHost(url) : '';
+          if (host) browserHostLock = hostKeyFromHost(host);
+          const origin = url ? urlToOrigin(url) : '';
+          if (origin) browserOriginLock = origin;
+        };
+        const isStrictSameSiteUiTask = (() => {
+          const s = String(text || '');
+          if (/strict_same_site_ui/i.test(s)) return true;
+          const strictByDefault = ['1', 'true', 'yes', 'y', 'on'].includes(
+            String(process.env.STRICT_SAME_SITE_UI || '').trim().toLowerCase(),
+          );
+          if (!strictByDefault) return false;
+          const looksLoginOrForm =
+            /(login|log\s*in|sign\s*in|password|email|form|تسجيل\s*الدخول|سجل\s*دخول|كلمة\s*المرور|البريد|نموذج)/i.test(s);
+          const asksSearch =
+            /(google|جوجل|search|ابحث|بحث|lookup|find|duckduck|duck\s*duck)/i.test(s);
+          return Boolean(looksLoginOrForm && !asksSearch);
+        })();
+
+        const initialUserTextForOpen = String(text || '');
+        let pendingBrowserOpenFromSearch: { target: string } | null = null;
+        const isSimpleBrowserOpenRequest = (() => {
+          const s = initialUserTextForOpen;
+          const sNorm = normalizeForIntent(s);
+          if (!s.trim()) return false;
+          const hasUrl =
+            /https?:\/\/[^\s"'<>]+/i.test(s) ||
+            /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
+          const openKeyword =
+            /(open|start|launch|browse|visit|go to|show|display|ادخل|افتح|افتحلي|افتح\s+لي|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|وريني|اعرض|عرض|شوف|طلعني|طالع|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+              sNorm,
             );
-            if (!strictByDefault) return false;
-            const looksLoginOrForm =
-              /(login|log\s*in|sign\s*in|password|email|form|تسجيل\s*الدخول|سجل\s*دخول|كلمة\s*المرور|البريد|نموذج)/i.test(s);
-            const asksSearch =
-              /(google|جوجل|search|ابحث|بحث|lookup|find|duckduck|duck\s*duck)/i.test(s);
-            return Boolean(looksLoginOrForm && !asksSearch);
-          })();
+          const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(sNorm);
+          const multiStepKeyword =
+            /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+              sNorm,
+            );
+          const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
+          const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
+          const hasSiteKeyword =
+            /(joe|نظام جو|جو|github|git\s*hub|جيتهاب|جيت\s+هاب|جت\s+هاب|غيت\s+هاب|كتهاب|كت\s*هاب|كيتهاب|كيت\s*هاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
+              sNorm,
+            ) ||
+            /(website|site|page|موقع|صفحة|صفحه)/i.test(sNorm) ||
+            /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
+          if (!hasUrl && !hasSiteKeyword && !browserKeyword) return false;
+          if (!(openKeyword || browserKeyword || hasUrl)) return false;
+          if (multiStepKeyword) return false;
+          // [FIX] Don't trigger if it looks like a local file/code operation
+          if (isFileOp) return false;
+          if (analysisKeyword) return false;
+          return true;
+        })();
+        if (isSimpleBrowserOpenRequest) {
+          const s = initialUserTextForOpen;
+          const normalized = normalizeUrlForGoto(s);
 
-          const initialUserTextForOpen = String(text || '');
-          let pendingBrowserOpenFromSearch: { target: string } | null = null;
-          const isSimpleBrowserOpenRequest = (() => {
-            const s = initialUserTextForOpen;
-            const sNorm = normalizeForIntent(s);
-            if (!s.trim()) return false;
-            const hasUrl =
-              /https?:\/\/[^\s"'<>]+/i.test(s) ||
-              /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
-            const openKeyword =
-              /(open|start|launch|browse|visit|go to|show|display|ادخل|افتح|افتحلي|افتح\s+لي|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|وريني|اعرض|عرض|شوف|طلعني|طالع|بدي|عايز|عاوز|ابي|ابغى)/i.test(
-                sNorm,
-              );
-            const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(sNorm);
-            const multiStepKeyword =
-              /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
-                sNorm,
-              );
-            const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
-            const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
-            const hasSiteKeyword =
-              /(joe|نظام جو|جو|github|git\s*hub|جيتهاب|جيت\s+هاب|جت\s+هاب|غيت\s+هاب|كتهاب|كت\s*هاب|كيتهاب|كيت\s*هاب|yahoo|ياهو|google|جوجل|قوقل|youtube|يوتيوب|open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي|لينكد\s*(ان|إن)|واتساب|واتس\s*اب|فيس\s*بوك|فيسبوك|تويتر|امازون|أمازون)/i.test(
-                sNorm,
-              ) ||
-              /(website|site|page|موقع|صفحة|صفحه)/i.test(sNorm) ||
-              /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?(?:\s|$)/i.test(s);
-            if (!hasUrl && !hasSiteKeyword && !browserKeyword) return false;
-            if (!(openKeyword || browserKeyword || hasUrl)) return false;
-            if (multiStepKeyword) return false;
-            // [FIX] Don't trigger if it looks like a local file/code operation
-            if (isFileOp) return false;
-            if (analysisKeyword) return false;
-            return true;
-          })();
-          if (isSimpleBrowserOpenRequest) {
-            const s = initialUserTextForOpen;
-            const normalized = normalizeUrlForGoto(s);
+          if (normalized && /^https?:\/\//i.test(normalized)) {
+            simpleBrowserOpenUrl = normalized;
+            const host = urlToHost(normalized);
+            simpleBrowserOpenLabel = host ? (host.includes('github') ? 'GitHub' : host.includes('google') ? 'Google' : host.includes('openai') ? 'OpenAI' : host.includes('yahoo') ? 'Yahoo' : host.includes('youtube') ? 'YouTube' : 'الموقع') : 'الموقع';
+          } else {
+            // Try standard URL extraction
+            const directUrl =
+              s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
+              (() => {
+                const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+                const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
+                const isLocal =
+                  /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+                  /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+                  /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+                if (!candidate) return '';
+                return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+              })();
 
-            if (normalized && /^https?:\/\//i.test(normalized)) {
-              simpleBrowserOpenUrl = normalized;
-              const host = urlToHost(normalized);
-              simpleBrowserOpenLabel = host ? (host.includes('github') ? 'GitHub' : host.includes('google') ? 'Google' : host.includes('openai') ? 'OpenAI' : host.includes('yahoo') ? 'Yahoo' : host.includes('youtube') ? 'YouTube' : 'الموقع') : 'الموقع';
+            if (directUrl) {
+              simpleBrowserOpenUrl = directUrl;
+              simpleBrowserOpenLabel = 'الموقع';
             } else {
-              // Try standard URL extraction
-              const directUrl =
-                s.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ||
-                (() => {
-                  const m = s.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
-                  const candidate = (m?.[1] || '').replace(/[)\].,;:!?]+$/g, '').trim();
-                  const isLocal =
-                    /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-                    /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-                    /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-                  if (!candidate) return '';
-                  return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
-                })();
-
-              if (directUrl) {
-                simpleBrowserOpenUrl = directUrl;
-                simpleBrowserOpenLabel = 'الموقع';
-              } else {
-                const openTarget = extractOpenTargetText(s);
-                if (openTarget) {
-                  const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
-                  pendingPlan = { name: 'web_search', input: { query: q } } as any;
-                  pendingBrowserOpenFromSearch = { target: openTarget };
-                }
+              const openTarget = extractOpenTargetText(s);
+              if (openTarget) {
+                const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
+                pendingPlan = { name: 'web_search', input: { query: q } } as any;
+                pendingBrowserOpenFromSearch = { target: openTarget };
               }
             }
           }
+        }
 
-          if (isSimpleBrowserOpenRequest) {
-            if (pendingPlan?.name !== 'web_search') {
-              const targetUrl = String(simpleBrowserOpenUrl || '').trim() || 'https://www.yahoo.com';
-              const host = urlToHost(targetUrl);
-              const hostKey = host ? hostKeyFromHost(host) : '';
-              const sid =
-                userId && String(userId).trim()
-                  ? `browser:${String(userId).trim()}:${hostKey || 'site'}`
-                  : `browser:${Date.now()}`;
-              pendingPlan = { name: 'browser_open', input: { url: targetUrl, sessionId: sid } } as any;
-            }
+        if (isSimpleBrowserOpenRequest) {
+          if (pendingPlan?.name !== 'web_search') {
+            const targetUrl = String(simpleBrowserOpenUrl || '').trim() || 'https://www.yahoo.com';
+            const host = urlToHost(targetUrl);
+            const hostKey = host ? hostKeyFromHost(host) : '';
+            const sid =
+              userId && String(userId).trim()
+                ? `browser:${String(userId).trim()}:${hostKey || 'site'}`
+                : `browser:${Date.now()}`;
+            pendingPlan = { name: 'browser_open', input: { url: targetUrl, sessionId: sid } } as any;
           }
+        }
 
-          // Auto-route simple Google search requests to web_search tool
-          const isSimpleGoogleSearchRequest = (() => {
-            const s = String(text || '').trim();
-            if (!s) return false;
-            const hasGoogle = /(google|جوجل)/i.test(s);
-            const hasSearch = /(search|ابحث|بحث|فتش|تفتيش|دور|ابغى\s+بحث|عايز\s+بحث|عاوز\s+بحث)/i.test(s);
-            if (!hasGoogle || !hasSearch) return false;
-            // Ensure it is not a complex multi-step instruction
-            const multiStepKeyword =
-              /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
-                s,
-              );
-            if (multiStepKeyword) return false;
-            return true;
-          })();
+        // Auto-route simple Google search requests to web_search tool
+        const isSimpleGoogleSearchRequest = (() => {
+          const s = String(text || '').trim();
+          if (!s) return false;
+          const hasGoogle = /(google|جوجل)/i.test(s);
+          const hasSearch = /(search|ابحث|بحث|فتش|تفتيش|دور|ابغى\s+بحث|عايز\s+بحث|عاوز\s+بحث)/i.test(s);
+          if (!hasGoogle || !hasSearch) return false;
+          // Ensure it is not a complex multi-step instruction
+          const multiStepKeyword =
+            /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+              s,
+            );
+          if (multiStepKeyword) return false;
+          return true;
+        })();
 
-          if (isSimpleGoogleSearchRequest) {
-            const s = String(text || '').trim();
-            // Extract query: remove "google", "search", etc.
-            let q = s.replace(/(google|جوجل|search|ابحث|بحث|فتش|تفتيش|دور|عن|في|on|in|for)/gi, ' ').trim();
-            if (!q) q = s;
-            pendingPlan = { name: 'web_search', input: { query: q } } as any;
+        if (isSimpleGoogleSearchRequest) {
+          const s = String(text || '').trim();
+          // Extract query: remove "google", "search", etc.
+          let q = s.replace(/(google|جوجل|search|ابحث|بحث|فتش|تفتيش|دور|عن|في|on|in|for)/gi, ' ').trim();
+          if (!q) q = s;
+          pendingPlan = { name: 'web_search', input: { query: q } } as any;
+        }
+
+        while (steps < MAX_STEPS) {
+          if (isRunCancelled(runId)) {
+            forcedText = '⛔ تم إيقاف التنفيذ.';
+            lastResult = { ok: false, error: 'stopped' };
+            break;
           }
+          ev({ type: 'step_started', data: { name: `planning_step_${steps + 1}` } });
+          plannerUnavailableMode = false;
 
-          while (steps < MAX_STEPS) {
-            if (isRunCancelled(runId)) {
-              forcedText = '⛔ تم إيقاف التنفيذ.';
-              lastResult = { ok: false, error: 'stopped' };
-              break;
-            }
-            ev({ type: 'step_started', data: { name: `planning_step_${steps + 1}` } });
-            plannerUnavailableMode = false;
-
-            // Optimization: Reuse initial plan if available for the first step to reduce latency
-            if (pendingPlan) {
-              plan = pendingPlan;
-              pendingPlan = null;
-            } else if (steps === 0 && initialPlan) {
-              plan = initialPlan;
-              initialPlan = null; // Prevent reuse
+          // Optimization: Reuse initial plan if available for the first step to reduce latency
+          if (pendingPlan) {
+            plan = pendingPlan;
+            pendingPlan = null;
+          } else if (steps === 0 && initialPlan) {
+            plan = initialPlan;
+            initialPlan = null; // Prevent reuse
+          } else {
+            const userTextForCooldown = String(text || '');
+            if (!hasAnyKey || providerKey === 'llm') {
+              plannerUnavailableMode = true;
+              plan = fallbackPlanWhenPlannerUnavailable({
+                userText: userTextForCooldown,
+                sessionId: String(sessionId),
+                history: history as any,
+                preferNonLLM: true,
+              }) as any;
             } else {
-              const userTextForCooldown = String(text || '');
-              if (!hasAnyKey || providerKey === 'llm') {
+              const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
+              if (Date.now() < coolUntil) {
                 plannerUnavailableMode = true;
                 plan = fallbackPlanWhenPlannerUnavailable({
                   userText: userTextForCooldown,
@@ -2488,34 +2499,81 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   preferNonLLM: true,
                 }) as any;
               } else {
-                const coolUntil = rateLimitCooldown.get(String(sessionId)) || 0;
-                if (Date.now() < coolUntil) {
-                  plannerUnavailableMode = true;
-                  plan = fallbackPlanWhenPlannerUnavailable({
-                    userText: userTextForCooldown,
-                    sessionId: String(sessionId),
-                    history: history as any,
-                    preferNonLLM: true,
-                  }) as any;
-                } else {
-                  try {
-                    if (isRunCancelled(runId)) {
-                      forcedText = '⛔ تم إيقاف التنفيذ.';
-                      lastResult = { ok: false, error: 'stopped' };
-                      break;
+                try {
+                  if (isRunCancelled(runId)) {
+                    forcedText = '⛔ تم إيقاف التنفيذ.';
+                    lastResult = { ok: false, error: 'stopped' };
+                    break;
+                  }
+
+                  // [Wakil 5.2] Agent Timeout Guard - 30s max
+                  const TIMEOUT_MS = 30 * 1000;
+                  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('LLM_TIMEOUT')), TIMEOUT_MS));
+
+                  // Race between planner and timeout
+                  plan = await Promise.race([
+                    planNextStep(history, {
+                      provider,
+                      apiKey,
+                      baseUrl,
+                      model,
+                      userId,
+                      sessionId,
+                      onProgress: (p) => {
+                        broadcastThinkingDetail(String(sessionId), `> ${p}`);
+                        ev({ type: 'thought', data: `> ${p}` });
+                      },
+                      onThought: (t) => {
+                        broadcastThinkingDetail(String(sessionId), t);
+                        ev({ type: 'thought', data: t });
+                      },
+                      throwOnError: true
+                    }),
+                    timeoutPromise
+                  ]) as any;
+
+                  // [Wakil 6.0] Deep Reasoning Emission
+                  if (plan && (plan as any).reasoning) {
+                    const r = (plan as any).reasoning;
+                    const text = Array.isArray(r) ? r.join('\n') : String(r);
+                    if (text && text.length > 5) {
+                      ev({ type: 'thought', data: text });
+                    }
+                  }
+
+                } catch (err: any) {
+                  lastPlanError = safeErrorMessage(err);
+                  const status = errorStatusCode(err);
+                  console.warn(`LLM planning error (status=${status}):`, lastPlanError);
+
+                  // [RESILIENCY] Auto-Fallback Mechanism
+                  const isAuthError = isProviderAuthError(err, lastPlanError) || lastPlanError.includes('NO_API_KEY_CONFIGURED');
+                  const isRateLimit = isProviderRateLimitError(err, lastPlanError) || status === 429 || lastPlanError.includes('quota') || lastPlanError === 'LLM_TIMEOUT';
+
+                  // Only fallback if we aren't ALREADY on auto/pollinations
+                  const isAlreadyFree = providerKey.includes('auto') || providerKey.includes('pollinations');
+
+                  if ((isAuthError || isRateLimit) && !isAlreadyFree) {
+                    console.info('[Resiliency] ⚠️ Primary provider failed. Falling back to Auto Mode immediately.');
+
+                    // Notify user ONCE about the fallback
+                    if (!assistantTextEmitted) {
+                      const reason = lastPlanError === 'LLM_TIMEOUT' ? 'تأخرت الاستجابة' : 'تجاوز حصة الاستخدام أو خطأ في المفتاح';
+                      ev({
+                        type: 'text',
+                        data: `⚠️ **تنبيه:** ${reason} في المزود الأساسي.\n🔄 **تم التحويل تلقائياً إلى "النظام المجاني المفتوح" (Free Mode) لضمان استمرارية عملك مجاناً وبلا حدود.**`
+                      });
+                      assistantTextEmitted = true; // Prevent spamming
                     }
 
-                    // [Wakil 5.2] Agent Timeout Guard - 30s max
-                    const TIMEOUT_MS = 30 * 1000;
-                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('LLM_TIMEOUT')), TIMEOUT_MS));
+                    // Switch to auto mode for this turn AND future turns in this session can be handled by frontend logic or re-try loop
+                    provider = 'auto';
+                    providerKey.replace('', 'auto'); // Update local var logic if needed (providerKey is const, but we use logic below)
 
-                    // Race between planner and timeout
-                    plan = await Promise.race([
-                      planNextStep(history, {
-                        provider,
-                        apiKey,
-                        baseUrl,
-                        model,
+                    // RETRY IMMEDIATELY with 'auto' provider
+                    try {
+                      plan = await planNextStep(history, {
+                        provider: 'auto',
                         userId,
                         sessionId,
                         onProgress: (p) => {
@@ -2526,976 +2584,226 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                           broadcastThinkingDetail(String(sessionId), t);
                           ev({ type: 'thought', data: t });
                         },
-                        throwOnError: true
-                      }),
-                      timeoutPromise
-                    ]) as any;
-
-                    // [Wakil 6.0] Deep Reasoning Emission
-                    if (plan && (plan as any).reasoning) {
-                      const r = (plan as any).reasoning;
-                      const text = Array.isArray(r) ? r.join('\n') : String(r);
-                      if (text && text.length > 5) {
-                        ev({ type: 'thought', data: text });
-                      }
+                        throwOnError: false
+                      });
+                      if (plan) continue; // Loop continues with new plan
+                    } catch (retryErr) {
+                      console.error('[Resiliency] Fallback also failed:', retryErr);
                     }
+                  }
 
-                  } catch (err: any) {
-                    lastPlanError = safeErrorMessage(err);
-                    const status = errorStatusCode(err);
-                    console.warn(`LLM planning error (status=${status}):`, lastPlanError);
-
-                    // [RESILIENCY] Auto-Fallback Mechanism
-                    const isAuthError = isProviderAuthError(err, lastPlanError) || lastPlanError.includes('NO_API_KEY_CONFIGURED');
-                    const isRateLimit = isProviderRateLimitError(err, lastPlanError) || status === 429 || lastPlanError.includes('quota') || lastPlanError === 'LLM_TIMEOUT';
-
-                    // Only fallback if we aren't ALREADY on auto/pollinations
-                    const isAlreadyFree = providerKey.includes('auto') || providerKey.includes('pollinations');
-
-                    if ((isAuthError || isRateLimit) && !isAlreadyFree) {
-                      console.info('[Resiliency] ⚠️ Primary provider failed. Falling back to Auto Mode immediately.');
-
-                      // Notify user ONCE about the fallback
-                      if (!assistantTextEmitted) {
-                        const reason = lastPlanError === 'LLM_TIMEOUT' ? 'تأخرت الاستجابة' : 'تجاوز حصة الاستخدام أو خطأ في المفتاح';
-                        ev({
-                          type: 'text',
-                          data: `⚠️ **تنبيه:** ${reason} في المزود الأساسي.\n🔄 **تم التحويل تلقائياً إلى "النظام المجاني المفتوح" (Free Mode) لضمان استمرارية عملك مجاناً وبلا حدود.**`
-                        });
-                        assistantTextEmitted = true; // Prevent spamming
-                      }
-
-                      // Switch to auto mode for this turn AND future turns in this session can be handled by frontend logic or re-try loop
-                      provider = 'auto';
-                      providerKey.replace('', 'auto'); // Update local var logic if needed (providerKey is const, but we use logic below)
-
-                      // RETRY IMMEDIATELY with 'auto' provider
-                      try {
-                        plan = await planNextStep(history, {
-                          provider: 'auto',
-                          userId,
-                          sessionId,
-                          onProgress: (p) => {
-                            broadcastThinkingDetail(String(sessionId), `> ${p}`);
-                            ev({ type: 'thought', data: `> ${p}` });
-                          },
-                          onThought: (t) => {
-                            broadcastThinkingDetail(String(sessionId), t);
-                            ev({ type: 'thought', data: t });
-                          },
-                          throwOnError: false
-                        });
-                        if (plan) continue; // Loop continues with new plan
-                      } catch (retryErr) {
-                        console.error('[Resiliency] Fallback also failed:', retryErr);
-                      }
-                    }
-
-                    // Standard Error Handling (if fallback didn't recover or was already free)
-                    if (lastPlanError && (lastPlanError.includes('NO_API_KEY_CONFIGURED') || lastPlanError.includes('PROVIDER_LLM_DISABLED'))) {
-                      break;
-                    }
-                    if (isProviderRateLimitError(err, lastPlanError)) {
-                      rateLimitCooldown.set(String(sessionId), Date.now() + 3 * 60 * 1000);
-                      plannerUnavailableMode = true;
-                      const userTextForOverrides = String(text || '');
-                      const userTextNorm = normalizeArabicQuery(userTextForOverrides);
-                      if (isLocationLikeQuery(userTextForOverrides)) {
-                        plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
-                      } else if (isWeatherLikeQuery(userTextForOverrides)) {
-                        const city = extractWeatherCity(userTextForOverrides);
-                        const q = isArabicText(userTextForOverrides)
-                          ? `كم درجة الحرارة الآن في ${city}؟`
-                          : `current temperature in ${city} now`;
-                        plan = { name: 'web_search', input: { query: q } } as any;
-                      } else if (isGeneralKnowledgeQuestion(userTextForOverrides)) {
-                        plan = { name: 'web_search', input: { query: userTextForOverrides } } as any;
-                      } else if (/(ابحث|بحث|search|find|lookup|اعطني|اعطيني|معلومات|info)/.test(userTextNorm) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\b/.test(userTextNorm)) {
-                        const qMatch = userTextForOverrides.match(/(?:عن|حول)\s+(.+)/i);
-                        const query = qMatch ? qMatch[1] : userTextForOverrides;
-                        plan = { name: 'web_search', input: { query } } as any;
-                      } else {
-                        plan = fallbackPlanWhenPlannerUnavailable({
-                          userText: userTextForOverrides,
-                          sessionId: String(sessionId),
-                          preferNonLLM: true,
-                        }) as any;
-                      }
-                    }
-                    if (!plan) {
-                      const userTextForOverrides = String(text || '');
-                      plannerUnavailableMode = true;
+                  // Standard Error Handling (if fallback didn't recover or was already free)
+                  if (lastPlanError && (lastPlanError.includes('NO_API_KEY_CONFIGURED') || lastPlanError.includes('PROVIDER_LLM_DISABLED'))) {
+                    break;
+                  }
+                  if (isProviderRateLimitError(err, lastPlanError)) {
+                    rateLimitCooldown.set(String(sessionId), Date.now() + 3 * 60 * 1000);
+                    plannerUnavailableMode = true;
+                    const userTextForOverrides = String(text || '');
+                    const userTextNorm = normalizeArabicQuery(userTextForOverrides);
+                    if (isLocationLikeQuery(userTextForOverrides)) {
+                      plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+                    } else if (isWeatherLikeQuery(userTextForOverrides)) {
+                      const city = extractWeatherCity(userTextForOverrides);
+                      const q = isArabicText(userTextForOverrides)
+                        ? `كم درجة الحرارة الآن في ${city}؟`
+                        : `current temperature in ${city} now`;
+                      plan = { name: 'web_search', input: { query: q } } as any;
+                    } else if (isGeneralKnowledgeQuestion(userTextForOverrides)) {
+                      plan = { name: 'web_search', input: { query: userTextForOverrides } } as any;
+                    } else if (/(ابحث|بحث|search|find|lookup|اعطني|اعطيني|معلومات|info)/.test(userTextNorm) || /^(من|ما|ماذا|متى|اين|أين|كيف|هل|لماذا|why|what|who|when|where|how)\b/.test(userTextNorm)) {
+                      const qMatch = userTextForOverrides.match(/(?:عن|حول)\s+(.+)/i);
+                      const query = qMatch ? qMatch[1] : userTextForOverrides;
+                      plan = { name: 'web_search', input: { query } } as any;
+                    } else {
                       plan = fallbackPlanWhenPlannerUnavailable({
                         userText: userTextForOverrides,
                         sessionId: String(sessionId),
-                        history: history as any,
                         preferNonLLM: true,
                       }) as any;
                     }
                   }
-                }
-              }
-            }
-
-            if (!plan) {
-              if (!lastPlanError && !plannerUnavailableMode) {
-                // Graceful stop (Planner returned null to signal completion/anti-loop)
-                // ev({ type: 'text', data: '(Thinking stopped)' }); // Optional debug
-                break;
-              }
-
-              const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
-              const extra = lastPlanError ? `\n\nDetails: ${lastPlanError}${hint ? `\n${hint}` : ''}` : '';
-              const msg = lastPlanError && isProviderAuthError(null, lastPlanError)
-                ? `⚠️ فشل التحقق من المفتاح\nالمزوّد رفض الـ API Key. تحقق من المفتاح وإعدادات المزود.${extra}`
-                : `⚠️ تعذّر التخطيط للخطوة التالية عبر المزود.\nتحقق من المزوّد/الموديل/الـ Base URL ثم أعد المحاولة.${extra}`;
-
-              if (lastPlanError) {
-                ev({ type: 'text', data: msg });
-                forcedText = msg;
-                assistantTextEmitted = true;
-              }
-
-              if (isGeneralKnowledgeQuestion(String(text || ''))) {
-                plan = { name: 'central_answer', input: { question: String(text || '') } } as any;
-              } else {
-                plan = fallbackPlanWhenPlannerUnavailable({
-                  userText: String(text || ''),
-                  sessionId: String(sessionId),
-                  history: history as any,
-                  preferNonLLM: false,
-                }) as any;
-              }
-            }
-
-            let planName = String(plan?.name || '');
-            const userTextForOverrides = String(text || '');
-            const userTextNorm = normalizeArabicQuery(userTextForOverrides);
-
-            // [GOD MODE] FORCE BUILD OVERRIDE
-            // If the user clearly wants to build/create, and we haven't started, don't let it stall in "echo"
-            // [FIX] Broadened regex: catches "ابني لي صفحة هبوط", "ابني متجر ساعات", "create landing page", etc.
-            const isExplicitBuild = (
-              /(build|create|generate|scaffold|make|design|develop|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)\s+.{0,40}?(website|app|system|page|landing|site|api|store|shop|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة|متجر|واجهة|هبوط|دكان|بورتفوليو|portfolio)/i.test(userTextForOverrides) ||
-              /(صفحة\s+هبوط|landing\s+page|صفحة\s+فاخرة|موقع\s+الكتروني|متجر\s+الكتروني|متجر\s+ساعات|e-?commerce)/i.test(userTextForOverrides)
-            );
-
-            // [FIX] DO NOT OVERRIDE IF THE PLAN IS ALREADY A BUILDER PIPELINE
-            const isAlreadyValidPipeline = ['website_full_pipeline', 'project_planner', 'genesis_build', 'scaffold_full_stack'].includes(planName);
-
-            if (isExplicitBuild && !isAlreadyValidPipeline && (planName === 'echo' || planName === 'project_detect' || !planName)) {
-              const alreadyDetected = historyHasToolCall(history as any, 'project_detect');
-              const alreadyAnalyzed = historyHasToolCall(history as any, 'analyze_codebase');
-
-              if (!alreadyDetected) {
-                console.info('[GOD MODE] ⚡ Build Intent Detected - Phase 1: Discovery');
-                plan = { name: 'project_detect', input: { path: '.' } } as any;
-                planName = 'project_detect';
-              } else if (!alreadyAnalyzed) {
-                console.info('[GOD MODE] ⚡ Build Intent Detected - Phase 2: Analysis');
-                plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-                planName = 'analyze_codebase';
-              } else {
-                // [CRITICAL FIX] Phase 3: Force the build pipeline instead of relying on LLM
-                // BUT only if the pipeline hasn't already been executed!
-                const alreadyBuilt = historyHasToolCall(history as any, 'website_full_pipeline') ||
-                  historyHasToolCall(history as any, 'scaffold_full_stack');
-                if (!alreadyBuilt) {
-                  console.info('[GOD MODE] ⚡ Discovery complete → Forcing website_full_pipeline execution!');
-                  const buildName = userTextForOverrides.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
-                  plan = {
-                    name: 'website_full_pipeline',
-                    input: {
-                      name: buildName,
-                      type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userTextForOverrides) ? 'ecommerce' : 'saas',
-                      features: ['auth', 'products'],
-                      language: /[\u0600-\u06FF]/.test(userTextForOverrides) ? 'ar' : 'en'
-                    }
-                  } as any;
-                  planName = 'website_full_pipeline';
-                }
-              }
-            }
-
-            const wantsLocationEarly = isLocationLikeQuery(userTextForOverrides);
-            let browserIntentThisTurn = false;
-            if (wantsLocationEarly) {
-              plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
-              planName = 'http_fetch';
-            }
-
-            if (!wantsLocationEarly) {
-              const s = userTextForOverrides;
-              const sNorm = normalizeForIntent(s);
-              const extractUrlCandidate = (text: string) => {
-                const http = text.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
-                if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
-                const m = text.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
-                const candidate = (m?.[1] || '').replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
-                if (!candidate) return undefined;
-                const isLocal =
-                  /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
-                  /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
-                  /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
-                return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
-              };
-              const extractedUrl = extractUrlCandidate(s) || '';
-              const hasUrl = Boolean(extractedUrl);
-              const openKeyword =
-                /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
-                  sNorm,
-                );
-              const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(sNorm);
-              const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
-              const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|جت\s*هاب|غيت\s*هاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(sNorm);
-              const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
-
-              const testKeyword = /(اختبر|اختبار|شيك|شيّك|تشييك|جرّب|جرب|تاكد|تأكد|تفقد|تفقده|تحقق)/i.test(sNorm);
-              let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword || (testKeyword && hasUrl));
-              if (openKeyword && githubKeyword && analysisKeyword) wantsBrowser = false;
-              if (openKeyword && isFileOp) wantsBrowser = false;
-              browserIntentThisTurn = wantsBrowser || isSimpleBrowserOpenRequest;
-
-              const looksLikeInPageBrowserAction =
-                !hasUrl &&
-                !openKeyword &&
-                /(click|انقر|اضغط|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize|اقرأ|read|حدد|select|اختر|ابحث\s+داخل\s+الصفحة)/i.test(
-                  s,
-                );
-              if (
-                kind === 'agent' &&
-                !wantsBrowser &&
-                looksLikeInPageBrowserAction &&
-                typeof browserSessionId === 'string' &&
-                browserSessionId.trim() &&
-                !/^browser_/.test(planName)
-              ) {
-                plan = { name: 'browser_run', input: { sessionId: browserSessionId.trim(), instructionText: s } } as any;
-                planName = 'browser_run';
-                browserIntentThisTurn = true;
-              }
-
-              if (wantsBrowser && !/^browser_/.test(planName)) {
-                const directUrl = extractedUrl;
-                const wantsYahoo = /(yahoo|ياهو)/i.test(sNorm);
-                const wantsYoutube = /(youtube|يوتيوب)/i.test(sNorm);
-                const wantsGoogle = /(google|جوجل|قوقل)/i.test(sNorm);
-                const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(sNorm);
-                const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(sNorm);
-                const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(sNorm);
-                const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك|فيسبوك)/i.test(sNorm);
-                const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدان|لينكدإن)/i.test(sNorm);
-                const wantsPricing = /(price|pricing|سعر|الاسعار|الأسعار|تكلفة|cost)/i.test(sNorm);
-                const wantsBilling =
-                  /(balance|billing|credit|credits|usage|payment|invoice|invoices|رصيد|الرصيد|فواتير|الفواتير|استخدام|المدفوعات)/i.test(
-                    sNorm,
-                  );
-                const openAiUrl = wantsBilling
-                  ? 'https://platform.openai.com/account/billing/overview'
-                  : 'https://platform.openai.com/';
-                const openAiPricingUrl = 'https://openai.com/pricing';
-                const desiredUrl =
-                  (directUrl || '').trim() ||
-                  (wantsOpenAI
-                    ? (wantsPricing ? openAiPricingUrl : openAiUrl)
-                    : wantsYahoo
-                      ? 'https://www.yahoo.com'
-                      : wantsYoutube
-                        ? 'https://www.youtube.com'
-                        : githubKeyword
-                          ? 'https://github.com'
-                          : wantsGoogle
-                            ? 'https://www.google.com'
-                            : wantsMicrosoft
-                              ? 'https://www.microsoft.com'
-                              : wantsX
-                                ? 'https://x.com'
-                                : wantsFacebook
-                                  ? 'https://www.facebook.com'
-                                  : wantsLinkedIn
-                                    ? 'https://www.linkedin.com'
-                                    : '');
-                if (desiredUrl) {
-                  const candidateSig = `browser_open:${JSON.stringify({ url: desiredUrl })}`;
-                  if (!executedToolSigs.has(candidateSig) && lastExecutedToolSig !== candidateSig) {
-                    plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
-                    planName = 'browser_open';
-                  }
-                } else if (openKeyword) {
-                  const openTarget = extractOpenTargetText(s);
-                  if (openTarget) {
-                    const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
-                    const sig = `web_search_open:${q}`;
-                    if (!executedToolSigs.has(sig)) {
-                      executedToolSigs.set(sig, 1);
-                      plan = { name: 'web_search', input: { query: q } } as any;
-                      planName = 'web_search';
-                      pendingBrowserOpenFromSearch = { target: openTarget };
-                    }
+                  if (!plan) {
+                    const userTextForOverrides = String(text || '');
+                    plannerUnavailableMode = true;
+                    plan = fallbackPlanWhenPlannerUnavailable({
+                      userText: userTextForOverrides,
+                      sessionId: String(sessionId),
+                      history: history as any,
+                      preferNonLLM: true,
+                    }) as any;
                   }
                 }
               }
             }
+          }
 
-            // [SHELL ROUTING] Detect terminal/shell intent and route to shell_execute
-            if (planName === 'echo' || !planName) {
-              const shellIntentPattern = /^(نفذ|شغل|execute|run|أمر|امر)\s+(.+)/i;
-              const directCmdPattern = /^(npm|node|python|pip|yarn|pnpm|apt|brew|curl|wget|git|ls|cat|mkdir|rm|cp|mv|chmod|chown|find|grep|sed|awk|make|go|cargo|docker|kubectl)\s/i;
-              const shellMatch = userTextForOverrides.match(shellIntentPattern);
-              const directMatch = directCmdPattern.test(userTextForOverrides.trim());
-              if (shellMatch) {
-                const cmd = shellMatch[2].trim();
-                if (cmd) {
-                  console.info(`[SHELL ROUTING] ⚡ Shell intent detected: "${cmd}"`);
-                  plan = { name: 'shell_execute', input: { command: cmd } } as any;
-                  planName = 'shell_execute';
-                }
-              } else if (directMatch && steps === 0) {
-                console.info(`[SHELL ROUTING] ⚡ Direct command detected: "${userTextForOverrides.trim()}"`);
-                plan = { name: 'shell_execute', input: { command: userTextForOverrides.trim() } } as any;
-                planName = 'shell_execute';
-              }
-            }
-
-            // Safety: Prevent immediate repeats of same tool execution
-            if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run', 'website_full_pipeline', 'shell_execute', 'terminal_manager'].includes(planName)) {
-              const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
-
-              const sigCount = executedToolSigs.get(sig) || 0;
-              const isRepeat = sigCount > 0 || lastExecutedToolSig === sig;
-
-              if (isRepeat) {
-                const discoveryTools = ['project_detect', 'ls', 'grep_search', 'read_file', 'analyze_codebase', 'fs_glob', 'read_file_tree', 'codebase_outline', 'browser_run', 'browser_open', 'web_search', 'website_full_pipeline'];
-                const maxRepeats = planName === 'project_detect' ? 20 : (discoveryTools.includes(planName) ? 5 : 1);
-                const totalSeen = sigCount + (lastExecutedToolSig === sig ? 1 : 0);
-
-                if (totalSeen >= maxRepeats) {
-                  if (planName === 'browser_open' || planName === 'browser_run') {
-                    const sidDirect = String((plan as any)?.input?.sessionId || '').trim();
-                    const sid = sidDirect || String(browserSessionId || '').trim();
-                    if (sid) {
-                      plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
-                      planName = 'browser_get_state';
-                    } else {
-                      const url = String((plan as any)?.input?.url || '').trim();
-                      const derived = url ? browserSessionIdFromUrl(url) : '';
-                      if (derived) {
-                        plan = { name: 'browser_get_state', input: { sessionId: derived } } as any;
-                        planName = 'browser_get_state';
-                      }
-                    }
-                  }
-                  if (planName === 'browser_get_state') {
-                    // no-op
-                  } else {
-                    const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
-                    const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
-                    const needsKey = !hasAnyKey && !isFreeProvider;
-                    plan = {
-                      name: 'echo',
-                      input: {
-                        text: isArabicText(userTextForOverrides)
-                          ? (isGeneral
-                            ? (needsKey
-                              ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
-                              : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأرسل طلباً أكثر تحديداً أو اطلب قراءة ملف معين.')
-                            : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة.\nلقد قمت بالفعل بفحص بنية المشروع؛ يرجى طلب تحليل ملفات محددة باستخدام "analyze_project" أو استخدام أوامر Terminal للتعمق.`)
-                          : (isGeneral
-                            ? (needsKey
-                              ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
-                              : '⚠️ Planning repeated without progress.\nPlease provide a more specific instruction or ask to read a file.')
-                            : `[Neural Sync Error] Excessive repetition of step (${planName}) detected.\nI have already scanned the project; please transition to specific file analysis using "analyze_project" or use Terminal commands to explore further.`),
-                      }
-                    } as any;
-                    planName = 'echo';
-                  }
-                } else {
-                  // Allowed repeat for discovery tool
-                  const current = executedToolSigs.get(sig) || 0;
-                  executedToolSigs.set(sig, current + 1);
-                }
-              } else {
-                executedToolSigs.set(sig, 1);
-              }
-            }
-
-            // Safety: Prevent infinite thought loops
-            // Safety: Prevent infinite thought loops
-            if (planName === 'echo') {
-              const txt = (plan as any)?.input?.text;
-              // If echo has content (is speaking to user), reset thought steps
-              if (typeof txt === 'string' && txt.trim().length > 2) {
-                consecutiveThoughtSteps = 0;
-              } else {
-                consecutiveThoughtSteps++;
-              }
-            } else if (!planName) {
-              consecutiveThoughtSteps++;
-            } else {
-              consecutiveThoughtSteps = 0;
-              executedTools.add(planName);
-            }
-
-            if (consecutiveThoughtSteps > 5) {
-              if (!thoughtLoopPauseEmitted) {
-                const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
-                const needsKey = !hasAnyKey && !isFreeProvider;
-                const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
-                const providerLabel = String(providerKey || 'llm').trim() || 'llm';
-                const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
-                const keyLabel = apiKey ? 'موجود' : (process.env.OPENAI_API_KEY ? 'موجود (System)' : 'غير موجود');
-                const baseHost = hostFromUrlMaybe(baseUrl);
-                const msg = [
-                  `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
-                  `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
-                  `- المفتاح: ${keyLabel}`,
-                  `- المفتاح: ${keyLabel}`,
-                  needsKey ? `- ⚠️ يبدو أنك لم تقم بتفعيل مفتاح API (مثلاً OpenAI/Anthropic). يرجى الذهاب للإعدادات وإضافته.` : `- لم أتمكن من تحديد خطة ذكية لهذا الطلب. هل يمكنك توضيح المزيد؟`,
-                  hint ? `تلميح: ${hint}` : ``,
-                  `Debug Info: Provider=${providerKey}, HasKey=${hasAnyKey}, Plan=${planName || 'none'}`
-                ].filter(Boolean).join('\n');
-                forcedText = msg;
-                const now = Date.now();
-                const last = loopPauseThrottle.get(String(sessionId));
-                if (!last || now - last > 6000) {
-                  ev({ type: 'text', data: msg });
-                  assistantTextEmitted = true;
-                  loopPauseThrottle.set(String(sessionId), now);
-                }
-                thoughtLoopPauseEmitted = true;
-              }
+          if (!plan) {
+            if (!lastPlanError && !plannerUnavailableMode) {
+              // Graceful stop (Planner returned null to signal completion/anti-loop)
+              // ev({ type: 'text', data: '(Thinking stopped)' }); // Optional debug
               break;
             }
 
-            const isBrowserTool = /^browser_/.test(planName);
-            const awaitingRepoName = historyHasMarker(history as any, 'ASKED_FOR_REPO_NAME');
-            let requestedRepoName = extractRequestedRepoName(userTextForOverrides);
-            if (!requestedRepoName && awaitingRepoName) {
-              const bare = userTextForOverrides.match(/^\s*([A-Za-z0-9._-]{1,100})\s*$/);
-              if (bare && bare[1]) requestedRepoName = bare[1].trim();
+            const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+            const extra = lastPlanError ? `\n\nDetails: ${lastPlanError}${hint ? `\n${hint}` : ''}` : '';
+            const msg = lastPlanError && isProviderAuthError(null, lastPlanError)
+              ? `⚠️ فشل التحقق من المفتاح\nالمزوّد رفض الـ API Key. تحقق من المفتاح وإعدادات المزود.${extra}`
+              : `⚠️ تعذّر التخطيط للخطوة التالية عبر المزود.\nتحقق من المزوّد/الموديل/الـ Base URL ثم أعد المحاولة.${extra}`;
+
+            if (lastPlanError) {
+              ev({ type: 'text', data: msg });
+              forcedText = msg;
+              assistantTextEmitted = true;
             }
-            const wantsGithubRepo =
-              /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides) &&
-              /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
-              /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
-            if (wantsGithubRepo || (awaitingRepoName && requestedRepoName)) {
-              if (requestedRepoName) {
+
+            if (isGeneralKnowledgeQuestion(String(text || ''))) {
+              plan = { name: 'central_answer', input: { question: String(text || '') } } as any;
+            } else {
+              plan = fallbackPlanWhenPlannerUnavailable({
+                userText: String(text || ''),
+                sessionId: String(sessionId),
+                history: history as any,
+                preferNonLLM: false,
+              }) as any;
+            }
+          }
+
+          let planName = String(plan?.name || '');
+          const userTextForOverrides = String(text || '');
+          const userTextNorm = normalizeArabicQuery(userTextForOverrides);
+
+          // [GOD MODE] FORCE BUILD OVERRIDE
+          // If the user clearly wants to build/create, and we haven't started, don't let it stall in "echo"
+          // [FIX] Broadened regex: catches "ابني لي صفحة هبوط", "ابني متجر ساعات", "create landing page", etc.
+          const isExplicitBuild = (
+            /(build|create|generate|scaffold|make|design|develop|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)\s+.{0,40}?(website|app|system|page|landing|site|api|store|shop|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة|متجر|واجهة|هبوط|دكان|بورتفوليو|portfolio)/i.test(userTextForOverrides) ||
+            /(صفحة\s+هبوط|landing\s+page|صفحة\s+فاخرة|موقع\s+الكتروني|متجر\s+الكتروني|متجر\s+ساعات|e-?commerce)/i.test(userTextForOverrides)
+          );
+
+          // [FIX] DO NOT OVERRIDE IF THE PLAN IS ALREADY A BUILDER PIPELINE
+          const isAlreadyValidPipeline = ['website_full_pipeline', 'project_planner', 'genesis_build', 'scaffold_full_stack'].includes(planName);
+
+          if (isExplicitBuild && !isAlreadyValidPipeline && (planName === 'echo' || planName === 'project_detect' || !planName)) {
+            const alreadyDetected = historyHasToolCall(history as any, 'project_detect');
+            const alreadyAnalyzed = historyHasToolCall(history as any, 'analyze_codebase');
+
+            if (!alreadyDetected) {
+              console.info('[GOD MODE] ⚡ Build Intent Detected - Phase 1: Discovery');
+              plan = { name: 'project_detect', input: { path: '.' } } as any;
+              planName = 'project_detect';
+            } else if (!alreadyAnalyzed) {
+              console.info('[GOD MODE] ⚡ Build Intent Detected - Phase 2: Analysis');
+              plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+              planName = 'analyze_codebase';
+            } else {
+              // [CRITICAL FIX] Phase 3: Force the build pipeline instead of relying on LLM
+              // BUT only if the pipeline hasn't already been executed!
+              const alreadyBuilt = historyHasToolCall(history as any, 'website_full_pipeline') ||
+                historyHasToolCall(history as any, 'scaffold_full_stack');
+              if (!alreadyBuilt) {
+                console.info('[GOD MODE] ⚡ Discovery complete → Forcing website_full_pipeline execution!');
+                const buildName = userTextForOverrides.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
                 plan = {
-                  name: 'github_repo_manager',
+                  name: 'website_full_pipeline',
                   input: {
-                    action: 'create',
-                    repoName: requestedRepoName,
-                    private: /(private|خاص)/i.test(userTextForOverrides),
-                    sessionId: String(sessionId),
-                  },
-                } as any;
-              }
-            }
-            // Special: List tools command
-            const wantsToolsList =
-              /(list\s+tools|tools\s+list|show\s+tools)/i.test(userTextForOverrides) ||
-              /(سرد|عرض|قائمه|قائمة)\s+الادوات/.test(userTextNorm);
-            if (wantsToolsList && (!planName || planName === 'echo')) {
-              const base = `${reqProtocol}://${reqHost}`;
-              plan = { name: 'http_fetch', input: { url: `${base}/tools` } } as any;
-              planName = 'http_fetch';
-            }
-
-            const wantsShop = isEcommerceRequest(userTextForOverrides);
-            if (wantsShop) {
-              // Extract project name if provided, else default
-              const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
-              const projName = nameMatch ? nameMatch[1] : 'vivos-store';
-
-              const shopPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
-
-              if (steps === 0 && !shopPipelineProtected) {
-                // Force the smart tool for ecommerce requests without deceptive markers
-                plan = {
-                  name: 'scaffold_full_stack',
-                  input: {
-                    name: projName,
-                    type: 'ecommerce',
-                    features: ['auth', 'products', 'cart'] // Smart default features
+                    name: buildName,
+                    type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userTextForOverrides) ? 'ecommerce' : 'saas',
+                    features: ['auth', 'products'],
+                    language: /[\u0600-\u06FF]/.test(userTextForOverrides) ? 'ar' : 'en'
                   }
                 } as any;
-                planName = 'scaffold_full_stack';
-                pendingPlan = plan; // ensure immediate execution on first loop
-              }
-
-              // Force execution even if AI tries to think
-              if (planName === 'echo' || !planName) {
-                // If we haven't scaffolded yet (and steps > 0), maybe AI missed it?
-                // But if steps=0 we forced it above.
-                // If steps > 0, we assume scaffolding is done.
+                planName = 'website_full_pipeline';
               }
             }
+          }
 
-            const wantsWeather = isWeatherLikeQuery(userTextForOverrides);
-            if (wantsWeather && (!planName || planName === 'echo')) {
-              const city = extractWeatherCity(userTextForOverrides);
-              const q = isArabicText(userTextForOverrides)
-                ? `كم درجة الحرارة الآن في ${city}؟`
-                : `current temperature in ${city} now`;
-              plan = { name: 'central_answer', input: { question: q } } as any;
-              planName = 'central_answer';
-            }
+          const wantsLocationEarly = isLocationLikeQuery(userTextForOverrides);
+          let browserIntentThisTurn = false;
+          if (wantsLocationEarly) {
+            plan = { name: 'http_fetch', input: { url: 'https://ipinfo.io/json' } } as any;
+            planName = 'http_fetch';
+          }
 
-            const wantsGeneralAnswer = isGeneralKnowledgeQuestion(userTextForOverrides);
+          if (!wantsLocationEarly) {
+            const s = userTextForOverrides;
+            const sNorm = normalizeForIntent(s);
+            const extractUrlCandidate = (text: string) => {
+              const http = text.match(/https?:\/\/[^\s"'<>`]+/i)?.[0];
+              if (http) return http.replace(/[)\]`.,;:!?،؛؟]+$/g, '');
+              const m = text.match(/(?:^|\s)(?:url\s*[:=]\s*)?((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?)/i);
+              const candidate = (m?.[1] || '').replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
+              if (!candidate) return undefined;
+              const isLocal =
+                /^localhost(?::\d+)?(?:\/|$)/i.test(candidate) ||
+                /^127\.0\.0\.1(?::\d+)?(?:\/|$)/.test(candidate) ||
+                /^\d+\.\d+\.\d+\.\d+(?::\d+)?(?:\/|$)/.test(candidate);
+              return `${isLocal ? 'http' : 'https'}://${candidate.replace(/^\/\//, '')}`;
+            };
+            const extractedUrl = extractUrlCandidate(s) || '';
+            const hasUrl = Boolean(extractedUrl);
+            const openKeyword =
+              /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+                sNorm,
+              );
+            const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(sNorm);
+            const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
+            const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|جت\s*هاب|غيت\s*هاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(sNorm);
+            const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
+
+            const testKeyword = /(اختبر|اختبار|شيك|شيّك|تشييك|جرّب|جرب|تاكد|تأكد|تفقد|تفقده|تحقق)/i.test(sNorm);
+            let wantsBrowser = Boolean(hasUrl || browserKeyword || openKeyword || (testKeyword && hasUrl));
+            if (openKeyword && githubKeyword && analysisKeyword) wantsBrowser = false;
+            if (openKeyword && isFileOp) wantsBrowser = false;
+            browserIntentThisTurn = wantsBrowser || isSimpleBrowserOpenRequest;
+
+            const looksLikeInPageBrowserAction =
+              !hasUrl &&
+              !openKeyword &&
+              /(click|انقر|اضغط|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize|اقرأ|read|حدد|select|اختر|ابحث\s+داخل\s+الصفحة)/i.test(
+                s,
+              );
             if (
-              wantsGeneralAnswer &&
-              (!planName ||
-                planName === 'echo' ||
-                planName === 'project_detect' ||
-                planName === 'analyze_codebase' ||
-                planName === 'scaffold_project' ||
-                planName === 'npm_install' ||
-                planName === 'npm_build')
-            ) {
-              plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
-              planName = 'central_answer';
-            }
-
-            if (planName === 'project_detect' && historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
-              const hasAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
-              if (!hasAnalyze) {
-                plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-                planName = 'analyze_codebase';
-              } else {
-                plan = {
-                  name: 'echo',
-                  input: {
-                    text: isArabicText(userTextForOverrides)
-                      ? '⚠️ فحص المشروع لم يعثر على مشاريع قابلة للتعرّف (package.json/pyproject/go.mod).\nاذكر مسار مجلد المشروع داخل المستودع أو اطلب قراءة/بحث ملف معيّن.'
-                      : '⚠️ Project scan found no recognizable projects (package.json/pyproject/go.mod).\nProvide the project folder path inside the repo, or ask to read/search a specific file.',
-                  },
-                } as any;
-                planName = 'echo';
-              }
-            }
-
-            const wf = !wantsShop ? await detectWorkflowAdvanced(userTextForOverrides, { useAnalyzer: true, workspaceId }) : null;
-            const isProjectStart = wf && ['simple_creative', 'node_api', 'static_site', 'fullstack'].includes(wf.kind);
-
-            // [FIX] DO NOT HIJACK IF THE LLM ALREADY PLANNED THE BUILD PIPELINE
-            const wfPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
-
-            if (wf && wf.kind !== 'ecommerce' && !wfPipelineProtected && (isProjectStart || !planName || planName === 'echo')) {
-              const marker =
-                wf.kind === 'tool_shell' && wf.tool
-                  ? `WF_START:${wf.kind}:${wf.tool.name}`
-                  : `WF_START:${wf.kind}:${wf.root}`;
-
-              const alreadyExecuted =
-                historyHasToolCall(history as any, 'project_detect') ||
-                historyHasToolCall(history as any, 'scaffold_project') ||
-                historyHasToolCall(history as any, 'analyze_codebase');
-
-              if (steps === 0 && !historyHasMarker(history as any, 'PROJECT_PLAN:')) {
-                if (wf.kind !== 'simple_creative') {
-                  const title =
-                    wf.kind === 'tool_shell'
-                      ? `### خطة إنشاء أداة (Shell Tool)`
-                      : wf.kind === 'static_site'
-                        ? `### خطة بناء موقع (Static Website)`
-                        : wf.kind === 'node_api'
-                          ? `### خطة بناء API (Node/Express)`
-                          : `### خطة بناء تطبيق (Fullstack)`;
-                  const stepList =
-                    wf.kind === 'tool_shell'
-                      ? [
-                        `- 1) project_detect: فحص المشروع والمسارات`,
-                        `- 2) command_policy_check: فحص أمان الأمر`,
-                        `- 3) tool_create_shell: إنشاء الأداة داخل المصنع (Runtime)`,
-                        `- 4) quality_run: تشغيل lint للتأكد`,
-                        `- 5) echo: إنهاء`,
-                      ]
-                      : [
-                        `- 1) project_detect: فحص هيكل المشروع والمسارات`,
-                        `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
-                        `- 3) scaffold_project: إنشاء هيكل المشروع`,
-                        wf.kind === 'static_site' ? `- 4) echo: إنهاء` : `- 4) npm_install: تثبيت الاعتمادات`,
-                        wf.kind === 'static_site' ? `- 5) echo: إنهاء` : `- 5) quality_run: lint/test/build إن وجدت`,
-                      ];
-
-                  const contextLine =
-                    wf.kind === 'tool_shell' && wf.tool
-                      ? `- الاسم: ${wf.tool.name}\n- الأمر: ${wf.tool.command}`
-                      : `- المجلد: ${wf.root}`;
-
-                  const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
-                  if (!containsBuilderPlanText(userTextForOverrides)) {
-                    ev({ type: 'text', data: md });
-                  }
-                }
-
-                history.push({ role: 'assistant', content: marker } as any);
-
-                // Phase 1: Marker handled below.
-
-                // PHASE 2-3 INTEGRATION: Use ProjectPlanner for ALL project-generating workflows
-                if (wf.kind !== 'tool_shell') {
-                  try {
-                    // Create execution plan
-                    const { executeTool } = await import('../services/ToolService');
-                    const planResult = await executeTool('project_planner', {
-                      projectDescription: userTextForOverrides,
-                      analysis: wf.analysis
-                    }, { sessionId, workspaceId });
-
-                    if (planResult.ok && planResult.output) {
-                      const plan = planResult.output;
-                      const projectId = `${sessionId}-${Date.now()}`;
-
-                      // Initialize state manager
-                      await executeTool('project_state_manager', {
-                        action: 'init',
-                        projectId,
-                        state: {
-                          projectName: plan.projectName,
-                          totalPhases: plan.totalPhases,
-                          pendingTasks: plan.phases?.flatMap((p: any) => p.tasks || []) || []
-                        }
-                      }, { sessionId, workspaceId });
-
-                      // Store plan in history for reference
-                      history.push({
-                        role: 'assistant',
-                        content: `PROJECT_PLAN:${projectId}:${JSON.stringify(plan)}`
-                      } as any);
-
-                      // Inform user about the plan
-                      const planSummary = `📋 **خطة المشروع**: ${plan.projectName}\n` +
-                        `- عدد المراحل: ${plan.totalPhases}\n` +
-                        `- الوقت المقدر: ${plan.estimatedDuration}\n` +
-                        `- المرحلة الأولى: ${plan.phases?.[0]?.name || 'غير محدد'}\n\n` +
-                        `سأبدأ التنفيذ المرحلي الآن...`;
-                      ev({ type: 'text', data: planSummary });
-
-                      // EXECUTION BRIDGE: Actually execute each phase
-                      const phases = Array.isArray(plan.phases) ? plan.phases : [];
-                      for (const phase of phases) {
-                        try {
-                          ev({ type: 'thought', data: `> Executing Phase ${phase.phaseNumber}: ${phase.name}...` });
-
-                          const phaseResult = await executeTool('phase_executor', {
-                            phase,
-                            projectContext: {
-                              projectName: plan.projectName,
-                              totalPhases: plan.totalPhases,
-                              sessionId,
-                              workspaceId,
-                            }
-                          }, {
-                            sessionId,
-                            workspaceId,
-                            onThought: (m) => ev({ type: 'thought', data: m }),
-                            onProgress: (m) => ev({ type: 'progress', data: m })
-                          });
-
-                          if (phaseResult.ok && phaseResult.output) {
-                            const out = phaseResult.output;
-                            ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} ${out.status}: ${out.completedTasks}/${out.totalTasks} tasks` });
-
-                            // Update state manager
-                            await executeTool('project_state_manager', {
-                              action: 'update',
-                              projectId,
-                              state: {
-                                currentPhase: phase.phaseNumber,
-                                phaseStatus: out.status,
-                                completedTasks: out.results?.filter((r: any) => r.ok).map((r: any) => r.task) || [],
-                              }
-                            }, { sessionId, workspaceId });
-
-                            // If phase failed critically, stop
-                            if (out.status === 'failed' || out.status === 'fatal_error') {
-                              ev({ type: 'text', data: `⚠️ Phase ${phase.phaseNumber} failed. Stopping execution.` });
-                              break;
-                            }
-                          }
-                        } catch (phaseError: any) {
-                          console.warn(`[Integration] Phase ${phase.phaseNumber} execution failed:`, phaseError);
-                          ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} threw: ${phaseError?.message || phaseError}` });
-                        }
-                      }
-
-                      const finalSuccessMsg = isArabicText(userTextForOverrides)
-                        ? `✨ اكتمل العمل على كافة المراحل بنجاح! يمكنك الآن مشاهدة المشروع في تبويبة المعاينة (Preview).`
-                        : `✨ All project phases completed successfully! You can now view the project in the Preview tab.`;
-                      ev({ type: 'text', data: finalSuccessMsg });
-                    }
-                  } catch (planError) {
-                    // Fallback to normal execution if planning fails
-                    console.warn('[Integration] ProjectPlanner failed:', planError);
-                  }
-                }
-
-                try {
-
-                  await Message.create({ sessionId, role: 'assistant', content: marker, runId });
-
-                } catch { }
-
-                // Inject directive for the AI
-                history.push({
-                  role: 'system',
-                  content: `BUILD DIRECTIVE: You are executing a workflow (${wf.kind}).
-          Follow the plan shown above. Check history for completed steps.
-          For scaffolding, use structure: {} and the system will inject the template.`
-                } as any);
-              }
-
-              // Builder Mode: Start execution if the planner returned echo or empty
-              if (!planName || planName === 'echo') {
-                const textLower = userTextForOverrides.toLowerCase();
-
-                // Handle "Access/Open GitHub" or generic website access requests
-                const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
-                if (wantsAccess) {
-                  plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
-                  planName = 'browser_open';
-                } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(google|جوجل)/i.test(userTextForOverrides)) {
-                  plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
-                  planName = 'browser_open';
-                } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(youtube|يوتيوب)/i.test(userTextForOverrides)) {
-                  plan = { name: 'browser_open', input: { url: 'https://www.youtube.com' } } as any;
-                  planName = 'browser_open';
-                } else if (/(list|سرد|قائمة)\s*(tools|الأدوات|الادوات)/i.test(userTextForOverrides)) {
-                  plan = { name: 'http_fetch', input: { url: 'http://localhost:' + (process.env.PORT || 3000) + '/tools' } } as any;
-                  planName = 'http_fetch';
-                } else if (/(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userTextForOverrides) || /^ls$/.test(textLower)) {
-                  plan = { name: 'ls', input: { path: '.' } } as any;
-                  planName = 'ls';
-                } else if (/(project|file)\s*(structure|tree|هيكل|شجرة)/i.test(userTextForOverrides)) {
-                  plan = { name: 'read_file_tree', input: { path: '.', depth: 3 } } as any;
-                  planName = 'read_file_tree';
-                } else if (/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i.test(userTextForOverrides)) {
-                  const m = userTextForOverrides.match(/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i);
-                  if (m && m[3]) {
-                    plan = { name: 'file_read', input: { filePath: m[3].trim() } } as any;
-                    planName = 'file_read';
-                  }
-                } else if (/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i.test(userTextForOverrides)) {
-                  const m = userTextForOverrides.match(/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i);
-                  if (m && m[4]) {
-                    plan = { name: 'grep_search', input: { query: m[4].trim(), path: '.' } } as any;
-                    planName = 'grep_search';
-                  }
-                } else if (/(open|start|launch|افتح|شغل|ابدأ)\s*(the\s+)?(browser|متصفح|المتصفح)/i.test(userTextForOverrides)) {
-                  // Explicit browser open request
-                  plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
-                  planName = 'browser_open';
-                } else if (wf && steps === 0) {
-                  // Force first step of workflow if no other heuristic matched
-                  const alreadyDetetced = historyHasToolCall(history as any, 'project_detect');
-                  if (!alreadyDetetced) {
-                    plan = { name: 'project_detect', input: { path: '.' } } as any;
-                    planName = 'project_detect';
-                  } else {
-                    plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-                    planName = 'analyze_codebase';
-                  }
-                }
-              }
-            }
-
-            if (String(plan?.name || '') === 'github_repo_manager' || String(plan?.name || '') === 'github_create_repo') {
-              const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
-              if (wantsAccess) {
-                plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
-              } else if (!wantsGithubRepo && (!planName || planName === 'echo')) {
-                plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
-              } else if (!requestedRepoName) {
-                plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
-                history.push({ role: 'assistant', content: 'ASKED_FOR_REPO_NAME' } as any);
-                try {
-                  if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
-                } catch { }
-              }
-            }
-            if (isBrowserTool) {
-              const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
-              const inputSid = String((plan as any)?.input?.sessionId || '').trim();
-              const hasSid = !!(reqSid || inputSid);
-              if (!hasSid) {
-                const userText = String(text || '');
-                if (isWeatherLikeQuery(userText)) {
-                  const city = extractWeatherCity(userText);
-                  plan = {
-                    name: 'central_answer',
-                    input: { question: isArabicText(userText) ? `كم درجة الحرارة الآن في ${city}؟` : `current temperature in ${city} now` },
-                  } as any;
-                } else {
-                  const urlMatch = userText.match(/https?:\/\/[^\s"'<>]+/i);
-                  const urlFromUser = urlMatch?.[0];
-                  const urlFromInput = String((plan as any)?.input?.url || '').trim();
-                  const actions = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
-                  const goto = actions.find((a: any) => String(a?.type || '').toLowerCase() === 'goto' && typeof a?.url === 'string' && a.url.trim());
-                  const urlFromActions = goto ? String(goto.url).trim() : '';
-                  const wantsYoutube = /youtube|يوتيوب/i.test(userText);
-                  const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userText);
-                  const desiredUrl =
-                    (urlFromUser || urlFromInput || urlFromActions || '').trim() ||
-                    (wantsYoutube
-                      ? 'https://www.youtube.com'
-                      : wantsGithub
-                        ? 'https://github.com'
-                        : isStrictSameSiteUiTask
-                          ? 'https://xelitesolutions.com'
-                          : 'https://www.google.com');
-
-                  if (planName !== 'browser_open') pendingPlan = plan as any;
-                  plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
-                }
-              }
-            }
-
-            if (isStrictSameSiteUiTask) {
-              if (!browserHostLock) updateBrowserLockFromOutput((lastResult as any)?.output);
-              if (plan?.name === 'browser_run') {
-                const rawActions = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
-                const actions = rawActions.map((a: any) => {
-                  if (!a || typeof a !== 'object') return a;
-                  if (String(a.type || '').toLowerCase() === 'goto') {
-                    const u = normalizeUrlForGoto(a.url);
-                    return { ...a, url: u };
-                  }
-                  return a;
-                });
-
-                const hasDisallowed = actions.some((a: any) => {
-                  const t = String(a?.type || '').toLowerCase();
-                  if (t === 'searchgoogle') return true;
-                  if (t !== 'goto') return false;
-                  const u = normalizeUrlForGoto(a?.url);
-                  if (!u) return true;
-                  const targetHost = urlToHost(u);
-                  if (targetHost && /(^|\.)google\./i.test(targetHost)) return true;
-                  if (!browserHostLock) return false;
-                  if (!targetHost) return false;
-                  return !isSameSiteHost(targetHost, browserHostLock);
-                });
-
-                if (hasDisallowed) {
-                  const sid = typeof browserSessionId === 'string' ? browserSessionId.trim() : String((plan as any)?.input?.sessionId || '').trim();
-                  const origin = browserOriginLock || (browserHostLock ? `https://${browserHostLock}` : '');
-                  if (!sid) {
-                    plan = { name: 'echo', input: { text: 'Cannot run browser actions: missing sessionId.' } } as any;
-                  } else if (!origin) {
-                    plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
-                  } else {
-                    const safeLoginUrl = new URL('/login', origin).toString();
-                    const host = browserHostLock || urlToHost(origin);
-                    const isXelite = /(^|\.)xelitesolutions\.com$/i.test(String(host || ''));
-                    const fallbackActions = isXelite
-                      ? [
-                        { type: 'clickText', text: 'Start Now', exact: false, timeoutMs: 9000, attempts: 3 },
-                        { type: 'waitForLoad', state: 'domcontentloaded' },
-                        { type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' },
-                      ]
-                      : [{ type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' }];
-                    plan = { name: 'browser_run', input: { sessionId: sid, actions: fallbackActions } } as any;
-                  }
-                } else {
-                  (plan as any).input = { ...(plan as any).input, actions };
-                }
-              }
-            }
-
-            if (kind === 'agent' && String(plan?.name || '') === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
-              const raw = String((plan as any)?.input?.url || '').trim();
-              const url = normalizeUrlForGoto(raw);
-              if (!url) {
-                plan = { name: 'browser_get_state', input: { sessionId: browserSessionId.trim() } } as any;
-              } else if (isStrictSameSiteUiTask && browserHostLock) {
-                const host = urlToHost(url);
-                if (host && !isSameSiteHost(host, browserHostLock)) {
-                  plan = { name: 'browser_get_state', input: { sessionId: browserSessionId.trim() } } as any;
-                } else {
-                  plan = {
-                    name: 'browser_run',
-                    input: {
-                      sessionId: browserSessionId.trim(),
-                      actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
-                    },
-                  } as any;
-                }
-              } else {
-                plan = {
-                  name: 'browser_run',
-                  input: {
-                    sessionId: browserSessionId.trim(),
-                    actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
-                  },
-                } as any;
-              }
-            }
-
-            if (
+              kind === 'agent' &&
+              !wantsBrowser &&
+              looksLikeInPageBrowserAction &&
               typeof browserSessionId === 'string' &&
               browserSessionId.trim() &&
-              ['browser_run', 'browser_get_state', 'browser_extract'].includes(String(plan?.name || ''))
+              !/^browser_/.test(planName)
             ) {
-              const input = (plan as any).input;
-              if (!input || typeof input !== 'object') (plan as any).input = {};
-              if (!(plan as any).input.sessionId) (plan as any).input.sessionId = browserSessionId.trim();
+              plan = { name: 'browser_run', input: { sessionId: browserSessionId.trim(), instructionText: s } } as any;
+              planName = 'browser_run';
+              browserIntentThisTurn = true;
             }
 
-            const isMultiStepBrowserInstruction = (s: string) => {
-              const t = String(s || '');
-              return /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
-                t,
-              );
-            };
-
-            if (String(plan?.name || '') === 'browser_run') {
-              const sid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
-              const rawActs = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
-              const hasGoto = rawActs.some(
-                (a: any) => String(a?.type || '').toLowerCase() === 'goto' && typeof a?.url === 'string' && a.url.trim(),
-              );
-              const instructionTextInPlan = String((plan as any)?.input?.instructionText || '').trim();
-              const urlCandidate = (() => {
-                const m1 = userTextForOverrides.match(/https?:\/\/[^\s"'<>]+/i);
-                if (m1 && m1[0]) return m1[0].trim();
-                const m2 = userTextForOverrides.match(
-                  /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?/i,
+            if (wantsBrowser && !/^browser_/.test(planName)) {
+              const directUrl = extractedUrl;
+              const wantsYahoo = /(yahoo|ياهو)/i.test(sNorm);
+              const wantsYoutube = /(youtube|يوتيوب)/i.test(sNorm);
+              const wantsGoogle = /(google|جوجل|قوقل)/i.test(sNorm);
+              const wantsOpenAI = /(open\s*a\s*i|open\s*ai|openai|اوبن\s*اي\s*اي|اوبن\s*اي)/i.test(sNorm);
+              const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(sNorm);
+              const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(sNorm);
+              const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك|فيسبوك)/i.test(sNorm);
+              const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدان|لينكدإن)/i.test(sNorm);
+              const wantsPricing = /(price|pricing|سعر|الاسعار|الأسعار|تكلفة|cost)/i.test(sNorm);
+              const wantsBilling =
+                /(balance|billing|credit|credits|usage|payment|invoice|invoices|رصيد|الرصيد|فواتير|الفواتير|استخدام|المدفوعات)/i.test(
+                  sNorm,
                 );
-                if (m2 && m2[0]) return m2[0].trim();
-                return '';
-              })();
-              const hasUrlInUserText = Boolean(urlCandidate);
-              const openKeyword =
-                /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
-                  userTextForOverrides,
-                );
-              const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(userTextForOverrides);
-              const mentionsKnownSite =
-                /(yahoo|ياهو|youtube|يوتيوب|github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب|google|جوجل|microsoft|مايكروسوفت|مايكروسوت|x\.com|\btwitter\b|تويتر|facebook|فيس\s*بوك|الفيس\s*بوك|linkedin|لينكد\s*ان|لينكدإن)/i.test(
-                  userTextForOverrides,
-                );
-              const looksLikeOpenIntent = Boolean(hasUrlInUserText || openKeyword || browserKeyword || mentionsKnownSite);
-
-              if (sid && !instructionTextInPlan && rawActs.length === 0) {
-                (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
-              } else if (sid && rawActs.length > 0 && !hasGoto && looksLikeOpenIntent) {
-                const directUrl = urlCandidate;
-                const wantsYahoo = /(yahoo|ياهو)/i.test(userTextForOverrides);
-                const wantsYoutube = /youtube|يوتيوب/i.test(userTextForOverrides);
-                const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
-                const wantsGoogle = /google|جوجل/i.test(userTextForOverrides);
-                const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(userTextForOverrides);
-                const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(userTextForOverrides);
-                const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(userTextForOverrides);
-                const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(userTextForOverrides);
-                const desiredUrlRaw =
-                  directUrl ||
-                  (wantsYahoo
+              const openAiUrl = wantsBilling
+                ? 'https://platform.openai.com/account/billing/overview'
+                : 'https://platform.openai.com/';
+              const openAiPricingUrl = 'https://openai.com/pricing';
+              const desiredUrl =
+                (directUrl || '').trim() ||
+                (wantsOpenAI
+                  ? (wantsPricing ? openAiPricingUrl : openAiUrl)
+                  : wantsYahoo
                     ? 'https://www.yahoo.com'
                     : wantsYoutube
                       ? 'https://www.youtube.com'
-                      : wantsGithub
+                      : githubKeyword
                         ? 'https://github.com'
                         : wantsGoogle
                           ? 'https://www.google.com'
@@ -3508,1163 +2816,959 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                                 : wantsLinkedIn
                                   ? 'https://www.linkedin.com'
                                   : '');
-                const url = normalizeUrlForGoto(desiredUrlRaw);
-                if (url) {
-                  (plan as any).input = {
-                    sessionId: sid,
-                    actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }, ...rawActs],
-                  };
-                } else if (!instructionTextInPlan) {
-                  (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
+              if (desiredUrl) {
+                const candidateSig = `browser_open:${JSON.stringify({ url: desiredUrl })}`;
+                if (!executedToolSigs.has(candidateSig) && lastExecutedToolSig !== candidateSig) {
+                  plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
+                  planName = 'browser_open';
                 }
-              }
-
-              const acts = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
-              const onlyGoto =
-                acts.length === 1 && String(acts[0]?.type || '').toLowerCase() === 'goto' && typeof acts[0]?.url === 'string' && acts[0].url.trim();
-              if (onlyGoto && isMultiStepBrowserInstruction(userTextForOverrides)) {
-                if (sid) (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
-              }
-            }
-
-            ev({ type: 'step_done', data: { name: `planning_step_${steps + 1}`, plan } });
-
-            if (plan?.name === 'browser_run') {
-              const acts = Array.isArray((plan as any).input?.actions) ? (plan as any).input.actions : [];
-              let sensitive = false;
-              let actionText = 'browser_run';
-              for (const a of acts) {
-                const t = String(a?.type || '').toLowerCase();
-                if (t === 'uploadfile') sensitive = true;
-                if (t === 'fillform') {
-                  const fields = Array.isArray(a?.fields) ? a.fields : [];
-                  for (const f of fields) {
-                    const s = (String(f?.label || '') + ' ' + String(f?.selector || '')).toLowerCase();
-                    if (/(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(s)) { sensitive = true; break; }
+              } else if (openKeyword) {
+                const openTarget = extractOpenTargetText(s);
+                if (openTarget) {
+                  const q = /[\u0600-\u06FF]/.test(openTarget) ? `${openTarget} الموقع الرسمي` : `${openTarget} official website`;
+                  const sig = `web_search_open:${q}`;
+                  if (!executedToolSigs.has(sig)) {
+                    executedToolSigs.set(sig, 1);
+                    plan = { name: 'web_search', input: { query: q } } as any;
+                    planName = 'web_search';
+                    pendingBrowserOpenFromSearch = { target: openTarget };
                   }
                 }
-                if (t === 'click') {
-                  const s = (String(a?.roleName || '') + ' ' + String(a?.selector || '')).toLowerCase();
-                  if (/(delete|pay|submit|login|حذف|دفع|ارسال|تسجيل دخول)/.test(s)) sensitive = true;
-                }
-                if (sensitive) break;
               }
-              if (sensitive) {
-                const risk = 'high';
-                const aRole = authRole;
-                const { getSessionRunConfig } = await import('../services/secrets');
-                const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
-                const autoAll =
-                  aRole === 'OWNER' || cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
-                if (autoAll) {
-                  ev({
-                    type: 'step_started',
-                    data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
-                  });
-                  const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
-                  const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
-                  if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
-                    const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
-                    if (answerText) {
-                      ev({ type: 'text', data: answerText });
-                      assistantTextEmitted = true;
-                    }
-                  }
-                  ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
-                  if (!offlineMode) {
-                    await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-                  }
-                  ev({ type: 'run_finished', data: { runId, ok: result.ok } });
-                  return res.json({ ok: true, runId, result });
-                }
-
-                if (!offlineMode) {
-                  const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
-                  ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: actionText } });
-                  await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
-                  const { planContext } = await import('../approvals/context');
-                  planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
-                } else {
-                  ev({ type: 'approval_required', data: { id: `offline-approval-${Date.now()}`, runId, risk, action: actionText } });
-                }
-
-
-                const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
-                const auto = cfg.autoApproveSafe === true ? true : envAutoSafe ? envAutoSafe === '1' : true;
-
-                const safe = !/(high|critical)/i.test(String(risk));
-                if (autoAll || (auto && safe)) {
-                  ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
-                  const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
-                  const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
-                  if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
-                    const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
-                    if (answerText) {
-                      ev({ type: 'text', data: answerText });
-                      assistantTextEmitted = true;
-                    }
-                  }
-                  ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
-                  await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-                  ev({ type: 'run_finished', data: { runId, ok: result.ok } });
-                  planContext.delete(ap._id.toString());
-                  if (!res.headersSent) {
-                    return res.json({ ok: true, runId, result });
-                  }
-                  return;
-                }
-                if (!res.headersSent) {
-                  return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
-                }
-                return;
-
-              }
-            }
-
-            if (String(plan?.name || '') === 'git_ops') {
-              const input = (plan as any).input;
-              if (!input || typeof input !== 'object') (plan as any).input = {};
-              if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
-            }
-            if (String(plan?.name || '') === 'payments_create_checkout_session') {
-              const input = (plan as any).input;
-              if (!input || typeof input !== 'object') (plan as any).input = {};
-              if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
-            }
-            if (String(plan?.name || '') === 'http_fetch') {
-              const input = (plan as any).input;
-              if (!input || typeof input !== 'object') (plan as any).input = {};
-              if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
-            }
-
-            // Intercept scaffold_project to inject templates if structure is missing/empty
-            if (plan?.name === 'scaffold_project') {
-              const inp = (plan.input as any) || {};
-              if (!inp.structure || Object.keys(inp.structure).length === 0) {
-                // Legacy template injection has been removed.
-                // The agent must provide the structure explicitly or use 'scaffold' from Universal Registry.
-                ev({ type: 'text', data: `ℹ️ Standard scaffold request (Legacy templates removed).` });
-              }
-            }
-
-            if (String(plan?.name || '') === 'browser_run') {
-              const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
-              const key = browserRunGuardKey(String(sessionId), bid, String(runId));
-              const now0 = Date.now();
-              const sigObj = (() => {
-                const rawInput: any = (plan as any)?.input || {};
-                return {
-                  instructionText: typeof rawInput?.instructionText === 'string' ? rawInput.instructionText : '',
-                  actions: Array.isArray(rawInput?.actions) ? rawInput.actions : null,
-                };
-              })();
-              let sig = '';
-              try {
-                sig = JSON.stringify(sigObj);
-              } catch {
-                sig = String(sigObj?.instructionText || '');
-              }
-
-              const prev =
-                browserRunGuard.get(key) ||
-                ({
-                  totalCount: 0,
-                  lastAt: 0,
-                  lastSig: '',
-                  sigCount: 0,
-                } as any);
-
-              const since0 = prev.lastAt ? now0 - prev.lastAt : Number.POSITIVE_INFINITY;
-              const nextSigCount = prev.lastSig && prev.lastSig === sig ? prev.sigCount + 1 : 1;
-              const nextTotal = Number(prev.totalCount || 0) + 1;
-
-              if (nextSigCount > 2 || nextTotal > BROWSER_RUN_MAX_PER_SESSION) {
-                const msg = isArabicText(userTextForOverrides)
-                  ? `⚠️ تم تعليق عمليات المتصفح المتكررة لضمان استقرار الجلسة.\nالسبب: الوصول إلى الحد الأقصى للمحاولات (${BROWSER_RUN_MAX_PER_SESSION}).\nيمكنك إعادة صياغة الطلب أو المحاولة لاحقاً.`
-                  : `⚠️ Repeated browser operations suspended to ensure session stability.\nReason: Maximum retry limit reached (${BROWSER_RUN_MAX_PER_SESSION}).\nPlease refine your request or try again later.`;
-                forcedText = msg;
-                ev({ type: 'text', data: msg });
-                assistantTextEmitted = true;
-                break;
-              }
-              const isSameSig = Boolean(prev.lastSig && prev.lastSig === sig);
-              if (isSameSig && Number.isFinite(since0) && since0 < BROWSER_RUN_MIN_INTERVAL_MS) {
-                const waitMs = Math.max(1, BROWSER_RUN_MIN_INTERVAL_MS - since0);
-                const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
-                const msg = isArabicText(userTextForOverrides)
-                  ? `🔄 جاري تنسيق الوصول إلى المتصفح... سأباشر التنفيذ تلقائياً خلال ${waitSec} ثانية.`
-                  : `🔄 Orchestrating browser access... Resuming execution automatically in ${waitSec}s.`;
-                ev({ type: 'text', data: msg });
-                await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
-                if (isRunCancelled(runId)) {
-                  forcedText = '⛔ تم إيقاف التنفيذ.';
-                  lastResult = { ok: false, error: 'stopped' };
-                  break;
-                }
-              }
-              const now = Date.now();
-              browserRunGuard.set(key, { totalCount: nextTotal, lastAt: now, lastSig: sig, sigCount: nextSigCount });
-            }
-
-            if (isRunCancelled(runId)) {
-              forcedText = '⛔ تم إيقاف التنفيذ.';
-              lastResult = { ok: false, error: 'stopped' };
-              break;
-            }
-
-            const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
-            ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
-            // [ELITE FIX] Emit specific tool_start event for frontend auto-switching (Browser/Terminal)
-            ev({ type: 'tool_start', tool: plan?.name || '', input: plan?.input });
-            const callInput =
-              userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
-            const result = await executeToolWithRateLimitRetry(plan?.name || '', callInput, { sessionId, workspaceId }, {
-              runId,
-              maxRetries: 2,
-              maxWaitMs: 70_000,
-              onWait: (waitMs, retryAfterMs) => {
-                const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
-                const msg = isArabicText(userTextForOverrides)
-                  ? `⚠️ تم تقييد تنفيذ الأداة مؤقتًا (rate_limited). سأعيد المحاولة تلقائياً بعد حوالي ${waitSec}s.`
-                  : `⚠️ Tool is rate-limited. I’ll auto-retry in about ${waitSec}s.`;
-                const now = Date.now();
-                const last = loopPauseThrottle.get(String(sessionId));
-                if (!last || now - last > 6000) {
-                  ev({ type: 'text', data: msg });
-                  assistantTextEmitted = true;
-                  loopPauseThrottle.set(String(sessionId), now);
-                }
-              },
-            });
-            lastExecutedToolSig = `${String(plan?.name || '')}:${JSON.stringify((plan as any)?.input || {})}`;
-            lastExecutedToolName = String(plan?.name || '');
-            if (result?.ok && plan?.name === 'browser_open') {
-              const sid = String(result?.output?.sessionId || '').trim();
-              if (sid) {
-                browserSessionId = sid;
-                try {
-                  const { getSessionRunConfig, setSessionRunConfig } = await import('../services/secrets');
-                  const cur = getSessionRunConfig(String(sessionId)) || ({} as any);
-                  setSessionRunConfig(String(sessionId), {
-                    provider: typeof cur.provider === 'string' ? cur.provider : undefined,
-                    apiKey: typeof cur.apiKey === 'string' ? cur.apiKey : undefined,
-                    baseUrl: typeof cur.baseUrl === 'string' ? cur.baseUrl : undefined,
-                    model: typeof cur.model === 'string' ? cur.model : undefined,
-                    kind: cur.kind === 'agent' ? 'agent' : cur.kind === 'chat' ? 'chat' : kind,
-                    browserSessionId: sid,
-                    autoApproveAll: Boolean(cur.autoApproveAll),
-                    autoApproveSafe: Boolean(cur.autoApproveSafe),
-                  });
-                } catch { }
-              }
-            }
-
-            // Add result to history to prevent infinite loops
-            const MAX_INLINE_CHARS = 1800;
-            const truncate = (s: string, max = MAX_INLINE_CHARS) => (s.length > max ? `${s.slice(0, max)}…[truncated]` : s);
-            const extractTitleFromHtml = (html: string) => {
-              const m = html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i);
-              const t = String(m?.[1] || '').replace(/\s+/g, ' ').trim();
-              return t || '';
-            };
-            const normalizeDisplayUrl = (raw: any) => {
-              let s = String(raw ?? '').trim();
-              while (s.length >= 2) {
-                const first = s[0];
-                const last = s[s.length - 1];
-                const wrap = (c: string) =>
-                  c === '`' || c === '"' || c === "'" || c === '“' || c === '”' || c === '‘' || c === '’';
-                if (wrap(first) && wrap(last)) s = s.slice(1, -1).trim();
-                else break;
-              }
-              s = s.replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
-              if (!s) return s;
-              if (/^https?:\/\//i.test(s)) return s;
-              if (/^\/\//.test(s)) return `https:${s}`;
-              if (/^(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/|$)/i.test(s)) return `https://${s}`;
-              return s;
-            };
-            const inferSiteLabel = (url: string, dom: string) => {
-              const u = normalizeDisplayUrl(url);
-              try {
-                if (u) {
-                  const host = new URL(u).hostname.replace(/^www\./i, '');
-                  if (host) return host;
-                }
-              } catch { }
-              const d = String(dom || '');
-              if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
-              if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
-              if (/github\.com/i.test(d)) return 'github.com';
-              const title = extractTitleFromHtml(d);
-              return title || 'page';
-            };
-            const summarizeBrowserOutput = (out: any) => {
-              if (!out || typeof out !== 'object') return out;
-              const isBrowserStateLike =
-                typeof (out as any).url === 'string' ||
-                typeof (out as any).pageUrl === 'string' ||
-                typeof (out as any).dom === 'string' ||
-                typeof (out as any).screenshot === 'string' ||
-                typeof (out as any).screenshotHref === 'string';
-              if (!isBrowserStateLike) return out;
-              const urlRaw =
-                typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
-              const url = normalizeDisplayUrl(urlRaw);
-              const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
-              const title = dom ? extractTitleFromHtml(dom) : '';
-              const site = inferSiteLabel(url, dom);
-              const domLen = dom ? dom.length : 0;
-              const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
-              const u = String(url || '').toLowerCase();
-              const domLower = String(dom || '').toLowerCase();
-              const hasPasswordField = /type=["']password["']|name=["']password["']|passw(or)?d|passwd/i.test(domLower);
-              const hasLoginFormSignal = /<form\b[\s\S]{0,4000}(type=["']password["']|name=["']password["'])/i.test(dom);
-              const urlLooksLogin = /serviceLogin|\/login\b|\/signin\b|accounts\.google\.com/i.test(u);
-              const domStrongLogin = /<title[^>]*>[\s\S]*?(sign in|login|تسجيل\s+الدخول)[\s\S]*?<\/title>/i.test(dom) || /ServiceLogin/i.test(dom);
-              const loginLike = Boolean((urlLooksLogin && (hasPasswordField || hasLoginFormSignal)) || (domStrongLogin && hasPasswordField));
-              const summary: any = { site };
-              if (url) summary.url = url;
-              if (title) summary.title = title;
-              if (loginLike) summary.pageType = 'login';
-              if (domLen) summary.domLength = domLen;
-              if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
-              return summary;
-            };
-            const sanitizeForInline = (toolName: string, obj: any) => {
-              if (obj == null) return obj;
-              const t = String(toolName || '');
-              if (/^browser_/.test(t)) return summarizeBrowserOutput(obj);
-              if (typeof obj === 'string') return truncate(obj);
-              if (typeof obj === 'object') {
-                try {
-                  const raw = JSON.stringify(obj);
-                  if (raw.length <= MAX_INLINE_CHARS) return obj;
-                  return truncate(raw);
-                } catch {
-                  return '[Result too large or circular]';
-                }
-              }
-              return obj;
-            };
-            const safeOutput = (toolName: string, obj: any) => {
-              try {
-                return JSON.stringify(sanitizeForInline(toolName, obj));
-              } catch {
-                return '"[Result too large or circular]"';
-              }
-            };
-
-            history.push({
-              role: 'assistant',
-              content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(plan?.name || '', persistedInput)}\nOutput: ${safeOutput(plan?.name || '', result.output || result.error || 'Done')}`
-            });
-
-            // [FIX 3] Preserve file context for multi-turn conversations
-            // If there are attached files/images, remind the LLM about them
-            if (steps === 0 && (contentParts.length > 0 || attachedText.trim().length > 100)) {
-              const fileContextSummary = attachedText.trim().length > 100
-                ? attachedText.slice(0, 500) + '...[محتوى مختصر]'
-                : attachedText;
-              const imageCount = contentParts.filter((p: any) => p.type === 'image_url').length;
-
-              let contextReminder = '[📎 سياق الملفات المرفقة]:\n';
-              if (imageCount > 0) {
-                contextReminder += `- ${imageCount} صورة/صور مرفقة\n`;
-              }
-              if (fileContextSummary.trim()) {
-                contextReminder += `- محتوى الملف:\n${fileContextSummary}\n`;
-              }
-
-              history.push({
-                role: 'system',
-                content: contextReminder
-              });
-              console.info('[Run/Context] Injected file context reminder into history');
-            }
-
-            lastResult = result;
-            if (result?.ok && /^browser_/.test(String(plan?.name || ''))) {
-              updateBrowserLockFromOutput((result as any)?.output);
-            }
-
-
-            if (result.logs?.length) {
-              for (const line of result.logs) {
-                ev({ type: 'evidence_added', data: { kind: 'log', text: line } });
-              }
-            }
-
-            // Emit artifacts if any
-            if (result.artifacts && Array.isArray(result.artifacts)) {
-              const suppressChatArtifacts = /^browser_/.test(String(plan?.name || ''));
-              for (const art of result.artifacts) {
-                if (suppressChatArtifacts) continue;
-                ev({ type: 'artifact_created', data: art });
-
-                try { if (!offlineMode) await Artifact.create({ runId, name: String(art.name || 'artifact'), href: String(art.href || '') }); } catch { }
-
-              }
-            }
-
-            const eventResult =
-              /^browser_/.test(String(plan?.name || '')) && result && typeof result === 'object'
-                ? { ...result, output: summarizeBrowserOutput((result as any).output) }
-                : result;
-            ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result: eventResult } });
-
-            if (String(plan?.name || '') === 'browser_run') {
-              lastBrowserRunSummary = String((result as any)?.output?.summary || '').trim();
-              lastBrowserRunPageUrl = String((result as any)?.output?.pageUrl || '').trim();
-            }
-            if (String(plan?.name || '') === 'browser_open') {
-              lastBrowserRunSummary = '';
-              lastBrowserRunPageUrl = '';
-            }
-
-            if (!result.ok && String(plan?.name || '') === 'browser_run') {
-              const err = String((result as any)?.error || '').trim();
-              if (err === 'timeout') {
-                const msg = isArabicText(userTextForOverrides)
-                  ? `⚠️ انتهت مهلة تنفيذ خطوة في المتصفح (timeout).\nلن أعيد المحاولة تلقائياً لتجنّب حلقة.\nأعد إرسال الأمر إذا كنت تريد المحاولة مرة أخرى.`
-                  : `⚠️ A browser step timed out.\nI won’t auto-retry to avoid a loop.\nRe-run the command if you want to try again.`;
-                forcedText = msg;
-                ev({ type: 'text', data: msg });
-                assistantTextEmitted = true;
-                break;
-              }
-              if (err === 'browser_unavailable' || err === 'worker_unhealthy') {
-                try {
-                  const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
-                  const key = browserRunGuardKey(String(sessionId), bid, String(runId));
-                  browserRunGuard.delete(key);
-                } catch { }
-                const code = String((result as any)?.detail?.code || '').trim();
-                const detailMsg = String((result as any)?.detail?.message || '').trim();
-                const hint = (() => {
-                  const c = (code || '').toLowerCase();
-                  const m = (detailMsg || '').toLowerCase();
-                  if (c === 'display_missing' || /xvfb|display|cannot open display/i.test(m)) {
-                    return isArabicText(userTextForOverrides)
-                      ? 'على الخادم: شغّل Playwright بوضع headed عبر Xvfb (مثال: xvfb-run) أو فعّل headless.'
-                      : 'On the server: run headed Playwright under Xvfb (e.g. xvfb-run) or enable headless.';
-                  }
-                  if (c === 'chromium_missing' || /playwright install|executable doesn't exist/i.test(m)) {
-                    return isArabicText(userTextForOverrides)
-                      ? 'ثبّت متصفحات Playwright على الخادم (مثال: npx playwright install --with-deps).'
-                      : 'Install Playwright browsers on the server (e.g. npx playwright install --with-deps).';
-                  }
-                  if (c === 'deps_missing' || /gtk|nss|gbm|fontconfig|glibc/i.test(m)) {
-                    return isArabicText(userTextForOverrides)
-                      ? 'نقص مكتبات نظام لتشغيل Chromium. ثبّت الاعتماديات المطلوبة (Playwright --with-deps).'
-                      : 'Missing system deps for Chromium. Install Playwright dependencies (--with-deps).';
-                  }
-                  if (c === 'sandbox_blocked' || /no-sandbox|setuid/i.test(m)) {
-                    return isArabicText(userTextForOverrides)
-                      ? 'السندبوكس مرفوض. جرّب تفعيل BROWSER_NO_SANDBOX=1 على الخادم.'
-                      : 'Sandbox blocked. Try setting BROWSER_NO_SANDBOX=1 on the server.';
-                  }
-                  return isArabicText(userTextForOverrides)
-                    ? 'تحقق من خدمة المتصفح/Playwright على الخادم ثم أعد المحاولة.'
-                    : 'Check the browser/Playwright worker on the server and retry.';
-                })();
-                const msg = isArabicText(userTextForOverrides)
-                  ? `⚠️ خدمة المتصفح غير متاحة حالياً.\n${code ? `- السبب: ${code}\n` : ''}${hint}`
-                  : `⚠️ Browser service is currently unavailable.\n${code ? `- reason: ${code}\n` : ''}${hint}`;
-                forcedText = msg;
-                ev({ type: 'text', data: msg });
-                assistantTextEmitted = true;
-                break;
-              }
-              const missingSecrets = Array.isArray((result as any)?.missingSecrets) ? ((result as any).missingSecrets as any[]).map((x) => String(x || '').trim()).filter(Boolean) : [];
-              if (err === 'missing_secrets' || err.startsWith('missing_secrets') || missingSecrets.length) {
-                try {
-                  const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
-                  const key = browserRunGuardKey(String(sessionId), bid, String(runId));
-                  browserRunGuard.delete(key);
-                } catch { }
-                const keysLine = missingSecrets.length ? `\n- الأسرار المطلوبة: ${missingSecrets.join(', ')}` : '';
-                const msg = isArabicText(userTextForOverrides)
-                  ? `⚠️ لا يمكن إكمال خطوة المتصفح لأن هناك بيانات دخول/أسرار ناقصة.${keysLine}\nأدخل الأسرار المطلوبة من نافذة التوكن أو اكتب بيانات الدخول (الإيميل/كلمة المرور) داخل رسالتك ثم أعد إرسال نفس الأمر.`
-                  : `⚠️ Browser step needs missing secrets.${keysLine}\nProvide the required secrets or include credentials in your message, then re-run the same command.`;
-                forcedText = msg;
-                ev({ type: 'text', data: msg });
-                assistantTextEmitted = true;
-                break;
-              }
-              const terminal =
-                err === 'plan_to_actions_empty' ||
-                err === 'compiler_failed' ||
-                err === 'unsupported_action' ||
-                err === 'infinite_retry_blocked' ||
-                err === 'sessionId_required';
-              if (terminal) {
-                const msg = isArabicText(userTextForOverrides)
-                  ? `❌ تعذّر تنفيذ خطوات المتصفح.\nالسبب: ${err}\nأعد صياغة الطلب أو فعّل وضع التصحيح لرؤية الخطة والإجراءات.`
-                  : `❌ I couldn’t compile executable browser steps.\nReason: ${err}\nPlease rephrase the instruction or enable debug to see the compiled plan/actions.`;
-                forcedText = msg;
-                ev({ type: 'text', data: msg });
-                assistantTextEmitted = true;
-                break;
-              }
-
-              const summary = String((result as any)?.output?.summary || '').trim();
-              const url = String((result as any)?.output?.pageUrl || '').trim();
-              const msg = isArabicText(userTextForOverrides)
-                ? `${summary ? summary : `❌ فشل تنفيذ مهمة المتصفح. السبب: ${err || 'unknown'}`}${url ? `\n- الرابط الحالي: ${url}` : ''}\nأعد إرسال الأمر بعد تصحيح البيانات أو أعطني رابط صفحة تسجيل الدخول مباشرة.`
-                : `${summary ? summary : `❌ Browser task failed. Reason: ${err || 'unknown'}`}${url ? `\n- Current URL: ${url}` : ''}\nRe-run after fixing credentials or provide the login page URL directly.`;
-              forcedText = msg;
-              ev({ type: 'text', data: msg });
-              assistantTextEmitted = true;
-              break;
-            }
-
-            if (!result.ok && isStrictSameSiteUiTask && /^browser_/.test(String(plan?.name || '')) && isCrossSiteBlockedError(result.error)) {
-              const lock = browserHostLock ? `\n- Locked site: ${browserHostLock}` : '';
-              const msg = isArabicText(userTextForOverrides)
-                ? `⚠️ تم منع محاولة الانتقال خارج نفس الموقع أثناء وضع STRICT_SAME_SITE_UI.\nلن أحاول جوجل/بحث/روابط خارجية تلقائياً.${lock}\n\nوجّهني بما تريد على نفس الصفحة (مثال: \"اضغط Start Now\" أو \"اذهب إلى /login\").`
-                : `⚠️ Navigation was blocked by same-site policy in STRICT_SAME_SITE_UI.\nI won’t auto-switch to Google/search/external sites.${lock}\n\nTell me what to do on the current page (e.g. “click Start Now” or “go to /login”).`;
-              forcedText = msg;
-              ev({ type: 'text', data: msg });
-              assistantTextEmitted = true;
-              break;
-            }
-
-            if (result.ok && String(plan?.name || '') === 'browser_get_state' && endAfterBrowserState) {
-              const url = String((result as any)?.output?.url || '').trim() || lastBrowserRunPageUrl;
-              const msg = isSimpleBrowserOpenRequest
-                ? isArabicText(initialUserTextForOpen)
-                  ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} في المتصفح.`
-                  : `Opened ${simpleBrowserOpenLabel || 'the site'} in the browser.`
-                : isArabicText(userTextForOverrides)
-                  ? `${lastBrowserRunSummary ? lastBrowserRunSummary : 'تم تنفيذ خطوات المتصفح.'}${url ? `\n- الرابط الحالي: ${url}` : ''}`
-                  : `${lastBrowserRunSummary ? lastBrowserRunSummary : 'Browser steps completed.'}${url ? `\n- Current URL: ${url}` : ''}`;
-              endAfterBrowserState = false;
-              pendingPlan = { name: 'echo', input: { text: msg } } as any;
-            }
-            if (result.ok && plan?.name === 'web_search' && pendingBrowserOpenFromSearch) {
-              const url = pickTopUrlFromSearch((result as any)?.output);
-              const target = pendingBrowserOpenFromSearch.target;
-              pendingBrowserOpenFromSearch = null;
-              if (url) {
-                simpleBrowserOpenLabel = target || simpleBrowserOpenLabel || 'الموقع';
-                pendingPlan = { name: 'browser_open', input: { url } } as any;
-                endAfterBrowserState = true;
-              } else {
-                const q = String(target || '').trim();
-                const searchUrl = q ? `https://www.google.com/search?q=${encodeURIComponent(q)}` : 'https://www.google.com';
-                simpleBrowserOpenLabel = q || simpleBrowserOpenLabel || 'الموقع';
-                pendingPlan = { name: 'browser_open', input: { url: searchUrl } } as any;
-                endAfterBrowserState = true;
-              }
-            }
-            if (plannerUnavailableMode && result.ok && plan?.name === 'web_search' && !pendingPlan) {
-              const msg = formatWebSearchResultsText(String((plan as any)?.input?.query || '').trim(), (result as any)?.output, isArabicText(userTextForOverrides));
-              forcedText = msg;
-              ev({ type: 'text', data: msg });
-              assistantTextEmitted = true;
-              break;
-            }
-            // After browser actions, capture page state for accurate reading/sync
-            if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
-              const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
-              if (sidNext && !pendingPlan) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
-              if (browserIntentThisTurn && (kind === 'agent' || isSimpleBrowserOpenRequest)) endAfterBrowserState = true;
-            }
-            // Auto post-scaffold steps: install and build
-            if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
-              const rootCreated = String((result as any)?.output?.path || '').trim();
-              if (rootCreated && !postScaffoldScheduled) {
-                pendingPlan = { name: 'npm_install', input: { cwd: rootCreated } } as any;
-                postScaffoldScheduled = true;
-              }
-            } else if (result.ok && String(plan?.name || '') === 'npm_install') {
-              const cwd = String((plan as any)?.input?.cwd || '').trim();
-              if (cwd && !postInstallScheduled) {
-                pendingPlan = { name: 'npm_build', input: { cwd } } as any;
-                postInstallScheduled = true;
-              }
-            } else if (result.ok && String(plan?.name || '') === 'npm_build') {
-              const cwd = String((plan as any)?.input?.cwd || '').trim();
-              if (cwd && !postDevScheduled) {
-                pendingPlan = { name: 'dev_server_start', input: { cwd } } as any;
-                postDevScheduled = true;
-              }
-            } else if (result.ok && String(plan?.name || '') === 'dev_server_start') {
-              const internalUrl = String((result as any)?.output?.previewUrl || '').trim();
-              const userUrl = String((result as any)?.output?.userPreviewUrl || internalUrl).trim();
-
-              if (internalUrl && !postPreviewScheduled) {
-                pendingPlan = { name: 'browser_open', input: { url: internalUrl } } as any;
-                postPreviewScheduled = true;
-
-                // Emit a helpful message with the USER-accessible URL immediately
-                ev({
-                  type: 'text',
-                  data: isArabicText(userTextForOverrides)
-                    ? `🚀 **خادم المعاينة يعمل!**\nيمكنك فتحه في متصفحك: [${userUrl}](${userUrl})`
-                    : `🚀 **Preview Server is Running!**\nYou can open it in your browser: [${userUrl}](${userUrl})`
-                });
-              }
-            }
-
-            // Stop on fatal errors (403, verification, etc.)
-            if (!result.ok && plan?.name === 'image_generate') {
-              const errorMsg = String(result.error || '');
-              const logsStr = (result.logs || []).join('\n');
-              if (errorMsg.includes('403') || errorMsg.includes('verification') || logsStr.includes('error=403')) {
-                const msg = `❌ **Image Generation Failed**\n${errorMsg}\n\nPlease verify your OpenAI organization settings or try a different prompt.`;
-                forcedText = msg;
-                ev({ type: 'text', data: msg });
-                assistantTextEmitted = true;
-                break;
-              }
-            }
-
-            if (result.ok && plan?.name === 'project_detect') {
-              const out = result.output as any;
-              // Smart Context: If we found Node projects, try to read the root package.json immediately
-              // to give the AI context about dependencies without wasting a turn.
-              if (out && Array.isArray(out.nodeProjects) && out.nodeProjects.length > 0) {
-                const rootNode = out.nodeProjects[0]; // Usually the first one is relevant
-                const pkgPath = `${rootNode}/package.json`;
-                // Execute file_read silently and inject into history
-                console.log(`[Smart Context] Auto-reading ${pkgPath}`);
-                const subResult = await executeTool('file_read', { filePath: pkgPath }, { sessionId, workspaceId });
-                if (subResult.ok) {
-                  ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Read] Read ${pkgPath} for context.` } });
-                  history.push({
-                    role: 'assistant',
-                    content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${safeOutput('file_read', subResult.output)}`
-                  });
-                }
-              } else if (isEmptyProjectDetectOutput(out) && !historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
-                history.push({ role: 'assistant', content: 'PROJECT_DETECT_EMPTY' } as any);
-                try {
-                  if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
-                } catch { }
-
-                if (!pendingPlan) {
-                  pendingPlan = { name: 'analyze_codebase', input: { path: '.' } } as any;
-                }
-              }
-            }
-
-            if (!result.ok && plan?.name === 'file_read') {
-              const err = String(result.error || '');
-              if (err.includes('ENOENT') || err.includes('not found')) {
-                // Auto-Correction: File not found? List the directory to help user see what's there.
-                const fpath = String(plan?.input?.filePath || '.');
-                const dir = fpath.includes('/') ? fpath.split('/').slice(0, -1).join('/') || '.' : '.';
-                console.log(`[Auto-Correction] file_read failed for ${fpath}. Listing ${dir}`);
-                const subResult = await executeTool('ls', { path: dir }, { sessionId, workspaceId });
-                if (subResult.ok) {
-                  ev({ type: 'text', data: `⚠️ لم أجد الملف "${fpath}". إليك محتويات المجلد "${dir}" للمساعدة:` });
-                  ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Correction] ls ${dir}: ${JSON.stringify(subResult.output)}` } });
-                  history.push({
-                    role: 'assistant',
-                    content: `Tool Call: ls\nInput: {"path":"${dir}"}\nOutput: ${safeOutput('ls', subResult.output)}`
-                  });
-                }
-              }
-            }
-
-            if (result.ok && plan?.name === 'echo') {
-              const text = result.output?.text;
-              if (text) {
-                const s = String(text).trim();
-                forcedText = s;
-                ev({ type: 'text', data: s });
-                assistantTextEmitted = true;
-                if (s && !/^\(system\)/i.test(s)) break;
-              }
-            }
-
-            if (result.ok && plan?.name === 'image_generate') {
-              const href = result.output?.href;
-              if (href) {
-                // Do not emit markdown image to avoid duplication. The UI handles artifact_created event.
-                forcedText = `🎨 Image generated successfully.`;
-                ev({ type: 'text', data: forcedText });
-                assistantTextEmitted = true;
-                break;
-              }
-            }
-
-            // Emit a user-visible confirmation when a file is created
-            if (result.ok && plan?.name === 'file_write') {
-              const href = result.output?.href;
-              const fname = String(plan?.input?.filename || '').trim();
-              const msgParts: string[] = [];
-              msgParts.push(`### تم إنشاء ملف`);
-              if (fname) msgParts.push(`- الاسم: ${fname}`);
-              if (href) msgParts.push(`- رابط المعاينة: ${href}`);
-              const msg = msgParts.join('\n');
-              forcedText = msg;
-              ev({ type: 'text', data: msg });
-              assistantTextEmitted = true;
-              break;
-            }
-
-            const wfForProgress = detectWorkflow(String(text || ''));
-            if (result.ok && wfForProgress) {
-              if (plan?.name === 'project_detect') ev({ type: 'text', data: `- تم فحص المشروع (project_detect)` });
-              if (plan?.name === 'analyze_codebase') ev({ type: 'text', data: `- تم تحليل هيكل الملفات (analyze_codebase)` });
-              if (plan?.name === 'command_policy_check') ev({ type: 'text', data: `- تم فحص سياسة الأوامر (command_policy_check)` });
-              if (plan?.name === 'grep_search') ev({ type: 'text', data: `- تم البحث في الكود (grep_search)` });
-              if (plan?.name === 'file_edit') ev({ type: 'text', data: `- تم تعديل ملف (file_edit)` });
-              if (plan?.name === 'scaffold_project') {
-                const created = Array.isArray(result.output?.created) ? result.output.created : [];
-                const label =
-                  wfForProgress.kind === 'ecommerce'
-                    ? 'المتجر'
-                    : wfForProgress.kind === 'static_site'
-                      ? 'الموقع'
-                      : wfForProgress.kind === 'node_api'
-                        ? 'الـ API'
-                        : wfForProgress.kind === 'fullstack'
-                          ? 'التطبيق'
-                          : 'المشروع';
-                ev({ type: 'text', data: `- تم إنشاء هيكل ${label} (scaffold_project): ${created.length} عنصر` });
-              }
-              if (plan?.name === 'npm_install') ev({ type: 'text', data: `- تم تثبيت الحزم (npm_install)` });
-              if (plan?.name === 'quality_run') {
-                const results = Array.isArray(result.output?.results) ? result.output.results : [];
-                const ok = results.filter((r: any) => r && r.ok).length;
-                const skipped = results.filter((r: any) => r && r.skipped).length;
-                ev({ type: 'text', data: `- تم تشغيل فحوص الجودة (quality_run): ناجح ${ok} / متجاوز ${skipped}` });
-              }
-            }
-
-            if (result.ok && plan?.name === 'http_fetch') {
-              try {
-                const urlStr = String(plan?.input?.url || '');
-                const u = new URL(urlStr);
-                // Tools listing formatting
-                if (u.pathname === '/tools') {
-                  const j = (result as any)?.output?.json || null;
-                  const total = Number(j?.count || 0);
-                  const real = Number(j?.realCount || 0);
-                  const noop = Number(j?.noopCount || 0);
-                  const names = Array.isArray(j?.tools) ? j.tools.slice(0, 10).map((t: any) => String(t?.name || '')).filter(Boolean) : [];
-                  const md = [
-                    `### سرد الأدوات`,
-                    `- العدد الكلي: ${total}`,
-                    `- الفعلية: ${real}`,
-                    `- الوهمية (noop): ${noop}`,
-                    names.length ? `- أمثلة: ${names.join(', ')}` : ''
-                  ].filter(Boolean).join('\n');
-                  forcedText = md;
-                  ev({ type: 'text', data: md });
-                  assistantTextEmitted = true;
-                }
-                let base = (u.searchParams.get('base') || '').toUpperCase();
-                let sym = (u.searchParams.get('symbols') || u.searchParams.get('sym') || '').toUpperCase();
-                if (!base) {
-                  const m = u.pathname.match(/\/latest\/([A-Z]{3,4})/i);
-                  if (m) base = m[1].toUpperCase();
-                }
-                if (!sym && typeof plan?.input?.sym === 'string') {
-                  sym = String(plan?.input?.sym).toUpperCase();
-                }
-                if (!base && typeof plan?.input?.base === 'string') {
-                  base = String(plan?.input?.base).toUpperCase();
-                }
-                const rates = result.output?.json?.rates || {};
-                let rate: number | null = null;
-                if (sym && typeof rates[sym] === 'number') {
-                  rate = rates[sym];
-                } else if (typeof result.output?.bodySnippet === 'string') {
-                  const m = result.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
-                  if (m) rate = Number(m[1]);
-                }
-                if (rate !== null && base && sym) {
-                  const md = [
-                    `### سعر العملة`,
-                    `- العملة الأساسية: ${base}`,
-                    `- العملة المقابلة: ${sym}`,
-                    `- السعر اليوم: ${Number(rate).toFixed(4)} ${sym}`
-                  ].join('\n');
-                  forcedText = md;
-                  ev({ type: 'text', data: md });
-                  assistantTextEmitted = true;
-                } else if (base && sym) {
-                  const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
-                  ev({ type: 'step_started', data: { name: `execute:http_fetch(fallback)` } });
-                  const fbRes = await executeTool('http_fetch', { url: fbUrl }, { sessionId, workspaceId });
-                  ev({ type: fbRes.ok ? 'step_done' : 'step_failed', data: { name: `execute:http_fetch(fallback)`, result: fbRes } });
-                  let rate2: number | null = null;
-                  if (typeof fbRes.output?.json?.rates?.[sym] === 'number') {
-                    rate2 = fbRes.output.json.rates[sym];
-                  } else if (typeof fbRes.output?.bodySnippet === 'string') {
-                    const m2 = fbRes.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
-                    if (m2) rate2 = Number(m2[1]);
-                  }
-                  if (rate2 !== null) {
-                    const md2 = [
-                      `### سعر العملة`,
-                      `- العملة الأساسية: ${base}`,
-                      `- العملة المقابلة: ${sym}`,
-                      `- السعر اليوم: ${Number(rate2).toFixed(4)} ${sym}`
-                    ].join('\n');
-                    forcedText = md2;
-                    ev({ type: 'text', data: md2 });
-                    assistantTextEmitted = true;
-                  }
-
-                  if (!offlineMode) {
-                    await ToolExecution.create({ runId, name: 'http_fetch', input: { url: fbUrl }, output: fbRes.output, ok: fbRes.ok, logs: fbRes.logs });
-                  }
-
-                }
-                if (u.hostname.includes('wttr.in')) {
-                  const city = String(plan?.input?.city || 'Istanbul');
-                  const cc = Array.isArray(result.output?.json?.current_condition) ? result.output.json.current_condition[0] : null;
-                  const tempC = cc ? Number(cc.temp_C) : null;
-                  const desc = cc && Array.isArray(cc.weatherDesc) && cc.weatherDesc[0] ? String(cc.weatherDesc[0].value || '') : '';
-                  const hum = cc && typeof cc.humidity !== 'undefined' ? Number(cc.humidity) : null;
-                  if (tempC !== null && !Number.isNaN(tempC)) {
-                    const parts = [
-                      `### الطقس`,
-                      `- المدينة: ${city}`,
-                      `- درجة الحرارة: ${tempC.toFixed(0)}°C`
-                    ];
-                    if (desc) parts.push(`- الحالة: ${desc}`);
-                    if (hum !== null && !Number.isNaN(hum)) parts.push(`- الرطوبة: ${hum}%`);
-                    const mdw = parts.join('\n');
-                    forcedText = mdw;
-                    ev({ type: 'text', data: mdw });
-                    assistantTextEmitted = true;
-                  }
-                }
-
-                if (/(ipapi\.co|ipinfo\.io|ip-api\.com)/i.test(u.hostname)) {
-                  let lat: number | null = null;
-                  let lon: number | null = null;
-
-                  const j = (result as any)?.output?.json || {};
-                  if (typeof j?.latitude === 'number' && typeof j?.longitude === 'number') {
-                    lat = j.latitude; lon = j.longitude;
-                  } else if (typeof j?.lat === 'number' && typeof j?.lon === 'number') {
-                    lat = j.lat; lon = j.lon;
-                  } else if (typeof j?.loc === 'string' && j.loc.includes(',')) {
-                    const parts = j.loc.split(',').map((x: string) => Number(x.trim()));
-                    if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
-                      lat = parts[0]; lon = parts[1];
-                    }
-                  }
-
-                  if (lat !== null && lon !== null) {
-                    const mdLoc = [
-                      `### الإحداثيات التقريبية`,
-                      `- خط العرض (Latitude): ${lat.toFixed(6)}`,
-                      `- خط الطول (Longitude): ${lon.toFixed(6)}`,
-                      `- المصدر: مزود تحديد الموقع عبر عنوان IP (تقريبي)`
-                    ].join('\n');
-                    forcedText = mdLoc;
-                    ev({ type: 'text', data: mdLoc });
-                    assistantTextEmitted = true;
-                  } else {
-                    const status = Number((result as any)?.output?.status);
-                    const host = String(u.hostname || '').toLowerCase();
-                    const tryIpinfo = () => {
-                      const nextUrl = 'https://ipinfo.io/json';
-                      const sig = `http_fetch:${nextUrl}`;
-                      if (!executedToolSigs.has(sig)) {
-                        pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
-                        executedToolSigs.set(sig, 1);
-                      }
-                    };
-                    const tryIpApi = () => {
-                      const nextUrl = 'http://ip-api.com/json';
-                      const sig = `http_fetch:${nextUrl}`;
-                      if (!executedToolSigs.has(sig)) {
-                        pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
-                        executedToolSigs.set(sig, 1);
-                      }
-                    };
-                    if (host.includes('ipapi.co')) {
-                      if (status === 429) {
-                        tryIpinfo();
-                      } else {
-                        tryIpinfo();
-                      }
-                    } else if (host.includes('ipinfo.io')) {
-                      tryIpApi();
-                    } else if (host.includes('ip-api.com')) {
-                      tryIpinfo();
-                    }
-                  }
-                }
-              } catch { }
-            }
-            if (result.ok && plan?.name === 'web_search') {
-              try {
-                const results = Array.isArray(result.output?.results) ? result.output.results : [];
-                const top = results && results[0] ? results[0] : null;
-                const title = top ? String(top.title || '').trim() : '';
-                const url = top ? String(top.url || '').trim() : '';
-                if (title || url) {
-                  ev({ type: 'evidence_added', data: { kind: 'search', text: `${title}${title && url ? ' — ' : ''}${url}` } });
-                }
-              } catch { }
-            }
-            if (result.ok && plan?.name === 'html_extract') {
-              try {
-                const title = String(result.output?.title || '').trim();
-                const url = String(plan?.input?.url || '').trim();
-                if (title || url) {
-                  ev({ type: 'evidence_added', data: { kind: 'page', text: `${title}${title && url ? ' — ' : ''}${url}` } });
-                }
-              } catch { }
-            }
-
-
-            if (!offlineMode) {
-              await ToolExecution.create({ runId, sessionId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
-            }
-
-
-            if (result.ok && plan?.name === 'central_answer') {
-              const ans = String(result.output?.answer || '').trim();
-              if (ans) {
-                forcedText = ans;
-                ev({ type: 'text', data: ans });
-                assistantTextEmitted = true;
-                break;
-              }
-            }
-
-            if (result.ok && String(plan?.name || '') === 'http_fetch') {
-              const status = Number((result as any)?.output?.status);
-              if (status === 401 || status === 403) {
-                const urlStr = String((plan as any)?.input?.url || '').trim();
-                const msg = [
-                  `⚠️ الوصول لهذا الرابط يحتاج تسجيل دخول أو توكن.`,
-                  urlStr ? `- الرابط: ${urlStr}` : ``,
-                  `- أدخل Bearer Token في نافذة التوكن وأرسله.`,
-                  `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-                ].filter(Boolean).join('\n');
-
-                ev({ type: 'text', data: msg });
-                ev({
-                  type: 'secret_required',
-                  data: {
-                    sessionId,
-                    runId,
-                    provider: 'generic',
-                    key: 'HTTP_BEARER_TOKEN',
-                    label: 'Bearer Token',
-                    reason: `HTTP ${status}`,
-                  },
-                });
-
-                const { setPendingTool } = await import('../services/secrets');
-                setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-
-                try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
-
-
-                return res.json({
-                  runId,
-                  sessionId,
-                  blocked: true,
-                  secretRequired: true,
-                  secret: { provider: 'generic', key: 'HTTP_BEARER_TOKEN', label: 'Bearer Token' },
-                });
-              }
-            }
-
-            if (!result.ok) {
-              let errorMsg = String(result.error || '');
-              if ((result as any).detail) {
-                try {
-                  const det = (result as any).detail;
-                  errorMsg += `\nDetail: ${typeof det === 'object' ? JSON.stringify(det) : String(det)}`;
-                } catch { }
-              }
-              if (!errorMsg && result.logs) errorMsg = result.logs.join('\n');
-              if (!errorMsg) errorMsg = 'Unknown error';
-
-              if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
-                const msg = [
-                  `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
-                  `- أدخل توكن GitHub (Personal Access Token) في نافذة التوكن وأرسله.`,
-                  `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-                ].join('\n');
-
-                ev({ type: 'text', data: msg });
-                ev({
-                  type: 'secret_required',
-                  data: {
-                    sessionId,
-                    runId,
-                    provider: 'github',
-                    key: 'GITHUB_TOKEN',
-                    label: 'GitHub Token',
-                    reason: 'git push يحتاج مصادقة',
-                  },
-                });
-
-                const { setPendingTool } = await import('../services/secrets');
-                setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-
-                try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
-
-
-                return res.json({
-                  runId,
-                  sessionId,
-                  blocked: true,
-                  secretRequired: true,
-                  secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-                });
-              }
-
-              if (String(plan?.name || '') === 'payments_create_checkout_session' && isStripeAuthError(errorMsg)) {
-                const msg = [
-                  `⚠️ مطلوب مفتاح Stripe لإنشاء جلسة دفع.`,
-                  `- أدخل STRIPE_API_KEY في نافذة التوكن وأرسله.`,
-                  `- سيتم حفظ المفتاح بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-                ].join('\n');
-
-                ev({ type: 'text', data: msg });
-                ev({
-                  type: 'secret_required',
-                  data: {
-                    sessionId,
-                    runId,
-                    provider: 'stripe',
-                    key: 'STRIPE_API_KEY',
-                    label: 'Stripe Secret Key',
-                    reason: 'إنشاء جلسة دفع يحتاج مصادقة',
-                  },
-                });
-
-                const { setPendingTool } = await import('../services/secrets');
-                await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-
-                try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
-
-
-                return res.json({
-                  runId,
-                  sessionId,
-                  blocked: true,
-                  secretRequired: true,
-                  secret: { provider: 'stripe', key: 'STRIPE_API_KEY', label: 'Stripe Secret Key' },
-                });
-              }
-
-              if ((String(plan?.name || '') === 'github_repo_manager' || String(plan?.name || '') === 'github_create_repo') && isGithubAuthError(errorMsg)) {
-                const msg = [
-                  `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
-                  `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
-                  `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-                ].join('\n');
-
-                ev({ type: 'text', data: msg });
-                ev({
-                  type: 'secret_required',
-                  data: {
-                    sessionId,
-                    runId,
-                    provider: 'github',
-                    key: 'GITHUB_TOKEN',
-                    label: 'GitHub Token',
-                    reason: 'إنشاء ريبو يحتاج مصادقة',
-                  },
-                });
-
-                const { setPendingTool } = await import('../services/secrets');
-                await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-
-                try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
-
-
-                return res.json({
-                  runId,
-                  sessionId,
-                  blocked: true,
-                  secretRequired: true,
-                  secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-                });
-              }
-              if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
-                const msg = [
-                  `⚠️ مطلوب توكن GitHub لإنشاء/تعديل ملفات داخل المستودع عبر API.`,
-                  `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
-                  `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
-                ].join('\n');
-
-                ev({ type: 'text', data: msg });
-                ev({
-                  type: 'secret_required',
-                  data: {
-                    sessionId,
-                    runId,
-                    provider: 'github',
-                    key: 'GITHUB_TOKEN',
-                    label: 'GitHub Token',
-                    reason: 'تعديل ملفات الريبو يحتاج مصادقة',
-                  },
-                });
-
-                const { setPendingTool } = await import('../services/secrets');
-                await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
-
-
-                try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
-
-
-                return res.json({
-                  runId,
-                  sessionId,
-                  blocked: true,
-                  secretRequired: true,
-                  secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
-                });
-              }
-
-              // Self-Healing Notification (user-facing, simplified)
-              const userFriendlyError = isArabicText(userTextForOverrides)
-                ? `⚠️ حدث خطأ أثناء تنفيذ الأداة '${plan?.name}'.\\n**السبب**: ${String(errorMsg).slice(0, 200)}`
-                : `⚠️ An error occurred while executing tool '${plan?.name}'.\\n**Reason**: ${String(errorMsg).slice(0, 200)}`;
-              ev({ type: 'text', data: userFriendlyError });
-              assistantTextEmitted = true;
-
-              // Internal history for AI self-healing (not shown to user)
-              history.push({
-                role: 'assistant',
-                content: `INTERNAL: Tool '${plan?.name}' FAILED with error: ${errorMsg}. 
-Analyze this error. If it's a network/connection issue (localhost vs container hostname), check your network configuration. 
-If this is a browser_open failure, DO NOT automatically retry the same URL. Ask the user for clarification or skip the preview step.`
-              });
-            } else {
-              history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(String(plan?.name || ''), result.output)}` });
-            }
-
-            steps++;
-
-            // If echo, we are done
-            if (plan?.name === 'echo') {
-              forcedText = String(plan?.input?.text || '');
-              break;
             }
           }
 
-          const MAX_FINAL_INLINE_CHARS = 1800;
-          const truncateFinal = (s: string, max = MAX_FINAL_INLINE_CHARS) => (s.length > max ? `${s.slice(0, max)}…[truncated]` : s);
-          const extractTitleFromHtmlFinal = (html: string) => {
+          // [SHELL ROUTING] Detect terminal/shell intent and route to shell_execute
+          if (planName === 'echo' || !planName) {
+            const shellIntentPattern = /^(نفذ|شغل|execute|run|أمر|امر)\s+(.+)/i;
+            const directCmdPattern = /^(npm|node|python|pip|yarn|pnpm|apt|brew|curl|wget|git|ls|cat|mkdir|rm|cp|mv|chmod|chown|find|grep|sed|awk|make|go|cargo|docker|kubectl)\s/i;
+            const shellMatch = userTextForOverrides.match(shellIntentPattern);
+            const directMatch = directCmdPattern.test(userTextForOverrides.trim());
+            if (shellMatch) {
+              const cmd = shellMatch[2].trim();
+              if (cmd) {
+                console.info(`[SHELL ROUTING] ⚡ Shell intent detected: "${cmd}"`);
+                plan = { name: 'shell_execute', input: { command: cmd } } as any;
+                planName = 'shell_execute';
+              }
+            } else if (directMatch && steps === 0) {
+              console.info(`[SHELL ROUTING] ⚡ Direct command detected: "${userTextForOverrides.trim()}"`);
+              plan = { name: 'shell_execute', input: { command: userTextForOverrides.trim() } } as any;
+              planName = 'shell_execute';
+            }
+          }
+
+          // Safety: Prevent immediate repeats of same tool execution
+          if (['project_detect', 'scaffold_project', 'npm_install', 'npm_build', 'analyze_codebase', 'http_fetch', 'web_search', 'central_answer', 'browser_open', 'browser_run', 'website_full_pipeline', 'shell_execute', 'terminal_manager'].includes(planName)) {
+            const sig = `${planName}:${JSON.stringify((plan as any)?.input || {})}`;
+
+            const sigCount = executedToolSigs.get(sig) || 0;
+            const isRepeat = sigCount > 0 || lastExecutedToolSig === sig;
+
+            if (isRepeat) {
+              const discoveryTools = ['project_detect', 'ls', 'grep_search', 'read_file', 'analyze_codebase', 'fs_glob', 'read_file_tree', 'codebase_outline', 'browser_run', 'browser_open', 'web_search', 'website_full_pipeline'];
+              const maxRepeats = planName === 'project_detect' ? 20 : (discoveryTools.includes(planName) ? 5 : 1);
+              const totalSeen = sigCount + (lastExecutedToolSig === sig ? 1 : 0);
+
+              if (totalSeen >= maxRepeats) {
+                if (planName === 'browser_open' || planName === 'browser_run') {
+                  const sidDirect = String((plan as any)?.input?.sessionId || '').trim();
+                  const sid = sidDirect || String(browserSessionId || '').trim();
+                  if (sid) {
+                    plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
+                    planName = 'browser_get_state';
+                  } else {
+                    const url = String((plan as any)?.input?.url || '').trim();
+                    const derived = url ? browserSessionIdFromUrl(url) : '';
+                    if (derived) {
+                      plan = { name: 'browser_get_state', input: { sessionId: derived } } as any;
+                      planName = 'browser_get_state';
+                    }
+                  }
+                }
+                if (planName === 'browser_get_state') {
+                  // no-op
+                } else {
+                  const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
+                  const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
+                  const needsKey = !hasAnyKey && !isFreeProvider;
+                  plan = {
+                    name: 'echo',
+                    input: {
+                      text: isArabicText(userTextForOverrides)
+                        ? (isGeneral
+                          ? (needsKey
+                            ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
+                            : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأرسل طلباً أكثر تحديداً أو اطلب قراءة ملف معين.')
+                          : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة.\nلقد قمت بالفعل بفحص بنية المشروع؛ يرجى طلب تحليل ملفات محددة باستخدام "analyze_project" أو استخدام أوامر Terminal للتعمق.`)
+                        : (isGeneral
+                          ? (needsKey
+                            ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
+                            : '⚠️ Planning repeated without progress.\nPlease provide a more specific instruction or ask to read a file.')
+                          : `[Neural Sync Error] Excessive repetition of step (${planName}) detected.\nI have already scanned the project; please transition to specific file analysis using "analyze_project" or use Terminal commands to explore further.`),
+                    }
+                  } as any;
+                  planName = 'echo';
+                }
+              } else {
+                // Allowed repeat for discovery tool
+                const current = executedToolSigs.get(sig) || 0;
+                executedToolSigs.set(sig, current + 1);
+              }
+            } else {
+              executedToolSigs.set(sig, 1);
+            }
+          }
+
+          // Safety: Prevent infinite thought loops
+          // Safety: Prevent infinite thought loops
+          if (planName === 'echo') {
+            const txt = (plan as any)?.input?.text;
+            // If echo has content (is speaking to user), reset thought steps
+            if (typeof txt === 'string' && txt.trim().length > 2) {
+              consecutiveThoughtSteps = 0;
+            } else {
+              consecutiveThoughtSteps++;
+            }
+          } else if (!planName) {
+            consecutiveThoughtSteps++;
+          } else {
+            consecutiveThoughtSteps = 0;
+            executedTools.add(planName);
+          }
+
+          if (consecutiveThoughtSteps > 5) {
+            if (!thoughtLoopPauseEmitted) {
+              const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
+              const needsKey = !hasAnyKey && !isFreeProvider;
+              const hint = lastPlanError ? formatProviderConnectHint(lastPlanError, provider, model, baseUrl) : '';
+              const providerLabel = String(providerKey || 'llm').trim() || 'llm';
+              const modelLabel = typeof model === 'string' && model.trim() ? model.trim() : '';
+              const keyLabel = apiKey ? 'موجود' : (process.env.OPENAI_API_KEY ? 'موجود (System)' : 'غير موجود');
+              const baseHost = hostFromUrlMaybe(baseUrl);
+              const msg = [
+                `⚠️ تم إيقاف التنفيذ مؤقتًا: النظام عالق في حلقة تفكير.`,
+                `- المزوّد: ${providerLabel}${modelLabel ? ` / ${modelLabel}` : ''}${baseHost ? ` / ${baseHost}` : ''}`,
+                `- المفتاح: ${keyLabel}`,
+                `- المفتاح: ${keyLabel}`,
+                needsKey ? `- ⚠️ يبدو أنك لم تقم بتفعيل مفتاح API (مثلاً OpenAI/Anthropic). يرجى الذهاب للإعدادات وإضافته.` : `- لم أتمكن من تحديد خطة ذكية لهذا الطلب. هل يمكنك توضيح المزيد؟`,
+                hint ? `تلميح: ${hint}` : ``,
+                `Debug Info: Provider=${providerKey}, HasKey=${hasAnyKey}, Plan=${planName || 'none'}`
+              ].filter(Boolean).join('\n');
+              forcedText = msg;
+              const now = Date.now();
+              const last = loopPauseThrottle.get(String(sessionId));
+              if (!last || now - last > 6000) {
+                ev({ type: 'text', data: msg });
+                assistantTextEmitted = true;
+                loopPauseThrottle.set(String(sessionId), now);
+              }
+              thoughtLoopPauseEmitted = true;
+            }
+            break;
+          }
+
+          const isBrowserTool = /^browser_/.test(planName);
+          const awaitingRepoName = historyHasMarker(history as any, 'ASKED_FOR_REPO_NAME');
+          let requestedRepoName = extractRequestedRepoName(userTextForOverrides);
+          if (!requestedRepoName && awaitingRepoName) {
+            const bare = userTextForOverrides.match(/^\s*([A-Za-z0-9._-]{1,100})\s*$/);
+            if (bare && bare[1]) requestedRepoName = bare[1].trim();
+          }
+          const wantsGithubRepo =
+            /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides) &&
+            /(repo|repository|ريبو|مستودع)/i.test(userTextForOverrides) &&
+            /(create|new|انش(?:ئ|ي)|أنشئ|انشاء|إنشاء)/i.test(userTextForOverrides);
+          if (wantsGithubRepo || (awaitingRepoName && requestedRepoName)) {
+            if (requestedRepoName) {
+              plan = {
+                name: 'github_repo_manager',
+                input: {
+                  action: 'create',
+                  repoName: requestedRepoName,
+                  private: /(private|خاص)/i.test(userTextForOverrides),
+                  sessionId: String(sessionId),
+                },
+              } as any;
+            }
+          }
+          // Special: List tools command
+          const wantsToolsList =
+            /(list\s+tools|tools\s+list|show\s+tools)/i.test(userTextForOverrides) ||
+            /(سرد|عرض|قائمه|قائمة)\s+الادوات/.test(userTextNorm);
+          if (wantsToolsList && (!planName || planName === 'echo')) {
+            const base = `${reqProtocol}://${reqHost}`;
+            plan = { name: 'http_fetch', input: { url: `${base}/tools` } } as any;
+            planName = 'http_fetch';
+          }
+
+          const wantsShop = isEcommerceRequest(userTextForOverrides);
+          if (wantsShop) {
+            // Extract project name if provided, else default
+            const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
+            const projName = nameMatch ? nameMatch[1] : 'vivos-store';
+
+            const shopPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+
+            if (steps === 0 && !shopPipelineProtected) {
+              // Force the smart tool for ecommerce requests without deceptive markers
+              plan = {
+                name: 'scaffold_full_stack',
+                input: {
+                  name: projName,
+                  type: 'ecommerce',
+                  features: ['auth', 'products', 'cart'] // Smart default features
+                }
+              } as any;
+              planName = 'scaffold_full_stack';
+              pendingPlan = plan; // ensure immediate execution on first loop
+            }
+
+            // Force execution even if AI tries to think
+            if (planName === 'echo' || !planName) {
+              // If we haven't scaffolded yet (and steps > 0), maybe AI missed it?
+              // But if steps=0 we forced it above.
+              // If steps > 0, we assume scaffolding is done.
+            }
+          }
+
+          const wantsWeather = isWeatherLikeQuery(userTextForOverrides);
+          if (wantsWeather && (!planName || planName === 'echo')) {
+            const city = extractWeatherCity(userTextForOverrides);
+            const q = isArabicText(userTextForOverrides)
+              ? `كم درجة الحرارة الآن في ${city}؟`
+              : `current temperature in ${city} now`;
+            plan = { name: 'central_answer', input: { question: q } } as any;
+            planName = 'central_answer';
+          }
+
+          const wantsGeneralAnswer = isGeneralKnowledgeQuestion(userTextForOverrides);
+          if (
+            wantsGeneralAnswer &&
+            (!planName ||
+              planName === 'echo' ||
+              planName === 'project_detect' ||
+              planName === 'analyze_codebase' ||
+              planName === 'scaffold_project' ||
+              planName === 'npm_install' ||
+              planName === 'npm_build')
+          ) {
+            plan = { name: 'central_answer', input: { question: userTextForOverrides } } as any;
+            planName = 'central_answer';
+          }
+
+          if (planName === 'project_detect' && historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
+            const hasAnalyze = historyHasToolCall(history as any, 'analyze_codebase');
+            if (!hasAnalyze) {
+              plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+              planName = 'analyze_codebase';
+            } else {
+              plan = {
+                name: 'echo',
+                input: {
+                  text: isArabicText(userTextForOverrides)
+                    ? '⚠️ فحص المشروع لم يعثر على مشاريع قابلة للتعرّف (package.json/pyproject/go.mod).\nاذكر مسار مجلد المشروع داخل المستودع أو اطلب قراءة/بحث ملف معيّن.'
+                    : '⚠️ Project scan found no recognizable projects (package.json/pyproject/go.mod).\nProvide the project folder path inside the repo, or ask to read/search a specific file.',
+                },
+              } as any;
+              planName = 'echo';
+            }
+          }
+
+          const wf = !wantsShop ? await detectWorkflowAdvanced(userTextForOverrides, { useAnalyzer: true, workspaceId }) : null;
+          const isProjectStart = wf && ['simple_creative', 'node_api', 'static_site', 'fullstack'].includes(wf.kind);
+
+          // [FIX] DO NOT HIJACK IF THE LLM ALREADY PLANNED THE BUILD PIPELINE
+          const wfPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+
+          if (wf && wf.kind !== 'ecommerce' && !wfPipelineProtected && (isProjectStart || !planName || planName === 'echo')) {
+            const marker =
+              wf.kind === 'tool_shell' && wf.tool
+                ? `WF_START:${wf.kind}:${wf.tool.name}`
+                : `WF_START:${wf.kind}:${wf.root}`;
+
+            const alreadyExecuted =
+              historyHasToolCall(history as any, 'project_detect') ||
+              historyHasToolCall(history as any, 'scaffold_project') ||
+              historyHasToolCall(history as any, 'analyze_codebase');
+
+            if (steps === 0 && !historyHasMarker(history as any, 'PROJECT_PLAN:')) {
+              if (wf.kind !== 'simple_creative') {
+                const title =
+                  wf.kind === 'tool_shell'
+                    ? `### خطة إنشاء أداة (Shell Tool)`
+                    : wf.kind === 'static_site'
+                      ? `### خطة بناء موقع (Static Website)`
+                      : wf.kind === 'node_api'
+                        ? `### خطة بناء API (Node/Express)`
+                        : `### خطة بناء تطبيق (Fullstack)`;
+                const stepList =
+                  wf.kind === 'tool_shell'
+                    ? [
+                      `- 1) project_detect: فحص المشروع والمسارات`,
+                      `- 2) command_policy_check: فحص أمان الأمر`,
+                      `- 3) tool_create_shell: إنشاء الأداة داخل المصنع (Runtime)`,
+                      `- 4) quality_run: تشغيل lint للتأكد`,
+                      `- 5) echo: إنهاء`,
+                    ]
+                    : [
+                      `- 1) project_detect: فحص هيكل المشروع والمسارات`,
+                      `- 2) analyze_codebase: تحليل سريع للمجلدات والمشاريع`,
+                      `- 3) scaffold_project: إنشاء هيكل المشروع`,
+                      wf.kind === 'static_site' ? `- 4) echo: إنهاء` : `- 4) npm_install: تثبيت الاعتمادات`,
+                      wf.kind === 'static_site' ? `- 5) echo: إنهاء` : `- 5) quality_run: lint/test/build إن وجدت`,
+                    ];
+
+                const contextLine =
+                  wf.kind === 'tool_shell' && wf.tool
+                    ? `- الاسم: ${wf.tool.name}\n- الأمر: ${wf.tool.command}`
+                    : `- المجلد: ${wf.root}`;
+
+                const md = [title, contextLine, ...stepList, ``, `سأبدأ الآن بالتنفيذ باستخدام الأدوات.`].join('\n');
+                if (!containsBuilderPlanText(userTextForOverrides)) {
+                  ev({ type: 'text', data: md });
+                }
+              }
+
+              history.push({ role: 'assistant', content: marker } as any);
+
+              // Phase 1: Marker handled below.
+
+              // PHASE 2-3 INTEGRATION: Use ProjectPlanner for ALL project-generating workflows
+              if (wf.kind !== 'tool_shell') {
+                try {
+                  // Create execution plan
+                  const { executeTool } = await import('../services/ToolService');
+                  const planResult = await executeTool('project_planner', {
+                    projectDescription: userTextForOverrides,
+                    analysis: wf.analysis
+                  }, { sessionId, workspaceId });
+
+                  if (planResult.ok && planResult.output) {
+                    const plan = planResult.output;
+                    const projectId = `${sessionId}-${Date.now()}`;
+
+                    // Initialize state manager
+                    await executeTool('project_state_manager', {
+                      action: 'init',
+                      projectId,
+                      state: {
+                        projectName: plan.projectName,
+                        totalPhases: plan.totalPhases,
+                        pendingTasks: plan.phases?.flatMap((p: any) => p.tasks || []) || []
+                      }
+                    }, { sessionId, workspaceId });
+
+                    // Store plan in history for reference
+                    history.push({
+                      role: 'assistant',
+                      content: `PROJECT_PLAN:${projectId}:${JSON.stringify(plan)}`
+                    } as any);
+
+                    // Inform user about the plan
+                    const planSummary = `📋 **خطة المشروع**: ${plan.projectName}\n` +
+                      `- عدد المراحل: ${plan.totalPhases}\n` +
+                      `- الوقت المقدر: ${plan.estimatedDuration}\n` +
+                      `- المرحلة الأولى: ${plan.phases?.[0]?.name || 'غير محدد'}\n\n` +
+                      `سأبدأ التنفيذ المرحلي الآن...`;
+                    ev({ type: 'text', data: planSummary });
+
+                    // EXECUTION BRIDGE: Actually execute each phase
+                    const phases = Array.isArray(plan.phases) ? plan.phases : [];
+                    for (const phase of phases) {
+                      try {
+                        ev({ type: 'thought', data: `> Executing Phase ${phase.phaseNumber}: ${phase.name}...` });
+
+                        const phaseResult = await executeTool('phase_executor', {
+                          phase,
+                          projectContext: {
+                            projectName: plan.projectName,
+                            totalPhases: plan.totalPhases,
+                            sessionId,
+                            workspaceId,
+                          }
+                        }, {
+                          sessionId,
+                          workspaceId,
+                          onThought: (m) => ev({ type: 'thought', data: m }),
+                          onProgress: (m) => ev({ type: 'progress', data: m })
+                        });
+
+                        if (phaseResult.ok && phaseResult.output) {
+                          const out = phaseResult.output;
+                          ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} ${out.status}: ${out.completedTasks}/${out.totalTasks} tasks` });
+
+                          // Update state manager
+                          await executeTool('project_state_manager', {
+                            action: 'update',
+                            projectId,
+                            state: {
+                              currentPhase: phase.phaseNumber,
+                              phaseStatus: out.status,
+                              completedTasks: out.results?.filter((r: any) => r.ok).map((r: any) => r.task) || [],
+                            }
+                          }, { sessionId, workspaceId });
+
+                          // If phase failed critically, stop
+                          if (out.status === 'failed' || out.status === 'fatal_error') {
+                            ev({ type: 'text', data: `⚠️ Phase ${phase.phaseNumber} failed. Stopping execution.` });
+                            break;
+                          }
+                        }
+                      } catch (phaseError: any) {
+                        console.warn(`[Integration] Phase ${phase.phaseNumber} execution failed:`, phaseError);
+                        ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} threw: ${phaseError?.message || phaseError}` });
+                      }
+                    }
+
+                    const finalSuccessMsg = isArabicText(userTextForOverrides)
+                      ? `✨ اكتمل العمل على كافة المراحل بنجاح! يمكنك الآن مشاهدة المشروع في تبويبة المعاينة (Preview).`
+                      : `✨ All project phases completed successfully! You can now view the project in the Preview tab.`;
+                    ev({ type: 'text', data: finalSuccessMsg });
+                  }
+                } catch (planError) {
+                  // Fallback to normal execution if planning fails
+                  console.warn('[Integration] ProjectPlanner failed:', planError);
+                }
+              }
+
+              try {
+
+                await Message.create({ sessionId, role: 'assistant', content: marker, runId });
+
+              } catch { }
+
+              // Inject directive for the AI
+              history.push({
+                role: 'system',
+                content: `BUILD DIRECTIVE: You are executing a workflow (${wf.kind}).
+          Follow the plan shown above. Check history for completed steps.
+          For scaffolding, use structure: {} and the system will inject the template.`
+              } as any);
+            }
+
+            // Builder Mode: Start execution if the planner returned echo or empty
+            if (!planName || planName === 'echo') {
+              const textLower = userTextForOverrides.toLowerCase();
+
+              // Handle "Access/Open GitHub" or generic website access requests
+              const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|جيت\s*هاب|جيتهاب|كتهاب)/i.test(userTextForOverrides);
+              if (wantsAccess) {
+                plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
+                planName = 'browser_open';
+              } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(google|جوجل)/i.test(userTextForOverrides)) {
+                plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
+                planName = 'browser_open';
+              } else if (/(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(youtube|يوتيوب)/i.test(userTextForOverrides)) {
+                plan = { name: 'browser_open', input: { url: 'https://www.youtube.com' } } as any;
+                planName = 'browser_open';
+              } else if (/(list|سرد|قائمة)\s*(tools|الأدوات|الادوات)/i.test(userTextForOverrides)) {
+                plan = { name: 'http_fetch', input: { url: 'http://localhost:' + (process.env.PORT || 3000) + '/tools' } } as any;
+                planName = 'http_fetch';
+              } else if (/(show|list|عرض|اعرض)\s*(files|الملفات)/i.test(userTextForOverrides) || /^ls$/.test(textLower)) {
+                plan = { name: 'ls', input: { path: '.' } } as any;
+                planName = 'ls';
+              } else if (/(project|file)\s*(structure|tree|هيكل|شجرة)/i.test(userTextForOverrides)) {
+                plan = { name: 'read_file_tree', input: { path: '.', depth: 3 } } as any;
+                planName = 'read_file_tree';
+              } else if (/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i.test(userTextForOverrides)) {
+                const m = userTextForOverrides.match(/(read|اقرأ|قراءة)\s*(file|ملف)\s+(.+)/i);
+                if (m && m[3]) {
+                  plan = { name: 'file_read', input: { filePath: m[3].trim() } } as any;
+                  planName = 'file_read';
+                }
+              } else if (/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i.test(userTextForOverrides)) {
+                const m = userTextForOverrides.match(/(search|find|grep|ابحث|بحث)\s*(in code|code|الكود|في الكود)?\s*(for|عن)?\s*(.+)/i);
+                if (m && m[4]) {
+                  plan = { name: 'grep_search', input: { query: m[4].trim(), path: '.' } } as any;
+                  planName = 'grep_search';
+                }
+              } else if (/(open|start|launch|افتح|شغل|ابدأ)\s*(the\s+)?(browser|متصفح|المتصفح)/i.test(userTextForOverrides)) {
+                // Explicit browser open request
+                plan = { name: 'browser_open', input: { url: 'https://www.google.com' } } as any;
+                planName = 'browser_open';
+              } else if (wf && steps === 0) {
+                // Force first step of workflow if no other heuristic matched
+                const alreadyDetetced = historyHasToolCall(history as any, 'project_detect');
+                if (!alreadyDetetced) {
+                  plan = { name: 'project_detect', input: { path: '.' } } as any;
+                  planName = 'project_detect';
+                } else {
+                  plan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+                  planName = 'analyze_codebase';
+                }
+              }
+            }
+          }
+
+          if (String(plan?.name || '') === 'github_repo_manager' || String(plan?.name || '') === 'github_create_repo') {
+            const wantsAccess = /(ادخل|افتح|access|open|browse|visit|go to)\s+(الى\s+)?(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
+            if (wantsAccess) {
+              plan = { name: 'browser_open', input: { url: 'https://github.com' } } as any;
+            } else if (!wantsGithubRepo && (!planName || planName === 'echo')) {
+              plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أقدر أساعدك. ماذا تريد أن أفعل؟' : 'How can I help?' } } as any;
+            } else if (!requestedRepoName) {
+              plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
+              history.push({ role: 'assistant', content: 'ASKED_FOR_REPO_NAME' } as any);
+              try {
+                if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
+              } catch { }
+            }
+          }
+          if (isBrowserTool) {
+            const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
+            const inputSid = String((plan as any)?.input?.sessionId || '').trim();
+            const hasSid = !!(reqSid || inputSid);
+            if (!hasSid) {
+              const userText = String(text || '');
+              if (isWeatherLikeQuery(userText)) {
+                const city = extractWeatherCity(userText);
+                plan = {
+                  name: 'central_answer',
+                  input: { question: isArabicText(userText) ? `كم درجة الحرارة الآن في ${city}؟` : `current temperature in ${city} now` },
+                } as any;
+              } else {
+                const urlMatch = userText.match(/https?:\/\/[^\s"'<>]+/i);
+                const urlFromUser = urlMatch?.[0];
+                const urlFromInput = String((plan as any)?.input?.url || '').trim();
+                const actions = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+                const goto = actions.find((a: any) => String(a?.type || '').toLowerCase() === 'goto' && typeof a?.url === 'string' && a.url.trim());
+                const urlFromActions = goto ? String(goto.url).trim() : '';
+                const wantsYoutube = /youtube|يوتيوب/i.test(userText);
+                const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userText);
+                const desiredUrl =
+                  (urlFromUser || urlFromInput || urlFromActions || '').trim() ||
+                  (wantsYoutube
+                    ? 'https://www.youtube.com'
+                    : wantsGithub
+                      ? 'https://github.com'
+                      : isStrictSameSiteUiTask
+                        ? 'https://xelitesolutions.com'
+                        : 'https://www.google.com');
+
+                if (planName !== 'browser_open') pendingPlan = plan as any;
+                plan = { name: 'browser_open', input: { url: desiredUrl } } as any;
+              }
+            }
+          }
+
+          if (isStrictSameSiteUiTask) {
+            if (!browserHostLock) updateBrowserLockFromOutput((lastResult as any)?.output);
+            if (plan?.name === 'browser_run') {
+              const rawActions = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+              const actions = rawActions.map((a: any) => {
+                if (!a || typeof a !== 'object') return a;
+                if (String(a.type || '').toLowerCase() === 'goto') {
+                  const u = normalizeUrlForGoto(a.url);
+                  return { ...a, url: u };
+                }
+                return a;
+              });
+
+              const hasDisallowed = actions.some((a: any) => {
+                const t = String(a?.type || '').toLowerCase();
+                if (t === 'searchgoogle') return true;
+                if (t !== 'goto') return false;
+                const u = normalizeUrlForGoto(a?.url);
+                if (!u) return true;
+                const targetHost = urlToHost(u);
+                if (targetHost && /(^|\.)google\./i.test(targetHost)) return true;
+                if (!browserHostLock) return false;
+                if (!targetHost) return false;
+                return !isSameSiteHost(targetHost, browserHostLock);
+              });
+
+              if (hasDisallowed) {
+                const sid = typeof browserSessionId === 'string' ? browserSessionId.trim() : String((plan as any)?.input?.sessionId || '').trim();
+                const origin = browserOriginLock || (browserHostLock ? `https://${browserHostLock}` : '');
+                if (!sid) {
+                  plan = { name: 'echo', input: { text: 'Cannot run browser actions: missing sessionId.' } } as any;
+                } else if (!origin) {
+                  plan = { name: 'browser_get_state', input: { sessionId: sid } } as any;
+                } else {
+                  const safeLoginUrl = new URL('/login', origin).toString();
+                  const host = browserHostLock || urlToHost(origin);
+                  const isXelite = /(^|\.)xelitesolutions\.com$/i.test(String(host || ''));
+                  const fallbackActions = isXelite
+                    ? [
+                      { type: 'clickText', text: 'Start Now', exact: false, timeoutMs: 9000, attempts: 3 },
+                      { type: 'waitForLoad', state: 'domcontentloaded' },
+                      { type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' },
+                    ]
+                    : [{ type: 'goto', url: safeLoginUrl, waitUntil: 'domcontentloaded' }];
+                  plan = { name: 'browser_run', input: { sessionId: sid, actions: fallbackActions } } as any;
+                }
+              } else {
+                (plan as any).input = { ...(plan as any).input, actions };
+              }
+            }
+          }
+
+          if (kind === 'agent' && String(plan?.name || '') === 'browser_open' && typeof browserSessionId === 'string' && browserSessionId.trim()) {
+            const raw = String((plan as any)?.input?.url || '').trim();
+            const url = normalizeUrlForGoto(raw);
+            if (!url) {
+              plan = { name: 'browser_get_state', input: { sessionId: browserSessionId.trim() } } as any;
+            } else if (isStrictSameSiteUiTask && browserHostLock) {
+              const host = urlToHost(url);
+              if (host && !isSameSiteHost(host, browserHostLock)) {
+                plan = { name: 'browser_get_state', input: { sessionId: browserSessionId.trim() } } as any;
+              } else {
+                plan = {
+                  name: 'browser_run',
+                  input: {
+                    sessionId: browserSessionId.trim(),
+                    actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
+                  },
+                } as any;
+              }
+            } else {
+              plan = {
+                name: 'browser_run',
+                input: {
+                  sessionId: browserSessionId.trim(),
+                  actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }],
+                },
+              } as any;
+            }
+          }
+
+          if (
+            typeof browserSessionId === 'string' &&
+            browserSessionId.trim() &&
+            ['browser_run', 'browser_get_state', 'browser_extract'].includes(String(plan?.name || ''))
+          ) {
+            const input = (plan as any).input;
+            if (!input || typeof input !== 'object') (plan as any).input = {};
+            if (!(plan as any).input.sessionId) (plan as any).input.sessionId = browserSessionId.trim();
+          }
+
+          const isMultiStepBrowserInstruction = (s: string) => {
+            const t = String(s || '');
+            return /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|رجاء|من\s+فضلك|ابحث|بحث|search|find|lookup|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
+              t,
+            );
+          };
+
+          if (String(plan?.name || '') === 'browser_run') {
+            const sid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+            const rawActs = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+            const hasGoto = rawActs.some(
+              (a: any) => String(a?.type || '').toLowerCase() === 'goto' && typeof a?.url === 'string' && a.url.trim(),
+            );
+            const instructionTextInPlan = String((plan as any)?.input?.instructionText || '').trim();
+            const urlCandidate = (() => {
+              const m1 = userTextForOverrides.match(/https?:\/\/[^\s"'<>]+/i);
+              if (m1 && m1[0]) return m1[0].trim();
+              const m2 = userTextForOverrides.match(
+                /(?:^|\s)(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/[^\s"'<>]*)?/i,
+              );
+              if (m2 && m2[0]) return m2[0].trim();
+              return '';
+            })();
+            const hasUrlInUserText = Boolean(urlCandidate);
+            const openKeyword =
+              /(open|start|launch|browse|visit|go to|ادخل|افتح|اذهب|زيارة|شغل|ابدأ|روح|زور|وديني|ودني|ودنا|خلني|خليني|بدي|عايز|عاوز|ابي|ابغى)/i.test(
+                userTextForOverrides,
+              );
+            const browserKeyword = /(\b(browser|web|preview)\b|متصفح|المتصفح|داخل المتصفح|معاينة|المعاينة)/i.test(userTextForOverrides);
+            const mentionsKnownSite =
+              /(yahoo|ياهو|youtube|يوتيوب|github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب|google|جوجل|microsoft|مايكروسوفت|مايكروسوت|x\.com|\btwitter\b|تويتر|facebook|فيس\s*بوك|الفيس\s*بوك|linkedin|لينكد\s*ان|لينكدإن)/i.test(
+                userTextForOverrides,
+              );
+            const looksLikeOpenIntent = Boolean(hasUrlInUserText || openKeyword || browserKeyword || mentionsKnownSite);
+
+            if (sid && !instructionTextInPlan && rawActs.length === 0) {
+              (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
+            } else if (sid && rawActs.length > 0 && !hasGoto && looksLikeOpenIntent) {
+              const directUrl = urlCandidate;
+              const wantsYahoo = /(yahoo|ياهو)/i.test(userTextForOverrides);
+              const wantsYoutube = /youtube|يوتيوب/i.test(userTextForOverrides);
+              const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|قيتهب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(userTextForOverrides);
+              const wantsGoogle = /google|جوجل/i.test(userTextForOverrides);
+              const wantsMicrosoft = /(microsoft|مايكروسوفت|مايكروسوت)/i.test(userTextForOverrides);
+              const wantsX = /(x\.com|\btwitter\b|تويتر)/i.test(userTextForOverrides);
+              const wantsFacebook = /(facebook|فيس\s*بوك|الفيس\s*بوك)/i.test(userTextForOverrides);
+              const wantsLinkedIn = /(linkedin|لينكد\s*ان|لينكدإن)/i.test(userTextForOverrides);
+              const desiredUrlRaw =
+                directUrl ||
+                (wantsYahoo
+                  ? 'https://www.yahoo.com'
+                  : wantsYoutube
+                    ? 'https://www.youtube.com'
+                    : wantsGithub
+                      ? 'https://github.com'
+                      : wantsGoogle
+                        ? 'https://www.google.com'
+                        : wantsMicrosoft
+                          ? 'https://www.microsoft.com'
+                          : wantsX
+                            ? 'https://x.com'
+                            : wantsFacebook
+                              ? 'https://www.facebook.com'
+                              : wantsLinkedIn
+                                ? 'https://www.linkedin.com'
+                                : '');
+              const url = normalizeUrlForGoto(desiredUrlRaw);
+              if (url) {
+                (plan as any).input = {
+                  sessionId: sid,
+                  actions: [{ type: 'goto', url, waitUntil: 'domcontentloaded' }, ...rawActs],
+                };
+              } else if (!instructionTextInPlan) {
+                (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
+              }
+            }
+
+            const acts = Array.isArray((plan as any)?.input?.actions) ? (plan as any).input.actions : [];
+            const onlyGoto =
+              acts.length === 1 && String(acts[0]?.type || '').toLowerCase() === 'goto' && typeof acts[0]?.url === 'string' && acts[0].url.trim();
+            if (onlyGoto && isMultiStepBrowserInstruction(userTextForOverrides)) {
+              if (sid) (plan as any).input = { sessionId: sid, instructionText: userTextForOverrides };
+            }
+          }
+
+          ev({ type: 'step_done', data: { name: `planning_step_${steps + 1}`, plan } });
+
+          if (plan?.name === 'browser_run') {
+            const acts = Array.isArray((plan as any).input?.actions) ? (plan as any).input.actions : [];
+            let sensitive = false;
+            let actionText = 'browser_run';
+            for (const a of acts) {
+              const t = String(a?.type || '').toLowerCase();
+              if (t === 'uploadfile') sensitive = true;
+              if (t === 'fillform') {
+                const fields = Array.isArray(a?.fields) ? a.fields : [];
+                for (const f of fields) {
+                  const s = (String(f?.label || '') + ' ' + String(f?.selector || '')).toLowerCase();
+                  if (/(password|card|cvv|iban|ssn|بطاقة|دفع|كلمة المرور|حساسية|حساب)/.test(s)) { sensitive = true; break; }
+                }
+              }
+              if (t === 'click') {
+                const s = (String(a?.roleName || '') + ' ' + String(a?.selector || '')).toLowerCase();
+                if (/(delete|pay|submit|login|حذف|دفع|ارسال|تسجيل دخول)/.test(s)) sensitive = true;
+              }
+              if (sensitive) break;
+            }
+            if (sensitive) {
+              const risk = 'high';
+              const aRole = authRole;
+              const { getSessionRunConfig } = await import('../services/secrets');
+              const cfg = getSessionRunConfig(String(sessionId)) || ({} as any);
+              const autoAll =
+                aRole === 'OWNER' || cfg.autoApproveAll === true ? true : process.env.AUTO_APPROVE_ALL === '1';
+              if (autoAll) {
+                ev({
+                  type: 'step_started',
+                  data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
+                });
+                const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
+                const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
+                if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
+                  const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
+                  if (answerText) {
+                    ev({ type: 'text', data: answerText });
+                    assistantTextEmitted = true;
+                  }
+                }
+                ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+                if (!offlineMode) {
+                  await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+                }
+                ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+                return res.json({ ok: true, runId, result });
+              }
+
+              if (!offlineMode) {
+                const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
+                ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: actionText } });
+                await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
+                const { planContext } = await import('../approvals/context');
+                planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
+              } else {
+                ev({ type: 'approval_required', data: { id: `offline-approval-${Date.now()}`, runId, risk, action: actionText } });
+              }
+
+
+              const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
+              const auto = cfg.autoApproveSafe === true ? true : envAutoSafe ? envAutoSafe === '1' : true;
+
+              const safe = !/(high|critical)/i.test(String(risk));
+              if (autoAll || (auto && safe)) {
+                ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
+                const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
+                const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
+                if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
+                  const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
+                  if (answerText) {
+                    ev({ type: 'text', data: answerText });
+                    assistantTextEmitted = true;
+                  }
+                }
+                ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
+                await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
+                ev({ type: 'run_finished', data: { runId, ok: result.ok } });
+                planContext.delete(ap._id.toString());
+                if (!res.headersSent) {
+                  return res.json({ ok: true, runId, result });
+                }
+                return;
+              }
+              if (!res.headersSent) {
+                return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
+              }
+              return;
+
+            }
+          }
+
+          if (String(plan?.name || '') === 'git_ops') {
+            const input = (plan as any).input;
+            if (!input || typeof input !== 'object') (plan as any).input = {};
+            if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+          }
+          if (String(plan?.name || '') === 'payments_create_checkout_session') {
+            const input = (plan as any).input;
+            if (!input || typeof input !== 'object') (plan as any).input = {};
+            if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+          }
+          if (String(plan?.name || '') === 'http_fetch') {
+            const input = (plan as any).input;
+            if (!input || typeof input !== 'object') (plan as any).input = {};
+            if (!(plan as any).input.sessionId) (plan as any).input.sessionId = String(sessionId);
+          }
+
+          // Intercept scaffold_project to inject templates if structure is missing/empty
+          if (plan?.name === 'scaffold_project') {
+            const inp = (plan.input as any) || {};
+            if (!inp.structure || Object.keys(inp.structure).length === 0) {
+              // Legacy template injection has been removed.
+              // The agent must provide the structure explicitly or use 'scaffold' from Universal Registry.
+              ev({ type: 'text', data: `ℹ️ Standard scaffold request (Legacy templates removed).` });
+            }
+          }
+
+          if (String(plan?.name || '') === 'browser_run') {
+            const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+            const key = browserRunGuardKey(String(sessionId), bid, String(runId));
+            const now0 = Date.now();
+            const sigObj = (() => {
+              const rawInput: any = (plan as any)?.input || {};
+              return {
+                instructionText: typeof rawInput?.instructionText === 'string' ? rawInput.instructionText : '',
+                actions: Array.isArray(rawInput?.actions) ? rawInput.actions : null,
+              };
+            })();
+            let sig = '';
+            try {
+              sig = JSON.stringify(sigObj);
+            } catch {
+              sig = String(sigObj?.instructionText || '');
+            }
+
+            const prev =
+              browserRunGuard.get(key) ||
+              ({
+                totalCount: 0,
+                lastAt: 0,
+                lastSig: '',
+                sigCount: 0,
+              } as any);
+
+            const since0 = prev.lastAt ? now0 - prev.lastAt : Number.POSITIVE_INFINITY;
+            const nextSigCount = prev.lastSig && prev.lastSig === sig ? prev.sigCount + 1 : 1;
+            const nextTotal = Number(prev.totalCount || 0) + 1;
+
+            if (nextSigCount > 2 || nextTotal > BROWSER_RUN_MAX_PER_SESSION) {
+              const msg = isArabicText(userTextForOverrides)
+                ? `⚠️ تم تعليق عمليات المتصفح المتكررة لضمان استقرار الجلسة.\nالسبب: الوصول إلى الحد الأقصى للمحاولات (${BROWSER_RUN_MAX_PER_SESSION}).\nيمكنك إعادة صياغة الطلب أو المحاولة لاحقاً.`
+                : `⚠️ Repeated browser operations suspended to ensure session stability.\nReason: Maximum retry limit reached (${BROWSER_RUN_MAX_PER_SESSION}).\nPlease refine your request or try again later.`;
+              forcedText = msg;
+              ev({ type: 'text', data: msg });
+              assistantTextEmitted = true;
+              break;
+            }
+            const isSameSig = Boolean(prev.lastSig && prev.lastSig === sig);
+            if (isSameSig && Number.isFinite(since0) && since0 < BROWSER_RUN_MIN_INTERVAL_MS) {
+              const waitMs = Math.max(1, BROWSER_RUN_MIN_INTERVAL_MS - since0);
+              const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
+              const msg = isArabicText(userTextForOverrides)
+                ? `🔄 جاري تنسيق الوصول إلى المتصفح... سأباشر التنفيذ تلقائياً خلال ${waitSec} ثانية.`
+                : `🔄 Orchestrating browser access... Resuming execution automatically in ${waitSec}s.`;
+              ev({ type: 'text', data: msg });
+              await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+              if (isRunCancelled(runId)) {
+                forcedText = '⛔ تم إيقاف التنفيذ.';
+                lastResult = { ok: false, error: 'stopped' };
+                break;
+              }
+            }
+            const now = Date.now();
+            browserRunGuard.set(key, { totalCount: nextTotal, lastAt: now, lastSig: sig, sigCount: nextSigCount });
+          }
+
+          if (isRunCancelled(runId)) {
+            forcedText = '⛔ تم إيقاف التنفيذ.';
+            lastResult = { ok: false, error: 'stopped' };
+            break;
+          }
+
+          const persistedInput = redactToolInputForStorage(plan?.name || '', plan?.input);
+          ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: persistedInput } });
+          // [ELITE FIX] Emit specific tool_start event for frontend auto-switching (Browser/Terminal)
+          ev({ type: 'tool_start', tool: plan?.name || '', input: plan?.input });
+          const callInput =
+            userId && plan?.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan?.input;
+          const result = await executeToolWithRateLimitRetry(plan?.name || '', callInput, { sessionId, workspaceId }, {
+            runId,
+            maxRetries: 2,
+            maxWaitMs: 70_000,
+            onWait: (waitMs, retryAfterMs) => {
+              const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
+              const msg = isArabicText(userTextForOverrides)
+                ? `⚠️ تم تقييد تنفيذ الأداة مؤقتًا (rate_limited). سأعيد المحاولة تلقائياً بعد حوالي ${waitSec}s.`
+                : `⚠️ Tool is rate-limited. I’ll auto-retry in about ${waitSec}s.`;
+              const now = Date.now();
+              const last = loopPauseThrottle.get(String(sessionId));
+              if (!last || now - last > 6000) {
+                ev({ type: 'text', data: msg });
+                assistantTextEmitted = true;
+                loopPauseThrottle.set(String(sessionId), now);
+              }
+            },
+          });
+          lastExecutedToolSig = `${String(plan?.name || '')}:${JSON.stringify((plan as any)?.input || {})}`;
+          lastExecutedToolName = String(plan?.name || '');
+          if (result?.ok && plan?.name === 'browser_open') {
+            const sid = String(result?.output?.sessionId || '').trim();
+            if (sid) {
+              browserSessionId = sid;
+              try {
+                const { getSessionRunConfig, setSessionRunConfig } = await import('../services/secrets');
+                const cur = getSessionRunConfig(String(sessionId)) || ({} as any);
+                setSessionRunConfig(String(sessionId), {
+                  provider: typeof cur.provider === 'string' ? cur.provider : undefined,
+                  apiKey: typeof cur.apiKey === 'string' ? cur.apiKey : undefined,
+                  baseUrl: typeof cur.baseUrl === 'string' ? cur.baseUrl : undefined,
+                  model: typeof cur.model === 'string' ? cur.model : undefined,
+                  kind: cur.kind === 'agent' ? 'agent' : cur.kind === 'chat' ? 'chat' : kind,
+                  browserSessionId: sid,
+                  autoApproveAll: Boolean(cur.autoApproveAll),
+                  autoApproveSafe: Boolean(cur.autoApproveSafe),
+                });
+              } catch { }
+            }
+          }
+
+          // Add result to history to prevent infinite loops
+          const MAX_INLINE_CHARS = 1800;
+          const truncate = (s: string, max = MAX_INLINE_CHARS) => (s.length > max ? `${s.slice(0, max)}…[truncated]` : s);
+          const extractTitleFromHtml = (html: string) => {
             const m = html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i);
             const t = String(m?.[1] || '').replace(/\s+/g, ' ').trim();
             return t || '';
           };
-          const normalizeDisplayUrlFinal = (raw: any) => {
+          const normalizeDisplayUrl = (raw: any) => {
             let s = String(raw ?? '').trim();
             while (s.length >= 2) {
               const first = s[0];
@@ -4681,8 +3785,8 @@ If this is a browser_open failure, DO NOT automatically retry the same URL. Ask 
             if (/^(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/|$)/i.test(s)) return `https://${s}`;
             return s;
           };
-          const inferSiteLabelFinal = (url: string, dom: string) => {
-            const u = normalizeDisplayUrlFinal(url);
+          const inferSiteLabel = (url: string, dom: string) => {
+            const u = normalizeDisplayUrl(url);
             try {
               if (u) {
                 const host = new URL(u).hostname.replace(/^www\./i, '');
@@ -4693,17 +3797,24 @@ If this is a browser_open failure, DO NOT automatically retry the same URL. Ask 
             if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
             if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
             if (/github\.com/i.test(d)) return 'github.com';
-            const title = extractTitleFromHtmlFinal(d);
+            const title = extractTitleFromHtml(d);
             return title || 'page';
           };
-          const summarizeBrowserOutputFinal = (out: any) => {
+          const summarizeBrowserOutput = (out: any) => {
             if (!out || typeof out !== 'object') return out;
+            const isBrowserStateLike =
+              typeof (out as any).url === 'string' ||
+              typeof (out as any).pageUrl === 'string' ||
+              typeof (out as any).dom === 'string' ||
+              typeof (out as any).screenshot === 'string' ||
+              typeof (out as any).screenshotHref === 'string';
+            if (!isBrowserStateLike) return out;
             const urlRaw =
               typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
-            const url = normalizeDisplayUrlFinal(urlRaw);
+            const url = normalizeDisplayUrl(urlRaw);
             const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
-            const title = dom ? extractTitleFromHtmlFinal(dom) : '';
-            const site = inferSiteLabelFinal(url, dom);
+            const title = dom ? extractTitleFromHtml(dom) : '';
+            const site = inferSiteLabel(url, dom);
             const domLen = dom ? dom.length : 0;
             const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
             const u = String(url || '').toLowerCase();
@@ -4721,79 +3832,969 @@ If this is a browser_open failure, DO NOT automatically retry the same URL. Ask 
             if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
             return summary;
           };
-          const sanitizeFinalForInline = (toolName: string, obj: any) => {
+          const sanitizeForInline = (toolName: string, obj: any) => {
             if (obj == null) return obj;
             const t = String(toolName || '');
-            if (/^browser_/.test(t)) return summarizeBrowserOutputFinal(obj);
-            if (typeof obj === 'string') return truncateFinal(obj);
+            if (/^browser_/.test(t)) return summarizeBrowserOutput(obj);
+            if (typeof obj === 'string') return truncate(obj);
             if (typeof obj === 'object') {
               try {
                 const raw = JSON.stringify(obj);
-                if (raw.length <= MAX_FINAL_INLINE_CHARS) return obj;
-                return truncateFinal(raw);
+                if (raw.length <= MAX_INLINE_CHARS) return obj;
+                return truncate(raw);
               } catch {
                 return '[Result too large or circular]';
               }
             }
             return obj;
           };
+          const safeOutput = (toolName: string, obj: any) => {
+            try {
+              return JSON.stringify(sanitizeForInline(toolName, obj));
+            } catch {
+              return '"[Result too large or circular]"';
+            }
+          };
 
-          const finalContent =
-            forcedText ||
-            (() => {
-              const toolName = String(lastExecutedToolName || '');
-              const raw = (lastResult as any)?.output ?? (lastResult as any)?.error ?? 'No output';
-              const sanitized = sanitizeFinalForInline(toolName, raw);
-              if (typeof sanitized === 'string') return sanitized;
-              try {
-                return JSON.stringify(sanitized);
-              } catch {
-                return 'Output too large';
-              }
-            })();
+          history.push({
+            role: 'assistant',
+            content: `Tool Call: ${plan?.name}\nInput: ${safeOutput(plan?.name || '', persistedInput)}\nOutput: ${safeOutput(plan?.name || '', result.output || result.error || 'Done')}`
+          });
 
-          if (!assistantTextEmitted) {
-            ev({ type: 'text', data: finalContent });
+          // [FIX 3] Preserve file context for multi-turn conversations
+          // If there are attached files/images, remind the LLM about them
+          if (steps === 0 && (contentParts.length > 0 || attachedText.trim().length > 100)) {
+            const fileContextSummary = attachedText.trim().length > 100
+              ? attachedText.slice(0, 500) + '...[محتوى مختصر]'
+              : attachedText;
+            const imageCount = contentParts.filter((p: any) => p.type === 'image_url').length;
+
+            let contextReminder = '[📎 سياق الملفات المرفقة]:\n';
+            if (imageCount > 0) {
+              contextReminder += `- ${imageCount} صورة/صور مرفقة\n`;
+            }
+            if (fileContextSummary.trim()) {
+              contextReminder += `- محتوى الملف:\n${fileContextSummary}\n`;
+            }
+
+            history.push({
+              role: 'system',
+              content: contextReminder
+            });
+            console.info('[Run/Context] Injected file context reminder into history');
           }
 
-          ev({ type: 'run_completed', data: { runId, result: lastResult } });
-          ev({ type: 'run_finished', data: { runId, status: 'done' } });
+          lastResult = result;
+          if (result?.ok && /^browser_/.test(String(plan?.name || ''))) {
+            updateBrowserLockFromOutput((result as any)?.output);
+          }
+
+
+          if (result.logs?.length) {
+            for (const line of result.logs) {
+              ev({ type: 'evidence_added', data: { kind: 'log', text: line } });
+            }
+          }
+
+          // Emit artifacts if any
+          if (result.artifacts && Array.isArray(result.artifacts)) {
+            const suppressChatArtifacts = /^browser_/.test(String(plan?.name || ''));
+            for (const art of result.artifacts) {
+              if (suppressChatArtifacts) continue;
+              ev({ type: 'artifact_created', data: art });
+
+              try { if (!offlineMode) await Artifact.create({ runId, name: String(art.name || 'artifact'), href: String(art.href || '') }); } catch { }
+
+            }
+          }
+
+          const eventResult =
+            /^browser_/.test(String(plan?.name || '')) && result && typeof result === 'object'
+              ? { ...result, output: summarizeBrowserOutput((result as any).output) }
+              : result;
+          ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result: eventResult } });
+
+          if (String(plan?.name || '') === 'browser_run') {
+            lastBrowserRunSummary = String((result as any)?.output?.summary || '').trim();
+            lastBrowserRunPageUrl = String((result as any)?.output?.pageUrl || '').trim();
+          }
+          if (String(plan?.name || '') === 'browser_open') {
+            lastBrowserRunSummary = '';
+            lastBrowserRunPageUrl = '';
+          }
+
+          if (!result.ok && String(plan?.name || '') === 'browser_run') {
+            const err = String((result as any)?.error || '').trim();
+            if (err === 'timeout') {
+              const msg = isArabicText(userTextForOverrides)
+                ? `⚠️ انتهت مهلة تنفيذ خطوة في المتصفح (timeout).\nلن أعيد المحاولة تلقائياً لتجنّب حلقة.\nأعد إرسال الأمر إذا كنت تريد المحاولة مرة أخرى.`
+                : `⚠️ A browser step timed out.\nI won’t auto-retry to avoid a loop.\nRe-run the command if you want to try again.`;
+              forcedText = msg;
+              ev({ type: 'text', data: msg });
+              assistantTextEmitted = true;
+              break;
+            }
+            if (err === 'browser_unavailable' || err === 'worker_unhealthy') {
+              try {
+                const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+                const key = browserRunGuardKey(String(sessionId), bid, String(runId));
+                browserRunGuard.delete(key);
+              } catch { }
+              const code = String((result as any)?.detail?.code || '').trim();
+              const detailMsg = String((result as any)?.detail?.message || '').trim();
+              const hint = (() => {
+                const c = (code || '').toLowerCase();
+                const m = (detailMsg || '').toLowerCase();
+                if (c === 'display_missing' || /xvfb|display|cannot open display/i.test(m)) {
+                  return isArabicText(userTextForOverrides)
+                    ? 'على الخادم: شغّل Playwright بوضع headed عبر Xvfb (مثال: xvfb-run) أو فعّل headless.'
+                    : 'On the server: run headed Playwright under Xvfb (e.g. xvfb-run) or enable headless.';
+                }
+                if (c === 'chromium_missing' || /playwright install|executable doesn't exist/i.test(m)) {
+                  return isArabicText(userTextForOverrides)
+                    ? 'ثبّت متصفحات Playwright على الخادم (مثال: npx playwright install --with-deps).'
+                    : 'Install Playwright browsers on the server (e.g. npx playwright install --with-deps).';
+                }
+                if (c === 'deps_missing' || /gtk|nss|gbm|fontconfig|glibc/i.test(m)) {
+                  return isArabicText(userTextForOverrides)
+                    ? 'نقص مكتبات نظام لتشغيل Chromium. ثبّت الاعتماديات المطلوبة (Playwright --with-deps).'
+                    : 'Missing system deps for Chromium. Install Playwright dependencies (--with-deps).';
+                }
+                if (c === 'sandbox_blocked' || /no-sandbox|setuid/i.test(m)) {
+                  return isArabicText(userTextForOverrides)
+                    ? 'السندبوكس مرفوض. جرّب تفعيل BROWSER_NO_SANDBOX=1 على الخادم.'
+                    : 'Sandbox blocked. Try setting BROWSER_NO_SANDBOX=1 on the server.';
+                }
+                return isArabicText(userTextForOverrides)
+                  ? 'تحقق من خدمة المتصفح/Playwright على الخادم ثم أعد المحاولة.'
+                  : 'Check the browser/Playwright worker on the server and retry.';
+              })();
+              const msg = isArabicText(userTextForOverrides)
+                ? `⚠️ خدمة المتصفح غير متاحة حالياً.\n${code ? `- السبب: ${code}\n` : ''}${hint}`
+                : `⚠️ Browser service is currently unavailable.\n${code ? `- reason: ${code}\n` : ''}${hint}`;
+              forcedText = msg;
+              ev({ type: 'text', data: msg });
+              assistantTextEmitted = true;
+              break;
+            }
+            const missingSecrets = Array.isArray((result as any)?.missingSecrets) ? ((result as any).missingSecrets as any[]).map((x) => String(x || '').trim()).filter(Boolean) : [];
+            if (err === 'missing_secrets' || err.startsWith('missing_secrets') || missingSecrets.length) {
+              try {
+                const bid = String((plan as any)?.input?.sessionId || browserSessionId || '').trim();
+                const key = browserRunGuardKey(String(sessionId), bid, String(runId));
+                browserRunGuard.delete(key);
+              } catch { }
+              const keysLine = missingSecrets.length ? `\n- الأسرار المطلوبة: ${missingSecrets.join(', ')}` : '';
+              const msg = isArabicText(userTextForOverrides)
+                ? `⚠️ لا يمكن إكمال خطوة المتصفح لأن هناك بيانات دخول/أسرار ناقصة.${keysLine}\nأدخل الأسرار المطلوبة من نافذة التوكن أو اكتب بيانات الدخول (الإيميل/كلمة المرور) داخل رسالتك ثم أعد إرسال نفس الأمر.`
+                : `⚠️ Browser step needs missing secrets.${keysLine}\nProvide the required secrets or include credentials in your message, then re-run the same command.`;
+              forcedText = msg;
+              ev({ type: 'text', data: msg });
+              assistantTextEmitted = true;
+              break;
+            }
+            const terminal =
+              err === 'plan_to_actions_empty' ||
+              err === 'compiler_failed' ||
+              err === 'unsupported_action' ||
+              err === 'infinite_retry_blocked' ||
+              err === 'sessionId_required';
+            if (terminal) {
+              const msg = isArabicText(userTextForOverrides)
+                ? `❌ تعذّر تنفيذ خطوات المتصفح.\nالسبب: ${err}\nأعد صياغة الطلب أو فعّل وضع التصحيح لرؤية الخطة والإجراءات.`
+                : `❌ I couldn’t compile executable browser steps.\nReason: ${err}\nPlease rephrase the instruction or enable debug to see the compiled plan/actions.`;
+              forcedText = msg;
+              ev({ type: 'text', data: msg });
+              assistantTextEmitted = true;
+              break;
+            }
+
+            const summary = String((result as any)?.output?.summary || '').trim();
+            const url = String((result as any)?.output?.pageUrl || '').trim();
+            const msg = isArabicText(userTextForOverrides)
+              ? `${summary ? summary : `❌ فشل تنفيذ مهمة المتصفح. السبب: ${err || 'unknown'}`}${url ? `\n- الرابط الحالي: ${url}` : ''}\nأعد إرسال الأمر بعد تصحيح البيانات أو أعطني رابط صفحة تسجيل الدخول مباشرة.`
+              : `${summary ? summary : `❌ Browser task failed. Reason: ${err || 'unknown'}`}${url ? `\n- Current URL: ${url}` : ''}\nRe-run after fixing credentials or provide the login page URL directly.`;
+            forcedText = msg;
+            ev({ type: 'text', data: msg });
+            assistantTextEmitted = true;
+            break;
+          }
+
+          if (!result.ok && isStrictSameSiteUiTask && /^browser_/.test(String(plan?.name || '')) && isCrossSiteBlockedError(result.error)) {
+            const lock = browserHostLock ? `\n- Locked site: ${browserHostLock}` : '';
+            const msg = isArabicText(userTextForOverrides)
+              ? `⚠️ تم منع محاولة الانتقال خارج نفس الموقع أثناء وضع STRICT_SAME_SITE_UI.\nلن أحاول جوجل/بحث/روابط خارجية تلقائياً.${lock}\n\nوجّهني بما تريد على نفس الصفحة (مثال: \"اضغط Start Now\" أو \"اذهب إلى /login\").`
+              : `⚠️ Navigation was blocked by same-site policy in STRICT_SAME_SITE_UI.\nI won’t auto-switch to Google/search/external sites.${lock}\n\nTell me what to do on the current page (e.g. “click Start Now” or “go to /login”).`;
+            forcedText = msg;
+            ev({ type: 'text', data: msg });
+            assistantTextEmitted = true;
+            break;
+          }
+
+          if (result.ok && String(plan?.name || '') === 'browser_get_state' && endAfterBrowserState) {
+            const url = String((result as any)?.output?.url || '').trim() || lastBrowserRunPageUrl;
+            const msg = isSimpleBrowserOpenRequest
+              ? isArabicText(initialUserTextForOpen)
+                ? `تم فتح ${simpleBrowserOpenLabel || 'الموقع'} في المتصفح.`
+                : `Opened ${simpleBrowserOpenLabel || 'the site'} in the browser.`
+              : isArabicText(userTextForOverrides)
+                ? `${lastBrowserRunSummary ? lastBrowserRunSummary : 'تم تنفيذ خطوات المتصفح.'}${url ? `\n- الرابط الحالي: ${url}` : ''}`
+                : `${lastBrowserRunSummary ? lastBrowserRunSummary : 'Browser steps completed.'}${url ? `\n- Current URL: ${url}` : ''}`;
+            endAfterBrowserState = false;
+            pendingPlan = { name: 'echo', input: { text: msg } } as any;
+          }
+          if (result.ok && plan?.name === 'web_search' && pendingBrowserOpenFromSearch) {
+            const url = pickTopUrlFromSearch((result as any)?.output);
+            const target = pendingBrowserOpenFromSearch.target;
+            pendingBrowserOpenFromSearch = null;
+            if (url) {
+              simpleBrowserOpenLabel = target || simpleBrowserOpenLabel || 'الموقع';
+              pendingPlan = { name: 'browser_open', input: { url } } as any;
+              endAfterBrowserState = true;
+            } else {
+              const q = String(target || '').trim();
+              const searchUrl = q ? `https://www.google.com/search?q=${encodeURIComponent(q)}` : 'https://www.google.com';
+              simpleBrowserOpenLabel = q || simpleBrowserOpenLabel || 'الموقع';
+              pendingPlan = { name: 'browser_open', input: { url: searchUrl } } as any;
+              endAfterBrowserState = true;
+            }
+          }
+          if (plannerUnavailableMode && result.ok && plan?.name === 'web_search' && !pendingPlan) {
+            const msg = formatWebSearchResultsText(String((plan as any)?.input?.query || '').trim(), (result as any)?.output, isArabicText(userTextForOverrides));
+            forcedText = msg;
+            ev({ type: 'text', data: msg });
+            assistantTextEmitted = true;
+            break;
+          }
+          // After browser actions, capture page state for accurate reading/sync
+          if (result.ok && (String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_run')) {
+            const sidNext = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
+            if (sidNext && !pendingPlan) pendingPlan = { name: 'browser_get_state', input: { sessionId: sidNext } } as any;
+            if (browserIntentThisTurn && (kind === 'agent' || isSimpleBrowserOpenRequest)) endAfterBrowserState = true;
+          }
+          // Auto post-scaffold steps: install and build
+          if (result.ok && String(plan?.name || '') === 'scaffold_full_stack') {
+            const rootCreated = String((result as any)?.output?.path || '').trim();
+            if (rootCreated && !postScaffoldScheduled) {
+              pendingPlan = { name: 'npm_install', input: { cwd: rootCreated } } as any;
+              postScaffoldScheduled = true;
+            }
+          } else if (result.ok && String(plan?.name || '') === 'npm_install') {
+            const cwd = String((plan as any)?.input?.cwd || '').trim();
+            if (cwd && !postInstallScheduled) {
+              pendingPlan = { name: 'npm_build', input: { cwd } } as any;
+              postInstallScheduled = true;
+            }
+          } else if (result.ok && String(plan?.name || '') === 'npm_build') {
+            const cwd = String((plan as any)?.input?.cwd || '').trim();
+            if (cwd && !postDevScheduled) {
+              pendingPlan = { name: 'dev_server_start', input: { cwd } } as any;
+              postDevScheduled = true;
+            }
+          } else if (result.ok && String(plan?.name || '') === 'dev_server_start') {
+            const internalUrl = String((result as any)?.output?.previewUrl || '').trim();
+            const userUrl = String((result as any)?.output?.userPreviewUrl || internalUrl).trim();
+
+            if (internalUrl && !postPreviewScheduled) {
+              pendingPlan = { name: 'browser_open', input: { url: internalUrl } } as any;
+              postPreviewScheduled = true;
+
+              // Emit a helpful message with the USER-accessible URL immediately
+              ev({
+                type: 'text',
+                data: isArabicText(userTextForOverrides)
+                  ? `🚀 **خادم المعاينة يعمل!**\nيمكنك فتحه في متصفحك: [${userUrl}](${userUrl})`
+                  : `🚀 **Preview Server is Running!**\nYou can open it in your browser: [${userUrl}](${userUrl})`
+              });
+            }
+          }
+
+          // Stop on fatal errors (403, verification, etc.)
+          if (!result.ok && plan?.name === 'image_generate') {
+            const errorMsg = String(result.error || '');
+            const logsStr = (result.logs || []).join('\n');
+            if (errorMsg.includes('403') || errorMsg.includes('verification') || logsStr.includes('error=403')) {
+              const msg = `❌ **Image Generation Failed**\n${errorMsg}\n\nPlease verify your OpenAI organization settings or try a different prompt.`;
+              forcedText = msg;
+              ev({ type: 'text', data: msg });
+              assistantTextEmitted = true;
+              break;
+            }
+          }
+
+          if (result.ok && plan?.name === 'project_detect') {
+            const out = result.output as any;
+            // Smart Context: If we found Node projects, try to read the root package.json immediately
+            // to give the AI context about dependencies without wasting a turn.
+            if (out && Array.isArray(out.nodeProjects) && out.nodeProjects.length > 0) {
+              const rootNode = out.nodeProjects[0]; // Usually the first one is relevant
+              const pkgPath = `${rootNode}/package.json`;
+              // Execute file_read silently and inject into history
+              console.log(`[Smart Context] Auto-reading ${pkgPath}`);
+              const subResult = await executeTool('file_read', { filePath: pkgPath }, { sessionId, workspaceId });
+              if (subResult.ok) {
+                ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Read] Read ${pkgPath} for context.` } });
+                history.push({
+                  role: 'assistant',
+                  content: `Tool Call: file_read\nInput: {"filePath":"${pkgPath}"}\nOutput: ${safeOutput('file_read', subResult.output)}`
+                });
+              }
+            } else if (isEmptyProjectDetectOutput(out) && !historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
+              history.push({ role: 'assistant', content: 'PROJECT_DETECT_EMPTY' } as any);
+              try {
+                if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
+              } catch { }
+
+              if (!pendingPlan) {
+                pendingPlan = { name: 'analyze_codebase', input: { path: '.' } } as any;
+              }
+            }
+          }
+
+          if (!result.ok && plan?.name === 'file_read') {
+            const err = String(result.error || '');
+            if (err.includes('ENOENT') || err.includes('not found')) {
+              // Auto-Correction: File not found? List the directory to help user see what's there.
+              const fpath = String(plan?.input?.filePath || '.');
+              const dir = fpath.includes('/') ? fpath.split('/').slice(0, -1).join('/') || '.' : '.';
+              console.log(`[Auto-Correction] file_read failed for ${fpath}. Listing ${dir}`);
+              const subResult = await executeTool('ls', { path: dir }, { sessionId, workspaceId });
+              if (subResult.ok) {
+                ev({ type: 'text', data: `⚠️ لم أجد الملف "${fpath}". إليك محتويات المجلد "${dir}" للمساعدة:` });
+                ev({ type: 'evidence_added', data: { kind: 'log', text: `[Auto-Correction] ls ${dir}: ${JSON.stringify(subResult.output)}` } });
+                history.push({
+                  role: 'assistant',
+                  content: `Tool Call: ls\nInput: {"path":"${dir}"}\nOutput: ${safeOutput('ls', subResult.output)}`
+                });
+              }
+            }
+          }
+
+          if (result.ok && plan?.name === 'echo') {
+            const text = result.output?.text;
+            if (text) {
+              const s = String(text).trim();
+              forcedText = s;
+              ev({ type: 'text', data: s });
+              assistantTextEmitted = true;
+              if (s && !/^\(system\)/i.test(s)) break;
+            }
+          }
+
+          if (result.ok && plan?.name === 'image_generate') {
+            const href = result.output?.href;
+            if (href) {
+              // Do not emit markdown image to avoid duplication. The UI handles artifact_created event.
+              forcedText = `🎨 Image generated successfully.`;
+              ev({ type: 'text', data: forcedText });
+              assistantTextEmitted = true;
+              break;
+            }
+          }
+
+          // Emit a user-visible confirmation when a file is created
+          if (result.ok && plan?.name === 'file_write') {
+            const href = result.output?.href;
+            const fname = String(plan?.input?.filename || '').trim();
+            const msgParts: string[] = [];
+            msgParts.push(`### تم إنشاء ملف`);
+            if (fname) msgParts.push(`- الاسم: ${fname}`);
+            if (href) msgParts.push(`- رابط المعاينة: ${href}`);
+            const msg = msgParts.join('\n');
+            forcedText = msg;
+            ev({ type: 'text', data: msg });
+            assistantTextEmitted = true;
+            break;
+          }
+
+          const wfForProgress = detectWorkflow(String(text || ''));
+          if (result.ok && wfForProgress) {
+            if (plan?.name === 'project_detect') ev({ type: 'text', data: `- تم فحص المشروع (project_detect)` });
+            if (plan?.name === 'analyze_codebase') ev({ type: 'text', data: `- تم تحليل هيكل الملفات (analyze_codebase)` });
+            if (plan?.name === 'command_policy_check') ev({ type: 'text', data: `- تم فحص سياسة الأوامر (command_policy_check)` });
+            if (plan?.name === 'grep_search') ev({ type: 'text', data: `- تم البحث في الكود (grep_search)` });
+            if (plan?.name === 'file_edit') ev({ type: 'text', data: `- تم تعديل ملف (file_edit)` });
+            if (plan?.name === 'scaffold_project') {
+              const created = Array.isArray(result.output?.created) ? result.output.created : [];
+              const label =
+                wfForProgress.kind === 'ecommerce'
+                  ? 'المتجر'
+                  : wfForProgress.kind === 'static_site'
+                    ? 'الموقع'
+                    : wfForProgress.kind === 'node_api'
+                      ? 'الـ API'
+                      : wfForProgress.kind === 'fullstack'
+                        ? 'التطبيق'
+                        : 'المشروع';
+              ev({ type: 'text', data: `- تم إنشاء هيكل ${label} (scaffold_project): ${created.length} عنصر` });
+            }
+            if (plan?.name === 'npm_install') ev({ type: 'text', data: `- تم تثبيت الحزم (npm_install)` });
+            if (plan?.name === 'quality_run') {
+              const results = Array.isArray(result.output?.results) ? result.output.results : [];
+              const ok = results.filter((r: any) => r && r.ok).length;
+              const skipped = results.filter((r: any) => r && r.skipped).length;
+              ev({ type: 'text', data: `- تم تشغيل فحوص الجودة (quality_run): ناجح ${ok} / متجاوز ${skipped}` });
+            }
+          }
+
+          if (result.ok && plan?.name === 'http_fetch') {
+            try {
+              const urlStr = String(plan?.input?.url || '');
+              const u = new URL(urlStr);
+              // Tools listing formatting
+              if (u.pathname === '/tools') {
+                const j = (result as any)?.output?.json || null;
+                const total = Number(j?.count || 0);
+                const real = Number(j?.realCount || 0);
+                const noop = Number(j?.noopCount || 0);
+                const names = Array.isArray(j?.tools) ? j.tools.slice(0, 10).map((t: any) => String(t?.name || '')).filter(Boolean) : [];
+                const md = [
+                  `### سرد الأدوات`,
+                  `- العدد الكلي: ${total}`,
+                  `- الفعلية: ${real}`,
+                  `- الوهمية (noop): ${noop}`,
+                  names.length ? `- أمثلة: ${names.join(', ')}` : ''
+                ].filter(Boolean).join('\n');
+                forcedText = md;
+                ev({ type: 'text', data: md });
+                assistantTextEmitted = true;
+              }
+              let base = (u.searchParams.get('base') || '').toUpperCase();
+              let sym = (u.searchParams.get('symbols') || u.searchParams.get('sym') || '').toUpperCase();
+              if (!base) {
+                const m = u.pathname.match(/\/latest\/([A-Z]{3,4})/i);
+                if (m) base = m[1].toUpperCase();
+              }
+              if (!sym && typeof plan?.input?.sym === 'string') {
+                sym = String(plan?.input?.sym).toUpperCase();
+              }
+              if (!base && typeof plan?.input?.base === 'string') {
+                base = String(plan?.input?.base).toUpperCase();
+              }
+              const rates = result.output?.json?.rates || {};
+              let rate: number | null = null;
+              if (sym && typeof rates[sym] === 'number') {
+                rate = rates[sym];
+              } else if (typeof result.output?.bodySnippet === 'string') {
+                const m = result.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
+                if (m) rate = Number(m[1]);
+              }
+              if (rate !== null && base && sym) {
+                const md = [
+                  `### سعر العملة`,
+                  `- العملة الأساسية: ${base}`,
+                  `- العملة المقابلة: ${sym}`,
+                  `- السعر اليوم: ${Number(rate).toFixed(4)} ${sym}`
+                ].join('\n');
+                forcedText = md;
+                ev({ type: 'text', data: md });
+                assistantTextEmitted = true;
+              } else if (base && sym) {
+                const fbUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
+                ev({ type: 'step_started', data: { name: `execute:http_fetch(fallback)` } });
+                const fbRes = await executeTool('http_fetch', { url: fbUrl }, { sessionId, workspaceId });
+                ev({ type: fbRes.ok ? 'step_done' : 'step_failed', data: { name: `execute:http_fetch(fallback)`, result: fbRes } });
+                let rate2: number | null = null;
+                if (typeof fbRes.output?.json?.rates?.[sym] === 'number') {
+                  rate2 = fbRes.output.json.rates[sym];
+                } else if (typeof fbRes.output?.bodySnippet === 'string') {
+                  const m2 = fbRes.output.bodySnippet.match(new RegExp(`"${sym}"\\s*:\\s*([\\d.]+)`));
+                  if (m2) rate2 = Number(m2[1]);
+                }
+                if (rate2 !== null) {
+                  const md2 = [
+                    `### سعر العملة`,
+                    `- العملة الأساسية: ${base}`,
+                    `- العملة المقابلة: ${sym}`,
+                    `- السعر اليوم: ${Number(rate2).toFixed(4)} ${sym}`
+                  ].join('\n');
+                  forcedText = md2;
+                  ev({ type: 'text', data: md2 });
+                  assistantTextEmitted = true;
+                }
+
+                if (!offlineMode) {
+                  await ToolExecution.create({ runId, name: 'http_fetch', input: { url: fbUrl }, output: fbRes.output, ok: fbRes.ok, logs: fbRes.logs });
+                }
+
+              }
+              if (u.hostname.includes('wttr.in')) {
+                const city = String(plan?.input?.city || 'Istanbul');
+                const cc = Array.isArray(result.output?.json?.current_condition) ? result.output.json.current_condition[0] : null;
+                const tempC = cc ? Number(cc.temp_C) : null;
+                const desc = cc && Array.isArray(cc.weatherDesc) && cc.weatherDesc[0] ? String(cc.weatherDesc[0].value || '') : '';
+                const hum = cc && typeof cc.humidity !== 'undefined' ? Number(cc.humidity) : null;
+                if (tempC !== null && !Number.isNaN(tempC)) {
+                  const parts = [
+                    `### الطقس`,
+                    `- المدينة: ${city}`,
+                    `- درجة الحرارة: ${tempC.toFixed(0)}°C`
+                  ];
+                  if (desc) parts.push(`- الحالة: ${desc}`);
+                  if (hum !== null && !Number.isNaN(hum)) parts.push(`- الرطوبة: ${hum}%`);
+                  const mdw = parts.join('\n');
+                  forcedText = mdw;
+                  ev({ type: 'text', data: mdw });
+                  assistantTextEmitted = true;
+                }
+              }
+
+              if (/(ipapi\.co|ipinfo\.io|ip-api\.com)/i.test(u.hostname)) {
+                let lat: number | null = null;
+                let lon: number | null = null;
+
+                const j = (result as any)?.output?.json || {};
+                if (typeof j?.latitude === 'number' && typeof j?.longitude === 'number') {
+                  lat = j.latitude; lon = j.longitude;
+                } else if (typeof j?.lat === 'number' && typeof j?.lon === 'number') {
+                  lat = j.lat; lon = j.lon;
+                } else if (typeof j?.loc === 'string' && j.loc.includes(',')) {
+                  const parts = j.loc.split(',').map((x: string) => Number(x.trim()));
+                  if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+                    lat = parts[0]; lon = parts[1];
+                  }
+                }
+
+                if (lat !== null && lon !== null) {
+                  const mdLoc = [
+                    `### الإحداثيات التقريبية`,
+                    `- خط العرض (Latitude): ${lat.toFixed(6)}`,
+                    `- خط الطول (Longitude): ${lon.toFixed(6)}`,
+                    `- المصدر: مزود تحديد الموقع عبر عنوان IP (تقريبي)`
+                  ].join('\n');
+                  forcedText = mdLoc;
+                  ev({ type: 'text', data: mdLoc });
+                  assistantTextEmitted = true;
+                } else {
+                  const status = Number((result as any)?.output?.status);
+                  const host = String(u.hostname || '').toLowerCase();
+                  const tryIpinfo = () => {
+                    const nextUrl = 'https://ipinfo.io/json';
+                    const sig = `http_fetch:${nextUrl}`;
+                    if (!executedToolSigs.has(sig)) {
+                      pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
+                      executedToolSigs.set(sig, 1);
+                    }
+                  };
+                  const tryIpApi = () => {
+                    const nextUrl = 'http://ip-api.com/json';
+                    const sig = `http_fetch:${nextUrl}`;
+                    if (!executedToolSigs.has(sig)) {
+                      pendingPlan = { name: 'http_fetch', input: { url: nextUrl } } as any;
+                      executedToolSigs.set(sig, 1);
+                    }
+                  };
+                  if (host.includes('ipapi.co')) {
+                    if (status === 429) {
+                      tryIpinfo();
+                    } else {
+                      tryIpinfo();
+                    }
+                  } else if (host.includes('ipinfo.io')) {
+                    tryIpApi();
+                  } else if (host.includes('ip-api.com')) {
+                    tryIpinfo();
+                  }
+                }
+              }
+            } catch { }
+          }
+          if (result.ok && plan?.name === 'web_search') {
+            try {
+              const results = Array.isArray(result.output?.results) ? result.output.results : [];
+              const top = results && results[0] ? results[0] : null;
+              const title = top ? String(top.title || '').trim() : '';
+              const url = top ? String(top.url || '').trim() : '';
+              if (title || url) {
+                ev({ type: 'evidence_added', data: { kind: 'search', text: `${title}${title && url ? ' — ' : ''}${url}` } });
+              }
+            } catch { }
+          }
+          if (result.ok && plan?.name === 'html_extract') {
+            try {
+              const title = String(result.output?.title || '').trim();
+              const url = String(plan?.input?.url || '').trim();
+              if (title || url) {
+                ev({ type: 'evidence_added', data: { kind: 'page', text: `${title}${title && url ? ' — ' : ''}${url}` } });
+              }
+            } catch { }
+          }
 
 
           if (!offlineMode) {
-            await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
-            await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed', response: finalContent } });
+            await ToolExecution.create({ runId, sessionId, name: plan?.name || 'unknown', input: persistedInput, output: result.output, ok: result.ok, logs: result.logs });
           }
 
-          cancelledRuns.delete(String(runId));
 
-          if (!res.headersSent) {
-            return res.json({
-              runId,
-              sessionId,
-              status: 'done',
+          if (result.ok && plan?.name === 'central_answer') {
+            const ans = String(result.output?.answer || '').trim();
+            if (ans) {
+              forcedText = ans;
+              ev({ type: 'text', data: ans });
+              assistantTextEmitted = true;
+              break;
+            }
+          }
+
+          if (result.ok && String(plan?.name || '') === 'http_fetch') {
+            const status = Number((result as any)?.output?.status);
+            if (status === 401 || status === 403) {
+              const urlStr = String((plan as any)?.input?.url || '').trim();
+              const msg = [
+                `⚠️ الوصول لهذا الرابط يحتاج تسجيل دخول أو توكن.`,
+                urlStr ? `- الرابط: ${urlStr}` : ``,
+                `- أدخل Bearer Token في نافذة التوكن وأرسله.`,
+                `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+              ].filter(Boolean).join('\n');
+
+              ev({ type: 'text', data: msg });
+              ev({
+                type: 'secret_required',
+                data: {
+                  sessionId,
+                  runId,
+                  provider: 'generic',
+                  key: 'HTTP_BEARER_TOKEN',
+                  label: 'Bearer Token',
+                  reason: `HTTP ${status}`,
+                },
+              });
+
+              const { setPendingTool } = await import('../services/secrets');
+              setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+
+
+              return res.json({
+                runId,
+                sessionId,
+                blocked: true,
+                secretRequired: true,
+                secret: { provider: 'generic', key: 'HTTP_BEARER_TOKEN', label: 'Bearer Token' },
+              });
+            }
+          }
+
+          if (!result.ok) {
+            let errorMsg = String(result.error || '');
+            if ((result as any).detail) {
+              try {
+                const det = (result as any).detail;
+                errorMsg += `\nDetail: ${typeof det === 'object' ? JSON.stringify(det) : String(det)}`;
+              } catch { }
+            }
+            if (!errorMsg && result.logs) errorMsg = result.logs.join('\n');
+            if (!errorMsg) errorMsg = 'Unknown error';
+
+            if (String(plan?.name || '') === 'git_ops' && isGitAuthError(errorMsg)) {
+              const msg = [
+                `⚠️ مطلوب تسجيل دخول قبل دفع التحديثات إلى GitHub.`,
+                `- أدخل توكن GitHub (Personal Access Token) في نافذة التوكن وأرسله.`,
+                `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+              ].join('\n');
+
+              ev({ type: 'text', data: msg });
+              ev({
+                type: 'secret_required',
+                data: {
+                  sessionId,
+                  runId,
+                  provider: 'github',
+                  key: 'GITHUB_TOKEN',
+                  label: 'GitHub Token',
+                  reason: 'git push يحتاج مصادقة',
+                },
+              });
+
+              const { setPendingTool } = await import('../services/secrets');
+              setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+
+
+              return res.json({
+                runId,
+                sessionId,
+                blocked: true,
+                secretRequired: true,
+                secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+              });
+            }
+
+            if (String(plan?.name || '') === 'payments_create_checkout_session' && isStripeAuthError(errorMsg)) {
+              const msg = [
+                `⚠️ مطلوب مفتاح Stripe لإنشاء جلسة دفع.`,
+                `- أدخل STRIPE_API_KEY في نافذة التوكن وأرسله.`,
+                `- سيتم حفظ المفتاح بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+              ].join('\n');
+
+              ev({ type: 'text', data: msg });
+              ev({
+                type: 'secret_required',
+                data: {
+                  sessionId,
+                  runId,
+                  provider: 'stripe',
+                  key: 'STRIPE_API_KEY',
+                  label: 'Stripe Secret Key',
+                  reason: 'إنشاء جلسة دفع يحتاج مصادقة',
+                },
+              });
+
+              const { setPendingTool } = await import('../services/secrets');
+              await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+
+
+              return res.json({
+                runId,
+                sessionId,
+                blocked: true,
+                secretRequired: true,
+                secret: { provider: 'stripe', key: 'STRIPE_API_KEY', label: 'Stripe Secret Key' },
+              });
+            }
+
+            if ((String(plan?.name || '') === 'github_repo_manager' || String(plan?.name || '') === 'github_create_repo') && isGithubAuthError(errorMsg)) {
+              const msg = [
+                `⚠️ مطلوب توكن GitHub لإنشاء مستودع جديد عبر API.`,
+                `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+                `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+              ].join('\n');
+
+              ev({ type: 'text', data: msg });
+              ev({
+                type: 'secret_required',
+                data: {
+                  sessionId,
+                  runId,
+                  provider: 'github',
+                  key: 'GITHUB_TOKEN',
+                  label: 'GitHub Token',
+                  reason: 'إنشاء ريبو يحتاج مصادقة',
+                },
+              });
+
+              const { setPendingTool } = await import('../services/secrets');
+              await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+
+
+              return res.json({
+                runId,
+                sessionId,
+                blocked: true,
+                secretRequired: true,
+                secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+              });
+            }
+            if (String(plan?.name || '') === 'github_create_or_update_file' && isGithubAuthError(errorMsg)) {
+              const msg = [
+                `⚠️ مطلوب توكن GitHub لإنشاء/تعديل ملفات داخل المستودع عبر API.`,
+                `- أدخل GitHub Personal Access Token في نافذة التوكن وأرسله.`,
+                `- سيتم حفظ التوكن بشكل آمن لهذا الحساب ولن يظهر في المحادثة.`,
+              ].join('\n');
+
+              ev({ type: 'text', data: msg });
+              ev({
+                type: 'secret_required',
+                data: {
+                  sessionId,
+                  runId,
+                  provider: 'github',
+                  key: 'GITHUB_TOKEN',
+                  label: 'GitHub Token',
+                  reason: 'تعديل ملفات الريبو يحتاج مصادقة',
+                },
+              });
+
+              const { setPendingTool } = await import('../services/secrets');
+              await setPendingTool(String(sessionId), { runId, name: String(plan?.name || ''), input: plan?.input });
+
+
+              try { if (!offlineMode) await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } }); } catch { }
+
+
+              return res.json({
+                runId,
+                sessionId,
+                blocked: true,
+                secretRequired: true,
+                secret: { provider: 'github', key: 'GITHUB_TOKEN', label: 'GitHub Token' },
+              });
+            }
+
+            // Self-Healing Notification (user-facing, simplified)
+            const userFriendlyError = isArabicText(userTextForOverrides)
+              ? `⚠️ حدث خطأ أثناء تنفيذ الأداة '${plan?.name}'.\\n**السبب**: ${String(errorMsg).slice(0, 200)}`
+              : `⚠️ An error occurred while executing tool '${plan?.name}'.\\n**Reason**: ${String(errorMsg).slice(0, 200)}`;
+            ev({ type: 'text', data: userFriendlyError });
+            assistantTextEmitted = true;
+
+            // Internal history for AI self-healing (not shown to user)
+            history.push({
+              role: 'assistant',
+              content: `INTERNAL: Tool '${plan?.name}' FAILED with error: ${errorMsg}. 
+Analyze this error. If it's a network/connection issue (localhost vs container hostname), check your network configuration. 
+If this is a browser_open failure, DO NOT automatically retry the same URL. Ask the user for clarification or skip the preview step.`
             });
+          } else {
+            history.push({ role: 'assistant', content: `Tool '${plan?.name}' executed. tool call: ${plan?.name}. Result: ${safeOutput(String(plan?.name || ''), result.output)}` });
           }
-        } catch (globalErr: any) {
-          console.error('[FATAL /runs/start Background]', globalErr);
-          // Log to run object
+
+          steps++;
+
+          // If echo, we are done
+          if (plan?.name === 'echo') {
+            forcedText = String(plan?.input?.text || '');
+            break;
+          }
+        }
+
+        const MAX_FINAL_INLINE_CHARS = 1800;
+        const truncateFinal = (s: string, max = MAX_FINAL_INLINE_CHARS) => (s.length > max ? `${s.slice(0, max)}…[truncated]` : s);
+        const extractTitleFromHtmlFinal = (html: string) => {
+          const m = html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i);
+          const t = String(m?.[1] || '').replace(/\s+/g, ' ').trim();
+          return t || '';
+        };
+        const normalizeDisplayUrlFinal = (raw: any) => {
+          let s = String(raw ?? '').trim();
+          while (s.length >= 2) {
+            const first = s[0];
+            const last = s[s.length - 1];
+            const wrap = (c: string) =>
+              c === '`' || c === '"' || c === "'" || c === '“' || c === '”' || c === '‘' || c === '’';
+            if (wrap(first) && wrap(last)) s = s.slice(1, -1).trim();
+            else break;
+          }
+          s = s.replace(/[)\]`.,;:!?،؛؟]+$/g, '').trim();
+          if (!s) return s;
+          if (/^https?:\/\//i.test(s)) return s;
+          if (/^\/\//.test(s)) return `https:${s}`;
+          if (/^(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:\/|$)/i.test(s)) return `https://${s}`;
+          return s;
+        };
+        const inferSiteLabelFinal = (url: string, dom: string) => {
+          const u = normalizeDisplayUrlFinal(url);
           try {
-            if (runId && !offlineMode) {
-              await Run.findByIdAndUpdate(runId, { $set: { status: 'failed', response: `Fatal Background Error: ${globalErr.message}` } });
+            if (u) {
+              const host = new URL(u).hostname.replace(/^www\./i, '');
+              if (host) return host;
             }
           } catch { }
+          const d = String(dom || '');
+          if (/youtube\.com|ytd-app/i.test(d)) return 'youtube.com';
+          if (/accounts\.google\.com/i.test(d)) return 'accounts.google.com';
+          if (/github\.com/i.test(d)) return 'github.com';
+          const title = extractTitleFromHtmlFinal(d);
+          return title || 'page';
+        };
+        const summarizeBrowserOutputFinal = (out: any) => {
+          if (!out || typeof out !== 'object') return out;
+          const urlRaw =
+            typeof (out as any).url === 'string' ? (out as any).url : typeof (out as any).pageUrl === 'string' ? (out as any).pageUrl : '';
+          const url = normalizeDisplayUrlFinal(urlRaw);
+          const dom = typeof (out as any).dom === 'string' ? (out as any).dom : '';
+          const title = dom ? extractTitleFromHtmlFinal(dom) : '';
+          const site = inferSiteLabelFinal(url, dom);
+          const domLen = dom ? dom.length : 0;
+          const redactionEnabled = typeof (out as any).redactionEnabled === 'boolean' ? Boolean((out as any).redactionEnabled) : undefined;
+          const u = String(url || '').toLowerCase();
+          const domLower = String(dom || '').toLowerCase();
+          const hasPasswordField = /type=["']password["']|name=["']password["']|passw(or)?d|passwd/i.test(domLower);
+          const hasLoginFormSignal = /<form\b[\s\S]{0,4000}(type=["']password["']|name=["']password["'])/i.test(dom);
+          const urlLooksLogin = /serviceLogin|\/login\b|\/signin\b|accounts\.google\.com/i.test(u);
+          const domStrongLogin = /<title[^>]*>[\s\S]*?(sign in|login|تسجيل\s+الدخول)[\s\S]*?<\/title>/i.test(dom) || /ServiceLogin/i.test(dom);
+          const loginLike = Boolean((urlLooksLogin && (hasPasswordField || hasLoginFormSignal)) || (domStrongLogin && hasPasswordField));
+          const summary: any = { site };
+          if (url) summary.url = url;
+          if (title) summary.title = title;
+          if (loginLike) summary.pageType = 'login';
+          if (domLen) summary.domLength = domLen;
+          if (typeof redactionEnabled === 'boolean') summary.redactionEnabled = redactionEnabled;
+          return summary;
+        };
+        const sanitizeFinalForInline = (toolName: string, obj: any) => {
+          if (obj == null) return obj;
+          const t = String(toolName || '');
+          if (/^browser_/.test(t)) return summarizeBrowserOutputFinal(obj);
+          if (typeof obj === 'string') return truncateFinal(obj);
+          if (typeof obj === 'object') {
+            try {
+              const raw = JSON.stringify(obj);
+              if (raw.length <= MAX_FINAL_INLINE_CHARS) return obj;
+              return truncateFinal(raw);
+            } catch {
+              return '[Result too large or circular]';
+            }
+          }
+          return obj;
+        };
+
+        const finalContent =
+          forcedText ||
+          (() => {
+            const toolName = String(lastExecutedToolName || '');
+            const raw = (lastResult as any)?.output ?? (lastResult as any)?.error ?? 'No output';
+            const sanitized = sanitizeFinalForInline(toolName, raw);
+            if (typeof sanitized === 'string') return sanitized;
+            try {
+              return JSON.stringify(sanitized);
+            } catch {
+              return 'Output too large';
+            }
+          })();
+
+        if (!assistantTextEmitted) {
+          ev({ type: 'text', data: finalContent });
         }
-      })();
-    } catch (globalErr: any) {
-      console.error('[FATAL /runs/start]', globalErr);
-      if (!res.headersSent) {
-        const msg = typeof globalErr?.message === 'string' ? globalErr.message : String(globalErr);
-        return res.status(500).json({
-          error: 'Internal Server Error',
-          message: msg.slice(0, 500),
-        });
+
+        ev({ type: 'run_completed', data: { runId, result: lastResult } });
+        ev({ type: 'run_finished', data: { runId, status: 'done' } });
+
+
+        if (!offlineMode) {
+          await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
+          await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed', response: finalContent } });
+        }
+
+        cancelledRuns.delete(String(runId));
+
+        if (!res.headersSent) {
+          return res.json({
+            runId,
+            sessionId,
+            status: 'done',
+          });
+        }
+      } catch (globalErr: any) {
+        console.error('[FATAL /runs/start Background]', globalErr);
+        // Log to run object
+        try {
+          if (runId && !offlineMode) {
+            await Run.findByIdAndUpdate(runId, { $set: { status: 'failed', response: `Fatal Background Error: ${globalErr.message}` } });
+          }
+        } catch { }
       }
+    })();
+  } catch (globalErr: any) {
+    console.error('[FATAL /runs/start]', globalErr);
+    if (!res.headersSent) {
+      const msg = typeof globalErr?.message === 'string' ? globalErr.message : String(globalErr);
+      return res.status(500).json({
+        error: 'Internal Server Error',
+        message: msg.slice(0, 500),
+      });
     }
-  });
+  }
+});
 
 export default router;
