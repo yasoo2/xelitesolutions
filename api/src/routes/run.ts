@@ -389,6 +389,51 @@ function isArabicText(raw: string): boolean {
   return /[\u0600-\u06FF]/.test(String(raw || ''));
 }
 
+/** Extract a meaningful project name from user text (Arabic or English) */
+function extractBuildName(text: string): string {
+  const s = String(text || '').trim();
+
+  // 1. Explicit naming: "باسم NovaTime", "called MyStore", "اسمه فلان"
+  const explicit = s.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF-]+)/i);
+  if (explicit?.[1]) return explicit[1].replace(/\s+/g, '-');
+
+  // 2. Common Arabic-to-English word map for slug generation
+  const arabicToSlug: Record<string, string> = {
+    'حلويات': 'sweets', 'ساعات': 'watches', 'ملابس': 'clothing', 'اكياس': 'bags',
+    'أكياس': 'bags', 'نايلون': 'nylon', 'بلاستيك': 'plastic', 'احذية': 'shoes',
+    'أحذية': 'shoes', 'عطور': 'perfumes', 'مجوهرات': 'jewelry', 'اثاث': 'furniture',
+    'أثاث': 'furniture', 'الكترونيات': 'electronics', 'كتب': 'books', 'زهور': 'flowers',
+    'ورود': 'roses', 'قهوة': 'coffee', 'شاي': 'tea', 'هواتف': 'phones',
+    'جوالات': 'phones', 'كمبيوتر': 'computers', 'سيارات': 'cars', 'دراجات': 'bikes',
+    'طعام': 'food', 'مطعم': 'restaurant', 'كافيه': 'cafe', 'صيدلية': 'pharmacy',
+    'عقارات': 'realestate', 'سفر': 'travel', 'رياضة': 'sports', 'العاب': 'games',
+    'ألعاب': 'games', 'اطفال': 'kids', 'أطفال': 'kids', 'نساء': 'women', 'رجال': 'men',
+    'آيس': 'ice', 'ايس': 'ice', 'كريم': 'cream', 'شوكولاته': 'chocolate',
+    'متجر': 'store', 'موقع': 'site', 'صفحة': 'page', 'هبوط': 'landing',
+    'بورتفوليو': 'portfolio', 'مدونة': 'blog', 'سامسونج': 'samsung',
+  };
+
+  // 3. Extract product/theme words after store-type keywords
+  const themeMatch = s.match(/(?:متجر|دكان|محل|موقع|صفحة|تطبيق|store|shop)\s+(?:ل|لل|لبيع|ال)?([\u0600-\u06FF\s]+)/i);
+  if (themeMatch?.[1]) {
+    const words = themeMatch[1].trim().split(/\s+/).slice(0, 3);
+    const slugParts = words.map(w => arabicToSlug[w] || w.replace(/[^\w\u0600-\u06FF]/g, '')).filter(Boolean);
+    if (slugParts.length > 0 && slugParts.some(p => /^[a-z]/.test(p))) {
+      return slugParts.join('-') + '-store';
+    }
+  }
+
+  // 4. English theme extraction: "build a watch store" → "watch-store"
+  const enMatch = s.match(/(?:build|create|make)\s+(?:a\s+)?(.{2,30}?)(?:\s+store|\s+shop|\s+site|\s+page|\s+app)/i);
+  if (enMatch?.[1]) {
+    return enMatch[1].trim().replace(/\s+/g, '-').toLowerCase() + '-store';
+  }
+
+  // 5. Fallback: unique timestamped name
+  const ts = Date.now().toString(36).slice(-4);
+  return `project-${ts}`;
+}
+
 function normalizeToWords(raw: string): string {
   const s = String(raw || '').trim();
   if (!s) return '';
@@ -1927,7 +1972,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           if (isClearBuildRequest) {
             console.info('[AGENT MODE] 🔥 Build request detected — bypassing LLM chat, forcing autonomous build pipeline!');
-            const buildName = rawUserText.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
+            const buildName = extractBuildName(rawUserText);
             const buildType = /(?:متجر|store|shop|ecommerce|دكان)/i.test(rawUserText) ? 'ecommerce' : 'saas';
 
             broadcastThinkingPhase(String(sessionId), 'executing', `🚀 بناء المشروع: ${buildName}`);
@@ -2703,7 +2748,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 historyHasToolCall(history as any, 'scaffold_full_stack');
               if (!alreadyBuilt) {
                 console.info('[GOD MODE] ⚡ Discovery complete → Forcing website_full_pipeline execution!');
-                const buildName = userTextForOverrides.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
+                const buildName = extractBuildName(userTextForOverrides);
                 plan = {
                   name: 'website_full_pipeline',
                   input: {
