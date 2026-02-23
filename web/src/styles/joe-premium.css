@@ -314,10 +314,10 @@
 .joe-main {
     flex: 1;
     display: flex;
-    gap: 12px;
-    padding: 12px;
-    /* Add padding top to account for fixed header (56px) + extra spacing */
-    padding-top: calc(var(--joe-header-height) + 12px);
+    gap: 4px;
+    padding: 4px;
+    padding-top: calc(var(--joe-header-height) + 4px);
+    padding-bottom: 0;
     overflow: hidden;
     min-height: 0;
     position: relative;
@@ -331,7 +331,8 @@
 .joe-files-panel {
     background: var(--joe-bg-panel);
     border: 1px solid rgba(240, 193, 75, 0.25);
-    border-radius: var(--joe-border-radius);
+    border-radius: var(--joe-border-radius) var(--joe-border-radius) 0 0;
+    border-bottom: none;
     box-shadow:
         0 0 30px rgba(240, 193, 75, 0.08),
         0 10px 40px rgba(0, 0, 0, 0.5),
@@ -998,7 +999,7 @@
     position: relative;
     min-height: 0;
     background: rgba(0, 0, 0, 0.3);
-    border-radius: 0 0 var(--joe-border-radius) var(--joe-border-radius);
+    border-radius: 0;
 }
 
 .joe-workspace-content>* {
@@ -1487,9 +1488,9 @@
 
     .joe-main {
         flex-direction: column;
-        gap: 8px;
-        padding: 0 8px 8px 8px;
-        /* Ensure main container takes only available space */
+        gap: 4px;
+        padding: 0 4px;
+        padding-top: calc(var(--joe-header-height) + 4px);
         flex: 1;
         min-height: 0;
     }
