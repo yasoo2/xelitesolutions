@@ -304,7 +304,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
-  base: '/preview/${options.port || 5180}/',
   server: { port: ${options.port || 5180}, host: '0.0.0.0', allowedHosts: true, proxy: { '/api': 'http://localhost:4000' } },
   test: { environment: 'node' }
 });`);
