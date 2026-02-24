@@ -881,6 +881,8 @@
     transform: translateY(-2px);
     box-shadow: 0 8px 16px rgba(240, 193, 75, 0.4);
     border-color: var(--joe-gold-primary);
+    background: linear-gradient(135deg, var(--joe-gold-light, #fbdf8a) 0%, var(--joe-gold-primary) 100%);
+    color: #000;
 }
 
 /* Update inner send button in CommandComposer (which uses .send-btn class) */
@@ -894,11 +896,15 @@
     border: 1px solid rgba(240, 193, 75, 0.4) !important;
     opacity: 1 !important;
     box-shadow: 0 2px 10px rgba(240, 193, 75, 0.2) !important;
+    transition: all 0.2s ease !important;
 }
 
 .joe-chat-input-area .send-btn:hover {
     transform: scale(1.05) !important;
     box-shadow: 0 6px 16px rgba(240, 193, 75, 0.3) !important;
+    background: linear-gradient(135deg, var(--joe-gold-light, #fbdf8a) 0%, var(--joe-gold-primary) 100%) !important;
+    border-color: var(--joe-gold-primary) !important;
+    color: #000 !important;
 }
 
 .joe-chat-input-area .send-btn svg {

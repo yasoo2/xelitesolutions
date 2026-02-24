@@ -158,7 +158,26 @@ export default function JoeIDELayout({
     // Sidebar states
     const [sidebarView, setSidebarView] = useState<'explorer' | 'github'>('explorer');
     const [isChatCollapsed, setIsChatCollapsed] = useState(false);
-    const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(false);
+    const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(() => {
+        // Autocollapse explorer on mobile
+        return typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
+    });
+
+    // Handle initial mobile state for chat
+    const [wasMobileInitChecked, setWasMobileInitChecked] = useState(false);
+
+    useEffect(() => {
+        if (!wasMobileInitChecked && typeof window !== 'undefined') {
+            const isMobile = window.innerWidth <= 768;
+            if (isMobile) {
+                // On mobile, to hide the workspace, we actually want chat NOT collapsed, but we DO want Explorer collapsed. 
+                // Wait, if BOTH are not collapsed, the workspace is hidden? The mobile layout might take 100% for whatever is active.
+                setIsExplorerCollapsed(true);
+                setIsChatCollapsed(false);
+            }
+            setWasMobileInitChecked(true);
+        }
+    }, [wasMobileInitChecked]);
 
     // Internal state for workspace tab if not controlled
     const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
