@@ -349,6 +349,14 @@
     display: none;
 }
 
+/* ========== Center Workspace Container ========== */
+.joe-workspace-container {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 /* ========== Chat Panel (Left) ========== */
 .joe-chat-panel {
     width: var(--joe-chat-actual-width);
