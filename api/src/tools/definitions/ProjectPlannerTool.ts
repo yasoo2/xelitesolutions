@@ -165,6 +165,7 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_f
      */
     private fallbackPlan(projectDescription: string, analysis?: any): any {
         const projectName = projectDescription.split(' ').slice(0, 3).join(' ');
+        const safeDirName = projectName.replace(/[^a-zA-Z0-9-_\u0600-\u06FF]/g, '-').replace(/-+/g, '-').slice(0, 30) || 'new-project';
         const complexity = analysis?.complexity || 'medium';
         const phaseCount = complexity === 'simple' ? 3 : complexity === 'complex' ? 5 : 4;
 
@@ -178,30 +179,80 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_f
                     name: 'Project Setup',
                     description: 'Initialize project structure and dependencies',
                     tasks: [
-                        { task: 'Create project directory', tool: 'scaffold_project', priority: 'high' },
-                        { task: 'Install dependencies', tool: 'npm_manager', priority: 'high' }
+                        {
+                            task: 'Create project directory and base files',
+                            tool: 'scaffold_project',
+                            args: {
+                                baseDir: safeDirName,
+                                structure: {
+                                    'package.json': JSON.stringify({
+                                        name: safeDirName,
+                                        version: '1.0.0',
+                                        private: true,
+                                        scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' },
+                                        devDependencies: { vite: '^5.0.0' }
+                                    }, null, 2),
+                                    'vite.config.js': `import { defineConfig } from 'vite';\nexport default defineConfig({\n  server: { host: '0.0.0.0', port: 5180, allowedHosts: true }\n});`,
+                                    'src': null,
+                                    'public': null,
+                                    'README.md': `# ${projectName}\n\n${projectDescription}`
+                                }
+                            },
+                            priority: 'high'
+                        },
+                        {
+                            task: 'Install dependencies',
+                            tool: 'npm_manager',
+                            args: { command: 'install' },
+                            priority: 'medium'
+                        }
                     ],
-                    deliverables: ['package.json', 'README.md'],
+                    deliverables: ['package.json', 'vite.config.js', 'README.md'],
                     estimatedTime: '15 minutes'
                 },
                 {
                     phaseNumber: 2,
                     name: 'Core Implementation',
-                    description: 'Build main features',
+                    description: 'Build main landing page with modern design',
                     tasks: [
-                        { task: 'Create main files', tool: 'file_edit', priority: 'high' }
+                        {
+                            task: 'Create main HTML landing page',
+                            tool: 'ai_write_file',
+                            args: {
+                                path: `${safeDirName}/index.html`,
+                                description: `Create a stunning, modern HTML5 landing page for "${projectDescription}". Use glassmorphism, vibrant gradients, responsive design, Arabic RTL support where needed. Include a hero section, features section, and footer. Style everything inline or with an embedded <style> tag. Make it production-quality.`
+                            },
+                            priority: 'high'
+                        },
+                        {
+                            task: 'Create CSS styles',
+                            tool: 'ai_write_file',
+                            args: {
+                                path: `${safeDirName}/src/style.css`,
+                                description: `Create a comprehensive CSS stylesheet for "${projectDescription}" landing page. Include: CSS reset, custom properties for colors/fonts, responsive grid, glassmorphism cards, gradient backgrounds, smooth animations, hover effects, mobile-first media queries, Arabic & RTL support.`
+                            },
+                            priority: 'high'
+                        }
                     ],
-                    deliverables: ['src/index.js'],
+                    deliverables: ['index.html', 'src/style.css'],
                     estimatedTime: '45 minutes'
                 },
                 {
                     phaseNumber: 3,
-                    name: 'Testing & Verification',
-                    description: 'Test and verify functionality',
+                    name: 'Enhancement & Assets',
+                    description: 'Add interactivity and polish',
                     tasks: [
-                        { task: 'Run tests', tool: 'shell_execute', priority: 'medium' }
+                        {
+                            task: 'Create JavaScript for interactivity',
+                            tool: 'ai_write_file',
+                            args: {
+                                path: `${safeDirName}/src/main.js`,
+                                description: `Create a JavaScript file for the "${projectDescription}" landing page. Include: smooth scroll, mobile navigation toggle, scroll animations (intersection observer), dynamic counters, form validation if applicable.`
+                            },
+                            priority: 'medium'
+                        }
                     ],
-                    deliverables: ['tests/'],
+                    deliverables: ['src/main.js'],
                     estimatedTime: '20 minutes'
                 },
                 {
@@ -209,7 +260,7 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_f
                     name: 'Launch & Preview',
                     description: 'Start the development server and preview the project',
                     tasks: [
-                        { task: 'Start dev server', tool: 'dev_server_start', priority: 'high' }
+                        { task: 'Start dev server', tool: 'dev_server_start', args: { directory: safeDirName }, priority: 'high' }
                     ],
                     deliverables: ['Live Preview'],
                     estimatedTime: '5 minutes'
