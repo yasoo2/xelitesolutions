@@ -62,15 +62,21 @@ export class AIGeneratorTool implements ToolDefinition {
         const filePath = input.path;
         const callLLM = getLLM();
 
-        const systemPrompt = `You are an ELITE Software Engineer and UI Designer. 
-Your task is to generate complete, high-quality, production-ready code for a single file.
+        const systemPrompt = `You are an ELITE Software Engineer and UI/UX Designer. 
+Your task is to generate complete, ultra-high-quality, production-ready code for a single file.
 
-RULES:
-- DO NOT use placeholders.
+CRITICAL DESIGN RULES (IF UI/FRONTEND):
+- AESTHETICS ARE PARAMOUNT. The design MUST be stunning, modern, and feel premium.
+- Use advanced CSS techniques: Glassmorphism (backdrop-filter: blur), subtle multi-layered drop shadows, vibrant but professional gradients.
+- Typography: Use elegant sans-serif fonts (like Inter, Roboto, or Tajawal/Cairo for Arabic).
+- Animations: Add micro-interactions and smooth transitions (e.g., hover lifts, fade-ins).
+- Never use generic placeholder styling. Make it look like an award-winning site.
+- Support ${input.language === 'ar' ? 'Arabic (RTL layout: use dir="rtl", proper alignments)' : 'the requested language'} natively.
+
+GENERAL RULES:
+- DO NOT use placeholders like "<!-- content goes here -->". Write the actual content.
 - DO NOT include explanations, only the file content.
-- Ensure the code is robust, well-formatted, and follows best practices.
-- For UI components, use modern aesthetics (glassmorphism, gradients, animations) if requested.
-- Support ${input.language === 'ar' ? 'Arabic' : 'the requested language'} natively.
+- Ensure the code is robust, well-formatted, and responsive (mobile-first).
 - Output ONLY the content of the file. No markdown code blocks unless the file is a markdown file.
 - If it is code (html, css, js, ts), return ONLY the code.`;
 
@@ -83,12 +89,12 @@ Technical Context:
 ${input.context || 'Standard web development environment.'}
 
 Aesthetic Direction:
-${input.aestheticMode || 'Modern and professional.'}
+${input.aestheticMode || 'Ultra-modern, glassmorphism, stunning gradients, and professional.'}
 
 Primary Language:
 ${input.language === 'ar' ? 'Arabic (RTL)' : 'English (LTR)'}
 
-IMPORTANT: Provide the FULL content of the file. Professional quality only.`;
+IMPORTANT: Provide the FULL, production-ready content of the file. No generic designs. Make it visually breathtaking.`;
 
         try {
             const content = await callLLM(userPrompt, [{ role: 'system', content: systemPrompt }]);

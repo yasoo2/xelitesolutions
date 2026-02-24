@@ -569,6 +569,8 @@ If you decide to take an action, you MUST output a JSON block like this (and ONL
 export const getSystemPrompt = (user?: {
   name?: string;
   systemInstructions?: string;
+  workspaceRoot?: string;
+  workspaceName?: string;
 }) => {
   const now = new Date();
   const date = now.toLocaleDateString("en-US", {
@@ -589,9 +591,26 @@ export const getSystemPrompt = (user?: {
   if (user?.name) {
     systemPromptOutput += `\n\nUSER CONTEXT:\nUser Name: ${user.name}\nINSTRUCTION: meaningful interactions should include the user's name naturally (e.g., "Certainly, ${user.name}", "I can help with that, ${user.name}").`;
   }
-  if ((user as any)?.workspaceRoot) {
-    systemPromptOutput += `\n\nWORKSPACE CONTEXT:\nPath: ${(user as any).workspaceRoot}\nName: ${(user as any).workspaceName || 'Default'}`;
+
+  // Auto-inject Workspace Context
+  let root = user?.workspaceRoot;
+  let wName = user?.workspaceName;
+  try {
+    if (!root) {
+      const { workspaceService } = require('./services/WorkspaceService');
+      root = workspaceService.getActiveRoot();
+    }
+    if (root && !wName) {
+      wName = require('path').basename(root);
+    }
+  } catch (e) {
+     // Ignore missing workspace gracefully
   }
+
+  if (root) {
+    systemPromptOutput += `\n\nWORKSPACE CONTEXT:\nPath: ${root}\nName: ${wName || 'Default'}\nCRUCIAL INSTRUCTION: You are currently operating inside this workspace directory. When analyzing the project, reading files, or writing code, assume this is your absolute root path. DO NOT ask the user "which file to edit" if they request changes to this project—just use the tools directly on the files inside this path.`;
+  }
+
   if (user?.systemInstructions && user.systemInstructions.trim()) {
     systemPromptOutput += `\n\nUSER CUSTOM INSTRUCTIONS:\n${user.systemInstructions.trim()}`;
   }
