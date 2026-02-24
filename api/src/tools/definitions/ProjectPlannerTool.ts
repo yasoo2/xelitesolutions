@@ -126,12 +126,28 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_f
 
             logs.push(`LLM planning completed`);
 
-            // Parse LLM response
             let plan;
             try {
-                const jsonMatch = response.match(/\{[\s\S]*\}/);
-                const jsonStr = jsonMatch ? jsonMatch[0] : response;
+                // 1. First, try to extract specifically from markdown JSON blocks
+                const markdownMatch = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+                let jsonStr = markdownMatch ? markdownMatch[1] : response;
+
+                // 2. Next, try to find the outermost JSON braces if still failing
+                if (!markdownMatch) {
+                    const braceMatch = jsonStr.match(/\{[\s\S]*\}/);
+                    if (braceMatch) jsonStr = braceMatch[0];
+                }
+
+                // 3. Clean up common JSON errors caused by small models
+                jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1'); // Remove trailing commas
+                jsonStr = jsonStr.replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g) => g ? "" : m); // Try strip comments
+
                 plan = JSON.parse(jsonStr);
+
+                // Basic validation
+                if (!plan.phases || !Array.isArray(plan.phases)) {
+                    throw new Error("Missing phases array in JSON");
+                }
             } catch (parseError) {
                 logs.push(`JSON parse error: ${parseError}`);
                 // Fallback to basic plan
@@ -220,7 +236,14 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_f
                             tool: 'ai_write_file',
                             args: {
                                 path: `${safeDirName}/index.html`,
-                                description: `Create a stunning, modern HTML5 landing page for "${projectDescription}". Use glassmorphism, vibrant gradients, responsive design, Arabic RTL support where needed. Include a hero section, features section, and footer. Style everything inline or with an embedded <style> tag. Make it production-quality.`
+                                description: `Create an ultra-high-quality, modern HTML5 web application exactly matching this core requirement: "${projectDescription}". 
+                                
+CRITICAL RULES:
+- Read the requirement carefully! If the user wants a store, build a store UI. If they want a blog, build a blog.
+- DO NOT just build a generic landing page with a hero and footer, unless they asked for it.
+- Use glassmorphism, vibrant gradients, responsive design. 
+- Ensure Arabic RTL layout (dir="rtl") if the prompt is in Arabic.
+- Provide FULL, production-ready code. No <!-- placeholders -->.`
                             },
                             priority: 'high'
                         },
@@ -229,7 +252,13 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_f
                             tool: 'ai_write_file',
                             args: {
                                 path: `${safeDirName}/src/style.css`,
-                                description: `Create a comprehensive CSS stylesheet for "${projectDescription}" landing page. Include: CSS reset, custom properties for colors/fonts, responsive grid, glassmorphism cards, gradient backgrounds, smooth animations, hover effects, mobile-first media queries, Arabic & RTL support.`
+                                description: `Create a comprehensive CSS stylesheet tailored explicitly for: "${projectDescription}".
+                                
+CRITICAL RULES:
+- Design it based on the exact nature of the requested project.
+- Include: CSS reset, premium typography, custom properties, responsive grid, glassmorphism cards, nested multi-layer shadows, gradient backgrounds.
+- Add smooth animations and hover micro-interactions.
+- Must support mobile-first media queries and Arabic RTL alignment.`
                             },
                             priority: 'high'
                         }
