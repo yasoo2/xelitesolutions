@@ -75,6 +75,8 @@ import {
   SelfConfidenceTool
 } from './definitions/EliteTools';
 import { AIGeneratorTool } from './definitions/AIGeneratorTool';
+import { NotifyUserTool } from './definitions/NotifyUserTool';
+import { PythonExecutionTool } from './definitions/PythonExecutionTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -229,6 +231,9 @@ export const tools: ToolDefinition[] = [
   new MultiAgentDebateTool(),
   new SelfConfidenceTool(),
   new AIGeneratorTool(),
+  // --- Manus-Inspired Agent Tools ---
+  new NotifyUserTool(),
+  new PythonExecutionTool(),
   // --- Virtual Tools (Aliased in ToolService) ---
   {
     name: 'web_search',

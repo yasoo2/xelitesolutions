@@ -4244,6 +4244,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
           }
 
+          // notify_user: Non-blocking progress update — do NOT break the loop
+          if (result.ok && plan?.name === 'notify_user') {
+            const msg = result.output?.acknowledged ? String(plan?.input?.message || '') : '';
+            if (msg) {
+              ev({ type: 'text', data: `🔔 ${msg}` });
+            }
+            // Continue the loop — do NOT break
+          }
+
           if (result.ok && plan?.name === 'echo') {
             const text = result.output?.text;
             if (text) {
@@ -4725,8 +4734,12 @@ If this is a browser_open failure, DO NOT automatically retry the same URL. Ask 
 
           steps++;
 
+          // If notify_user, continue the loop (non-blocking)
+          if (plan?.name === 'notify_user') {
+            // Do NOT break — the agent continues working
+          }
           // If echo, we are done
-          if (plan?.name === 'echo') {
+          else if (plan?.name === 'echo') {
             forcedText = String(plan?.input?.text || '');
             break;
           }

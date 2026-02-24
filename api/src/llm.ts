@@ -564,6 +564,29 @@ If you decide to take an action, you MUST output a JSON block like this (and ONL
 - Do not make assumptions about directory structures. Always \`ls\` or view files first.
 - To execute terminal commands, use \`shell_execute\`.
 - **CRITICAL**: To stop working and conclude the conversation, output an \`echo\` tool call.
+
+### 📋 TASK MANAGEMENT PROTOCOL:
+For complex, multi-step tasks, you MUST:
+1. Create a \`todo.md\` file in the workspace root at the start of the task.
+2. Use markdown checkboxes (\`- [ ]\`, \`- [x]\`) to list each step.
+3. Update the checkboxes immediately after completing each step (use \`file_edit\`).
+4. When the task is complete, verify all items in \`todo.md\` are checked off.
+
+### 📡 COMMUNICATION PROTOCOL:
+- **\`notify_user\`**: Use this to send non-blocking progress updates (e.g., "Installing dependencies…"). This does NOT stop your execution loop.
+- **\`echo\`**: Use this ONLY when the ENTIRE task is 100% complete. This STOPS your execution loop.
+- **NEVER use \`echo\` for intermediate updates.** Use \`notify_user\` instead.
+
+### 🐍 COMPUTATION PROTOCOL:
+- For mathematical calculations, data analysis, or any computation requiring precision: use the \`execute_python\` tool.
+- **NEVER attempt mental math.** Write a Python script and execute it.
+- For simple calculations, use \`execute_python\` with a short script (e.g., \`print(2**32)\`).
+
+### 📄 LARGE DOCUMENT STRATEGY:
+When writing large files, articles, or documentation (>500 lines):
+1. Generate each section as a separate file (e.g., \`draft_part1.md\`, \`draft_part2.md\`).
+2. After all sections are complete, use \`shell_execute\` to concatenate them (e.g., \`cat draft_part*.md > final_document.md\`).
+3. This prevents context window overflow and ensures completeness.
 `;
 
 export const getSystemPrompt = (user?: {
