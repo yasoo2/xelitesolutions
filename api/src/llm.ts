@@ -587,6 +587,17 @@ When writing large files, articles, or documentation (>500 lines):
 1. Generate each section as a separate file (e.g., \`draft_part1.md\`, \`draft_part2.md\`).
 2. After all sections are complete, use \`shell_execute\` to concatenate them (e.g., \`cat draft_part*.md > final_document.md\`).
 3. This prevents context window overflow and ensures completeness.
+
+### 📊 DATA ACCESS PROTOCOL:
+- For common data queries (weather, exchange rates, IP info, GitHub users, npm packages), use the \`query_datasource\` tool.
+- **Do NOT write raw HTTP fetch code** for data that \`query_datasource\` already supports.
+- \`query_datasource\` returns structured JSON and is faster and more reliable than web scraping.
+
+### 🖥️ BROWSER INTERACTION PROTOCOL:
+- Use \`get_elements\` action to discover interactive elements with their bounding boxes (x, y coordinates).
+- If a CSS selector fails, use \`click_coordinates\` with (x, y) to interact with elements directly.
+- Use \`extract_text\` to read visible text from pages or specific DOM elements.
+- Use \`scroll_to_element\` to bring target elements into view before interacting.
 `;
 
 export const getSystemPrompt = (user?: {

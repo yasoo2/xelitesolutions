@@ -13,10 +13,12 @@ export class BrowserActionTool extends BaseTool {
         type: 'object' as const,
         properties: {
             sessionId: { type: 'string' },
-            action: { type: 'string', enum: ['click', 'fill', 'scroll', 'wait', 'evaluate', 'goto'] },
-            selector: { type: 'string' },
+            action: { type: 'string', enum: ['click', 'click_coordinates', 'fill', 'scroll', 'scroll_to_element', 'wait', 'evaluate', 'goto', 'extract_text', 'get_elements'] },
+            selector: { type: 'string', description: 'CSS selector for the target element' },
             value: { type: 'string' },
-            url: { type: 'string' }
+            url: { type: 'string' },
+            x: { type: 'number', description: 'X coordinate (pixels) for click_coordinates action' },
+            y: { type: 'number', description: 'Y coordinate (pixels) for click_coordinates action' }
         },
         required: ['sessionId', 'action']
     };
@@ -81,6 +83,21 @@ export class BrowserActionTool extends BaseTool {
                 await page.evaluate(() => window.scrollBy(0, 500));
                 result = 'Scrolled down';
             }
+            else if (action === 'scroll_to_element') {
+                if (!input.selector) throw new Error('selector required for scroll_to_element');
+                await page.evaluate((sel: string) => {
+                    const el = document.querySelector(sel);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, input.selector);
+                result = 'Scrolled to ' + input.selector;
+            }
+            else if (action === 'click_coordinates') {
+                const x = Number(input.x);
+                const y = Number(input.y);
+                if (isNaN(x) || isNaN(y)) throw new Error('x and y coordinates required for click_coordinates');
+                await page.mouse.click(x, y);
+                result = `Clicked at coordinates (${x}, ${y})`;
+            }
             else if (action === 'wait') {
                 const ms = Number(input.value || 1000);
                 await page.waitForTimeout(ms);
@@ -88,6 +105,39 @@ export class BrowserActionTool extends BaseTool {
             }
             else if (action === 'evaluate') {
                 result = await page.evaluate(input.value || '');
+            }
+            else if (action === 'extract_text') {
+                // Extract visible text from the page or a specific element
+                if (input.selector) {
+                    result = await page.evaluate((sel: string) => {
+                        const el = document.querySelector(sel);
+                        return el ? el.textContent?.trim() || '' : 'Element not found';
+                    }, input.selector);
+                } else {
+                    result = await page.evaluate(() => document.body.innerText?.substring(0, 5000) || '');
+                }
+            }
+            else if (action === 'get_elements') {
+                // Return interactive elements with their bounding boxes for coordinate-based clicking
+                result = await page.evaluate(() => {
+                    const interactiveSelectors = 'a, button, input, select, textarea, [role=button], [onclick], [tabindex]';
+                    const elements = Array.from(document.querySelectorAll(interactiveSelectors));
+                    return JSON.stringify(elements.slice(0, 50).map((el, i) => {
+                        const rect = el.getBoundingClientRect();
+                        return {
+                            index: i,
+                            tag: el.tagName.toLowerCase(),
+                            text: (el.textContent || '').trim().substring(0, 80),
+                            type: (el as HTMLInputElement).type || undefined,
+                            href: (el as HTMLAnchorElement).href || undefined,
+                            x: Math.round(rect.x + rect.width / 2),
+                            y: Math.round(rect.y + rect.height / 2),
+                            width: Math.round(rect.width),
+                            height: Math.round(rect.height),
+                            visible: rect.width > 0 && rect.height > 0
+                        };
+                    }).filter(e => e.visible));
+                });
             }
 
             return { ok: true, output: { success: true, result: String(result) }, logs: [`action=${action}`] };

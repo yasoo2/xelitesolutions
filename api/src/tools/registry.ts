@@ -77,6 +77,7 @@ import {
 import { AIGeneratorTool } from './definitions/AIGeneratorTool';
 import { NotifyUserTool } from './definitions/NotifyUserTool';
 import { PythonExecutionTool } from './definitions/PythonExecutionTool';
+import { DatasourceTool } from './definitions/DatasourceTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -234,6 +235,7 @@ export const tools: ToolDefinition[] = [
   // --- Manus-Inspired Agent Tools ---
   new NotifyUserTool(),
   new PythonExecutionTool(),
+  new DatasourceTool(),
   // --- Virtual Tools (Aliased in ToolService) ---
   {
     name: 'web_search',
