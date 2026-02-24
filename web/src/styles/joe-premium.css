@@ -314,10 +314,9 @@
 .joe-main {
     flex: 1;
     display: flex;
-    gap: 4px;
-    padding: 4px;
-    padding-top: calc(var(--joe-header-height) + 4px);
-    padding-bottom: 0;
+    gap: 2px;
+    padding: 0;
+    padding-top: var(--joe-header-height);
     overflow: hidden;
     min-height: 0;
     position: relative;
@@ -330,13 +329,9 @@
 .joe-workspace,
 .joe-files-panel {
     background: var(--joe-bg-panel);
-    border: 1px solid rgba(240, 193, 75, 0.25);
-    border-radius: var(--joe-border-radius) var(--joe-border-radius) 0 0;
-    border-bottom: none;
-    box-shadow:
-        0 0 30px rgba(240, 193, 75, 0.08),
-        0 10px 40px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     overflow: hidden;
@@ -1488,9 +1483,9 @@
 
     .joe-main {
         flex-direction: column;
-        gap: 4px;
-        padding: 0 4px;
-        padding-top: calc(var(--joe-header-height) + 4px);
+        gap: 2px;
+        padding: 0;
+        padding-top: var(--joe-header-height);
         flex: 1;
         min-height: 0;
     }
