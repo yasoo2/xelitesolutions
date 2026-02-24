@@ -287,7 +287,7 @@ export default function JoeIDELayout({
 
                 {/* Center: Workspace */}
                 <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
-                    <div className="joe-workspace-container relative w-full h-full">
+                    <div className="joe-workspace-container relative flex-1 w-full h-full">
                         <WorkspacePanel
                             activeTab={activeWorkspaceTab}
                             onTabChange={handleWorkspaceTabChange}
