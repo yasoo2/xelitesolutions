@@ -142,6 +142,13 @@ const openai = new OpenAI({
 const MAX_PROVIDER_TOOLS = Number(process.env.MAX_PROVIDER_TOOLS) || 256;
 const PRIORITY_TOOL_NAMES: string[] = [
   "echo",
+  "notify_user",
+  "execute_python",
+  "query_datasource",
+  "archive_files",
+  "deploy_project",
+  "todo_write",
+  "ask_user",
   "project_detect",
   "analyze_codebase",
   "website_full_pipeline",
@@ -163,6 +170,7 @@ const PRIORITY_TOOL_NAMES: string[] = [
   "command_policy_check",
   "tool_create_shell",
   "shell_execute",
+  "shell_status",
   "product_search",
   "web_search",
   "http_fetch",
@@ -172,6 +180,11 @@ const PRIORITY_TOOL_NAMES: string[] = [
   "github_create_repo",
   "image_generate",
   "deep_research",
+  "browser_run",
+  "browser_action",
+  "browser_vision",
+  "codebase_outline",
+  "search_api",
   "dependency_graph",
   "business_logic",
   "chaos_testing",
@@ -387,6 +400,16 @@ export function selectToolDefsForProvider(
     if (wantsImage && (name.includes("image") || tags.includes("image")))
       score += 70;
 
+    // Manus Agent Tools — Always highly relevant
+    if (tags.includes('communication') || tags.includes('progress')) score += 90;
+    if (tags.includes('python') || tags.includes('compute') || tags.includes('code-interpreter')) score += 85;
+    if (tags.includes('data') || tags.includes('datasource') || tags.includes('api')) score += 70;
+    if (tags.includes('deploy') || tags.includes('hosting')) score += 65;
+    if (tags.includes('archive') || tags.includes('compression')) score += 55;
+    if (name === 'notify_user') score += 100; // Always available for autonomous updates
+    if (name === 'execute_python') score += 95;  // Always available for computation
+    if (name === 'todo_write') score += 90;       // Always available for task tracking
+    if (name === 'ask_user') score += 85;          // Always available for clarification
     // URL and language context
     if (
       hasUrl &&
@@ -676,7 +699,7 @@ export const getSystemPrompt = (user?: {
       wName = require('path').basename(root);
     }
   } catch (e) {
-     // Ignore missing workspace gracefully
+    // Ignore missing workspace gracefully
   }
 
   if (root) {
@@ -953,14 +976,14 @@ export async function planNextStep(
           ...messages,
         ];
 
-        // Select tools with a hard cap of 10 for Gemini stability (Google endpoint limit ~10-15 tools)
+        // Select tools — raised cap from 10 to 25 for proper autonomous agent behavior
         const selectedTools = selectToolDefsForProvider(
           tools,
           256,
           messages,
-        ).slice(0, 10);
+        ).slice(0, 25);
         console.info(
-          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 10) for this request`,
+          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 25) for this request`,
         );
         onProgress?.(`تجهيز ${selectedTools.length} أداة…`);
 
