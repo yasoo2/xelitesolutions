@@ -52,12 +52,15 @@ export function useSessionActions() {
     }
 
     async function deleteAllSessions() {
-        if (!confirm('هل أنت متأكد من حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) return;
         try {
             await api.delete('/sessions');
+            // Clear local state immediately for instant UI feedback
+            useSessionStore.getState().setSelected(null);
+            useSessionStore.setState({ sessions: [], agentSessions: [] });
             await loadAllSessions();
-            setSelected(null);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error('Failed to delete all sessions:', e);
+        }
     }
 
     async function togglePin(id: string, currentPinned: boolean) {
