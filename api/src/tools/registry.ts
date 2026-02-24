@@ -78,6 +78,8 @@ import { AIGeneratorTool } from './definitions/AIGeneratorTool';
 import { NotifyUserTool } from './definitions/NotifyUserTool';
 import { PythonExecutionTool } from './definitions/PythonExecutionTool';
 import { DatasourceTool } from './definitions/DatasourceTool';
+import { ArchiveFilesTool } from './definitions/ArchiveFilesTool';
+import { DeployProjectTool } from './definitions/DeployProjectTool';
 
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
@@ -236,6 +238,8 @@ export const tools: ToolDefinition[] = [
   new NotifyUserTool(),
   new PythonExecutionTool(),
   new DatasourceTool(),
+  new ArchiveFilesTool(),
+  new DeployProjectTool(),
   // --- Virtual Tools (Aliased in ToolService) ---
   {
     name: 'web_search',
