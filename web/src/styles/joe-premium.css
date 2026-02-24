@@ -316,7 +316,6 @@
     display: flex;
     gap: 2px;
     padding: 0;
-    padding-top: var(--joe-header-height);
     overflow: hidden;
     min-height: 0;
     position: relative;
@@ -1485,7 +1484,6 @@
         flex-direction: column;
         gap: 2px;
         padding: 0;
-        padding-top: var(--joe-header-height);
         flex: 1;
         min-height: 0;
     }
