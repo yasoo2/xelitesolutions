@@ -1502,6 +1502,10 @@
         min-height: 0;
     }
 
+    .mobile-hidden {
+        display: none !important;
+    }
+
     .joe-chat-panel {
         width: 100%;
         /* Use flex instead of percentage to fill space properly */
