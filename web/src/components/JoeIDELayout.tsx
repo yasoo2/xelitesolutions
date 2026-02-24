@@ -170,8 +170,6 @@ export default function JoeIDELayout({
         if (!wasMobileInitChecked && typeof window !== 'undefined') {
             const isMobile = window.innerWidth <= 768;
             if (isMobile) {
-                // On mobile, to hide the workspace, we actually want chat NOT collapsed, but we DO want Explorer collapsed. 
-                // Wait, if BOTH are not collapsed, the workspace is hidden? The mobile layout might take 100% for whatever is active.
                 setIsExplorerCollapsed(true);
                 setIsChatCollapsed(false);
             }
@@ -179,17 +177,29 @@ export default function JoeIDELayout({
         }
     }, [wasMobileInitChecked]);
 
+    // Force uncollapse when an explicit action requires it (e.g. from Joe.tsx tools or CommandComposer icons)
+    useEffect(() => {
+        const handleUncollapse = () => {
+            setIsExplorerCollapsed(false);
+        };
+        window.addEventListener('joe:workspace-uncollapse', handleUncollapse);
+        return () => window.removeEventListener('joe:workspace-uncollapse', handleUncollapse);
+    }, []);
+
     // Internal state for workspace tab if not controlled
     const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
 
     const activeWorkspaceTab = workspaceTab ?? internalWorkspaceTab;
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {
+        // Force the workspace to be visible if a tab is being activated
+        setIsExplorerCollapsed(false);
+
         if (onWorkspaceTabChange) {
             onWorkspaceTabChange(tab);
         } else {
             setInternalWorkspaceTab(tab);
         }
-    }, [onWorkspaceTabChange]);
+    }, [onWorkspaceTabChange, setIsExplorerCollapsed]);
 
 
 

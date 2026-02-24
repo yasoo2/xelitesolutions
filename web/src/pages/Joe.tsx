@@ -94,6 +94,10 @@ export default function Joe() {
             if (msg.type === 'connected') setIsConnected(true);
             if (msg.type === 'disconnected') setIsConnected(false);
 
+            const triggerUncollapse = () => {
+                window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
+            };
+
             // Auto switch to terminal for command execution
             if (msg.type === 'tool_start' && (
                 msg.tool === 'run_command' ||
@@ -104,9 +108,11 @@ export default function Joe() {
                 msg.tool === 'npm_build'
             )) {
                 setWorkspaceTab('terminal');
+                triggerUncollapse();
             }
             if (msg.type === 'terminal_output') {
                 setWorkspaceTab('terminal');
+                triggerUncollapse();
             }
 
             // Auto switch to browser for browser actions
@@ -116,9 +122,11 @@ export default function Joe() {
                 msg.tool === 'click_element'
             )) {
                 setWorkspaceTab('browser');
+                triggerUncollapse();
             }
             if (msg.type === 'browser_screenshot' || msg.type === 'browser_update') {
                 setWorkspaceTab('browser');
+                triggerUncollapse();
             }
 
             if (msg.type === 'tool_start' && (
@@ -128,6 +136,7 @@ export default function Joe() {
                 msg.tool === 'scaffold_project'
             )) {
                 setWorkspaceTab('preview');
+                triggerUncollapse();
             }
 
             // [AUTO-PREVIEW] Handle preview_ready event specifically
@@ -136,6 +145,7 @@ export default function Joe() {
                 if (url) {
                     setPreviewUrl(url);
                     setWorkspaceTab('preview');
+                    triggerUncollapse();
                 }
             }
 
@@ -147,6 +157,7 @@ export default function Joe() {
                     setPreviewUrl(url);
                     // Also switch to preview tab if we got a fresh URL
                     setWorkspaceTab('preview');
+                    triggerUncollapse();
                 }
             }
 
@@ -193,6 +204,7 @@ export default function Joe() {
             const tab = (e as CustomEvent)?.detail?.tab;
             if (tab === 'browser' || tab === 'terminal' || tab === 'preview') {
                 setWorkspaceTab(tab);
+                window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
             }
         };
         window.addEventListener('joe:workspace-tab-switch', handler);
