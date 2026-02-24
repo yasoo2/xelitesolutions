@@ -25,6 +25,8 @@ interface WorkspacePanelProps {
     onMaximizeToggle?: () => void;
     logs?: string[];
     problems?: any[];
+    mobileCollapsed?: boolean;
+    onMobileToggle?: () => void;
 }
 
 // ─── Inline Copy Button ────────────────────────────────────────────
@@ -331,10 +333,15 @@ export default function WorkspacePanel({
     isMaximized,
     onMaximizeToggle,
     logs = [],
-    problems = []
+    problems = [],
+    mobileCollapsed,
+    onMobileToggle
 }: WorkspacePanelProps) {
+    const [internalCollapsed, setInternalCollapsed] = useState(false);
     const [internalTab, setInternalTab] = useState<WorkspaceTab>('browser');
-    const [isMobileCollapsed, setIsMobileCollapsed] = useState(false);
+
+    // Use external mobileCollapsed if provided, otherwise use internal state
+    const isMobileCollapsed = mobileCollapsed !== undefined ? mobileCollapsed : internalCollapsed;
 
     const activeTab = controlledTab ?? internalTab;
     const handleTabChange = (tab: WorkspaceTab) => {
@@ -342,6 +349,14 @@ export default function WorkspacePanel({
             onTabChange(tab);
         } else {
             setInternalTab(tab);
+        }
+    };
+
+    const handleMobileToggle = () => {
+        if (onMobileToggle) {
+            onMobileToggle();
+        } else {
+            setInternalCollapsed(!internalCollapsed);
         }
     };
 
@@ -405,7 +420,7 @@ export default function WorkspacePanel({
                 {/* Mobile Collapse Toggle */}
                 <button
                     className="joe-header-btn show-mobile-only"
-                    onClick={() => setIsMobileCollapsed(!isMobileCollapsed)}
+                    onClick={handleMobileToggle}
                     title={isMobileCollapsed ? "Expand" : "Collapse"}
                     style={{ border: 'none', background: 'transparent', marginLeft: 4 }}
                 >

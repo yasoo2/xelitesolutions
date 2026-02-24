@@ -316,7 +316,7 @@ export default function JoeIDELayout({
 
                 {/* Center: Workspace */}
                 <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
-                    <div className={`joe-workspace-container relative flex-1 w-full h-full ${isExplorerCollapsed ? 'mobile-hidden' : ''}`}>
+                    <div className="joe-workspace-container relative flex-1 w-full h-full">
                         <WorkspacePanel
                             activeTab={activeWorkspaceTab}
                             onTabChange={handleWorkspaceTabChange}
@@ -327,6 +327,8 @@ export default function JoeIDELayout({
                             onMaximizeToggle={handleMaximizeToggle}
                             logs={logs}
                             problems={problems}
+                            mobileCollapsed={isExplorerCollapsed}
+                            onMobileToggle={toggleExplorer}
                         >
                             {workspaceChildren}
                         </WorkspacePanel>

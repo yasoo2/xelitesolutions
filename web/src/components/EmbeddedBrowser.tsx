@@ -85,7 +85,7 @@ export default function EmbeddedBrowser({
 
         try {
             const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/tools/browser_run/execute`, {
+            await fetch(`${API_URL}/browser/nav/goto`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -93,7 +93,7 @@ export default function EmbeddedBrowser({
                 },
                 body: JSON.stringify({
                     sessionId,
-                    actions: [{ type: 'goto', url: targetUrl }]
+                    url: targetUrl
                 })
             });
             setCurrentUrl(targetUrl);
@@ -110,7 +110,7 @@ export default function EmbeddedBrowser({
         setIsLoading(true);
         try {
             const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/tools/browser_run/execute`, {
+            await fetch(`${API_URL}/browser/actions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
