@@ -2813,6 +2813,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             if (
               kind === 'agent' &&
               !wantsBrowser &&
+              !isFileOp &&
               looksLikeInPageBrowserAction &&
               typeof browserSessionId === 'string' &&
               browserSessionId.trim() &&
@@ -2821,6 +2822,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               plan = { name: 'browser_run', input: { sessionId: browserSessionId.trim(), instructionText: s } } as any;
               planName = 'browser_run';
               browserIntentThisTurn = true;
+            }
+
+            // [FIX] Route simple file creation/writing requests to write_file instead of browser
+            const isSimpleFileCreate = isFileOp && /(create|make|write|أنشئ|انشئ|اكتب|اعمل|سوي)/i.test(s) && !wantsBrowser && !isAlreadyValidPipeline;
+            if (isSimpleFileCreate && (planName === 'echo' || planName === 'browser_run' || !planName)) {
+              const fileNameMatch = s.match(/(?:called|named|اسمه|بإسم|باسم|إسم)\s+([^\s,،.]+)/i);
+              const fileName = fileNameMatch?.[1] || 'output.txt';
+              plan = { name: 'write_file', input: { path: fileName, content: '' } } as any;
+              planName = 'write_file';
             }
 
             if (wantsBrowser && !/^browser_/.test(planName)) {
