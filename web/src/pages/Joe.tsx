@@ -142,22 +142,47 @@ export default function Joe() {
             // [AUTO-PREVIEW] Handle preview_ready event specifically
             if (msg.type === 'preview_ready') {
                 const url = msg.data?.url || msg.data?.previewUrl;
-                if (url) {
-                    setPreviewUrl(url);
-                    setWorkspaceTab('preview');
-                    triggerUncollapse();
+                if (url && typeof url === 'string') {
+                    // Only auto-switch to preview for local/internal proxy URLs
+                    const isInternal = url.includes('localhost') ||
+                        url.includes('127.0.0.1') ||
+                        url.includes('xelitesolutions.com/preview/');
+
+                    if (isInternal) {
+                        setPreviewUrl(url);
+                        setWorkspaceTab('preview');
+                        triggerUncollapse();
+                    }
                 }
             }
 
             // [AUTO-PREVIEW] Capture URL from tool results
             if (msg.type === 'step_done' && msg.data?.result?.ok) {
+                const toolName = msg.tool;
                 const output = msg.data.result.output;
                 const url = output?.url || output?.previewUrl || output?.localhost || output?.userPreviewUrl;
+
                 if (url && typeof url === 'string') {
-                    setPreviewUrl(url);
-                    // Also switch to preview tab if we got a fresh URL
-                    setWorkspaceTab('preview');
-                    triggerUncollapse();
+                    // Only update preview if it's a known "builder" tool or an internal URL
+                    const safeTools = [
+                        'dev_server_start',
+                        'website_full_pipeline',
+                        'scaffold_full_stack',
+                        'deploy_project',
+                        'scaffold_project'
+                    ];
+
+                    const isSafeTool = safeTools.includes(toolName || '');
+                    const isInternal = url.includes('localhost') ||
+                        url.includes('127.0.0.1') ||
+                        url.includes('xelitesolutions.com/preview/');
+
+                    if (isSafeTool || isInternal) {
+                        setPreviewUrl(url);
+                        // Also switch to preview tab if we got a fresh URL
+                        setWorkspaceTab('preview');
+                        triggerUncollapse();
+                    }
                 }
             }
 
