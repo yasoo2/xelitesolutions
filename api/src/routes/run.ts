@@ -2837,7 +2837,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               planName = 'write_file';
             }
 
-            if (wantsBrowser && !/^browser_/.test(planName)) {
+            if (wantsBrowser && !/^browser_/.test(planName) && planName !== 'write_file') {
               const directUrl = extractedUrl;
               const wantsYahoo = /(yahoo|ياهو)/i.test(sNorm);
               const wantsYoutube = /(youtube|يوتيوب)/i.test(sNorm);
