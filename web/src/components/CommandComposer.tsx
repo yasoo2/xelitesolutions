@@ -2108,8 +2108,8 @@ export default function CommandComposer({
     const token = localStorage.getItem('token');
     try {
       let effectiveBrowserSessionId = browserSessionId;
-      // Allow auto-open in chat mode too
-      if ((sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
+      // Allow auto-open in chat mode too. Skip if no sessionId yet (first message).
+      if (sessionId && (sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
         const inputNorm = normalizeForIntent(inputText);
         const urlMatch = inputText.match(/https?:\/\/[^\s"'<>]+/i);
         const directUrl = urlMatch?.[0];
