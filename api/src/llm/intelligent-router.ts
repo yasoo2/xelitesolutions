@@ -4,7 +4,7 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider } from './providers/registry';
 import { LLMCacheTool } from '../tools/definitions/LLMCacheTool';
 
 let hack: any = pollinationsProvider;

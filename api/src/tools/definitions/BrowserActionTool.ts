@@ -3,6 +3,9 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { getBrowserSession, touchSession } from '../../browser/manager';
 import { normalizeUrlForGoto } from '../../utils/url';
+import { routeToModel } from '../../llm/intelligent-router';
+import fs from 'fs';
+import path from 'path';
 
 export class BrowserActionTool extends BaseTool {
     name = 'browser_action';
@@ -13,12 +16,13 @@ export class BrowserActionTool extends BaseTool {
         type: 'object' as const,
         properties: {
             sessionId: { type: 'string' },
-            action: { type: 'string', enum: ['click', 'click_coordinates', 'fill', 'scroll', 'scroll_to_element', 'wait', 'evaluate', 'goto', 'extract_text', 'get_elements'] },
+            action: { type: 'string', enum: ['click', 'click_coordinates', 'fill', 'scroll', 'scroll_to_element', 'wait', 'evaluate', 'goto', 'extract_text', 'get_elements', 'solve_visual_puzzle'] },
             selector: { type: 'string', description: 'CSS selector for the target element' },
             value: { type: 'string' },
             url: { type: 'string' },
             x: { type: 'number', description: 'X coordinate (pixels) for click_coordinates action' },
-            y: { type: 'number', description: 'Y coordinate (pixels) for click_coordinates action' }
+            y: { type: 'number', description: 'Y coordinate (pixels) for click_coordinates action' },
+            puzzle_goal: { type: 'string', description: 'Description of the visual goal (e.g. "click all buses" or "solve this CAPTCHA")' }
         },
         required: ['sessionId', 'action']
     };
@@ -138,6 +142,53 @@ export class BrowserActionTool extends BaseTool {
                         };
                     }).filter(e => e.visible));
                 });
+            }
+            else if (action === 'solve_visual_puzzle') {
+                const goal = input.puzzle_goal || 'solve this visual puzzle';
+                const screenshotPath = path.join(process.cwd(), `puzzle_${Date.now()}.png`);
+                await page.screenshot({ path: screenshotPath });
+
+                const base64Image = fs.readFileSync(screenshotPath).toString('base64');
+                const dataUrl = `data:image/png;base64,${base64Image}`;
+
+                const prompt = `You are an expert at solving visual challenges and CAPTCHAs.
+Analyze this screenshot and achieve the target goal: "${goal}".
+Find the (x, y) center coordinates for each target object.
+Return ONLY a JSON array of coordinate objects, like this: [{"x": 100, "y": 200}, {"x": 150, "y": 250}]
+Do not return any text, just the JSON array.`;
+
+                const responseText = await routeToModel(
+                    [
+                        { role: 'system', content: 'Return ONLY valid JSON array of coordinates. No markdown.' },
+                        {
+                            role: 'user',
+                            content: [
+                                { type: 'text', text: prompt },
+                                { type: 'image_url', image_url: { url: dataUrl } },
+                            ],
+                        },
+                    ],
+                    {
+                        type: 'complex_reasoning',
+                        complexity: 'high',
+                        requiresTools: false,
+                        estimatedTokens: 1000,
+                        language: 'en',
+                        hasImages: true
+                    }
+                );
+
+                const jsonMatch = String(responseText || '').match(/\[[\s\S]*\]/);
+                const coords: Array<{ x: number, y: number }> = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
+
+                for (const coord of coords) {
+                    await page.mouse.click(coord.x, coord.y);
+                    await page.waitForTimeout(400); // Natural delay
+                }
+
+                result = `Solved visual puzzle: clicked on ${coords.length} locations.`;
+                // Cleanup
+                try { fs.unlinkSync(screenshotPath); } catch { }
             }
 
             return { ok: true, output: { success: true, result: String(result) }, logs: [`action=${action}`] };

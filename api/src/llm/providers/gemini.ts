@@ -323,6 +323,7 @@ export class GeminiProvider {
             try {
                 console.info(`[Gemini] Streaming Tool Chat attempting with model: ${currentModel}`);
 
+                // @ts-ignore
                 const stream = await this.client.chat.completions.create({
                     model: currentModel,
                     messages: messages as any,
@@ -337,7 +338,9 @@ export class GeminiProvider {
                 let finishReason: string | null = null;
                 let chunkCount = 0;
 
+                // @ts-ignore
                 for await (const chunk of stream) {
+                    // @ts-ignore
                     const delta = chunk.choices?.[0]?.delta;
                     if (!delta) continue;
 
@@ -351,8 +354,9 @@ export class GeminiProvider {
 
                     // Accumulate tool calls
                     if (delta.tool_calls) {
-                        for (const tc of delta.tool_calls) {
-                            const idx = tc.index ?? 0;
+                        // @ts-ignore
+                        for (const tc of delta.tool_calls as any[]) {
+                            const idx = (tc as any).index ?? 0;
                             if (!toolCalls[idx]) {
                                 toolCalls[idx] = {
                                     id: tc.id || `call_${idx}`,

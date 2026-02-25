@@ -621,6 +621,7 @@ When writing large files, articles, or documentation (>500 lines):
 - If a CSS selector fails, use \`click_coordinates\` with (x, y) to interact with elements directly.
 - Use \`extract_text\` to read visible text from pages or specific DOM elements.
 - Use \`scroll_to_element\` to bring target elements into view before interacting.
+- **CAPTCHA & Visual Puzzles**: If you encounter a CAPTCHA (e.g., "Select all traffic lights"), use \`browser_action\` with \`action: "solve_visual_puzzle"\` and describe the goal in \`puzzle_goal\`.
 - **Natural Visualization**: Your mouse movements and clicks are rendered in real-time for the user. Act with precision.
 
 ### ✅ QUALITY ASSURANCE PROTOCOL:
