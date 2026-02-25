@@ -40,6 +40,7 @@ export class BrowserRunTool extends BaseTool {
                     required: ['type'],
                     additionalProperties: true,
                 },
+                description: 'List of browser actions. Supported: goto, click, type, hover, scroll, scroll_to_element, wait, key, extract_text, get_elements, click_coordinates.',
             },
             userId: { type: 'string' },
             mode: { type: 'string', enum: ['browser_test', 'browser_secure'], default: 'browser_test' },

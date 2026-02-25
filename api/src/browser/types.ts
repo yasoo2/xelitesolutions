@@ -59,6 +59,15 @@ export type ActionLogEvent = {
   reason?: FailureReason | (string & {});
 };
 
+export type ActionFeedbackEvent = {
+  type: 'action_feedback';
+  ts: number;
+  event: 'click' | 'scroll' | 'hover' | 'type';
+  x?: number;
+  y?: number;
+  direction?: 'up' | 'down';
+};
+
 export type FinalReportEvent = {
   type: 'final_report';
   ts: number;
@@ -87,6 +96,7 @@ export type BrowserWsEvent =
   | HighlightBoxesEvent
   | SessionStatusEvent
   | ActionLogEvent
+  | ActionFeedbackEvent
   | StepEvent
   | FinalReportEvent
   | FinalStatusEvent

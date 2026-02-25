@@ -57,7 +57,8 @@ export class AdvancedInteractionSystem extends EventEmitter {
     startY: number,
     endX: number,
     endY: number,
-    duration: number = 500
+    duration: number = 500,
+    onMove?: (x: number, y: number) => void
   ): Promise<void> {
     this.emit('log', `🖱️ Natural mouse move from (${startX}, ${startY}) to (${endX}, ${endY})`);
 
@@ -96,6 +97,7 @@ export class AdvancedInteractionSystem extends EventEmitter {
 
       try {
         await page.mouse.move(currentX, currentY);
+        if (onMove) onMove(currentX, currentY);
       } catch (e) { }
 
       this.emit('mouse-move', {

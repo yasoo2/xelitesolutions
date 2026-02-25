@@ -22,7 +22,11 @@ type Action =
   | { type: 'back'; optional?: boolean }
   | { type: 'forward'; optional?: boolean }
   | { type: 'reload'; optional?: boolean }
-  | { type: 'screenshot'; optional?: boolean };
+  | { type: 'screenshot'; optional?: boolean }
+  | { type: 'extract_text'; selector?: string; optional?: boolean }
+  | { type: 'get_elements'; optional?: boolean }
+  | { type: 'scroll_to_element'; selector: string; optional?: boolean }
+  | { type: 'click_coordinates'; x: number; y: number; optional?: boolean };
 
 const SECRET_TOKEN_RE = /^\{\{\s*SECRET\s*:\s*([A-Z0-9_]+)\s*\}\}$/;
 
@@ -203,6 +207,18 @@ export async function executePlannedActions(params: {
 
     const page = s.page;
     const interactions = new AdvancedInteractionSystem();
+
+    // [New] Connect interaction events to broadcasts for real-time visualization
+    interactions.on('mouse-move', (data) => {
+      broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: data.x, y: data.y });
+    });
+    interactions.on('click', (data) => {
+      broadcastBrowserEvent(sessionId, { type: 'action_feedback', ts: now(), event: 'click', x: data.x, y: data.y });
+    });
+    interactions.on('scroll', (data) => {
+      broadcastBrowserEvent(sessionId, { type: 'action_feedback', ts: now(), event: 'scroll', direction: data.direction });
+    });
+
     try {
       broadcastBrowserEvent(sessionId, {
         type: 'session_status',
@@ -806,9 +822,12 @@ export async function executePlannedActions(params: {
             const cx = Math.round(b.x + b.width / 2);
             const cy = Math.round(b.y + b.height / 2);
             targetCenter = { x: cx, y: cy };
-            broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: now(), x: cx, y: cy });
             broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: now(), boxes: [{ ...b, label: name }] });
-            try { await interactions.hover(page, name, cx, cy); } catch { }
+            try {
+              const startX = interactions.getMouseInfo().position.x;
+              const startY = interactions.getMouseInfo().position.y;
+              await interactions.naturalMouseMove(page, startX, startY, cx, cy, 300);
+            } catch { }
           }
 
           const textRaw = name === 'type' ? String(a?.text || '') : '';
@@ -1004,6 +1023,80 @@ export async function executePlannedActions(params: {
           results.push({ stepId: sid, name, ok: true });
           try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
+        }
+
+        if (name === 'extract_text') {
+          const selector = String(a?.selector || '').trim();
+          let resultText = '';
+          if (selector) {
+            resultText = await page.evaluate((sel: string) => {
+              const el = document.querySelector(sel);
+              return el ? (el.textContent || '').trim() : 'Element not found';
+            }, selector);
+          } else {
+            resultText = await page.evaluate(() => (document.body.innerText || '').substring(0, 10000));
+          }
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { text: resultText } });
+          results.push({ stepId: sid, name, ok: true, message: resultText.slice(0, 200) });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+          continue;
+        }
+
+        if (name === 'get_elements') {
+          const elements = await page.evaluate(() => {
+            const interactiveSelectors = 'a, button, input, select, textarea, [role=button], [onclick], [tabindex]';
+            const els = Array.from(document.querySelectorAll(interactiveSelectors));
+            return els.slice(0, 100).map((el, i) => {
+              const rect = el.getBoundingClientRect();
+              return {
+                index: i,
+                tag: el.tagName.toLowerCase(),
+                text: (el.textContent || '').trim().substring(0, 100),
+                type: (el as any).type || undefined,
+                x: Math.round(rect.x + rect.width / 2),
+                y: Math.round(rect.y + rect.height / 2),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+                visible: rect.width > 0 && rect.height > 0
+              };
+            }).filter(e => e.visible);
+          });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { elements } });
+          results.push({ stepId: sid, name, ok: true });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+          continue;
+        }
+
+        if (name === 'scroll_to_element') {
+          const selector = String(a?.selector || '').trim();
+          if (!selector) {
+            results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'missing_selector' });
+            continue;
+          }
+          await page.evaluate((sel: string) => {
+            const el = document.querySelector(sel);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, selector);
+          await page.waitForTimeout(500);
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+          results.push({ stepId: sid, name, ok: true });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+          continue;
+        }
+
+        if (name === 'click_coordinates') {
+          const x = Number(a?.x);
+          const y = Number(a?.y);
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            await interactions.naturalClick(page, 'coord_click', x, y);
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
+            results.push({ stepId: sid, name, ok: true });
+            try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+            continue;
+          } else {
+            results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'invalid_coordinates' });
+            continue;
+          }
         }
 
         results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `unsupported_action: ${name}` });

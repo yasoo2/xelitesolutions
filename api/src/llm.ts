@@ -621,6 +621,7 @@ When writing large files, articles, or documentation (>500 lines):
 - If a CSS selector fails, use \`click_coordinates\` with (x, y) to interact with elements directly.
 - Use \`extract_text\` to read visible text from pages or specific DOM elements.
 - Use \`scroll_to_element\` to bring target elements into view before interacting.
+- **Natural Visualization**: Your mouse movements and clicks are rendered in real-time for the user. Act with precision.
 
 ### ✅ QUALITY ASSURANCE PROTOCOL:
 After completing any coding or building task, you MUST self-review before using \`echo\`:
@@ -655,6 +656,12 @@ When asked to deploy or share a project:
 2. Use \`deploy_project\` with action "start_server" to run it locally.
 3. Use \`deploy_project\` with action "expose_port" to create a temporary public URL.
 4. Use \`deploy_project\` with action "package" to create a distributable zip file.
+
+### 📂 GIT MAINTENANCE PROTOCOL:
+To ensure the user's repository is always up-to-date with your work:
+1. **Always Commit**: After completing a task or a major step (e.g., fixing a bug, adding a feature), use \`git_ops\` with action "commit" to save your changes. Use a descriptive commit message.
+2. **Always Push**: After committing, use \`git_ops\` with action "push" to update the remote repository.
+3. **Auto-Auth**: You have auto-authentication configured for git operations. Do not ask the user for credentials.
 
 ### 📦 FILE OPERATIONS PROTOCOL:
 - Use \`archive_files\` to compress (zip/tar.gz) or extract archives — do NOT write manual shell commands for archiving.
