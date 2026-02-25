@@ -4012,7 +4012,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             lastBrowserRunPageUrl = '';
           }
 
-          if (!result.ok && String(plan?.name || '') === 'browser_run') {
+          if (!result.ok && (String(plan?.name || '') === 'browser_run' || String(plan?.name || '') === 'browser_open' || String(plan?.name || '') === 'browser_action')) {
             const err = String((result as any)?.error || '').trim();
             if (err === 'timeout') {
               const msg = isArabicText(userTextForOverrides)
