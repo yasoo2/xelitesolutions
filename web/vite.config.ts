@@ -131,12 +131,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          ui: ['lucide-react', 'framer-motion', 'classnames'],
-          markdown: ['react-markdown', 'react-syntax-highlighter'],
-          monaco: ['@monaco-editor/react'],
-          charts: ['react-force-graph-2d', 'react-force-graph-3d', 'reactflow'],
-          terminal: ['xterm', 'xterm-addon-fit']
+          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand', 'axios'],
+          heavy: ['three', 'react-force-graph-2d', 'react-force-graph-3d', 'reactflow', 'monaco-editor', '@monaco-editor/react'],
+          utils: ['lucide-react', 'framer-motion', 'react-markdown', 'react-syntax-highlighter', 'xterm', 'xterm-addon-fit']
         }
       }
     },

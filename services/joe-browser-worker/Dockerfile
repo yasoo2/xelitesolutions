@@ -13,6 +13,8 @@ RUN npx playwright install chromium chromium-headless-shell && \
 
 COPY . .
 
+ENV NODE_OPTIONS="--max-old-space-size=6144"
+
 # Build
 RUN npm run build
 
