@@ -14,6 +14,8 @@ RUN npm ci --include=dev && npm cache clean --force
 # Copy source code
 COPY . .
 
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # Build TypeScript
 RUN npm run build
 
