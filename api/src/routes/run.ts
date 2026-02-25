@@ -3373,7 +3373,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               } catch { }
             }
           }
-          if (isBrowserTool && !isFileOp) {
+          const isFileOpFinal = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(userTextForOverrides);
+          if (isBrowserTool && !isFileOpFinal) {
             const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
             const inputSid = String((plan as any)?.input?.sessionId || '').trim();
             const hasSid = !!(reqSid || inputSid);
