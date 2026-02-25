@@ -26,6 +26,7 @@ type Action =
   | { type: 'extract_text'; selector?: string; optional?: boolean }
   | { type: 'get_elements'; optional?: boolean }
   | { type: 'scroll_to_element'; selector: string; optional?: boolean }
+  | { type: 'thought'; text: string; optional?: boolean }
   | { type: 'click_coordinates'; x: number; y: number; optional?: boolean };
 
 const SECRET_TOKEN_RE = /^\{\{\s*SECRET\s*:\s*([A-Z0-9_]+)\s*\}\}$/;
@@ -1097,6 +1098,14 @@ export async function executePlannedActions(params: {
             results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'invalid_coordinates' });
             continue;
           }
+        }
+
+        if (name === 'thought') {
+          const text = String(a?.text || '').trim();
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { thought: text } });
+          results.push({ stepId: sid, name: 'thought', ok: true, message: text.slice(0, 200) });
+          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+          continue;
         }
 
         results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `unsupported_action: ${name}` });

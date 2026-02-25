@@ -29,6 +29,11 @@ type Planned = {
     | { type: 'forward'; optional?: boolean }
     | { type: 'reload'; optional?: boolean }
     | { type: 'screenshot'; optional?: boolean }
+    | { type: 'extract_text'; selector?: string; optional?: boolean }
+    | { type: 'get_elements'; optional?: boolean }
+    | { type: 'scroll_to_element'; selector: string; optional?: boolean }
+    | { type: 'thought'; text: string; optional?: boolean }
+    | { type: 'click_coordinates'; x: number; y: number; optional?: boolean }
   >;
 };
 
@@ -54,9 +59,10 @@ Core Principles:
    - If an action fails (e.g., click didn't navigate), try a different strategy (e.g., click by coordinates, then key "Enter").
    - You are the expert. Be proactive. If you see a popup or cookie banner, close it autonomously before proceeding.
 
-4. **Multilingual UI Reasoning**:
+4. **Multilingual UI Reasoning & Semantic Discovery**:
    - If the GLOBAL_GOAL or instruction is in a different language (e.g., Arabic) than the UI (e.g., English), you MUST perform semantic matching.
    - Translate labels internally (e.g., "تسجيل الدخول" -> "Login" or "Sign In").
+   - **GitHub / Common Apps**: Note that "Sign in" is often the target for "Login" or "تسجيل الدخول". Look for icons (GitHub logo, user silhouette) if labels are missing.
    - Confirm labels by looking at the screenshot and nearby icons.
    - If there is ANY uncertainty in text matching across languages, prefer using \`click_coordinates\` with the (x, y) center from UI_GROUNDING_JSON.
 
@@ -76,7 +82,10 @@ Available Actions:
 - {"type":"click_coordinates","x":123,"y":456} - Precise natural click at specific coordinates.
 
 Output Format:
-Return a valid JSON object: { "actions": [ ... ], "thought": "Brief Arabic/English reasoning explaining what you see and what you plan to do next." }
+Return ONLY a valid JSON object. No markdown, no pre-text, no post-text. 
+Structure: { "actions": [ ... ], "thought": "Brief Arabic/English reasoning explaining what you see and what you plan to do next." }
+
+IMPORTANT: Never include a "thought" object inside the "actions" array. Use the root "thought" field instead.
 `;
 
 function extractJsonLike(text: string) {
