@@ -230,11 +230,21 @@ export default function JoeIDELayout({
 
                 // Problems
                 if (event.type === 'step_failed') {
-                    const errorMsg = event.data?.error || 'Unknown error';
+                    let errorMsg = 'Unknown error';
+                    if (typeof event.data === 'string') errorMsg = event.data;
+                    else if (event.data) {
+                        errorMsg = event.data.result?.error || event.data.result?.message || event.data.error || event.data.message || 'Unknown error';
+                        if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
+                    }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
                     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${errorMsg}`]);
                 } else if (event.type === 'error') {
-                    const errorMsg = event.data?.message || 'System error';
+                    let errorMsg = 'System error';
+                    if (typeof event.data === 'string') errorMsg = event.data;
+                    else if (event.data) {
+                        errorMsg = event.data.message || event.data.error || 'System error';
+                        if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
+                    }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
                     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SYSTEM ERROR: ${errorMsg}`]);
                 }

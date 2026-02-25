@@ -506,7 +506,13 @@ export default function Joe() {
         const last = events[events.length - 1];
         if (last.type === 'error') {
             const errorId = last.id || `err-${last.ts}`;
-            const errorText = String(last.data || 'Unknown error');
+            let errorText = 'Unknown error';
+            if (typeof last.data === 'string') {
+                errorText = last.data;
+            } else if (last.data) {
+                errorText = last.data.result?.error || last.data.result?.message || last.data.error || last.data.message || 'Unknown error';
+                if (typeof errorText === 'object') errorText = JSON.stringify(errorText);
+            }
 
             setMessages(prev => {
                 // Avoid redundant error messages
