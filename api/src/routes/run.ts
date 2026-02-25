@@ -2825,7 +2825,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
 
             // [FIX] Route simple file creation/writing requests to write_file instead of browser
-            const isSimpleFileCreate = isFileOp && /(create|make|write|أنشئ|انشئ|اكتب|اعمل|سوي)/i.test(s) && !wantsBrowser && !isAlreadyValidPipeline;
+            const isSimpleFileCreate = isFileOp && /(create|make|write|أنشئ|انشئ|اكتب|اعمل|سوي)/i.test(s) && !isAlreadyValidPipeline;
 
             console.log(`[DEBUG-ROUTING] isFileOp: ${isFileOp}, s: "${s}", wantsBrowser: ${wantsBrowser}, isPipeline: ${isAlreadyValidPipeline}, isSimpleFileCreate: ${isSimpleFileCreate}, planName: "${planName}"`);
 
