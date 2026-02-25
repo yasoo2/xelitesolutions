@@ -139,6 +139,8 @@ export default defineConfig({
           terminal: ['xterm', 'xterm-addon-fit']
         }
       }
-    }
+    },
+    sourcemap: false,
+    chunkSizeWarningLimit: 2000
   }
 });

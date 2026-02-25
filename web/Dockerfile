@@ -19,10 +19,11 @@ ARG VITE_API_URL=/api
 # Set as environment variables for Vite build
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NODE_OPTIONS="--max-old-space-size=8192"
 
 # Build the application
-RUN npm run build
+RUN npx tsc -b
+RUN npx vite build
 
 # Stage 2: Serve
 FROM nginx:alpine
