@@ -2826,9 +2826,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             // [FIX] Route simple file creation/writing requests to write_file instead of browser
             const isSimpleFileCreate = isFileOp && /(create|make|write|أنشئ|انشئ|اكتب|اعمل|سوي)/i.test(s) && !wantsBrowser && !isAlreadyValidPipeline;
-            if (isSimpleFileCreate && (planName === 'echo' || planName === 'browser_run' || !planName)) {
+            if (isSimpleFileCreate && (planName === 'echo' || /^browser_/.test(planName) || !planName)) {
               const fileNameMatch = s.match(/(?:called|named|اسمه|بإسم|باسم|إسم)\s+([^\s,،.]+)/i);
               const fileName = fileNameMatch?.[1] || 'output.txt';
+              console.info(`[FileRoute] ⚡ Overriding ${planName} → write_file for file: ${fileName}`);
               plan = { name: 'write_file', input: { path: fileName, content: '' } } as any;
               planName = 'write_file';
             }
@@ -3372,7 +3373,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               } catch { }
             }
           }
-          if (isBrowserTool) {
+          if (isBrowserTool && !isFileOp) {
             const reqSid = typeof browserSessionId === 'string' ? browserSessionId.trim() : '';
             const inputSid = String((plan as any)?.input?.sessionId || '').trim();
             const hasSid = !!(reqSid || inputSid);
