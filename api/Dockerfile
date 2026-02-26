@@ -20,7 +20,7 @@ COPY package*.json ./
 # Optimize npm for low-memory environment
 # Skipping playwright browser downloads during build to save RAM/Disk
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 
 RUN npm config set maxsockets 1 && \
     npm install --include=dev --no-audit --no-fund --loglevel=error
@@ -29,7 +29,7 @@ RUN npm config set maxsockets 1 && \
 COPY . .
 
 # Build the application
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN npm run build
 
 # Stage 2: Runtime
@@ -52,7 +52,7 @@ COPY package*.json ./
 
 # Install only production dependencies
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN npm config set maxsockets 1 && \
     npm install --omit=dev --no-audit --no-fund --loglevel=error && \
     npm cache clean --force
