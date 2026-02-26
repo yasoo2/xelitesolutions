@@ -36,6 +36,9 @@ const thinkingDetailsListeners: Set<(details: string[]) => void> = new Set();
 let thinkingStatus = '';
 const thinkingStatusListeners: Set<(status: string) => void> = new Set();
 
+// [New] Task Tracker State
+let taskTrackerData: any[] = [];
+const taskTrackerListeners: Set<(tasks: any[]) => void> = new Set();
 
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
@@ -294,8 +297,15 @@ async function connect() {
       } else if (msgType === 'run_started') {
         thinkingDetails = [];
         thinkingStatus = '';
+        taskTrackerData = []; // Reset tasks on new run
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
         thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
+        taskTrackerListeners.forEach(cb => { try { cb([]); } catch { } });
+      } else if (msgType === 'task_tracker') {
+        // [New] Receive task lists from the API
+        const tasks = data?.data || [];
+        taskTrackerData = tasks;
+        taskTrackerListeners.forEach(cb => { try { cb(tasks); } catch { } });
       } else if (msgType === 'build_progress') {
         // [Flow Agent] Live build progress events for PreviewPanel overlay
         const progressData = data?.data || {};
@@ -503,7 +513,6 @@ export const SocketService = {
     thinkingPhaseListeners.add(cb);
     return () => { thinkingPhaseListeners.delete(cb); };
   },
-  // [Wakil 6.0] Deep Reasoning Subscription
   subscribeThinkingDetails(cb: (details: string[]) => void) {
     cb([...thinkingDetails]);
     thinkingDetailsListeners.add(cb);
@@ -514,9 +523,14 @@ export const SocketService = {
     thinkingStatusListeners.add(cb);
     return () => { thinkingStatusListeners.delete(cb); };
   },
+  // [New] Task Tracker Subscription
+  subscribeTaskTracker(cb: (tasks: any[]) => void) {
+    cb([...taskTrackerData]);
+    taskTrackerListeners.add(cb);
+    return () => { taskTrackerListeners.delete(cb); };
+  },
   // [Wakil 6.1] Get last preview URL (for mount-time read)
   getLastPreviewUrl() {
     return _lastPreviewUrl;
-  },
-
+  }
 };

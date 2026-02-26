@@ -1992,6 +1992,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             broadcastThinkingPhase(String(sessionId), 'executing', `🔧 جاري تعديل المشروع: ${activeProject.name}...`);
             broadcastThinkingDetail(String(sessionId), `> [AGENT] Modification intent detected → reading project files at "${activeProject.path}"`);
 
+            // [Premium Task Tracker] Emit tasks for modification
+            let trackerTasks = [
+              { id: 'mod_read', label: 'قراءة وتحليل ملفات المشروع 🔍', status: 'in_progress' },
+              { id: 'mod_plan', label: 'تحليل وتخطيط التعديل 🧠', status: 'pending' },
+              { id: 'mod_write', label: 'كتابة وتحديث الكود ✍️', status: 'pending' }
+            ];
+            ev({ type: 'task_tracker', data: trackerTasks });
+
             // Step 1: Read the project files to understand the current state
             const readResult = await executeTool('inspect_directory', {
               path: activeProject.path,
@@ -2074,6 +2082,15 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 } else {
                   initialPlan = editPlan as any;
                 }
+
+                // [Premium Task Tracker] Update task state after LLM planning
+                trackerTasks = [
+                  { id: 'mod_read', label: 'قراءة وتحليل ملفات المشروع 🔍', status: 'completed' },
+                  { id: 'mod_plan', label: 'تحليل وتخطيط التعديل 🧠', status: 'completed' },
+                  { id: 'mod_write', label: 'كتابة وتحديث الكود ✍️', status: 'in_progress' }
+                ];
+                ev({ type: 'task_tracker', data: trackerTasks });
+
               } catch (editErr: any) {
                 console.warn('[AGENT MODE] Edit planning failed:', editErr?.message);
                 // Fallback: let the LLM handle it with context
@@ -2090,6 +2107,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             broadcastThinkingPhase(String(sessionId), 'executing', `🚀 بناء المشروع: ${buildName}`);
             broadcastThinkingDetail(String(sessionId), `> [AGENT] Detected build intent → Executing website_full_pipeline for "${buildName}" (${buildType})`);
+
+            // [Premium Task Tracker] Emit tasks for build
+            let trackerTasks = [
+              { id: 'build_req', label: 'تحليل متطلبات المشروع 🔍', status: 'in_progress' },
+              { id: 'build_plan', label: 'استكشاف وتخطيط الهيكلية 🏗️', status: 'pending' },
+              { id: 'build_exec', label: 'بناء وهندسة النظام ⚙️', status: 'pending' }
+            ];
+            ev({ type: 'task_tracker', data: trackerTasks });
 
             initialPlan = {
               name: 'website_full_pipeline',
@@ -2116,6 +2141,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               broadcastThinkingPhase(String(sessionId), 'analyzing', 'إرسال الطلب إلى المزوّد...');
               broadcastThinkingDetail(String(sessionId), `> Routing to LLM provider: ${providerKey}...`);
 
+              // [Premium Task Tracker] Emit tasks for general queries
+              let trackerTasks = [
+                { id: 'chat_plan', label: 'تحليل وفهم الطلب 🧠', status: 'in_progress' },
+                { id: 'chat_exec', label: 'تجهيز الاستجابة المطلوبة ⚡', status: 'pending' }
+              ];
+              ev({ type: 'task_tracker', data: trackerTasks });
+
               initialPlan = await planNextStep(history, {
                 provider: providerKey,
                 apiKey: apiKey,
@@ -2139,6 +2171,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
               broadcastThinkingPhase(String(sessionId), 'synthesizing', initialPlan ? `تم اختيار: ${initialPlan.name}` : 'لا توجد خطة...');
               broadcastThinkingDetail(String(sessionId), initialPlan ? `> Plan resolved: ${initialPlan.name}` : '> No plan resolved');
+
+              // [Premium Task Tracker] Update task state
+              trackerTasks = [
+                { id: 'chat_plan', label: 'تحليل وفهم الطلب 🧠', status: 'completed' },
+                { id: 'chat_exec', label: 'تجهيز الاستجابة المطلوبة ⚡', status: 'in_progress' }
+              ];
+              ev({ type: 'task_tracker', data: trackerTasks });
             }
           }
         }

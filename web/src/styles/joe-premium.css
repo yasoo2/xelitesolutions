@@ -2,6 +2,7 @@
  * Joe Premium CSS - Design 4 (Final)
  * Dark Gold Premium Theme with Glassmorphism & Wave Effects
  */
+@import './task-tracker.css';
 
 /* Premium Color Variables */
 :root {

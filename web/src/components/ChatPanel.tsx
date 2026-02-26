@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
+import TaskTracker from './TaskTracker';
 
 import { SocketService } from '../services/socket';
 
@@ -213,17 +214,21 @@ export default function ChatPanel({
                         </div>
                     ))
                 )}
+                <div ref={messagesEndRef} />
+
                 {(isLoading || thinkingPhase !== 'idle') && (
                     <div className="joe-message assistant">
                         <div className="joe-message-avatar ai">J</div>
-                        <NeuralThinkingIndicator
-                            visible={isLoading || thinkingPhase !== 'idle'}
-                            phase={thinkingPhase}
-                            variant="bubble"
-                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
+                            <NeuralThinkingIndicator
+                                visible={isLoading || thinkingPhase !== 'idle'}
+                                phase={thinkingPhase}
+                                variant="bubble"
+                            />
+                            <TaskTracker />
+                        </div>
                     </div>
                 )}
-                <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area - Use children if provided (for CommandComposer) */}
