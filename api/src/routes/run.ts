@@ -1971,7 +1971,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           // Without this, Gemini returns echo (text chat) and Joe acts like a chatbot.
           // [STUPID JOE FIX] Restrict fast-path to short, simple requests only
           const wordCount = rawUserText.trim().split(/\s+/).length;
-          const isComplex = /(and|then|with|using|follow|بعدين|و|ثم|باستخدام|تبع)\s+/i.test(rawUserText) || rawUserText.length > 80;
+          const isComplex = /(and|then|with|using|follow|بعدين|و|ثم|باستخدام|تبع)\s+/i.test(rawUserText) ||
+            /^\d+[\.\)]|[\*•-]\s/m.test(rawUserText) || // Numbering or bullets
+            rawUserText.length > 80;
 
           const isClearBuildRequest = (wordCount < 15 && !isComplex) && (
             /(build|create|generate|scaffold|make|design|develop|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)\s+.{0,40}?(website|app|system|page|landing|site|api|store|shop|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة|metager|متجر|واجهة|هبوط|دكان|بورتفوليو|portfolio)/i.test(rawUserText) ||
@@ -2567,7 +2569,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const multiStepKeyword =
             /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|تابع|نفذ|قم\s+ب|سجل\s*دخول|تسجيل\s*الدخول|login|sign\s*in|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
               sNorm,
-            );
+            ) || /^\d+[\.\)]|[\*•-]\s/m.test(s); // Numbering or bullets in prompt
+          const wordCount = s.trim().split(/\s+/).length;
           const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(sNorm);
           const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
           const hasSiteKeyword =
@@ -2579,6 +2582,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (!hasUrl && !hasSiteKeyword && !browserKeyword) return false;
           if (!(openKeyword || browserKeyword || hasUrl)) return false;
           if (multiStepKeyword) return false;
+          if (wordCount > 12) return false; // Too long for a simple "open" request
           // [FIX] Don't trigger if it looks like a local file/code operation
           if (isFileOp) return false;
           if (analysisKeyword) return false;
@@ -2646,7 +2650,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             /(\bthen\b|\bafter\b|\bnext\b|and then|, then|; then|ثم|وبعد|بعد( ذلك)?|بعدها|ومن ثم|عدة\s+خطوات|خطوات|خطوة|انقر|اضغط|click|type|اكتب|املأ|fill|submit|إرسال|scroll|مرر|extract|استخرج|لخص|summarize)/i.test(
               s,
             );
+          const wordCount = s.trim().split(/\s+/).length;
           if (multiStepKeyword) return false;
+          if (wordCount > 15) return false; // Too complex for a fast-path search
           return true;
         })();
 

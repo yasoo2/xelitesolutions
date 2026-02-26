@@ -1493,6 +1493,12 @@ export async function planNextStep(
       const isBuildingWebsite =
         /(صفحة|موقع|هبوط|landing|page|website|builder|متجر|دكان|store|shop)/i.test(userText);
 
+      const wordCountInLlm = (userText || "").trim().split(/\s+/).length;
+      const isInstructional =
+        /^\d+[\.\)]|[\*•-]\s/m.test(userText) || // Numbering or bullets
+        /(step|rule|instruction|قواعد|خطوات|اولا|ثانيا|أولا|ثانياً)/i.test(userText) ||
+        wordCountInLlm > 20;
+
 
       const parseWebsitePipelineInput = () => {
         const text = String(userText || "");
@@ -1564,8 +1570,8 @@ export async function planNextStep(
         };
       };
 
-      // [FIX] Simple build requests → Use standard Orchestrator
-      if (!isBuildingWebsite && simpleBuildPatterns.test(userText)) {
+      // [STUPID JOE FIX] Simple build requests → Use standard Orchestrator
+      if (!isInstructional && !isBuildingWebsite && simpleBuildPatterns.test(userText)) {
         console.info(
           "[Auto Enterprise] → Simple Build Detected: Routing to Agent Orchestrator",
         );
@@ -1577,6 +1583,7 @@ export async function planNextStep(
 
       // Large-scale builds → Agent Orchestrator
       if (
+        !isInstructional &&
         !isBuildingWebsite &&
         (analysis.type === "code_generation" || codePatterns.test(userText)) &&
         (analysis.complexity === "extreme" ||
@@ -1592,7 +1599,7 @@ export async function planNextStep(
 
       // 4. Code generation (let the intelligent model handle it via echo)
       if (codePatterns.test(userText) && analysis.type === "code_generation") {
-        if (isBuildingWebsite) {
+        if (isBuildingWebsite && !isInstructional) {
           if (
             analysis.complexity === "extreme" ||
             explicitLargeScale.test(userText) ||
