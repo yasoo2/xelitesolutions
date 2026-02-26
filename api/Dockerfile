@@ -3,9 +3,14 @@ FROM node:20-slim AS builder
 
 # Install build dependencies optimized for low-memory CI runners
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 make && \
-    apt-get install -y --no-install-recommends g++ git && \
-    apt-get install -y --no-install-recommends bash curl && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    git \
+    bash \
+    curl && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -33,8 +38,13 @@ FROM node:20-slim
 
 # Install runtime dependencies (python and build tools needed for node-pty postinstall)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 make && \
-    apt-get install -y --no-install-recommends g++ bash curl && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    bash \
+    curl && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
