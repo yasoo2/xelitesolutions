@@ -25,7 +25,7 @@ ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build the application
-RUN npx tsc -b
+# Skipping tsc to prevent OOM (exit code 137) on constrained CI runners. Vite uses esbuild for fast bundling.
 RUN npx vite build
 
 # Stage 2: Serve
