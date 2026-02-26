@@ -3,6 +3,9 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
+# Set memory limits to prevent OOM kill on low-resource machines (Exit code 137)
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+
 # Copy package files
 COPY package*.json ./
 
@@ -20,7 +23,6 @@ ARG VITE_API_URL=/api
 # Set as environment variables for Vite build
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
-ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Build the application
 RUN npx tsc -b
