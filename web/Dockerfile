@@ -6,8 +6,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci && npm cache clean --force
+# Optimize npm for low-memory environment
+RUN npm config set maxsockets 1 && \
+    npm install --no-audit --no-fund --loglevel=error
 
 # Copy source code
 COPY . .
@@ -27,9 +28,6 @@ RUN npx vite build
 
 # Stage 2: Serve
 FROM nginx:alpine
-
-# Install envsubst (if needed, but we use shell script)
-# RUN apk add --no-cache gettext
 
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
