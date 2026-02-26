@@ -3226,12 +3226,32 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                       content: `PROJECT_PLAN:${projectId}:${JSON.stringify(plan)}`
                     } as any);
 
-                    // Inform user about the plan
-                    const planSummary = `📋 **خطة المشروع**: ${plan.projectName}\n` +
-                      `- عدد المراحل: ${plan.totalPhases}\n` +
-                      `- الوقت المقدر: ${plan.estimatedDuration}\n` +
-                      `- المرحلة الأولى: ${plan.phases?.[0]?.name || 'غير محدد'}\n\n` +
-                      `سأبدأ التنفيذ المرحلي الآن...`;
+                    // Inform user about the plan with premium styling
+                    const isAr = isArabicText(userTextForOverrides);
+                    const vibe = plan.projectVibe ? `\n> **🎨 Project Vibe**: ${plan.projectVibe}\n` : '';
+
+                    const phasesMd = plan.phases?.map((p: any) =>
+                      `**${p.name}** (${p.estimatedTime || 'N/A'})\n   └ ${p.description}`
+                    ).join('\n') || '';
+
+                    const planSummary = isAr
+                      ? `### 🚀 **خطة المهندس الذكي**: ${plan.projectName}\n` +
+                      `${vibe}\n` +
+                      `#### 📋 تفاصيل التنفيذ:\n` +
+                      `- **عدد المراحل**: ${plan.totalPhases}\n` +
+                      `- **الوقت المقدر**: ${plan.estimatedDuration}\n\n` +
+                      `#### 🛠️ خريطة الطريق:\n${phasesMd}\n\n` +
+                      `--- \n` +
+                      `✨ **سأبدأ التنفيذ المرحلي الآن بأعلى معايير الجودة...**`
+                      : `### 🚀 **Engineered execution plan**: ${plan.projectName}\n` +
+                      `${vibe}\n` +
+                      `#### 📋 Execution Strategy:\n` +
+                      `- **Total Phases**: ${plan.totalPhases}\n` +
+                      `- **Estimated Duration**: ${plan.estimatedDuration}\n\n` +
+                      `#### 🛠️ Project Roadmap:\n${phasesMd}\n\n` +
+                      `--- \n` +
+                      `✨ **Starting phased implementation with premium standards...**`;
+
                     ev({ type: 'text', data: planSummary });
 
                     // EXECUTION BRIDGE: Actually execute each phase
@@ -3641,12 +3661,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 return res.json({ ok: true, runId, result });
               }
 
+              let ap: any = null;
+              let planContext: any = null;
+
               if (!offlineMode) {
-                const ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
-                ev({ type: 'approval_required', data: { id: ap._id.toString(), runId, risk, action: actionText } });
+                ap = await Approval.create({ runId, action: actionText, risk, status: 'pending' });
+                ev({ type: 'approval_required', data: { id: ap?._id?.toString() || '', runId, risk, action: actionText } });
                 await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
-                const { planContext } = await import('../approvals/context');
-                planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
+                const { planContext: pc } = await import('../approvals/context');
+                planContext = pc;
+                if (ap) planContext.set(ap._id.toString(), { runId, name: plan?.name || '', input: plan?.input });
               } else {
                 ev({ type: 'approval_required', data: { id: `offline-approval-${Date.now()}`, runId, risk, action: actionText } });
               }
@@ -3670,14 +3694,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: `execute:${plan?.name}`, result } });
                 await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
                 ev({ type: 'run_finished', data: { runId, ok: result.ok } });
-                planContext.delete(ap._id.toString());
+                if (planContext && ap) planContext.delete(ap._id.toString());
                 if (!res.headersSent) {
                   return res.json({ ok: true, runId, result });
                 }
                 return;
               }
               if (!res.headersSent) {
-                return res.json({ runId, blocked: true, approvalId: ap._id.toString() });
+                return res.json({ runId, blocked: true, approvalId: ap ? ap._id.toString() : 'offline' });
               }
               return;
 

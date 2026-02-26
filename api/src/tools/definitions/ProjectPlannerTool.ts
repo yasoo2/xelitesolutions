@@ -62,7 +62,7 @@ export class ProjectPlannerTool implements ToolDefinition {
             logs.push(`Planning project: "${projectDescription.slice(0, 100)}..."`);
 
             // Construct planning prompt
-            const planningPrompt = `You are an expert project manager and software architect. Create a detailed execution plan for the following project.
+            const planningPrompt = `You are a Senior Project Manager and Lead Software Architect. Create a COMPREHENSIVE and REALISTIC execution plan for the following project.
 
 PROJECT DESCRIPTION:
 ${projectDescription}
@@ -75,47 +75,49 @@ ANALYSIS DATA:
 - Estimated Files: ${analysis.estimatedFiles}
 ` : ''}
 
-Create a hierarchical plan with 3-5 phases. Each phase should be completable independently.
+Create a hierarchical plan with 3-6 distinct phases. Each phase must have a professional name and a detailed description that communicates the "vibe" and objectives.
 
-QUALITY INSTRUCTIONS:
-- For "Creative", "Landing Page", or "Website" requests, prioritize MODERN AESTHETICS (glassmorphism, vibrant gradients, rich typography).
-- CRITICAL: USE THE "ai_write_file" TOOL FOR ALL CODE GENERATION. This tool uses AI to write full, rich files.
-- Do NOT use "scaffold_project" or "write_file" for the main logic; use "ai_write_file" so the implementation is NOT a placeholder.
-- Ensure the project structure is clean and follows industry best practices (3-Tier architecture for fullstack, organized assets for static).
-- The FINAL phase MUST be "Launch & Preview" which includes the dev_server_start tool.
+QUALITY & ARCHITECTURE INSTRUCTIONS:
+1. **Premium Aesthetics**: For all web/UI tasks, mandate "Premium Aesthetics" (glassmorphism, vibrant gradients, high-end typography, smooth micro-animations). 
+2. **Realistic Estimations**: Do NOT use generic times. Estimate based on realistic engineering effort (e.g., "45-60 mins" for complex UI, "15 mins" for setup). Total duration must align with phase sums.
+3. **Core Tooling**: CRITICAL - Use "ai_write_file" for all primary code generation. This ensures the implementation is full-featured and NOT a placeholder.
+4. **Project Structure**: Enforce a professional file structure (e.g., separate assets, components, services).
+5. **RTL Support**: If the project description is in Arabic, all task descriptions and implemented UI MUST support RTL (dir="rtl").
+6. **Final Phase**: Must be "Launch & Production Readiness" including "dev_server_start".
 
 Return ONLY valid JSON in this format:
 {
-  "projectName": "Short project name",
+  "projectName": "Professional Project Name",
+  "projectVibe": "e.g., Luxury Corporate, Neon Cyberpunk, Minimalist Glass",
   "totalPhases": 4,
-  "estimatedDuration": "2-3 hours",
+  "estimatedDuration": "3-4 hours of focused engineering",
   "phases": [
     {
       "phaseNumber": 1,
-      "name": "Phase Name",
-      "description": "What this phase accomplishes",
+      "name": "🚀 Phase Name with Emoji",
+      "description": "Professional summary of the phase's aesthetic and technical goals",
       "tasks": [
         {
-          "task": "Develop the main landing page structure with rich CSS",
+          "task": "Detailed task description",
           "tool": "ai_write_file",
           "args": {
-             "path": "web-app/index.html",
-             "description": "Full HTML5 landing page with glassmorphism, responsive sections, and Arabic support. Style with an external CSS file."
+             "path": "path/to/file",
+             "description": "Extremely detailed prompt for the AI writer to ensure a premium result."
           },
-          "priority": "high"
+          "priority": "high",
+          "realisticMinutes": 30
         }
       ],
-      "deliverables": ["file1.js", "file2.ts"],
-      "estimatedTime": "30 minutes"
+      "deliverables": ["List of key files or outcomes"],
+      "estimatedTime": "Time string"
     }
   ],
   "dependencies": {
-    "phase2": ["phase1"],
-    "phase3": ["phase1", "phase2"]
+    "phase2": ["phase1"]
   }
 }
 
-IMPORTANT: Return ONLY valid JSON, no markdown, no explanations. Use "ai_write_file" with "path" and "description" args for all files.`;
+IMPORTANT: Return ONLY valid JSON. No conversational filler. Use "ai_write_file" for all implementation tasks. Ensure the plan feels "Real" to a professional developer.`;
 
             // Call LLM for planning
             const llmContext = [
@@ -309,6 +311,7 @@ CRITICAL RULES:
     private validatePlan(plan: any, projectDescription: string): any {
         return {
             projectName: plan.projectName || 'New Project',
+            projectVibe: plan.projectVibe || 'Professional Engineering',
             totalPhases: typeof plan.totalPhases === 'number' ? plan.totalPhases : 3,
             estimatedDuration: plan.estimatedDuration || '1-2 hours',
             phases: Array.isArray(plan.phases) ? plan.phases : [],

@@ -224,8 +224,9 @@ export async function generateActionPlan(userMessage: string, analysis: TaskAnal
     if (analysis.complexity === 'low' && !analysis.requiresTools) return [];
 
     try {
-        const systemPrompt = `You are a technical planner.Break down the user's request into 3-5 logical steps. 
-Respond ONLY with a numbered list of steps.`;
+        const systemPrompt = `You are an Elite Technical Planner. Break down the user's request into 3-5 logical, high-impact steps.
+Use relevant emojis for each step (e.g., 🔍, 🏗️, 🛡️, ✨).
+Respond ONLY with a numbered list of steps. Ensure the steps sound professional and encouraging.`;
 
         const messages = [
             { role: 'system', content: systemPrompt },
