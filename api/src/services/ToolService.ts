@@ -381,6 +381,24 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     logs.push(`[${new Date().toISOString()}] start ${effectiveName} (orig=${name})`);
 
+    // [ELITE SYNC] Broadcast tool-specific thinking status
+    if (contextSessionId) {
+        const { broadcastThinkingPhase } = require('../ws');
+        let status = '';
+        if (effectiveName === 'browser_run') status = 'جاري استخدام المتصفح...';
+        else if (effectiveName === 'web_search') status = 'جاري البحث في الويب...';
+        else if (effectiveName === 'scaffold_project' || effectiveName === 'scaffold_full_stack') status = 'جاري إنشاء هيكل المشروع...';
+        else if (effectiveName === 'npm_manager') status = 'جاري معالجة المكتبات...';
+        else if (effectiveName === 'git_ops') status = 'جاري تحديث المستودع...';
+        else if (effectiveName === 'write_file' || effectiveName === 'file_edit') status = 'جاري كتابة الكود...';
+        else if (effectiveName === 'read_file' || effectiveName === 'inspect_directory') status = 'جاري مراجعة الملفات...';
+        else if (effectiveName === 'analyze_codebase') status = 'جاري تحليل بنية المشروع...';
+
+        if (status) {
+            broadcastThinkingPhase(contextSessionId, 'executing', status);
+        }
+    }
+
     try {
         const tDef = tools.find(t => t.name === effectiveName);
         if (!tDef) {

@@ -1,4 +1,5 @@
 import { API_URL, WS_URL } from '../config';
+import { AutoOpenManager } from './AutoOpenManager';
 
 let socket: WebSocket | null = null;
 const listeners: Set<(data: any) => void> = new Set();
@@ -15,6 +16,13 @@ let _lastPreviewUrl = '';
 // [Wakil 5.1] Quiet Mode & Source Deduplication
 let quietMode = false;
 let lastSentPayload: string | null = null;
+let connectAttempts = 0;
+let lastUrl = '';
+let triedFallback = false;
+let cachedIsShim: boolean | null = null;
+let lastShimCheckAt = 0;
+let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
+let lastAuthProbeAt = 0;
 
 // [Wakil 5.3] Neural Thinking Indicator State
 let thinkingPhase: 'analyzing' | 'synthesizing' | 'executing' | 'idle' = 'idle';
@@ -23,6 +31,10 @@ const thinkingPhaseListeners: Set<(phase: string) => void> = new Set();
 // [Wakil 6.0] Deep Reasoning State
 let thinkingDetails: string[] = [];
 const thinkingDetailsListeners: Set<(details: string[]) => void> = new Set();
+
+// [ELITE SPEC] Thinking Status (Short human-friendly status like "Navigating...")
+let thinkingStatus = '';
+const thinkingStatusListeners: Set<(status: string) => void> = new Set();
 
 
 function computeFallbackWsUrl(primaryUrl: string) {
@@ -227,9 +239,15 @@ async function connect() {
       // [Wakil 6.0] Handle explicit thinking_phase messages
       if (msgType === 'thinking_phase') {
         const phase = data?.data?.phase;
+        const detail = data?.data?.detail;
         if (phase && ['analyzing', 'synthesizing', 'executing', 'idle'].includes(phase)) {
           thinkingPhase = phase;
           thinkingPhaseListeners.forEach(cb => { try { cb(phase); } catch { } });
+
+          if (detail !== undefined) {
+            thinkingStatus = detail || ''; // Allow empty string to clear
+            thinkingStatusListeners.forEach(cb => { try { cb(thinkingStatus); } catch { } });
+          }
         }
       } else if (msgType === 'thinking_detail') {
         const detail = data?.data?.detail;
@@ -262,7 +280,9 @@ async function connect() {
           console.log('[Socket] Auto-deactivating Quiet Mode (run_finished/text)');
           quietMode = false;
           thinkingPhase = 'idle';
+          thinkingStatus = '';
           thinkingPhaseListeners.forEach(cb => { try { cb('idle'); } catch { } });
+          thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
         }
       } else if (msgType === 'thought') {
         // [Wakil 6.0] Matrix-style thought logs
@@ -273,7 +293,9 @@ async function connect() {
         }
       } else if (msgType === 'run_started') {
         thinkingDetails = [];
+        thinkingStatus = '';
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
+        thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
       } else if (msgType === 'build_progress') {
         // [Flow Agent] Live build progress events for PreviewPanel overlay
         const progressData = data?.data || {};
@@ -486,6 +508,11 @@ export const SocketService = {
     cb([...thinkingDetails]);
     thinkingDetailsListeners.add(cb);
     return () => { thinkingDetailsListeners.delete(cb); };
+  },
+  subscribeThinkingStatus(cb: (status: string) => void) {
+    cb(thinkingStatus);
+    thinkingStatusListeners.add(cb);
+    return () => { thinkingStatusListeners.delete(cb); };
   },
   // [Wakil 6.1] Get last preview URL (for mount-time read)
   getLastPreviewUrl() {

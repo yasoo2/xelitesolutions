@@ -3254,11 +3254,41 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
                     ev({ type: 'text', data: planSummary });
 
+                    // [ELITE SYNC] Initialize Todo List in UI
+                    const initialTodos = plan.phases?.map((p: any) => ({
+                      id: `phase-${p.phaseNumber}`,
+                      status: 'pending',
+                      content: p.name
+                    })) || [];
+
+                    if (initialTodos.length > 0) {
+                      await executeTool('todo_write', {
+                        merge: false,
+                        todos: initialTodos,
+                        workspaceId
+                      }, { sessionId, workspaceId });
+                    }
+
                     // EXECUTION BRIDGE: Actually execute each phase
                     const phases = Array.isArray(plan.phases) ? plan.phases : [];
                     for (const phase of phases) {
                       try {
                         ev({ type: 'thought', data: `> Executing Phase ${phase.phaseNumber}: ${phase.name}...` });
+
+                        // [ELITE SYNC] Broadcast thematic thinking status
+                        const { broadcastThinkingPhase } = require('../ws');
+                        broadcastThinkingPhase(sessionId, 'executing', `جاري تنفيذ المرحلة: ${phase.name}...`);
+
+                        // [ELITE SYNC] Update current phase to 'in_progress'
+                        await executeTool('todo_write', {
+                          merge: true,
+                          todos: [{
+                            id: `phase-${phase.phaseNumber}`,
+                            status: 'in_progress',
+                            content: phase.name
+                          }],
+                          workspaceId
+                        }, { sessionId, workspaceId });
 
                         const phaseResult = await executeTool('phase_executor', {
                           phase,
@@ -3288,6 +3318,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                               phaseStatus: out.status,
                               completedTasks: out.results?.filter((r: any) => r.ok).map((r: any) => r.task) || [],
                             }
+                          }, { sessionId, workspaceId });
+
+                          // [ELITE SYNC] Mark phase as 'completed'
+                          await executeTool('todo_write', {
+                            merge: true,
+                            todos: [{
+                              id: `phase-${phase.phaseNumber}`,
+                              status: out.status === 'done' ? 'completed' : 'cancelled',
+                              content: phase.name
+                            }],
+                            workspaceId
                           }, { sessionId, workspaceId });
 
                           // If phase failed critically, stop

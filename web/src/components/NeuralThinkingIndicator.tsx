@@ -14,14 +14,15 @@ interface NeuralThinkingIndicatorProps {
 }
 
 const phaseLabels: Record<string, { emoji: string; text: string; textAr: string; color: string }> = {
-  analyzing: { emoji: '🧠', text: 'Analyzing', textAr: 'تحليل عميق', color: '#00d2ff' }, // Cyan
-  synthesizing: { emoji: '⚙️', text: 'Synthesizing', textAr: 'تخطيط', color: '#b0fb5d' }, // Matrix Green
-  executing: { emoji: '🚀', text: 'Executing', textAr: 'تنفيذ', color: '#ffd700' }, // Gold
+  analyzing: { emoji: '🧠', text: 'Analyzing', textAr: 'Joe يفكر...', color: '#00d2ff' }, // Cyan
+  synthesizing: { emoji: '⚙️', text: 'Synthesizing', textAr: 'Joe يخطط...', color: '#b0fb5d' }, // Matrix Green
+  executing: { emoji: '🚀', text: 'Executing', textAr: 'Joe ينفذ...', color: '#ffd700' }, // Gold
   idle: { emoji: '', text: '', textAr: '', color: '#aab3c5' },
 };
 
 export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline' }: NeuralThinkingIndicatorProps) {
   const [currentPhase, setCurrentPhase] = useState(phase);
+  const [status, setStatus] = useState('');
   const [details, setDetails] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -32,9 +33,13 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
     const unsubPhase = SocketService.subscribeThinkingPhase((p: any) => {
       setCurrentPhase(p);
     });
+    const unsubStatus = SocketService.subscribeThinkingStatus((s: string) => {
+      setStatus(s);
+    });
     return () => {
       unsubDetails();
       unsubPhase();
+      unsubStatus();
     };
   }, []);
 
@@ -170,7 +175,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         </div>
         <div className="neural-label">
           <span>{current.emoji}</span>
-          <span>{current.textAr}</span>
+          <span>{status || current.textAr}</span>
         </div>
       </div>
 
