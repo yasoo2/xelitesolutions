@@ -1969,8 +1969,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           // 🔥 [AGENT MODE] CRITICAL: Force tool execution for build requests BEFORE calling LLM
           // This is what makes Joe an AGENT instead of a chatbot.
           // Without this, Gemini returns echo (text chat) and Joe acts like a chatbot.
-          const isClearBuildRequest = (
-            /(build|create|generate|scaffold|make|design|develop|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)\s+.{0,40}?(website|app|system|page|landing|site|api|store|shop|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة|متجر|واجهة|هبوط|دكان|بورتفوليو|portfolio)/i.test(rawUserText) ||
+          // [STUPID JOE FIX] Restrict fast-path to short, simple requests only
+          const wordCount = rawUserText.trim().split(/\s+/).length;
+          const isComplex = /(and|then|with|using|follow|بعدين|و|ثم|باستخدام|تبع)\s+/i.test(rawUserText) || rawUserText.length > 80;
+
+          const isClearBuildRequest = (wordCount < 15 && !isComplex) && (
+            /(build|create|generate|scaffold|make|design|develop|ابني|انشئ|أنشئ|سوي|اعمل|كون|صمم|طور|برمج|جهز)\s+.{0,40}?(website|app|system|page|landing|site|api|store|shop|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|ادارة|إدارة|metager|متجر|واجهة|هبوط|دكان|بورتفوليو|portfolio)/i.test(rawUserText) ||
             /(صفحة\s+هبوط|landing\s+page|صفحة\s+فاخرة|موقع\s+الكتروني|متجر\s+الكتروني|متجر\s+ساعات|e-?commerce)/i.test(rawUserText)
           );
 
@@ -2118,7 +2122,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               input: {
                 name: buildName,
                 type: buildType,
-                features: ['auth', 'products'],
+                features: [], // Remove hardcoded features to allow smarter tool inference or cleaner starts
                 language: /[\u0600-\u06FF]/.test(rawUserText) ? 'ar' : 'en',
                 description: rawUserText
               }
