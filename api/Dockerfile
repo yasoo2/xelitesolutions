@@ -34,8 +34,11 @@ RUN npm run build
 # Stage 2: Runtime
 FROM node:20-slim
 
-# Install runtime dependencies (curl and bash for healthcheck)
+# Install runtime dependencies (python and build tools needed for node-pty postinstall)
 RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
     bash \
     curl \
     --no-install-recommends && \
