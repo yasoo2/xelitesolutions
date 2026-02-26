@@ -3,19 +3,11 @@ import { API_URL, WS_URL } from '../config';
 let socket: WebSocket | null = null;
 const listeners: Set<(data: any) => void> = new Set();
 const statusListeners: Set<(status: { state: string; detail?: string }) => void> = new Set();
-let pendingQueue: string[] = [];
-let connectTimer: number | null = null;
-let connectAttempts = 0;
-let triedFallback = false;
-let lastUrl = '';
-import { AutoOpenManager } from './AutoOpenManager';
-let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
-let lastAuthProbeAt = 0;
-let lastShimCheckAt = 0;
-let cachedIsShim: boolean | null = null;
-
-// [Wakil 4.7] Singleton Enforcement & Deduplication
+let pendingQueue: any[] = []; // Changed to any[] to support structured data for deduplication
+let connectTimer: any = null;
 let isConnecting = false;
+let connectingTimeoutTimer: any = null;
+const CONNECTING_TIMEOUT = 8000;
 const seenMessageIds = new Set<string>(); // Deduplication cache
 const MAX_SEEN_IDS = 1000;
 let _lastPreviewUrl = '';
@@ -113,12 +105,21 @@ async function connect() {
     console.log('[Socket Debug] Already connecting... skipping.');
     return;
   }
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-    console.log('[Socket Debug] Socket already open/connecting', socket.readyState);
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    console.log('[Socket Debug] Socket already open');
     return;
   }
 
-  isConnecting = true; // LOCK
+  isConnecting = true;
+  if (connectingTimeoutTimer) clearTimeout(connectingTimeoutTimer);
+  connectingTimeoutTimer = setTimeout(() => {
+    if (isConnecting) {
+      console.warn('[Socket Debug] Connection attempt timed out, resetting isConnecting');
+      isConnecting = false;
+      connect();
+    }
+  }, CONNECTING_TIMEOUT);
 
   const token = localStorage.getItem('token');
   console.log('[Socket Debug] Token found:', token ? token.slice(0, 10) + '...' : 'null');
@@ -171,28 +172,28 @@ async function connect() {
     console.log('[Socket Debug] onopen fired');
     const ws = event.target as WebSocket;
     opened = true;
-    isConnecting = false; // UNLOCK
+    isConnecting = false;
+    if (connectingTimeoutTimer) clearTimeout(connectingTimeoutTimer);
     connectAttempts = 0;
     triedFallback = false;
     setStatus('connected', lastUrl);
 
+    // Initial heartbeat
+    SocketService.send({ type: 'heartbeat', ts: Date.now() });
+
     // Flush pending safely using the socket instance that just opened
-    console.log(`[Socket Debug] Flushing ${pendingQueue.length} queued messages.`);
-    while (pendingQueue.length > 0) {
-      if (ws.readyState !== WebSocket.OPEN) break;
-      const msg = pendingQueue.shift();
-      if (msg) {
-        try {
-          ws.send(msg);
-        } catch (err) {
-          console.error('WebSocket send error in onopen:', err);
-          // Don't put it back, avoid loops
-        }
+    // Flush pending safely using the socket instance that just opened
+    console.log(`[Socket Debug] Flushing ${pendingQueue.length} items from queue.`);
+    const toFlush = [...pendingQueue];
+    pendingQueue = [];
+
+    for (const item of toFlush) {
+      const payload = typeof item === 'string' ? item : JSON.stringify(item);
+      try {
+        ws.send(payload);
+      } catch (err) {
+        console.error('[Socket Debug] Flush error:', err);
       }
-    }
-    // [Wakil 4.7] Ensure queue is empty after flush attempt
-    if (ws.readyState === WebSocket.OPEN) {
-      pendingQueue = [];
     }
   };
 
@@ -431,9 +432,20 @@ export const SocketService = {
       console.log('[Socket] Sending:', msg);
       socket.send(msg);
     } else {
-      console.warn('[Socket] Not connected. Queuing message:', msg);
-      pendingQueue.push(msg);
+      // SMART QUEUEING & DEDUPLICATION
+      if (data && data.type === 'terminal_resize') {
+        const existingIdx = pendingQueue.findIndex(q => q && typeof q !== 'string' && q.type === 'terminal_resize' && q.id === data.id);
+        if (existingIdx !== -1) {
+          console.log('[Socket] Internal Queue: Updating existing terminal_resize for', data.id);
+          pendingQueue[existingIdx] = data;
+          return;
+        }
+      }
+
+      console.warn('[Socket] Not connected. Queuing message type:', data.type);
+      pendingQueue.push(data); // Store as object for better deduplication in future if needed
       if (!socket && !isConnecting) connect();
+      else if (socket && socket.readyState === WebSocket.CLOSED && !isConnecting) connect();
     }
   },
   sendMessage(sessionId: string, text: string) {

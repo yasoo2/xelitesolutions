@@ -205,7 +205,6 @@ export default function EmbeddedTerminal({
                                 fitAddonRef.current.fit();
                             }
                         } catch (e) {
-                            // Ignore fit errors if element not ready
                             return;
                         }
 
@@ -215,7 +214,10 @@ export default function EmbeddedTerminal({
                             const cols = dims.cols;
                             const rows = dims.rows;
 
-                            if (isNaN(cols) || isNaN(rows) || (cols === lastCols && rows === lastRows)) return;
+                            if (isNaN(cols) || isNaN(rows)) return;
+
+                            // [ELITE FIX] Strict deduplication at source
+                            if (cols === lastCols && rows === lastRows) return;
 
                             // Ensure valid dimensions
                             if (cols <= 0 || rows <= 0) return;
@@ -223,6 +225,7 @@ export default function EmbeddedTerminal({
                             lastCols = cols;
                             lastRows = rows;
 
+                            console.log(`[Terminal] Resizing: ${cols}x${rows}`);
                             SocketService.send({
                                 type: 'terminal_resize',
                                 id: terminalId,
@@ -234,7 +237,7 @@ export default function EmbeddedTerminal({
                         console.debug('[Terminal] Fit/Resize error:', e);
                     }
                 }
-            }, 200); // 200ms debounce
+            }, 300); // Increased debounce to 300ms for stability
         });
 
         resizeObserver.observe(containerRef.current);

@@ -387,6 +387,10 @@ export default function Joe() {
             nav('/login');
             return;
         }
+
+        // [ELITE FIX] Eager connection initialization
+        SocketService.connect();
+
         loadAllSessions();
 
         const initGithub = async () => {
