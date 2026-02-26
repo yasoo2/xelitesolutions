@@ -1,15 +1,11 @@
 # Stage 1: Builder
 FROM node:20-slim AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    git \
-    bash \
-    curl \
-    --no-install-recommends && \
+# Install build dependencies optimized for low-memory CI runners
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make && \
+    apt-get install -y --no-install-recommends g++ git && \
+    apt-get install -y --no-install-recommends bash curl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -36,13 +32,9 @@ RUN npm run build
 FROM node:20-slim
 
 # Install runtime dependencies (python and build tools needed for node-pty postinstall)
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    bash \
-    curl \
-    --no-install-recommends && \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make && \
+    apt-get install -y --no-install-recommends g++ bash curl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
