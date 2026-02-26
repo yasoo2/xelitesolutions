@@ -1909,8 +1909,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           console.log('[Optimizer] Cache HIT - Sending Instant Response (Bypassing Pipeline)');
           const answer = fast;
 
-          ev({ type: 'thought', data: '> Pattern match found — returning cached response.' });
-
           ev({ type: 'text', data: { text: answer } });
           ev({ type: 'step_done', data: { name: 'execute:echo', result: { ok: true, output: { text: answer } } } });
 
@@ -2010,7 +2008,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             if (readResult.ok && readResult.output) {
               const output = typeof readResult.output === 'string' ? readResult.output : JSON.stringify(readResult.output);
               projectFiles = output.split('\n').filter((l: string) => l.trim() && !l.includes('node_modules'));
-              ev({ type: 'thought', data: `> Project scan complete: ${projectFiles.length} entries found` });
             }
 
             // Step 2: Read key files that are likely to be modified
@@ -2158,8 +2155,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 userText: rawUserText, // Pass the clean user text here
                 fullPromptText: fullPromptText, // Pass the bloated prompt for LLM context
                 onProgress: (m: string) => {
-                  broadcastThinkingDetail(String(sessionId), `> ${m}`);
-                  ev({ type: 'thought', data: m });
+                  broadcastThinkingDetail(String(sessionId), m);
                 },
                 onThought: (m: string) => {
                   broadcastThinkingDetail(String(sessionId), m);
@@ -2170,7 +2166,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               console.log(`[Run] planNextStep result: ${initialPlan ? initialPlan.name : 'NULL'}`);
 
               broadcastThinkingPhase(String(sessionId), 'synthesizing', initialPlan ? `تم اختيار: ${initialPlan.name}` : 'لا توجد خطة...');
-              broadcastThinkingDetail(String(sessionId), initialPlan ? `> Plan resolved: ${initialPlan.name}` : '> No plan resolved');
 
               // [Premium Task Tracker] Update task state
               trackerTasks = [
@@ -2231,7 +2226,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         });
 
         broadcastThinkingPhase(String(sessionId), 'executing', `تنفيذ: ${initialPlan.name}`);
-        broadcastThinkingDetail(String(sessionId), `> Executing tool: ${initialPlan.name}...`);
 
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
@@ -2718,8 +2712,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                       userId,
                       sessionId,
                       onProgress: (p) => {
-                        broadcastThinkingDetail(String(sessionId), `> ${p}`);
-                        ev({ type: 'thought', data: `> ${p}` });
+                        broadcastThinkingDetail(String(sessionId), p);
                       },
                       onThought: (t) => {
                         broadcastThinkingDetail(String(sessionId), t);
@@ -2775,8 +2768,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                         userId,
                         sessionId,
                         onProgress: (p) => {
-                          broadcastThinkingDetail(String(sessionId), `> ${p}`);
-                          ev({ type: 'thought', data: `> ${p}` });
+                          broadcastThinkingDetail(String(sessionId), p);
                         },
                         onThought: (t) => {
                           broadcastThinkingDetail(String(sessionId), t);
@@ -3425,8 +3417,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                     const phases = Array.isArray(plan.phases) ? plan.phases : [];
                     for (const phase of phases) {
                       try {
-                        ev({ type: 'thought', data: `> Executing Phase ${phase.phaseNumber}: ${phase.name}...` });
-
                         // [ELITE SYNC] Broadcast thematic thinking status
                         const { broadcastThinkingPhase } = require('../ws');
                         broadcastThinkingPhase(sessionId, 'executing', `جاري تنفيذ المرحلة: ${phase.name}...`);
@@ -3459,7 +3449,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
                         if (phaseResult.ok && phaseResult.output) {
                           const out = phaseResult.output;
-                          ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} ${out.status}: ${out.completedTasks}/${out.totalTasks} tasks` });
 
                           // Update state manager
                           await executeTool('project_state_manager', {
@@ -3491,7 +3480,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                         }
                       } catch (phaseError: any) {
                         console.warn(`[Integration] Phase ${phase.phaseNumber} execution failed:`, phaseError);
-                        ev({ type: 'thought', data: `> Phase ${phase.phaseNumber} threw: ${phaseError?.message || phaseError}` });
                       }
                     }
 
@@ -3837,7 +3825,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   type: 'step_started',
                   data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', (plan as any)?.input) },
                 });
-                const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
+                const result = await executeTool(plan?.name || '', (plan as any)?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }) });
                 const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
                 if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
                   const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');
@@ -3875,7 +3863,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               const safe = !/(high|critical)/i.test(String(risk));
               if (autoAll || (auto && safe)) {
                 ev({ type: 'step_started', data: { name: `execute:${plan?.name}`, input: redactToolInputForStorage(plan?.name || '', plan?.input) } });
-                const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }), onProgress: (p) => ev({ type: 'thought', data: `> ${p}` }) });
+                const result = await executeTool(plan?.name || '', plan?.input, { sessionId, workspaceId, onThought: (t) => ev({ type: 'thought', data: t }) });
                 const ignoredTools = ['ls', 'list_files', 'list_dir', 'grep_search', 'terminal_resize', 'terminal_input'];
                 if (!ignoredTools.includes(String(plan?.name)) && result.ok && result.output) {
                   const answerText = typeof result.output === 'string' ? result.output : String(result.output.note || result.output.text || result.output.summary || '');

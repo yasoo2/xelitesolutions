@@ -59,7 +59,6 @@ export class ProjectPlannerTool implements ToolDefinition {
         const logs: string[] = [];
 
         try {
-            logs.push(`Planning project: "${projectDescription.slice(0, 100)}..."`);
 
             // Construct planning prompt
             const planningPrompt = `You are a Senior Project Manager and Lead Software Architect. Create a COMPREHENSIVE and REALISTIC execution plan for the following project.

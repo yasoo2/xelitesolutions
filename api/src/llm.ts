@@ -900,17 +900,12 @@ export async function planNextStep(
   const onProgress = options?.onProgress;
   const onThought = options?.onThought;
 
-  onProgress?.("تحليل الطلب…");
-  onProgress?.("تجميع سياق سريع…");
-
   const optimization = await freeIntelligenceOptimizer.optimizeRequest(
     typeof messages.slice(-1)[0].content === "string"
       ? (messages.slice(-1)[0].content as string)
       : JSON.stringify(messages.slice(-1)[0].content),
     messages,
   );
-
-  onProgress?.("مطابقة الأنماط وتحديد المسار…");
 
   const analysis =
     (optimization as any).analysis ||
@@ -955,7 +950,6 @@ export async function planNextStep(
     console.info(
       "[LLM] 🌟 Planning with Google Gemini Provider (Tool Calling Enabled)",
     );
-    onProgress?.("الاتصال بـ Google Gemini…");
 
     const lastMsg = messages[messages.length - 1];
     const role = lastMsg ? (lastMsg.role as string) : "";
@@ -999,7 +993,6 @@ export async function planNextStep(
         console.info(
           `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 25) for this request`,
         );
-        onProgress?.(`تجهيز ${selectedTools.length} أداة…`);
 
         // Convert tools to OpenAI format
         const toolDefs = selectedTools.map((t: any) => ({

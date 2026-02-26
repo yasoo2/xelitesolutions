@@ -148,9 +148,6 @@ export const MODELS: Record<string, ModelConfig> = {
  * Uses a lightweight model to deeply understand the task
  */
 export async function advancedAnalyzeTask(userMessage: string, history?: any[], onProgress?: (msg: string) => void, onThought?: (msg: string) => void): Promise<TaskAnalysis> {
-    onProgress?.('🧠 تحليل عميق لطلبك... (Deep Analysis)');
-    onThought?.('> Deep reasoning module engaged.');
-    onThought?.('> Analyzing task complexity and domain...');
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
 
     const systemPrompt = `Analyze the following user request and return a JSON object.
@@ -198,7 +195,6 @@ Return exactly this JSON structure:
 
         console.info('[IntelligentRouter] ⚡ Using Groq (Llama 3) for instant analysis');
         const analyst = 'llama-3.1-8b-instant';
-        onProgress?.('🔍 تحديد نوع المهمة ومدى تعقيدها...');
 
         const responseText = await callGroq(analyst, [
             { role: 'system', content: systemPrompt },
@@ -552,11 +548,7 @@ export async function routeToModel(
     const suggested = analysis?.suggestedModel ? MODELS[analysis.suggestedModel] : undefined;
     let selectedModel = suggested && suggested.cost === 'free' ? suggested : selectBestModel(taskAnalysis, availableKeys);
 
-    onThought?.(`> Targeted model selection: ${selectedModel.name} (${selectedModel.provider})`);
-    onThought?.(`> Reason: Optimized for ${selectedModel.strengths.slice(0, 2).join(' & ')}`);
-
     if (selectedModel.cost !== 'free') {
-        onThought?.('> Premium requirement detected, routing to High-Capacity Free tier.');
         selectedModel = MODELS['llama-3.1-70b'];
     }
 
@@ -693,8 +685,6 @@ export async function routeToModel(
     // 2. The Chain of Steel (Fallback Mesh)
     for (const p of meshProviders) {
         try {
-            onProgress?.(`🛰️ محاولة عبر المزود: ${p.name}...`);
-            onThought?.(`> Trying fallback provider: ${p.name}...`);
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
             // Dynamic Timeout: Optimized for speed
@@ -714,7 +704,6 @@ export async function routeToModel(
             const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
 
             const ans = cleanOutput(rawAns);
-            onThought?.(`> Provider ${p.name} responded successfully.`);
 
             if (ans && ans.length > 2) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);

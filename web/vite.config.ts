@@ -86,18 +86,11 @@ const createApiShim = () => {
   };
 };
 
+import externalGlobals from 'rollup-plugin-external-globals';
+
 export default defineConfig({
   plugins: [
-    react(),
-    {
-      name: 'webview-click-shim',
-      configureServer(server) {
-        // server.middlewares.use(createApiShim());
-      },
-      configurePreviewServer(server) {
-        // server.middlewares.use(createApiShim());
-      },
-    },
+    react()
   ],
   server: {
     host: '0.0.0.0',
@@ -134,6 +127,14 @@ export default defineConfig({
     rollupOptions: {
       maxParallelFileOps: 2, // Throttles parallel processing to keep memory low
       cache: false, // Prevents rollup from caching ASTs in memory
+      external: ['three', '@monaco-editor/react', 'reactflow'], // Externalize heavy AST-crushing modules
+      plugins: [
+        externalGlobals({
+          'three': 'THREE',
+          '@monaco-editor/react': 'monaco',
+          'reactflow': 'ReactFlow'
+        })
+      ],
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {

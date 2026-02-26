@@ -111,9 +111,9 @@ RULES:
 
 FORMAT:
 {
-  "thought": "I will scan the blueprints for Fintech patterns, then scaffold the ledger architecture...",
-  "tool": "shell_execute",
-  "args": { "command": "grep -r 'ledger' knowledge/blueprints/" }
+  "thought": "I will decompose the goal into actionable steps and select the optimal tools for construction.",
+  "tool": "inspect_directory",
+  "args": { "path": "." }
 }
 OR
 {
