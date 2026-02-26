@@ -301,11 +301,21 @@ async function connect() {
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
         thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
         taskTrackerListeners.forEach(cb => { try { cb([]); } catch { } });
-      } else if (msgType === 'task_tracker') {
-        // [New] Receive task lists from the API
-        const tasks = data?.data || [];
-        taskTrackerData = tasks;
-        taskTrackerListeners.forEach(cb => { try { cb(tasks); } catch { } });
+      } else if (msgType === 'task_tracker' || msgType === 'todo_update') {
+        // [New] Receive task lists from the API (Unifying task_tracker and todo_update)
+        const rawData = data?.data || [];
+        const tasks = Array.isArray(rawData) ? rawData : (rawData.todos || []);
+
+        // Map 'content' to 'label' for backward compatibility with TaskTracker.tsx component
+        const mappedTasks = tasks.map((t: any) => ({
+          ...t,
+          label: t.label || t.content || t.text
+        }));
+
+        taskTrackerData = mappedTasks;
+        taskTrackerListeners.forEach(cb => { try { cb(mappedTasks); } catch { } });
+
+        // Also dispatch to TodosPanel-specific handlers if needed (already handled by general listeners)
       } else if (msgType === 'build_progress') {
         // [Flow Agent] Live build progress events for PreviewPanel overlay
         const progressData = data?.data || {};

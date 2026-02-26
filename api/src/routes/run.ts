@@ -1998,11 +1998,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             // [Premium Task Tracker] Emit tasks for modification
             let trackerTasks = [
-              { id: 'mod_read', label: 'قراءة وتحليل ملفات المشروع 🔍', status: 'in_progress' },
-              { id: 'mod_plan', label: 'تحليل وتخطيط التعديل 🧠', status: 'pending' },
-              { id: 'mod_write', label: 'كتابة وتحديث الكود ✍️', status: 'pending' }
+              { id: 'mod_read', content: 'قراءة وتحليل ملفات المشروع 🔍', status: 'in_progress' },
+              { id: 'mod_plan', content: 'تحليل وتخطيط التعديل 🧠', status: 'pending' },
+              { id: 'mod_write', content: 'كتابة وتحديث الكود ✍️', status: 'pending' }
             ];
-            ev({ type: 'task_tracker', data: trackerTasks });
+            ev({ type: 'todo_update', data: { merge: false, todos: trackerTasks, timestamp: new Date().toISOString() } });
 
             // Step 1: Read the project files to understand the current state
             const readResult = await executeTool('inspect_directory', {
@@ -2088,11 +2088,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
                 // [Premium Task Tracker] Update task state after LLM planning
                 trackerTasks = [
-                  { id: 'mod_read', label: 'قراءة وتحليل ملفات المشروع 🔍', status: 'completed' },
-                  { id: 'mod_plan', label: 'تحليل وتخطيط التعديل 🧠', status: 'completed' },
-                  { id: 'mod_write', label: 'كتابة وتحديث الكود ✍️', status: 'in_progress' }
+                  { id: 'mod_read', content: 'قراءة وتحليل ملفات المشروع 🔍', status: 'completed' },
+                  { id: 'mod_plan', content: 'تحليل وتخطيط التعديل 🧠', status: 'completed' },
+                  { id: 'mod_write', content: 'كتابة وتحديث الكود ✍️', status: 'in_progress' }
                 ];
-                ev({ type: 'task_tracker', data: trackerTasks });
+                ev({ type: 'todo_update', data: { merge: false, todos: trackerTasks, timestamp: new Date().toISOString() } });
 
               } catch (editErr: any) {
                 console.warn('[AGENT MODE] Edit planning failed:', editErr?.message);
@@ -2113,11 +2113,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             // [Premium Task Tracker] Emit tasks for build
             let trackerTasks = [
-              { id: 'build_req', label: 'تحليل متطلبات المشروع 🔍', status: 'in_progress' },
-              { id: 'build_plan', label: 'استكشاف وتخطيط الهيكلية 🏗️', status: 'pending' },
-              { id: 'build_exec', label: 'بناء وهندسة النظام ⚙️', status: 'pending' }
+              { id: 'build_req', content: 'تحليل متطلبات المشروع 🔍', status: 'in_progress' },
+              { id: 'build_plan', content: 'استكشاف وتخطيط الهيكلية 🏗️', status: 'pending' },
+              { id: 'build_exec', content: 'بناء وهندسة النظام ⚙️', status: 'pending' }
             ];
-            ev({ type: 'task_tracker', data: trackerTasks });
+            ev({ type: 'todo_update', data: { merge: false, todos: trackerTasks, timestamp: new Date().toISOString() } });
 
             initialPlan = {
               name: 'website_full_pipeline',
@@ -2146,10 +2146,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
               // [Premium Task Tracker] Emit tasks for general queries
               let trackerTasks = [
-                { id: 'chat_plan', label: 'تحليل وفهم الطلب 🧠', status: 'in_progress' },
-                { id: 'chat_exec', label: 'تجهيز الاستجابة المطلوبة ⚡', status: 'pending' }
+                { id: 'chat_plan', content: 'تحليل وفهم الطلب 🧠', status: 'in_progress' },
+                { id: 'chat_exec', content: 'تجهيز الاستجابة المطلوبة ⚡', status: 'pending' }
               ];
-              ev({ type: 'task_tracker', data: trackerTasks });
+              ev({ type: 'todo_update', data: { merge: false, todos: trackerTasks, timestamp: new Date().toISOString() } });
 
               initialPlan = await planNextStep(history, {
                 provider: providerKey,
@@ -2175,10 +2175,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
               // [Premium Task Tracker] Update task state
               trackerTasks = [
-                { id: 'chat_plan', label: 'تحليل وفهم الطلب 🧠', status: 'completed' },
-                { id: 'chat_exec', label: 'تجهيز الاستجابة المطلوبة ⚡', status: 'in_progress' }
+                { id: 'chat_plan', content: 'تحليل وفهم الطلب 🧠', status: 'completed' },
+                { id: 'chat_exec', content: 'تجهيز الاستجابة المطلوبة ⚡', status: 'in_progress' }
               ];
-              ev({ type: 'task_tracker', data: trackerTasks });
+              ev({ type: 'todo_update', data: { merge: false, todos: trackerTasks, timestamp: new Date().toISOString() } });
             }
           }
         }
