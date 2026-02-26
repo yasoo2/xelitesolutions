@@ -674,6 +674,8 @@ export const getSystemPrompt = (user?: {
   systemInstructions?: string;
   workspaceRoot?: string;
   workspaceName?: string;
+  activeProjectPath?: string;
+  activeProjectName?: string;
 }) => {
   const now = new Date();
   const date = now.toLocaleDateString("en-US", {
@@ -712,6 +714,10 @@ export const getSystemPrompt = (user?: {
 
   if (root) {
     systemPromptOutput += `\n\nWORKSPACE CONTEXT:\nPath: ${root}\nName: ${wName || 'Default'}\nCRUCIAL INSTRUCTION: You are currently operating inside this workspace directory. When analyzing the project, reading files, or writing code, assume this is your absolute root path. DO NOT ask the user "which file to edit" if they request changes to this project—just use the tools directly on the files inside this path.`;
+  }
+
+  if (user?.activeProjectPath) {
+    systemPromptOutput += `\n\nACTIVE PROJECT CONTEXT:\nProject Name: ${user.activeProjectName || 'Last Built Project'}\nProject Path: ${user.activeProjectPath}\nCRUCIAL INSTRUCTION: The user has an active project at the path above. If the user asks to add, modify, change, fix, or update something — they are referring to this project. Use read_file to inspect files inside this path, then use write_file or file_edit to make changes. Do NOT rebuild the project from scratch. Do NOT ask the user which file to edit — find the right file yourself.`;
   }
 
   if (user?.systemInstructions && user.systemInstructions.trim()) {

@@ -28,6 +28,9 @@ const loopPauseThrottle = new Map<string, number>();
 const rateLimitCooldown = new Map<string, number>();
 const projectDetectThrottle = new Map<string, number>();
 const cancelledRuns = new Map<string, { at: number; reason?: string }>();
+
+// [BUG FIX] Session-level project tracker: remembers the last built project per session
+const sessionProjectMap = new Map<string, { path: string; name: string; builtAt: number }>();
 const browserRunGuard = new Map<
   string,
   {
@@ -1730,9 +1733,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const userObj = (req as any).user || {};
       const actualName = (userObj.name && !/^[0-9a-fA-F]{24}$/.test(userObj.name)) ? userObj.name : 'يونس';
 
+      const currentActiveProject = sessionProjectMap.get(String(sessionId));
       const currentSystemPrompt = getSystemPrompt({
         name: actualName,
         systemInstructions: userSystemInstructions || undefined,
+        activeProjectPath: currentActiveProject?.path,
+        activeProjectName: currentActiveProject?.name,
       });
 
       // ENSURE ENHANCED SYSTEM PROMPT IS ALWAYS FIRST
@@ -1970,7 +1976,114 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             /(صفحة\s+هبوط|landing\s+page|صفحة\s+فاخرة|موقع\s+الكتروني|متجر\s+الكتروني|متجر\s+ساعات|e-?commerce)/i.test(rawUserText)
           );
 
-          if (isClearBuildRequest) {
+          // 🔧 [BUG FIX] Detect MODIFICATION requests (add, change, remove, fix, update)
+          const isModificationRequest = !isClearBuildRequest && (
+            /(add|remove|change|update|fix|modify|edit|insert|replace|delete|اضف|أضف|عدل|غيّر|غير|حدث|حدّث|احذف|أزل|حسن|حسّن|ارفق|ضيف|شيل|امسح|بدل|اصلح|أصلح|اضيف|أضيف)\s+/i.test(rawUserText) ||
+            /(اريد\s+(ان\s+)?اضيف|اريد\s+(ان\s+)?اعدل|اريد\s+(ان\s+)?اغير|عاوز\s+اضيف|ابي\s+اضيف|ابغى\s+اضيف)/i.test(rawUserText) ||
+            /(add\s+a|add\s+the|remove\s+the|change\s+the|update\s+the|fix\s+the)\s+/i.test(rawUserText)
+          );
+
+          // 🔧 [BUG FIX] Get the active project context for this session
+          const activeProject = sessionProjectMap.get(String(sessionId));
+
+          if (isModificationRequest && activeProject) {
+            // Route to incremental edit pipeline
+            console.info(`[AGENT MODE] 🔧 Modification request detected for project: ${activeProject.name} at ${activeProject.path}`);
+            broadcastThinkingPhase(String(sessionId), 'executing', `🔧 جاري تعديل المشروع: ${activeProject.name}...`);
+            broadcastThinkingDetail(String(sessionId), `> [AGENT] Modification intent detected → reading project files at "${activeProject.path}"`);
+
+            // Step 1: Read the project files to understand the current state
+            const readResult = await executeTool('inspect_directory', {
+              path: activeProject.path,
+              depth: 3,
+            }, { sessionId: String(sessionId), workspaceId });
+
+            let projectFiles: string[] = [];
+            if (readResult.ok && readResult.output) {
+              const output = typeof readResult.output === 'string' ? readResult.output : JSON.stringify(readResult.output);
+              projectFiles = output.split('\n').filter((l: string) => l.trim() && !l.includes('node_modules'));
+              ev({ type: 'thought', data: `> Project scan complete: ${projectFiles.length} entries found` });
+            }
+
+            // Step 2: Read key files that are likely to be modified
+            const keyFiles = ['index.html', 'app.js', 'script.js', 'style.css', 'index.js', 'main.js', 'App.tsx', 'App.jsx', 'index.tsx'];
+            let fileContents = '';
+            for (const kf of keyFiles) {
+              const fullPath = path.join(activeProject.path, kf);
+              try {
+                if (fs.existsSync(fullPath)) {
+                  const content = fs.readFileSync(fullPath, 'utf-8');
+                  if (content.length < 15000) {
+                    fileContents += `\n--- [File: ${kf}] ---\n${content}\n--- [End] ---\n`;
+                  }
+                }
+              } catch { }
+            }
+
+            if (fileContents) {
+              // Step 3: Ask LLM to generate the file edit
+              const editPrompt = [
+                { role: 'system' as const, content: `You are a code editor AI. The user has an existing project at ${activeProject.path}. Below are the current project files. The user wants to make a modification. Return ONLY a JSON object with the format: { "file": "filename", "content": "full new file content" }. Do NOT explain, just return the JSON.` },
+                { role: 'user' as const, content: `Current project files:\n${fileContents}\n\nUser request: ${rawUserText}\n\nReturn the modified file as JSON: { "file": "filename", "content": "..." }` }
+              ];
+
+              broadcastThinkingPhase(String(sessionId), 'synthesizing', 'جاري تحليل التعديل المطلوب...');
+
+              try {
+                const editPlan = await planNextStep(editPrompt, {
+                  provider: providerKey,
+                  apiKey: apiKey,
+                  baseUrl: baseUrl,
+                  model: model,
+                  userId: String(userId),
+                  sessionId: String(sessionId),
+                  userText: rawUserText,
+                  throwOnError: true,
+                });
+
+                // If LLM returns a tool call, execute it
+                if (editPlan && (editPlan.name === 'write_file' || editPlan.name === 'file_edit')) {
+                  const editInput = { ...(editPlan as any).input };
+                  // Ensure path is within the project
+                  if (editInput.filename && !path.isAbsolute(editInput.filename)) {
+                    editInput.filename = path.join(activeProject.path, editInput.filename);
+                  }
+                  if (editInput.path && !path.isAbsolute(editInput.path)) {
+                    editInput.path = path.join(activeProject.path, editInput.path);
+                  }
+                  initialPlan = { name: editPlan.name, input: editInput } as any;
+                } else if (editPlan && editPlan.name === 'echo') {
+                  // LLM returned text, try to parse JSON from it
+                  const echoText = String((editPlan as any)?.input?.text || '');
+                  const jsonMatch = echoText.match(/\{[\s\S]*"file"[\s\S]*"content"[\s\S]*\}/);
+                  if (jsonMatch) {
+                    try {
+                      const parsed = JSON.parse(jsonMatch[0]);
+                      if (parsed.file && parsed.content) {
+                        const targetFile = path.isAbsolute(parsed.file) ? parsed.file : path.join(activeProject.path, parsed.file);
+                        initialPlan = {
+                          name: 'write_file',
+                          input: { filename: targetFile, content: parsed.content }
+                        } as any;
+                      }
+                    } catch { }
+                  }
+                  if (!initialPlan) {
+                    initialPlan = editPlan as any;
+                  }
+                } else {
+                  initialPlan = editPlan as any;
+                }
+              } catch (editErr: any) {
+                console.warn('[AGENT MODE] Edit planning failed:', editErr?.message);
+                // Fallback: let the LLM handle it with context
+                fullPromptText = `[ACTIVE PROJECT CONTEXT]\nPath: ${activeProject.path}\nFiles:\n${fileContents}\n\n[USER REQUEST]\n${rawUserText}\n\nIMPORTANT: The user wants to MODIFY the existing project above. Use write_file or file_edit to make the changes directly. Do NOT rebuild from scratch.`;
+              }
+            } else {
+              // No readable files found, give context to LLM
+              fullPromptText = `[ACTIVE PROJECT]\nPath: ${activeProject.path}\n\n[USER REQUEST]\n${rawUserText}\n\nIMPORTANT: Modify the existing project at the path above. Use read_file to inspect files, then write_file or file_edit to make changes.`;
+            }
+          } else if (isClearBuildRequest) {
             console.info('[AGENT MODE] 🔥 Build request detected — bypassing LLM chat, forcing autonomous build pipeline!');
             const buildName = extractBuildName(rawUserText);
             const buildType = /(?:متجر|store|shop|ecommerce|دكان)/i.test(rawUserText) ? 'ecommerce' : 'saas';
@@ -4064,6 +4177,18 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             ev({ type: 'text', data: msg });
             assistantTextEmitted = true;
+
+            // [BUG FIX] Save project path to session tracker for follow-up modifications
+            if (projectPath) {
+              const buildName = String((result as any)?.output?.name || (plan as any)?.input?.name || 'project');
+              sessionProjectMap.set(String(sessionId), {
+                path: projectPath,
+                name: buildName,
+                builtAt: Date.now()
+              });
+              console.info(`[AGENT MODE] 📌 Saved project to session tracker: ${buildName} → ${projectPath}`);
+            }
+
             console.info(`[AGENT MODE] 🏁 Pipeline ${plan?.name} completed — auto-terminating agent loop.`);
             break; // EXIT the agent loop — no more LLM calls needed
           }

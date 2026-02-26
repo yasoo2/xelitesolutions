@@ -218,7 +218,7 @@ async function connect() {
       if (id) {
         const key = String(id);
         if (seenMessageIds.has(key)) {
-          console.log('[Socket Debug] Ignored duplicate message:', key);
+          // Silently skip duplicate (reduced from verbose logging)
           return;
         }
         seenMessageIds.add(key);
