@@ -16,6 +16,11 @@
 
 <body>
   <div id="root"></div>
+
+  <!-- Externalized heavy dependencies to prevent CI Vite OOM -->
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/reactflow@11.10.3/dist/esm/index.js" type="module"></script>
+
   <script src="/config.js"></script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
