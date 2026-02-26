@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import react from '@vitejs/plugin-react-swc';
 import { Buffer } from 'node:buffer';
 
 const createJson = (res: any, statusCode: number, body: any) => {
@@ -127,20 +127,26 @@ export default defineConfig({
     rollupOptions: {
       maxParallelFileOps: 2, // Throttles parallel processing to keep memory low
       cache: false, // Prevents rollup from caching ASTs in memory
-      external: ['three', '@monaco-editor/react', 'reactflow'], // Externalize heavy AST-crushing modules
+      external: [
+        'three',
+        '@monaco-editor/react',
+        'reactflow',
+        'monaco-editor',
+        'react-force-graph-2d',
+        'react-force-graph-3d'
+      ], // Externalize heavy AST-crushing modules
       plugins: [
         externalGlobals({
           'three': 'THREE',
           '@monaco-editor/react': 'monaco',
-          'reactflow': 'ReactFlow'
+          'reactflow': 'ReactFlow',
+          'monaco-editor': 'monaco',
+          'react-force-graph-2d': 'ForceGraph2D',
+          'react-force-graph-3d': 'ForceGraph3D'
         })
       ],
       output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            return 'vendor';
-          }
-        }
+        // Removed manualChunks vendor strategy to allow Rollup to manage smaller, less memory-intensive chunks
       }
     },
     sourcemap: false,
