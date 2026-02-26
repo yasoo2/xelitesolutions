@@ -1,8 +1,16 @@
 # Stage 1: Builder
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 # Install build dependencies
-RUN apk add --no-cache python3 make g++ git bash curl linux-headers
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    git \
+    bash \
+    curl \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -10,6 +18,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Optimize npm for low-memory environment
+# Skipping playwright browser downloads during build to save RAM/Disk
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 RUN npm config set maxsockets 1 && \
     npm install --include=dev --no-audit --no-fund --loglevel=error
 
@@ -17,14 +28,18 @@ RUN npm config set maxsockets 1 && \
 COPY . .
 
 # Build the application
-ENV NODE_OPTIONS="--max-old-space-size=3072"
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 # Stage 2: Runtime
-FROM node:20-alpine
+FROM node:20-slim
 
-# Install runtime dependencies (curl and bash for healthcheck/scripts)
-RUN apk add --no-cache bash curl
+# Install runtime dependencies (curl and bash for healthcheck)
+RUN apt-get update && apt-get install -y \
+    bash \
+    curl \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -32,14 +47,13 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm config set maxsockets 1 && \
     npm install --omit=dev --no-audit --no-fund --loglevel=error && \
     npm cache clean --force
 
-# Copy build artifacts and necessary runtime files
+# Copy build artifacts
 COPY --from=builder /app/dist ./dist
-# If you have other runtime assets (e.g. data seeds, etc. copy them here)
-# COPY --from=builder /app/data ./data
 
 EXPOSE 3000
 

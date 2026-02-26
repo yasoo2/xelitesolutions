@@ -537,10 +537,10 @@ jobs:
           fi
 
           echo "Docker building API (Sequential Step 1/2)..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build api
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --no-cache api
           
           echo "Docker building Web (Sequential Step 2/2)..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build web
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --no-cache web
 
           echo "Docker building remaining services..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
