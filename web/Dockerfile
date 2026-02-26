@@ -19,7 +19,7 @@ ARG VITE_API_URL=/api
 # Set as environment variables for Vite build
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
-ENV NODE_OPTIONS="--max-old-space-size=6144"
+ENV NODE_OPTIONS="--max-old-space-size=3072"
 
 # Build the application
 RUN npx tsc -b

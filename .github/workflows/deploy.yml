@@ -98,7 +98,7 @@ jobs:
                 fi
               fi
 
-              banner="$(timeout 12 bash -lc "exec 3<>/dev/tcp/${h}/${p}; head -c 64 <&3" 2>/dev/null || true)"
+              banner="$(timeout 30 bash -lc "exec 3<>/dev/tcp/${h}/${p}; head -c 64 <&3" 2>/dev/null || true)"
               if printf '%s' "$banner" | grep -q 'SSH-'; then
                 return 0
               fi
@@ -202,7 +202,7 @@ jobs:
                 keys="$(ssh-keyscan -6 -T 10 -p "$port" -t rsa,ecdsa,ed25519 "$host" 2>/dev/null || true)"
               fi
             fi
-            banner="$(timeout 12 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 64 <&3" 2>/dev/null || true)"
+            banner="$(timeout 30 bash -lc "exec 3<>/dev/tcp/${host}/${port}; head -c 64 <&3" 2>/dev/null || true)"
             if [ -n "${keys:-}" ] || printf '%s' "$banner" | grep -q 'SSH-'; then
               ok_banner=1
               break
@@ -309,10 +309,10 @@ jobs:
 
           ssh_opts=(
             -p "$port"
-            -o ConnectTimeout=30
-            -o ConnectionAttempts=3
-            -o ServerAliveInterval=10
-            -o ServerAliveCountMax=6
+            -o ConnectTimeout=60
+            -o ConnectionAttempts=5
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=20
             -o StrictHostKeyChecking="$strict_host_key_checking"
             -o BatchMode=yes
             -o IPQoS=throughput
@@ -536,7 +536,13 @@ jobs:
             COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" timeout 20m bash ./scripts/init-letsencrypt.sh
           fi
 
-          echo "Docker building..."
+          echo "Docker building API (Sequential Step 1/2)..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build api
+          
+          echo "Docker building Web (Sequential Step 2/2)..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build web
+
+          echo "Docker building remaining services..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
 
           echo "Tearing down old containers..."
@@ -623,7 +629,7 @@ jobs:
             fi
 
             if [ "$code" -eq 124 ]; then
-              echo "SSH command timed out (120s). This usually indicates firewall/IDS blocking SSH banner exchange."
+              echo "SSH command timed out (20m). This usually indicates the server is overloaded or connectivity was lost."
             fi
             if [ "$code" -eq 255 ]; then
               echo "SSH failed before authentication (network/banner/firewall/proxy)."
