@@ -128,7 +128,12 @@ export default defineConfig({
     },
   },
   build: {
+    minify: 'esbuild', // Faster and uses less memory than terser
+    cssMinify: 'esbuild',
+    reportCompressedSize: false, // Disables gzip size calculations (saves CPU and RAM)
     rollupOptions: {
+      maxParallelFileOps: 2, // Throttles parallel processing to keep memory low
+      cache: false, // Prevents rollup from caching ASTs in memory
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom', 'zustand', 'axios'],
