@@ -135,10 +135,10 @@ export default defineConfig({
       maxParallelFileOps: 2, // Throttles parallel processing to keep memory low
       cache: false, // Prevents rollup from caching ASTs in memory
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand', 'axios'],
-          heavy: ['three', 'react-force-graph-2d', 'react-force-graph-3d', 'reactflow', 'monaco-editor', '@monaco-editor/react'],
-          utils: ['lucide-react', 'framer-motion', 'react-markdown', 'react-syntax-highlighter', 'xterm', 'xterm-addon-fit']
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
         }
       }
     },
