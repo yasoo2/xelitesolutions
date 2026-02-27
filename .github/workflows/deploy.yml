@@ -325,17 +325,21 @@ jobs:
             timeout 1200 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' || code=$?
           set -euo pipefail
           
+          echo "🔍 Diagnostics - Before Build:"
+          df -h || true
+          free -m || true
+          
           # Clean up disk space before build - Aggressive
-          docker system prune -a --volumes -f || true
-          docker builder prune -a -f || true
+          docker system prune -f || true
+          docker builder prune -f || true
 
           # Ensure Swap is active (4GB) to avoid OOM crash on Vite build
           if [ ! -f /swapfile ] && command -v swapon >/dev/null 2>&1; then
              echo "💾 Server lacks swap. Attempting to create emergency 4GB swap..."
-             sudo fallocate -l 4G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
-             sudo chmod 600 /swapfile
-             sudo mkswap /swapfile
-             sudo swapon /swapfile || true
+             sudo fallocate -l 4G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 || echo "Warning: Failed to create swap file space"
+             sudo chmod 600 /swapfile || true
+             sudo mkswap /swapfile || true
+             sudo swapon /swapfile || echo "Warning: Failed to enable swap"
           fi
 
           REPO_URL="https://github.com/yasoo2/xelitesolutions.git"
@@ -546,10 +550,10 @@ jobs:
           fi
 
           echo "Docker building API (Sequential Step 1/2)..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --no-cache api
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build api
           
           echo "Docker building Web (Sequential Step 2/2)..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build --no-cache web
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build web
 
           echo "Docker building remaining services..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
