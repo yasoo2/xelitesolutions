@@ -566,7 +566,17 @@ jobs:
           done
           
           docker network prune -f 2>/dev/null
+
+          echo "Aggressively freeing memory for build..."
+          docker system prune -a --volumes -f 2>/dev/null || true
+          docker builder prune -a -f 2>/dev/null || true
+          sync
+          echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+          sleep 5
           set -euo pipefail
+
+          echo "Memory after cleanup:"
+          free -m || true
 
           echo "Docker building API (Sequential Step 1/2)..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build api
