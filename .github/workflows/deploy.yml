@@ -61,11 +61,19 @@ jobs:
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
-          docker compose -f docker-compose.production.yml build
+          docker compose -f docker-compose.production.yml build > docker-build.log 2>&1
 
       - name: Push images using Compose
         run: |
           docker compose -f docker-compose.production.yml push
+
+      - name: Upload Build Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-build-logs
+          path: docker-build.log
+          retention-days: 1
   deploy_ssh:
     needs: build_and_push
     if: ${{ !((github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted')) }}
