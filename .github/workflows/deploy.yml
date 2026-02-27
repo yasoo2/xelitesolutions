@@ -322,7 +322,7 @@ jobs:
           for attempt in 1 2 3; do
             echo "SSH deploy attempt ${attempt}/3..."
             code=0
-            timeout 1200 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' || code=$?
+            timeout 1200 ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' bash -s" <<'REMOTE' > deploy_output.log 2>&1 || code=$?
           set -euo pipefail
           
           echo "🔍 Diagnostics - Before Build:"
@@ -515,7 +515,7 @@ jobs:
             google_id="$(read_env_val ".env" "GOOGLE_CLIENT_ID")"
             google_secret="$(read_env_val ".env" "GOOGLE_CLIENT_SECRET")"
             if [ -z "${google_id:-}" ] || [ -z "${google_secret:-}" ]; then
-              echo "Warning: Google OAuth غير مضبوط (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)."
+              echo "Warning: Google OAuth غیر مضبوط (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)."
             fi
           else
             echo "Warning: .env not found; containers may start without secrets."
@@ -636,6 +636,16 @@ jobs:
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
           echo "Deployment finished!"
           REMOTE
+            cat deploy_output.log
+            
+            git config --global user.name "github-actions"
+            git config --global user.email "github-actions@github.com"
+            git checkout -B deploy-logs
+            cp deploy_output.log deploy_error_log.txt
+            git add deploy_error_log.txt
+            git commit -m "chore: save deployment failure logs" || true
+            git push -u origin deploy-logs -f || true
+
             if [ "$code" -eq 0 ]; then
               echo "SSH deploy succeeded."
               break
