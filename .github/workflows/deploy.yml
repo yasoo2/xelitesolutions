@@ -54,38 +54,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push API image
-        id: build_api
-        uses: docker/build-push-action@v6
-        with:
-          context: ./api
-          push: true
-          tags: ghcr.io/yasoo2/xelitesolutions/api:latest
-          outputs: |
-            type=docker,dest=/tmp/docker-build-api.tar
+      - name: Create empty .env to satisfy docker-compose
+        run: touch .env
 
-      - name: Build and push Web image
-        id: build_web
-        uses: docker/build-push-action@v6
-        with:
-          context: ./web
-          push: true
-          tags: ghcr.io/yasoo2/xelitesolutions/web:latest
-          outputs: |
-            type=docker,dest=/tmp/docker-build-web.tar
-          build-args: |
-            VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+      - name: Build images using Compose
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          docker compose -f docker-compose.production.yml build
 
-      - name: Build and push Browser Worker image
-        id: build_browser
-        uses: docker/build-push-action@v6
-        with:
-          context: ./services/joe-browser-worker
-          push: true
-          tags: ghcr.io/yasoo2/xelitesolutions/browser-worker:latest
-          outputs: |
-            type=docker,dest=/tmp/docker-build-browser.tar
-
+      - name: Push images using Compose
+        run: |
+          docker compose -f docker-compose.production.yml push
   deploy_ssh:
     needs: build_and_push
     if: ${{ !((github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_mode == 'self-hosted') || (github.event_name != 'workflow_dispatch' && vars.DEPLOY_MODE == 'self-hosted')) }}
@@ -528,11 +508,3 @@ jobs:
           url: https://xelitesolutions.com/
           max-attempts: 12
           retry-delay: 10s
-
-      - name: Export docker build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-build-logs
-          path: /tmp/docker-build-*.log
-          retention-days: 1
