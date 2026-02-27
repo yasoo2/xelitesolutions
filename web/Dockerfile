@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Set memory limits to prevent OOM kill on low-resource machines (Exit code 137)
 # Lower limit forces V8 GC to run more frequently before container hard limit is hit
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+ENV NODE_OPTIONS="--max-old-space-size=768"
 
 # Copy package files
 COPY package*.json ./
@@ -27,7 +27,7 @@ ENV VITE_API_URL=$VITE_API_URL
 
 # Build the application
 # Skipping tsc to prevent OOM (exit code 137) on constrained CI runners. Vite uses esbuild for fast bundling.
-RUN npx vite build
+RUN npx vite build --emptyOutDir
 
 # Stage 2: Serve
 FROM nginx:alpine

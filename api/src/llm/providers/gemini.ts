@@ -6,7 +6,8 @@
 import OpenAI from 'openai';
 
 const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
-const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
+// IMPORTANT: Trailing slash is REQUIRED for the OpenAI SDK to append /chat/completions correctly
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 // Robust Model List with Fallbacks
 const DEFAULT_MODEL = 'gemini-2.0-flash';
