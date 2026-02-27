@@ -61,7 +61,11 @@ jobs:
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
-          docker compose -f docker-compose.production.yml build > docker-build.log 2>&1
+          if ! docker compose -f docker-compose.production.yml build > docker-build.log 2>&1; then
+            echo "::error::Docker compose build failed! Last 200 lines:"
+            tail -n 200 docker-build.log
+            exit 1
+          fi
 
       - name: Push images using Compose
         run: |
