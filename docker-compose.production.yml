@@ -76,10 +76,6 @@ services:
       - 1.1.1.1
     networks:
       - joe-network
-    deploy:
-      resources:
-        limits:
-          memory: 1G
     ports:
       - "5050:5050"
       - "7070:7070"
