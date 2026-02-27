@@ -62,8 +62,13 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
           if ! docker compose -f docker-compose.production.yml build > docker-build.log 2>&1; then
-            echo "::error::Docker compose build failed! Last 200 lines:"
-            tail -n 200 docker-build.log
+            echo "Build failed! Pushing logs to ghcr-error-logs branch..."
+            git config --global user.name "github-actions"
+            git config --global user.email "github-actions@github.com"
+            git checkout -B ghcr-error-logs
+            git add docker-build.log
+            git commit -m "chore: save GHCR build failure logs" || true
+            git push -u origin ghcr-error-logs -f || true
             exit 1
           fi
 
