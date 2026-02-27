@@ -24,9 +24,8 @@ ARG VITE_API_URL=/api
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
 
-# Build the application
-# Skipping tsc to prevent OOM (exit code 137) on constrained CI runners.
-RUN npx vite build --emptyOutDir
+# Build the application (full TypeScript checking + Vite build)
+RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine

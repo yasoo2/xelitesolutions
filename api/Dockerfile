@@ -19,6 +19,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Optimize npm for CI environment
+# Skip browser download during builder stage (installed in runtime stage)
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 
@@ -41,7 +42,8 @@ RUN apt-get update && \
     make \
     g++ \
     bash \
-    curl && \
+    curl \
+    git && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -50,10 +52,10 @@ WORKDIR /app
 # Copy package files for production install
 COPY package*.json ./
 
-# Install only production dependencies
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+# Install production dependencies WITH Playwright browsers
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm install --omit=dev --no-audit --no-fund && \
+    npx playwright install --with-deps chromium && \
     npm cache clean --force
 
 # Copy build artifacts
