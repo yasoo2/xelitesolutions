@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           
           # Find project directory
-          cd /opt/joe/xelitesolutions || cd /root/joe/xelitesolutions || exit 1
+          cd /root/xelitesolutions || exit 1
           
           echo "=== 1. Syncing latest code ==="
           git fetch origin main
