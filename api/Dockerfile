@@ -18,19 +18,16 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Optimize npm for low-memory environment
-# Skipping playwright browser downloads during build to save RAM/Disk
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+# Optimize npm for CI environment
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
-RUN npm config set maxsockets 1 && \
-    npm install --include=dev --no-audit --no-fund --loglevel=error
+RUN npm install --include=dev --no-audit --no-fund
 
 # Copy source code
 COPY . .
 
 # Build the application
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 # Stage 2: Runtime
@@ -53,10 +50,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV NODE_OPTIONS="--max-old-space-size=1024"
-RUN npm config set maxsockets 1 && \
-    npm install --omit=dev --no-audit --no-fund --loglevel=error && \
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+RUN npm install --omit=dev --no-audit --no-fund && \
     npm cache clean --force
 
 # Copy build artifacts

@@ -5,14 +5,13 @@ WORKDIR /app
 
 # Set memory limits to prevent OOM kill on low-resource machines (Exit code 137)
 # Lower limit forces V8 GC to run more frequently before container hard limit is hit
-ENV NODE_OPTIONS="--max-old-space-size=512"
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Copy package files
 COPY package*.json ./
 
-# Optimize npm for low-memory environment
-RUN npm config set maxsockets 1 && \
-    npm install --no-audit --no-fund --loglevel=error
+# Optimize npm for CI environment
+RUN npm install --no-audit --no-fund
 
 # Copy source code
 COPY . .
