@@ -55,27 +55,36 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push API image
+        id: build_api
         uses: docker/build-push-action@v6
         with:
           context: ./api
           push: true
           tags: ghcr.io/yasoo2/xelitesolutions/api:latest
+          outputs: |
+            type=docker,dest=/tmp/docker-build-api.tar
 
       - name: Build and push Web image
+        id: build_web
         uses: docker/build-push-action@v6
         with:
           context: ./web
           push: true
           tags: ghcr.io/yasoo2/xelitesolutions/web:latest
+          outputs: |
+            type=docker,dest=/tmp/docker-build-web.tar
           build-args: |
             VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
 
       - name: Build and push Browser Worker image
+        id: build_browser
         uses: docker/build-push-action@v6
         with:
           context: ./services/joe-browser-worker
           push: true
           tags: ghcr.io/yasoo2/xelitesolutions/browser-worker:latest
+          outputs: |
+            type=docker,dest=/tmp/docker-build-browser.tar
 
   deploy_ssh:
     needs: build_and_push
@@ -519,3 +528,11 @@ jobs:
           url: https://xelitesolutions.com/
           max-attempts: 12
           retry-delay: 10s
+
+      - name: Export docker build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-build-logs
+          path: /tmp/docker-build-*.log
+          retention-days: 1
