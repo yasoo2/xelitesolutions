@@ -549,16 +549,7 @@ jobs:
             COMPOSE_FILE="$COMPOSE_FILE" PROJECT_NAME="$PROJECT_NAME" CERTBOT_DATA_PATH="/opt/joe/certbot" timeout 20m bash ./scripts/init-letsencrypt.sh
           fi
 
-          echo "Docker building API (Sequential Step 1/2)..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build api
-          
-          echo "Docker building Web (Sequential Step 2/2)..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build web
-
-          echo "Docker building remaining services..."
-          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
-
-          echo "Tearing down old containers..."
+          echo "Tearing down old containers to free RAM for build..."
           set +euo pipefail
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null
           
@@ -576,6 +567,15 @@ jobs:
           
           docker network prune -f 2>/dev/null
           set -euo pipefail
+
+          echo "Docker building API (Sequential Step 1/2)..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build api
+          
+          echo "Docker building Web (Sequential Step 2/2)..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build web
+
+          echo "Docker building remaining services..."
+          $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build
 
           echo "Docker restarting..."
           $COMPOSE -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --remove-orphans
