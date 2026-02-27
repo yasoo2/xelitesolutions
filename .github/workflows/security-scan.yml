@@ -1,19 +1,10 @@
-name: Security Scanning
-
+# Security Scanning - Temporarily disabled to resolve billing conflicts
 on:
-  push:
-    branches: [ develop ]
-  pull_request:
-    branches: [ main ]
-  schedule:
-    # Run weekly on Monday at 00:00 UTC
-    - cron: '0 0 * * 1'
-  workflow_dispatch:
+  workflow_dispatch: # Manual trigger only
 
+# Skip all jobs unless manually triggered
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 jobs:
   codeql:

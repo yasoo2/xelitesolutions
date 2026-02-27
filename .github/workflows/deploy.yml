@@ -5,211 +5,63 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      deploy_mode:
-        type: choice
-        description: Deployment mode
-        required: true
-        default: ssh
-        options:
-          - ssh
 
 concurrency:
   group: deploy-production
   cancel-in-progress: true
 
 jobs:
-  build_and_push:
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-
+    timeout-minutes: 60
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create empty .env to satisfy docker-compose
-        run: touch .env
-
-      - name: Build images using Compose
-        env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-        run: |
-          set -euo pipefail
-          echo "Building API..."
-          docker compose -f docker-compose.production.yml build api
-          
-          echo "Building Web..."
-          docker compose -f docker-compose.production.yml build web
-          
-          echo "Building Browser Worker..."
-          docker compose -f docker-compose.production.yml build browser-worker
-
-      - name: Push images using Compose
-        run: |
-          docker compose -f docker-compose.production.yml push
-
-  deploy_ssh:
-    needs: build_and_push
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Select SSH port
-        id: select_ssh_port
-        shell: bash
-        env:
-          HOST_SECRET: ${{ secrets.HOST }}
-          SSH_HOST_SECRET: ${{ secrets.SSH_HOST }}
-          PORT_SECRET: ${{ secrets.PORT }}
-          SSH_PORT_SECRET: ${{ secrets.SSH_PORT }}
-        run: |
-          set -euo pipefail
-          host_raw="${SSH_HOST_SECRET:-${HOST_SECRET:-}}"
-          port_raw="${SSH_PORT_SECRET:-${PORT_SECRET:-}}"
-          host="$(printf '%s' "${host_raw:-}" | tr -d '\r' | xargs)"
-          if [ -z "${host:-}" ]; then
-            echo "SSH_HOST/HOST secret is empty."
-          fi
-
-          tcp_ok() {
-            local h="$1"
-            local p="$2"
-            timeout 8 bash -lc "cat < /dev/null > /dev/tcp/${h}/${p}" 2>/dev/null || return 1
-          }
-
-          ssh_probe_ok() {
-            local h="$1"
-            local p="$2"
-            local tries="${3:-4}"
-            local attempt=1
-            while [ "$attempt" -le "$tries" ]; do
-              if command -v ssh-keyscan >/dev/null 2>&1; then
-                keys="$(ssh-keyscan -4 -T 10 -p "$p" -t rsa,ecdsa,ed25519 "$h" 2>/dev/null || true)"
-                if [ -n "${keys:-}" ]; then return 0; fi
-              fi
-              attempt=$((attempt + 1))
-              sleep 2
-            done
-            return 1
-          }
-
-          ports=()
-          if [ -n "${port_raw:-}" ]; then
-            p="$(printf '%s' "$port_raw" | tr -dc '0-9')"
-            if [ -n "$p" ]; then ports+=("$p"); fi
-          fi
-          if [ ${#ports[@]} -eq 0 ]; then
-            ports+=(22 2222 443)
-          fi
-
-          selected_port=""
-          selected_host=""
-          
-          for p in "${ports[@]}"; do
-            if tcp_ok "$host" "$p"; then
-              if ssh_probe_ok "$host" "$p" 2; then
-                selected_host="$host"
-                selected_port="$p"
-                break
-              fi
-            fi
-          done
-
-          if [ -z "$selected_port" ]; then
-            selected_host="$host"
-            selected_port="${ports[0]:-22}"
-          fi
-
-          echo "Selected SSH host: $selected_host"
-          echo "Selected SSH port: $selected_port"
-          echo "host=$selected_host" >> "$GITHUB_OUTPUT"
-          echo "port=$selected_port" >> "$GITHUB_OUTPUT"
-
-      - name: Setup SSH agent
+      - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Add SSH known_hosts
-        shell: bash
-        run: |
-          set -euo pipefail
-          host="${{ steps.select_ssh_port.outputs.host }}"
-          port="${{ steps.select_ssh_port.outputs.port }}"
-          mkdir -p ~/.ssh
-          ssh-keyscan -p "$port" -H "$host" >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Deploy to Server (pull pre-built images)
+      - name: Deploy via SSH
         shell: bash
         env:
-          HOST: ${{ steps.select_ssh_port.outputs.host }}
-          USERNAME: ${{ secrets.USERNAME }}
-          PORT: ${{ steps.select_ssh_port.outputs.port }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          HOST: ${{ secrets.SSH_HOST || secrets.HOST }}
+          PORT: ${{ secrets.SSH_PORT || secrets.PORT || '22' }}
+          USER: ${{ secrets.USERNAME || 'root' }}
         run: |
-          set -euo pipefail
-          host="${HOST}"
-          user="${USERNAME:-root}"
-          port="${PORT}"
-
-          ssh_opts=(
-            -p "$port"
-            -o ConnectTimeout=60
-            -o StrictHostKeyChecking=accept-new
-          )
-
-          ssh "${ssh_opts[@]}" "$user@$host" "DEPLOY_PATH='${DEPLOY_PATH:-}' GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' bash -s" <<'REMOTE'
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          
+          ssh -p "$PORT" "$USER@$HOST" "bash -s" << 'REMOTE'
           set -euo pipefail
           
-          # Find deploy directory
-          if [ -n "${DEPLOY_PATH:-}" ] && [ -d "$DEPLOY_PATH" ]; then
-            cd "$DEPLOY_PATH"
-          else
-            for d in /opt/joe/xelitesolutions /opt/xelitesolutions /root/joe/xelitesolutions; do
-              if [ -d "$d/.git" ]; then cd "$d"; break; fi
-            done
-          fi
-
-          echo "Working directory: $(pwd)"
+          # Find project directory
+          cd /opt/joe/xelitesolutions || cd /root/joe/xelitesolutions || exit 1
+          
+          echo "=== 1. Syncing latest code ==="
           git fetch origin main
           git reset --hard origin/main
           
-          COMPOSE_FILE="docker-compose.production.yml"
+          echo "=== 2. Cleaning up to free RAM ==="
+          docker system prune -f --volumes || true
+          # Clear OS cache
+          sync && echo 3 > /proc/sys/vm/drop_caches || true
           
-          echo "Stopping containers to free RAM..."
-          docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
-          docker system prune -f || true
+          echo "=== 3. Building API (Sequential) ==="
+          # Use custom memory limits for build
+          export NODE_OPTIONS="--max-old-space-size=2048"
+          docker compose -f docker-compose.production.yml build api
           
-          echo "Pulling images from GHCR..."
-          docker compose -f "$COMPOSE_FILE" pull
+          echo "=== 4. Building Web (Sequential) ==="
+          docker compose -f docker-compose.production.yml build web
           
-          echo "Starting services..."
-          docker compose -p joe -f "$COMPOSE_FILE" up -d --remove-orphans
+          echo "=== 5. Building Worker (Sequential) ==="
+          docker compose -f docker-compose.production.yml build browser-worker
           
-          echo "Health check..."
-          sleep 10
-          docker compose -p joe -f "$COMPOSE_FILE" ps
+          echo "=== 6. Restarting all services ==="
+          docker compose -p joe -f docker-compose.production.yml up -d --remove-orphans
+          
+          echo "=== 7. Final check ==="
+          docker compose -p joe -f docker-compose.production.yml ps
           REMOTE
-
-      - name: Verify Deployment
-        uses: jtalk/url-health-check-action@v4
-        with:
-          url: https://xelitesolutions.com/
-          max-attempts: 10
-          retry-delay: 10s

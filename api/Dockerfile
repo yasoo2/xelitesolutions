@@ -35,6 +35,11 @@ RUN npm run build
 # Stage 2: Runtime
 FROM node:20-slim
 
+WORKDIR /app
+
+# Copy package files for production install
+COPY package*.json ./
+
 # Install runtime dependencies (python and build tools needed for node-pty postinstall)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -43,19 +48,13 @@ RUN apt-get update && \
     g++ \
     bash \
     curl \
+    ca-certificates \
     git && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy package files for production install
-COPY package*.json ./
-
-# Install production dependencies WITH Playwright browsers
-ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN npm install --omit=dev --no-audit --no-fund && \
+    npm install --omit=dev --no-audit --no-fund && \
     npx playwright install --with-deps chromium && \
+    apt-get purge -y --auto-remove make g++ python3 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
     npm cache clean --force
 
 # Copy build artifacts
