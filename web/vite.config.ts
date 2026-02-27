@@ -121,12 +121,12 @@ export default defineConfig({
     },
   },
   build: {
-    minify: 'esbuild', // Faster and uses less memory than terser
+    minify: 'esbuild',
     cssMinify: 'esbuild',
-    reportCompressedSize: false, // Disables gzip size calculations (saves CPU and RAM)
+    reportCompressedSize: false,
     rollupOptions: {
-      maxParallelFileOps: 2, // Throttles parallel processing to keep memory low
-      cache: false, // Prevents rollup from caching ASTs in memory
+      maxParallelFileOps: 1, // Single-threaded to minimize RAM usage during AST-heavy transformation
+      cache: false,
       external: [
         'three',
         '@monaco-editor/react',
