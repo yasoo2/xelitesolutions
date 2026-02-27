@@ -61,13 +61,14 @@ jobs:
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
-          if ! docker compose -f docker-compose.production.yml build > docker-build.log 2>&1; then
-            URL=$(curl -sF "file=@docker-build.log" https://envs.sh)
-            echo "::error::Build failed! Logs uploaded to: $URL"
-            echo "### 🚨 Build Failed" >> $GITHUB_STEP_SUMMARY
-            echo "Logs: [${URL}](${URL})" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
+          echo "Building API..."
+          docker compose -f docker-compose.production.yml build api
+          
+          echo "Building Web..."
+          docker compose -f docker-compose.production.yml build web
+          
+          echo "Building Browser Worker..."
+          docker compose -f docker-compose.production.yml build browser-worker
 
       - name: Push images using Compose
         run: |
