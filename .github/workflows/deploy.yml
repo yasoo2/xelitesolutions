@@ -329,6 +329,15 @@ jobs:
           docker system prune -a --volumes -f || true
           docker builder prune -a -f || true
 
+          # Ensure Swap is active (4GB) to avoid OOM crash on Vite build
+          if [ ! -f /swapfile ] && command -v swapon >/dev/null 2>&1; then
+             echo "💾 Server lacks swap. Attempting to create emergency 4GB swap..."
+             sudo fallocate -l 4G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+             sudo chmod 600 /swapfile
+             sudo mkswap /swapfile
+             sudo swapon /swapfile || true
+          fi
+
           REPO_URL="https://github.com/yasoo2/xelitesolutions.git"
           REPO_HINT="yasoo2/xelitesolutions"
           BRANCH="main"

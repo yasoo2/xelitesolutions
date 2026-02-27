@@ -5,6 +5,19 @@ set -e
 
 echo "🔧 Setting up Joe System on server..."
 
+# Setup Swap (4GB) to prevent OOM build failures
+if [ ! -f /swapfile ]; then
+    echo "💾 Creating 4GB swap file..."
+    fallocate -l 4G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=4096
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+    echo "✅ Swap file created and enabled"
+else
+    echo "✅ Swap file already exists"
+fi
+
 # Install Docker if not present
 if ! command -v docker &> /dev/null; then
     echo "📦 Installing Docker..."
