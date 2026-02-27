@@ -19,6 +19,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Optimize npm for CI environment
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 RUN npm install --include=dev --no-audit --no-fund
@@ -50,6 +51,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm install --omit=dev --no-audit --no-fund && \
     npm cache clean --force

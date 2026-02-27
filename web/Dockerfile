@@ -25,8 +25,8 @@ ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build the application
-# Skipping tsc to prevent OOM (exit code 137) on constrained CI runners. Vite uses esbuild for fast bundling.
-RUN npx vite build --emptyOutDir
+# We increased NodeJS memory limit to prevent OOM
+RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine
