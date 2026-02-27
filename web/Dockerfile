@@ -25,8 +25,8 @@ ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build the application
-# We increased NodeJS memory limit to prevent OOM
-RUN npm run build
+# Skipping tsc to prevent OOM (exit code 137) on constrained CI runners.
+RUN npx vite build --emptyOutDir
 
 # Stage 2: Serve
 FROM nginx:alpine
