@@ -15,6 +15,7 @@ services:
       start_period: 60s
 
   api:
+    image: ghcr.io/yasoo2/xelitesolutions/api:latest
     build: ./api
     container_name: joe_api
     restart: always
@@ -49,6 +50,7 @@ services:
         condition: service_healthy
 
   web:
+    image: ghcr.io/yasoo2/xelitesolutions/web:latest
     build:
       context: ./web
       args:
@@ -64,6 +66,7 @@ services:
       - api
 
   browser-worker:
+    image: ghcr.io/yasoo2/xelitesolutions/browser-worker:latest
     build: ./services/joe-browser-worker
     container_name: joe_browser_worker
     restart: always
