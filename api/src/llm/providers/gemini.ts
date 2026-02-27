@@ -10,11 +10,10 @@ const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 // Robust Model List with Fallbacks
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-1.5-flash';
 const FALLBACK_MODELS = [
-    'gemini-2.0-flash-lite-preview-02-05',
     'gemini-2.0-flash-exp',
-    'gemini-1.5-flash',
+    'gemini-2.0-flash',
     'gemini-1.5-pro'
 ];
 

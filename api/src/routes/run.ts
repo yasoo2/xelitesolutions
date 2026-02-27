@@ -2284,6 +2284,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       planContext.set(ap._id.toString(), { runId, sessionId, workspaceId, name: initialPlan.name, input: initialPlan.input });
       if (autoAll || (auto && safe)) {
         ev({ type: 'step_started', data: { name: `execute:${initialPlan.name}`, input: redactToolInputForStorage(initialPlan.name, initialPlan.input) } });
+        ev({ type: 'tool_start', tool: initialPlan.name, input: initialPlan.input });
         const callInput =
           userId && initialPlan.input && typeof initialPlan.input === 'object'
             ? { ...(initialPlan.input as any), userId: String(userId) }

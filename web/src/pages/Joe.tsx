@@ -116,8 +116,11 @@ export default function Joe() {
             }
 
             // Auto switch to browser for browser actions
-            if (msg.type === 'tool_start' && (
-                msg.tool.startsWith('browser_') ||
+            if ((msg.type === 'tool_start' || msg.type === 'step_started') && (
+                (msg.tool?.startsWith('browser_')) ||
+                (msg.data?.name?.includes('execute:browser_')) ||
+                (msg.data?.name?.includes('execute:open_page')) ||
+                (msg.data?.name?.includes('execute:click_element')) ||
                 msg.tool === 'open_page' ||
                 msg.tool === 'click_element'
             )) {
