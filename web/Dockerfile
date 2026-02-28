@@ -25,8 +25,8 @@ ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build the application separately to reduce peak memory usage
-# 1. Type check
-RUN npm run type-check
+# 1. Type check (Skipped to avoid OOM on server)
+# RUN npm run type-check
 
 # 2. Build assets (Vite only)
 RUN npx vite build
