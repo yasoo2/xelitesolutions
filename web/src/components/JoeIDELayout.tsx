@@ -34,6 +34,7 @@ interface JoeIDELayoutProps {
     userAvatar?: string;
     userName?: string;
     userEmail?: string;
+    userRole?: string;
 
     // Chat
     messages: Message[];
@@ -45,6 +46,7 @@ interface JoeIDELayoutProps {
     // Workspace
     workspaceTab?: WorkspaceTab;
     onWorkspaceTabChange?: (tab: WorkspaceTab) => void;
+    onDeploymentsClick?: () => void;
     browserSessionId?: string;
     terminalId?: string;
     previewUrl?: string;
@@ -98,6 +100,7 @@ export default function JoeIDELayout({
     userAvatar,
     userName,
     userEmail,
+    userRole,
 
     // Chat
     messages,
@@ -109,6 +112,7 @@ export default function JoeIDELayout({
     // Workspace
     workspaceTab,
     onWorkspaceTabChange,
+    onDeploymentsClick,
     browserSessionId,
     terminalId,
     previewUrl,
@@ -298,7 +302,9 @@ export default function JoeIDELayout({
                 userAvatar={userAvatar}
                 userName={userName}
                 userEmail={userEmail}
+                userRole={userRole}
                 onSettingsClick={onSettingsClick}
+                onDeploymentsClick={onDeploymentsClick}
                 theme={theme}
                 onThemeToggle={onThemeToggle}
                 onToggleChat={toggleChat}

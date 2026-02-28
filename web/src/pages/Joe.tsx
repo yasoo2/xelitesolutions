@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { jwtDecode } from 'jwt-decode';
 import JoeIDELayout from '../components/JoeIDELayout';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import CommandComposer from '../components/CommandComposer';
@@ -69,8 +70,19 @@ export default function Joe() {
     const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
     const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
     const [workspace, setWorkspace] = useState<any>(null);
+    const [userRole, setUserRole] = useState<string | undefined>(undefined);
 
     const { i18n } = useTranslation();
+
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            try {
+                const decoded: any = jwtDecode(token);
+                setUserRole(decoded.role);
+            } catch { }
+        }
+    }, []);
 
     const handleGitHubConnected = useCallback((user: GitHubUser) => {
         setGhConnected(true);
@@ -608,6 +620,7 @@ export default function Joe() {
                 userAvatar={userInfo.avatar}
                 userName={userInfo.name}
                 userEmail={userInfo.email}
+                userRole={userRole}
                 // ...rest of props...
                 messages={messages}
                 inputValue={inputValue}
@@ -616,6 +629,7 @@ export default function Joe() {
                 isLoading={isLoading}
                 workspaceTab={workspaceTab}
                 onWorkspaceTabChange={setWorkspaceTab}
+                onDeploymentsClick={() => nav('/super-admin/deployments')}
                 browserSessionId={browserSessionId || undefined}
                 terminalId={activeSessionId}
                 previewUrl={previewUrl}

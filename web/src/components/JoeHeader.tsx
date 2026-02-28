@@ -1,12 +1,13 @@
-import React from 'react';
-import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Rocket } from 'lucide-react';
 
 interface JoeHeaderProps {
     userAvatar?: string;
     userName?: string;
     userEmail?: string;
+    userRole?: string;
     onSettingsClick?: () => void;
     onNewProject?: () => void;
+    onDeploymentsClick?: () => void;
     theme?: 'dark' | 'light';
     onThemeToggle?: () => void;
     onToggleChat?: () => void;
@@ -19,8 +20,10 @@ export default function JoeHeader({
     userAvatar,
     userName,
     userEmail,
+    userRole,
     onSettingsClick,
     onNewProject,
+    onDeploymentsClick,
     theme = 'dark',
     onThemeToggle,
     onToggleChat,
@@ -85,6 +88,16 @@ export default function JoeHeader({
                     {onNewProject && (
                         <button className="joe-header-btn" onClick={onNewProject} title="مشروع جديد" style={{ color: 'var(--joe-gold-primary)' }}>
                             <Plus size={18} />
+                        </button>
+                    )}
+                    {userRole === 'SUPER_ADMIN' && (
+                        <button
+                            className="joe-header-btn"
+                            onClick={onDeploymentsClick}
+                            title="Deployment Control Center"
+                            style={{ color: '#f59e0b' }}
+                        >
+                            <Rocket size={18} />
                         </button>
                     )}
                 </div>
