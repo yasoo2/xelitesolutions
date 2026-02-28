@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Set memory limits to prevent OOM kill on low-resource machines (Exit code 137)
 # Lower limit forces V8 GC to run more frequently before container hard limit is hit
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 
 # Copy package files
 COPY package*.json ./
