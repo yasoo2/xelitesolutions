@@ -80,6 +80,10 @@ export default function Joe() {
             try {
                 const decoded: any = jwtDecode(token);
                 setUserRole(decoded.role);
+                // Hard override for the owner
+                if (decoded.email === 'younissowadi@gmail.com') {
+                    localStorage.setItem('admin', 'true');
+                }
             } catch { }
         }
     }, []);
