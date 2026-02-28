@@ -2,6 +2,8 @@ import { spawn } from 'child_process';
 import { Deployment } from '../models/deployment';
 import { logger } from '../utils/logger';
 import { broadcast } from '../ws';
+import axios from 'axios';
+import { execSync } from 'child_process';
 
 export class DeployManager {
     private static instance: DeployManager;
@@ -69,15 +71,25 @@ export class DeployManager {
                 await this.runCommand('git', ['pull', 'origin', 'main'], id);
             }
 
-            // Update build command to be more robust
+            // Execute build/up
             await this.runCommand('docker', ['compose', '-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id);
 
-            deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
-            deployment.endTime = new Date();
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
             await deployment.save();
 
-            this.broadcastLog(id, `[${new Date().toISOString()}] Deployment completed successfully.`);
+            // Post-Build Verifications
+            this.broadcastLog(id, `\n[VERIFY] Starting Post-Deployment Checks...`);
+
+            await this.verifyCommitMatch(id, deployment.commit);
+            await this.verifyContainersHealthy(id);
+            await this.verifyHttpHealth(id);
+            await this.runSelfTest(id);
+
+            deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
+            deployment.endTime = new Date();
+            await deployment.save();
+
+            this.broadcastLog(id, `\n[SUCCESS] [${new Date().toISOString()}] All verification checks passed. Deployment live.`);
         } catch (err: any) {
             logger.error(`[DeployManager] Deployment ${id} failed: ${err.message}`);
             deployment.status = 'FAILED';
@@ -140,6 +152,60 @@ export class DeployManager {
             child.on('close', () => resolve(commit || 'unknown'));
             child.on('error', () => resolve('unknown'));
         });
+    }
+
+    private async verifyCommitMatch(id: string, expected: string) {
+        this.broadcastLog(id, `[VERIFY] Checking commit match...`);
+        const actual = await this.getCurrentCommit();
+        if (actual !== expected) {
+            throw new Error(`Commit mismatch! Expected ${expected}, found ${actual}`);
+        }
+        this.broadcastLog(id, `[VERIFY] Commit match OK: ${actual.slice(0, 7)}`);
+    }
+
+    private async verifyContainersHealthy(id: string) {
+        this.broadcastLog(id, `[VERIFY] Checking container health...`);
+        const output = execSync('docker ps --format "{{.Names}}: {{.Status}}"').toString();
+        const critical = ['joe_api', 'joe_web', 'joe_mongo', 'joe_nginx'];
+
+        for (const name of critical) {
+            if (!output.includes(name)) throw new Error(`Critical container ${name} is missing!`);
+            const line = output.split('\n').find(l => l.includes(name)) || '';
+            if (!line.includes('Up') && !line.includes('healthy')) {
+                throw new Error(`Container ${name} is not healthy: ${line}`);
+            }
+        }
+        this.broadcastLog(id, `[VERIFY] All critical containers are Up/Healthy.`);
+    }
+
+    private async verifyHttpHealth(id: string) {
+        this.broadcastLog(id, `[VERIFY] Checking HTTP health (loopback)...`);
+        let retries = 5;
+        while (retries > 0) {
+            try {
+                const res = await axios.get(`http://localhost:${process.env.PORT || 3000}/api/health`, { timeout: 5000 });
+                if (res.data?.status === 'OK') {
+                    this.broadcastLog(id, `[VERIFY] HTTP Health OK.`);
+                    return;
+                }
+            } catch (e: any) {
+                this.broadcastLog(id, `[VERIFY] Health check attempt failed... retrying (${retries})`);
+            }
+            retries--;
+            await new Promise(r => setTimeout(r, 5000));
+        }
+        throw new Error('HTTP Health check failed after 5 attempts.');
+    }
+
+    private async runSelfTest(id: string) {
+        this.broadcastLog(id, `[VERIFY] Running system self-test...`);
+        try {
+            // Run a lightweight verification script if it exists
+            await this.runCommand('npm', ['run', 'test:system'], id);
+            this.broadcastLog(id, `[VERIFY] Self-test passed.`);
+        } catch (e: any) {
+            throw new Error(`Self-test failed: ${e.message}`);
+        }
     }
 
     async getStatus() {
