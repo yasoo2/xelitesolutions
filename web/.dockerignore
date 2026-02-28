@@ -18,6 +18,6 @@
 
 # Exclusions
 node_modules/
-dist/
+# dist/
 **/node_modules/
-**/dist/
+# **/dist/
