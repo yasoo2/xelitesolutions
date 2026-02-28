@@ -18,6 +18,7 @@ interface Deployment {
     startTime: string;
     endTime?: string;
     duration?: number;
+    logs: string[];
     triggeredBy: string;
     error?: string;
 }
