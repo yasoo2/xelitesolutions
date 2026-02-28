@@ -1,8 +1,8 @@
 # Ignore all heavy directories
 node_modules/
 **/node_modules/
-dist/
-**/dist/
+# dist/
+# **/dist/
 .git/
 **/.git/
 .env
