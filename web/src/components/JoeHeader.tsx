@@ -90,25 +90,35 @@ export default function JoeHeader({
                             <Plus size={18} />
                         </button>
                     )}
-                    {(userRole === 'SUPER_ADMIN' || localStorage.getItem('admin') === 'true') ? (
-                        <button
-                            className="joe-header-btn"
-                            onClick={onDeploymentsClick}
-                            title="Deployment Control Center"
-                            style={{ color: '#f59e0b' }}
-                        >
-                            <Rocket size={18} />
-                        </button>
-                    ) : (
-                        <button
-                            className="joe-header-btn"
-                            disabled
-                            title="Deployment Access Restricted"
-                            style={{ color: '#3f3f46', opacity: 0.5, cursor: 'not-allowed' }}
-                        >
-                            <Rocket size={18} />
-                        </button>
-                    )}
+                    {(() => {
+                        const isAdmin = userRole === 'SUPER_ADMIN' ||
+                            userEmail?.toLowerCase().trim() === 'younissowadi@gmail.com' ||
+                            localStorage.getItem('admin') === 'true';
+
+                        if (isAdmin) {
+                            return (
+                                <button
+                                    className="joe-header-btn"
+                                    onClick={onDeploymentsClick}
+                                    title="Deployment Control Center"
+                                    style={{ color: '#f59e0b' }}
+                                >
+                                    <Rocket size={18} />
+                                </button>
+                            );
+                        }
+
+                        return (
+                            <button
+                                className="joe-header-btn"
+                                disabled
+                                title="Deployment Access Restricted"
+                                style={{ color: '#3f3f46', opacity: 0.5, cursor: 'not-allowed' }}
+                            >
+                                <Rocket size={18} />
+                            </button>
+                        );
+                    })()}
                 </div>
 
                 <div className="joe-header-divider"></div>

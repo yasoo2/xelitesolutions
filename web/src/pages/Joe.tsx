@@ -76,16 +76,33 @@ export default function Joe() {
 
     useEffect(() => {
         const token = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
+
+        let role: string | undefined = undefined;
+        let email: string | undefined = undefined;
+
         if (token) {
             try {
                 const decoded: any = jwtDecode(token);
-                setUserRole(decoded.role);
-                // Hard override for the owner
-                if (decoded.email === 'younissowadi@gmail.com') {
-                    localStorage.setItem('admin', 'true');
-                }
+                role = decoded.role;
+                email = decoded.email;
             } catch { }
         }
+
+        if (!email && storedUser) {
+            try {
+                const u = JSON.parse(storedUser);
+                email = u.email;
+            } catch { }
+        }
+
+        // Hard override for the owner
+        if (email?.toLowerCase().trim() === 'younissowadi@gmail.com') {
+            role = 'SUPER_ADMIN';
+            localStorage.setItem('admin', 'true');
+        }
+
+        setUserRole(role);
     }, []);
 
     const handleGitHubConnected = useCallback((user: GitHubUser) => {
