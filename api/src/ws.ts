@@ -79,6 +79,7 @@ function resolveEventUserId(ev: LiveEvent) {
   const sessionEntry = sid ? sessionOwnerBySessionId.get(sid) : undefined;
   if (sessionEntry?.userId) return sessionEntry.userId;
 
+  if (t.startsWith('admin:')) return 'SUPER_ADMIN_ROLE';
   return '';
 }
 
@@ -135,7 +136,9 @@ export function attachWebSocket(server: Server) {
     }
 
     const userId = trimId((req as any)?.auth?.sub);
+    const role = (req as any)?.auth?.role;
     if (userId) (ws as any).userId = userId;
+    if (role) (ws as any).role = role;
 
     console.log('[WS] Client connected to liveWss');
     (ws as any).isAlive = true;
@@ -309,14 +312,17 @@ export function broadcast(
 
   liveWssRef.clients.forEach((client: WebSocket) => {
     if (client.readyState === WebSocket.OPEN) {
-      if (!authBypass && targetUserId) {
-        const clientUserId = trimId((client as any).userId);
-        if (!clientUserId || clientUserId !== targetUserId) {
-          // console.log('[WS] Skipping client', clientUserId, 'target', targetUserId);
-          return;
+      if (!authBypass) {
+        if (targetUserId === 'SUPER_ADMIN_ROLE') {
+          const clientRole = (client as any).role;
+          if (clientRole !== 'SUPER_ADMIN') return;
+        } else if (targetUserId) {
+          const clientUserId = trimId((client as any).userId);
+          if (!clientUserId || clientUserId !== targetUserId) {
+            return;
+          }
         }
       }
-      // console.log('[WS] Sending to client', (client as any).userId || 'anon');
       client.send(payload);
     }
   });

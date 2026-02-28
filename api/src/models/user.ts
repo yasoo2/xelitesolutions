@@ -5,7 +5,7 @@ export interface IUser extends Document {
   name?: string;
   picture?: string;
   passwordHash: string;
-  role: 'OWNER' | 'ADMIN' | 'USER';
+  role: 'OWNER' | 'ADMIN' | 'USER' | 'SUPER_ADMIN';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,7 +16,7 @@ const UserSchema = new Schema<IUser>(
     name: { type: String },
     picture: { type: String },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ['OWNER', 'ADMIN', 'USER'], default: 'USER' },
+    role: { type: String, enum: ['OWNER', 'ADMIN', 'USER', 'SUPER_ADMIN'], default: 'USER' },
   },
   { timestamps: true }
 );

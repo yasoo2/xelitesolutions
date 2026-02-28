@@ -30,6 +30,7 @@ import serverRoutes from './routes/servers';
 import queueRoutes from './routes/queue';
 import workspacesRoutes from './routes/workspaces';
 import godmodeRoutes from './routes/godmode';
+import adminRoutes from './routes/admin';
 import { healthcheckBrowser } from './browser/manager';
 
 // Create Central API Router
@@ -70,7 +71,7 @@ async function ensureOwnerFromEnv() {
 
   if (!user) {
     const passwordHash = await bcrypt.hash(adminPassword, 10);
-    await User.create({ email: adminEmail, passwordHash, role: 'OWNER' });
+    await User.create({ email: adminEmail, passwordHash, role: 'SUPER_ADMIN' });
     return;
   }
 
@@ -82,7 +83,7 @@ async function ensureOwnerFromEnv() {
     const passwordHash = await bcrypt.hash(adminPassword, 10);
     user.email = adminEmail;
     user.passwordHash = passwordHash;
-    user.role = 'OWNER';
+    user.role = 'SUPER_ADMIN';
     await user.save();
   }
 }
@@ -187,6 +188,7 @@ async function main() {
   apiRouter.use('/queue', queueRoutes);
   apiRouter.use('/workspaces', workspacesRoutes);
   apiRouter.use('/godmode', godmodeRoutes);
+  apiRouter.use('/admin', adminRoutes);
 
   // Catch-all 404 for API
   apiRouter.use((req, res) => {

@@ -11,6 +11,8 @@ const Login = lazy(() => import('./pages/Login'));
 const Joe = lazy(() => import('./pages/Joe'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const DeploymentsPage = lazy(() => import('./pages/admin/DeploymentsPage'));
+import { jwtDecode } from 'jwt-decode';
 import './theme.css';
 import './global.css';
 import './i18n';
@@ -115,6 +117,26 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireSuperAdmin({ children }: { children: React.ReactNode }) {
+  let token: string | null = null;
+  try {
+    token = localStorage.getItem('token');
+  } catch { }
+
+  if (!token) return <Navigate to="/login" replace />;
+
+  try {
+    const decoded: any = jwtDecode(token);
+    if (decoded.role !== 'SUPER_ADMIN') {
+      return <Navigate to="/joe" replace />;
+    }
+  } catch {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {(() => {
@@ -150,6 +172,16 @@ createRoot(document.getElementById('root')!).render(
               <Route
                 path="joe-premium"
                 element={<Navigate to="/joe" replace />}
+              />
+              <Route
+                path="super-admin/deployments"
+                element={
+                  <RequireSuperAdmin>
+                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                      <DeploymentsPage />
+                    </Suspense>
+                  </RequireSuperAdmin>
+                }
               />
 
             </Route>
