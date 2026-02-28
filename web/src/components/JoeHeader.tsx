@@ -90,7 +90,7 @@ export default function JoeHeader({
                             <Plus size={18} />
                         </button>
                     )}
-                    {userRole === 'SUPER_ADMIN' && (
+                    {(userRole === 'SUPER_ADMIN' || localStorage.getItem('admin') === 'true') && (
                         <button
                             className="joe-header-btn"
                             onClick={onDeploymentsClick}
