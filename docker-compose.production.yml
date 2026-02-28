@@ -7,10 +7,6 @@ services:
       - ./data/mongo:/data/db
     networks:
       - joe-network
-    deploy:
-      resources:
-        limits:
-          memory: 2G
     healthcheck:
       test: [ "CMD-SHELL", "mongosh --eval 'db.adminCommand({ping:1})' || exit 1" ]
       interval: 20s
