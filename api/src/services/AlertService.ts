@@ -1,17 +1,12 @@
 import axios from 'axios';
 import { logger } from '../utils/logger';
 
+import { SystemConfig } from '../models/systemConfig';
+
 export class AlertService {
     private static instance: AlertService;
-    private telegramBotToken: string | undefined;
-    private telegramChatId: string | undefined;
-    private webhookUrl: string | undefined;
 
-    private constructor() {
-        this.telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
-        this.telegramChatId = process.env.TELEGRAM_CHAT_ID;
-        this.webhookUrl = process.env.ALERT_WEBHOOK_URL;
-    }
+    private constructor() { }
 
     static getInstance() {
         if (!AlertService.instance) {
@@ -20,7 +15,20 @@ export class AlertService {
         return AlertService.instance;
     }
 
+    private async getSettings() {
+        const config = await SystemConfig.findOne({ key: 'notification_settings' });
+        const settings = config?.value || {};
+        return {
+            telegramBotToken: settings.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN,
+            telegramChatId: settings.telegramChatId || process.env.TELEGRAM_CHAT_ID,
+            webhookUrl: settings.webhookUrl || process.env.ALERT_WEBHOOK_URL,
+            emailEnabled: settings.emailEnabled || false,
+            emailRecipients: settings.emailRecipients || []
+        };
+    }
+
     async notify(message: string, level: 'INFO' | 'WARNING' | 'CRITICAL' = 'INFO') {
+        const settings = await this.getSettings();
         const timestamp = new Date().toISOString();
         const formattedMessage = `[${level}] [${timestamp}] Joe Deployment: ${message}`;
 
@@ -32,10 +40,10 @@ export class AlertService {
         }
 
         // 2. Telegram Notification
-        if (this.telegramBotToken && this.telegramChatId) {
+        if (settings.telegramBotToken && settings.telegramChatId) {
             try {
-                await axios.post(`https://api.telegram.org/bot${this.telegramBotToken}/sendMessage`, {
-                    chat_id: this.telegramChatId,
+                await axios.post(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
+                    chat_id: settings.telegramChatId,
                     text: formattedMessage,
                     parse_mode: 'HTML'
                 });
@@ -45,9 +53,9 @@ export class AlertService {
         }
 
         // 3. Generic Webhook
-        if (this.webhookUrl) {
+        if (settings.webhookUrl) {
             try {
-                await axios.post(this.webhookUrl, {
+                await axios.post(settings.webhookUrl, {
                     text: formattedMessage,
                     level,
                     timestamp,

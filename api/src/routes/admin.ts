@@ -51,4 +51,28 @@ router.get('/system/containers', async (req, res) => {
     }
 });
 
+import { SystemConfig } from '../models/systemConfig';
+
+router.get('/settings/notifications', async (req, res) => {
+    try {
+        const config = await SystemConfig.findOne({ key: 'notification_settings' });
+        res.json(config?.value || {});
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.post('/settings/notifications', async (req, res) => {
+    try {
+        await SystemConfig.findOneAndUpdate(
+            { key: 'notification_settings' },
+            { value: req.body },
+            { upsert: true, new: true }
+        );
+        res.json({ message: 'Settings updated successfully' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

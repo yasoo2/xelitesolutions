@@ -37,6 +37,14 @@ export default function DeploymentsPage() {
     const [actionLoading, setActionLoading] = useState(false);
     const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
     const [liveLogs, setLiveLogs] = useState<string[]>([]);
+    const [activeTab, setActiveTab] = useState<'history' | 'notifications'>('history');
+    const [notifSettings, setNotifSettings] = useState({
+        telegramBotToken: '',
+        telegramChatId: '',
+        webhookUrl: '',
+        emailEnabled: false,
+        emailRecipients: [] as string[]
+    });
     const logContainerRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -50,12 +58,14 @@ export default function DeploymentsPage() {
 
     const fetchAll = async () => {
         try {
-            const [depRes, conRes] = await Promise.all([
+            const [depRes, conRes, notifRes] = await Promise.all([
                 fetch(`${API_URL}/admin/deployments`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/admin/system/containers`, { headers: { Authorization: `Bearer ${token}` } })
+                fetch(`${API_URL}/admin/system/containers`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/admin/settings/notifications`, { headers: { Authorization: `Bearer ${token}` } })
             ]);
             if (depRes.ok) setDeployments(await depRes.json());
             if (conRes.ok) setContainers(await conRes.json());
+            if (notifRes.ok) setNotifSettings(await notifRes.json());
         } catch (e) {
             console.error('Fetch failed', e);
         } finally {
@@ -144,6 +154,26 @@ export default function DeploymentsPage() {
         }
     };
 
+    const saveNotifSettings = async () => {
+        setActionLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/settings/notifications`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(notifSettings)
+            });
+            if (res.ok) alert('Settings saved successfully');
+            else alert('Failed to save settings');
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     if (!isAdmin) return <div style={{ padding: 40, color: '#ef4444' }}><Shield size={48} /> Access Denied</div>;
 
     return (
@@ -165,86 +195,141 @@ export default function DeploymentsPage() {
                 </div>
             </div>
 
-            <div className="dashboard-grid">
-                {/* Container Health */}
-                <div className="health-section">
-                    <h2><Activity size={20} /> Container Fleet Status</h2>
-                    <div className="health-cards">
-                        {['joe_api', 'joe_web', 'joe_mongo', 'joe_nginx', 'joe_browser_worker'].map(name => {
-                            const c = containers.find(x => x.Names.includes(name));
-                            const isUp = c?.Status.toLowerCase().includes('up');
-                            return (
-                                <motion.div key={name} className={`health-card ${isUp ? 'up' : 'down'}`} whileHover={{ scale: 1.02 }}>
-                                    <div className="card-header">
-                                        <Server size={18} />
-                                        <span>{name.replace('joe_', '').toUpperCase()}</span>
-                                    </div>
-                                    <div className="card-status">
-                                        {isUp ? <div className="dot green" /> : <div className="dot red" />}
-                                        <span>{isUp ? (c?.Status || 'Running') : 'Exited'}</span>
-                                    </div>
-                                    <div className="card-info">{c?.Image || 'Unknown Image'}</div>
-                                </motion.div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* History */}
-                <div className="history-section">
-                    <h2><Clock size={20} /> Deployment History</h2>
-                    <div className="history-table-wrapper">
-                        <table className="history-table">
-                            <thead>
-                                <tr>
-                                    <th><Hash size={14} /> ID</th>
-                                    <th>Status</th>
-                                    <th>Commit</th>
-                                    <th>Time</th>
-                                    <th>Logs</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {deployments.map(d => (
-                                    <tr key={d._id}>
-                                        <td><span className="id-tag">{d._id.slice(-6)}</span></td>
-                                        <td>
-                                            <span className={`status-badge ${d.status.toLowerCase()}`}>
-                                                {d.status === 'SUCCESS' && <CheckCircle size={14} />}
-                                                {d.status === 'FAILED' && <XCircle size={14} />}
-                                                {d.status === 'BUILDING' && <Loader2 size={14} className="spin" />}
-                                                {d.status}
-                                            </span>
-                                        </td>
-                                        <td><span className="commit-hash">{d.commit.slice(0, 7)}</span></td>
-                                        <td>
-                                            <div className="time-info">
-                                                <div>{new Date(d.startTime).toLocaleString()}</div>
-                                                {d.duration && <div className="duration">{d.duration}s</div>}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div className="actions-cell">
-                                                <button className="btn-icon" onClick={() => {
-                                                    setSelectedLogId(d._id);
-                                                    setLiveLogs(d.logs || []);
-                                                }}>
-                                                    <Terminal size={14} />
-                                                </button>
-                                                {d.status === 'SUCCESS' && (
-                                                    <button className="btn-icon rollback" onClick={() => handleRollback(d._id)}>
-                                                        <RotateCcw size={14} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+            <div className="tab-bar">
+                <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+                    <Clock size={18} /> History & Health
+                </button>
+                <button className={`tab-btn ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
+                    <Info size={18} /> Notification Channels
+                </button>
             </div>
+
+            {activeTab === 'history' ? (
+                <div className="dashboard-grid">
+                    {/* Container Health */}
+                    <div className="health-section">
+                        <h2><Activity size={20} /> Container Fleet Status</h2>
+                        <div className="health-cards">
+                            {['joe_api', 'joe_web', 'joe_mongo', 'joe_nginx', 'joe_browser_worker'].map(name => {
+                                const c = containers.find(x => x.Names.includes(name));
+                                const isUp = c?.Status.toLowerCase().includes('up');
+                                return (
+                                    <motion.div key={name} className={`health-card ${isUp ? 'up' : 'down'}`} whileHover={{ scale: 1.02 }}>
+                                        <div className="card-header">
+                                            <Server size={18} />
+                                            <span>{name.replace('joe_', '').toUpperCase()}</span>
+                                        </div>
+                                        <div className="card-status">
+                                            {isUp ? <div className="dot green" /> : <div className="dot red" />}
+                                            <span>{isUp ? (c?.Status || 'Running') : 'Exited'}</span>
+                                        </div>
+                                        <div className="card-info">{c?.Image || 'Unknown Image'}</div>
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* History */}
+                    <div className="history-section">
+                        <h2><Clock size={20} /> Deployment History</h2>
+                        <div className="history-table-wrapper">
+                            <table className="history-table">
+                                <thead>
+                                    <tr>
+                                        <th><Hash size={14} /> ID</th>
+                                        <th>Status</th>
+                                        <th>Commit</th>
+                                        <th>Time</th>
+                                        <th>Logs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {deployments.map(d => (
+                                        <tr key={d._id}>
+                                            <td><span className="id-tag">{d._id.slice(-6)}</span></td>
+                                            <td>
+                                                <span className={`status-badge ${d.status.toLowerCase()}`}>
+                                                    {d.status === 'SUCCESS' && <CheckCircle size={14} />}
+                                                    {d.status === 'FAILED' && <XCircle size={14} />}
+                                                    {d.status === 'BUILDING' && <Loader2 size={14} className="spin" />}
+                                                    {d.status}
+                                                </span>
+                                            </td>
+                                            <td><span className="commit-hash">{d.commit.slice(0, 7)}</span></td>
+                                            <td>
+                                                <div className="time-info">
+                                                    <div>{new Date(d.startTime).toLocaleString()}</div>
+                                                    {d.duration && <div className="duration">{d.duration}s</div>}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div className="actions-cell">
+                                                    <button className="btn-icon" onClick={() => {
+                                                        setSelectedLogId(d._id);
+                                                        setLiveLogs(d.logs || []);
+                                                    }}>
+                                                        <Terminal size={14} />
+                                                    </button>
+                                                    {d.status === 'SUCCESS' && (
+                                                        <button className="btn-icon rollback" onClick={() => handleRollback(d._id)}>
+                                                            <RotateCcw size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="settings-section">
+                    <div className="settings-card">
+                        <h2><Shield size={20} /> Alert Channels</h2>
+                        <p className="desc">Configure where Joe sends deployment notifications and failure alerts.</p>
+
+                        <div className="settings-form">
+                            <div className="form-group">
+                                <label>Telegram Bot Token</label>
+                                <input
+                                    type="password"
+                                    value={notifSettings.telegramBotToken}
+                                    onChange={e => setNotifSettings({ ...notifSettings, telegramBotToken: e.target.value })}
+                                    placeholder="000000000:AA-..."
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Telegram Chat ID</label>
+                                <input
+                                    type="text"
+                                    value={notifSettings.telegramChatId}
+                                    onChange={e => setNotifSettings({ ...notifSettings, telegramChatId: e.target.value })}
+                                    placeholder="-100..."
+                                />
+                            </div>
+                            <hr className="divider" />
+                            <div className="form-group">
+                                <label>Generic Webhook URL</label>
+                                <input
+                                    type="text"
+                                    value={notifSettings.webhookUrl}
+                                    onChange={e => setNotifSettings({ ...notifSettings, webhookUrl: e.target.value })}
+                                    placeholder="https://hooks.slack.com/services/..."
+                                />
+                            </div>
+                            <div className="form-actions">
+                                <button className="btn-primary" onClick={saveNotifSettings} disabled={actionLoading}>
+                                    {actionLoading ? <Loader2 size={18} className="spin" /> : <CheckCircle size={18} />}
+                                    Save Configurations
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Log Modal */}
             <AnimatePresence>
@@ -341,11 +426,70 @@ export default function DeploymentsPage() {
           cursor: pointer;
         }
 
+        .tab-bar {
+          display: flex;
+          gap: 16px;
+          margin-bottom: 32px;
+          border-bottom: 1px solid #27272a;
+          padding-bottom: 2px;
+        }
+        .tab-btn {
+          background: none;
+          border: none;
+          color: #71717a;
+          padding: 12px 16px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          position: relative;
+          transition: all 0.2s;
+        }
+        .tab-btn.active { color: #f59e0b; }
+        .tab-btn.active::after {
+          content: '';
+          position: absolute;
+          bottom: -2px;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: #f59e0b;
+          border-radius: 2px;
+        }
+
         .dashboard-grid {
           display: grid;
           grid-template-columns: 1fr;
           gap: 32px;
         }
+
+        .settings-section {
+          max-width: 800px;
+        }
+        .settings-card {
+          background: #18181b;
+          border: 1px solid #27272a;
+          border-radius: 16px;
+          padding: 32px;
+        }
+        .settings-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+        .settings-card .desc { color: #a1a1aa; font-size: 14px; margin-bottom: 32px; }
+        .settings-form { display: flex; flex-direction: column; gap: 24px; }
+        .form-group { display: flex; flex-direction: column; gap: 8px; }
+        .form-group label { font-size: 13px; font-weight: 600; color: #71717a; }
+        .form-group input {
+          background: #09090b;
+          border: 1px solid #27272a;
+          color: #fff;
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-size: 14px;
+          outline: none;
+        }
+        .form-group input:focus { border-color: #f59e0b; }
+        .divider { border: 0; border-top: 1px solid #27272a; margin: 12px 0; }
+        .form-actions { margin-top: 12px; }
 
         .health-section h2, .history-section h2 {
           font-size: 18px;
