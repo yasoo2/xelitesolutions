@@ -154,12 +154,26 @@ async function main() {
     res.sendFile(path.join(debugPath, 'index.html'));
   });
 
-  apiRouter.get('/health', (_req: any, res: any) => res.json({
-    status: 'OK',
-    db: mongoose.connection.readyState,
-    env: process.env.NODE_ENV,
-    uptime: process.uptime()
-  }));
+  apiRouter.get('/health', async (_req: any, res: any) => {
+    let dbStatus = 'DOWN';
+    try {
+      if (mongoose.connection.readyState === 1) {
+        // Real ping
+        await mongoose.connection.db?.admin().ping();
+        dbStatus = 'OK';
+      }
+    } catch (e) {
+      dbStatus = 'ERROR';
+    }
+
+    const status = dbStatus === 'OK' ? 'OK' : 'ERROR';
+    res.status(status === 'OK' ? 200 : 503).json({
+      status,
+      database: dbStatus,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString()
+    });
+  });
 
   // Sub-routes on apiRouter
   apiRouter.use('/auth', authRoutes);

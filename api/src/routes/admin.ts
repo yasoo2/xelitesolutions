@@ -20,7 +20,8 @@ router.get('/deployments', async (req, res) => {
 
 router.post('/deploy', async (req, res) => {
     try {
-        const id = await deployManager.startDeploy('manual');
+        const { expectedCommit } = req.body;
+        const id = await deployManager.startDeploy('manual', expectedCommit);
         res.json({ id, message: 'Deployment started' });
     } catch (e: any) {
         res.status(400).json({ error: e.message });
