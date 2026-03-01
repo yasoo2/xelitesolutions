@@ -9,24 +9,27 @@ export interface AuthPayload {
 }
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
-  // FALLBACK: Only allow bypass if explicitly check env var, NO HARDCODED TOKENS.
+  const header = req.headers.authorization;
+
+  // Always try JWT first if a token is provided
+  if (header && header.startsWith('Bearer ')) {
+    const token = header.slice('Bearer '.length);
+    try {
+      const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+      (req as any).auth = payload;
+      return next();
+    } catch {
+      // Token invalid — fall through to bypass check
+    }
+  }
+
+  // FALLBACK: Only allow bypass if explicitly enabled AND no valid JWT was provided
   if (process.env.ENABLE_AUTH_BYPASS === 'true') {
     (req as any).auth = { sub: '000000000000000000000001', role: 'OWNER' };
     return next();
   }
 
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const token = header.slice('Bearer '.length);
-  try {
-    const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
-    (req as any).auth = payload;
-    return next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  return res.status(401).json({ error: 'Unauthorized' });
 }
 
 export function authenticateOptional(req: Request, res: Response, next: NextFunction) {
