@@ -155,7 +155,8 @@ export class DeployManager {
     private runCommand(cmd: string, args: string[], deploymentId: string, timeoutMs = 300000): Promise<void> {
         return new Promise((resolve, reject) => {
             this.broadcastLog(deploymentId, `\n[RUN] ${cmd} ${args.join(' ')}\n`);
-            const child = spawn(cmd, args, { cwd: process.cwd(), shell: true });
+            // Run in the host project directory which will be mounted at /app/host-project
+            const child = spawn(cmd, args, { cwd: '/root/xelitesolutions', shell: true });
 
             const timeout = setTimeout(() => {
                 child.kill();
@@ -244,10 +245,14 @@ export class DeployManager {
 
     private getCurrentCommit(): Promise<string> {
         return new Promise((resolve) => {
-            const child = spawn('git', ['rev-parse', 'HEAD'], { shell: true });
-            let commit = '';
-            child.stdout.on('data', (data) => commit += data.toString().trim());
-            child.on('close', () => resolve(commit || 'unknown'));
+            // Fetch latest commit from remote since .git isn't in container
+            const child = spawn('git', ['ls-remote', 'https://github.com/yasoo2/xelitesolutions.git', 'HEAD'], { shell: true });
+            let output = '';
+            child.stdout.on('data', (data) => output += data.toString());
+            child.on('close', () => {
+                const commit = output.split(/\s+/)[0];
+                resolve(commit || 'unknown');
+            });
             child.on('error', () => resolve('unknown'));
         });
     }
