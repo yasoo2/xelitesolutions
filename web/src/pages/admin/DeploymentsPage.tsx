@@ -119,6 +119,10 @@ export default function DeploymentsPage() {
     const handleDeploy = async () => {
         if (!confirm('Are you sure you want to trigger a production build?')) return;
         setActionLoading(true);
+        // User wants instant live logs, like GitHub Actions
+        setLiveLogs(['[JOE] Initializing deployment...']);
+        // Temporarily open modal with a "pending" logical ID so the user feels immediate feedback
+        setSelectedLogId('PENDING_START');
         try {
             const res = await fetch(`${API_URL}/admin/deploy`, {
                 method: 'POST',
@@ -130,13 +134,16 @@ export default function DeploymentsPage() {
             });
             const data = await res.json();
             if (res.ok) {
+                // Now switch to the real ID and start streaming
                 setSelectedLogId(data.id);
                 setLiveLogs([`[JOE] Requesting deployment ${data.id}...`]);
                 fetchAll();
             } else {
+                setSelectedLogId(null);
                 alert(data.error || 'Deploy failed');
             }
         } catch (e: any) {
+            setSelectedLogId(null);
             alert(e.message);
         } finally {
             setActionLoading(false);
@@ -194,15 +201,26 @@ export default function DeploymentsPage() {
 
     return (
         <div className="admin-deployments">
-            {/* Floating Back Button */}
-            <button
-                className="deploy-back-btn"
-                onClick={() => navigate('/joe')}
-                title="العودة إلى جو"
-            >
-                <ArrowRight size={16} />
-                <span>JOE</span>
-            </button>
+            {/* Floating Actions Area (Top Right) */}
+            <div className="floating-actions-container">
+                <button
+                    className="deploy-back-btn"
+                    onClick={() => navigate('/joe')}
+                    title="العودة إلى جو"
+                >
+                    <ArrowRight size={16} />
+                    <span>JOE</span>
+                </button>
+                <button
+                    className="deploy-action-btn"
+                    onClick={handleDeploy}
+                    disabled={actionLoading}
+                    title="بدء النشر الآن"
+                >
+                    {actionLoading ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+                    <span>Deploy Now</span>
+                </button>
+            </div>
 
             <div className="header-bar">
                 <div className="title">
@@ -213,10 +231,6 @@ export default function DeploymentsPage() {
                     <button className="btn-secondary" onClick={fetchAll} disabled={loading}>
                         <RefreshCw size={18} className={loading ? 'spin' : ''} />
                         Refresh
-                    </button>
-                    <button className="btn-primary" onClick={handleDeploy} disabled={actionLoading}>
-                        {actionLoading ? <Loader2 size={18} className="spin" /> : <Play size={18} />}
-                        Deploy Now
                     </button>
                 </div>
             </div>
