@@ -82,7 +82,7 @@ export class DeployManager {
             }
 
             // 3. Docker Build/Up
-            await this.runCommand('docker', ['compose', '-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id, 600000);
+            await this.runCommand('docker', ['compose', '-f', 'docker-compose.production.yml', 'up', '-d', '--build', '--progress=plain'], id, 600000);
 
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
             await deployment.save();
@@ -156,14 +156,26 @@ export class DeployManager {
                 reject(new Error(`Command ${cmd} timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 
+            let stdoutBuf = '';
             child.stdout.on('data', (data) => {
-                const line = data.toString();
-                this.appendLog(deploymentId, line);
+                stdoutBuf += data.toString();
+                let i;
+                while ((i = stdoutBuf.indexOf('\n')) !== -1) {
+                    const line = stdoutBuf.slice(0, i).trimEnd();
+                    if (line) this.appendLog(deploymentId, line);
+                    stdoutBuf = stdoutBuf.slice(i + 1);
+                }
             });
 
+            let stderrBuf = '';
             child.stderr.on('data', (data) => {
-                const line = data.toString();
-                this.appendLog(deploymentId, line);
+                stderrBuf += data.toString();
+                let i;
+                while ((i = stderrBuf.indexOf('\n')) !== -1) {
+                    const line = stderrBuf.slice(0, i).trimEnd();
+                    if (line) this.appendLog(deploymentId, line);
+                    stderrBuf = stderrBuf.slice(i + 1);
+                }
             });
 
             child.on('close', (code) => {

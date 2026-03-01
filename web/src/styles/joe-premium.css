@@ -2279,13 +2279,13 @@
 /* ========== Deployment Back Button (Premium) ========== */
 .floating-actions-container {
     position: fixed;
-    top: 18px;
-    right: 18px;
+    top: 24px;
+    right: 24px;
     z-index: 1000;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 12px;
-    align-items: flex-end;
+    align-items: center;
 }
 
 .deploy-back-btn,
@@ -2293,7 +2293,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 20px 10px 16px;
+    padding: 10px 20px;
     background: rgba(10, 14, 20, 0.85);
     border: 1px solid rgba(240, 193, 75, 0.3);
     border-radius: 50px;
@@ -2308,18 +2308,19 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.deploy-action-btn {
-    background: rgba(240, 193, 75, 0.1);
+.deploy-action-btn.special-deploy {
+    background: rgba(240, 193, 75, 0.15);
     border-color: rgba(240, 193, 75, 0.6);
-    color: var(--joe-gold-primary, #f0c14b);
 }
 
 .deploy-action-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    background: rgba(10, 14, 20, 0.6);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #888;
+    background: rgba(10, 14, 20, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #888 !important;
+    box-shadow: none !important;
+    transform: none !important;
 }
 
 .deploy-back-btn:hover,
@@ -2327,7 +2328,11 @@
     background: rgba(240, 193, 75, 0.15);
     border-color: var(--joe-gold-primary, #f0c14b);
     box-shadow: 0 4px 30px rgba(240, 193, 75, 0.2), 0 0 25px rgba(240, 193, 75, 0.12);
-    transform: translateX(-3px);
+    transform: translateY(-2px);
+}
+
+.deploy-action-btn.special-deploy:not(:disabled):hover {
+    background: rgba(240, 193, 75, 0.25);
 }
 
 .deploy-back-btn svg,
@@ -2340,7 +2345,7 @@
 }
 
 .deploy-action-btn:not(:disabled):hover svg {
-    transform: translateX(-2px) scale(1.1);
+    transform: scale(1.1);
 }
 
 /* Auto Provider - Magic Purple Glow */

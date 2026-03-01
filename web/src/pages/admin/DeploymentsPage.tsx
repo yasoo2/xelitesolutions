@@ -204,15 +204,16 @@ export default function DeploymentsPage() {
             {/* Floating Actions Area (Top Right) */}
             <div className="floating-actions-container">
                 <button
-                    className="deploy-back-btn"
-                    onClick={() => navigate('/joe')}
-                    title="العودة إلى جو"
+                    className="deploy-action-btn"
+                    onClick={fetchAll}
+                    disabled={loading}
+                    title="تحديث البيانات"
                 >
-                    <ArrowRight size={16} />
-                    <span>JOE</span>
+                    <RefreshCw size={16} className={loading ? 'spin' : ''} />
+                    <span>Refresh</span>
                 </button>
                 <button
-                    className="deploy-action-btn"
+                    className="deploy-action-btn special-deploy"
                     onClick={handleDeploy}
                     disabled={actionLoading}
                     title="بدء النشر الآن"
@@ -220,18 +221,20 @@ export default function DeploymentsPage() {
                     {actionLoading ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
                     <span>Deploy Now</span>
                 </button>
+                <button
+                    className="deploy-back-btn"
+                    onClick={() => navigate('/joe')}
+                    title="العودة إلى جو"
+                >
+                    <span>JOE</span>
+                    <ArrowRight size={16} />
+                </button>
             </div>
 
             <div className="header-bar">
                 <div className="title">
                     <Rocket className="icon-gold" />
                     <h1>Deployment Control Center</h1>
-                </div>
-                <div className="actions">
-                    <button className="btn-secondary" onClick={fetchAll} disabled={loading}>
-                        <RefreshCw size={18} className={loading ? 'spin' : ''} />
-                        Refresh
-                    </button>
                 </div>
             </div>
 
