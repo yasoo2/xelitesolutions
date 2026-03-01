@@ -321,6 +321,7 @@ export default function DeploymentsPage() {
                                             <td>
                                                 <div className="actions-cell">
                                                     <button className="btn-icon" onClick={() => {
+                                                        console.log("Clicked historical deployment id:", d._id, "logs length:", d.logs?.length);
                                                         setSelectedLogId(d._id);
                                                         setLiveLogs(d.logs || []);
                                                     }}>
