@@ -194,17 +194,18 @@ export default function DeploymentsPage() {
 
     return (
         <div className="admin-deployments">
+            {/* Floating Back Button */}
+            <button
+                className="deploy-back-btn"
+                onClick={() => navigate('/joe')}
+                title="العودة إلى جو"
+            >
+                <ArrowRight size={16} />
+                <span>JOE</span>
+            </button>
+
             <div className="header-bar">
                 <div className="title">
-                    <button
-                        className="btn-secondary"
-                        onClick={() => navigate('/joe')}
-                        style={{ marginLeft: '8px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        title="العودة إلى جو"
-                    >
-                        <ArrowRight size={18} />
-                        <span style={{ fontSize: '13px' }}>رجوع</span>
-                    </button>
                     <Rocket className="icon-gold" />
                     <h1>Deployment Control Center</h1>
                 </div>

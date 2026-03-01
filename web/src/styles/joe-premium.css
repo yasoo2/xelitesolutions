@@ -2276,6 +2276,45 @@
     }
 }
 
+/* ========== Deployment Back Button (Premium) ========== */
+.deploy-back-btn {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px 10px 16px;
+    background: rgba(10, 14, 20, 0.85);
+    border: 1px solid rgba(240, 193, 75, 0.3);
+    border-radius: 50px;
+    color: var(--joe-gold-primary, #f0c14b);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(240, 193, 75, 0.08);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.deploy-back-btn:hover {
+    background: rgba(240, 193, 75, 0.1);
+    border-color: var(--joe-gold-primary, #f0c14b);
+    box-shadow: 0 4px 30px rgba(240, 193, 75, 0.2), 0 0 25px rgba(240, 193, 75, 0.12);
+    transform: translateX(3px);
+}
+
+.deploy-back-btn svg {
+    transition: transform 0.3s ease;
+}
+
+.deploy-back-btn:hover svg {
+    transform: translateX(4px);
+}
+
 /* Auto Provider - Magic Purple Glow */
 .joe-chat-input-area .provider-btn.provider-auto.is-connected {
     border-color: rgba(139, 92, 246, 0.5) !important;
