@@ -48,7 +48,7 @@ RUN apt-get update && \
     curl \
     ca-certificates \
     git && \
-    curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-24.0.7.tgz | tar zxvf - --strip-components=1 -C /usr/local/bin docker/docker && \
+    curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.3.1.tgz | tar zxvf - --strip-components=1 -C /usr/local/bin docker/docker && \
     npm install --omit=dev --no-audit --no-fund && \
     npx playwright install --with-deps chromium && \
     apt-get purge -y --auto-remove make g++ python3 && \
