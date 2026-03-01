@@ -31,6 +31,8 @@ services:
       - ENABLE_AUTH_BYPASS=true
       - AUTO_APPROVE_ALL=1
       - AUTO_APPROVE_SAFE=1
+      - DOCKER_API_VERSION=1.52
+      - ADMIN_EMAIL=info.auraaluxury@gmail.com
     env_file:
       - .env
     healthcheck:
