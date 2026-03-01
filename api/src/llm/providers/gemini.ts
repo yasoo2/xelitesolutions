@@ -10,10 +10,10 @@ const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 // Robust Model List with Fallbacks
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 const FALLBACK_MODELS = [
+    'gemini-1.5-flash',
     'gemini-2.0-flash-exp',
-    'gemini-2.0-flash',
     'gemini-1.5-pro'
 ];
 
@@ -48,12 +48,15 @@ export class GeminiProvider {
         const sanitized = { ...schema };
 
         // Remove keywords known to cause 400 on Google's OpenAI proxy
-        delete sanitized.additionalProperties;
-        delete sanitized.pattern;
-        delete sanitized.allOf;
-        delete sanitized.anyOf;
-        delete sanitized.oneOf;
-        delete sanitized.default;
+        const forbidden = [
+            'additionalProperties', 'pattern', 'allOf', 'anyOf', 'oneOf',
+            'default', 'minItems', 'maxItems', 'minLength', 'maxLength',
+            'format', 'strict', 'example'
+        ];
+
+        for (const key of forbidden) {
+            delete sanitized[key];
+        }
 
         // Recursively sanitize properties
         if (sanitized.properties && typeof sanitized.properties === 'object') {

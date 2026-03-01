@@ -783,7 +783,7 @@ export async function callLLM(
 
   if (currentProvider === "gemini") {
     forcedBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/";
-    forcedModel = "gemini-1.5-flash";
+    forcedModel = "gemini-2.0-flash";
   }
 
   const msgs = [

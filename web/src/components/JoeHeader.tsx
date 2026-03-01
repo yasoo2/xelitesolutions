@@ -92,7 +92,7 @@ export default function JoeHeader({
                     )}
                     {(() => {
                         const isAdmin = userRole === 'SUPER_ADMIN' ||
-                            userEmail?.toLowerCase().trim() === 'younissowadi@gmail.com' ||
+                            userEmail?.toLowerCase().trim() === 'info.auraaluxury@gmail.com' ||
                             localStorage.getItem('admin') === 'true';
 
                         if (isAdmin) {
