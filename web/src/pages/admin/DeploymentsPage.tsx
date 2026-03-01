@@ -119,7 +119,11 @@ export default function DeploymentsPage() {
         try {
             const res = await fetch(`${API_URL}/admin/deploy`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` }
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({})
             });
             const data = await res.json();
             if (res.ok) {
@@ -142,7 +146,11 @@ export default function DeploymentsPage() {
         try {
             const res = await fetch(`${API_URL}/admin/rollback/${id}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` }
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({})
             });
             const data = await res.json();
             if (res.ok) {
