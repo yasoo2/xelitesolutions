@@ -12,8 +12,13 @@ const STABLE_COMMIT_FILE = './last_stable_commit';
 export class DeployManager {
     private static instance: DeployManager;
     private currentDeploymentId: string | null = null;
+    private logQueue: { id: string, logs: string[] }[] = [];
+    private flushInterval: NodeJS.Timeout | null = null;
 
-    private constructor() { }
+    private constructor() {
+        // Start flush interval
+        this.flushInterval = setInterval(() => this.flushLogs(), 2000);
+    }
 
     static getInstance() {
         if (!DeployManager.instance) {
@@ -130,6 +135,7 @@ export class DeployManager {
             }
         } finally {
             this.currentDeploymentId = null;
+            await this.flushLogs(); // Final flush to ensure no logs are left behind
         }
     }
 
@@ -191,12 +197,41 @@ export class DeployManager {
         });
     }
 
-    private async appendLog(id: string, log: string) {
-        // We don't want to await this on every line for performance, 
-        // but the user wants them in DB. 
-        // For now, we update DB and broadcast.
-        await Deployment.findByIdAndUpdate(id, { $push: { logs: log } });
+    private appendLog(id: string, log: string) {
+        // Append to memory queue instantly for db flushing
+        let existing = this.logQueue.find(q => q.id === id);
+        if (!existing) {
+            existing = { id, logs: [] };
+            this.logQueue.push(existing);
+        }
+        existing.logs.push(log);
+
+        // Broadcast instantly
         this.broadcastLog(id, log);
+    }
+
+    private async flushLogs() {
+        if (this.logQueue.length === 0) return;
+
+        // Take a snapshot of the current queue to flush
+        const queueToFlush = [...this.logQueue];
+        this.logQueue = []; // Reset queue for incoming logs
+
+        for (const item of queueToFlush) {
+            if (item.logs.length === 0) continue;
+            try {
+                await Deployment.findByIdAndUpdate(item.id, { $push: { logs: { $each: item.logs } } });
+            } catch (err: any) {
+                logger.error(`[DeployManager] Failed to flush logs for deployment ${item.id}: ${err.message}`);
+                // Re-queue the failed logs at the front
+                const existing = this.logQueue.find(q => q.id === item.id);
+                if (existing) {
+                    existing.logs = [...item.logs, ...existing.logs];
+                } else {
+                    this.logQueue.push(item);
+                }
+            }
+        }
     }
 
     private broadcastLog(deploymentId: string, log: string) {
