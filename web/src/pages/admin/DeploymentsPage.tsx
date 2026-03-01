@@ -101,14 +101,26 @@ export default function DeploymentsPage() {
                     if (msg.data.deploymentId === selectedLogId) {
                         setLiveLogs(prev => [...prev, msg.data.log]);
                     }
-                    // Refresh list to update status
-                    fetchAll();
+                    // Only refresh list if it's the active deployment to save network
+                    if (msg.data.deploymentId === selectedLogId) {
+                        fetchAll();
+                    }
                 }
             } catch { }
         };
         wsRef.current = ws;
         return () => ws.close();
     }, [token, selectedLogId]);
+
+    // Force load logs when a historical deployment is clicked
+    useEffect(() => {
+        if (selectedLogId && selectedLogId !== 'PENDING_START') {
+            const target = deployments.find(d => d._id === selectedLogId);
+            if (target && target.status !== 'BUILDING') {
+                setLiveLogs(target.logs || []);
+            }
+        }
+    }, [selectedLogId, deployments]);
 
     useEffect(() => {
         if (logContainerRef.current) {
