@@ -18,6 +18,24 @@ router.get('/deployments', async (req, res) => {
     }
 });
 
+router.delete('/deployments/:id', async (req, res) => {
+    try {
+        await Deployment.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Deployment record deleted' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.delete('/deployments', async (req, res) => {
+    try {
+        await Deployment.deleteMany({});
+        res.json({ message: 'All deployment records deleted' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 router.post('/deploy', async (req, res) => {
     try {
         const { expectedCommit } = req.body || {};

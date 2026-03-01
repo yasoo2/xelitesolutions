@@ -5,7 +5,7 @@ import {
     Rocket, RotateCcw, Activity, Shield, Terminal,
     CheckCircle, XCircle, Clock, Hash, Play, Info,
     ExternalLink, Loader2, Server, MoreHorizontal,
-    RefreshCw, ArrowRight
+    RefreshCw, ArrowRight, Trash2
 } from 'lucide-react';
 import { API_URL } from '../../config';
 
@@ -48,6 +48,7 @@ export default function DeploymentsPage() {
         emailRecipients: [] as string[]
     });
     const logContainerRef = useRef<HTMLDivElement>(null);
+    const firstErrorRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
     const token = localStorage.getItem('token') || '';
@@ -118,6 +119,12 @@ export default function DeploymentsPage() {
             const target = deployments.find(d => d._id === selectedLogId);
             if (target && target.status !== 'BUILDING') {
                 setLiveLogs(target.logs || []);
+                // If there's an error, try to scroll to the first error line after a short delay
+                setTimeout(() => {
+                    if (firstErrorRef.current) {
+                        firstErrorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 100);
             }
         }
     }, [selectedLogId, deployments]);
@@ -186,6 +193,32 @@ export default function DeploymentsPage() {
             alert(e.message);
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    const handleDeleteDeployment = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this deployment record?')) return;
+        try {
+            await fetch(`${API_URL}/admin/deployments/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchAll();
+        } catch (e: any) {
+            alert(e.message);
+        }
+    };
+
+    const handleDeleteAllDeployments = async () => {
+        if (!confirm('Are you sure you want to completely clear the deployment history?')) return;
+        try {
+            await fetch(`${API_URL}/admin/deployments`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchAll();
+        } catch (e: any) {
+            alert(e.message);
         }
     };
 
@@ -287,7 +320,14 @@ export default function DeploymentsPage() {
 
                     {/* History */}
                     <div className="history-section">
-                        <h2><Clock size={20} /> Deployment History</h2>
+                        <div className="history-header">
+                            <h2><Clock size={20} /> Deployment History</h2>
+                            {deployments.length > 0 && (
+                                <button className="btn-danger-outline" onClick={handleDeleteAllDeployments} title="حذف كل السجلات">
+                                    <Trash2 size={14} /> Clear History
+                                </button>
+                            )}
+                        </div>
                         <div className="history-table-wrapper">
                             <table className="history-table">
                                 <thead>
@@ -332,6 +372,9 @@ export default function DeploymentsPage() {
                                                             <RotateCcw size={14} />
                                                         </button>
                                                     )}
+                                                    <button className="btn-icon danger" onClick={() => handleDeleteDeployment(d._id)} title="حذف">
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -408,12 +451,22 @@ export default function DeploymentsPage() {
                                 <button className="close-btn" onClick={() => setSelectedLogId(null)}>×</button>
                             </div>
                             <div className="log-content" ref={logContainerRef}>
-                                {liveLogs.map((l, i) => (
-                                    <div key={i} className="log-line">
-                                        <span className="line-num">{i + 1}</span>
-                                        <span className="line-text">{l}</span>
-                                    </div>
-                                ))}
+                                {liveLogs.map((l, i) => {
+                                    const lower = l.toLowerCase();
+                                    const isError = lower.includes('error') || lower.includes('fail') || lower.includes('exception');
+                                    // Only attach the ref to the FIRST error we see
+                                    const isFirstError = isError && !liveLogs.slice(0, i).some(prev => {
+                                        const p = prev.toLowerCase();
+                                        return p.includes('error') || p.includes('fail') || p.includes('exception');
+                                    });
+
+                                    return (
+                                        <div key={i} className={`log-line ${isError ? 'error-line' : ''}`} ref={isFirstError ? firstErrorRef : null}>
+                                            <span className="line-num">{i + 1}</span>
+                                            <span className="line-text">{l}</span>
+                                        </div>
+                                    );
+                                })}
                                 {deployments.find(x => x._id === selectedLogId)?.status === 'BUILDING' && (
                                     <div className="log-cursor">_</div>
                                 )}
@@ -581,7 +634,8 @@ export default function DeploymentsPage() {
           background: #18181b;
           border: 1px solid #27272a;
           border-radius: 12px;
-          overflow: hidden;
+          overflow-y: auto;
+          max-height: 500px;
         }
         .history-table {
           width: 100%;
@@ -663,9 +717,14 @@ export default function DeploymentsPage() {
           color: #d1d5db;
         }
         .log-line { display: flex; gap: 16px; margin-bottom: 2px; }
+        .log-line.error-line { color: #ef4444 !important; background: rgba(239, 68, 68, 0.1); font-weight: 500; }
+        .log-line.error-line .line-text { color: #ef4444 !important; }
         .line-num { color: #4b5563; min-width: 30px; text-align: right; user-select: none; }
         .line-text { white-space: pre-wrap; word-break: break-all; }
         
+        .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .history-header h2 { margin-bottom: 0px !important; }
+
         .log-cursor {
           display: inline-block;
           width: 8px;
