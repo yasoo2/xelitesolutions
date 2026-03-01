@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Rocket, RotateCcw, Activity, Shield, Terminal,
     CheckCircle, XCircle, Clock, Hash, Play, Info,
     ExternalLink, Loader2, Server, MoreHorizontal,
-    RefreshCw
+    RefreshCw, ArrowRight
 } from 'lucide-react';
 import { API_URL } from '../../config';
 
@@ -31,6 +32,7 @@ interface Container {
 }
 
 export default function DeploymentsPage() {
+    const navigate = useNavigate();
     const [deployments, setDeployments] = useState<Deployment[]>([]);
     const [containers, setContainers] = useState<Container[]>([]);
     const [loading, setLoading] = useState(true);
@@ -52,11 +54,12 @@ export default function DeploymentsPage() {
     const isAdmin = (() => {
         try {
             const decoded: any = jwtDecode(token);
-            const email = decoded.email?.toLowerCase().trim();
+            const email = decoded.email?.toLowerCase().trim() || '';
             const role = decoded.role;
             return role === 'SUPER_ADMIN' ||
                 role === 'OWNER' ||
                 email === 'info.auraaluxury@gmail.com' ||
+                email === 'younes.sowady2011@gmail.com' ||
                 localStorage.getItem('admin') === 'true';
         } catch { return false; }
     })();
@@ -193,6 +196,15 @@ export default function DeploymentsPage() {
         <div className="admin-deployments">
             <div className="header-bar">
                 <div className="title">
+                    <button
+                        className="btn-secondary"
+                        onClick={() => navigate('/joe')}
+                        style={{ marginLeft: '8px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        title="العودة إلى جو"
+                    >
+                        <ArrowRight size={18} />
+                        <span style={{ fontSize: '13px' }}>رجوع</span>
+                    </button>
                     <Rocket className="icon-gold" />
                     <h1>Deployment Control Center</h1>
                 </div>

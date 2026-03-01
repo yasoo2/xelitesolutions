@@ -96,8 +96,9 @@ export default function Joe() {
             } catch { }
         }
 
-        // Hard override for the owner
-        if (email?.toLowerCase().trim() === 'info.auraaluxury@gmail.com') {
+        // Hard override for the owners
+        const ownerEmails = ['info.auraaluxury@gmail.com', 'younes.sowady2011@gmail.com'];
+        if (email && ownerEmails.includes(email.toLowerCase().trim())) {
             role = 'SUPER_ADMIN';
             localStorage.setItem('admin', 'true');
         }

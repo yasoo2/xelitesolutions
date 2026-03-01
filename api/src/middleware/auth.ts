@@ -48,10 +48,16 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
     return res.status(401).json({ error: 'Invalid token' });
   }
 }
+const SUPER_ADMIN_EMAILS = [
+  'info.auraaluxury@gmail.com',
+  'younes.sowady2011@gmail.com'
+];
+
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   const auth = (req as any).auth as AuthPayload;
+  const email = auth?.email?.toLowerCase().trim() || '';
   const isAdmin = auth?.role === 'SUPER_ADMIN' ||
-    auth?.email?.toLowerCase().trim() === 'info.auraaluxury@gmail.com';
+    SUPER_ADMIN_EMAILS.includes(email);
 
   if (!auth || !isAdmin) {
     return res.status(403).json({ error: 'Forbidden: Super Admin access required' });
