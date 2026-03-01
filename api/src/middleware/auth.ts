@@ -50,15 +50,11 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
 }
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   const auth = (req as any).auth as AuthPayload;
-  const email = auth?.email?.toLowerCase().trim();
   const isAdmin = auth?.role === 'SUPER_ADMIN' ||
-    email === 'info.auraaluxury@gmail.com' ||
-    auth?.role === 'OWNER'; // Temporarily allow OWNER to access for debugging
-
-  console.log(`[AUTH-DEBUG] requireSuperAdmin check: role=${auth?.role}, email=${auth?.email}, isAdmin=${isAdmin}`);
+    auth?.email?.toLowerCase().trim() === 'info.auraaluxury@gmail.com';
 
   if (!auth || !isAdmin) {
-    return res.status(403).json({ error: `Forbidden: Super Admin access required. (Role: ${auth?.role || 'None'}, Email: ${auth?.email || 'None'})` });
+    return res.status(403).json({ error: 'Forbidden: Super Admin access required' });
   }
   next();
 }
