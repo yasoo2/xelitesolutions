@@ -72,7 +72,7 @@ export default function Joe() {
     const [workspace, setWorkspace] = useState<any>(null);
     const [userRole, setUserRole] = useState<string | undefined>(undefined);
 
-    const { i18n } = useTranslation();
+    const { t, i18n } = useTranslation();
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -103,7 +103,16 @@ export default function Joe() {
         }
 
         setUserRole(role);
-    }, []);
+    }, [t, nav]);
+
+    const handleLogout = useCallback(() => {
+        if (confirm(t('logoutConfirm', 'هل أنت متأكد من تسجيل الخروج؟'))) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('admin');
+            nav('/login');
+        }
+    }, [nav, t]);
 
     const handleGitHubConnected = useCallback((user: GitHubUser) => {
         setGhConnected(true);
@@ -706,6 +715,7 @@ export default function Joe() {
                     setTheme={setTheme}
                     lang={i18n.language}
                     setLang={handleLangChange}
+                    onLogout={handleLogout}
                 />
                 <GitHubConnectDialog
                     isOpen={isGitHubOpen}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Moon, Sun, Globe, Check } from 'lucide-react';
+import { Moon, Sun, Globe, Check, LogOut } from 'lucide-react';
 
 interface SettingsDialogProps {
     isOpen: boolean;
@@ -9,6 +9,7 @@ interface SettingsDialogProps {
     setTheme: (theme: 'dark' | 'light') => void;
     lang: string;
     setLang: (lang: string) => void;
+    onLogout?: () => void;
 }
 
 const LANGUAGES = [
@@ -20,7 +21,7 @@ const LANGUAGES = [
     { code: 'es', label: 'Español' }
 ];
 
-const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose, theme, setTheme, lang, setLang }) => {
+const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose, theme, setTheme, lang, setLang, onLogout }) => {
     const { t } = useTranslation();
 
     if (!isOpen) return null;
@@ -66,6 +67,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose, theme,
                             </button>
                         ))}
                     </div>
+                </div>
+
+                <div className="settings-section">
+                    <h4>{t('account', 'الحساب والنظام')}</h4>
+                    <button className="logout-btn-premium" onClick={onLogout}>
+                        <LogOut size={18} />
+                        <span>{t('logout', 'تسجيل الخروج')}</span>
+                    </button>
                 </div>
 
                 <div className="dialog-actions">

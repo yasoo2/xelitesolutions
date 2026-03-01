@@ -1769,6 +1769,48 @@
     box-shadow: 0 8px 25px rgba(240, 193, 75, 0.4);
 }
 
+.logout-btn-premium {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 14px;
+    background: rgba(239, 68, 68, 0.05);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 12px;
+    color: #ef4444;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-top: 8px;
+}
+
+.logout-btn-premium:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+    transform: translateY(-2px);
+}
+
+.logout-btn-premium svg {
+    transition: transform 0.3s ease;
+}
+
+.logout-btn-premium:hover svg {
+    transform: translateX(-4px);
+}
+
+/* Light Mode Logout */
+[data-theme="light"] .logout-btn-premium {
+    background: rgba(239, 68, 68, 0.02);
+    border-color: rgba(239, 68, 68, 0.15);
+}
+
+[data-theme="light"] .logout-btn-premium:hover {
+    background: rgba(239, 68, 68, 0.05);
+}
+
 /* Auto Provider - Magic Purple Glow */
 .joe-chat-input-area .provider-btn.provider-auto.is-connected {
     border-color: rgba(139, 92, 246, 0.5) !important;
