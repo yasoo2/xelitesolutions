@@ -156,6 +156,9 @@ export class DeployManager {
             await deployment.save();
             await this.flushLogs(); // Ensure everything is in DB
 
+            // Critical: Wait 5 seconds to ensure DB persistence across the network before restart
+            await new Promise(r => setTimeout(r, 5000));
+
             // Fire and forget: This command typically kills the current process
             // Using "docker compose" (modern) instead of "docker-compose"
             this.runCommand('docker compose', ['-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id, 1200000).catch(e => {
