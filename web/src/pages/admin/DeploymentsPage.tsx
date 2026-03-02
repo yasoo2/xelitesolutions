@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Rocket, RotateCcw, Activity, Shield, Terminal,
-    CheckCircle, XCircle, Clock, Hash, Play, Info,
+    CheckCircle, XCircle, Clock, Hash, Info,
     ExternalLink, Loader2, Server, MoreHorizontal,
-    RefreshCw, ArrowRight, Trash2, Copy, Webhook
+    RefreshCw, ArrowRight, Trash2, Copy, Activity
 } from 'lucide-react';
 import { API_URL } from '../../config';
 
@@ -261,7 +261,7 @@ export default function DeploymentsPage() {
             {/* Floating Actions Area (Top Right) */}
             <div className="floating-actions">
                 <div className="deploy-webhook-info">
-                    <Webhook size={14} />
+                    <Activity size={14} />
                     <span>Webhook URL:</span>
                     <code>{window.location.origin}/api/webhooks/github</code>
                     <button
@@ -484,7 +484,8 @@ export default function DeploymentsPage() {
                             </div>
                             <div className="log-content" ref={logContainerRef}>
                                 {liveLogs.map((l, i) => {
-                                    const lower = l.toLowerCase();
+                                    if (!l) return null;
+                                    const lower = typeof l === 'string' ? l.toLowerCase() : String(l).toLowerCase();
                                     const isError = lower.includes('[error]') || lower.includes('failed') || lower.includes('error:');
                                     const isSuccess = lower.includes('[success]') || lower.includes('complete') || lower.includes('verified');
                                     const isSystem = lower.includes('[system]') || lower.includes('[joe]');
