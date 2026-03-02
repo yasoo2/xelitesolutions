@@ -81,6 +81,8 @@ export class DeployManager {
             if (isRollback) {
                 await this.runCommand('git', ['reset', '--hard', deployment.commit, '--'], id, 60000);
             } else {
+                // Ensure no local modifications block the pull
+                await this.runCommand('git', ['checkout', '.'], id, 30000);
                 await this.runCommand('git', ['pull', 'origin', 'main'], id, 60000);
             }
 
