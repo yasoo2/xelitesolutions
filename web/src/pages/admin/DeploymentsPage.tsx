@@ -1,4 +1,3 @@
-```
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -69,9 +68,9 @@ export default function DeploymentsPage() {
     const fetchAll = async () => {
         try {
             const [depRes, conRes, notifRes] = await Promise.all([
-                fetch(`${ API_URL } /admin/deployments`, { headers: { Authorization: `Bearer ${ token } ` } }),
-                fetch(`${ API_URL } /admin/system / containers`, { headers: { Authorization: `Bearer ${ token } ` } }),
-                fetch(`${ API_URL } /admin/settings / notifications`, { headers: { Authorization: `Bearer ${ token } ` } })
+                fetch(`${API_URL} /admin/deployments`, { headers: { Authorization: `Bearer ${token} ` } }),
+                fetch(`${API_URL} /admin/system / containers`, { headers: { Authorization: `Bearer ${token} ` } }),
+                fetch(`${API_URL} /admin/settings / notifications`, { headers: { Authorization: `Bearer ${token} ` } })
             ]);
             if (depRes.ok) setDeployments(await depRes.json());
             if (conRes.ok) setContainers(await conRes.json());
@@ -97,410 +96,432 @@ export default function DeploymentsPage() {
         // If absolute, host should not include the /api part if we are adding /api/ws manually
         // Alternatively, if API_URL ends with /api, we strip it.
         const host = API_URL.replace(/^https?:\/\//, '').replace(/\/api\/?$/, '');
-        const ws = new WebSocket(`${ protocol }//${host}/api/ws?token=${token}`);
+        const ws = new WebSocket(`${protocol}//${host}/api/ws?token=${token}`);
 
-ws.onmessage = (ev) => {
-    try {
-        const msg = JSON.parse(ev.data);
-        if (msg.type === 'admin:deploy_log') {
-            if (msg.data.deploymentId === selectedLogId) {
-                setLiveLogs(prev => [...prev, msg.data.log]);
-            }
-            // Only refresh list if it's the active deployment to save network
-            if (msg.data.deploymentId === selectedLogId) {
-                fetchAll();
-            }
-        }
-    } catch { }
-};
-wsRef.current = ws;
-return () => ws.close();
+        ws.onmessage = (ev) => {
+            try {
+                const msg = JSON.parse(ev.data);
+                if (msg.type === 'admin:deploy_log') {
+                    if (msg.data.deploymentId === selectedLogId) {
+                        setLiveLogs(prev => [...prev, msg.data.log]);
+                    }
+                    // Only refresh list if it's the active deployment to save network
+                    if (msg.data.deploymentId === selectedLogId) {
+                        fetchAll();
+                    }
+                }
+            } catch { }
+        };
+        wsRef.current = ws;
+        return () => ws.close();
     }, [token, selectedLogId]);
 
-// Force load logs when a historical deployment is clicked
-useEffect(() => {
-    if (selectedLogId && selectedLogId !== 'PENDING_START') {
-        const target = deployments.find(d => d._id === selectedLogId);
-        if (target && target.status !== 'BUILDING') {
-            setLiveLogs(target.logs || []);
-            // If there's an error, try to scroll to the first error line after a short delay
-            setTimeout(() => {
-                if (firstErrorRef.current) {
-                    firstErrorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }, 100);
+    // Force load logs when a historical deployment is clicked
+    useEffect(() => {
+        if (selectedLogId && selectedLogId !== 'PENDING_START') {
+            const target = deployments.find(d => d._id === selectedLogId);
+            if (target && target.status !== 'BUILDING') {
+                setLiveLogs(target.logs || []);
+                // If there's an error, try to scroll to the first error line after a short delay
+                setTimeout(() => {
+                    if (firstErrorRef.current) {
+                        firstErrorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 100);
+            }
         }
-    }
-}, [selectedLogId, deployments]);
+    }, [selectedLogId, deployments]);
 
-useEffect(() => {
-    if (logContainerRef.current) {
-        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-}, [liveLogs]);
+    useEffect(() => {
+        if (logContainerRef.current) {
+            logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+        }
+    }, [liveLogs]);
 
-const handleDeploy = async () => {
-    if (!confirm('Are you sure you want to trigger a production build?')) return;
-    setActionLoading(true);
-    // User wants instant live logs, like GitHub Actions
-    setLiveLogs(['[JOE] Initializing deployment...']);
-    // Temporarily open modal with a "pending" logical ID so the user feels immediate feedback
-    setSelectedLogId('PENDING_START');
-    try {
-        const res = await fetch(`${API_URL}/admin/deploy`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({})
-        });
-        const data = await res.json();
-        if (res.ok) {
-            // Now switch to the real ID and start streaming
-            setSelectedLogId(data.id);
-            setLiveLogs([`[JOE] Requesting deployment ${data.id}...`]);
-            fetchAll();
-        } else {
+    const handleDeploy = async () => {
+        if (!confirm('Are you sure you want to trigger a production build?')) return;
+        setActionLoading(true);
+        // User wants instant live logs, like GitHub Actions
+        setLiveLogs(['[JOE] Initializing deployment...']);
+        // Temporarily open modal with a "pending" logical ID so the user feels immediate feedback
+        setSelectedLogId('PENDING_START');
+        try {
+            const res = await fetch(`${API_URL}/admin/deploy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (res.ok) {
+                // Now switch to the real ID and start streaming
+                setSelectedLogId(data.id);
+                setLiveLogs([`[JOE] Requesting deployment ${data.id}...`]);
+                fetchAll();
+            } else {
+                setSelectedLogId(null);
+                alert(data.error || 'Deploy failed');
+            }
+        } catch (e: any) {
             setSelectedLogId(null);
-            alert(data.error || 'Deploy failed');
+            alert(e.message);
+        } finally {
+            setActionLoading(false);
         }
-    } catch (e: any) {
-        setSelectedLogId(null);
-        alert(e.message);
-    } finally {
-        setActionLoading(false);
-    }
-};
+    };
 
-const handleRollback = async (id: string) => {
-    if (!confirm('Warning: This will reset project to this commit and rebuild. Proceed?')) return;
-    setActionLoading(true);
-    try {
-        const res = await fetch(`${API_URL}/admin/rollback/${id}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({})
-        });
-        const data = await res.json();
-        if (res.ok) {
-            setSelectedLogId(data.id);
-            setLiveLogs([`[JOE] Rolling back to deployment ${id}...`]);
+    const handleRollback = async (id: string) => {
+        if (!confirm('Warning: This will reset project to this commit and rebuild. Proceed?')) return;
+        setActionLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/rollback/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSelectedLogId(data.id);
+                setLiveLogs([`[JOE] Rolling back to deployment ${id}...`]);
+                fetchAll();
+            } else {
+                alert(data.error || 'Rollback failed');
+            }
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleDeleteDeployment = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this deployment record?')) return;
+        try {
+            await fetch(`${API_URL}/admin/deployments/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
             fetchAll();
-        } else {
-            alert(data.error || 'Rollback failed');
+        } catch (e: any) {
+            alert(e.message);
         }
-    } catch (e: any) {
-        alert(e.message);
-    } finally {
-        setActionLoading(false);
-    }
-};
+    };
 
-const handleDeleteDeployment = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this deployment record?')) return;
-    try {
-        await fetch(`${API_URL}/admin/deployments/${id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        fetchAll();
-    } catch (e: any) {
-        alert(e.message);
-    }
-};
+    const handleDeleteAllDeployments = async () => {
+        if (!confirm('Are you sure you want to completely clear the deployment history?')) return;
+        try {
+            await fetch(`${API_URL}/admin/deployments`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchAll();
+        } catch (e: any) {
+            alert(e.message);
+        }
+    };
 
-const handleDeleteAllDeployments = async () => {
-    if (!confirm('Are you sure you want to completely clear the deployment history?')) return;
-    try {
-        await fetch(`${API_URL}/admin/deployments`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        fetchAll();
-    } catch (e: any) {
-        alert(e.message);
-    }
-};
+    const saveNotifSettings = async () => {
+        setActionLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/settings/notifications`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(notifSettings)
+            });
+            if (res.ok) alert('Settings saved successfully');
+            else alert('Failed to save settings');
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
 
-const saveNotifSettings = async () => {
-    setActionLoading(true);
-    try {
-        const res = await fetch(`${API_URL}/admin/settings/notifications`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(notifSettings)
-        });
-        if (res.ok) alert('Settings saved successfully');
-        else alert('Failed to save settings');
-    } catch (e: any) {
-        alert(e.message);
-    } finally {
-        setActionLoading(false);
-    }
-};
+    if (!isAdmin) return <div style={{ padding: 40, color: '#ef4444' }}><Shield size={48} /> Access Denied</div>;
 
-if (!isAdmin) return <div style={{ padding: 40, color: '#ef4444' }}><Shield size={48} /> Access Denied</div>;
+    return (
+        <div className="admin-deployments">
+            {/* Floating Actions Area (Top Right) */}
+            <div className="floating-actions">
+                <div className="deploy-webhook-info">
+                    <Webhook size={14} />
+                    <span>Webhook URL:</span>
+                    <code>{window.location.origin}/api/webhooks/github</code>
+                    <button
+                        className="copy-webhook-btn"
+                        onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/github`);
+                            alert('Webhook URL copied!');
+                        }}
+                    >
+                        <Copy size={12} />
+                    </button>
+                </div>
 
-return (
-    <div className="admin-deployments">
-        {/* Floating Actions Area (Top Right) */}
-        <div className="floating-actions">
-            <div className="deploy-webhook-info">
-                <Webhook size={14} />
-                <span>Webhook URL:</span>
-                <code>{window.location.origin}/api/webhooks/github</code>
                 <button
-                    className="copy-webhook-btn"
+                    className="deploy-action-btn primary"
                     onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/github`);
-                        alert('Webhook URL copied!');
+                        if (confirm('Start manual deployment?')) {
+                            setActionLoading(true);
+                            fetch(`${API_URL}/admin/deploy`, {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${token}` }
+                            }).then(() => {
+                                alert('Deployment triggered!');
+                                fetchAll();
+                            }).catch(e => alert(e.message))
+                                .finally(() => setActionLoading(false));
+                        }
                     }}
+                    disabled={actionLoading}
+                    title="بدء الدبلوي يدوياً"
                 >
-                    <Copy size={12} />
+                    <Play size={16} />
+                    <span>Deploy Now</span>
+                </button>
+
+                <button
+                    className="deploy-action-btn"
+                    onClick={fetchAll}
+                    disabled={loading}
+                    title="تحديث البيانات"
+                >
+                    <RefreshCw size={16} className={loading ? 'spin' : ''} />
+                    <span>Refresh</span>
+                </button>
+                <button
+                    className="deploy-back-btn"
+                    onClick={() => navigate('/joe')}
+                    title="العودة إلى جو"
+                >
+                    <span>JOE</span>
+                    <ArrowRight size={16} />
                 </button>
             </div>
 
-            <button
-                className="deploy-action-btn"
-                onClick={fetchAll}
-                disabled={loading}
-                title="تحديث البيانات"
-            >
-                <RefreshCw size={16} className={loading ? 'spin' : ''} />
-                <span>Refresh</span>
-            </button>
-            <button
-                className="deploy-back-btn"
-                onClick={() => navigate('/joe')}
-                title="العودة إلى جو"
-            >
-                <span>JOE</span>
-                <ArrowRight size={16} />
-            </button>
-        </div>
-
-        <div className="header-bar">
-            <div className="title">
-                <Rocket className="icon-gold" />
-                <h1>Deployment Control Center</h1>
-            </div>
-        </div>
-
-        <div className="tab-bar">
-            <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
-                <Clock size={18} /> History & Health
-            </button>
-            <button className={`tab-btn ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
-                <Info size={18} /> Notification Channels
-            </button>
-        </div>
-
-        {activeTab === 'history' ? (
-            <div className="dashboard-grid">
-                {/* Container Health */}
-                <div className="health-section">
-                    <h2><Activity size={20} /> Container Fleet Status</h2>
-                    <div className="health-cards">
-                        {['joe_api', 'joe_web', 'joe_mongo', 'joe_nginx', 'joe_browser_worker'].map(name => {
-                            const c = containers.find(x => x.Names.includes(name));
-                            const isUp = c?.Status.toLowerCase().includes('up');
-                            return (
-                                <motion.div key={name} className={`health-card ${isUp ? 'up' : 'down'}`} whileHover={{ scale: 1.02 }}>
-                                    <div className="card-header">
-                                        <Server size={18} />
-                                        <span>{name.replace('joe_', '').toUpperCase()}</span>
-                                    </div>
-                                    <div className="card-status">
-                                        {isUp ? <div className="dot green" /> : <div className="dot red" />}
-                                        <span>{isUp ? (c?.Status || 'Running') : 'Exited'}</span>
-                                    </div>
-                                    <div className="card-info">{c?.Image || 'Unknown Image'}</div>
-                                </motion.div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* History */}
-                <div className="history-section">
-                    <div className="history-header">
-                        <h2><Clock size={20} /> Deployment History</h2>
-                        {deployments.length > 0 && (
-                            <button className="btn-danger-outline" onClick={handleDeleteAllDeployments} title="حذف كل السجلات">
-                                <Trash2 size={14} /> Clear History
-                            </button>
-                        )}
-                    </div>
-                    <div className="history-table-wrapper">
-                        <table className="history-table">
-                            <thead>
-                                <tr>
-                                    <th><Hash size={14} /> ID</th>
-                                    <th>Status</th>
-                                    <th>Commit</th>
-                                    <th>Time</th>
-                                    <th>Logs</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {deployments.map(d => (
-                                    <tr key={d._id}>
-                                        <td><span className="id-tag">{d._id.slice(-6)}</span></td>
-                                        <td>
-                                            <span className={`status-badge ${d.status.toLowerCase()}`}>
-                                                {d.status === 'SUCCESS' && <CheckCircle size={14} />}
-                                                {d.status === 'FAILED' && <XCircle size={14} />}
-                                                {d.status === 'BUILDING' && <Loader2 size={14} className="spin" />}
-                                                {d.status}
-                                            </span>
-                                        </td>
-                                        <td><span className="commit-hash">{d.commit.slice(0, 7)}</span></td>
-                                        <td>
-                                            <div className="time-info">
-                                                <div>{new Date(d.startTime).toLocaleString()}</div>
-                                                {d.duration && <div className="duration">{d.duration}s</div>}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div className="actions-cell">
-                                                <button className="btn-icon" onClick={() => {
-                                                    console.log("Clicked historical deployment id:", d._id, "logs length:", d.logs?.length);
-                                                    setSelectedLogId(d._id);
-                                                    setLiveLogs(d.logs || []);
-                                                }}>
-                                                    <Terminal size={14} />
-                                                </button>
-                                                {d.status === 'SUCCESS' && (
-                                                    <button className="btn-icon rollback" onClick={() => handleRollback(d._id)}>
-                                                        <RotateCcw size={14} />
-                                                    </button>
-                                                )}
-                                                <button className="btn-icon danger" onClick={() => handleDeleteDeployment(d._id)} title="حذف">
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+            <div className="header-bar">
+                <div className="title">
+                    <Rocket className="icon-gold" />
+                    <h1>Deployment Control Center</h1>
                 </div>
             </div>
-        ) : (
-            <div className="settings-section">
-                <div className="settings-card">
-                    <h2><Shield size={20} /> Alert Channels</h2>
-                    <p className="desc">Configure where Joe sends deployment notifications and failure alerts.</p>
 
-                    <div className="settings-form">
-                        <div className="form-group">
-                            <label>Telegram Bot Token</label>
-                            <input
-                                type="password"
-                                value={notifSettings.telegramBotToken}
-                                onChange={e => setNotifSettings({ ...notifSettings, telegramBotToken: e.target.value })}
-                                placeholder="000000000:AA-..."
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Telegram Chat ID</label>
-                            <input
-                                type="text"
-                                value={notifSettings.telegramChatId}
-                                onChange={e => setNotifSettings({ ...notifSettings, telegramChatId: e.target.value })}
-                                placeholder="-100..."
-                            />
-                        </div>
-                        <hr className="divider" />
-                        <div className="form-group">
-                            <label>Generic Webhook URL</label>
-                            <input
-                                type="text"
-                                value={notifSettings.webhookUrl}
-                                onChange={e => setNotifSettings({ ...notifSettings, webhookUrl: e.target.value })}
-                                placeholder="https://hooks.slack.com/services/..."
-                            />
-                        </div>
-                        <div className="form-actions">
-                            <button className="btn-primary" onClick={saveNotifSettings} disabled={actionLoading}>
-                                {actionLoading ? <Loader2 size={18} className="spin" /> : <CheckCircle size={18} />}
-                                Save Configurations
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            <div className="tab-bar">
+                <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+                    <Clock size={18} /> History & Health
+                </button>
+                <button className={`tab-btn ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
+                    <Info size={18} /> Notification Channels
+                </button>
             </div>
-        )}
 
-        {/* Log Modal */}
-        <AnimatePresence>
-            {selectedLogId && (
-                <motion.div
-                    className="modal-overlay"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setSelectedLogId(null)}
-                >
-                    <motion.div
-                        className="log-modal"
-                        initial={{ scale: 0.9, y: 20 }}
-                        animate={{ scale: 1, y: 0 }}
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="modal-header">
-                            <h3><Terminal size={20} /> Build Logs: {selectedLogId.slice(-8)}</h3>
-                            <div className="header-actions">
-                                <button
-                                    className="copy-logs-btn"
-                                    onClick={() => {
-                                        const text = liveLogs.join('\n');
-                                        navigator.clipboard.writeText(text);
-                                        alert('Logs copied to clipboard');
-                                    }}
-                                    title="Copy all logs"
-                                >
-                                    <Hash size={16} />
-                                    <span>Copy Logs</span>
-                                </button>
-                                <button className="close-btn" onClick={() => setSelectedLogId(null)}>×</button>
-                            </div>
-                        </div>
-                        <div className="log-content" ref={logContainerRef}>
-                            {liveLogs.map((l, i) => {
-                                const lower = l.toLowerCase();
-                                const isError = lower.includes('error') || lower.includes('fail') || lower.includes('exception');
-                                // Only attach the ref to the FIRST error we see
-                                const isFirstError = isError && !liveLogs.slice(0, i).some(prev => {
-                                    const p = prev.toLowerCase();
-                                    return p.includes('error') || p.includes('fail') || p.includes('exception');
-                                });
-
+            {activeTab === 'history' ? (
+                <div className="dashboard-grid">
+                    {/* Container Health */}
+                    <div className="health-section">
+                        <h2><Activity size={20} /> Container Fleet Status</h2>
+                        <div className="health-cards">
+                            {['joe_api', 'joe_web', 'joe_mongo', 'joe_nginx', 'joe_browser_worker'].map(name => {
+                                const c = containers.find(x => x.Names.includes(name));
+                                const isUp = c?.Status.toLowerCase().includes('up');
                                 return (
-                                    <div key={i} className={`log-line ${isError ? 'error-line' : ''}`} ref={isFirstError ? firstErrorRef : null}>
-                                        <span className="line-num">{i + 1}</span>
-                                        <span className="line-text">{l}</span>
-                                    </div>
+                                    <motion.div key={name} className={`health-card ${isUp ? 'up' : 'down'}`} whileHover={{ scale: 1.02 }}>
+                                        <div className="card-header">
+                                            <Server size={18} />
+                                            <span>{name.replace('joe_', '').toUpperCase()}</span>
+                                        </div>
+                                        <div className="card-status">
+                                            {isUp ? <div className="dot green" /> : <div className="dot red" />}
+                                            <span>{isUp ? (c?.Status || 'Running') : 'Exited'}</span>
+                                        </div>
+                                        <div className="card-info">{c?.Image || 'Unknown Image'}</div>
+                                    </motion.div>
                                 );
                             })}
-                            {deployments.find(x => x._id === selectedLogId)?.status === 'BUILDING' && (
-                                <div className="log-cursor">_</div>
+                        </div>
+                    </div>
+
+                    {/* History */}
+                    <div className="history-section">
+                        <div className="history-header">
+                            <h2><Clock size={20} /> Deployment History</h2>
+                            {deployments.length > 0 && (
+                                <button className="btn-danger-outline" onClick={handleDeleteAllDeployments} title="حذف كل السجلات">
+                                    <Trash2 size={14} /> Clear History
+                                </button>
                             )}
                         </div>
-                    </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
+                        <div className="history-table-wrapper">
+                            <table className="history-table">
+                                <thead>
+                                    <tr>
+                                        <th><Hash size={14} /> ID</th>
+                                        <th>Status</th>
+                                        <th>Commit</th>
+                                        <th>Time</th>
+                                        <th>Logs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {deployments.map(d => (
+                                        <tr key={d._id}>
+                                            <td><span className="id-tag">{d._id.slice(-6)}</span></td>
+                                            <td>
+                                                <span className={`status-badge ${d.status.toLowerCase()}`}>
+                                                    {d.status === 'SUCCESS' && <CheckCircle size={14} />}
+                                                    {d.status === 'FAILED' && <XCircle size={14} />}
+                                                    {d.status === 'BUILDING' && <Loader2 size={14} className="spin" />}
+                                                    {d.status}
+                                                </span>
+                                            </td>
+                                            <td><span className="commit-hash">{d.commit.slice(0, 7)}</span></td>
+                                            <td>
+                                                <div className="time-info">
+                                                    <div>{new Date(d.startTime).toLocaleString()}</div>
+                                                    {d.duration && <div className="duration">{d.duration}s</div>}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div className="actions-cell">
+                                                    <button className="btn-icon" onClick={() => {
+                                                        console.log("Clicked historical deployment id:", d._id, "logs length:", d.logs?.length);
+                                                        setSelectedLogId(d._id);
+                                                        setLiveLogs(d.logs || []);
+                                                    }}>
+                                                        <Terminal size={14} />
+                                                    </button>
+                                                    {d.status === 'SUCCESS' && (
+                                                        <button className="btn-icon rollback" onClick={() => handleRollback(d._id)}>
+                                                            <RotateCcw size={14} />
+                                                        </button>
+                                                    )}
+                                                    <button className="btn-icon danger" onClick={() => handleDeleteDeployment(d._id)} title="حذف">
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="settings-section">
+                    <div className="settings-card">
+                        <h2><Shield size={20} /> Alert Channels</h2>
+                        <p className="desc">Configure where Joe sends deployment notifications and failure alerts.</p>
 
-        <style>{`
+                        <div className="settings-form">
+                            <div className="form-group">
+                                <label>Telegram Bot Token</label>
+                                <input
+                                    type="password"
+                                    value={notifSettings.telegramBotToken}
+                                    onChange={e => setNotifSettings({ ...notifSettings, telegramBotToken: e.target.value })}
+                                    placeholder="000000000:AA-..."
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Telegram Chat ID</label>
+                                <input
+                                    type="text"
+                                    value={notifSettings.telegramChatId}
+                                    onChange={e => setNotifSettings({ ...notifSettings, telegramChatId: e.target.value })}
+                                    placeholder="-100..."
+                                />
+                            </div>
+                            <hr className="divider" />
+                            <div className="form-group">
+                                <label>Generic Webhook URL</label>
+                                <input
+                                    type="text"
+                                    value={notifSettings.webhookUrl}
+                                    onChange={e => setNotifSettings({ ...notifSettings, webhookUrl: e.target.value })}
+                                    placeholder="https://hooks.slack.com/services/..."
+                                />
+                            </div>
+                            <div className="form-actions">
+                                <button className="btn-primary" onClick={saveNotifSettings} disabled={actionLoading}>
+                                    {actionLoading ? <Loader2 size={18} className="spin" /> : <CheckCircle size={18} />}
+                                    Save Configurations
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Log Modal */}
+            <AnimatePresence>
+                {selectedLogId && (
+                    <motion.div
+                        className="modal-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setSelectedLogId(null)}
+                    >
+                        <motion.div
+                            className="log-modal"
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="modal-header">
+                                <h3><Terminal size={20} /> Build Logs: {selectedLogId.slice(-8)}</h3>
+                                <div className="header-actions">
+                                    <button
+                                        className="copy-logs-btn"
+                                        onClick={() => {
+                                            const text = liveLogs.join('\n');
+                                            navigator.clipboard.writeText(text);
+                                            alert('Logs copied to clipboard');
+                                        }}
+                                        title="Copy all logs"
+                                    >
+                                        <Hash size={16} />
+                                        <span>Copy Logs</span>
+                                    </button>
+                                    <button className="close-btn" onClick={() => setSelectedLogId(null)}>×</button>
+                                </div>
+                            </div>
+                            <div className="log-content" ref={logContainerRef}>
+                                {liveLogs.map((l, i) => {
+                                    const lower = l.toLowerCase();
+                                    const isError = lower.includes('error') || lower.includes('fail') || lower.includes('exception');
+                                    // Only attach the ref to the FIRST error we see
+                                    const isFirstError = isError && !liveLogs.slice(0, i).some(prev => {
+                                        const p = prev.toLowerCase();
+                                        return p.includes('error') || p.includes('fail') || p.includes('exception');
+                                    });
+
+                                    return (
+                                        <div key={i} className={`log-line ${isError ? 'error-line' : ''}`} ref={isFirstError ? firstErrorRef : null}>
+                                            <span className="line-num">{i + 1}</span>
+                                            <span className="line-text">{l}</span>
+                                        </div>
+                                    );
+                                })}
+                                {deployments.find(x => x._id === selectedLogId)?.status === 'BUILDING' && (
+                                    <div className="log-cursor">_</div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <style>{`
         html, body {
           overflow: auto !important;
           height: auto !important;
@@ -874,6 +895,6 @@ return (
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
       `}</style>
-    </div>
-);
+        </div>
+    );
 }
