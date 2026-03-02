@@ -102,12 +102,21 @@ export default function DeploymentsPage() {
             try {
                 const msg = JSON.parse(ev.data);
                 if (msg.type === 'admin:deploy_log') {
-                    if (msg.data.deploymentId === selectedLogId) {
+                    if (msg.data.deploymentId === selectedLogId || selectedLogId === 'PENDING_START') {
                         setLiveLogs(prev => [...prev, msg.data.log]);
                     }
-                    // Only refresh list if it's the active deployment to save network
-                    if (msg.data.deploymentId === selectedLogId) {
-                        fetchAll();
+                } else if (msg.type === 'admin:deploy_status') {
+                    // Refresh status in real-time
+                    setDeployments(prev => {
+                        const exists = prev.find(d => d._id === msg.data._id);
+                        if (exists) {
+                            return prev.map(d => d._id === msg.data._id ? msg.data : d);
+                        }
+                        return [msg.data, ...prev];
+                    });
+                    if (msg.data._id === selectedLogId) {
+                        // Final logs if any
+                        if (msg.data.logs) setLiveLogs(msg.data.logs);
                     }
                 }
             } catch { }
@@ -265,28 +274,6 @@ export default function DeploymentsPage() {
                         <Copy size={12} />
                     </button>
                 </div>
-
-                <button
-                    className="deploy-action-btn primary"
-                    onClick={() => {
-                        if (confirm('Start manual deployment?')) {
-                            setActionLoading(true);
-                            fetch(`${API_URL}/admin/deploy`, {
-                                method: 'POST',
-                                headers: { Authorization: `Bearer ${token}` }
-                            }).then(() => {
-                                alert('Deployment triggered!');
-                                fetchAll();
-                            }).catch(e => alert(e.message))
-                                .finally(() => setActionLoading(false));
-                        }
-                    }}
-                    disabled={actionLoading}
-                    title="بدء الدبلوي يدوياً"
-                >
-                    <Play size={16} />
-                    <span>Deploy Now</span>
-                </button>
 
                 <button
                     className="deploy-action-btn"
@@ -498,17 +485,25 @@ export default function DeploymentsPage() {
                             <div className="log-content" ref={logContainerRef}>
                                 {liveLogs.map((l, i) => {
                                     const lower = l.toLowerCase();
-                                    const isError = lower.includes('error') || lower.includes('fail') || lower.includes('exception');
+                                    const isError = lower.includes('[error]') || lower.includes('failed') || lower.includes('error:');
+                                    const isSuccess = lower.includes('[success]') || lower.includes('complete') || lower.includes('verified');
+                                    const isSystem = lower.includes('[system]') || lower.includes('[joe]');
+
+                                    let color = '#d1d5db';
+                                    if (isError) color = '#ef4444';
+                                    else if (isSuccess) color = '#10b981';
+                                    else if (isSystem) color = '#3b82f6';
+
                                     // Only attach the ref to the FIRST error we see
                                     const isFirstError = isError && !liveLogs.slice(0, i).some(prev => {
                                         const p = prev.toLowerCase();
-                                        return p.includes('error') || p.includes('fail') || p.includes('exception');
+                                        return p.includes('[error]') || p.includes('failed') || p.includes('error:');
                                     });
 
                                     return (
                                         <div key={i} className={`log-line ${isError ? 'error-line' : ''}`} ref={isFirstError ? firstErrorRef : null}>
                                             <span className="line-num">{i + 1}</span>
-                                            <span className="line-text">{l}</span>
+                                            <span className="line-text" style={{ color }}>{l}</span>
                                         </div>
                                     );
                                 })}

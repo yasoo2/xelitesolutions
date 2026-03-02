@@ -153,6 +153,8 @@ export class DeployManager {
             deployment.endTime = new Date();
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
             await deployment.save();
+
+            this.broadcastStatus(deployment); // Broadcast full status change
             await this.flushLogs(); // Ensure everything is in DB
 
             // Critical: Wait 5 seconds to ensure DB persistence across the network before restart
@@ -181,6 +183,8 @@ export class DeployManager {
             deployment.error = err.message;
             deployment.endTime = new Date();
             await deployment.save();
+
+            this.broadcastStatus(deployment); // Broadcast failure
             this.broadcastLog(id, `[ERROR] [${new Date().toISOString()}] Deployment failed: ${err.message}`);
 
             await alertService.notifyFailure(id, err.message);
@@ -307,6 +311,14 @@ export class DeployManager {
         broadcast({
             type: 'admin:deploy_log',
             data: { deploymentId, log },
+            ts: Date.now()
+        });
+    }
+
+    private broadcastStatus(deployment: any) {
+        broadcast({
+            type: 'admin:deploy_status',
+            data: deployment,
             ts: Date.now()
         });
     }
