@@ -147,8 +147,7 @@ export class DeployManager {
             }
 
             // 3. Docker Build/Up
-            // Mark as SUCCESS BEFORE the command that kills us
-            this.appendLog(id, `\n[SYSTEM] Build success. Container recreation initiated...`);
+            this.appendLog(id, `\n[SYSTEM] Local build verified. Initiating container recreation...`);
 
             deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
             deployment.endTime = new Date();
@@ -160,9 +159,11 @@ export class DeployManager {
             await new Promise(r => setTimeout(r, 5000));
 
             // Fire and forget: This command typically kills the current process
-            // Using "docker compose" (modern) instead of "docker-compose"
-            this.runCommand('docker compose', ['-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id, 1200000).catch(e => {
+            // Using "docker-compose" (legacy/container-compatible) 
+            this.runCommand('docker-compose', ['-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id, 1200000).catch(e => {
                 logger.error(`[DeployManager] Post-success restart error: ${e.message}`);
+                // If it fails immediately, we might still be able to catch it before process kill
+                this.appendLog(id, `\n[ERROR] Restart command failed: ${e.message}`);
             });
 
             this.broadcastLog(id, `\n[SUCCESS] [${new Date().toISOString()}] Build complete. Deployment finishing in background.`);

@@ -451,7 +451,21 @@ export default function DeploymentsPage() {
                         >
                             <div className="modal-header">
                                 <h3><Terminal size={20} /> Build Logs: {selectedLogId.slice(-8)}</h3>
-                                <button className="close-btn" onClick={() => setSelectedLogId(null)}>×</button>
+                                <div className="header-actions">
+                                    <button
+                                        className="copy-logs-btn"
+                                        onClick={() => {
+                                            const text = liveLogs.join('\n');
+                                            navigator.clipboard.writeText(text);
+                                            alert('Logs copied to clipboard');
+                                        }}
+                                        title="Copy all logs"
+                                    >
+                                        <Hash size={16} />
+                                        <span>Copy Logs</span>
+                                    </button>
+                                    <button className="close-btn" onClick={() => setSelectedLogId(null)}>×</button>
+                                </div>
                             </div>
                             <div className="log-content" ref={logContainerRef}>
                                 {liveLogs.map((l, i) => {
@@ -716,6 +730,28 @@ export default function DeploymentsPage() {
           display: flex;
           justify-content: space-between;
           align-items: center;
+        }
+        .header-actions {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+        .copy-logs-btn {
+          background: #27272a;
+          border: 1px solid #3f3f46;
+          color: #a1a1aa;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 13px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .copy-logs-btn:hover {
+          background: #3f3f46;
+          color: #fff;
         }
         .close-btn { background: none; border: none; color: #a1a1aa; font-size: 24px; cursor: pointer; }
         .log-content {
