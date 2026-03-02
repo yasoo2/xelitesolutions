@@ -89,6 +89,7 @@ export class DeployManager {
             // 3. Docker Build/Up
             await this.runCommand('docker', ['compose', '-f', 'docker-compose.production.yml', 'up', '-d', '--build', '--progress=plain'], id, 600000);
 
+            deployment.endTime = new Date();
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
             await deployment.save();
 
@@ -248,12 +249,22 @@ export class DeployManager {
             // Fetch latest commit from remote since .git isn't in container
             const child = spawn('git', ['ls-remote', 'https://github.com/yasoo2/xelitesolutions.git', 'HEAD'], { shell: true });
             let output = '';
+            let errOutput = '';
             child.stdout.on('data', (data) => output += data.toString());
-            child.on('close', () => {
+            child.stderr.on('data', (data) => errOutput += data.toString());
+            child.on('close', (code) => {
+                if (code !== 0) {
+                    logger.error(`[DeployManager] git ls-remote failed (code ${code}): ${errOutput}`);
+                    resolve('unknown');
+                    return;
+                }
                 const commit = output.split(/\s+/)[0];
                 resolve(commit || 'unknown');
             });
-            child.on('error', () => resolve('unknown'));
+            child.on('error', (err) => {
+                logger.error(`[DeployManager] git ls-remote process error: ${err.message}`);
+                resolve('unknown');
+            });
         });
     }
 

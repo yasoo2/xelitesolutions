@@ -717,13 +717,27 @@ export default function DeploymentsPage() {
           color: #d1d5db;
         }
         .log-line { display: flex; gap: 16px; margin-bottom: 2px; }
-        .log-line.error-line { color: #ef4444 !important; background: rgba(239, 68, 68, 0.1); font-weight: 500; }
-        .log-line.error-line .line-text { color: #ef4444 !important; }
-        .line-num { color: #4b5563; min-width: 30px; text-align: right; user-select: none; }
-        .line-text { white-space: pre-wrap; word-break: break-all; }
-        
-        .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-        .history-header h2 { margin-bottom: 0px !important; }
+        .log-line.error-line { 
+          color: #ff4444 !important; 
+          background: rgba(255, 68, 68, 0.15) !important; 
+          font-weight: 600;
+          border-left: 2px solid #ff4444;
+        }
+        .log-line.error-line .line-text { color: #ff4444 !important; }
+
+        .history-table-wrapper::-webkit-scrollbar, .log-content::-webkit-scrollbar {
+          width: 8px;
+        }
+        .history-table-wrapper::-webkit-scrollbar-track, .log-content::-webkit-scrollbar-track {
+          background: #18181b;
+        }
+        .history-table-wrapper::-webkit-scrollbar-thumb, .log-content::-webkit-scrollbar-thumb {
+          background: #3f3f46;
+          border-radius: 4px;
+        }
+        .history-table-wrapper::-webkit-scrollbar-thumb:hover, .log-content::-webkit-scrollbar-thumb:hover {
+          background: #52525b;
+        }
 
         .log-cursor {
           display: inline-block;
