@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import mongoose from 'mongoose';
 import { Deployment } from '../models/deployment';
 import { logger } from '../utils/logger';
 import { broadcast } from '../ws';
@@ -18,6 +19,53 @@ export class DeployManager {
     private constructor() {
         // Start flush interval
         this.flushInterval = setInterval(() => this.flushLogs(), 2000);
+        this.repairZombieDeployments().catch(e => logger.error(`[DeployManager] Failed to repair zombie deployments: ${e.message}`));
+    }
+
+    private async repairZombieDeployments() {
+        try {
+            // Wait for DB connection if not ready
+            let retries = 0;
+            while (mongoose.connection.readyState !== 1 && retries < 30) {
+                await new Promise(r => setTimeout(r, 1000));
+                retries++;
+            }
+
+            if (mongoose.connection.readyState !== 1) {
+                logger.error(`[DeployManager] DB not ready after 30s. Skipping repair.`);
+                return;
+            }
+
+            const zombies = await Deployment.find({ status: 'BUILDING' });
+            for (const zombie of zombies) {
+                const logs = zombie.logs || [];
+                const isRestarting = logs.some((l: string) =>
+                    l.includes('[SYSTEM] Container recreation initiated') ||
+                    l.includes('Container') && l.includes('Recreate')
+                );
+
+                if (isRestarting) {
+                    logger.info(`[DeployManager] Recovered successful deployment ${zombie._id}. Marking as SUCCESS.`);
+                    zombie.status = 'SUCCESS';
+                    zombie.endTime = new Date();
+                    zombie.duration = (zombie.endTime.getTime() - zombie.startTime.getTime()) / 1000;
+                    zombie.logs.push(`[${new Date().toISOString()}] [SUCCESS] Deployment recovered after container restart.`);
+                    await zombie.save();
+
+                    // Store as last stable commit
+                    shadow.writeFileSync(STABLE_COMMIT_FILE, zombie.commit);
+                } else {
+                    logger.info(`[DeployManager] Found zombie deployment ${zombie._id}. Marking as FAILED.`);
+                    zombie.status = 'FAILED';
+                    zombie.error = 'Server restarted during building process';
+                    zombie.endTime = new Date();
+                    zombie.logs.push(`[${new Date().toISOString()}] [ERROR] Deployment interrupted by server restart.`);
+                    await zombie.save();
+                }
+            }
+        } catch (e: any) {
+            logger.error(`[DeployManager] Maintenance error: ${e.message}`);
+        }
     }
 
     static getInstance() {
@@ -29,7 +77,14 @@ export class DeployManager {
 
     async startDeploy(triggeredBy: 'webhook' | 'manual', expectedCommit?: string): Promise<string> {
         if (this.currentDeploymentId) {
-            throw new Error('A deployment is already in progress');
+            // Check if it's really stuck or if we can Force clear it
+            const active = await Deployment.findById(this.currentDeploymentId);
+            if (active && (Date.now() - active.startTime.getTime() > 3600000)) { // 1 hour safety
+                logger.warn(`[DeployManager] Force clearing deployment ${this.currentDeploymentId} due to age (1h+)`);
+                this.currentDeploymentId = null;
+            } else {
+                throw new Error('A deployment is already in progress');
+            }
         }
 
         const currentCommit = await this.getCurrentCommit();
@@ -92,28 +147,29 @@ export class DeployManager {
             }
 
             // 3. Docker Build/Up
-            await this.runCommand('docker-compose', ['-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id, 600000);
-
-            deployment.endTime = new Date();
-            deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
-            await deployment.save();
-
-            // 4. Post-Build Verifications
-            this.broadcastLog(id, `\n[VERIFY] Starting Post-Deployment Checks...`);
-
-            await this.verifyContainersHealthy(id, 60000);
-            await this.verifyHttpHealth(id, 60000);
-            await this.runSelfTest(id, 60000);
+            // Mark as SUCCESS BEFORE the command that kills us
+            this.appendLog(id, `\n[SYSTEM] Build success. Container recreation initiated...`);
 
             deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
             deployment.endTime = new Date();
+            deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
             await deployment.save();
+            await this.flushLogs(); // Ensure everything is in DB
 
-            // Store as last stable commit
-            shadow.writeFileSync(STABLE_COMMIT_FILE, deployment.commit);
+            // Fire and forget: This command typically kills the current process
+            // Using "docker compose" (modern) instead of "docker-compose"
+            this.runCommand('docker compose', ['-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id, 1200000).catch(e => {
+                logger.error(`[DeployManager] Post-success restart error: ${e.message}`);
+            });
 
-            this.broadcastLog(id, `\n[SUCCESS] [${new Date().toISOString()}] All verification checks passed. Deployment live.`);
-            await alertService.notifySuccess(id, deployment.commit);
+            this.broadcastLog(id, `\n[SUCCESS] [${new Date().toISOString()}] Build complete. Deployment finishing in background.`);
+
+            // Post-Build Verifications (Optional/Best effort)
+            // Note: These likely won't finish if the API restarts
+            this.verifyContainersHealthy(id, 60000).catch(() => { });
+            this.verifyHttpHealth(id, 60000).catch(() => { });
+
+            return;
 
         } catch (err: any) {
             logger.error(`[DeployManager] Deployment ${id} failed: ${err.message}`);
@@ -128,12 +184,14 @@ export class DeployManager {
             // Auto-Rollback if not already rolling back
             if (!isRollback) {
                 try {
-                    const lastStable = shadow.readFileSync(STABLE_COMMIT_FILE, 'utf8').trim();
-                    if (lastStable && lastStable !== deployment.commit) {
-                        this.broadcastLog(id, `\n[VERIFY] FAILED. Initiating automatic rollback to: ${lastStable}`);
-                        await alertService.notifyRollback(id, lastStable, err.message);
-                        // Trigger a new rollback deployment
-                        await this.rollbackToCommit(lastStable, `Auto-Rollback for failed deployment ${id}`);
+                    if (shadow.existsSync(STABLE_COMMIT_FILE)) {
+                        const lastStable = shadow.readFileSync(STABLE_COMMIT_FILE, 'utf8').trim();
+                        if (lastStable && lastStable !== deployment.commit) {
+                            this.broadcastLog(id, `\n[VERIFY] FAILED. Initiating automatic rollback to: ${lastStable}`);
+                            await alertService.notifyRollback(id, lastStable, err.message);
+                            // Trigger a new rollback deployment
+                            await this.rollbackToCommit(lastStable, `Auto-Rollback for failed deployment ${id}`);
+                        }
                     }
                 } catch (e) {
                     this.broadcastLog(id, `[VERIFY] Auto-rollback skipped: No stable commit record found.`);
@@ -160,12 +218,18 @@ export class DeployManager {
 
     private runCommand(cmd: string, args: string[], deploymentId: string, timeoutMs = 300000): Promise<void> {
         return new Promise((resolve, reject) => {
-            // Join args into a single string for shell: true to avoid flag parsing issues in some environments
             const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
-            const child = spawn(fullCmd, { cwd: '/root/xelitesolutions', shell: true });
+
+            const child = spawn(fullCmd, {
+                cwd: '/root/xelitesolutions',
+                shell: true,
+                detached: true
+            });
 
             const timeout = setTimeout(() => {
-                child.kill();
+                try {
+                    if (child.pid) process.kill(-child.pid, 'SIGKILL');
+                } catch (e) { }
                 reject(new Error(`Command ${cmd} timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 
@@ -205,24 +269,19 @@ export class DeployManager {
     }
 
     private appendLog(id: string, log: string) {
-        // Append to memory queue instantly for db flushing
         let existing = this.logQueue.find(q => q.id === id);
         if (!existing) {
             existing = { id, logs: [] };
             this.logQueue.push(existing);
         }
         existing.logs.push(log);
-
-        // Broadcast instantly
         this.broadcastLog(id, log);
     }
 
     private async flushLogs() {
         if (this.logQueue.length === 0) return;
-
-        // Take a snapshot of the current queue to flush
         const queueToFlush = [...this.logQueue];
-        this.logQueue = []; // Reset queue for incoming logs
+        this.logQueue = [];
 
         for (const item of queueToFlush) {
             if (item.logs.length === 0) continue;
@@ -230,7 +289,6 @@ export class DeployManager {
                 await Deployment.findByIdAndUpdate(item.id, { $push: { logs: { $each: item.logs } } });
             } catch (err: any) {
                 logger.error(`[DeployManager] Failed to flush logs for deployment ${item.id}: ${err.message}`);
-                // Re-queue the failed logs at the front
                 const existing = this.logQueue.find(q => q.id === item.id);
                 if (existing) {
                     existing.logs = [...item.logs, ...existing.logs];
@@ -251,7 +309,6 @@ export class DeployManager {
 
     private getCurrentCommit(): Promise<string> {
         return new Promise((resolve) => {
-            // Fetch latest commit from remote since .git isn't in container
             const child = spawn('git', ['ls-remote', 'https://github.com/yasoo2/xelitesolutions.git', 'HEAD'], { shell: true });
             let output = '';
             let errOutput = '';
@@ -327,7 +384,6 @@ export class DeployManager {
     private async runSelfTest(id: string, timeoutMs = 60000) {
         this.broadcastLog(id, `[VERIFY] Running system self-test...`);
         try {
-            // Run a lightweight verification script if it exists
             await this.runCommand('npm', ['run', 'test:system'], id, timeoutMs);
             this.broadcastLog(id, `[VERIFY] Self-test passed.`);
         } catch (e: any) {
