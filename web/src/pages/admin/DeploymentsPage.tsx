@@ -477,14 +477,20 @@ export default function DeploymentsPage() {
             </AnimatePresence>
 
             <style>{`
+        html, body {
+          overflow: auto !important;
+          height: auto !important;
+          position: static !important;
+        }
         .admin-deployments {
           padding: 32px;
-          padding-bottom: 100px;
+          padding-bottom: 200px;
           background: #09090b;
-          height: 100vh;
-          overflow-y: auto !important;
+          min-height: 100vh;
+          width: 100%;
           color: #fafafa;
           font-family: 'Inter', system-ui, sans-serif;
+          overflow: visible !important;
         }
         .header-bar {
           display: flex;
