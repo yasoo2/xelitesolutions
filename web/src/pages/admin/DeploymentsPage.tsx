@@ -479,8 +479,10 @@ export default function DeploymentsPage() {
             <style>{`
         .admin-deployments {
           padding: 32px;
+          padding-bottom: 100px;
           background: #09090b;
-          min-height: 100vh;
+          height: 100vh;
+          overflow-y: auto !important;
           color: #fafafa;
           font-family: 'Inter', system-ui, sans-serif;
         }

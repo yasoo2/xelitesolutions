@@ -59,10 +59,14 @@ const SUPER_ADMIN_EMAILS = [
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   const auth = (req as any).auth as AuthPayload;
   const email = auth?.email?.toLowerCase().trim() || '';
-  const isAdmin = auth?.role === 'SUPER_ADMIN' ||
+  const role = auth?.role;
+
+  const isAdmin = role === 'SUPER_ADMIN' ||
+    role === 'OWNER' ||
     SUPER_ADMIN_EMAILS.includes(email);
 
   if (!auth || !isAdmin) {
+    console.warn(`[AUTH] requireSuperAdmin failed for: email=${email}, role=${role}`);
     return res.status(403).json({ error: 'Forbidden: Super Admin access required' });
   }
   next();

@@ -129,6 +129,7 @@ function RequireSuperAdmin({ children }: { children: React.ReactNode }) {
     const decoded: any = jwtDecode(token);
     const email = decoded.email?.toLowerCase().trim() || '';
     const isAdmin = decoded.role === 'SUPER_ADMIN' ||
+      decoded.role === 'OWNER' ||
       email === 'info.auraaluxury@gmail.com' ||
       email === 'younes.sowady2011@gmail.com' ||
       localStorage.getItem('admin') === 'true';
