@@ -74,6 +74,9 @@ export class DeployManager {
         if (!deployment) return;
 
         try {
+            // 0. Ensure git safety (dubious ownership fix)
+            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', '/root/xelitesolutions'], id, 30000);
+
             // 1. Git Prep
             if (isRollback) {
                 await this.runCommand('git', ['reset', '--hard', deployment.commit, '--'], id, 60000);
@@ -87,7 +90,7 @@ export class DeployManager {
             }
 
             // 3. Docker Build/Up
-            await this.runCommand('docker', ['compose', '-f', 'docker-compose.production.yml', 'up', '-d', '--build', '--progress=plain'], id, 600000);
+            await this.runCommand('docker-compose', ['-f', 'docker-compose.production.yml', 'up', '-d', '--build'], id, 600000);
 
             deployment.endTime = new Date();
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
@@ -155,9 +158,9 @@ export class DeployManager {
 
     private runCommand(cmd: string, args: string[], deploymentId: string, timeoutMs = 300000): Promise<void> {
         return new Promise((resolve, reject) => {
-            this.broadcastLog(deploymentId, `\n[RUN] ${cmd} ${args.join(' ')}\n`);
-            // Run in the host project directory which will be mounted at /app/host-project
-            const child = spawn(cmd, args, { cwd: '/root/xelitesolutions', shell: true });
+            // Join args into a single string for shell: true to avoid flag parsing issues in some environments
+            const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
+            const child = spawn(fullCmd, { cwd: '/root/xelitesolutions', shell: true });
 
             const timeout = setTimeout(() => {
                 child.kill();

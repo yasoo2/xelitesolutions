@@ -30,33 +30,32 @@ COPY . .
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
+# Prune dev dependencies to save space/memory for the next stage
+RUN npm prune --omit=dev --no-audit
+
 # Stage 2: Runtime
 FROM node:20-slim
 
 WORKDIR /app
 
-# Copy package files for production install
-COPY package*.json ./
-
-# Install runtime dependencies (python and build tools needed for node-pty postinstall)
+# Install runtime dependencies (minimal)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
     bash \
     curl \
     ca-certificates \
     git && \
     curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz | tar zxvf - --strip-components=1 -C /usr/local/bin docker/docker && \
-    npm install --omit=dev --no-audit --no-fund && \
-    npx playwright install --with-deps chromium && \
-    apt-get purge -y --auto-remove make g++ python3 && \
+    curl -L "https://github.com/docker/compose/releases/download/v2.25.0/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose && \
+    chmod +x /usr/local/bin/docker-compose && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm cache clean --force
+    rm -rf /var/lib/apt/lists/*
 
-# Copy build artifacts
+# Copy package files (metadata only)
+COPY package*.json ./
+
+# Copy node_modules and build artifacts from builder
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
