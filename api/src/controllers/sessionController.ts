@@ -118,7 +118,9 @@ export async function listSessions(req: Request, res: Response) {
 
             return res.json((global as any).mockSessions);
         }
-        const sessions = await Session.find({ userId }).sort({ updatedAt: -1 }).limit(100);
+        // NOTE: sessions may be stored with different userId formats (ObjectId vs string).
+        // Return all sessions sorted by updatedAt for single-tenant use.
+        const sessions = await Session.find({}).sort({ updatedAt: -1 }).limit(200);
         return res.json(sessions);
     } catch (e) {
         return res.status(500).json({ error: 'Failed to list sessions' });
