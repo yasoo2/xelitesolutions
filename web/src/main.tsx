@@ -190,6 +190,8 @@ createRoot(document.getElementById('root')!).render(
                   </RequireSuperAdmin>
                 }
               />
+              <Route path="admin" element={<Navigate to="/super-admin/deployments" replace />} />
+              <Route path="admin/deployments" element={<Navigate to="/super-admin/deployments" replace />} />
 
             </Route>
           </Routes>

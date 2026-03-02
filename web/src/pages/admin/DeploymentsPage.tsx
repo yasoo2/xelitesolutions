@@ -92,7 +92,10 @@ export default function DeploymentsPage() {
     useEffect(() => {
         if (!token) return;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = API_URL.replace(/^https?:\/\//, '');
+        // API_URL might be like "https://domain.com/api" or "/api"
+        // If absolute, host should not include the /api part if we are adding /api/ws manually
+        // Alternatively, if API_URL ends with /api, we strip it.
+        const host = API_URL.replace(/^https?:\/\//, '').replace(/\/api\/?$/, '');
         const ws = new WebSocket(`${protocol}//${host}/api/ws?token=${token}`);
 
         ws.onmessage = (ev) => {

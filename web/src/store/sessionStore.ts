@@ -24,7 +24,11 @@ export interface Folder {
 // This ensureToken logic actually *fetches* a dev token if none exists.
 async function ensureToken() {
   const existing = localStorage.getItem('token');
-  if (existing && isValidToken(existing)) return existing;
+  if (existing) {
+    if (isValidToken(existing)) return existing;
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  }
 
   const isLocal = /localhost|127\.0\.0\.1/.test(window.location.hostname);
   if (!isLocal) return null;
