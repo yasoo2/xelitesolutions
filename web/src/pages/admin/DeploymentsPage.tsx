@@ -261,15 +261,6 @@ export default function DeploymentsPage() {
                     <span>Refresh</span>
                 </button>
                 <button
-                    className="deploy-action-btn special-deploy"
-                    onClick={handleDeploy}
-                    disabled={actionLoading}
-                    title="بدء النشر الآن"
-                >
-                    {actionLoading ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
-                    <span>Deploy Now</span>
-                </button>
-                <button
                     className="deploy-back-btn"
                     onClick={() => navigate('/joe')}
                     title="العودة إلى جو"
