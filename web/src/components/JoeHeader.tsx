@@ -101,24 +101,14 @@ export default function JoeHeader({
 
                         if (isAdmin) {
                             return (
-                                <>
-                                    <button
-                                        className="joe-header-btn"
-                                        onClick={onDeploymentsClick}
-                                        title="Deployment Control Center"
-                                        style={{ color: '#f59e0b' }}
-                                    >
-                                        <Rocket size={18} />
-                                    </button>
-                                    <button
-                                        className="joe-header-btn"
-                                        onClick={onSystemClick}
-                                        title="System Dashboard"
-                                        style={{ color: '#60a5fa' }}
-                                    >
-                                        <Activity size={18} />
-                                    </button>
-                                </>
+                                <button
+                                    className="joe-header-btn"
+                                    onClick={onSystemClick}
+                                    title="System Management"
+                                    style={{ color: '#60a5fa' }}
+                                >
+                                    <Shield size={18} />
+                                </button>
                             );
                         }
 

@@ -11,8 +11,7 @@ const Login = lazy(() => import('./pages/Login'));
 const Joe = lazy(() => import('./pages/Joe'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
-const DeploymentsPage = lazy(() => import('./pages/admin/DeploymentsPage'));
-const SystemDashboard = lazy(() => import('./pages/admin/SystemDashboard'));
+const SystemManagement = lazy(() => import('./pages/admin/SystemManagement'));
 import { jwtDecode } from 'jwt-decode';
 import './theme.css';
 import './global.css';
@@ -182,25 +181,17 @@ createRoot(document.getElementById('root')!).render(
                 element={<Navigate to="/joe" replace />}
               />
               <Route
-                path="super-admin/deployments"
+                path="super-admin"
                 element={
                   <RequireSuperAdmin>
                     <Suspense fallback={<div className="route-loading">Loading…</div>}>
-                      <DeploymentsPage />
+                      <SystemManagement />
                     </Suspense>
                   </RequireSuperAdmin>
                 }
               />
-              <Route
-                path="super-admin/system"
-                element={
-                  <RequireSuperAdmin>
-                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
-                      <SystemDashboard />
-                    </Suspense>
-                  </RequireSuperAdmin>
-                }
-              />
+              <Route path="super-admin/system" element={<Navigate to="/super-admin" replace />} />
+              <Route path="super-admin/deployments" element={<Navigate to="/super-admin" replace />} />
               <Route path="admin" element={<Navigate to="/super-admin/deployments" replace />} />
               <Route path="admin/deployments" element={<Navigate to="/super-admin/deployments" replace />} />
 
