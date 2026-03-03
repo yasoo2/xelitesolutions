@@ -679,63 +679,57 @@ export default function SystemManagement() {
                 {activeTab === 'admins' && renderAdmins()}
             </AnimatePresence>
 
-            {/* Logs Modal */}
-            <AnimatePresence>
-                {selectedDep && (
+            {/* Logs Modal - Simplified trigger */}
+            {selectedDep && (
+                <div
+                    className="modal-overlay"
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+                    onClick={() => setSelectedDep(null)}
+                >
                     <motion.div
-                        className="modal-overlay"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setSelectedDep(null)}
+                        className="modal-content logs-modal"
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        onClick={e => e.stopPropagation()}
                     >
-                        <motion.div
-                            className="modal-content logs-modal"
-                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <div className="modal-header">
-                                <div className="modal-header-left">
-                                    <Terminal size={18} color="#60a5fa" />
-                                    <h3>Deployment Logs <span className="commit-hash">#{selectedDep.commit.slice(0, 7)}</span></h3>
-                                </div>
-                                <div className="modal-header-actions">
-                                    <button
-                                        className="modal-action-btn"
-                                        onClick={() => {
-                                            const logText = selectedDep.logs.join('\n');
-                                            navigator.clipboard.writeText(logText);
-                                            alert('Logs copied to clipboard!');
-                                        }}
-                                        title="Copy Logs"
-                                    >
-                                        <Copy size={16} /> Copy
-                                    </button>
-                                    <button className="modal-close-btn" onClick={() => setSelectedDep(null)}>
-                                        <XCircle size={20} />
-                                    </button>
-                                </div>
+                        <div className="modal-header">
+                            <div className="modal-header-left">
+                                <Terminal size={18} color="#60a5fa" />
+                                <h3>Deployment Logs <span className="commit-hash">#{selectedDep.commit?.slice(0, 7) || '??'}</span></h3>
                             </div>
-                            <div className="modal-body logs-body">
-                                <div className="log-container">
-                                    {selectedDep.logs.length > 0 ? (
-                                        selectedDep.logs.map((line, i) => (
-                                            <div key={i} className="log-line">
-                                                <span className="log-num">{i + 1}</span>
-                                                <span className="log-text">{line}</span>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="empty-logs">No logs available for this deployment.</div>
-                                    )}
-                                </div>
+                            <div className="modal-header-actions">
+                                <button
+                                    className="modal-action-btn"
+                                    onClick={() => {
+                                        const text = (selectedDep.logs || []).join('\n');
+                                        navigator.clipboard.writeText(text);
+                                        alert('Copied!');
+                                    }}
+                                >
+                                    <Copy size={16} /> Copy
+                                </button>
+                                <button className="modal-close-btn" onClick={() => setSelectedDep(null)}>
+                                    <XCircle size={20} />
+                                </button>
                             </div>
-                        </motion.div>
+                        </div>
+                        <div className="modal-body logs-body">
+                            <div className="log-container">
+                                {selectedDep.logs && selectedDep.logs.length > 0 ? (
+                                    selectedDep.logs.map((line, i) => (
+                                        <div key={i} className="log-line">
+                                            <span className="log-num">{i + 1}</span>
+                                            <span className="log-text">{line}</span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="empty-logs">No logs available for this deployment.</div>
+                                )}
+                            </div>
+                        </div>
                     </motion.div>
-                )}
-            </AnimatePresence>
+                </div>
+            )}
         </div>
     );
 }
