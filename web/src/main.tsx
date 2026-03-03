@@ -12,6 +12,7 @@ const Joe = lazy(() => import('./pages/Joe'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const DeploymentsPage = lazy(() => import('./pages/admin/DeploymentsPage'));
+const SystemDashboard = lazy(() => import('./pages/admin/SystemDashboard'));
 import { jwtDecode } from 'jwt-decode';
 import './theme.css';
 import './global.css';
@@ -186,6 +187,16 @@ createRoot(document.getElementById('root')!).render(
                   <RequireSuperAdmin>
                     <Suspense fallback={<div className="route-loading">Loading…</div>}>
                       <DeploymentsPage />
+                    </Suspense>
+                  </RequireSuperAdmin>
+                }
+              />
+              <Route
+                path="super-admin/system"
+                element={
+                  <RequireSuperAdmin>
+                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                      <SystemDashboard />
                     </Suspense>
                   </RequireSuperAdmin>
                 }

@@ -47,6 +47,7 @@ interface JoeIDELayoutProps {
     workspaceTab?: WorkspaceTab;
     onWorkspaceTabChange?: (tab: WorkspaceTab) => void;
     onDeploymentsClick?: () => void;
+    onSystemClick?: () => void;
     browserSessionId?: string;
     terminalId?: string;
     previewUrl?: string;
@@ -113,6 +114,7 @@ export default function JoeIDELayout({
     workspaceTab,
     onWorkspaceTabChange,
     onDeploymentsClick,
+    onSystemClick,
     browserSessionId,
     terminalId,
     previewUrl,
@@ -305,6 +307,7 @@ export default function JoeIDELayout({
                 userRole={userRole}
                 onSettingsClick={onSettingsClick}
                 onDeploymentsClick={onDeploymentsClick}
+                onSystemClick={onSystemClick}
                 theme={theme}
                 onThemeToggle={onThemeToggle}
                 onToggleChat={toggleChat}

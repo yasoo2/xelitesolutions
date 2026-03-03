@@ -1,4 +1,4 @@
-import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Rocket } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Rocket, Activity } from 'lucide-react';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -8,6 +8,7 @@ interface JoeHeaderProps {
     onSettingsClick?: () => void;
     onNewProject?: () => void;
     onDeploymentsClick?: () => void;
+    onSystemClick?: () => void;
     theme?: 'dark' | 'light';
     onThemeToggle?: () => void;
     onToggleChat?: () => void;
@@ -24,6 +25,7 @@ export default function JoeHeader({
     onSettingsClick,
     onNewProject,
     onDeploymentsClick,
+    onSystemClick,
     theme = 'dark',
     onThemeToggle,
     onToggleChat,
@@ -106,6 +108,14 @@ export default function JoeHeader({
                                     style={{ color: '#f59e0b' }}
                                 >
                                     <Rocket size={18} />
+                                </button>
+                                <button
+                                    className="joe-header-btn"
+                                    onClick={onSystemClick}
+                                    title="System Dashboard"
+                                    style={{ color: '#60a5fa' }}
+                                >
+                                    <Activity size={18} />
                                 </button>
                             );
                         }

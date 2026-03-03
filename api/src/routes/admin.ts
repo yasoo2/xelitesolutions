@@ -93,4 +93,107 @@ router.post('/settings/notifications', async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════
+// SYSTEM HEALTH & METRICS
+// ═══════════════════════════════════════════════
+
+router.get('/system/health', async (req, res) => {
+    try {
+        // CPU & Memory
+        const cpuInfo = execSync("top -bn1 | grep 'Cpu(s)' | awk '{print $2}' || echo '0'").toString().trim();
+        const memInfo = execSync("free -m | awk 'NR==2{printf \"%s/%s (%.1f%%)\", $3,$2,$3*100/$2}'").toString().trim();
+        const diskInfo = execSync("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'").toString().trim();
+
+        // Docker stats
+        let containers: any[] = [];
+        try {
+            const dockerOutput = execSync('docker ps --format "{{json .}}"').toString().trim();
+            containers = dockerOutput.split('\n').map(l => {
+                try { return JSON.parse(l); } catch { return null; }
+            }).filter(Boolean);
+        } catch { }
+
+        // MongoDB stats
+        let dbStats: any = {};
+        try {
+            if (mongoose.connection.readyState === 1) {
+                const admin = mongoose.connection.db!.admin();
+                const serverStatus = await admin.serverStatus();
+                const dbStatsRaw = await mongoose.connection.db!.stats();
+                dbStats = {
+                    collections: dbStatsRaw.collections,
+                    documents: dbStatsRaw.objects,
+                    dataSize: `${(dbStatsRaw.dataSize / 1024 / 1024).toFixed(1)} MB`,
+                    storageSize: `${(dbStatsRaw.storageSize / 1024 / 1024).toFixed(1)} MB`,
+                    connections: serverStatus.connections?.current || 0,
+                    uptime: `${Math.floor(serverStatus.uptime / 3600)}h ${Math.floor((serverStatus.uptime % 3600) / 60)}m`
+                };
+            }
+        } catch { }
+
+        res.json({
+            system: {
+                cpu: cpuInfo + '%',
+                memory: memInfo,
+                disk: diskInfo,
+                nodeUptime: `${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m`,
+                nodeVersion: process.version,
+                platform: process.platform
+            },
+            containers,
+            database: dbStats,
+            timestamp: new Date().toISOString()
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+import fs from 'fs';
+import path from 'path';
+
+router.get('/system/backups', async (req, res) => {
+    try {
+        const backupDir = '/root/xelitesolutions/backups';
+        if (!fs.existsSync(backupDir)) {
+            return res.json({ backups: [], message: 'No backups found' });
+        }
+        const files = fs.readdirSync(backupDir)
+            .filter(f => f.endsWith('.tar.gz'))
+            .map(f => {
+                const stat = fs.statSync(path.join(backupDir, f));
+                return {
+                    name: f,
+                    size: `${(stat.size / 1024 / 1024).toFixed(1)} MB`,
+                    created: stat.mtime.toISOString()
+                };
+            })
+            .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+        res.json({ backups: files });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.post('/system/backup', async (req, res) => {
+    try {
+        const { spawn } = require('child_process');
+        const child = spawn('bash', ['/app/scripts/backup.sh'], { cwd: '/root/xelitesolutions' });
+        let output = '';
+        child.stdout.on('data', (d: Buffer) => output += d.toString());
+        child.stderr.on('data', (d: Buffer) => output += d.toString());
+        child.on('close', (code: number) => {
+            if (code === 0) {
+                res.json({ message: 'Backup completed successfully', output });
+            } else {
+                res.status(500).json({ error: 'Backup failed', output });
+            }
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+import mongoose from 'mongoose';
+
 export default router;

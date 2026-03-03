@@ -661,6 +661,7 @@ export default function Joe() {
                 workspaceTab={workspaceTab}
                 onWorkspaceTabChange={setWorkspaceTab}
                 onDeploymentsClick={() => nav('/super-admin/deployments')}
+                onSystemClick={() => nav('/super-admin/system')}
                 browserSessionId={browserSessionId || undefined}
                 terminalId={activeSessionId}
                 previewUrl={previewUrl}
