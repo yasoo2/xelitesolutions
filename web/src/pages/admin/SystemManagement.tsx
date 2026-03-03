@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Activity, Hash, Server, Shield,
-    RefreshCw, ArrowRight, Clock,
+    RefreshCw, ArrowRight, ArrowLeft, Clock,
     CheckCircle, ChevronDown, ChevronUp,
     Rocket, Search, UserPlus, UserMinus,
     Database, Terminal, ExternalLink,
@@ -762,6 +762,27 @@ export default function SystemManagement() {
                 @keyframes spin { to { transform: rotate(360deg); } }
                 .spinning { animation: spin 1s linear infinite; }
 
+                .btn-back {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 12px;
+                    border: 1px solid var(--border-color);
+                    background: rgba(255,255,255,0.02);
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    margin-right: 12px;
+                }
+                .btn-back:hover {
+                    background: rgba(240, 193, 75, 0.1);
+                    color: var(--accent-primary);
+                    border-color: rgba(240, 193, 75, 0.3);
+                    transform: translateX(-3px);
+                }
+
                 /* Laptop & Mobile Responsiveness */
                 @media (max-width: 1440px) {
                     .system-management { padding: 24px; }
@@ -789,6 +810,9 @@ export default function SystemManagement() {
 
             <div className="mgmt-header">
                 <div className="mgmt-title-row">
+                    <button className="btn-back" onClick={() => navigate('/')} title="العودة إلى مساحة العمل">
+                        <ArrowLeft size={22} />
+                    </button>
                     <div className="joe-logo-badge">J</div>
                     <div className="mgmt-title">
                         <h1>⚙️ System Management</h1>
