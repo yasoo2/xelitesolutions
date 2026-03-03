@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Cpu, Gauge, HardDrive, Database,
-    RefreshCw, Download, Shield, Activity, ArrowLeft,
-    Server, ChevronDown, ChevronUp
+    Activity, Hash, Server, Shield,
+    RefreshCw, ArrowRight, Clock,
+    CheckCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { API_URL } from '../../config';
 
@@ -382,7 +382,7 @@ export default function SystemDashboard() {
             <div className="dash-header">
                 <div className="dash-header-left">
                     <button className="dash-btn btn-back" onClick={() => navigate(-1)}>
-                        <ArrowLeft size={16} /> Back
+                        <ArrowRight size={16} style={{ transform: 'rotate(180deg)' }} /> Back
                     </button>
                     <h1>⚡ System Dashboard</h1>
                 </div>
@@ -394,7 +394,7 @@ export default function SystemDashboard() {
                         <RefreshCw size={14} className={loading ? 'spinning' : ''} /> Refresh
                     </button>
                     <button className="dash-btn btn-backup" onClick={triggerBackup} disabled={backingUp}>
-                        <Download size={14} /> {backingUp ? 'Backing up...' : 'Backup Now'}
+                        <Shield size={14} /> {backingUp ? 'Backing up...' : 'Backup Now'}
                     </button>
                 </div>
             </div>
@@ -410,7 +410,7 @@ export default function SystemDashboard() {
                     {/* CPU */}
                     <div className="stat-card cpu">
                         <div className="stat-icon">
-                            <Cpu size={18} color="#60a5fa" />
+                            <Activity size={18} color="#60a5fa" />
                             <span className="stat-label">CPU Usage</span>
                         </div>
                         <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.cpu)) }}>
@@ -428,7 +428,7 @@ export default function SystemDashboard() {
                     {/* Memory */}
                     <div className="stat-card memory">
                         <div className="stat-icon">
-                            <Gauge size={18} color="#a78bfa" />
+                            <Clock size={18} color="#a78bfa" />
                             <span className="stat-label">Memory</span>
                         </div>
                         <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.memory)) }}>
@@ -446,7 +446,7 @@ export default function SystemDashboard() {
                     {/* Disk */}
                     <div className="stat-card disk">
                         <div className="stat-icon">
-                            <HardDrive size={18} color="#f59e0b" />
+                            <Hash size={18} color="#f59e0b" />
                             <span className="stat-label">Disk Usage</span>
                         </div>
                         <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.disk)) }}>
@@ -464,7 +464,7 @@ export default function SystemDashboard() {
                     {/* DB */}
                     <div className="stat-card db">
                         <div className="stat-icon">
-                            <Database size={18} color="#10b981" />
+                            <Server size={18} color="#10b981" />
                             <span className="stat-label">Database</span>
                         </div>
                         <div className="stat-value" style={{ color: '#10b981' }}>
@@ -517,7 +517,7 @@ export default function SystemDashboard() {
             <div className="section-card">
                 <div className="section-header" onClick={() => setExpandedSection(expandedSection === 'database' ? null : 'database')}>
                     <div className="section-header-left">
-                        <Database size={18} color="#10b981" />
+                        <Server size={18} color="#10b981" />
                         <span className="section-title">MongoDB Details</span>
                         <span className="section-badge">{health?.database?.uptime || 'N/A'}</span>
                     </div>
@@ -567,7 +567,7 @@ export default function SystemDashboard() {
             <div className="section-card">
                 <div className="section-header" onClick={() => setExpandedSection(expandedSection === 'backups' ? null : 'backups')}>
                     <div className="section-header-left">
-                        <Shield size={18} color="#f59e0b" />
+                        <CheckCircle size={18} color="#f59e0b" />
                         <span className="section-title">Backups</span>
                         <span className="section-badge">{backups.length} available</span>
                     </div>
