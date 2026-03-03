@@ -1,4 +1,4 @@
-import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Rocket, Activity } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Rocket, Activity, Shield } from 'lucide-react';
 
 interface JoeHeaderProps {
     userAvatar?: string;
