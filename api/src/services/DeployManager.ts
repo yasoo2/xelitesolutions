@@ -162,7 +162,7 @@ export class DeployManager {
 
             // Fire and forget: This command typically kills the current process
             // Using a forceful approach to avoid 'container name is already in use' conflicts
-            this.runCommand('bash', ['-c', 'docker rm -f joe_api joe_web joe_mongo joe_browser_worker joe_nginx joe-certbot-1 || true && docker compose -p joe -f docker-compose.production.yml up -d --build'], id, 1200000).catch(e => {
+            this.runCommand('docker rm -f joe_api joe_web joe_mongo joe_browser_worker joe_nginx joe-certbot-1 || true && docker compose -p joe -f docker-compose.production.yml up -d --build', [], id, 1200000).catch(e => {
                 logger.error(`[DeployManager] Post-success restart error: ${e.message}`);
                 // If it fails immediately, we might still be able to catch it before process kill
                 this.appendLog(id, `\n[ERROR] Restart command failed: ${e.message}`);
