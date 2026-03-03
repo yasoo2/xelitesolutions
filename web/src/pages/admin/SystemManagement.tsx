@@ -188,7 +188,20 @@ export default function SystemManagement() {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (res.ok) await fetchDeployments();
+            if (res.ok) {
+                const data = await res.json();
+                await fetchDeployments();
+                if (data && data.id) {
+                    setSelectedDep({
+                        _id: data.id,
+                        commit: 'HEAD',
+                        status: 'BUILDING',
+                        triggeredBy: 'manual',
+                        startTime: new Date().toISOString(),
+                        logs: ['=== Deployment Initiated ===']
+                    });
+                }
+            }
         } catch (e) { console.error(e); }
         setIsDeploying(false);
     };
