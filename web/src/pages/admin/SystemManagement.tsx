@@ -182,7 +182,6 @@ export default function SystemManagement() {
     };
 
     const handleDeploy = async () => {
-        if (!window.confirm('Start production deployment?')) return;
         setIsDeploying(true);
         try {
             const res = await fetch(`${API_URL}/admin/deploy`, {
@@ -196,7 +195,6 @@ export default function SystemManagement() {
 
     const toggleAdmin = async (user: User) => {
         const newRole = user.role === 'SUPER_ADMIN' ? 'USER' : 'SUPER_ADMIN';
-        if (!window.confirm(`Change ${user.email} role to ${newRole}?`)) return;
 
         setUpdatingUser(user._id);
         try {
