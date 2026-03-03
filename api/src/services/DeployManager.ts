@@ -162,7 +162,8 @@ export class DeployManager {
 
             // Fire and forget: This command typically kills the current process
             // Using a detached runner container so the current API container dropping doesn't kill the docker-compose process!
-            this.runCommand('docker run -d --rm --name joe_restarter -v /var/run/docker.sock:/var/run/docker.sock -v /root/xelitesolutions:/app -w /app joe-api:latest /bin/sh -c "sleep 5 && docker rm -f joe_api joe_web joe_mongo joe_browser_worker joe_nginx joe-certbot-1 || true && docker-compose -p joe -f docker-compose.production.yml up -d --build"', [], id, 1200000).catch(e => {
+            // Critical: We MUST map -v /root/xelitesolutions:/root/xelitesolutions so docker-compose resolves volume paths identically to the host daemon
+            this.runCommand('docker run -d --rm --name joe_restarter -v /var/run/docker.sock:/var/run/docker.sock -v /root/xelitesolutions:/root/xelitesolutions -w /root/xelitesolutions joe-api:latest /bin/sh -c "sleep 5 && docker rm -f joe_api joe_web joe_mongo joe_browser_worker joe_nginx joe-certbot-1 || true && docker-compose -p joe -f docker-compose.production.yml up -d --build"', [], id, 1200000).catch(e => {
                 logger.error(`[DeployManager] Post-success restart error: ${e.message}`);
                 // If it fails immediately, we might still be able to catch it before process kill
                 this.appendLog(id, `\n[ERROR] Restart command failed: ${e.message}`);
