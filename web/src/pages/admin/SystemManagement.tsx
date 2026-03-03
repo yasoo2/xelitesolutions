@@ -764,40 +764,44 @@ export default function SystemManagement() {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    width: 44px;
+                    padding: 0 16px;
                     height: 44px;
                     border-radius: 12px;
-                    border: 1px solid var(--border-color);
-                    background: rgba(255,255,255,0.02);
-                    color: var(--text-secondary);
-                    cursor: pointer;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                    margin-right: 12px;
-                }
-                .btn-back:hover {
+                    border: 1px solid var(--accent-primary);
                     background: rgba(240, 193, 75, 0.1);
                     color: var(--accent-primary);
-                    border-color: rgba(240, 193, 75, 0.3);
+                    font-weight: 700;
+                    font-size: 14px;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    margin-right: 16px;
+                }
+                .btn-back:hover {
+                    background: var(--accent-primary);
+                    color: #000;
                     transform: translateX(-3px);
                 }
 
                 /* Laptop & Mobile Responsiveness */
                 @media (max-width: 1440px) {
                     .system-management { padding: 24px; }
-                    .mgmt-header { gap: 24px; margin-bottom: 32px; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; }
-                    .mgmt-title-row { flex: 1; min-width: 300px; }
-                    .mgmt-tabs { flex-wrap: wrap; }
-                    .grid-stats { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+                    .mgmt-header { gap: 16px; margin-bottom: 24px; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: center; overflow-x: auto; }
+                    .mgmt-title-row { flex: 1; min-width: auto; }
+                    .mgmt-title h1 { font-size: 24px; }
+                    .mgmt-tabs { flex-wrap: nowrap; gap: 8px; flex-shrink: 0; }
+                    .tab-btn { padding: 8px 16px; font-size: 13px; white-space: nowrap; }
+                    .grid-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
                     .stat-value { font-size: 28px; }
                     .section-card { margin-bottom: 24px; }
                 }
 
                 @media (max-width: 768px) {
                     .system-management { padding: 16px; min-height: auto; }
-                    .mgmt-title h1 { font-size: 24px; }
+                    .mgmt-header { flex-direction: column; align-items: flex-start; }
+                    .mgmt-title h1 { font-size: 22px; }
                     .joe-logo-badge { width: 40px; height: 40px; font-size: 20px; }
-                    .tab-btn { padding: 8px 16px; font-size: 13px; flex: 1; justify-content: center; }
-                    .mgmt-tabs { width: 100%; display: flex; }
+                    .tab-btn { padding: 8px 12px; font-size: 12px; flex: 1; justify-content: center; }
+                    .mgmt-tabs { width: 100%; display: flex; overflow-x: auto; flex-wrap: nowrap; }
                     .grid-stats { grid-template-columns: 1fr; }
                     .dep-item { flex-direction: column; align-items: flex-start; gap: 12px; }
                     .dep-log-btn { width: 100%; justify-content: center; }
@@ -809,7 +813,7 @@ export default function SystemManagement() {
             <div className="mgmt-header">
                 <div className="mgmt-title-row">
                     <button className="btn-back" onClick={() => navigate('/')} title="العودة إلى مساحة العمل">
-                        <ArrowLeft size={22} />
+                        <ArrowRight size={18} style={{ marginRight: 6 }} /> رجوع للخلف
                     </button>
                     <div className="joe-logo-badge">J</div>
                     <div className="mgmt-title">
