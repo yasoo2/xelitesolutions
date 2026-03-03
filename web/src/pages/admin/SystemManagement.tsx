@@ -761,6 +761,30 @@ export default function SystemManagement() {
 
                 @keyframes spin { to { transform: rotate(360deg); } }
                 .spinning { animation: spin 1s linear infinite; }
+
+                /* Laptop & Mobile Responsiveness */
+                @media (max-width: 1440px) {
+                    .system-management { padding: 24px; }
+                    .mgmt-header { gap: 24px; margin-bottom: 32px; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+                    .mgmt-title-row { flex: 1; min-width: 300px; }
+                    .mgmt-tabs { flex-wrap: wrap; }
+                    .grid-stats { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+                    .stat-value { font-size: 28px; }
+                    .section-card { margin-bottom: 24px; }
+                }
+
+                @media (max-width: 768px) {
+                    .system-management { padding: 16px; min-height: auto; }
+                    .mgmt-title h1 { font-size: 24px; }
+                    .joe-logo-badge { width: 40px; height: 40px; font-size: 20px; }
+                    .tab-btn { padding: 8px 16px; font-size: 13px; flex: 1; justify-content: center; }
+                    .mgmt-tabs { width: 100%; display: flex; }
+                    .grid-stats { grid-template-columns: 1fr; }
+                    .dep-item { flex-direction: column; align-items: flex-start; gap: 12px; }
+                    .dep-log-btn { width: 100%; justify-content: center; }
+                    .user-item { flex-direction: column; align-items: flex-start; }
+                    .role-toggle-btn { width: 100%; justify-content: center; }
+                }
             `}</style>
 
             <div className="mgmt-header">

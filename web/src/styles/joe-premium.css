@@ -66,6 +66,31 @@
     --joe-transition-speed: 0.35s;
 }
 
+/* Laptop and Smaller Screen Optimizations */
+@media (max-width: 1440px) {
+    :root {
+        --joe-chat-width: 380px;
+        --joe-files-width: 250px;
+    }
+}
+
+@media (max-width: 1280px) {
+    :root {
+        --joe-chat-width: 340px;
+        --joe-files-width: 230px;
+    }
+}
+
+@media (max-height: 800px) {
+    .joe-chat-input-area .main-input {
+        max-height: 85px !important;
+    }
+
+    .providers-modal {
+        max-height: 85vh !important;
+    }
+}
+
 /* Collapsed States */
 .joe-chat-panel.collapsed {
     --joe-chat-actual-width: 0px;
