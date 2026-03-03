@@ -361,10 +361,7 @@ export default function SystemManagement() {
                                 By {dep.triggeredBy} • {dep.duration?.toFixed(1) || '?'}s
                             </div>
                         </div>
-                        <button className="dep-log-btn" onClick={() => {
-                            console.log('Deploy button clicked:', dep);
-                            setSelectedDep(dep);
-                        }}>
+                        <button className="dep-log-btn" onClick={() => setSelectedDep(dep)}>
                             <Terminal size={14} /> Logs
                         </button>
                     </div>
@@ -661,7 +658,7 @@ export default function SystemManagement() {
 
             <div className="mgmt-header">
                 <div className="mgmt-title">
-                    <h1>⚙️ System Management v3.0.1 Debug</h1>
+                    <h1>⚙️ System Management</h1>
                 </div>
                 <div className="mgmt-tabs">
                     <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
@@ -692,7 +689,7 @@ export default function SystemManagement() {
                     <motion.div
                         initial={{ scale: 0.9, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        onClick={e => e.stopPropagation()}
+                        onClick={(e: any) => e.stopPropagation()}
                         style={{ background: '#111827', width: '90%', maxWidth: '900px', height: '80vh', borderRadius: '16px', display: 'flex', flexDirection: 'column', border: '1px solid #334155', overflow: 'hidden' }}
                     >
                         <div style={{ padding: '20px', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -5,7 +5,7 @@ import {
     Rocket, RotateCcw, Activity, Shield, Terminal,
     CheckCircle, XCircle, Clock, Hash, Info,
     ExternalLink, Loader2, Server, MoreHorizontal,
-    RefreshCw, ArrowRight, Trash2, Copy, Activity
+    RefreshCw, ArrowRight, Trash2, Copy
 } from 'lucide-react';
 import { API_URL } from '../../config';
 
