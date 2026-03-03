@@ -474,14 +474,24 @@ export default function SystemManagement() {
                 }
                 .mgmt-header {
                     display: flex;
-                    flex-direction: column;
-                    gap: 32px;
+                    flex-direction: row;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 20px;
                     margin-bottom: 48px;
+                }
+                .mgmt-back-container {
+                    display: flex;
+                    align-items: center;
+                    flex: 1;
+                    justify-content: flex-start;
                 }
                 .mgmt-title-row {
                     display: flex;
                     align-items: center;
                     gap: 20px;
+                    flex: 1;
+                    justify-content: flex-end;
                 }
                 .joe-logo-badge {
                     width: 50px;
@@ -520,7 +530,8 @@ export default function SystemManagement() {
                     padding: 6px;
                     border-radius: 16px;
                     border: 1px solid var(--border-color);
-                    align-self: flex-start;
+                    justify-content: center;
+                    flex: 0 1 auto;
                     backdrop-filter: blur(10px);
                 }
                 .tab-btn {
@@ -798,8 +809,7 @@ export default function SystemManagement() {
                 /* Laptop & Mobile Responsiveness */
                 @media (max-width: 1440px) {
                     .system-management { padding: 24px; }
-                    .mgmt-header { gap: 16px; margin-bottom: 24px; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: center; overflow-x: auto; }
-                    .mgmt-title-row { flex: 1; min-width: auto; }
+                    .mgmt-header { gap: 16px; margin-bottom: 24px; overflow-x: auto; }
                     .mgmt-title h1 { font-size: 24px; }
                     .mgmt-tabs { flex-wrap: nowrap; gap: 8px; flex-shrink: 0; }
                     .tab-btn { padding: 8px 16px; font-size: 13px; white-space: nowrap; }
@@ -810,7 +820,9 @@ export default function SystemManagement() {
 
                 @media (max-width: 768px) {
                     .system-management { padding: 16px; min-height: auto; }
-                    .mgmt-header { flex-direction: column; align-items: flex-start; }
+                    .mgmt-header { flex-direction: column; align-items: stretch; gap: 20px; }
+                    .mgmt-back-container { justify-content: flex-start; margin-bottom: -10px; }
+                    .mgmt-title-row { justify-content: flex-start; }
                     .mgmt-title h1 { font-size: 22px; }
                     .joe-logo-badge { width: 40px; height: 40px; font-size: 20px; }
                     .tab-btn { padding: 8px 12px; font-size: 12px; flex: 1; justify-content: center; }
@@ -824,15 +836,10 @@ export default function SystemManagement() {
             `}</style>
 
             <div className="mgmt-header">
-                <div className="mgmt-title-row">
+                <div className="mgmt-back-container">
                     <button className="btn-back" onClick={() => navigate('/joe')} title="العودة إلى مساحة العمل">
                         <ArrowRight size={18} style={{ marginRight: 6 }} /> رجوع للخلف
                     </button>
-                    <div className="joe-logo-badge">J</div>
-                    <div className="mgmt-title">
-                        <h1>⚙️ System Management</h1>
-                        <p className="mgmt-subtitle">Joe Autonomous Infrastructure Control</p>
-                    </div>
                 </div>
                 <div className="mgmt-tabs">
                     <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
@@ -844,6 +851,13 @@ export default function SystemManagement() {
                     <button className={`tab-btn ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
                         <Shield size={16} /> Admins
                     </button>
+                </div>
+                <div className="mgmt-title-row">
+                    <div className="joe-logo-badge">J</div>
+                    <div className="mgmt-title">
+                        <h1>⚙️ System Management</h1>
+                        <p className="mgmt-subtitle">Joe Autonomous Infrastructure Control</p>
+                    </div>
                 </div>
             </div>
 
