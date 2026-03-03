@@ -679,53 +679,51 @@ export default function SystemManagement() {
                 {activeTab === 'admins' && renderAdmins()}
             </AnimatePresence>
 
-            {/* Logs Modal - Simplified trigger */}
+            {/* Logs Modal - Direct Portal-like positioning */}
             {selectedDep && (
                 <div
-                    className="modal-overlay"
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+                    id="logs-modal-portal"
+                    style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999999 }}
                     onClick={() => setSelectedDep(null)}
                 >
                     <motion.div
-                        className="modal-content logs-modal"
-                        initial={{ scale: 0.95, opacity: 0 }}
+                        initial={{ scale: 0.9, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         onClick={e => e.stopPropagation()}
+                        style={{ background: '#111827', width: '90%', maxWidth: '900px', height: '80vh', borderRadius: '16px', display: 'flex', flexDirection: 'column', border: '1px solid #334155', overflow: 'hidden' }}
                     >
-                        <div className="modal-header">
-                            <div className="modal-header-left">
-                                <Terminal size={18} color="#60a5fa" />
-                                <h3>Deployment Logs <span className="commit-hash">#{selectedDep.commit?.slice(0, 7) || '??'}</span></h3>
+                        <div style={{ padding: '20px', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Terminal size={20} color="#60a5fa" />
+                                <h3 style={{ margin: 0, fontSize: '18px', color: 'white' }}>Deployment Logs <span style={{ color: '#64748b', fontSize: '14px', fontFamily: 'monospace' }}>#{selectedDep.commit?.slice(0, 7) || '??'}</span></h3>
                             </div>
-                            <div className="modal-header-actions">
+                            <div style={{ display: 'flex', gap: '12px' }}>
                                 <button
-                                    className="modal-action-btn"
                                     onClick={() => {
                                         const text = (selectedDep.logs || []).join('\n');
                                         navigator.clipboard.writeText(text);
-                                        alert('Copied!');
+                                        alert('Logs copied successfully!');
                                     }}
+                                    style={{ background: '#1e293b', color: 'white', border: '1px solid #334155', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                                 >
-                                    <Copy size={16} /> Copy
+                                    <Copy size={16} /> Copy Logs
                                 </button>
-                                <button className="modal-close-btn" onClick={() => setSelectedDep(null)}>
-                                    <XCircle size={20} />
+                                <button onClick={() => setSelectedDep(null)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+                                    <XCircle size={24} />
                                 </button>
                             </div>
                         </div>
-                        <div className="modal-body logs-body">
-                            <div className="log-container">
-                                {selectedDep.logs && selectedDep.logs.length > 0 ? (
-                                    selectedDep.logs.map((line, i) => (
-                                        <div key={i} className="log-line">
-                                            <span className="log-num">{i + 1}</span>
-                                            <span className="log-text">{line}</span>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="empty-logs">No logs available for this deployment.</div>
-                                )}
-                            </div>
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '20px', background: '#020617', color: '#94a3b8', fontSize: '13px', lineHeight: '1.6', fontFamily: 'monospace' }}>
+                            {selectedDep.logs && selectedDep.logs.length > 0 ? (
+                                selectedDep.logs.map((line: string, i: number) => (
+                                    <div key={i} style={{ display: 'flex', gap: '12px', whiteSpace: 'pre-wrap' }}>
+                                        <span style={{ color: '#1e293b', userSelect: 'none', minWidth: '30px', textAlign: 'right' }}>{i + 1}</span>
+                                        <span>{line}</span>
+                                    </div>
+                                ))
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: '40px', color: '#334155' }}>No logs recorded for this deployment.</div>
+                            )}
                         </div>
                     </motion.div>
                 </div>
