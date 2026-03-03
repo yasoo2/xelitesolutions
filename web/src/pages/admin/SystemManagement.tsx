@@ -13,7 +13,7 @@ import {
 import { API_URL } from '../../config';
 
 // ═══════════════════════════════════════════════
-// TYPES
+// TYPES (Cache Bust: v2)
 // ═══════════════════════════════════════════════
 
 interface SystemHealth {
@@ -586,6 +586,74 @@ export default function SystemManagement() {
 
                 @keyframes spin { to { transform: rotate(360deg); } }
                 .spinning { animation: spin 1s linear infinite; }
+
+                /* Modal & Logs Styles */
+                .modal-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.8);
+                    backdrop-filter: blur(8px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    padding: 20px;
+                }
+                .modal-content {
+                    background: #111827;
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 20px;
+                    width: 100%;
+                    max-width: 900px;
+                    max-height: 80vh;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                }
+                .modal-header {
+                    padding: 20px 24px;
+                    border-bottom: 1px solid rgba(255,255,255,0.06);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                }
+                .modal-header-left { display: flex; align-items: center; gap: 12px; }
+                .modal-header-left h3 { margin: 0; font-size: 18px; font-weight: 700; }
+                .commit-hash { color: #64748b; font-family: monospace; font-size: 14px; font-weight: 400; }
+                .modal-header-actions { display: flex; align-items: center; gap: 12px; }
+                
+                .modal-action-btn {
+                    background: rgba(255,255,255,0.05);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    color: #e2e8f0;
+                    padding: 6px 14px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    transition: all 0.2s;
+                }
+                .modal-action-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+                .modal-close-btn { background: transparent; border: none; color: #64748b; cursor: pointer; transition: color 0.2s; padding: 4px; }
+                .modal-close-btn:hover { color: #f87171; }
+
+                .logs-body { flex: 1; overflow: hidden; padding: 0; }
+                .log-container {
+                    padding: 20px;
+                    background: #0a0f1a;
+                    height: 100%;
+                    overflow-y: auto;
+                    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+                    font-size: 13px;
+                    line-height: 1.6;
+                }
+                .log-line { display: flex; gap: 16px; margin-bottom: 2px; }
+                .log-num { color: #334155; user-select: none; width: 30px; text-align: right; flex-shrink: 0; }
+                .log-text { color: #cbd5e1; white-space: pre-wrap; word-break: break-all; }
+                .empty-logs { padding: 40px; text-align: center; color: #475569; font-style: italic; }
             `}</style>
 
             <div className="mgmt-header">
@@ -609,6 +677,64 @@ export default function SystemManagement() {
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'deployments' && renderDeployments()}
                 {activeTab === 'admins' && renderAdmins()}
+            </AnimatePresence>
+
+            {/* Logs Modal */}
+            <AnimatePresence>
+                {selectedDep && (
+                    <motion.div
+                        className="modal-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setSelectedDep(null)}
+                    >
+                        <motion.div
+                            className="modal-content logs-modal"
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="modal-header">
+                                <div className="modal-header-left">
+                                    <Terminal size={18} color="#60a5fa" />
+                                    <h3>Deployment Logs <span className="commit-hash">#{selectedDep.commit.slice(0, 7)}</span></h3>
+                                </div>
+                                <div className="modal-header-actions">
+                                    <button
+                                        className="modal-action-btn"
+                                        onClick={() => {
+                                            const logText = selectedDep.logs.join('\n');
+                                            navigator.clipboard.writeText(logText);
+                                            alert('Logs copied to clipboard!');
+                                        }}
+                                        title="Copy Logs"
+                                    >
+                                        <Copy size={16} /> Copy
+                                    </button>
+                                    <button className="modal-close-btn" onClick={() => setSelectedDep(null)}>
+                                        <XCircle size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="modal-body logs-body">
+                                <div className="log-container">
+                                    {selectedDep.logs.length > 0 ? (
+                                        selectedDep.logs.map((line, i) => (
+                                            <div key={i} className="log-line">
+                                                <span className="log-num">{i + 1}</span>
+                                                <span className="log-text">{line}</span>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="empty-logs">No logs available for this deployment.</div>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
             </AnimatePresence>
         </div>
     );
