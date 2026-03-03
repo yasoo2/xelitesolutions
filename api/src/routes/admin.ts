@@ -3,6 +3,7 @@ import { authenticate, requireSuperAdmin } from '../middleware/auth';
 import { Deployment } from '../models/deployment';
 import { deployManager } from '../services/DeployManager';
 import { execSync } from 'child_process';
+import { User } from '../models/user';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -189,6 +190,59 @@ router.post('/system/backup', async (req, res) => {
                 res.status(500).json({ error: 'Backup failed', output });
             }
         });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ═══════════════════════════════════════════════
+// USER / ADMIN MANAGEMENT
+// ═══════════════════════════════════════════════
+
+router.get('/users', async (req, res) => {
+    try {
+        const { search, role } = req.query;
+        let query: any = {};
+
+        if (search) {
+            query.$or = [
+                { email: { $regex: search, $options: 'i' } },
+                { name: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        if (role) {
+            query.role = role;
+        }
+
+        const users = await User.find(query)
+            .select('-passwordHash')
+            .sort({ createdAt: -1 })
+            .limit(100);
+
+        res.json(users);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.patch('/users/:id/role', async (req, res) => {
+    try {
+        const { role } = req.body;
+        if (!['OWNER', 'ADMIN', 'USER', 'SUPER_ADMIN'].includes(role)) {
+            return res.status(400).json({ error: 'Invalid role' });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.params.id,
+            { role },
+            { new: true }
+        ).select('-passwordHash');
+
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        logger.info(`[AdminAPI] User ${user.email} role updated to ${role} by ${(req as any).auth?.email}`);
+        res.json(user);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
