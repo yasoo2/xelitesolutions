@@ -97,13 +97,31 @@ router.post('/settings/notifications', async (req, res) => {
 // ═══════════════════════════════════════════════
 // SYSTEM HEALTH & METRICS
 // ═══════════════════════════════════════════════
+import os from 'os';
 
 router.get('/system/health', async (req, res) => {
     try {
-        // CPU & Memory
-        const cpuInfo = execSync("top -bn1 | grep 'Cpu(s)' | awk '{print $2}' || echo '0'").toString().trim();
-        const memInfo = execSync("free -m | awk 'NR==2{printf \"%s/%s (%.1f%%)\", $3,$2,$3*100/$2}'").toString().trim();
-        const diskInfo = execSync("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'").toString().trim();
+        // CPU & Memory using Node's built-in OS module (avoids missing 'top'/'free' in Alpine/Slim images)
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+        const memPercent = (usedMem / totalMem) * 100;
+        const memInfo = `${(usedMem / 1024 / 1024 / 1024).toFixed(1)}GB/${(totalMem / 1024 / 1024 / 1024).toFixed(1)}GB (${memPercent.toFixed(1)}%)`;
+
+        const cpus = os.cpus();
+        let totalIdle = 0, totalTick = 0;
+        cpus.forEach(cpu => {
+            for (let type in cpu.times) {
+                totalTick += cpu.times[type as keyof typeof cpu.times];
+            }
+            totalIdle += cpu.times.idle;
+        });
+        const cpuInfo = (((totalTick - totalIdle) / totalTick) * 100).toFixed(1);
+
+        let diskInfo = 'Unknown';
+        try {
+            diskInfo = execSync("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'").toString().trim();
+        } catch { }
 
         // Docker stats
         let containers: any[] = [];
