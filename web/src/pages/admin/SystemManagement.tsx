@@ -81,7 +81,7 @@ export default function SystemManagement() {
     const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
     // Deployments State
-    const [deployments, set Deployments] = useState<Deployment[]>([]);
+    const [deployments, setDeployments] = useState<Deployment[]>([]);
     const [isDeploying, setIsDeploying] = useState(false);
     const [selectedDep, setSelectedDep] = useState<Deployment | null>(null);
 
