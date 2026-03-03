@@ -812,7 +812,7 @@ export default function SystemManagement() {
 
             <div className="mgmt-header">
                 <div className="mgmt-title-row">
-                    <button className="btn-back" onClick={() => navigate('/')} title="العودة إلى مساحة العمل">
+                    <button className="btn-back" onClick={() => navigate('/joe')} title="العودة إلى مساحة العمل">
                         <ArrowRight size={18} style={{ marginRight: 6 }} /> رجوع للخلف
                     </button>
                     <div className="joe-logo-badge">J</div>
