@@ -484,14 +484,14 @@ export default function SystemManagement() {
                     display: flex;
                     align-items: center;
                     flex: 1;
-                    justify-content: flex-start;
+                    justify-content: flex-end;
                 }
                 .mgmt-title-row {
                     display: flex;
                     align-items: center;
                     gap: 20px;
                     flex: 1;
-                    justify-content: flex-end;
+                    justify-content: flex-start;
                 }
                 .joe-logo-badge {
                     width: 50px;
@@ -836,10 +836,12 @@ export default function SystemManagement() {
             `}</style>
 
             <div className="mgmt-header">
-                <div className="mgmt-back-container">
-                    <button className="btn-back" onClick={() => navigate('/joe')} title="العودة إلى مساحة العمل">
-                        <ArrowRight size={18} style={{ marginRight: 6 }} /> رجوع للخلف
-                    </button>
+                <div className="mgmt-title-row">
+                    <div className="joe-logo-badge">J</div>
+                    <div className="mgmt-title">
+                        <h1>⚙️ System Management</h1>
+                        <p className="mgmt-subtitle">Joe Autonomous Infrastructure Control</p>
+                    </div>
                 </div>
                 <div className="mgmt-tabs">
                     <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
@@ -852,12 +854,10 @@ export default function SystemManagement() {
                         <Shield size={16} /> Admins
                     </button>
                 </div>
-                <div className="mgmt-title-row">
-                    <div className="joe-logo-badge">J</div>
-                    <div className="mgmt-title">
-                        <h1>⚙️ System Management</h1>
-                        <p className="mgmt-subtitle">Joe Autonomous Infrastructure Control</p>
-                    </div>
+                <div className="mgmt-back-container">
+                    <button className="btn-back" onClick={() => navigate('/joe')} title="العودة إلى مساحة العمل">
+                        <ArrowRight size={18} style={{ marginRight: 6 }} /> رجوع للخلف
+                    </button>
                 </div>
             </div>
 
