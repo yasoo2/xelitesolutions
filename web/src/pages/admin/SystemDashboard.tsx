@@ -2,10 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Cpu, MemoryStick, HardDrive, Database, Container,
+    Cpu, Gauge, HardDrive, Database,
     RefreshCw, Download, Shield, Activity, ArrowLeft,
-    CheckCircle, XCircle, Clock, Server, Wifi,
-    ChevronDown, ChevronUp
+    Server, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { API_URL } from '../../config';
 
@@ -429,7 +428,7 @@ export default function SystemDashboard() {
                     {/* Memory */}
                     <div className="stat-card memory">
                         <div className="stat-icon">
-                            <MemoryStick size={18} color="#a78bfa" />
+                            <Gauge size={18} color="#a78bfa" />
                             <span className="stat-label">Memory</span>
                         </div>
                         <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.memory)) }}>
