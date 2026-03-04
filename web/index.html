@@ -19,10 +19,24 @@
 
   <!-- Externalized heavy dependencies to prevent CI Vite OOM -->
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
-  <script src="https://unpkg.com/reactflow@11.10.3/dist/esm/index.js" type="module"></script>
+
+  <script>
+    // Guard against Monaco's AMD loader (loader.js) conflicts with UMD libraries
+    // We temporarily disable define.amd to force libraries into UMD/Global mode
+    window._tempDefine = window.define;
+    window.define = undefined;
+  </script>
+
+  <script src="https://unpkg.com/reactflow@11.10.3/dist/reactflow.min.js"></script>
   <script src="https://unpkg.com/react-force-graph-2d@1.25.1/dist/react-force-graph-2d.min.js"></script>
   <script src="https://unpkg.com/react-force-graph-3d@1.24.1/dist/react-force-graph-3d.min.js"></script>
+
+  <script>
+    // Restore define for Monaco loader
+    window.define = window._tempDefine;
+  </script>
+
+  <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
 
   <script src="/config.js"></script>
   <script type="module" src="/src/main.tsx"></script>
