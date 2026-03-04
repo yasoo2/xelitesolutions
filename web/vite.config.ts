@@ -128,21 +128,13 @@ export default defineConfig({
       maxParallelFileOps: 1, // Single-threaded to minimize RAM usage during AST-heavy transformation
       cache: false,
       external: [
-        'three',
         '@monaco-editor/react',
-        'reactflow',
         'monaco-editor',
-        'react-force-graph-2d',
-        'react-force-graph-3d'
-      ], // Externalize heavy AST-crushing modules
+      ],
       plugins: [
         externalGlobals({
-          'three': 'THREE',
           '@monaco-editor/react': 'monaco',
-          'reactflow': 'ReactFlow',
           'monaco-editor': 'monaco',
-          'react-force-graph-2d': 'ForceGraph2D',
-          'react-force-graph-3d': 'ForceGraph3D'
         })
       ],
       output: {
