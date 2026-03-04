@@ -1142,6 +1142,17 @@ function fallbackPlanWhenPlannerUnavailable(params: {
       }
       return null;
     }
+
+    if (hasProjectDetect) {
+      return {
+        name: 'echo',
+        input: {
+          text: isArabicText(userText)
+            ? '⚠️ المزوّد الذكي غير متصل أو فشل في الاستجابة (تأكد من إعدادات API Key). النظام عالق لأنه لا يمكنه إكمال التخطيط بدون الذكاء الاصطناعي.'
+            : '⚠️ The LLM provider is offline or failed to respond (check API Key). The system is stuck because it cannot plan without AI.',
+        }
+      } as any;
+    }
   }
 
   if (stopProjectDetectRepeats) {
