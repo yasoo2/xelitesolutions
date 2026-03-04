@@ -365,12 +365,34 @@ export class AgentOrchestrator {
     async buildApplication(description: string): Promise<{
         plan: ProjectPlan;
         results: AgentResult[];
-
         totalFiles: number;
     }> {
         console.info(`[Orchestrator] Building application: ${description}`);
 
-        // Step 1: Create plan
+        // JOE PRO PROTOCOL: For complex "Elite" build requests, bypass standard task-by-task execution
+        // and let JoeAgent handle the entire project lifecycle autonomously.
+        const isEliteRequest = /\belite\b|\bpro\b|\bcomprehensive\b|\bmaster\b/i.test(description);
+
+        if (isEliteRequest) {
+            console.info(`[Orchestrator] Elite Request detected. Invoking JoeAgent for autonomous construction.`);
+            const joeTask: AgentTask = {
+                id: 'joe_ignite',
+                type: 'project_ignition',
+                description,
+                input: {},
+                priority: 10
+            };
+            const joeAgent = this.agents.get('JoeAgent')!;
+            const joeResult = await joeAgent.execute(joeTask);
+
+            return {
+                plan: { goal: description, projectType: 'fullstack', techStack: {}, tasks: [joeTask], timeline: 'unknown' },
+                results: [joeResult],
+                totalFiles: (joeResult.output as any)?.filesCreated || 0
+            };
+        }
+
+        // Standard task-by-task execution for simple requests
         const planTask: AgentTask = {
             id: 'plan_task',
             type: 'planning',
@@ -425,6 +447,11 @@ export class AgentOrchestrator {
     }
 
     private findAgentForTask(task: AgentTask): Agent | undefined {
+        // Route ignition to Joe
+        if (task.type === 'project_ignition') {
+            return this.agents.get('JoeAgent');
+        }
+
         // Simple mapping - can be made more sophisticated
         if (task.type.includes('frontend') || task.type.includes('backend') || task.type.includes('api') || task.type.includes('ui')) {
             return this.agents.get('CodeGeneratorAgent');
@@ -436,6 +463,7 @@ export class AgentOrchestrator {
 
         return this.agents.get('CodeGeneratorAgent'); // Default
     }
+
 }
 
 export const orchestrator = new AgentOrchestrator();
