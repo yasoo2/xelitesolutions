@@ -1,3 +1,4 @@
+import { URL } from 'url';
 
 /**
  * Shared URL normalization logic for browser navigation.
@@ -112,6 +113,18 @@ export function normalizeUrlForGoto(raw: any, baseUrl?: string) {
     }
 
     const cleanCandidate = candidate.replace(/^\/\//, '');
+
+    // Catch hallucinated local file URLs like "http://www.index.html" or "index.html"
+    if (/\.(html|htm|php|jsp|asp|tsx|jsx|vue|svelte|css|js)$/i.test(cleanCandidate) || /www\.[^\s\/]+\.[a-z]{2,5}\/?$/i.test(cleanCandidate)) {
+        // If it's literally referring to a file, assume localhost development
+        if (cleanCandidate.startsWith('www.')) {
+            const filename = cleanCandidate.replace(/^www\./i, '').replace(/\/$/, '');
+            if (filename.includes('.html') || filename.includes('.htm')) {
+                return `http://localhost:3000/${filename}`;
+            }
+        }
+    }
+
     const looksDomain =
         /^(?:www\.)?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})+(?::\d+)?(?:\/[^\s"'<>]*)?$/i.test(cleanCandidate);
 
