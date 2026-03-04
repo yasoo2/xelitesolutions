@@ -3,6 +3,8 @@
  * Coordinates multiple specialized agents to build complete applications
  */
 
+import { ManusAgent as ManusCore } from './ManusAgent';
+
 export interface Agent {
     name: string;
     role: string;
@@ -320,6 +322,27 @@ class TestGeneratorAgent implements Agent {
 }
 
 /**
+ * Manus Agent - The Unstoppable Constructor
+ */
+class ManusAgent implements Agent {
+    name = 'ManusAgent';
+    role = 'Master Architect & Autonomous Constructor';
+    capabilities = ['autonomous_build', 'elite_design', 'self_healing', 'project_ignition'];
+
+    async execute(task: AgentTask): Promise<AgentResult> {
+        const manus = new ManusCore(task.context?.rootDir || process.cwd());
+        const result = await manus.ignite(task.description);
+
+        return {
+            taskId: task.id,
+            success: result.success,
+            output: result,
+            error: result.finalError
+        };
+    }
+}
+
+/**
  * Orchestrator - Coordinates all agents
  */
 export class AgentOrchestrator {
@@ -333,6 +356,7 @@ export class AgentOrchestrator {
         this.registerAgent(new PlannerAgent());
         this.registerAgent(new CodeGeneratorAgent());
         this.registerAgent(new TestGeneratorAgent());
+        this.registerAgent(new ManusAgent());
     }
 
     registerAgent(agent: Agent) {
