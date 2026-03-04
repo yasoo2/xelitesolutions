@@ -1,9 +1,9 @@
-import { pollinationsProvider } from '../llm/providers/registry';
+import intelligentRouter from '../llm/intelligent-router';
 
 export class ArchitectAgent {
 
     constructor() {
-        // No API key needed for Pollinations
+        // No setup needed
     }
 
     async planProject(goal: string, context: string = ''): Promise<string> {
@@ -27,9 +27,9 @@ User Goal: ${goal}
 Context: ${context}`;
 
         try {
-            const response = await pollinationsProvider.chatComplete([
+            const response = await intelligentRouter.routeToModel([
                 { role: 'system', content: systemPrompt }
-            ], 'openai'); // 'openai' model alias in Pollinations usually maps to GPT-4o or equivalent
+            ]);
 
             return response || 'Failed to generate plan.';
         } catch (e: any) {
