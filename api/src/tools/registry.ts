@@ -2,10 +2,7 @@
 import { ToolDefinition } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
 import { MemoryTools } from './definitions/MemoryTool';
-import { GenesisAgent } from '../agents/GenesisAgent';
 
-import { GenesisBuilderTool } from './definitions/GenesisBuilderTool';
-import { GenesisToolDef } from './definitions/GenesisTool';
 import { VisualQATool } from './definitions/VisualQATool';
 import { ImageGenerationTool } from './definitions/ImageGenerationTool';
 import { CodebaseNavigatorTool } from './definitions/CodebaseNavigatorTool';
@@ -90,32 +87,6 @@ export const tools: ToolDefinition[] = [
   VisualQATool,
   ...MemoryTools,
   ArchitectTool,
-
-  // --- Genesis ---
-  {
-    ...GenesisToolDef,
-    permissions: GenesisToolDef.permissions as any,
-    sideEffects: GenesisToolDef.sideEffects as any,
-    execute: async (input) => {
-      const logs: string[] = [];
-      const goal = input.goal;
-      logs.push(`🌌 Genesis Activated: "${goal}"`);
-      try {
-        const genesis = new GenesisAgent();
-        const { plan, steps } = await genesis.orchestrate(goal);
-        logs.push(`📜 Plan Generated (${plan.length} chars)`);
-        // Hand off to TaskLoop via ToolService (Dynamic Import to avoid cycle)
-        const { executeTool } = require('../services/ToolService');
-        return executeTool('task_loop', {
-          goal: `Genesis Execution: ${goal}`,
-          steps: steps,
-          maxIterations: 50
-        });
-      } catch (e: any) {
-        return { ok: false, error: `Genesis Failed: ${e.message}`, logs };
-      }
-    }
-  },
 
   // --- Web Development ---
   new WebPipelineTool(),
@@ -218,7 +189,6 @@ export const tools: ToolDefinition[] = [
   new DeadCodeTool(),
   new MobileBuilderTool(),
 
-  new GenesisBuilderTool(),
   new PaymentsTool(),
   // --- Screenshot & Visual QA ---
   new ScreenshotTool(),

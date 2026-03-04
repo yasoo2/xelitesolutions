@@ -24,7 +24,6 @@ const {
   matchPatternWithContext,
 } = require("./llm/context-engine");
 const { longTermMemory } = require("./memory/long-term-memory");
-const { orchestrator } = require("./agents/orchestrator");
 const { analyzeContext } = require("./intelligence/context-analyzer");
 
 // Initialize OpenAI client

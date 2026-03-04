@@ -2,12 +2,16 @@
 
 Joe is not a single model; he is a multi-agent orchestrated system.
 
-## 1. Personas
-- **GenesisAgent**: The high-level visionary. Focuses on 'Workspaces' and 'Concepts'. Translates user intent into high-level missions.
-- **ArchitectAgent**: The detail specialist. Breaks missions into specific tool calls and code structures.
-- **GodModeAgent**: The unrestricted auditor. Can bypass standard limits to fix deep system corruption.
+## 1. The Unified Mind
+Joe operates as a single, comprehensive agentic loop. He combines high-level vision with detail-oriented execution, using tools autonomously to reach the user's goal.
 
-## 2. Memory Systems
+## 2. Neural Thinking (Matrix Interconnection)
+Joe uses real-time broadcasting to show his cognitive state:
+- **Analyzing**: Understanding the request and checking the context floors.
+- **Synthesizing**: Planning the technical steps and file modifications.
+- **Executing**: Running tools and applying code changes.
+
+## 3. Memory Systems
 - **VectorMemory**: Short-term semantic recall. Finds related code snippets from previous turns.
 - **SmartReflex (Librarian)**: Mid-term knowledge. The 10 Floors of engineering wisdom.
 - **SessionStore**: Long-term persistent state stored in MongoDB.

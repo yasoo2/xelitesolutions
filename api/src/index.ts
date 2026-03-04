@@ -23,13 +23,9 @@ import packagesRoutes from './routes/packages';
 import gitRoutes from './routes/git';
 import githubRoutes from './routes/github';
 
-import databaseRoutes from './routes/database';
-import actionsRoutes from './routes/actions';
 import browserRoutes from './routes/browser';
 import serverRoutes from './routes/servers';
-import queueRoutes from './routes/queue';
 import workspacesRoutes from './routes/workspaces';
-import godmodeRoutes from './routes/godmode';
 import adminRoutes from './routes/admin';
 import webhooksRoutes from './routes/webhooks';
 import { healthcheckBrowser } from './browser/manager';
@@ -196,13 +192,9 @@ async function main() {
   apiRouter.use('/git', gitRoutes);
   apiRouter.use('/github', githubRoutes);
 
-  apiRouter.use('/database', databaseRoutes);
-  apiRouter.use('/actions', actionsRoutes);
   apiRouter.use('/browser', browserRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);
-  apiRouter.use('/queue', queueRoutes);
   apiRouter.use('/workspaces', workspacesRoutes);
-  apiRouter.use('/godmode', godmodeRoutes);
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/webhooks', webhooksRoutes);
 
