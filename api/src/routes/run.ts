@@ -2103,33 +2103,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               // No readable files found, give context to LLM
               fullPromptText = `[ACTIVE PROJECT]\nPath: ${activeProject.path}\n\n[USER REQUEST]\n${rawUserText}\n\nIMPORTANT: Modify the existing project at the path above. Use read_file to inspect files, then write_file or file_edit to make changes.`;
             }
-          } else if (isClearBuildRequest) {
-            console.info('[AGENT MODE] 🔥 Build request detected — bypassing LLM chat, forcing autonomous build pipeline!');
-            const buildName = extractBuildName(rawUserText);
-            const buildType = /(?:متجر|store|shop|ecommerce|دكان)/i.test(rawUserText) ? 'ecommerce' : 'saas';
-
-            broadcastThinkingPhase(String(sessionId), 'executing', `🚀 بناء المشروع: ${buildName}`);
-            broadcastThinkingDetail(String(sessionId), `> [AGENT] Detected build intent → Executing website_full_pipeline for "${buildName}" (${buildType})`);
-
-            // [Premium Task Tracker] Emit tasks for build
-            let trackerTasks = [
-              { id: 'build_req', content: 'تحليل متطلبات المشروع 🔍', status: 'in_progress' },
-              { id: 'build_plan', content: 'استكشاف وتخطيط الهيكلية 🏗️', status: 'pending' },
-              { id: 'build_exec', content: 'بناء وهندسة النظام ⚙️', status: 'pending' }
-            ];
-            ev({ type: 'todo_update', data: { merge: false, todos: trackerTasks, timestamp: new Date().toISOString() } });
-
-            initialPlan = {
-              name: 'website_full_pipeline',
-              input: {
-                name: buildName,
-                type: buildType,
-                features: [], // Remove hardcoded features to allow smarter tool inference or cleaner starts
-                language: /[\u0600-\u06FF]/.test(rawUserText) ? 'ar' : 'en',
-                description: rawUserText
-              }
-            } as any;
           } else {
+            // [FIX] Route ALL requests (including build) through the LLM planner with tool-calling.
+            // The previous bypass (`isClearBuildRequest`) skipped tool-calling and generated
+            // text plans that couldn't execute. Now the LLM uses actual tools (write_file, etc.)
+            console.info('[AGENT MODE] Routing to LLM planner with tool-calling enabled');
             // Non-build request: use LLM for planning
             const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
             if ((!hasAnyKey && !isFreeProvider) || providerKey === 'llm') {
