@@ -49,8 +49,8 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
     }
   }, [details, visible]);
 
-  if (!visible && details.length === 0) return null;
-  if (phase === 'idle' && details.length === 0) return null; // [Wakil 6.1] Absolute clean when idle
+  if (!visible && details.length === 0 && currentPhase === 'idle') return null;
+  if (currentPhase === 'idle' && details.length === 0) return null; // [Wakil 6.1] Absolute clean when idle
 
   const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
   const isMatrixMode = details.length > 0;
@@ -64,9 +64,11 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           position: relative;
           flex-direction: column;
           gap: 0;
-          background: transparent;
-          border: none;
-          backdrop-filter: none;
+          background: rgba(0, 0, 0, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          padding: 8px 12px;
+          backdrop-filter: blur(8px);
           overflow: hidden;
           transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
           margin-bottom: 8px;
@@ -76,10 +78,12 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
 
         .neural-container.bubble {
           margin-bottom: 0px;
+          background: rgba(20, 25, 32, 0.8);
+          border-color: rgba(240, 193, 75, 0.2);
         }
 
         .neural-container.expanded {
-          box-shadow: none;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
         }
 
         .neural-header {

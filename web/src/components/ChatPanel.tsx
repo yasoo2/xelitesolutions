@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 import TaskTracker from './TaskTracker';
+import TodosPanel from './TodosPanel';
 
 import { SocketService } from '../services/socket';
 
@@ -237,8 +238,11 @@ export default function ChatPanel({
                     {children}
                 </div>
             ) : (
-                <div className="joe-chat-input-area">
-                    <div className="joe-chat-input-wrapper">
+                <div className="joe-chat-input-area" style={{ position: 'relative' }}>
+                    <div className="joe-chat-input-wrapper" style={{ position: 'relative' }}>
+                        <div style={{ position: 'absolute', bottom: 'calc(100% + 12px)', right: 0, zIndex: 100 }}>
+                            <TodosPanel />
+                        </div>
                         <textarea
                             ref={inputRef}
                             value={inputValue}

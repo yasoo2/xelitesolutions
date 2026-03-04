@@ -352,8 +352,6 @@ export default function JoeIDELayout({
                             {workspaceChildren}
                         </WorkspacePanel>
 
-                        {/* Overlay Agent Tasks */}
-                        <TodosPanel sessionId={sessionId} />
                     </div>
                 </ErrorBoundary>
 

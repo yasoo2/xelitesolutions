@@ -2579,33 +2579,37 @@
 
 /* ========== Agent Todos Panel (Phase 18) ========== */
 .joe-todos-panel {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 320px;
-    max-height: calc(100% - 32px);
+    width: 380px;
+    max-height: 400px;
     background: var(--joe-bg-card);
     border: 1px solid var(--joe-border);
-    border-radius: var(--joe-border-radius-sm);
-    box-shadow: var(--joe-shadow-lg), 0 0 20px rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     display: flex;
     flex-direction: column;
     z-index: 50;
-    transition: all var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
+    transform-origin: bottom right;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    margin-right: 16px;
+    margin-bottom: 8px;
 }
 
 .joe-todos-panel.collapsed {
     height: 48px;
-    /* Just the header */
     width: 240px;
 }
 
+/* Hide automatically when all done */
 .joe-todos-panel.all-done {
-    border-color: rgba(16, 185, 129, 0.4);
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+    pointer-events: none;
+    visibility: hidden;
 }
 
 .joe-todos-header {
