@@ -3,15 +3,15 @@ import { AutonomousLoopEngine, LoopTask, LoopResult } from './AutonomousLoopEngi
 import { ArchitectAgent } from './ArchitectAgent';
 
 /**
- * ManusAgent - The Master Architect & Unstoppable Sweeper
+ * JoeAgent - The Advanced Autonomous Construction Engine
  * 
- * Inspired by the "Manus" persona:
+ * Evolution of the Joe system:
  * - High Autonomy: Zero human intervention.
- * - Tool Mastery: Expert use of the entire toolset.
+ * - Tool Mastery: Expert use of the existing Joe toolset.
  * - Elite Standards: Built-in focus on Floor 6 (Premium UI/UX).
  * - Self-Healing: Proactive error recovery via Wolverine mode.
  */
-export class ManusAgent {
+export class JoeAgent {
     private architect: ArchitectAgent;
     private rootDir: string;
 
@@ -21,28 +21,28 @@ export class ManusAgent {
     }
 
     /**
-     * The Manus Pulse - Execute a project from a single spark of an idea
+     * Joe Pro Ignite - Execute a project from a single spark of an idea
      */
     async ignite(goal: string): Promise<LoopResult> {
-        console.log(`\n🪐 MANUS PROTOCOL ACTIVATED: "${goal}"\n`);
-        console.log(`[Manus] Initialization of the Master Architect...`);
+        console.log(`\n🪐 JOE PRO PROTOCOL ACTIVATED: "${goal}"\n`);
+        console.log(`[Joe] Recalling core engineering blueprints...`);
 
-        // 1. Intellectual Scoping & Grand Architecture
-        const planMarkdown = await this.architect.planProject(goal, "Context: Elite Design, High Autonomy, Manus Mindset.");
-        console.log(`[Manus] Grand Architecture defined.`);
+        // 1. Intellectual Scoping & Grand Architecture (Evolution of current brain)
+        const planMarkdown = await this.architect.planProject(goal, "Context: Joe Advanced Design, High Autonomy, Master Architect Mindset.");
+        console.log(`[Joe] Grand Architecture defined via evolved brain.`);
 
         // 2. Initialize the Unstoppable Engine
         const engine = new AutonomousLoopEngine(
             this.rootDir,
             {
-                maxIterations: 200, // Sufficient for massive systems
+                maxIterations: 200,
                 enableWolverine: true,
                 enableCheckpointing: true,
                 circuitBreakerThreshold: 15
             }
         );
 
-        // 3. Define the Unstoppable Pipeline
+        // 3. Define the Unstoppable Pipeline (Mastery of established tools)
         const tasks: LoopTask[] = [
             {
                 name: 'System Analysis & Blueprinting',
@@ -51,65 +51,65 @@ export class ManusAgent {
                 customExecute: async () => ({ ok: !!planMarkdown, output: { plan: planMarkdown } })
             },
             {
-                name: 'Elite Project Scaffolding',
+                name: 'Joe Elite Scaffolding',
                 phase: 'build',
                 tool: 'scaffold_project',
                 args: { baseDir: this.rootDir, template: 'elite-fullstack' },
                 required: true
             },
             {
-                name: 'Knowledge Injection',
+                name: 'Brain Integration & Knowledge Sync',
                 phase: 'plan',
                 tool: 'grep_search',
                 args: { query: 'boilerplate', searchPath: 'knowledge/blueprints' },
                 required: false
             },
             {
-                name: 'Primary Module Construction',
+                name: 'Core Module Construction',
                 phase: 'build',
                 required: true,
                 customExecute: async () => {
-                    const pm = new ProjectManagerAgent("Manus-Constructor", this.rootDir);
+                    const pm = new ProjectManagerAgent("Joe-Constructor", this.rootDir);
                     await pm.init();
                     const res = await pm.execute(`Implement the core modules as per the plan: ${planMarkdown}`);
                     return { ok: res.status === 'completed', output: res.reasoning };
                 }
             },
             {
-                name: 'Infrastructure & Dependency Lockdown',
+                name: 'Dependency & Infrastructure Alignment',
                 phase: 'build',
                 tool: 'npm_manager',
                 args: { command: 'install' },
                 required: true
             },
             {
-                name: 'Quality Run: Elite UI Refinement',
+                name: 'Joe Quality Run: UI/UX Masterclass',
                 phase: 'build',
                 required: true,
                 customExecute: async () => {
-                    const pm = new ProjectManagerAgent("Manus-Designer", this.rootDir);
+                    const pm = new ProjectManagerAgent("Joe-Designer", this.rootDir);
                     await pm.init();
-                    const res = await pm.execute(`Verify every UI component for Elite standards: 
+                    const res = await pm.execute(`Verify every UI component for Joe Elite standards: 
                         Gradients, Glassmorphism, Responsive design, and Micro-animations.`);
                     return { ok: res.status === 'completed', output: res.reasoning };
                 }
             },
             {
-                name: 'Visual Verification Loop',
+                name: 'Visual Verification Loop (Joe Eye)',
                 phase: 'test',
                 tool: 'browser_subagent',
                 args: { task: "Verify the rendered UI locally. Fix any misalignments or color mismatches." },
                 required: false
             },
             {
-                name: 'Integrity Shield: Testing & QA',
+                name: 'Integrity Shield: Global QA',
                 phase: 'test',
                 tool: 'auto_tester',
                 args: { testType: 'full', projectPath: this.rootDir },
                 required: true
             },
             {
-                name: 'Final Architecture Audit',
+                name: 'Final Architecture Integrity Audit',
                 phase: 'test',
                 tool: 'analyze_codebase',
                 args: { path: this.rootDir },
@@ -117,15 +117,16 @@ export class ManusAgent {
             }
         ];
 
-        console.log(`[Manus] Starting autonomous construction loop...`);
+        console.log(`[Joe] Starting autonomous construction loop...`);
         const result = await engine.executeLoop(tasks);
 
         if (result.success) {
-            console.log(`\n🏆 MANUS VICTORY: Project completed with Elite honors.`);
+            console.log(`\n🏆 JOE PRO VICTORY: Project completed with Elite honors.`);
         } else {
-            console.log(`\n🥀 MANUS STALLED: Loop terminated. Reason: ${result.finalError}`);
+            console.log(`\n🥀 JOE PRO STALLED: Loop terminated. Reason: ${result.finalError}`);
         }
 
         return result;
     }
 }
+

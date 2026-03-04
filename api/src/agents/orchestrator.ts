@@ -1,9 +1,4 @@
-/**
- * Agent Orchestration System
- * Coordinates multiple specialized agents to build complete applications
- */
-
-import { ManusAgent as ManusCore } from './ManusAgent';
+import { JoeAgent as JoeCore } from './JoeAgent';
 
 export interface Agent {
     name: string;
@@ -322,16 +317,16 @@ class TestGeneratorAgent implements Agent {
 }
 
 /**
- * Manus Agent - The Unstoppable Constructor
+ * Joe Agent - The Unstoppable Constructor
  */
-class ManusAgent implements Agent {
-    name = 'ManusAgent';
+class JoeAgent implements Agent {
+    name = 'JoeAgent';
     role = 'Master Architect & Autonomous Constructor';
     capabilities = ['autonomous_build', 'elite_design', 'self_healing', 'project_ignition'];
 
     async execute(task: AgentTask): Promise<AgentResult> {
-        const manus = new ManusCore(task.context?.rootDir || process.cwd());
-        const result = await manus.ignite(task.description);
+        const joe = new JoeCore(task.context?.rootDir || process.cwd());
+        const result = await joe.ignite(task.description);
 
         return {
             taskId: task.id,
@@ -356,7 +351,7 @@ export class AgentOrchestrator {
         this.registerAgent(new PlannerAgent());
         this.registerAgent(new CodeGeneratorAgent());
         this.registerAgent(new TestGeneratorAgent());
-        this.registerAgent(new ManusAgent());
+        this.registerAgent(new JoeAgent());
     }
 
     registerAgent(agent: Agent) {
@@ -370,6 +365,7 @@ export class AgentOrchestrator {
     async buildApplication(description: string): Promise<{
         plan: ProjectPlan;
         results: AgentResult[];
+
         totalFiles: number;
     }> {
         console.info(`[Orchestrator] Building application: ${description}`);
