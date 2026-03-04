@@ -152,7 +152,12 @@ OR
                         requiresTools: true,
                         estimatedTokens: 3000,
                         language: analyzeTask(goal).language,
-                    }
+                    },
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    tools as any
                 );
 
                 const jsonStr = extractJsonLike(responseText);

@@ -1631,7 +1631,10 @@ export async function planNextStep(
           msgs,
           analysis,
           undefined,
+          undefined,
+          options?.onProgress,
           options?.onThought,
+          tools
         );
         return {
           name: "echo",
@@ -1715,7 +1718,10 @@ export async function planNextStep(
           msgs,
           analysis,
           undefined,
+          undefined,
+          options?.onProgress,
           options?.onThought,
+          tools
         );
       }
 

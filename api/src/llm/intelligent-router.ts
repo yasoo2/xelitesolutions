@@ -503,7 +503,8 @@ export async function routeToModel(
     availableKeys?: { anthropic?: string; openai?: string; groq?: string; },
     onPartial?: (delta: string) => void,
     onProgress?: (msg: string) => void,
-    onThought?: (msg: string) => void
+    onThought?: (msg: string) => void,
+    tools?: any[]
 ): Promise<string> {
 
     // Flatten multimodal messages for text-only providers (and for analysis)
@@ -599,7 +600,7 @@ export async function routeToModel(
         meshProviders.push({
             name: 'Pollinations (Forced)',
             run: async () => {
-                const res = await pollinationsProvider.chatComplete(effectiveMessages, 'gpt-4o');
+                const res = await pollinationsProvider.chatComplete(effectiveMessages, 'gpt-4o', 3, tools);
                 if (!res || res.length < 5) throw new Error('Pollinations response too short');
                 return res;
             }
@@ -620,6 +621,7 @@ export async function routeToModel(
             name: 'Groq (Free)',
             run: async () => {
                 const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.1-70b-versatile';
+                // Note: Groq natively supports tool calling, but we use text-extraction fallback for now in callGroq
                 return await callGroq(model, flatMessages, onPartial);
             }
         });
@@ -630,7 +632,7 @@ export async function routeToModel(
         meshProviders.push({
             name: 'OpenAI (Direct)',
             run: async () => {
-                return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o');
+                return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o', tools);
             }
         });
     }
@@ -648,7 +650,7 @@ export async function routeToModel(
         meshProviders.push({
             name: 'Gemini (Backup)',
             run: async () => {
-                return await geminiProvider.chatComplete(effectiveMessages);
+                return await geminiProvider.chatComplete(effectiveMessages, 'gemini-1.5-pro', tools);
             }
         });
     }
@@ -657,7 +659,7 @@ export async function routeToModel(
     meshProviders.push({
         name: 'DeepSeek (Pollinations)',
         run: async () => {
-            return await deepSeekProvider.chatComplete(flatMessages);
+            return await deepSeekProvider.chatComplete(flatMessages); // DeepSeek typically text-based in this context
         }
     });
 
@@ -665,7 +667,7 @@ export async function routeToModel(
         meshProviders.push({
             name: 'Pollinations (Backup)',
             run: async () => {
-                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai');
+                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai', 3, tools);
                 if (!res || res.length < 5) throw new Error('Pollinations response too short');
                 return res;
             }
@@ -733,7 +735,7 @@ export async function routeToModel(
         if (localStrict) {
             return lastError || 'LOCAL_LLM_FAILED';
         }
-        const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai');
+        const finalAns = await pollinationsProvider.chatComplete(flatMessages, 'openai', 3, tools);
         const cleaned = cleanOutput(finalAns);
         if (cleaned && cleaned.length > 0) {
             if (!cacheDisabled && !hasSensitive && cleaned.length > 20) {

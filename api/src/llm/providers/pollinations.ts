@@ -19,21 +19,36 @@ export class PollinationsProvider {
         });
     }
 
-    async chatComplete(messages: any[], model: string = 'openai', retries: number = 3): Promise<string> {
+    async chatComplete(messages: any[], model: string = 'openai', retries: number = 3, tools?: any[]): Promise<string> {
         try {
-            const completion = await this.client.chat.completions.create({
+            const body: any = {
                 model: model,
                 messages: messages.map(m => ({
                     role: m.role,
                     content: m.content
                 })) as any,
-            }, { timeout: 30000 }); // 30s timeout
+            };
+
+            if (tools && tools.length > 0) {
+                body.tools = tools;
+                body.tool_choice = 'auto';
+            }
+
+            const completion = await this.client.chat.completions.create(body, { timeout: 30000 }); // 30s timeout
 
             const response = completion.choices[0]?.message?.content || '';
+            const toolCalls = completion.choices[0]?.message?.tool_calls;
+
+            if (toolCalls && toolCalls.length > 0) {
+                // Handle tool calls by returning them in a way the router or agent can parse
+                // Usually we stringify them or return them as part of the content
+                return JSON.stringify({ tool_calls: toolCalls });
+            }
+
             if (!response || response.length < 2) {
                 if (retries > 0) {
                     console.warn(`[Pollinations] Empty response, retrying... (${retries} left)`);
-                    return this.chatComplete(messages, model, retries - 1);
+                    return this.chatComplete(messages, model, retries - 1, tools);
                 }
             }
             return response;
@@ -43,7 +58,7 @@ export class PollinationsProvider {
                 const delay = error.status === 429 ? 3000 : 1500;
                 console.warn(`[Pollinations] Failed (${error.status || 'timeout'}), retrying in ${delay / 1000}s... (${retries} left)`);
                 await new Promise(resolve => setTimeout(resolve, delay));
-                return this.chatComplete(messages, model, retries - 1);
+                return this.chatComplete(messages, model, retries - 1, tools);
             }
             console.error("Pollinations Chat Failed:", error.message);
             return ""; // Return empty string to trigger router fallback correctly
