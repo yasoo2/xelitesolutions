@@ -4,7 +4,7 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider } from './providers/registry';
 import { LLMCacheTool } from '../tools/definitions/LLMCacheTool';
 
 let hack: any = pollinationsProvider;
@@ -621,6 +621,16 @@ export async function routeToModel(
             run: async () => {
                 const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.1-70b-versatile';
                 return await callGroq(model, flatMessages, onPartial);
+            }
+        });
+    }
+
+    // [ELITE ADDITION] Add real OpenAI direct provider as high-priority
+    if (openAIProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'OpenAI (Direct)',
+            run: async () => {
+                return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o');
             }
         });
     }
