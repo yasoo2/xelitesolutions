@@ -33,10 +33,16 @@ function getWorkspaceRoot() {
 
 function resolveToolPath(p: string) {
     const val = String(p ?? '').trim();
+    if (!val) return getWorkspaceRoot(); // Empty path = workspace root
     if (path.isAbsolute(val)) return val;
 
-    const { workspaceService } = require('../../services/WorkspaceService');
-    const root = workspaceService.getActiveRoot() || process.cwd();
+    let root: string;
+    try {
+        const { workspaceService } = require('../../services/WorkspaceService');
+        root = workspaceService.getActiveRoot() || getWorkspaceRoot();
+    } catch {
+        root = getWorkspaceRoot();
+    }
 
     // Default to resolving relative to workspace root
     const abs = path.resolve(root, val);
@@ -191,8 +197,9 @@ export class WriteFileTool extends BaseTool {
 
     async execute(input: any) {
         const logs: string[] = [];
-        const filename = String(input?.filename ?? '');
+        const filename = String(input?.filename ?? '').trim();
         const content = String(input?.content ?? '');
+        if (!filename) return { ok: false, error: 'filename is required', logs: [] };
         const full = resolveToolPath(filename);
 
         // Ensure directory exists
