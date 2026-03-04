@@ -963,13 +963,7 @@ export async function planNextStep(
         geminiProvider: defaultGemini,
       } = require("./llm/providers/gemini");
 
-      // Use the provided key if available, otherwise use the default singleton
-      let geminiOverride: any = null;
-      if (options?.apiKey) {
-        geminiOverride = new GeminiProvider(options.apiKey);
-      }
-
-      const activeGemini = geminiOverride || defaultGemini;
+      const activeGemini = defaultGemini; // NEVER use generic options.apiKey for Gemini to avoid hijacking OpenAI keys
 
       if (!activeGemini.isAvailable()) {
         console.warn("[LLM] Gemini: API key not configured, falling back to auto...");
