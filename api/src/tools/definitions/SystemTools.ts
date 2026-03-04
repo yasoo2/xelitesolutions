@@ -185,9 +185,10 @@ export class WriteFileTool extends BaseTool {
         type: 'object' as const,
         properties: {
             filename: { type: 'string' },
+            path: { type: 'string' },
             content: { type: 'string' }
         },
-        required: ['filename', 'content']
+        required: ['content']
     };
     outputSchema = { type: 'object' as const, properties: { success: { type: 'boolean' } } };
     permissions: ToolPermission[] = ['write'];
@@ -197,24 +198,24 @@ export class WriteFileTool extends BaseTool {
 
     async execute(input: any) {
         const logs: string[] = [];
-        const filename = String(input?.filename ?? '').trim();
+        const rawPath = String(input?.filename || input?.path || '').trim();
         const content = String(input?.content ?? '');
-        if (!filename) return { ok: false, error: 'filename is required', logs: [] };
-        const full = resolveToolPath(filename);
+        if (!rawPath) return { ok: false, error: 'filename or path is required', logs: [] };
+        const full = resolveToolPath(rawPath);
 
         // Ensure directory exists
         const dir = path.dirname(full);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
         fs.writeFileSync(full, content);
-        logs.push(`write=${filename}`);
+        logs.push(`write=${rawPath}`);
 
         // Broadcast diff event for UI (new file)
         const lines = content.split('\n');
         broadcast({
             type: 'diff',
             data: {
-                path: filename,
+                path: rawPath,
                 additions: lines.length,
                 deletions: 0,
                 lines: lines.map((line, i) => ({ type: 'add', content: line, lineNumber: i + 1 }))
