@@ -881,7 +881,7 @@ export async function planNextStep(
 ): Promise<{ name: string; input: any; reasoning?: string } | null> {
   const provider =
     options?.provider || getActiveProvider(options?.userId || "anonymous");
-  const providerKey = String(provider || "")
+  let providerKey = String(provider || "")
     .trim()
     .toLowerCase();
   console.info(
@@ -972,8 +972,8 @@ export async function planNextStep(
       const activeGemini = geminiOverride || defaultGemini;
 
       if (!activeGemini.isAvailable()) {
-        console.error("[LLM] Gemini: API key not configured");
-        // Fall through to auto mode
+        console.warn("[LLM] Gemini: API key not configured, falling back to auto...");
+        providerKey = "auto";
       } else {
         // Prepare messages with system prompt
         const msgs = [
