@@ -42,18 +42,26 @@ export class GeminiProvider {
 
     /**
      * Sanitizes a JSON schema for Gemini compatibility.
-     * Strips properties that Google's OpenAI-compatible endpoint often rejects.
+     * Aggressively strips ALL properties that Google's OpenAI-compatible endpoint rejects.
      */
-    private sanitizeSchema(schema: any): any {
+    private sanitizeSchema(schema: any, depth = 0): any {
         if (!schema || typeof schema !== 'object') return schema;
+        // Safety: prevent infinite recursion on circular refs
+        if (depth > 10) return { type: 'string' };
 
         const sanitized = { ...schema };
 
-        // Remove keywords known to cause 400 on Google's OpenAI proxy
+        // Remove ALL keywords known to cause 400 on Google's OpenAI proxy
         const forbidden = [
             'additionalProperties', 'pattern', 'allOf', 'anyOf', 'oneOf',
             'default', 'minItems', 'maxItems', 'minLength', 'maxLength',
-            'format', 'strict', 'example'
+            'format', 'strict', 'example', 'examples', '$ref', '$schema',
+            '$id', '$comment', 'title', 'readOnly', 'writeOnly',
+            'patternProperties', 'if', 'then', 'else', 'not',
+            'discriminator', 'externalDocs', 'xml', 'deprecated',
+            'nullable', 'exclusiveMinimum', 'exclusiveMaximum',
+            'multipleOf', 'uniqueItems', 'const', 'contentMediaType',
+            'contentEncoding', 'definitions', '$defs'
         ];
 
         for (const key of forbidden) {
@@ -64,17 +72,39 @@ export class GeminiProvider {
         if (sanitized.properties && typeof sanitized.properties === 'object') {
             const sanitizedProps: any = {};
             for (const [key, value] of Object.entries(sanitized.properties)) {
-                sanitizedProps[key] = this.sanitizeSchema(value);
+                sanitizedProps[key] = this.sanitizeSchema(value, depth + 1);
             }
             sanitized.properties = sanitizedProps;
         }
 
         // Recursively sanitize items for arrays
         if (sanitized.items && typeof sanitized.items === 'object') {
-            sanitized.items = this.sanitizeSchema(sanitized.items);
+            sanitized.items = this.sanitizeSchema(sanitized.items, depth + 1);
+        }
+
+        // Sanitize enum to only contain primitive string values
+        if (Array.isArray(sanitized.enum)) {
+            sanitized.enum = sanitized.enum.filter((v: any) => typeof v === 'string' || typeof v === 'number');
+            if (sanitized.enum.length === 0) delete sanitized.enum;
         }
 
         return sanitized;
+    }
+
+    /**
+     * Deep sanitize a tool definition for Gemini.
+     * Strips `strict` from the function level and sanitizes all schemas.
+     */
+    private sanitizeTool(tool: any): any {
+        if (tool.type === 'function' && tool.function) {
+            const fn = { ...tool.function };
+            delete fn.strict; // Gemini doesn't support OpenAI's strict mode
+            if (fn.parameters) {
+                fn.parameters = this.sanitizeSchema(fn.parameters);
+            }
+            return { type: 'function', function: fn };
+        }
+        return tool;
     }
 
     async chatComplete(
@@ -215,18 +245,7 @@ export class GeminiProvider {
         })();
         let lastError: any;
 
-        const sanitizedTools = tools.map((t: any) => {
-            if (t.type === 'function' && t.function && t.function.parameters) {
-                return {
-                    ...t,
-                    function: {
-                        ...t.function,
-                        parameters: this.sanitizeSchema(t.function.parameters)
-                    }
-                };
-            }
-            return t;
-        });
+        const sanitizedTools = tools.map((t: any) => this.sanitizeTool(t));
 
         for (const currentModel of modelsToTry) {
             try {
@@ -259,15 +278,24 @@ export class GeminiProvider {
                     throw error;
                 }
 
-                const errorDetail = await (async () => {
-                    try {
-                        const data = (error as any)?.response?.data ?? (error as any)?.data ?? (error as any)?.error;
-                        if (data == null) return error.message || 'No detail';
-                        return typeof data === 'string' ? data : JSON.stringify(data);
-                    } catch { return 'Detail parse failed'; }
-                })();
+                // Extract comprehensive error details for debugging
+                let errorDetail = '';
+                try {
+                    const errObj = error?.error ?? error?.response?.data ?? error?.response?.body ?? error?.data ?? error?.body;
+                    if (errObj != null) {
+                        errorDetail = typeof errObj === 'string' ? errObj : JSON.stringify(errObj);
+                    }
+                    if (!errorDetail && error.message) {
+                        errorDetail = error.message;
+                    }
+                    // Also check for raw response text
+                    if (!errorDetail && error.response?.text) {
+                        errorDetail = await error.response.text();
+                    }
+                } catch { errorDetail = error.message || 'Detail parse failed'; }
 
-                console.warn(`[Gemini] Tool Chat model ${currentModel} failed (status=${status}): ${error.message} details=${errorDetail}`);
+                console.warn(`[Gemini] Tool Chat model ${currentModel} failed (status=${status}): ${error.message}`);
+                console.warn(`[Gemini] Error details: ${errorDetail}`);
                 lastError = error;
             }
         }
@@ -310,18 +338,7 @@ export class GeminiProvider {
         })();
         let lastError: any;
 
-        const sanitizedTools = tools.map((t: any) => {
-            if (t.type === 'function' && t.function && t.function.parameters) {
-                return {
-                    ...t,
-                    function: {
-                        ...t.function,
-                        parameters: this.sanitizeSchema(t.function.parameters)
-                    }
-                };
-            }
-            return t;
-        });
+        const sanitizedTools = tools.map((t: any) => this.sanitizeTool(t));
 
         for (const currentModel of modelsToTry) {
             try {
@@ -410,7 +427,19 @@ export class GeminiProvider {
                     console.error(`[Gemini] Streaming Tool Chat model ${currentModel} QUOTA EXHAUSTED.`);
                     throw error;
                 }
+
+                // Extract comprehensive error details
+                let errorDetail = '';
+                try {
+                    const errObj = error?.error ?? error?.response?.data ?? error?.data ?? error?.body;
+                    if (errObj != null) {
+                        errorDetail = typeof errObj === 'string' ? errObj : JSON.stringify(errObj);
+                    }
+                    if (!errorDetail) errorDetail = error.message || 'No detail';
+                } catch { errorDetail = error.message || 'Detail parse failed'; }
+
                 console.warn(`[Gemini] Streaming Tool Chat model ${currentModel} failed (status=${status}): ${error.message}`);
+                console.warn(`[Gemini] Streaming error details: ${errorDetail}`);
                 lastError = error;
             }
         }
