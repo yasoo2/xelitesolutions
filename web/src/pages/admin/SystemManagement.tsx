@@ -126,6 +126,11 @@ export default function SystemManagement() {
             if (res.ok) {
                 const data = await res.json();
                 setDeployments(data);
+                setSelectedDep(prev => {
+                    if (!prev) return null;
+                    const match = data.find((d: any) => d._id === prev._id);
+                    return match ? { ...prev, ...match } : prev;
+                });
             }
         } catch (e) { console.error(e); }
     }, [token]);
@@ -155,15 +160,21 @@ export default function SystemManagement() {
         setLoading(false);
     };
 
+    // Initial fetch when tab changes
     useEffect(() => {
         refreshAll();
-        // Polling for dashboard or deployments
+    }, [activeTab, fetchHealth, fetchDeployments, fetchUsers]);
+
+    // Background polling
+    useEffect(() => {
+        // Fast polling (3s) if logs modal is open, otherwise standard polling (15s)
+        const pollRate = selectedDep ? 3000 : 15000;
         const interval = setInterval(() => {
             if (activeTab === 'dashboard') fetchHealth();
-            if (activeTab === 'deployments') fetchDeployments();
-        }, 15000);
+            if (activeTab === 'deployments' || selectedDep) fetchDeployments();
+        }, pollRate);
         return () => clearInterval(interval);
-    }, [activeTab, fetchHealth, fetchDeployments, fetchUsers]);
+    }, [activeTab, fetchHealth, fetchDeployments, selectedDep]);
 
     // ═══════════════════════════════════════════════
     // ACTIONS
@@ -203,7 +214,21 @@ export default function SystemManagement() {
                 }
             }
         } catch (e) { console.error(e); }
-        setIsDeploying(false);
+        setIsDeploying(true); // Keep it true for better feedback during log streaming
+        setTimeout(() => setIsDeploying(false), 2000); // Temporary guard
+    };
+
+    const handleClearHistory = async () => {
+        if (!window.confirm('Are you sure you want to clear all deployment history? This cannot be undone.')) return;
+        try {
+            const res = await fetch(`${API_URL}/admin/deployments`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                await fetchDeployments();
+            }
+        } catch (e) { console.error(e); }
     };
 
     const toggleAdmin = async (user: User) => {
@@ -349,10 +374,14 @@ export default function SystemManagement() {
 
     const renderDeployments = () => (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="tab-pane">
-            <div className="deploy-actions">
+            <div className="deploy-actions" style={{ display: 'flex', gap: '12px' }}>
                 <button className="btn-deploy-refined" onClick={handleDeploy} disabled={isDeploying}>
                     {isDeploying ? <Loader2 size={20} className="spinning" /> : <Rocket size={20} />}
                     {isDeploying ? 'Processing Deployment...' : 'Deploy Production'}
+                </button>
+                <button className="btn-clear-refined" onClick={handleClearHistory} disabled={deployments.length === 0}>
+                    <Trash2 size={20} />
+                    Clear History
                 </button>
             </div>
 
@@ -668,6 +697,34 @@ export default function SystemManagement() {
                 }
                 .btn-deploy-refined:active { transform: scale(0.98); }
                 .btn-deploy-refined:disabled { opacity: 0.5; transform: none; box-shadow: none; cursor: not-allowed; }
+
+                .btn-clear-refined {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                    border: 1px solid rgba(239, 68, 68, 0.2);
+                    padding: 12px 24px;
+                    border-radius: 14px;
+                    font-weight: 700;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    cursor: pointer;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    font-size: 15px;
+                }
+
+                .btn-clear-refined:hover:not(:disabled) {
+                    background: rgba(239, 68, 68, 0.2);
+                    border-color: #ef4444;
+                    box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+                    transform: translateY(-2px);
+                }
+
+                .btn-clear-refined:disabled {
+                    opacity: 0.3;
+                    cursor: not-allowed;
+                    filter: grayscale(1);
+                }
 
                 .dep-item {
                     background: var(--bg-card);
