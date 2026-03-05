@@ -208,6 +208,11 @@ export class WriteFileTool extends BaseTool {
         const dir = path.dirname(full);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
+        // Prevent writing to directories (e.g., if Joe tries to write to "." or "/")
+        if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+            return { ok: false, error: `EISDIR: Cannot write file content to a directory path (${rawPath}). Please specify a full filename like '${rawPath}/index.html'.`, logs: [] };
+        }
+
         fs.writeFileSync(full, content);
         logs.push(`write=${rawPath}`);
 

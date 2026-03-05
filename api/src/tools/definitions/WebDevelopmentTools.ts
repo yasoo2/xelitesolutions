@@ -332,6 +332,12 @@ export class DevServerTool extends BaseTool {
             } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
                 command = `npx -y serve -l ${port} -s . --no-clipboard`;
             } else {
+                // Ensure a basic vite config exists for ad-hoc previewing without host-header blocking
+                const configPath = path.join(cwd, 'vite.config.js');
+                const tsConfigPath = path.join(cwd, 'vite.config.ts');
+                if (!fs.existsSync(configPath) && !fs.existsSync(tsConfigPath)) {
+                    fs.writeFileSync(configPath, `export default { server: { host: '0.0.0.0', allowedHosts: true } };`);
+                }
                 command = `npx --yes vite --host 0.0.0.0 --port ${port}`;
             }
         }
