@@ -6,24 +6,38 @@ export class GroqProvider {
         this.apiKey = process.env.GROQ_API_KEY || ''; // Will rely on user providing it or system default if available
     }
 
-    async chatComplete(messages: any[], model: string = 'llama-3.1-70b-versatile'): Promise<string> {
+    async chatComplete(messages: any[], model: string = 'llama-3.1-70b-versatile', tools?: any[]): Promise<string> {
         if (!this.apiKey) {
             throw new Error('GROQ_API_KEY not found');
         }
 
         try {
+            const body: any = {
+                model: model,
+                messages: messages,
+                temperature: 0.7,
+                max_tokens: 4096 // Generous limit for free model
+            };
+
+            if (tools && tools.length > 0) {
+                body.tools = tools.map((t: any) => ({
+                    type: "function",
+                    function: {
+                        name: t.name,
+                        description: t.description || "",
+                        parameters: t.inputSchema || { type: "object", properties: {} },
+                    },
+                }));
+                body.tool_choice = "auto";
+            }
+
             const response = await fetch(this.baseUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    model: model,
-                    messages: messages,
-                    temperature: 0.7,
-                    max_tokens: 4096 // Generous limit for free model
-                })
+                body: JSON.stringify(body)
             });
 
             if (!response.ok) {

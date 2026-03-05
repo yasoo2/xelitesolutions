@@ -423,24 +423,38 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
 /**
  * Make API call to Groq (free Llama/Mixtral/Gemma models)
  */
-async function callGroq(model: string, messages: any[], onPartial?: (delta: string) => void): Promise<string> {
+async function callGroq(model: string, messages: any[], onPartial?: (delta: string) => void, tools?: any[]): Promise<string> {
     const GROQ_API_KEY = process.env.GROQ_API_KEY || 'gsk_placeholder';
 
     try {
         const stream = !!onPartial;
+        const body: any = {
+            model,
+            messages,
+            temperature: 0.7,
+            max_tokens: 8000,
+            stream
+        };
+
+        if (tools && tools.length > 0) {
+            body.tools = tools.map((t: any) => ({
+                type: "function",
+                function: {
+                    name: t.name,
+                    description: t.description || "",
+                    parameters: t.inputSchema || { type: "object", properties: {} },
+                },
+            }));
+            body.tool_choice = "auto";
+        }
+
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${GROQ_API_KEY} `,
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                model,
-                messages,
-                temperature: 0.7,
-                max_tokens: 8000,
-                stream
-            })
+            body: JSON.stringify(body)
         });
 
         if (!response.ok) {
@@ -621,8 +635,7 @@ export async function routeToModel(
             name: 'Groq (Free)',
             run: async () => {
                 const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.1-70b-versatile';
-                // Note: Groq natively supports tool calling, but we use text-extraction fallback for now in callGroq
-                return await callGroq(model, flatMessages, onPartial);
+                return await callGroq(model, flatMessages, onPartial, tools);
             }
         });
     }
@@ -640,7 +653,7 @@ export async function routeToModel(
         meshProviders.push({
             name: 'OpenRouter (Free)',
             run: async () => {
-                return await openRouterProvider.chatComplete(flatMessages, 'google/gemma-2-9b-it:free');
+                return await openRouterProvider.chatComplete(flatMessages, 'google/gemma-2-9b-it:free', tools);
             }
         });
     }
@@ -659,7 +672,7 @@ export async function routeToModel(
     meshProviders.push({
         name: 'DeepSeek (Pollinations)',
         run: async () => {
-            return await deepSeekProvider.chatComplete(flatMessages); // DeepSeek typically text-based in this context
+            return await deepSeekProvider.chatComplete(flatMessages, undefined, tools);
         }
     });
 
@@ -680,7 +693,7 @@ export async function routeToModel(
         if (selectedModel.provider === 'groq' && hasGroqKey) {
             // Groq is fast, but let's give it 15s
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
-            const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial), timeoutPromise]) as string;
+            const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial, tools), timeoutPromise]) as string;
             const ans = cleanOutput(rawAns);
             if (!cacheDisabled && !hasSensitive && ans && ans.length > 20) {
                 await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);

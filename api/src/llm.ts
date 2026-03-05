@@ -1069,7 +1069,7 @@ export async function planNextStep(
           { role: "system", content: getSystemPrompt({ name: "Younis" }) },
           ...messages,
         ];
-        const text = await pollinationsProvider.chatComplete(msgs, "openai");
+        const text = await pollinationsProvider.chatComplete(msgs, "openai", 3, tools);
         return {
           name: "echo",
           input: { text: text || "Response from Joe (Emergency Fallback)" },
@@ -1693,7 +1693,7 @@ export async function planNextStep(
           }
 
           if (!response) {
-            response = await groq.chatComplete(msgs, selectedModel.model);
+            response = await groq.chatComplete(msgs, selectedModel.model, tools);
             if (
               !cacheDisabled &&
               !hasSensitive &&
@@ -1798,7 +1798,7 @@ export async function planNextStep(
             ...messages,
           ];
 
-          const text = await (deepSeekProvider as any).chatComplete(msgs);
+          const text = await (deepSeekProvider as any).chatComplete(msgs, undefined, tools);
           if (text) {
             return {
               name: "echo",
@@ -1817,7 +1817,7 @@ export async function planNextStep(
           { role: "system", content: getSystemPrompt({ name: "Younis" }) },
           ...messages,
         ];
-        const text = await pollinationsProvider.chatComplete(msgs, "openai");
+        const text = await pollinationsProvider.chatComplete(msgs, "openai", 3, tools);
         return {
           name: "echo",
           input: { text: text || "Response from Joe (Free)" },

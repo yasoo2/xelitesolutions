@@ -42,17 +42,39 @@ export class OpenRouterProvider {
         });
     }
 
-    async chatComplete(messages: any[], model: string = OPENROUTER_MODELS.DEFAULT_FREE): Promise<string> {
+    async chatComplete(messages: any[], model: string = OPENROUTER_MODELS.DEFAULT_FREE, tools?: any[]): Promise<string> {
         try {
-            const completion = await this.client.chat.completions.create({
+            const body: any = {
                 model: model,
                 messages: messages.map(m => ({
                     role: m.role,
                     content: m.content
                 })) as any,
-            });
+            };
 
-            return completion.choices[0]?.message?.content || '';
+            if (tools && tools.length > 0) {
+                body.tools = tools.map((t: any) => ({
+                    type: "function",
+                    function: {
+                        name: t.name,
+                        description: t.description || "",
+                        parameters: t.inputSchema || { type: "object", properties: {} },
+                    },
+                }));
+                body.tool_choice = "auto";
+            }
+
+            const completion = await this.client.chat.completions.create(body);
+
+            const message = completion.choices[0]?.message;
+            if (message?.tool_calls && message.tool_calls.length > 0) {
+                return JSON.stringify({
+                    type: 'tool_calls',
+                    tool_calls: message.tool_calls,
+                });
+            }
+
+            return message?.content || '';
         } catch (error: any) {
             const isClerkError = error.status === 502 || error.message?.includes('Clerk');
             if (isClerkError) {
