@@ -1,5 +1,5 @@
 import React from 'react';
-import { FilePlus, FolderPlus, GitBranch, RefreshCw } from 'lucide-react';
+import { FilePlus, FolderPlus, GitBranch, RefreshCw, HardDrive } from 'lucide-react';
 import EliteFileExplorer from './EliteFileExplorer';
 
 import { GitHubRepo, GitHubUser } from '../services/githubService';
@@ -33,6 +33,19 @@ export default function FileExplorerPanel({
                 <div className="joe-files-actions">
                     <button
                         className="joe-files-action-btn"
+                        onClick={() => {
+                            if ((window as any)._triggerConnectWorkspace) {
+                                (window as any)._triggerConnectWorkspace();
+                            }
+                        }}
+                        title="ربط مجلد محلي (Connect Local Folder)"
+                        style={{ color: 'var(--accent-primary)' }}
+                    >
+                        <HardDrive size={16} />
+                    </button>
+                    <div style={{ width: 1, height: 16, background: 'var(--border-color)', margin: '0 4px' }} />
+                    <button
+                        className="joe-files-action-btn"
                         onClick={onNewFile}
                         title="New File"
                     >
@@ -56,10 +69,16 @@ export default function FileExplorerPanel({
             </div>
 
             {/* File Tree */}
-            <div className="joe-files-content">
+            <div className="joe-files-content" style={{ position: 'relative' }}>
                 <EliteFileExplorer
                     activeRepo={activeRepo}
                     githubUser={githubUser}
+                    ref={(ref: any) => {
+                        // Pass a trigger so the panel can force EliteFileExplorer to open the folder dialog
+                        if (ref) {
+                            (window as any)._triggerConnectWorkspace = () => ref.triggerConnectWorkspace();
+                        }
+                    }}
                 />
             </div>
 

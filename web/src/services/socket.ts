@@ -336,6 +336,14 @@ async function connect() {
             window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: _lastPreviewUrl } }));
           }
         }
+      } else if (msgType === 'diff') {
+        // [Code Preview] When a file is created or modified, notify the PreviewPanel
+        const path = data?.data?.path;
+        const content = data?.data?.content;
+        if (path && content !== undefined) {
+          console.log(`[Socket] Code diff received for: ${path}`);
+          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path, content } }));
+        }
       }
 
       try {

@@ -1,6 +1,6 @@
 /**
  * PreviewPanel - Live preview component for BottomPanel
- * Shows live preview of HTML/React apps being developed
+ * Shows live preview of HTML/React apps or Code differences
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -12,10 +12,13 @@ import {
     Tablet,
     Monitor,
     X,
-    Link
+    Link,
+    Code
 } from 'lucide-react';
+import Editor from '@monaco-editor/react';
 
 type DeviceType = 'desktop' | 'tablet' | 'mobile';
+type PreviewMode = 'web' | 'code';
 
 interface DeviceConfig {
     type: DeviceType;
@@ -40,8 +43,14 @@ export default function PreviewPanel({
     url: initialUrl,
     onReady
 }: PreviewPanelProps) {
+    const [mode, setMode] = useState<PreviewMode>('web');
     const [previewUrl, setPreviewUrl] = useState(initialUrl || '');
     const [inputUrl, setInputUrl] = useState(initialUrl || '');
+    
+    // Code preview state
+    const [codePath, setCodePath] = useState('');
+    const [codeContent, setCodeContent] = useState('');
+
     const [device, setDevice] = useState<DeviceType>('desktop');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -58,10 +67,22 @@ export default function PreviewPanel({
         const handlePreviewReady = (e: CustomEvent) => {
             const detail = e.detail as { url?: string };
             if (detail?.url) {
+                setMode('web');
                 setPreviewUrl(detail.url);
                 setInputUrl(detail.url);
                 setError(null);
                 setBuildProgress(null); // Clear build progress when ready
+                onReady?.();
+            }
+        };
+
+        const handleCodeDiff = (e: CustomEvent) => {
+            const detail = e.detail as { path: string; content: string };
+            if (detail?.path && detail?.content !== undefined) {
+                setMode('code');
+                setCodePath(detail.path);
+                setCodeContent(detail.content);
+                setBuildProgress(null);
                 onReady?.();
             }
         };
@@ -71,20 +92,23 @@ export default function PreviewPanel({
         };
 
         window.addEventListener('preview:ready', handlePreviewReady as any);
+        window.addEventListener('preview:code_diff', handleCodeDiff as any);
         window.addEventListener('preview:build_progress', handleBuildProgress as any);
+        
         return () => {
             window.removeEventListener('preview:ready', handlePreviewReady as any);
+            window.removeEventListener('preview:code_diff', handleCodeDiff as any);
             window.removeEventListener('preview:build_progress', handleBuildProgress as any);
         };
     }, [onReady]);
 
     // Update when initial URL changes
     useEffect(() => {
-        if (initialUrl) {
+        if (initialUrl && mode === 'web') {
             setPreviewUrl(initialUrl);
             setInputUrl(initialUrl);
         }
-    }, [initialUrl]);
+    }, [initialUrl, mode]);
 
     const handleNavigate = useCallback((url: string) => {
         if (!url?.trim()) return;
@@ -110,12 +134,23 @@ export default function PreviewPanel({
     }, []);
 
     const openExternal = useCallback(() => {
-        if (previewUrl) {
+        if (previewUrl && mode === 'web') {
             window.open(previewUrl, '_blank');
         }
-    }, [previewUrl]);
+    }, [previewUrl, mode]);
 
     const currentDevice = DEVICES.find(d => d.type === device) || DEVICES[0];
+
+    // Determine Monaco language based on extension
+    const getLanguage = (filename: string) => {
+        if (filename.endsWith('.ts') || filename.endsWith('.tsx')) return 'typescript';
+        if (filename.endsWith('.js') || filename.endsWith('.jsx')) return 'javascript';
+        if (filename.endsWith('.css')) return 'css';
+        if (filename.endsWith('.html')) return 'html';
+        if (filename.endsWith('.json')) return 'json';
+        if (filename.endsWith('.md')) return 'markdown';
+        return 'plaintext';
+    };
 
     return (
         <div style={{
@@ -128,89 +163,121 @@ export default function PreviewPanel({
             <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                justifyContent: 'space-between',
                 padding: '4px 8px',
                 borderBottom: '1px solid var(--border-color)',
                 background: 'var(--bg-secondary)',
                 flexWrap: 'wrap',
+                gap: 8
             }}>
-                {/* URL Input */}
-                <div style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '6px 12px',
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 6,
-                    minWidth: 200,
-                }}>
-                    <Link size={12} style={{ color: previewUrl ? '#22c55e' : 'var(--text-muted)', flexShrink: 0 }} />
-                    <input
-                        type="text"
-                        value={inputUrl}
-                        onChange={e => setInputUrl(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                                handleNavigate(inputUrl);
-                            }
-                        }}
-                        placeholder="http://localhost:3000"
-                        style={{
-                            flex: 1,
-                            background: 'transparent',
-                            border: 'none',
-                            outline: 'none',
-                            color: 'var(--text-primary)',
-                            fontSize: 12,
-                            fontFamily: 'monospace',
-                            direction: 'ltr',
-                        }}
-                    />
-                </div>
-
-                {/* Device Selector */}
-                <div style={{ display: 'flex', gap: 2 }}>
-                    {DEVICES.map(d => (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                    {/* Mode Switcher */}
+                    <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: 6 }}>
                         <PreviewButton
-                            key={d.type}
-                            icon={d.icon}
-                            tooltip={d.label}
-                            onClick={() => setDevice(d.type)}
-                            active={device === d.type}
+                            icon={Eye}
+                            tooltip="وضع الويب"
+                            onClick={() => setMode('web')}
+                            active={mode === 'web'}
                         />
-                    ))}
+                        <PreviewButton
+                            icon={Code}
+                            tooltip="وضع الكود"
+                            onClick={() => setMode('code')}
+                            active={mode === 'code'}
+                        />
+                    </div>
+
+                    {/* URL/Path Input */}
+                    <div style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 12px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 6,
+                        minWidth: 200,
+                    }}>
+                        {mode === 'web' ? (
+                            <Link size={12} style={{ color: previewUrl ? '#22c55e' : 'var(--text-muted)', flexShrink: 0 }} />
+                        ) : (
+                            <Code size={12} style={{ color: codePath ? '#3b82f6' : 'var(--text-muted)', flexShrink: 0 }} />
+                        )}
+                        <input
+                            type="text"
+                            value={mode === 'web' ? inputUrl : codePath}
+                            readOnly={mode === 'code'}
+                            onChange={e => mode === 'web' && setInputUrl(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && mode === 'web') {
+                                    handleNavigate(inputUrl);
+                                }
+                            }}
+                            placeholder={mode === 'web' ? "http://localhost:3000" : "لم يتم تحديد مسار الملف"}
+                            style={{
+                                flex: 1,
+                                background: 'transparent',
+                                border: 'none',
+                                outline: 'none',
+                                color: 'var(--text-primary)',
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                direction: 'ltr',
+                            }}
+                        />
+                    </div>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                    {buildProgress && (
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '4px 8px',
-                            background: 'rgba(56, 189, 248, 0.1)',
-                            borderRadius: 4,
-                            marginRight: 8,
-                        }}>
-                            <RefreshCw size={10} style={{ color: '#38bdf8', animation: 'spin 2s linear infinite' }} />
-                            <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>جاري البناء...</span>
+                {/* Right Actions */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {mode === 'web' && (
+                        <div style={{ display: 'flex', gap: 2, marginRight: 8, borderRight: '1px solid var(--border-color)', paddingRight: 8 }}>
+                            {DEVICES.map(d => (
+                                <PreviewButton
+                                    key={d.type}
+                                    icon={d.icon}
+                                    tooltip={d.label}
+                                    onClick={() => setDevice(d.type)}
+                                    active={device === d.type}
+                                />
+                            ))}
                         </div>
                     )}
-                    <PreviewButton
-                        icon={RefreshCw}
-                        tooltip="تحديث"
-                        onClick={handleRefresh}
-                        spinning={isLoading}
-                    />
-                    <PreviewButton
-                        icon={ExternalLink}
-                        tooltip="فتح خارجياً"
-                        onClick={openExternal}
-                        disabled={!previewUrl}
-                    />
+
+                    <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                        {buildProgress && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '4px 8px',
+                                background: 'rgba(56, 189, 248, 0.1)',
+                                borderRadius: 4,
+                                marginRight: 8,
+                            }}>
+                                <RefreshCw size={10} style={{ color: '#38bdf8', animation: 'spin 2s linear infinite' }} />
+                                <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>جاري البناء...</span>
+                            </div>
+                        )}
+                        
+                        {mode === 'web' && (
+                            <>
+                                <PreviewButton
+                                    icon={RefreshCw}
+                                    tooltip="تحديث"
+                                    onClick={handleRefresh}
+                                    spinning={isLoading}
+                                />
+                                <PreviewButton
+                                    icon={ExternalLink}
+                                    tooltip="فتح خارجياً"
+                                    onClick={openExternal}
+                                    disabled={!previewUrl}
+                                />
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -220,9 +287,9 @@ export default function PreviewPanel({
                 overflow: 'hidden',
                 display: 'flex',
                 justifyContent: 'center',
-                alignItems: device === 'desktop' ? 'stretch' : 'flex-start',
-                padding: device === 'desktop' ? 0 : 16,
-                background: device === 'desktop' ? 'transparent' : 'var(--bg-card)',
+                alignItems: mode === 'web' && device !== 'desktop' ? 'flex-start' : 'stretch',
+                padding: mode === 'web' && device !== 'desktop' ? 16 : 0,
+                background: mode === 'web' && device !== 'desktop' ? 'var(--bg-card)' : 'transparent',
                 position: 'relative',
                 minHeight: 0,
             }}>
@@ -315,60 +382,74 @@ export default function PreviewPanel({
                     </div>
                 )}
 
-                {previewUrl ? (
-                    <div style={{
-                        width: currentDevice.width,
-                        height: '100%',
-                        maxWidth: '100%',
-                        position: 'relative',
-                        background: '#fff',
-                        borderRadius: device === 'desktop' ? 0 : 8,
-                        boxShadow: device === 'desktop' ? 'none' : '0 4px 24px rgba(0,0,0,0.2)',
-                        overflow: 'hidden',
-                        flex: device === 'desktop' ? 1 : undefined,
-                    }}>
-                        <iframe
-                            ref={iframeRef}
-                            key={key}
-                            src={previewUrl}
-                            onLoad={() => {
-                                setIsLoading(false);
-                                setError(null);
-                            }}
-                            onError={() => {
-                                setIsLoading(false);
-                                setError('فشل تحميل الصفحة');
-                            }}
-                            style={{
-                                width: '100%',
-                                height: '100%',
-                                border: 'none',
-                                display: 'block',
-                            }}
-                            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
-                        />
-                    </div>
-                ) : (
-                    !buildProgress && (
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '100%',
-                            width: '100%',
-                            color: 'var(--text-muted)',
-                            gap: 12,
-                        }}>
-                            <Eye size={48} style={{ opacity: 0.3 }} />
-                            <div style={{ fontSize: 14, textAlign: 'center' }}>
-                                لا توجد معاينة
-                                <br />
-                                <span style={{ fontSize: 12, opacity: 0.7 }}>
-                                    ادخل رابط أو انتظر حتى يتم إنشاء ملف
-                                </span>
-                            </div>
+                {mode === 'code' ? (
+                    codePath ? (
+                        <div style={{ flex: 1, width: '100%', height: '100%' }}>
+                            <Editor
+                                height="100%"
+                                language={getLanguage(codePath)}
+                                theme="vs-dark"
+                                value={codeContent}
+                                options={{
+                                    readOnly: true,
+                                    minimap: { enabled: false },
+                                    scrollBeyondLastLine: false,
+                                    fontSize: 13,
+                                    fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
+                                    wordWrap: 'on',
+                                    padding: { top: 16 }
+                                }}
+                            />
                         </div>
+                    ) : (
+                        <EmptyState 
+                            icon={Code} 
+                            title="لا يوجد كود للمعاينة" 
+                            subtitle="انتظر حتى يقوم النظام بإنشاء أو تعديل ملف" 
+                        />
+                    )
+                ) : (
+                    previewUrl ? (
+                        <div style={{
+                            width: currentDevice.width,
+                            height: '100%',
+                            maxWidth: '100%',
+                            position: 'relative',
+                            background: '#fff',
+                            borderRadius: device === 'desktop' ? 0 : 8,
+                            boxShadow: device === 'desktop' ? 'none' : '0 4px 24px rgba(0,0,0,0.2)',
+                            overflow: 'hidden',
+                            flex: device === 'desktop' ? 1 : undefined,
+                        }}>
+                            <iframe
+                                ref={iframeRef}
+                                key={key}
+                                src={previewUrl}
+                                onLoad={() => {
+                                    setIsLoading(false);
+                                    setError(null);
+                                }}
+                                onError={() => {
+                                    setIsLoading(false);
+                                    setError('فشل تحميل الصفحة');
+                                }}
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    border: 'none',
+                                    display: 'block',
+                                }}
+                                sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+                            />
+                        </div>
+                    ) : (
+                        !buildProgress && (
+                            <EmptyState 
+                                icon={Eye} 
+                                title="لا توجد معاينة" 
+                                subtitle="ادخل رابط أو انتظر حتى يتم إنشاء واجهة" 
+                            />
+                        )
                     )
                 )}
             </div>
@@ -389,6 +470,30 @@ export default function PreviewPanel({
                     {error}
                 </div>
             )}
+        </div>
+    );
+}
+
+function EmptyState({ icon: Icon, title, subtitle }: { icon: any, title: string, subtitle: string }) {
+    return (
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            width: '100%',
+            color: 'var(--text-muted)',
+            gap: 12,
+        }}>
+            <Icon size={48} style={{ opacity: 0.3 }} />
+            <div style={{ fontSize: 14, textAlign: 'center' }}>
+                {title}
+                <br />
+                <span style={{ fontSize: 12, opacity: 0.7 }}>
+                    {subtitle}
+                </span>
+            </div>
         </div>
     );
 }

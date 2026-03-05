@@ -49,6 +49,10 @@ interface FileExplorerProps {
     githubUser?: GitHubUser | null;
 }
 
+export interface EliteFileExplorerRef {
+    triggerConnectWorkspace: () => void;
+}
+
 type OpenTab = {
     node: FileNode;
     content: string;
@@ -296,7 +300,7 @@ const ModalInput = ({
     );
 };
 
-export default function EliteFileExplorer({ sessionId, activeRepo, githubUser }: FileExplorerProps) {
+const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerProps>(({ sessionId, activeRepo, githubUser }, ref) => {
     const [viewMode, setViewMode] = useState<'local' | 'github'>('local');
     const [repos, setRepos] = useState<any[]>([]);
     // const [activeRepo, setActiveRepo] = useState<string | null>(null); // Removed, now from props
@@ -320,6 +324,13 @@ export default function EliteFileExplorer({ sessionId, activeRepo, githubUser }:
         type: 'folder' | 'clone' | null;
         loading: boolean;
     }>({ open: false, type: null, loading: false });
+
+    // Expose imperative handle for external buttons (e.g. from FileExplorerPanel)
+    React.useImperativeHandle(ref, () => ({
+        triggerConnectWorkspace: () => {
+            setModalConfig({ open: true, type: 'folder', loading: false });
+        }
+    }));
 
     // Sync viewMode with activeRepo
     useEffect(() => {
@@ -797,18 +808,15 @@ export default function EliteFileExplorer({ sessionId, activeRepo, githubUser }:
                                         >
                                             <div className="result-filename">{res.path.split('/').pop()}</div>
                                             <div className="result-path">{res.path}</div>
-                                            <div className="result-preview">
-                                                <span className="result-line">L{res.line}</span>
-                                                {res.preview}
-                                            </div>
+                                            <div className="result-preview">{res.preview}</div>
                                         </motion.div>
                                     ))}
                                     {searchResults.length === 0 && !isSearching && (
-                                        <div className="elite-empty-state">No results found</div>
+                                        <div className="elite-no-results">No matches found</div>
                                     )}
                                 </div>
                             ) : (
-                                <div>
+                                <>
                                     {tree.map((node, i) => (
                                         <FileTreeItem
                                             key={node.path || i}
@@ -821,103 +829,37 @@ export default function EliteFileExplorer({ sessionId, activeRepo, githubUser }:
                                             selectedPath={activePath || undefined}
                                         />
                                     ))}
-                                </div>
+                                    {tree.length === 0 && !loading && (
+                                        <div className="elite-empty-state">
+                                            {viewMode === 'github' ? 'Empty Repository' : 'Empty Directory'}
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </motion.div>
                 ) : (
                     <motion.div
-                        className="elite-explorer-collapsed"
-                        initial={{ width: 0 }}
-                        animate={{ width: 40 }}
-                        exit={{ width: 0 }}
+                        className="elite-explorer-collapsed-bar"
+                        initial={{ width: 0, opacity: 0 }}
+                        animate={{ width: 48, opacity: 1 }}
+                        exit={{ width: 0, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
                     >
-                        <button onClick={() => setTreeCollapsed(false)} className="elite-expand-btn">
-                            <PanelLeftOpen size={18} />
+                        <button onClick={() => setTreeCollapsed(false)} className="elite-icon-btn" title="Expand">
+                            <PanelLeftOpen size={16} />
                         </button>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            <div className="elite-editor-area">
-                {pathParts.length > 0 && (
-                    <div className="elite-breadcrumbs">
-                        <Home size={14} />
-                        {pathParts.map((part, i) => (
-                            <React.Fragment key={i}>
-                                <ChevronRight size={12} className="breadcrumb-separator" />
-                                <span className="breadcrumb-item">{part}</span>
-                            </React.Fragment>
-                        ))}
-                    </div>
-                )}
-
-                <div className="elite-tabs-bar">
-                    <AnimatePresence>
-                        {tabs.map(t => (
-                            <motion.div
-                                key={t.node.path}
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.9 }}
-                                onClick={() => setActivePath(t.node.path)}
-                                className={`elite-tab ${t.node.path === activePath ? 'active' : ''}`}
-                            >
-                                <FileIcon name={t.node.name} />
-                                <span className="tab-name">{t.node.name}</span>
-                                {t.isDirty && <div className="tab-dirty-indicator" />}
-                                <button
-                                    className="tab-close"
-                                    onClick={(e) => { e.stopPropagation(); closeTab(t.node.path); }}
-                                >
-                                    <X size={12} />
-                                </button>
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
-                </div>
-
-                <div className="elite-editor-content">
-                    {activePath ? (
-                        <CodeEditor
-                            code={tabs.find(t => t.node.path === activePath)?.content || ''}
-                            language={activePath.split('.').pop() || 'text'}
-                            onChange={updateActiveContent}
-                            theme="vs-dark"
-                        />
-                    ) : (
-                        <div className="elite-empty-editor">
-                            <Folder size={64} strokeWidth={1} opacity={0.3} />
-                            <div className="empty-text">Select a file to edit</div>
-                        </div>
-                    )}
-
-                    <AnimatePresence>
-                        {activePath && tabs.find(t => t.node.path === activePath)?.isDirty && (
-                            <motion.div
-                                className="elite-save-fab"
-                                initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.8, y: 20 }}
-                            >
-                                <button onClick={saveActiveFile} className="elite-save-btn">
-                                    {savingPath ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                    <span>Save Changes</span>
-                                </button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-            </div>
-
             <ContextMenu
-                visible={contextMenu.visible}
-                x={contextMenu.x}
-                y={contextMenu.y}
-                node={contextMenu.node}
-                onClose={() => setContextMenu({ visible: false, x: 0, y: 0, node: null })}
+                {...contextMenu}
+                onClose={() => setContextMenu(p => ({ ...p, visible: false }))}
                 onAction={handleContextAction}
             />
         </div>
     );
-}
+});
+
+export default EliteFileExplorer;

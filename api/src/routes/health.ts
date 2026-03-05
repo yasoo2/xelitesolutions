@@ -15,16 +15,16 @@ const RATE_LIMIT_MAX = 60; // 60 requests per minute
 function rateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
-  
+
   let record = rateLimitMap.get(ip);
-  
+
   if (!record || now > record.resetTime) {
     record = { count: 0, resetTime: now + RATE_LIMIT_WINDOW };
     rateLimitMap.set(ip, record);
   }
-  
+
   record.count++;
-  
+
   if (record.count > RATE_LIMIT_MAX) {
     return res.status(429).json({
       status: 'error',
@@ -32,7 +32,7 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
       retryAfter: Math.ceil((record.resetTime - now) / 1000)
     });
   }
-  
+
   next();
 }
 
@@ -85,7 +85,10 @@ router.get('/ready', rateLimit, async (req, res) => {
       checks.database = 'connected';
     } else {
       checks.database = 'disconnected';
-      isReady = false;
+      // In offline/local mode, DB is not strictly required.
+      if (process.env.OFFLINE_MODE !== 'true') {
+        isReady = false;
+      }
     }
   } catch (error) {
     checks.database = 'not configured';

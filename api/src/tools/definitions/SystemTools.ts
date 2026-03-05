@@ -163,6 +163,7 @@ export class FileEditTool extends BaseTool {
             type: 'diff',
             data: {
                 path: filename,
+                content: content,  // Added full raw content for immediate UI preview
                 additions: replaceLines,
                 deletions: findLines,
                 lines: [
@@ -216,6 +217,7 @@ export class WriteFileTool extends BaseTool {
             type: 'diff',
             data: {
                 path: rawPath,
+                content: content,  // Added full raw content for immediate UI preview
                 additions: lines.length,
                 deletions: 0,
                 lines: lines.map((line, i) => ({ type: 'add', content: line, lineNumber: i + 1 }))
