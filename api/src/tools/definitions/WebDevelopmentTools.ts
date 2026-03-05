@@ -315,42 +315,63 @@ export class DevServerTool extends BaseTool {
     auditFields = ['cwd'];
 
     async execute(input: any, context?: any) {
-        const logs: string[] = [];
-        const cwd = resolveToolPath(String(input?.cwd || '').trim(), { sandbox: true });
-        let command = String(input?.command || '').trim();
+        const baseCwd = resolveToolPath(String(input?.cwd || '').trim(), { sandbox: true });
         let port = Number(input?.port);
+        if (!port) port = await findAvailablePort(5180);
 
-        if (!port) {
-            port = await findAvailablePort(5180);
+        // 1. IMPROVED: Robustly detect the actual web project root
+        // If the current directory doesn't have an index.html, look for it in subdirectories
+        let actualCwd = baseCwd;
+        if (!fs.existsSync(path.join(baseCwd, 'index.html'))) {
+            // Check for common monorepo/project patterns
+            const monorepoWeb = path.join(baseCwd, 'apps', 'web');
+            if (fs.existsSync(path.join(monorepoWeb, 'index.html'))) {
+                actualCwd = monorepoWeb;
+                logs.push(`monorepo_detected_in_root: switching to ${monorepoWeb}`);
+            } else {
+                // Search reachable subdirectories for an index.html (useful if Joe scaffolded into a subfolder)
+                try {
+                    const entries = fs.readdirSync(baseCwd).filter(d => !d.startsWith('.') && fs.statSync(path.join(baseCwd, d)).isDirectory());
+                    for (const entry of entries) {
+                        const projectPath = path.join(baseCwd, entry);
+                        const webPath = path.join(projectPath, 'apps', 'web');
+                        if (fs.existsSync(path.join(webPath, 'index.html'))) {
+                            actualCwd = webPath;
+                            logs.push(`nested_monorepo_detected: switching to ${webPath}`);
+                            break;
+                        }
+                        if (fs.existsSync(path.join(projectPath, 'index.html'))) {
+                            actualCwd = projectPath;
+                            logs.push(`nested_project_detected: switching to ${projectPath}`);
+                            break;
+                        }
+                    }
+                } catch (e: any) {
+                    logs.push(`web_root_lookup_error: ${e.message}`);
+                }
+            }
         }
 
-        // Auto-detect command if not provided
+        // 2. Determine command based on actualCwd
+        let command = String(input?.command || '').trim();
         if (!command) {
-            if (fs.existsSync(path.join(cwd, 'package.json'))) {
-                // ALWAYS force --host 0.0.0.0 so the server is accessible from Nginx/other containers
+            if (fs.existsSync(path.join(actualCwd, 'package.json'))) {
+                // Use Vite for projects with a package.json
                 command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
-            } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
+            } else if (fs.existsSync(path.join(actualCwd, 'index.html'))) {
+                // Use serve for simple HTML files
                 command = `npx -y serve -l ${port} -s . --no-clipboard`;
             } else {
-                // Ensure a basic vite config exists for ad-hoc previewing without host-header blocking
-                const configPath = path.join(cwd, 'vite.config.js');
-                const tsConfigPath = path.join(cwd, 'vite.config.ts');
-                if (!fs.existsSync(configPath) && !fs.existsSync(tsConfigPath)) {
+                // Fallback: create an ad-hoc vite config to allow access
+                const configPath = path.join(actualCwd, 'vite.config.js');
+                if (!fs.existsSync(configPath)) {
                     fs.writeFileSync(configPath, `export default { server: { host: '0.0.0.0', allowedHosts: true }, base: '/preview/${port}/' };`);
                 }
                 command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
             }
         }
 
-        // Check if vite.config exists and has the web app
-        const webAppDir = path.join(cwd, 'apps', 'web');
-        if (fs.existsSync(webAppDir) && fs.existsSync(path.join(webAppDir, 'package.json'))) {
-            // Monorepo: start the web app directly
-            command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
-            logs.push(`monorepo_detected: starting web app from ${webAppDir}`);
-        }
-
-        const actualCwd = fs.existsSync(webAppDir) ? webAppDir : cwd;
+        logs.push(`using_cwd: ${actualCwd}`);
 
         try {
             const child = spawn(command, [], {
