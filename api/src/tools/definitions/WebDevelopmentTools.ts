@@ -328,7 +328,7 @@ export class DevServerTool extends BaseTool {
         if (!command) {
             if (fs.existsSync(path.join(cwd, 'package.json'))) {
                 // ALWAYS force --host 0.0.0.0 so the server is accessible from Nginx/other containers
-                command = `npx --yes vite --host 0.0.0.0 --port ${port}`;
+                command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
             } else if (fs.existsSync(path.join(cwd, 'index.html'))) {
                 command = `npx -y serve -l ${port} -s . --no-clipboard`;
             } else {
@@ -336,9 +336,9 @@ export class DevServerTool extends BaseTool {
                 const configPath = path.join(cwd, 'vite.config.js');
                 const tsConfigPath = path.join(cwd, 'vite.config.ts');
                 if (!fs.existsSync(configPath) && !fs.existsSync(tsConfigPath)) {
-                    fs.writeFileSync(configPath, `export default { server: { host: '0.0.0.0', allowedHosts: true } };`);
+                    fs.writeFileSync(configPath, `export default { server: { host: '0.0.0.0', allowedHosts: true }, base: '/preview/${port}/' };`);
                 }
-                command = `npx --yes vite --host 0.0.0.0 --port ${port}`;
+                command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
             }
         }
 
@@ -346,7 +346,7 @@ export class DevServerTool extends BaseTool {
         const webAppDir = path.join(cwd, 'apps', 'web');
         if (fs.existsSync(webAppDir) && fs.existsSync(path.join(webAppDir, 'package.json'))) {
             // Monorepo: start the web app directly
-            command = `npx --yes vite --host 0.0.0.0 --port ${port}`;
+            command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
             logs.push(`monorepo_detected: starting web app from ${webAppDir}`);
         }
 
