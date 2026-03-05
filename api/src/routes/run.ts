@@ -2872,7 +2872,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           );
 
           // [FIX] DO NOT OVERRIDE IF THE PLAN IS ALREADY A BUILDER PIPELINE
-          const isAlreadyValidPipeline = ['website_full_pipeline', 'project_planner', 'genesis_build', 'scaffold_full_stack'].includes(planName);
+          // Note: Removed 'project_planner' from this list because project_planner only generates text
+          // and relies on follow-up tasks (which fail on free LLMs). We WANT God Mode to hijack it into website_full_pipeline.
+          const isAlreadyValidPipeline = ['website_full_pipeline', 'genesis_build', 'scaffold_full_stack'].includes(planName);
 
           if (isExplicitBuild && !isAlreadyValidPipeline) {
             const alreadyDetected = historyHasToolCall(history as any, 'project_detect');
@@ -3213,7 +3215,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
             const projName = nameMatch ? nameMatch[1] : 'vivos-store';
 
-            const shopPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+            const shopPipelineProtected = ['website_full_pipeline', 'genesis_build'].includes(planName);
 
             if (steps === 0 && !shopPipelineProtected) {
               // Force the smart tool for ecommerce requests without deceptive markers
@@ -3284,7 +3286,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const isProjectStart = wf && ['simple_creative', 'node_api', 'static_site', 'fullstack'].includes(wf.kind);
 
           // [FIX] DO NOT HIJACK IF THE LLM ALREADY PLANNED THE BUILD PIPELINE
-          const wfPipelineProtected = ['website_full_pipeline', 'project_planner', 'genesis_build'].includes(planName);
+          const wfPipelineProtected = ['website_full_pipeline', 'genesis_build'].includes(planName);
 
           if (wf && wf.kind !== 'ecommerce' && !wfPipelineProtected && (isProjectStart || !planName || planName === 'echo')) {
             const marker =
