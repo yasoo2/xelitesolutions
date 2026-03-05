@@ -650,7 +650,7 @@ export async function routeToModel(
         meshProviders.push({
             name: 'Gemini (Backup)',
             run: async () => {
-                return await geminiProvider.chatComplete(effectiveMessages, 'gemini-1.5-pro', tools);
+                return await geminiProvider.chatComplete(effectiveMessages, 'models/gemini-2.0-flash', tools);
             }
         });
     }

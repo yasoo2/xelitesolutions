@@ -10,11 +10,11 @@ const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 // Robust Model List with Fallbacks
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'models/gemini-2.0-flash';
 const FALLBACK_MODELS = [
-    'gemini-1.5-flash',
-    'gemini-2.0-flash-exp',
-    'gemini-1.5-pro'
+    'models/gemini-flash-latest',
+    'models/gemini-2.0-flash-exp',
+    'models/gemini-pro-latest'
 ];
 
 export class GeminiProvider {
@@ -68,13 +68,24 @@ export class GeminiProvider {
             delete sanitized[key];
         }
 
+        // Type array handling (e.g., ["string", "null"]) -> pick first primary type
+        if (Array.isArray(sanitized.type)) {
+            sanitized.type = sanitized.type.find((t: string) => t !== 'null') || sanitized.type[0];
+        }
+
         // Recursively sanitize properties
         if (sanitized.properties && typeof sanitized.properties === 'object') {
             const sanitizedProps: any = {};
+            let hasProps = false;
             for (const [key, value] of Object.entries(sanitized.properties)) {
                 sanitizedProps[key] = this.sanitizeSchema(value, depth + 1);
+                hasProps = true;
             }
-            sanitized.properties = sanitizedProps;
+            if (hasProps) {
+                sanitized.properties = sanitizedProps;
+            } else {
+                delete sanitized.properties;
+            }
         }
 
         // Recursively sanitize items for arrays
@@ -86,6 +97,12 @@ export class GeminiProvider {
         if (Array.isArray(sanitized.enum)) {
             sanitized.enum = sanitized.enum.filter((v: any) => typeof v === 'string' || typeof v === 'number');
             if (sanitized.enum.length === 0) delete sanitized.enum;
+        }
+
+        // Ensure object type has properties or is removed
+        if (sanitized.type === 'object' && (!sanitized.properties || Object.keys(sanitized.properties).length === 0)) {
+            // Gemini sometimes hates empty objects in tool definitions
+            // If it's a top-level parameter, we might need to keep it, but let's see
         }
 
         return sanitized;
@@ -122,18 +139,11 @@ export class GeminiProvider {
             const out: string[] = [];
             for (const m of raw) {
                 if (!m.trim()) continue;
-                if (seen.has(m)) continue;
-                seen.add(m);
-                out.push(m);
-
-                // Add models/ prefix fallback if not present
-                if (!m.startsWith('models/')) {
-                    const prefixed = `models/${m}`;
-                    if (!seen.has(prefixed)) {
-                        seen.add(prefixed);
-                        out.push(prefixed);
-                    }
-                }
+                // Force models/ prefix as REQUIRED by the Google OpenAI endpoint
+                const prefixed = m.startsWith('models/') ? m : `models/${m}`;
+                if (seen.has(prefixed)) continue;
+                seen.add(prefixed);
+                out.push(prefixed);
             }
             return out;
         })();
@@ -163,7 +173,6 @@ export class GeminiProvider {
 
                 if (sanitizedTools) {
                     params.tools = sanitizedTools;
-                    params.tool_choice = currentModel.includes('lite') ? undefined : 'auto';
                 }
 
                 const completion = await this.client.chat.completions.create(params);
@@ -230,16 +239,10 @@ export class GeminiProvider {
             const out: string[] = [];
             for (const m of raw) {
                 if (!m.trim()) continue;
-                if (seen.has(m)) continue;
-                seen.add(m);
-                out.push(m);
-                if (!m.startsWith('models/')) {
-                    const prefixed = `models/${m}`;
-                    if (!seen.has(prefixed)) {
-                        seen.add(prefixed);
-                        out.push(prefixed);
-                    }
-                }
+                const prefixed = m.startsWith('models/') ? m : `models/${m}`;
+                if (seen.has(prefixed)) continue;
+                seen.add(prefixed);
+                out.push(prefixed);
             }
             return out;
         })();
@@ -254,7 +257,6 @@ export class GeminiProvider {
                     model: currentModel,
                     messages: messages as any,
                     tools: sanitizedTools,
-                    tool_choice: currentModel.includes('lite') ? undefined : 'auto',
                 });
 
                 if (!completion || !completion.choices || completion.choices.length === 0) {
@@ -323,16 +325,10 @@ export class GeminiProvider {
             const out: string[] = [];
             for (const m of raw) {
                 if (!m.trim()) continue;
-                if (seen.has(m)) continue;
-                seen.add(m);
-                out.push(m);
-                if (!m.startsWith('models/')) {
-                    const prefixed = `models/${m}`;
-                    if (!seen.has(prefixed)) {
-                        seen.add(prefixed);
-                        out.push(prefixed);
-                    }
-                }
+                const prefixed = m.startsWith('models/') ? m : `models/${m}`;
+                if (seen.has(prefixed)) continue;
+                seen.add(prefixed);
+                out.push(prefixed);
             }
             return out;
         })();
@@ -349,7 +345,6 @@ export class GeminiProvider {
                     model: currentModel,
                     messages: messages as any,
                     tools: sanitizedTools,
-                    tool_choice: currentModel.includes('lite') ? undefined : 'auto',
                     stream: true,
                 });
 
