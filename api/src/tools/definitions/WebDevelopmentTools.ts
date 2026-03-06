@@ -504,7 +504,7 @@ export class ScaffoldTool extends BaseTool {
                     aestheticMode: String(input?.aestheticMode || 'corporate'),
                     language: String(input?.language || 'en'),
                     port: Number(input?.port || 5180),
-                    overwrite: input?.overwrite === true
+                    overwrite: input?.overwrite !== false
                 }
             );
             return { ok: true, output: res, logs: [`scaffold.success=${projectName}`] };
