@@ -57,13 +57,14 @@ export function resolveToolPath(p: string, options: ResolvePathOptions = {}) {
     const resolvedRoot = path.resolve(root);
     const resolvedAbs = path.resolve(abs);
 
-    // Safety check: ensure we stay within the intended root OR builds DIR OR project root
     const resolvedBuildsDir = path.resolve(buildsDir);
     const resolvedProjectRoot = path.resolve(projectRoot);
+    const resolvedExternalRoot = path.resolve(workspaceService.externalRoot);
 
     if (resolvedAbs.startsWith(resolvedRoot) ||
         resolvedAbs.startsWith(resolvedBuildsDir) ||
-        resolvedAbs.startsWith(resolvedProjectRoot)) {
+        resolvedAbs.startsWith(resolvedProjectRoot) ||
+        resolvedAbs.startsWith(resolvedExternalRoot)) {
         return resolvedAbs;
     }
 

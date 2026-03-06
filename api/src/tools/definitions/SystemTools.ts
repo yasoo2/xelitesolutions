@@ -47,12 +47,13 @@ function resolveToolPath(p: string) {
     // Default to resolving relative to workspace root
     const abs = path.resolve(root, val);
 
-    // Safety check: ensure we are either in the workspace OR in the builds directory
+    // Safety check: ensure we are either in the workspace OR in the builds directory OR external root
     // Project root is the parent of 'api' or the current folder
     const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
     const buildsDir = path.resolve(projectRoot, 'data/builds');
+    const externalRoot = workspaceService.externalRoot;
 
-    if (abs.startsWith(root) || abs.startsWith(buildsDir)) {
+    if (abs.startsWith(root) || abs.startsWith(buildsDir) || abs.startsWith(externalRoot)) {
         return abs;
     }
 
