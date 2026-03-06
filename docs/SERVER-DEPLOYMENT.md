@@ -1,6 +1,12 @@
-# 🚀 Joe System - Server Deployment
+## ⚔️ Isolation & Security Protocols
 
-## Quick Start (للسيرفر البعيد)
+> [!IMPORTANT]
+> **Project Isolation**: Joe is strictly forbidden from building user projects inside the system core directories (`/api`, `/web`, etc.).
+> All new projects must reside in `/root/joe-projects` or be synced directly to external GitHub repositories.
+
+### Deployment Isolation:
+- **System Updates**: Only affect the core Joe infrastructure via the Super Admin panel.
+- **User Projects**: Stay in their own isolated containers or directories to avoid any dependency conflicts with the main system.
 
 ### الإعداد الأولي (مرة واحدة فقط):
 

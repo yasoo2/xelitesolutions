@@ -100,6 +100,8 @@ function ensureMockPersonalWorkspace(userId: string) {
 
 export class WorkspaceService {
     private currentRoot: string = process.cwd();
+    // Default to an external directory for all user projects to avoid cluttering sys files
+    private externalRoot: string = process.env.EXTERNAL_PROJECTS_DIR || '/root/joe-projects';
     private rootsByWorkspaceId = new Map<string, string>();
 
     private resolveWorkspaceId(workspaceId?: string) {
@@ -220,6 +222,10 @@ export class WorkspaceService {
             },
             { upsert: true }
         );
+
+        // Set the active root for this workspace to an isolated external path
+        const projectPath = path.join(this.externalRoot, String(workspace._id));
+        this.rootsByWorkspaceId.set(String(workspace._id), projectPath);
 
         return workspace;
     }
