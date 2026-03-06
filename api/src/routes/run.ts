@@ -1129,6 +1129,7 @@ function fallbackPlanWhenPlannerUnavailable(params: {
         const buildName = extractBuildName(userText);
         const isIsolated = /(معزول|معزولة|isolated|new workspace|مساحة عمل|جديدة|isolated project)/i.test(userText);
         const baseDir = isIsolated ? workspaceService.externalRoot : undefined;
+        console.log(`[FallbackDebug] Detected: name=${buildName}, isIsolated=${isIsolated}, baseDir=${baseDir}`);
 
         console.info(`[Fallback] Discovery complete + build intent → Forcing website_full_pipeline (${buildName})`);
         return {
@@ -3222,6 +3223,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const projName = extractBuildName(userTextForOverrides);
             const isIsolated = /(معزول|معزولة|isolated|new workspace|مساحة عمل|جديدة|isolated project)/i.test(userTextForOverrides);
             const baseDir = isIsolated ? workspaceService.externalRoot : undefined;
+            console.log(`[ShopDebug] Detected: name=${projName}, isIsolated=${isIsolated}, baseDir=${baseDir}`);
 
             const shopPipelineProtected = ['website_full_pipeline', 'genesis_build'].includes(planName);
 
