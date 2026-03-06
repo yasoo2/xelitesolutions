@@ -11,7 +11,7 @@ export class Builder {
   ) {
     const root = path.resolve(baseDir || process.cwd(), name);
     if (fs.existsSync(root)) {
-      if (options.overwrite) {
+      if (options.overwrite !== false) {
         console.log(`[Builder] Overwriting existing project at ${root}`);
         fs.rmSync(root, { recursive: true, force: true });
       } else {
