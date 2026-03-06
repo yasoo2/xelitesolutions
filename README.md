@@ -274,6 +274,12 @@ docker-compose -f docker-compose.server.yml restart joe_api
 
 ---
 
+### 🚀 Deployment
+Joe uses a **Central Internal Deployment System**. 
+- **Legacy**: GitHub Actions (Deprecated)
+- **Production**: Super Admin Panel -> Deployments
+- **Documentation**: See [SERVER-DEPLOYMENT.md](docs/SERVER-DEPLOYMENT.md)
+
 ## 🎯 Use Cases
 
 - ✅ Building complete web applications

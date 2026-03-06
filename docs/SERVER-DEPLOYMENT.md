@@ -23,15 +23,34 @@ chmod +x setup-server.sh
 
 ---
 
-## التحديثات التلقائية
+## 🛡️ Central Internal Deployment (Joe System)
 
-كل مرة تدفع كود جديد لـ GitHub، السيرفر سيسحبه **تلقائياً** ويطبق التحديثات!
+> [!IMPORTANT]
+> **GitHub Actions is DEPRECATED.** Do not use GitHub workflows for production deployments.
+> Use the **Central Internal Deployment System** built directly into Joe.
 
+### How it Works:
+1. **Universal Sync**: Joe uses an internal `DeployManager` that pulls directly from GitHub and handles container recreation.
+2. **Access**: Navigate to the **Super Admin** panel at `https://www.xelitesolutions.com/super-admin`.
+3. **Execution**:
+   - Go to the **Deployments** tab.
+   - Click **"Deploy Production"**.
+   - Joe will automatically pull the latest `main` branch, rebuild the necessary components, and restart the services safely.
+
+### Manual Backend Trigger (Emergency Only):
+If the UI is unavailable, the deployment can be triggered via a POST request to the API (requires Super Admin authentication):
+`POST /api/admin/deploy`
+
+---
+
+## 🛠️ Infrastructure Sync (Legacy/Manual)
+
+### Manual Git Pull:
 ```bash
-# على السيرفر (اختياري - يدوي)
-cd /opt/joe
+# On the server
+cd /root/xelitesolutions
 git pull origin main
-# deploy.sh سيعمل تلقائياً!
+# The system will detect changes and update.
 ```
 
 ---
