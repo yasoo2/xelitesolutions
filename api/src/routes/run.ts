@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { workspaceService } from '../services/WorkspaceService';
 import { broadcast, LiveEvent, registerRunOwner, registerSessionOwner, broadcastThinkingPhase, broadcastThinkingDetail } from '../ws';
 import { executeTool } from '../services/ToolService';
 import { ToolExecution } from '../models/toolExecution';
@@ -432,6 +433,10 @@ function extractBuildName(text: string): string {
     return enMatch[1].trim().replace(/\s+/g, '-').toLowerCase() + '-store';
   }
 
+  // 5. Explicit quotes: "name it 'premium-showcase'"
+  const quoteMatch = s.match(/['"]([\w\u0600-\u06FF-]{2,100})['"]/);
+  if (quoteMatch?.[1]) return quoteMatch[1].replace(/\s+/g, '-');
+
   // 5. Fallback: unique timestamped name
   const ts = Date.now().toString(36).slice(-4);
   return `project-${ts}`;
@@ -482,12 +487,7 @@ function isEcommerceRequest(raw: string): boolean {
 }
 
 function extractTargetProjectRoot(raw: string): string {
-  const s = String(raw || '');
-  const m1 = s.match(/\b(vivos)\b/i);
-  if (m1 && m1[1]) return m1[1].trim();
-  const m2 = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه|named|name it|call it)\s+([A-Za-z0-9._-]{1,100})/i);
-  if (m2 && m2[1]) return m2[1].trim();
-  return 'ecommerce-store';
+  return extractBuildName(raw);
 }
 
 type WorkflowKind = 'ecommerce' | 'static_site' | 'node_api' | 'fullstack' | 'tool_shell' | 'simple_creative';
@@ -502,8 +502,6 @@ type WorkflowKind = 'ecommerce' | 'static_site' | 'node_api' | 'fullstack' | 'to
 
 function extractRootFromText(raw: string, fallback: string): string {
   const s = String(raw || '');
-  const mV = s.match(/\b(vivos)\b/i);
-  if (mV && mV[1]) return mV[1].trim();
 
   const mNamed = s.match(/(?:سميه|اسم(?:ه|ها)?|سَمِّه|named|name it|call it)(?:\s+(?:the|a|an))?(?:\s+(?:project|app|api|site))?\s+(?:['"]?)([A-Za-z0-9._-]{1,100})(?:['"]?)/i);
   if (mNamed && mNamed[1]) return mNamed[1].trim();
@@ -1128,7 +1126,10 @@ function fallbackPlanWhenPlannerUnavailable(params: {
         /(website|app|system|page|landing|site|store|shop|موقع|تطبيق|نظام|صفحة|هبوط|متجر|واجهة|مشروع|دكان|بورتفوليو|portfolio)/i.test(userText);
 
       if (isBuildIntent && !hasPipeline) {
-        const buildName = userText.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF]+)/i)?.[1] || 'elite-project';
+        const buildName = extractBuildName(userText);
+        const isIsolated = /(معزول|معزولة|isolated|new workspace|مساحة عمل|جديدة|isolated project)/i.test(userText);
+        const baseDir = isIsolated ? workspaceService.externalRoot : undefined;
+
         console.info(`[Fallback] Discovery complete + build intent → Forcing website_full_pipeline (${buildName})`);
         return {
           name: 'website_full_pipeline',
@@ -1136,7 +1137,8 @@ function fallbackPlanWhenPlannerUnavailable(params: {
             name: buildName,
             type: /(?:متجر|store|shop|ecommerce|دكان)/i.test(userText) ? 'ecommerce' : 'saas',
             features: ['auth', 'products'],
-            language: /[\u0600-\u06FF]/.test(userText) ? 'ar' : 'en'
+            language: /[\u0600-\u06FF]/.test(userText) ? 'ar' : 'en',
+            baseDir
           }
         } as any;
       }
@@ -3216,9 +3218,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
           const wantsShop = isEcommerceRequest(userTextForOverrides);
           if (wantsShop) {
-            // Extract project name if provided, else default
-            const nameMatch = userTextForOverrides.match(/(?:named|called|اسم|اسمه)\s+([a-zA-Z0-9_-]+)/i);
-            const projName = nameMatch ? nameMatch[1] : 'vivos-store';
+            // Extract project name if provided, else use smart extractor
+            const projName = extractBuildName(userTextForOverrides);
+            const isIsolated = /(معزول|معزولة|isolated|new workspace|مساحة عمل|جديدة|isolated project)/i.test(userTextForOverrides);
+            const baseDir = isIsolated ? workspaceService.externalRoot : undefined;
 
             const shopPipelineProtected = ['website_full_pipeline', 'genesis_build'].includes(planName);
 
@@ -3229,7 +3232,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 input: {
                   name: projName,
                   type: 'ecommerce',
-                  features: ['auth', 'products', 'cart'] // Smart default features
+                  features: ['auth', 'products', 'cart'], // Smart default features
+                  baseDir
                 }
               } as any;
               planName = 'scaffold_full_stack';
