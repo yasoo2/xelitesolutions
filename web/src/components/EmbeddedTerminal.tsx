@@ -23,6 +23,7 @@ export default function EmbeddedTerminal({
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
+    const isOpenRef = useRef(false);
     const [isReady, setIsReady] = useState(false);
     const [isConnecting, setIsConnecting] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -92,10 +93,11 @@ export default function EmbeddedTerminal({
                     term.open(containerRef.current);
                     termRef.current = term;
                     fitAddonRef.current = fitAddon;
+                    isOpenRef.current = true;
 
                     // Initial fit safely
                     setTimeout(() => {
-                        if (isMounted && term.element && containerRef.current) {
+                        if (isMounted && isOpenRef.current && term.element && containerRef.current) {
                             try {
                                 fitAddon.fit();
                             } catch (e) {
@@ -181,7 +183,7 @@ export default function EmbeddedTerminal({
             if (!isMounted) return;
 
             resizeTimeout = setTimeout(() => {
-                if (!isMounted) return;
+                if (!isMounted || !isOpenRef.current) return;
 
                 if (fitAddonRef.current && containerRef.current && termRef.current) {
                     // [Wakil 5.1] Block resize during Quiet Mode
@@ -190,22 +192,18 @@ export default function EmbeddedTerminal({
                         return;
                     }
                     try {
-                        const { clientWidth, clientHeight } = containerRef.current;
-                        if (clientWidth === 0 || clientHeight === 0) return;
-
-                        // Check if terminal is actually opened and attached
                         const term = termRef.current;
-                        if (!term || !term.element || !term.element.clientWidth) return;
+                        if (!term || !term.element) return;
 
-                        if (!fitAddonRef.current) return;
+                        // Ensure terminal is still attached
+                        if (!term.element.parentElement) return;
 
                         try {
                             // Defensive fit
-                            if (term.element && term.element.parentElement) {
-                                fitAddonRef.current.fit();
-                            }
+                            fitAddonRef.current.fit();
                         } catch (e) {
-                            return;
+                            console.debug('[Terminal] Proactive fit error:', e);
+                            // Fall through to proposeDimensions if fit fails
                         }
 
                         // Robust proposal check
@@ -215,12 +213,10 @@ export default function EmbeddedTerminal({
                             const rows = dims.rows;
 
                             if (isNaN(cols) || isNaN(rows)) return;
+                            if (cols <= 0 || rows <= 0) return;
 
                             // [ELITE FIX] Strict deduplication at source
                             if (cols === lastCols && rows === lastRows) return;
-
-                            // Ensure valid dimensions
-                            if (cols <= 0 || rows <= 0) return;
 
                             lastCols = cols;
                             lastRows = rows;
@@ -240,7 +236,9 @@ export default function EmbeddedTerminal({
             }, 300); // Increased debounce to 300ms for stability
         });
 
-        resizeObserver.observe(containerRef.current);
+        if (containerRef.current) {
+            resizeObserver.observe(containerRef.current);
+        }
 
         // Listen for theme changes
         const themeObserver = new MutationObserver(() => {

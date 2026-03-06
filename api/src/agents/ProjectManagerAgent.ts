@@ -107,6 +107,7 @@ YOUR OPERATIONAL PROTOCOL (GOD-MODE):
     - Use 'terminal_manager' (action: 'write') to run audit scripts or long-running tasks.
     - This is the ONLY way the user can see your console work in real-time. 'shell_execute' is for silent background tasks.
 12. PREVIEW SYNC: After building a UI, always confirm the dev server is running (use 'dev_server' or 'web_pipeline') so the 'Preview' screen remains active.
+13. ANTI-LOOP PROTOCOL: If you have used a tool multiple times without progress, you MUST pivot. NEVER repeat 'web_search' more than twice for the same goal. Transition to 'analyze_project' or 'shell_execute' immediately if stuck.
 ${JSON.stringify(availableTools.map(t => ({ name: t.name, usage: t.description })), null, 2)}
 
 RULES:

@@ -3074,7 +3074,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             if (isRepeat) {
               const discoveryTools = ['project_detect', 'ls', 'grep_search', 'read_file', 'analyze_codebase', 'fs_glob', 'read_file_tree', 'codebase_outline', 'browser_run', 'browser_open', 'web_search', 'website_full_pipeline'];
-              const maxRepeats = planName === 'project_detect' ? 20 : (discoveryTools.includes(planName) ? 5 : 1);
+              const maxRepeats = planName === 'project_detect' ? 30 : (['web_search', 'browser_run', 'browser_open'].includes(planName) ? 8 : (discoveryTools.includes(planName) ? 6 : 2));
               const totalSeen = sigCount + (lastExecutedToolSig === sig ? 1 : 0);
 
               if (totalSeen >= maxRepeats) {
@@ -3099,6 +3099,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   const isGeneral = isGeneralKnowledgeQuestion(userTextForOverrides);
                   const isFreeProvider = providerKey === 'auto' || providerKey === 'pollinations' || providerKey === 'hack';
                   const needsKey = !hasAnyKey && !isFreeProvider;
+
+                  // [RECOVERY HINT] If we hit max repeats, try to force a different strategy
+                  const recoveryHintAr = `[Neural Sync Error] التكرار المفرط للعملية (${planName}). يرجى تغيير الاستراتيجية.`;
+                  const recoveryHintEn = `[Neural Sync Error] Excessive repetition of step (${planName}) detected. Please pivot to a different tool or check local files.`;
+
                   plan = {
                     name: 'echo',
                     input: {
@@ -3107,12 +3112,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                           ? (needsKey
                             ? '⚠️ تعذّر الإجابة على هذا السؤال لأن مزوّد الذكاء غير مُفعّل (لا يوجد API Key).\nأدخل LLM API Key من نافذة التوكن ثم أعد إرسال السؤال.'
                             : '⚠️ تم تكرار نفس خطوة التخطيط بدون تقدم.\nأرسل طلباً أكثر تحديداً أو اطلب قراءة ملف معين.')
-                          : `[Neural Sync Error] التكرار المفرط للعملية (${planName}) بدون نواتج جديدة.\nلقد قمت بالفعل بفحص بنية المشروع؛ يرجى طلب تحليل ملفات محددة باستخدام "analyze_project" أو استخدام أوامر Terminal للتعمق.`)
+                          : recoveryHintAr)
                         : (isGeneral
                           ? (needsKey
                             ? '⚠️ I can’t answer because the LLM provider isn’t configured (missing API key).\nAdd an LLM API key, then resend your question.'
                             : '⚠️ Planning repeated without progress.\nPlease provide a more specific instruction or ask to read a file.')
-                          : `[Neural Sync Error] Excessive repetition of step (${planName}) detected.\nI have already scanned the project; please transition to specific file analysis using "analyze_project" or use Terminal commands to explore further.`),
+                          : recoveryHintEn),
                     }
                   } as any;
                   planName = 'echo';
