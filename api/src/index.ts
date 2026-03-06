@@ -167,6 +167,7 @@ async function main() {
     res.status(200).json({
       status: 'OK',
       database: dbStatus,
+      version: '1.0.2-terminal-fix',
       uptime: process.uptime(),
       timestamp: new Date().toISOString()
     });
