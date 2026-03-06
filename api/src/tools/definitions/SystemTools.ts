@@ -3,6 +3,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
+import { workspaceService } from '../../services/WorkspaceService';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast } from '../../ws';
 import { handleShellCommand } from '../handlers';
@@ -15,7 +16,6 @@ const spawn = require('child_process').spawn;
 // Helper
 function getWorkspaceRoot() {
     try {
-        const { workspaceService } = require('../../services/WorkspaceService');
         const active = workspaceService.getActiveRoot();
         if (active) return active;
     } catch { }
@@ -38,7 +38,6 @@ function resolveToolPath(p: string) {
 
     let root: string;
     try {
-        const { workspaceService } = require('../../services/WorkspaceService');
         root = workspaceService.getActiveRoot() || getWorkspaceRoot();
     } catch {
         root = getWorkspaceRoot();
