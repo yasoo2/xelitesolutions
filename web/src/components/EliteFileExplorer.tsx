@@ -216,17 +216,17 @@ const FileTreeItem = ({
     onOpenFile: (node: FileNode) => void;
     onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
     selectedPath?: string;
-    gitStatusMap?: Map<string, string>;
+    gitStatusMap?: Record<string, string>;
     onMoveFile?: (sourcePath: string, targetDir: string) => void;
 }) => {
     const expanded = !!expandedByPath[node.path];
     const isSelected = selectedPath === node.path;
 
     // Git status coloring (VS Code style)
-    const fileStatus = gitStatusMap?.get(node.path) || '';
+    const fileStatus = gitStatusMap?.[node.path] || '';
     // For directories, check if any child has a git status
     const dirHasChanges = node.type === 'directory' && gitStatusMap &&
-        Array.from(gitStatusMap.keys()).some(k => k.startsWith(node.path + '/'));
+        Object.keys(gitStatusMap).some(k => k.startsWith(node.path + '/'));
 
     const getGitColor = (): string | undefined => {
         if (!fileStatus && !dirHasChanges) return undefined;
@@ -504,7 +504,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     const [treeCollapsed, setTreeCollapsed] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, node: null });
     const [activeWorkspace, setActiveWorkspace] = useState<{ path: string; name: string } | null>(null);
-    const [gitStatusMap, setGitStatusMap] = useState<Map<string, string>>(new Map());
+    const [gitStatusMap, setGitStatusMap] = useState<Record<string, string>>({});
     const [gitChangeCount, setGitChangeCount] = useState(0);
 
     // Broadcast git change count to external components (e.g. FileExplorerPanel)
@@ -634,11 +634,11 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
             if (!res.ok) return;
             const data = await res.json();
             if (!data.initialized || !data.files) return;
-            const map = new Map<string, string>();
+            const statusObj: Record<string, string> = {};
             for (const f of data.files) {
-                map.set(f.file, f.status);
+                statusObj[f.file] = f.status;
             }
-            setGitStatusMap(map);
+            setGitStatusMap(statusObj);
             setGitChangeCount(data.files.length);
         } catch {
             // Git not available, ignore
