@@ -408,7 +408,7 @@ export class DevServerTool extends BaseTool {
                 try {
                     const http = require('http');
                     await new Promise<void>((resolve, reject) => {
-                        const req = http.get(`http://127.0.0.1:${port}/`, (res: any) => {
+                        const req = http.get(`http://127.0.0.1:${port}/preview/${port}/`, (res: any) => {
                             res.resume();
                             resolve();
                         });
