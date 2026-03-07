@@ -35,6 +35,7 @@ interface FileNode {
     children?: FileNode[];
     hasChildren?: boolean;
     loaded?: boolean;
+    gitStatus?: string;
 }
 
 interface SearchResult {
@@ -88,6 +89,7 @@ const FileTreeItem = ({
     onOpenFile,
     onContextMenu,
     selectedPath,
+    gitStatusMap,
 }: {
     node: FileNode;
     level: number;
@@ -96,9 +98,28 @@ const FileTreeItem = ({
     onOpenFile: (node: FileNode) => void;
     onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
     selectedPath?: string;
+    gitStatusMap?: Map<string, string>;
 }) => {
     const expanded = !!expandedByPath[node.path];
     const isSelected = selectedPath === node.path;
+
+    // Git status coloring (VS Code style)
+    const fileStatus = gitStatusMap?.get(node.path) || '';
+    // For directories, check if any child has a git status
+    const dirHasChanges = node.type === 'directory' && gitStatusMap &&
+        Array.from(gitStatusMap.keys()).some(k => k.startsWith(node.path + '/'));
+
+    const getGitColor = (): string | undefined => {
+        if (!fileStatus && !dirHasChanges) return undefined;
+        const s = fileStatus || '';
+        if (s.includes('D')) return '#f14c4c'; // Deleted - red
+        if (s.includes('M') || s.includes('MM') || s.includes('UU')) return '#e2b340'; // Modified - orange/amber
+        if (s === '??' || s.includes('A') || s === '!!') return '#73c991'; // Added/untracked - green
+        if (s.includes('R')) return '#4ec9b0'; // Renamed - cyan
+        if (dirHasChanges) return '#e2b340'; // Directory with changes - subtle amber
+        return undefined;
+    };
+    const gitColor = getGitColor();
 
     return (
         <div style={{ paddingLeft: level * 12 }}>
@@ -131,7 +152,22 @@ const FileTreeItem = ({
                 ) : (
                     <FileIcon name={node.name} />
                 )}
-                <span className="elite-file-name">{node.name}</span>
+                <span className="elite-file-name" style={gitColor ? { color: gitColor } : undefined}>{node.name}</span>
+                {fileStatus && (
+                    <span style={{
+                        marginLeft: 'auto',
+                        fontSize: '9px',
+                        fontWeight: 600,
+                        opacity: 0.8,
+                        padding: '0 4px',
+                        borderRadius: '3px',
+                        background: gitColor ? `${gitColor}15` : undefined,
+                        color: gitColor,
+                        letterSpacing: '0.3px'
+                    }}>
+                        {fileStatus.trim()}
+                    </span>
+                )}
             </motion.div>
 
             <AnimatePresence>
@@ -157,6 +193,7 @@ const FileTreeItem = ({
                                     onOpenFile={onOpenFile}
                                     onContextMenu={onContextMenu}
                                     selectedPath={selectedPath}
+                                    gitStatusMap={gitStatusMap}
                                 />
                             ))
                         )}
@@ -317,6 +354,8 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     const [treeCollapsed, setTreeCollapsed] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, node: null });
     const [activeWorkspace, setActiveWorkspace] = useState<{ path: string; name: string } | null>(null);
+    const [gitStatusMap, setGitStatusMap] = useState<Map<string, string>>(new Map());
+    const [gitChangeCount, setGitChangeCount] = useState(0);
 
     // Modal States
     const [modalConfig, setModalConfig] = useState<{
@@ -404,6 +443,28 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         const { tree: roots } = await fetchTree();
         setTree(roots || []);
         setLoading(false);
+        fetchGitStatus();
+    };
+
+    const fetchGitStatus = async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            const res = await fetch(`${API}/git/status`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data.initialized || !data.files) return;
+            const map = new Map<string, string>();
+            for (const f of data.files) {
+                map.set(f.file, f.status);
+            }
+            setGitStatusMap(map);
+            setGitChangeCount(data.files.length);
+        } catch {
+            // Git not available, ignore
+        }
     };
 
     useEffect(() => { loadRoot(); }, []);
@@ -827,6 +888,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                             onOpenFile={openFile}
                                             onContextMenu={handleContextMenu}
                                             selectedPath={activePath || undefined}
+                                            gitStatusMap={gitStatusMap}
                                         />
                                     ))}
                                     {tree.length === 0 && !loading && (
